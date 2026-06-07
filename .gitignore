@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build output (committed so the app runs without a build step)
+# client/dist/   <- kept in repo intentionally
+
+# Database & WAL files
+server/app.db
+server/app.db-shm
+server/app.db-wal
+
+# Logs
+*.log
+server.log
+server-err.log
+server-new.log
+server-err-new.log
+
+# TLS certificates & private keys
+server/certs/*.pem
+server/certs/*.key
+server/certs/*.p12
+server/certs/*.pfx
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+
+# Claude IDE files
+.claude/
+
+# Temp / debug scripts
+check_migration.js
