@@ -206,15 +206,16 @@ function generatePDF(visit, onError) {
 
 /* ── Visit Detail Modal ──────────────────────────────────── */
 function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate }) {
+  const toast = useToast();
   const [notes, setNotes] = useState(visit.notes || '');
   const [saving, setSaving] = useState(false);
 
-  async function saveNotes()         { setSaving(true); await api.updateVisit(visit.id, { notes }); setSaving(false); onUpdate(); }
-  async function markSent()          { await api.markReportSent(visit.id);     onUpdate(); onClose(); }
-  async function markUnsent()        { await api.markReportUnsent(visit.id);   onUpdate(); onClose(); }
-  async function markCustomerSent()  { await api.markCustomerSent(visit.id);   onUpdate(); onClose(); }
-  async function markCustomerUnsent(){ await api.markCustomerUnsent(visit.id); onUpdate(); onClose(); }
-  async function markComplete()      { await api.completeVisit(visit.id);      onUpdate(); onClose(); }
+  async function saveNotes()         { setSaving(true); try { await api.updateVisit(visit.id, { notes }); toast.success('Notes saved'); onUpdate(); } catch(e){toast.error(e.message);} finally{setSaving(false);} }
+  async function markSent()          { try { await api.markReportSent(visit.id);     toast.success('Report marked as submitted'); onUpdate(); onClose(); } catch(e){toast.error(e.message);} }
+  async function markUnsent()        { try { await api.markReportUnsent(visit.id);   toast.success('Report submission undone');  onUpdate(); onClose(); } catch(e){toast.error(e.message);} }
+  async function markCustomerSent()  { try { await api.markCustomerSent(visit.id);   toast.success('Report approved & sent to PM'); onUpdate(); onClose(); } catch(e){toast.error(e.message);} }
+  async function markCustomerUnsent(){ try { await api.markCustomerUnsent(visit.id); toast.success('Approval undone'); onUpdate(); onClose(); } catch(e){toast.error(e.message);} }
+  async function markComplete()      { try { await api.completeVisit(visit.id);      toast.success('Visit marked as complete'); onUpdate(); onClose(); } catch(e){toast.error(e.message);} }
 
   // 3-state: pending / report_complete / sent_to_pm
   const reportState = visit.report_sent_to_customer ? 'sent_to_pm'

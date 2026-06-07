@@ -10,8 +10,10 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { fmtDate, Modal, StatusBadge, PriorityBadge, isOverdue, useConfirm } from '../components/Shared';
+import { fmtDate, Modal, StatusBadge, PriorityBadge, isOverdue } from '../components/Shared';
 import { useStatuses } from '../hooks/useStatuses';
+import { useToast } from '../components/Toast';
+import { useConfirm } from '../components/Confirm';
 
 /* ── helpers ─────────────────────────────────────────────── */
 function fileSize(b) {
@@ -320,7 +322,8 @@ function UsersTab({ currentUser }) {
   const [editing, setEditing] = useState(null);
   const [resetting, setResetting] = useState(null);
   const [loading, setLoading] = useState(true);
-  const { confirmDialog, ConfirmDialogNode } = useConfirm();
+  const toast   = useToast();
+  const confirm = useConfirm();
 
   const load = () => api.adminUsers().then(d => { setUsers(d); setLoading(false); });
   useEffect(() => { load(); }, []);
@@ -333,27 +336,26 @@ function UsersTab({ currentUser }) {
   });
 
   async function toggleActive(u) {
-    const ok = await confirmDialog(`${u.active ? 'Deactivate' : 'Activate'} ${u.name}?`, u.active ? 'Deactivate User' : 'Activate User');
+    const ok = await confirm(`${u.active ? 'Deactivate' : 'Activate'} ${u.name}?`, { title: u.active ? 'Deactivate User' : 'Activate User', label: u.active ? 'Deactivate' : 'Activate' });
     if (!ok) return;
-    await api.adminToggleActive(u.id); load();
+    try { await api.adminToggleActive(u.id); load(); } catch(e) { toast.error(e.message); }
   }
 
   async function toggle2faExempt(u) {
     const action = u.totp_exempt ? 'Remove 2FA exemption from' : 'Grant 2FA exemption to';
-    const ok = await confirmDialog(`${action} ${u.name}?`, '2FA Exemption');
+    const ok = await confirm(`${action} ${u.name}?`, { title: '2FA Exemption', label: 'Confirm', danger: false });
     if (!ok) return;
-    await api.adminToggle2faExempt(u.id); load();
+    try { await api.adminToggle2faExempt(u.id); load(); } catch(e) { toast.error(e.message); }
   }
 
   async function deleteUser(u) {
-    const ok = await confirmDialog(`Permanently delete ${u.name}? This cannot be undone.`, 'Delete User');
+    const ok = await confirm(`Permanently delete ${u.name}? This cannot be undone.`, { title: 'Delete User' });
     if (!ok) return;
-    await api.adminDeleteUser(u.id); load();
+    try { await api.adminDeleteUser(u.id); toast.success(`${u.name} deleted`); load(); } catch(e) { toast.error(e.message); }
   }
 
   return (
     <div>
-      {ConfirmDialogNode}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email…" style={{ flex: 1, minWidth: 200, maxWidth: 320 }} />
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1007,6 +1009,8 @@ const DAY_OPTIONS = [
 ];
 
 function WeeklyReportTab() {
+  const toast   = useToast();
+  const confirm = useConfirm();
   // ── SMTP state ────────────────────────────────────────────
   const [smtp,        setSmtp]        = useState({ host:'', port:587, secure:false, user:'', password:'', from_name:'Solutions Hub', from_email:'' });
   const [smtpSaving,  setSmtpSaving]  = useState(false);
@@ -1070,12 +1074,13 @@ function WeeklyReportTab() {
       const data = await api.previewReportData();
       setPreview(data);
       setShowPreview(true);
-    } catch (err) { alert('Preview failed: ' + err.message); }
+    } catch (err) { toast.error('Preview failed: ' + err.message); }
     finally { setPreviewing(false); }
   }
 
   async function sendNow() {
-    if (!window.confirm('Send the weekly report now to all configured recipients?')) return;
+    const ok = await confirm('Send the weekly report now to all configured recipients?', { title: 'Send Report Now', label: 'Send', danger: false });
+    if (!ok) return;
     setSending(true); setSendMsg(null);
     try {
       const res = await api.sendReportNow();
@@ -1615,6 +1620,7 @@ const DATE_FORMATS = ['DD/MM/YYYY','MM/DD/YYYY','YYYY-MM-DD','D MMM YYYY','MMM D
 const NUMBER_FORMATS = ['1,000.00','1.000,00','1 000.00','1000.00'];
 
 function LocalizationTab() {
+  const toast = useToast();
   const DEFAULT = { default_language:'en', supported_languages:['en','el'], date_format:'DD/MM/YYYY', time_format:'24h', number_format:'1,000.00', timezone:'Asia/Nicosia' };
   const [cfg, setCfg]     = useState(DEFAULT);
   const [saved, setSaved] = useState(null);
@@ -1633,8 +1639,8 @@ function LocalizationTab() {
 
   async function save() {
     setSaving(true);
-    try { await api.saveLocalization(cfg); setSaved({ ...cfg }); }
-    catch (e) { alert(e.message); }
+    try { await api.saveLocalization(cfg); setSaved({ ...cfg }); toast.success('Localization settings saved'); }
+    catch (e) { toast.error(e.message); }
     finally { setSaving(false); }
   }
 
@@ -1739,6 +1745,7 @@ const ALERT_TYPES = [
 const ALERT_DEFAULT = Object.fromEntries(ALERT_TYPES.map(a => [a.key, { enabled: true, email: false }]));
 
 function AdminAlertsTab() {
+  const toast = useToast();
   const [prefs, setPrefs]   = useState(ALERT_DEFAULT);
   const [saved, setSaved]   = useState(null);
   const [saving, setSaving] = useState(false);
@@ -1763,8 +1770,8 @@ function AdminAlertsTab() {
 
   async function save() {
     setSaving(true);
-    try { await api.saveAdminNotifications(prefs); setSaved({ ...prefs }); }
-    catch (e) { alert(e.message); }
+    try { await api.saveAdminNotifications(prefs); setSaved({ ...prefs }); toast.success('Alert preferences saved'); }
+    catch (e) { toast.error(e.message); }
     finally { setSaving(false); }
   }
 
@@ -1776,7 +1783,7 @@ function AdminAlertsTab() {
       const notes = await api.notifications();
       const list = notes.notifications || notes || [];
       setRecentAlerts(list.filter(n => n.type === 'system_alert').slice(0, 20));
-    } catch (e) { alert(e.message); }
+    } catch (e) { toast.error(e.message); }
     finally { setChecking(false); }
   }
 
@@ -1931,6 +1938,7 @@ function ToggleRow({ label, description, value, onChange, recommended }) {
 }
 
 function LoggingTab() {
+  const toast = useToast();
   const [cfg, setCfg]     = useState(DEFAULT_LOGGING);
   const [saved, setSaved] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -1945,8 +1953,8 @@ function LoggingTab() {
 
   async function save() {
     setSaving(true);
-    try { await api.saveLogging(cfg); setSaved({ ...cfg }); }
-    catch (e) { alert(e.message); }
+    try { await api.saveLogging(cfg); setSaved({ ...cfg }); toast.success('Logging settings saved'); }
+    catch (e) { toast.error(e.message); }
     finally { setSaving(false); }
   }
 
@@ -2111,6 +2119,8 @@ function StepDot({ phase, stepKey }) {
 }
 
 function SystemUpdateTab() {
+  const toast   = useToast();
+  const confirm = useConfirm();
   const [status,    setStatus]    = useState(null);
   const [checking,  setChecking]  = useState(false);
   const [loading,   setLoading]   = useState(true);
@@ -2147,22 +2157,24 @@ function SystemUpdateTab() {
     try {
       const res = await api.systemUpdateCheck();
       setStatus(s => ({ ...s, outdated: res.outdated }));
-    } catch (e) { alert(e.message); }
+    } catch (e) { toast.error(e.message); }
     finally { setChecking(false); }
   }
 
   async function startUpdate() {
-    if (!confirm('This will run npm install on server & client, then rebuild the frontend.\n\nContinue?')) return;
+    const ok = await confirm('This will run npm install on server & client, then rebuild the frontend. Continue?', { title: 'Start Update', label: 'Update', danger: false });
+    if (!ok) return;
     try {
       await api.systemUpdateStart();
       // Start polling immediately
       const s = await api.systemUpdateStatus();
       setStatus(s);
-    } catch (e) { alert(e.message); }
+    } catch (e) { toast.error(e.message); }
   }
 
   async function restartServer() {
-    if (!confirm('Restart the server now? You will be disconnected briefly.')) return;
+    const ok = await confirm('Restart the server now? You will be disconnected briefly.', { title: 'Restart Server', label: 'Restart' });
+    if (!ok) return;
     setRestarting(true);
     try {
       await api.systemUpdateRestart();
@@ -2546,6 +2558,7 @@ function AuditLogTab() {
 /* ── SECURITY TAB ────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
 function SecurityTab() {
+  const toast = useToast();
   const [cfg, setCfg]     = useState({ password_expiry_days: 90 });
   const [saved, setSaved] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -2561,8 +2574,8 @@ function SecurityTab() {
 
   async function save() {
     setSaving(true);
-    try { await api.saveSecuritySettings(cfg); setSaved({ ...cfg }); }
-    catch (e) { alert(e.message); }
+    try { await api.saveSecuritySettings(cfg); setSaved({ ...cfg }); toast.success('Security settings saved'); }
+    catch (e) { toast.error(e.message); }
     finally { setSaving(false); }
   }
 
