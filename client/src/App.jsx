@@ -482,8 +482,6 @@ function SidebarContent({ user, logout, onNav }) {
   const NAV_PLANNER = [
     { to: '/',                   label: 'Dashboard',  icon: LayoutDashboard, end: true },
     { to: '/maintenance-visits', label: 'Maintenance',icon: Wrench,        badge: overdue.visits },
-    { to: '/calendar',           label: 'Calendar',   icon: CalendarDays },
-    { to: '/customers',          label: 'Customers',  icon: Building2 },
   ];
   const NAV_PM = [
     { to: '/',                   label: 'Dashboard',  icon: LayoutDashboard, end: true },
@@ -725,7 +723,7 @@ export default function App() {
           <Route path="/projects/:id"        element={<PrivateRoute allowedRoles={['manager','engineer','pm']}><ProjectDetail /></PrivateRoute>} />
           <Route path="/tasks"               element={<PrivateRoute allowedRoles={['manager','engineer']}><Tasks /></PrivateRoute>} />
           <Route path="/maintenance-visits"  element={<PrivateRoute><MaintenanceVisits /></PrivateRoute>} />
-          <Route path="/customers"           element={<PrivateRoute allowedRoles={['manager','planner']}><Customers /></PrivateRoute>} />
+          <Route path="/customers"           element={<PrivateRoute allowedRoles={['manager']}><Customers /></PrivateRoute>} />
           <Route path="/scorecards"          element={<PrivateRoute allowedRoles={['manager']}><Scorecards /></PrivateRoute>} />
           <Route path="/reports"             element={<PrivateRoute allowedRoles={['manager']}><Reports /></PrivateRoute>} />
           <Route path="/users"               element={<PrivateRoute allowedRoles={['manager']}><UsersPage /></PrivateRoute>} />

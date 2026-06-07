@@ -22,13 +22,11 @@ router.get('/', requireAuth, (req, res) => {
     JOIN users c ON t.created_by = c.id WHERE 1=1`;
   const params = [];
 
-  if (req.user.role === 'engineer') {
+  if (req.user.role === 'planner' || req.user.role === 'pm') {
+    // Planners and PMs have no task visibility — return empty list
+    return res.json([]);
+  } else if (req.user.role === 'engineer') {
     q += ' AND t.assigned_to = ?'; params.push(req.user.id);
-  } else if (req.user.role === 'planner' || req.user.role === 'pm') {
-    // Scope to projects this user is assigned to (plus unlinked tasks)
-    q += ' AND (t.project_id IS NULL OR t.project_id IN (SELECT project_id FROM project_assignments WHERE user_id = ?))';
-    params.push(req.user.id);
-    if (assigned_to) { q += ' AND t.assigned_to = ?'; params.push(assigned_to); }
   } else {
     // manager — unrestricted
     if (assigned_to) { q += ' AND t.assigned_to = ?'; params.push(assigned_to); }
@@ -68,7 +66,7 @@ const VALID_TASK_STATUSES = new Set(['open','in_progress','waiting_customer','wa
 const VALID_PRIORITIES    = new Set(['low','medium','high','critical']);
 
 router.post('/', requireAuth, (req, res) => {
-  if (req.user.role === 'pm') return res.status(403).json({ error: 'PM role cannot create tasks' });
+  if (req.user.role === 'pm' || req.user.role === 'planner') return res.status(403).json({ error: 'Forbidden' });
   const { project_id, title, description, priority, deadline, is_adhoc } = req.body;
   let { assigned_to } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'Title required' });
@@ -146,16 +144,12 @@ router.put('/:id', requireAuth, (req, res) => {
     return res.json({ ok: true });
   }
 
-  // Planners and PMs: project tasks require assignment; standalone tasks are manager-only
+  // Planners and PMs cannot edit tasks
+  if (req.user.role === 'planner' || req.user.role === 'pm')
+    return res.status(403).json({ error: 'Forbidden' });
+
   if (req.user.role !== 'manager') {
-    if (task.project_id) {
-      const assigned = db.prepare(
-        'SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?'
-      ).get(task.project_id, req.user.id);
-      if (!assigned) return res.status(403).json({ error: 'Forbidden — not assigned to this project' });
-    } else {
-      return res.status(403).json({ error: 'Forbidden — standalone tasks can only be edited by their assigned engineer or a manager' });
-    }
+    return res.status(403).json({ error: 'Forbidden' });
   }
 
   const { title, description, priority, deadline, assigned_to, status, is_adhoc, pending_from_customer } = req.body;
@@ -209,6 +203,8 @@ router.put('/:id', requireAuth, (req, res) => {
 
 /* ── Bulk operations ──────────────────────────────────────── */
 router.post('/bulk', requireAuth, (req, res) => {
+  if (req.user.role === 'planner' || req.user.role === 'pm')
+    return res.status(403).json({ error: 'Forbidden' });
   const { ids, action, status } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'No task IDs provided' });
   if (ids.length > 500) return res.status(400).json({ error: 'Maximum 500 IDs per bulk operation' });
@@ -251,6 +247,8 @@ router.post('/bulk', requireAuth, (req, res) => {
 
 /* ── Export tasks to Excel ────────────────────────────────── */
 router.get('/export', requireDownloadAuth, async (req, res) => {
+  if (req.user.role === 'planner' || req.user.role === 'pm')
+    return res.status(403).json({ error: 'Forbidden' });
   const { filter } = req.query;
   let q = `SELECT t.title, t.status, t.priority, t.deadline, t.is_adhoc,
     u.name as assigned_to, c.name as created_by,
@@ -292,15 +290,13 @@ router.get('/export', requireDownloadAuth, async (req, res) => {
 
 /* ── Duplicate a task ─────────────────────────────────────── */
 router.post('/:id/duplicate', requireAuth, (req, res) => {
+  if (req.user.role === 'planner' || req.user.role === 'pm')
+    return res.status(403).json({ error: 'Forbidden' });
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!task) return res.status(404).json({ error: 'Not found' });
   // Engineers: can only duplicate tasks assigned to them
   if (req.user.role === 'engineer') {
     if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-  } else if (req.user.role !== 'manager' && task.project_id) {
-    // Planners/PMs: must be assigned to the task's project
-    const assigned = db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(task.project_id, req.user.id);
-    if (!assigned) return res.status(403).json({ error: 'Forbidden' });
   }
   const result = db.prepare(`
     INSERT INTO tasks (project_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc)
@@ -314,7 +310,7 @@ router.post('/:id/duplicate', requireAuth, (req, res) => {
 /* ── Overdue counts (lightweight — used by sidebar badges) ── */
 router.get('/overdue-counts', requireAuth, (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
-  let taskCount;
+  let taskCount = 0;
   if (req.user.role === 'engineer') {
     taskCount = db.prepare(`
       SELECT COUNT(*) AS cnt FROM tasks
@@ -325,30 +321,14 @@ router.get('/overdue-counts', requireAuth, (req, res) => {
       SELECT COUNT(*) AS cnt FROM tasks
       WHERE deadline < ? AND status NOT IN ('completed','closed','cancelled')
     `).get(today).cnt;
-  } else {
-    // planner/pm: their assigned projects + unlinked adhoc tasks (project_id IS NULL)
-    taskCount = db.prepare(`
-      SELECT COUNT(*) AS cnt FROM tasks t
-      WHERE t.deadline < ? AND t.status NOT IN ('completed','closed','cancelled')
-        AND (t.project_id IS NULL OR t.project_id IN (SELECT project_id FROM project_assignments WHERE user_id = ?))
-    `).get(today, req.user.id).cnt;
   }
+  // planners and PMs have no task visibility — taskCount stays 0
 
   const visitCount = req.user.role === 'engineer'
     ? db.prepare(`SELECT COUNT(*) AS cnt FROM maintenance_visits mv
         JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
         WHERE mve.user_id = ? AND mv.scheduled_date < ? AND mv.status = 'scheduled'
       `).get(req.user.id, today).cnt
-    : (req.user.role === 'planner' || req.user.role === 'pm')
-    ? db.prepare(`SELECT COUNT(*) AS cnt FROM maintenance_visits mv
-        WHERE mv.scheduled_date < ? AND mv.status = 'scheduled'
-          AND EXISTS (
-            SELECT 1 FROM maintenance_visit_engineers mve
-            JOIN project_assignments pa ON pa.user_id = mve.user_id
-            WHERE mve.visit_id = mv.id
-              AND pa.project_id IN (SELECT project_id FROM project_assignments WHERE user_id = ?)
-          )
-      `).get(today, req.user.id).cnt
     : db.prepare(`SELECT COUNT(*) AS cnt FROM maintenance_visits
         WHERE scheduled_date < ? AND status = 'scheduled'
       `).get(today).cnt;
@@ -365,6 +345,8 @@ router.delete('/:id', requireManager, (req, res) => {
 
 /* ── Task Comments ────────────────────────────────────────── */
 router.get('/:id/comments', requireAuth, (req, res) => {
+  if (req.user.role === 'planner' || req.user.role === 'pm')
+    return res.status(403).json({ error: 'Forbidden' });
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!task) return res.status(404).json({ error: 'Not found' });
   // Engineers can only access their own tasks
@@ -381,6 +363,8 @@ router.get('/:id/comments', requireAuth, (req, res) => {
 });
 
 router.post('/:id/comments', requireAuth, (req, res) => {
+  if (req.user.role === 'planner' || req.user.role === 'pm')
+    return res.status(403).json({ error: 'Forbidden' });
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!task) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'engineer' && task.assigned_to !== req.user.id)
@@ -430,14 +414,13 @@ router.delete('/:id/comments/:cid', requireAuth, (req, res) => {
 /* ── Task Dependencies ────────────────────────────────────── */
 // GET tasks this task depends on
 router.get('/:id/dependencies', requireAuth, (req, res) => {
+  if (req.user.role === 'planner' || req.user.role === 'pm')
+    return res.status(403).json({ error: 'Forbidden' });
   // Verify the caller has visibility of the parent task before exposing its deps
   const task = db.prepare('SELECT assigned_to, project_id FROM tasks WHERE id = ?').get(req.params.id);
   if (!task) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'engineer') {
     if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-  } else if ((req.user.role === 'planner' || req.user.role === 'pm') && task.project_id) {
-    const assigned = db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(task.project_id, req.user.id);
-    if (!assigned) return res.status(403).json({ error: 'Forbidden' });
   }
   const rows = db.prepare(`
     SELECT t.id, t.title, t.status, t.priority, t.deadline

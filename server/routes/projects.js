@@ -226,8 +226,9 @@ router.put('/:id', requireManager, (req, res) => {
   res.json({ ok: true });
 });
 
-// Engineer/planner requests closure — must be assigned to the project
+// Engineer/planner requests closure — must be assigned to the project; PM is read-only
 router.post('/:id/request-closure', requireAuth, (req, res) => {
+  if (req.user.role === 'pm') return res.status(403).json({ error: 'Forbidden — PMs have read-only access to projects' });
   const p = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Not found' });
   // Verify the requesting user is assigned to this project (managers are always allowed)
@@ -255,6 +256,7 @@ router.post('/:id/approve-closure', requireManager, (req, res) => {
 });
 
 router.post('/:id/status-update', requireAuth, (req, res) => {
+  if (req.user.role === 'pm') return res.status(403).json({ error: 'Forbidden — PMs have read-only access to projects' });
   const { message } = req.body;
   if (!message) return res.status(400).json({ error: 'Message required' });
   if (message.length > 2000) return res.status(400).json({ error: 'Message cannot exceed 2000 characters' });

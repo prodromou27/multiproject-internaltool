@@ -2156,16 +2156,18 @@ export default function ProjectDetail() {
 
       {tab === 'updates' && (
         <div className="card">
-          <form onSubmit={submitStatusUpdate} style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'flex-end' }}>
-            <MentionInput
-              value={statusMsg}
-              onChange={setStatusMsg}
-              placeholder="Add a status update… (type @name to notify)"
-              users={allUsers}
-              style={{ flex: 1 }}
-            />
-            <button type="submit" className="btn btn-primary btn-sm" disabled={!statusMsg.trim()}>Post</button>
-          </form>
+          {!isPM && (
+            <form onSubmit={submitStatusUpdate} style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'flex-end' }}>
+              <MentionInput
+                value={statusMsg}
+                onChange={setStatusMsg}
+                placeholder="Add a status update… (type @name to notify)"
+                users={allUsers}
+                style={{ flex: 1 }}
+              />
+              <button type="submit" className="btn btn-primary btn-sm" disabled={!statusMsg.trim()}>Post</button>
+            </form>
+          )}
           {!(project.updates?.length > 0)
             ? <p className="text-muted text-sm">No updates yet</p>
             : <ul className="updates-list">
