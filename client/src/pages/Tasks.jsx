@@ -163,6 +163,7 @@ export default function Tasks() {
   const [projects, setProjects] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [filter, setFilter]     = useSavedFilter('tasks', 'all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
 
   // Apply URL ?filter= on mount (e.g. from dashboard overdue link)
   useEffect(() => {
@@ -176,6 +177,8 @@ export default function Tasks() {
   const [form, setForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', is_adhoc: false });
   const [loading, setLoading]   = useState(true);
   const [editTask, setEditTask] = useState(null);
+  const [createErr, setCreateErr] = useState('');
+  const [bulkErr,   setBulkErr]   = useState('');
 
   /* ── Bulk selection ───────────────────────────────────── */
   const [selected, setSelected]   = useState(new Set());
@@ -194,11 +197,13 @@ export default function Tasks() {
   const engineers = allUsers.filter(u => u.role === 'engineer');
 
   async function createTask(e) {
-    e.preventDefault();
-    await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, assigned_to: form.assigned_to ? Number(form.assigned_to) : null });
-    setShowCreate(false);
-    setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', is_adhoc: false });
-    load();
+    e.preventDefault(); setCreateErr('');
+    try {
+      await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, assigned_to: form.assigned_to ? Number(form.assigned_to) : null });
+      setShowCreate(false);
+      setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', is_adhoc: false });
+      load();
+    } catch (err) { setCreateErr(err.message || 'Failed to create task'); }
   }
 
   // Pending "waiting_customer" dialog: { id, currentStatus } or { bulk: true, newStatus }
@@ -228,7 +233,7 @@ export default function Tasks() {
       setBulkWaitingDialog({ newStatus: action });
       return;
     }
-    setBulkBusy(true);
+    setBulkBusy(true); setBulkErr('');
     try {
       if (action === 'delete') {
         if (!confirm(`Delete ${selected.size} task(s)?`)) return;
@@ -237,20 +242,20 @@ export default function Tasks() {
         await api.bulkUpdateTasks({ ids: [...selected], action: 'status', status: action });
       }
       load();
-    } catch (e) { alert(e.message); }
+    } catch (e) { setBulkErr(e.message || 'Bulk action failed'); }
     finally { setBulkBusy(false); }
   }
 
   async function applyBulkWaiting(reason) {
-    const status = bulkWaitingDialog?.newStatus || 'waiting_customer'; // capture before clearing
-    setBulkWaitingDialog(null);
+    const status = bulkWaitingDialog?.newStatus || 'waiting_customer';
+    setBulkWaitingDialog(null); setBulkErr('');
     setBulkBusy(true);
     try {
       await Promise.all([...selected].map(id =>
         api.updateTask(id, { status, pending_from_customer: reason })
       ));
       load();
-    } catch (e) { alert(e.message); }
+    } catch (e) { setBulkErr(e.message || 'Bulk action failed'); }
     finally { setBulkBusy(false); }
   }
 
@@ -269,6 +274,9 @@ export default function Tasks() {
   const OPEN_STATUSES = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor'];
   const DONE_STATUSES = ['completed', 'closed'];
 
+  const _dueWeekNow = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
+  const _dueWeekEnd = new Date(_dueWeekNow.getTime() + 7 * 86400000);
+
   const filtered = tasks.filter(t => {
     // Status tab filter
     if (filter === 'open')             { if (!OPEN_STATUSES.includes(t.status)) return false; }
@@ -276,6 +284,14 @@ export default function Tasks() {
     else if (filter === 'adhoc')       { if (!t.is_adhoc) return false; }
     else if (filter === 'waiting_customer') { if (t.status !== 'waiting_customer' && t.status !== 'waiting_vendor') return false; }
     else if (filter === 'overdue')     { if (!isOverdue(t.deadline) || ['completed','closed','cancelled'].includes(t.status)) return false; }
+    else if (filter === 'due_week')    {
+      if (!t.deadline) return false;
+      if (['completed','closed','cancelled'].includes(t.status)) return false;
+      const dl = new Date(t.deadline + 'T00:00:00');
+      if (dl < _dueWeekNow || dl > _dueWeekEnd) return false;
+    }
+    // Priority filter
+    if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
     // My tasks filter
     if (myTasksOnly && t.assigned_to !== user.id) return false;
     // Text search
@@ -326,12 +342,30 @@ export default function Tasks() {
             <input type="checkbox" checked={myTasksOnly} onChange={e => setMyTasksOnly(e.target.checked)} style={{ width: 'auto' }} />
             My Tasks
           </label>
+          <select
+            value={priorityFilter}
+            onChange={e => setPriorityFilter(e.target.value)}
+            style={{ width: 'auto', fontSize: 12, padding: '4px 8px' }}
+            title="Filter by priority"
+          >
+            <option value="all">All Priorities</option>
+            <option value="critical">⚡ Critical</option>
+            <option value="high">↑ High</option>
+            <option value="medium">→ Medium</option>
+            <option value="low">↓ Low</option>
+          </select>
+          {priorityFilter !== 'all' && (
+            <button onClick={() => setPriorityFilter('all')} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray-400)', display:'flex', alignItems:'center', padding:2 }} title="Clear priority filter">
+              <X size={13} />
+            </button>
+          )}
         </div>
         <div className="filter-bar">
           {[
             ['all',             'All',                         tasks.length],
             ['open',            'Open / In Progress',          tasks.filter(t => OPEN_STATUSES.includes(t.status)).length],
             ['waiting_customer','Waiting on Customer/Vendor',  tasks.filter(t => t.status === 'waiting_customer' || t.status === 'waiting_vendor').length],
+            ['due_week',        'Due This Week',               tasks.filter(t => { const dl = t.deadline ? new Date(t.deadline+'T00:00:00') : null; return dl && dl >= _dueWeekNow && dl <= _dueWeekEnd && !['completed','closed','cancelled'].includes(t.status); }).length],
             ['done',            'Completed',                   tasks.filter(t => DONE_STATUSES.includes(t.status)).length],
             ['overdue',         'Overdue',                     tasks.filter(t => isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status)).length],
             ['adhoc',           'Ad-hoc',                      tasks.filter(t => t.is_adhoc).length],
@@ -345,6 +379,7 @@ export default function Tasks() {
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
+        <>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
           padding: '10px 16px', background: '#eff6ff', border: '1px solid #bfdbfe',
@@ -383,8 +418,10 @@ export default function Tasks() {
             ))
           )}
           <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }}
-            onClick={() => setSelected(new Set())}>Deselect all</button>
+            onClick={() => { setSelected(new Set()); setBulkErr(''); }}>Deselect all</button>
         </div>
+        {bulkErr && <div className="error-msg" style={{ marginTop: 8 }}>{bulkErr}</div>}
+        </>
       )}
 
       {loading ? <p className="text-muted">Loading…</p> : filtered.length === 0 ? (
@@ -496,14 +533,15 @@ export default function Tasks() {
       )}
 
       {showCreate && (
-        <Modal title="New Task" onClose={() => setShowCreate(false)}>
+        <Modal title="New Task" onClose={() => { setShowCreate(false); setCreateErr(''); }}>
           <form onSubmit={createTask}>
+            {createErr && <div className="error-msg" style={{ marginBottom: 10 }}>{createErr}</div>}
             <div className="form-group"><label>Title *</label><input value={form.title} onChange={set('title')} required /></div>
             <div className="form-group"><label>Description</label><textarea value={form.description} onChange={set('description')} /></div>
             <div className="form-row">
               <div className="form-group"><label>Priority</label>
                 <select value={form.priority} onChange={set('priority')}>
-                  <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                  <option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
                 </select>
               </div>
               <div className="form-group"><label>Deadline</label><input type="date" value={form.deadline} onChange={set('deadline')} /></div>

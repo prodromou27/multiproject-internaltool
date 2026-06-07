@@ -318,6 +318,7 @@ export default function Projects() {
   const [customers,  setCustomers]  = useState([]);
   const [filter,     setFilter]     = useSavedFilter('projects', 'open');
   const [search,     setSearch]     = useState('');
+  const [ragFilter,  setRagFilter]  = useState('all');
   const [showCreate, setShowCreate] = useState(false);
   const [loading,    setLoading]    = useState(true);
   const [waitingDialog, setWaitingDialog] = useState(null);
@@ -366,7 +367,7 @@ export default function Projects() {
   const statusFiltered = activeFilter === 'all'  ? projects
                        : activeFilter === 'open' ? openProjects
                        : projects.filter(p => p.status === activeFilter);
-  const filtered = search.trim()
+  const searchFiltered = search.trim()
     ? statusFiltered.filter(p => {
         const q = search.toLowerCase();
         return (p.title || '').toLowerCase().includes(q) ||
@@ -374,6 +375,9 @@ export default function Projects() {
                (p.created_by_name || '').toLowerCase().includes(q);
       })
     : statusFiltered;
+  const filtered = ragFilter === 'all'
+    ? searchFiltered
+    : searchFiltered.filter(p => p.rag_status === ragFilter);
 
   return (
     <div className="page">
@@ -420,6 +424,36 @@ export default function Projects() {
               })</span>
             </button>
           ))}
+        </div>
+        {/* RAG health filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 500, marginRight: 2 }}>Health:</span>
+          {[
+            { key: 'all',   label: 'All',   dot: null,      activeBg: '#e0e7ff', activeText: '#3730a3' },
+            { key: 'red',   label: 'Red',   dot: '#ef4444', activeBg: '#fef2f2', activeText: '#b91c1c' },
+            { key: 'amber', label: 'Amber', dot: '#f59e0b', activeBg: '#fffbeb', activeText: '#92400e' },
+            { key: 'green', label: 'Green', dot: '#22c55e', activeBg: '#f0fdf4', activeText: '#166534' },
+          ].map(({ key, label, dot, activeBg, activeText }) => {
+            const count = key === 'all' ? statusFiltered.length : statusFiltered.filter(p => p.rag_status === key).length;
+            const isActive = ragFilter === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setRagFilter(key)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  border: isActive ? `1.5px solid ${activeText}` : '1.5px solid var(--gray-200)',
+                  background: isActive ? activeBg : 'var(--gray-50)',
+                  color: isActive ? activeText : 'var(--gray-500)',
+                  transition: 'all .15s',
+                }}
+              >
+                {dot && <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }} />}
+                {label} <span style={{ opacity: .7 }}>({count})</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

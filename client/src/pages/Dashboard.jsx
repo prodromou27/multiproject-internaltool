@@ -13,6 +13,7 @@ import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../components/Sh
 const WIDGET_DEFS = {
   manager: [
     { id: 'stat_cards',        label: 'Stats Overview'               },
+    { id: 'project_health',    label: 'Project Health (RAG)'         },
     { id: 'task_overview',     label: 'Task Overview & Workload'     },
     { id: 'pending_closure',   label: 'Pending Closure Approvals'    },
     { id: 'incomplete_visits', label: 'Incomplete Maintenance Visits' },
@@ -23,6 +24,7 @@ const WIDGET_DEFS = {
   ],
   engineer: [
     { id: 'stat_cards',        label: 'Stats Overview'               },
+    { id: 'due_week',          label: 'Due This Week'                },
     { id: 'pending_reports',   label: 'Reports Pending (→ Mgmt)'    },
     { id: 'mv_this_month',     label: 'Visits This Month'            },
     { id: 'projects',          label: 'My Projects'                  },
@@ -410,6 +412,63 @@ export default function Dashboard() {
           </div>
         ) : null;
 
+      case 'project_health': {
+        if (active.length === 0) return null;
+        const ragRed   = active.filter(p => p.rag_status === 'red').length;
+        const ragAmber = active.filter(p => p.rag_status === 'amber').length;
+        const ragGreen = active.filter(p => p.rag_status === 'green').length;
+        const atRisk   = active
+          .filter(p => p.rag_status === 'red' || p.rag_status === 'amber')
+          .sort((a, b) => (a.rag_status === 'red' && b.rag_status !== 'red' ? -1 : 1));
+        const RAG = [
+          { label:'Red',   count:ragRed,   bg:'#fef2f2', text:'#b91c1c', dot:'#ef4444' },
+          { label:'Amber', count:ragAmber, bg:'#fffbeb', text:'#92400e', dot:'#f59e0b' },
+          { label:'Green', count:ragGreen, bg:'#f0fdf4', text:'#166534', dot:'#22c55e' },
+        ];
+        return (
+          <div key={id} className="card" style={{ marginBottom:20 }}>
+            <div className="section-header">
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ width:8, height:8, borderRadius:'50%', background: ragRed ? '#ef4444' : ragAmber ? '#f59e0b' : '#22c55e', display:'inline-block' }} />
+                <div className="section-title" style={{ margin:0 }}>Project Health</div>
+                <span className="text-sm text-muted">({active.length} active)</span>
+              </div>
+              <Link to="/projects" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
+            </div>
+            {/* RAG breakdown row */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom: atRisk.length ? 16 : 0 }}>
+              {RAG.map(({ label, count, bg, text, dot }) => (
+                <div key={label} style={{ background:bg, borderRadius:8, padding:'12px 14px', textAlign:'center' }}>
+                  <div style={{ fontSize:26, fontWeight:800, color:text, lineHeight:1 }}>{count}</div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, fontSize:11, color:text, marginTop:5, fontWeight:600 }}>
+                    <span style={{ width:7, height:7, borderRadius:'50%', background:dot, display:'inline-block', flexShrink:0 }} />
+                    {label}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {atRisk.length > 0 ? (
+              <>
+                <div style={{ fontSize:11, fontWeight:700, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:.5, marginBottom:8 }}>At-Risk Projects</div>
+                <ul style={{ listStyle:'none' }}>
+                  {atRisk.slice(0,5).map(p => (
+                    <li key={p.id} style={{ padding:'8px 0', borderBottom:'1px solid var(--gray-100)', display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ width:8, height:8, borderRadius:'50%', background:p.rag_status==='red'?'#ef4444':'#f59e0b', flexShrink:0 }} />
+                      <Link to={`/projects/${p.id}`} style={{ flex:1, fontWeight:600, color:'var(--gray-900)', fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', minWidth:0 }}>{p.title}</Link>
+                      <StatusBadge s={p.status} />
+                      {p.deadline && <span className={'text-sm '+(isOverdue(p.deadline)?'overdue':'text-muted')} style={{ flexShrink:0 }}>{fmtDate(p.deadline)}</span>}
+                    </li>
+                  ))}
+                </ul>
+                {atRisk.length > 5 && <Link to="/projects" style={{ fontSize:12, color:'var(--primary)', display:'block', marginTop:8 }}>+{atRisk.length-5} more at-risk →</Link>}
+              </>
+            ) : (
+              <p className="text-muted text-sm" style={{ margin:0 }}>✓ All {ragGreen} active project{ragGreen !== 1 ? 's' : ''} are on track</p>
+            )}
+          </div>
+        );
+      }
+
       case 'task_overview':
         return summary ? (
           <div key={id} className="grid-2" style={{ marginBottom:20 }}>
@@ -700,6 +759,54 @@ export default function Dashboard() {
               to="/maintenance-visits?filter=report_pending" />
           </div>
         );
+
+      case 'due_week': {
+        const now = new Date(); now.setHours(0,0,0,0);
+        const weekEnd = new Date(now.getTime() + 7 * 86400000);
+        const todayStr = now.toISOString().slice(0,10);
+        const dueThisWeek = myOpen
+          .filter(t => {
+            if (!t.deadline) return false;
+            const dl = new Date(t.deadline + 'T00:00:00');
+            return dl >= now && dl <= weekEnd;
+          })
+          .sort((a, b) => a.deadline < b.deadline ? -1 : 1);
+        return (
+          <div key={id} className="card" style={{ marginBottom:20 }}>
+            <div className="section-header">
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <Clock size={15} color="#f59e0b" />
+                <div className="section-title" style={{ margin:0 }}>Due This Week</div>
+                {dueThisWeek.length > 0 && <span className="badge badge-on_hold" style={{ marginLeft:4 }}>{dueThisWeek.length}</span>}
+              </div>
+              <Link to="/tasks?filter=due_week" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
+            </div>
+            {dueThisWeek.length === 0
+              ? <p className="text-muted text-sm">No tasks due in the next 7 days ✓</p>
+              : <ul style={{ listStyle:'none' }}>
+                  {dueThisWeek.map(t => {
+                    const isToday = t.deadline.slice(0,10) === todayStr;
+                    const isTomorrow = t.deadline.slice(0,10) === new Date(now.getTime()+86400000).toISOString().slice(0,10);
+                    const label = isToday ? 'Due today' : isTomorrow ? 'Tomorrow' : fmtDate(t.deadline);
+                    return (
+                      <li key={t.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                        <PriorityBadge p={t.priority} />
+                        <span style={{ flex:1, minWidth:120, color:'var(--gray-800)', fontSize:13 }}>{t.title}</span>
+                        <span style={{
+                          fontSize:11, fontWeight:700, flexShrink:0, borderRadius:99, padding:'2px 8px',
+                          color: isToday ? '#b91c1c' : isTomorrow ? '#92400e' : '#78716c',
+                          background: isToday ? '#fef2f2' : isTomorrow ? '#fffbeb' : 'var(--gray-100)',
+                        }}>
+                          {label}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+            }
+          </div>
+        );
+      }
 
       case 'pending_reports':
         return (

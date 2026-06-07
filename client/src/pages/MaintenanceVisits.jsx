@@ -62,13 +62,14 @@ function VisitForm({ initial, customers, engineers, onSave, onClose }) {
     customer_id: '', title: '', description: '', scheduled_date: '',
     engineer_ids: [], notes: '', status: 'scheduled',
   });
-  const [saving, setSaving] = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [formErr,  setFormErr]  = useState('');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   async function submit(e) {
-    e.preventDefault(); setSaving(true);
+    e.preventDefault(); setSaving(true); setFormErr('');
     try { await onSave(form); onClose(); }
-    catch (err) { alert(err.message); }
+    catch (err) { setFormErr(err.message || 'Failed to save. Please try again.'); }
     finally { setSaving(false); }
   }
 
@@ -118,6 +119,7 @@ function VisitForm({ initial, customers, engineers, onSave, onClose }) {
         <label>Notes</label>
         <textarea value={form.notes || ''} onChange={set('notes')} placeholder="Any additional notes…" />
       </div>
+      {formErr && <div className="error-msg" style={{ marginBottom: 8 }}>{formErr}</div>}
       <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
