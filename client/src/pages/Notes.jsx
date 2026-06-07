@@ -85,6 +85,7 @@ export default function Notes() {
     if (!ok) return;
     await api.clearDoneTodos().catch(() => {});
     loadTodos();
+    // No toast needed — the visual change is instant
   }
 
   const openTodos = todos.filter(t => !t.done);

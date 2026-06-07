@@ -349,18 +349,24 @@ export default function Projects() {
     if (newStatus === 'waiting_customer' || newStatus === 'waiting_vendor') {
       setWaitingDialog({ project, newStatus, current: project.pending_from_customer || '' });
     } else {
-      api.updateProject(project.id, { status: newStatus }).then(load).catch(e => toast.error(e.message));
+      api.updateProject(project.id, { status: newStatus })
+        .then(() => { toast.success('Status updated'); load(); })
+        .catch(e => toast.error(e.message));
     }
   }
 
   function handlePriorityUpdate(project, newPriority) {
-    api.updateProject(project.id, { priority: newPriority }).then(load).catch(e => toast.error(e.message));
+    api.updateProject(project.id, { priority: newPriority })
+      .then(() => { toast.success('Priority updated'); load(); })
+      .catch(e => toast.error(e.message));
   }
 
   function handlePin(project, e) {
     e.preventDefault(); e.stopPropagation();
     const action = project.is_pinned ? api.unpinProject(project.id) : api.pinProject(project.id);
-    action.then(load).catch(err => toast.error(err.message));
+    action
+      .then(() => { toast.success(project.is_pinned ? 'Project unpinned' : 'Project pinned to dashboard'); load(); })
+      .catch(err => toast.error(err.message));
   }
 
   const TERMINAL = ['closed', 'cancelled'];
@@ -593,7 +599,7 @@ export default function Projects() {
           <ProjectForm
             users={users}
             customers={customers}
-            onSave={async form => { await api.createProject(form); await load(); }}
+            onSave={async form => { await api.createProject(form); toast.success('Project created'); await load(); }}
             onClose={() => setShowCreate(false)}
             onCustomerCreated={loadCustomers}
           />

@@ -67,7 +67,7 @@ export default function Customers() {
   async function handleDelete(id) {
     const ok = await confirm('Delete this customer and all their maintenance visits?', { title: 'Delete Customer' });
     if (!ok) return;
-    try { await api.deleteCustomer(id); load(); } catch (e) { toast.error(e.message); }
+    try { await api.deleteCustomer(id); toast.success('Customer deleted'); load(); } catch (e) { toast.error(e.message); }
   }
 
   return (
@@ -120,7 +120,11 @@ export default function Customers() {
         <Modal title={editing ? 'Edit Customer' : 'New Customer'} onClose={() => setShowForm(false)}>
           <CustomerForm
             initial={editing}
-            onSave={data => editing ? api.updateCustomer(editing.id, data).then(load) : api.createCustomer(data).then(load)}
+            onSave={async data => {
+              if (editing) { await api.updateCustomer(editing.id, data); toast.success('Customer updated'); }
+              else { await api.createCustomer(data); toast.success('Customer created'); }
+              load();
+            }}
             onClose={() => setShowForm(false)}
           />
         </Modal>

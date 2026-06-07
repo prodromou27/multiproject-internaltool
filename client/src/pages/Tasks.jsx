@@ -245,8 +245,10 @@ export default function Tasks() {
     try {
       if (action === 'delete') {
         await api.bulkUpdateTasks({ ids: [...selected], action: 'delete' });
+        toast.success(`${selected.size} task(s) deleted`);
       } else {
         await api.bulkUpdateTasks({ ids: [...selected], action: 'status', status: action });
+        toast.success(`${selected.size} task(s) updated`);
       }
       load();
     } catch (e) { setBulkErr(e.message || 'Bulk action failed'); }

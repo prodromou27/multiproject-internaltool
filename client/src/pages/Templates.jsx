@@ -258,6 +258,7 @@ export default function Templates() {
     setSaving(true);
     try {
       await api.createTemplate(newForm);
+      toast.success('Template created');
       setNewForm({ name: '', description: '' });
       setShowNew(false);
       load();
@@ -268,7 +269,7 @@ export default function Templates() {
   async function deleteTemplate(id) {
     const ok = await confirm('Delete this template? This cannot be undone.', { title: 'Delete Template' });
     if (!ok) return;
-    try { await api.deleteTemplate(id); load(); } catch (e) { toast.error(e.message); }
+    try { await api.deleteTemplate(id); toast.success('Template deleted'); load(); } catch (e) { toast.error(e.message); }
   }
 
   return (

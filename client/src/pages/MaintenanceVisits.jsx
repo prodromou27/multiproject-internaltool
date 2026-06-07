@@ -441,7 +441,7 @@ export default function MaintenanceVisits() {
   async function handleDelete(id) {
     const ok = await confirm('Delete this maintenance visit?', { title: 'Delete Visit' });
     if (!ok) return;
-    try { await api.deleteVisit(id); load(); } catch (e) { toast.error(e.message); }
+    try { await api.deleteVisit(id); toast.success('Visit deleted'); load(); } catch (e) { toast.error(e.message); }
   }
 
   // Prepare editing form (convert engineer_ids from array)
@@ -638,9 +638,16 @@ export default function MaintenanceVisits() {
             initial={editing}
             customers={customers}
             engineers={engineers}
-            onSave={data => editing
-              ? api.updateVisit(editing.id, data).then(load)
-              : api.createVisit(data).then(load)}
+            onSave={async data => {
+              if (editing) {
+                await api.updateVisit(editing.id, data);
+                toast.success('Visit updated successfully');
+              } else {
+                await api.createVisit(data);
+                toast.success('Visit scheduled successfully');
+              }
+              load();
+            }}
             onClose={() => { setShowForm(false); setEditing(null); }}
           />
         </Modal>

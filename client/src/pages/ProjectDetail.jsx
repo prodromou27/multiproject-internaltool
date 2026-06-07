@@ -1821,21 +1821,24 @@ export default function ProjectDetail() {
   async function submitStatusUpdate(e) {
     e.preventDefault();
     if (!statusMsg.trim()) return;
-    await api.addStatusUpdate(id, statusMsg);
-    setStatusMsg('');
-    load();
+    try {
+      await api.addStatusUpdate(id, statusMsg);
+      toast.success('Status update posted');
+      setStatusMsg('');
+      load();
+    } catch (err) { toast.error(err.message); }
   }
 
   async function requestClosure() {
     const ok = await confirm('Request closure for this project? It will go to the manager for approval.', { title: 'Request Closure', label: 'Request', danger: false });
     if (!ok) return;
-    try { await api.requestClosure(id); load(); } catch (e) { toast.error(e.message); }
+    try { await api.requestClosure(id); toast.success('Closure requested — pending manager approval'); load(); } catch (e) { toast.error(e.message); }
   }
 
   async function approveClosure() {
     const ok = await confirm('Approve closure for this project? This will mark it as closed.', { title: 'Approve Closure', label: 'Approve', danger: false });
     if (!ok) return;
-    try { await api.approveClosure(id); load(); } catch (e) { toast.error(e.message); }
+    try { await api.approveClosure(id); toast.success('Project closed successfully'); load(); } catch (e) { toast.error(e.message); }
   }
 
   async function rejectClosure(note) {
@@ -1853,14 +1856,18 @@ export default function ProjectDetail() {
     try {
       await api.updateProject(id, { status: 'reopened' });
       await api.addStatusUpdate(id, `Project reopened by ${user.name}.`);
+      toast.success('Project reopened');
       load();
     } catch (e) { toast.error(e.message); }
   }
 
   async function saveEdit(e) {
     e.preventDefault();
-    await api.updateProject(id, editForm);
-    setShowEdit(false); load();
+    try {
+      await api.updateProject(id, editForm);
+      toast.success('Project updated');
+      setShowEdit(false); load();
+    } catch (err) { toast.error(err.message); }
   }
 
   async function addTask(e) {
@@ -1868,6 +1875,7 @@ export default function ProjectDetail() {
     setAddTaskErr('');
     try {
       await api.createTask({ ...taskForm, project_id: Number(id) });
+      toast.success('Task created');
       setShowAddTask(false);
       setAddTaskErr('');
       setTaskForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', is_adhoc: false });
@@ -1888,7 +1896,7 @@ export default function ProjectDetail() {
   }
 
   async function duplicateTask(tid) {
-    await api.duplicateTask(tid).catch(e => toast.error(e.message));
+    await api.duplicateTask(tid).then(() => toast.success('Task duplicated')).catch(e => toast.error(e.message));
     load();
   }
 
