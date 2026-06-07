@@ -7,9 +7,9 @@ server/node_modules/
 # client/dist/   <- kept in repo intentionally
 
 # Database & WAL files
-server/app.db
-server/app.db-shm
-server/app.db-wal
+server/*.db
+server/*.db-shm
+server/*.db-wal
 
 # Logs
 *.log
