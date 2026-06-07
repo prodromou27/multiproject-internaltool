@@ -6,6 +6,8 @@ import { api } from '../api';
 import { useAuth } from '../App';
 import { fmtDate, isOverdue, Modal } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
+import { useToast } from '../components/Toast';
+import { useConfirm } from '../components/Confirm';
 
 /* ── Report-pending urgency helper ──────────────────────────
    Returns null | 'orange' | 'red'
@@ -129,7 +131,7 @@ function VisitForm({ initial, customers, engineers, onSave, onClose }) {
 }
 
 /* ── PDF / Print helper ──────────────────────────────────── */
-function generatePDF(visit) {
+function generatePDF(visit, onError) {
   const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const fmtD = s => s ? new Date(s + (s.length === 10 ? 'T12:00:00' : '')).toLocaleDateString([], { year:'numeric', month:'long', day:'numeric' }) : '—';
   const statusLabel = (visit.status || '').replace('_',' ');
@@ -196,7 +198,7 @@ function generatePDF(visit) {
 </body></html>`;
 
   const win = window.open('', '_blank', 'width=820,height=960');
-  if (!win) { alert('Please allow pop-ups to generate the PDF.'); return; }
+  if (!win) { onError?.('Please allow pop-ups to generate the PDF. Check your browser settings.'); return; }
   win.document.write(html);
   win.document.close();
   win.addEventListener('load', () => win.print());
@@ -352,7 +354,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
         )}
         <button
           className="btn btn-ghost btn-sm"
-          onClick={() => generatePDF(visit)}
+          onClick={() => generatePDF(visit, msg => toast.warning(msg))}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}
           title="Open print-friendly report"
         >
@@ -368,7 +370,9 @@ const MV_COLUMNS = ['customer_name*', 'title*', 'description', 'scheduled_date*'
 
 /* ── Main Page ───────────────────────────────────────────── */
 export default function MaintenanceVisits() {
-  const { user } = useAuth();
+  const { user }   = useAuth();
+  const toast      = useToast();
+  const confirm    = useConfirm();
   const isManager  = user.role === 'manager';
   const isPlanner  = user.role === 'planner';
   const isEngineer = user.role === 'engineer';
@@ -435,8 +439,9 @@ export default function MaintenanceVisits() {
   const awaitingReviewCount = visits.filter(v => v.report_sent && !v.report_sent_to_customer).length;
 
   async function handleDelete(id) {
-    if (!confirm('Delete this maintenance visit?')) return;
-    await api.deleteVisit(id); load();
+    const ok = await confirm('Delete this maintenance visit?', { title: 'Delete Visit' });
+    if (!ok) return;
+    try { await api.deleteVisit(id); load(); } catch (e) { toast.error(e.message); }
   }
 
   // Prepare editing form (convert engineer_ids from array)
@@ -464,7 +469,7 @@ export default function MaintenanceVisits() {
                 const a = document.createElement('a');
                 a.href = '/api/maintenance-visits/export?token=' + token;
                 a.download = 'maintenance-visits.xlsx'; a.click();
-              } catch { alert('Export failed. Please try again.'); }
+              } catch { toast.error('Export failed. Please try again.'); }
             }} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               <Download size={13} /> Export
             </button>

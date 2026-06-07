@@ -3,21 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, Pencil, ChevronDown, ChevronUp, Copy, FolderOpen, CheckSquare, X } from 'lucide-react';
 import { api } from '../api';
 import { Modal, PriorityBadge } from '../components/Shared';
+import { useToast } from '../components/Toast';
+import { useConfirm } from '../components/Confirm';
 
 const PRIORITY_OPTS = ['low', 'medium', 'high'];
 
 /* ── Task row inside a template ──────────────────────────── */
 function TemplateTaskRow({ task, tplId, onDelete, onUpdate }) {
+  const toast    = useToast();
   const [editing, setEditing] = useState(false);
   const [form,    setForm]    = useState({ title: task.title, description: task.description || '', priority: task.priority });
   const [saving,  setSaving]  = useState(false);
 
   async function save() {
     setSaving(true);
-    await api.updateTemplateTask(tplId, task.id, form).catch(e => alert(e.message));
-    setSaving(false);
-    setEditing(false);
-    onUpdate();
+    try { await api.updateTemplateTask(tplId, task.id, form); setEditing(false); onUpdate(); }
+    catch (e) { toast.error(e.message); }
+    finally { setSaving(false); }
   }
 
   if (editing) return (
@@ -45,6 +47,8 @@ function TemplateTaskRow({ task, tplId, onDelete, onUpdate }) {
 /* ── Template card ───────────────────────────────────────── */
 function TemplateCard({ tpl, onDelete, onRefresh }) {
   const navigate = useNavigate();
+  const toast    = useToast();
+  const confirm  = useConfirm();
   const [expanded,  setExpanded]  = useState(false);
   const [detail,    setDetail]    = useState(null);
   const [adding,    setAdding]    = useState(false);
@@ -64,15 +68,14 @@ function TemplateCard({ tpl, onDelete, onRefresh }) {
     e.preventDefault();
     if (!newTask.title.trim()) return;
     setSaving(true);
-    await api.addTemplateTask(tpl.id, newTask).catch(e => alert(e.message));
-    setNewTask({ title: '', priority: 'medium' });
-    setAdding(false);
-    setSaving(false);
-    loadDetail();
+    try { await api.addTemplateTask(tpl.id, newTask); setAdding(false); loadDetail(); }
+    catch (e) { toast.error(e.message); }
+    finally { setSaving(false); setNewTask({ title: '', priority: 'medium' }); }
   }
 
   async function deleteTask(tid) {
-    if (!confirm('Remove this task from the template?')) return;
+    const ok = await confirm('Remove this task from the template?', { title: 'Remove Task', label: 'Remove' });
+    if (!ok) return;
     await api.deleteTemplateTask(tpl.id, tid);
     loadDetail();
   }
@@ -160,6 +163,7 @@ function TemplateCard({ tpl, onDelete, onRefresh }) {
 
 /* ── Apply Template Modal ────────────────────────────────── */
 function ApplyTemplateModal({ tpl, onClose, onCreated }) {
+  const toast = useToast();
   const [users,     setUsers]     = useState([]);
   const [customers, setCustomers] = useState([]);
   const [form, setForm] = useState({ title: tpl.name, description: tpl.description || '', priority: 'medium', deadline: '', customer_id: '', member_ids: [] });
@@ -182,7 +186,7 @@ function ApplyTemplateModal({ tpl, onClose, onCreated }) {
       const res = await api.applyTemplate(tpl.id, { ...form, customer_id: form.customer_id ? Number(form.customer_id) : null });
       onCreated(res.id);
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setSaving(false);
     }
@@ -237,6 +241,8 @@ function ApplyTemplateModal({ tpl, onClose, onCreated }) {
 
 /* ── Main page ───────────────────────────────────────────── */
 export default function Templates() {
+  const toast   = useToast();
+  const confirm = useConfirm();
   const [templates, setTemplates] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [showNew,   setShowNew]   = useState(false);
@@ -255,14 +261,14 @@ export default function Templates() {
       setNewForm({ name: '', description: '' });
       setShowNew(false);
       load();
-    } catch (err) { alert(err.message); }
+    } catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
   }
 
   async function deleteTemplate(id) {
-    if (!confirm('Delete this template? This cannot be undone.')) return;
-    await api.deleteTemplate(id);
-    load();
+    const ok = await confirm('Delete this template? This cannot be undone.', { title: 'Delete Template' });
+    if (!ok) return;
+    try { await api.deleteTemplate(id); load(); } catch (e) { toast.error(e.message); }
   }
 
   return (

@@ -28,6 +28,8 @@ import SLAPage from './pages/SLAPage';
 import SearchPage from './pages/SearchPage';
 import { api } from './api';
 import { StatusProvider } from './hooks/useStatuses';
+import { ToastProvider } from './components/Toast';
+import { ConfirmProvider } from './components/Confirm';
 
 export const AuthContext = createContext(null);
 export function useAuth() { return useContext(AuthContext); }
@@ -713,6 +715,8 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ user, login, logout, dark, toggleDark }}>
+      <ToastProvider>
+      <ConfirmProvider>
       <StatusProvider enabled={!!user}>
       <BrowserRouter>
         <Routes>
@@ -739,6 +743,8 @@ export default function App() {
         </Routes>
       </BrowserRouter>
       </StatusProvider>
+      </ConfirmProvider>
+      </ToastProvider>
     </AuthContext.Provider>
   );
 }

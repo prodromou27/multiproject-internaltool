@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Camera, KeyRound, User, Save, Trash2, CheckCircle, AlertCircle, Lock, ShieldCheck, ShieldOff, QrCode, Loader2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
+import { useConfirm } from '../components/Confirm';
 
 /* ── Inline alert helper ─────────────────────────────────── */
 function Alert({ type, msg }) {
@@ -24,6 +25,7 @@ function Alert({ type, msg }) {
 /* ── Avatar section ──────────────────────────────────────── */
 function AvatarSection({ user, onRefresh }) {
   const { login } = useAuth();
+  const confirm   = useConfirm();
   const fileRef  = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [removing,  setRemoving]  = useState(false);
@@ -52,7 +54,8 @@ function AvatarSection({ user, onRefresh }) {
   }
 
   async function handleRemove() {
-    if (!confirm('Remove your profile picture?')) return;
+    const ok = await confirm('Remove your profile picture?', { title: 'Remove Picture', label: 'Remove' });
+    if (!ok) return;
     setRemoving(true); setMsg({ type: '', text: '' });
     try {
       const data = await api.removeAvatar();

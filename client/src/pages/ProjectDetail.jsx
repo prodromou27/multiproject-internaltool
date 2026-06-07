@@ -12,6 +12,8 @@ import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, RagBadge, fmtDate, fmtRelative, isOverdue, Modal, ProgressBar, MentionInput, renderMentions } from '../components/Shared';
 import { DIFFICULTY_LABELS, getRating, ScoreBadge, ScoreGauge, DimPicker, ScorecardBreakdown, WEIGHTS } from '../components/ScorecardUtils';
+import { useToast } from '../components/Toast';
+import { useConfirm } from '../components/Confirm';
 
 function fileSize(bytes) {
   if (!bytes) return '';
@@ -21,7 +23,9 @@ function fileSize(bytes) {
 }
 
 function AttachmentsSection({ projectId }) {
-  const { user } = useAuth();
+  const { user }  = useAuth();
+  const toast     = useToast();
+  const confirm   = useConfirm();
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -50,9 +54,9 @@ function AttachmentsSection({ projectId }) {
   }
 
   async function deleteAttachment(id) {
-    if (!confirm('Remove this attachment?')) return;
-    await api.deleteAttachment(projectId, id);
-    load();
+    const ok = await confirm('Remove this attachment?', { title: 'Remove Attachment', label: 'Remove' });
+    if (!ok) return;
+    try { await api.deleteAttachment(projectId, id); load(); } catch (e) { toast.error(e.message); }
   }
 
   function getIcon(mime) {
@@ -227,7 +231,8 @@ function WaitingDialog({ initial, onConfirm, onCancel }) {
 
 /* ── Task Detail Modal (with comments) ───────────────────── */
 function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, onUpdate, onClose }) {
-  const { user } = useAuth();
+  const { user }  = useAuth();
+  const toast     = useToast();
   const canManageTask = isManager || isPlanner;
   const [comments,     setComments]     = useState([]);
   const [commentText,  setCommentText]  = useState('');
@@ -275,7 +280,7 @@ function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, o
       await api.saveTaskCustomValues(task.project_id, task.id, customDraft);
       setCustomValues({ ...customValues, ...customDraft });
       setEditingCustom(false);
-    } catch (err) { alert(err.message); }
+    } catch (err) { toast.error(err.message); }
     finally { setSavingCustom(false); }
   }
 
@@ -289,18 +294,18 @@ function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, o
       await api.logTime({ task_id: task.id, hours: Number(timeForm.hours), description: timeForm.description });
       setTimeForm({ hours: '', description: '' });
       loadTimeLogs();
-    } catch (err) { alert(err.message); }
+    } catch (err) { toast.error(err.message); }
     finally { setLoggingTime(false); }
   }
 
   async function deleteTimeLog(id) {
-    await api.deleteTimeLog(id).catch(e => alert(e.message));
+    await api.deleteTimeLog(id).catch(e => toast.error(e.message));
     loadTimeLogs();
   }
 
   async function addDep() {
     if (!depPickId) return;
-    await api.addTaskDependency(task.id, Number(depPickId)).catch(e => alert(e.message));
+    await api.addTaskDependency(task.id, Number(depPickId)).catch(e => toast.error(e.message));
     setDepPickId(''); setAddingDep(false); loadDeps();
   }
 
@@ -855,6 +860,8 @@ function GanttTab({ project, tasks, milestones = [] }) {
 
 /* ── Milestones Tab ───────────────────────────────────────── */
 function MilestonesTab({ projectId, canManage, milestones, onReload }) {
+  const toast   = useToast();
+  const confirm = useConfirm();
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form,    setForm]    = useState({ title: '', description: '', due_date: '' });
@@ -873,13 +880,14 @@ function MilestonesTab({ projectId, canManage, milestones, onReload }) {
         await api.createMilestone({ project_id: projectId, ...form });
       }
       setShowAdd(false); setEditing(null); onReload();
-    } catch (err) { alert(err.message); }
+    } catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
   }
 
   async function del(m) {
-    if (!confirm(`Delete milestone "${m.title}"?`)) return;
-    await api.deleteMilestone(m.id); onReload();
+    const ok = await confirm(`Delete milestone "${m.title}"?`, { title: 'Delete Milestone' });
+    if (!ok) return;
+    try { await api.deleteMilestone(m.id); onReload(); } catch (e) { toast.error(e.message); }
   }
 
   async function complete(m) {
@@ -971,7 +979,9 @@ function MilestonesTab({ projectId, canManage, milestones, onReload }) {
 
 /* ── Inline Scorecard Tab ─────────────────────────────────── */
 function ScorecardTab({ projectId, members }) {
-  const { user } = useAuth();
+  const { user }  = useAuth();
+  const toast     = useToast();
+  const confirm   = useConfirm();
   const [cards, setCards]     = useState([]);
   const [showForm, setShow]   = useState(false);
   const [editing, setEditing] = useState(null);
@@ -993,8 +1003,9 @@ function ScorecardTab({ projectId, members }) {
   }
 
   async function del(id) {
-    if (!confirm('Delete this scorecard?')) return;
-    await api.deleteScorecard(id); load();
+    const ok = await confirm('Delete this scorecard?', { title: 'Delete Scorecard' });
+    if (!ok) return;
+    try { await api.deleteScorecard(id); load(); } catch (e) { toast.error(e.message); }
   }
 
   /* inline form */
@@ -1590,6 +1601,8 @@ function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, onDupli
 
 /* ── Custom Fields Tab ────────────────────────────────────── */
 function CustomFieldsTab({ projectId, canManage }) {
+  const toast   = useToast();
+  const confirm = useConfirm();
   const [fields,  setFields]  = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -1623,14 +1636,14 @@ function CustomFieldsTab({ projectId, canManage }) {
         await api.createCustomField(projectId, form);
       }
       setShowAdd(false); setEditing(null); loadFields();
-    } catch (err) { alert(err.message); }
+    } catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
   }
 
   async function del(id) {
-    if (!confirm('Delete this custom field? All task values for this field will also be removed.')) return;
-    await api.deleteCustomField(projectId, id).catch(e => alert(e.message));
-    loadFields();
+    const ok = await confirm('Delete this custom field? All task values for this field will also be removed.', { title: 'Delete Custom Field' });
+    if (!ok) return;
+    try { await api.deleteCustomField(projectId, id); loadFields(); } catch (e) { toast.error(e.message); }
   }
 
   function addOption() {
@@ -1755,7 +1768,9 @@ function CustomFieldsTab({ projectId, canManage }) {
 export default function ProjectDetail() {
   const { id } = useParams();
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const toast     = useToast();
+  const confirm   = useConfirm();
   const isManager  = user.role === 'manager';
   const isPlanner  = user.role === 'planner';
   const isEngineer = user.role === 'engineer';
@@ -1812,13 +1827,15 @@ export default function ProjectDetail() {
   }
 
   async function requestClosure() {
-    if (!confirm('Request closure for this project?')) return;
-    await api.requestClosure(id); load();
+    const ok = await confirm('Request closure for this project? It will go to the manager for approval.', { title: 'Request Closure', label: 'Request', danger: false });
+    if (!ok) return;
+    try { await api.requestClosure(id); load(); } catch (e) { toast.error(e.message); }
   }
 
   async function approveClosure() {
-    if (!confirm('Approve closure for this project?')) return;
-    await api.approveClosure(id); load();
+    const ok = await confirm('Approve closure for this project? This will mark it as closed.', { title: 'Approve Closure', label: 'Approve', danger: false });
+    if (!ok) return;
+    try { await api.approveClosure(id); load(); } catch (e) { toast.error(e.message); }
   }
 
   async function rejectClosure(note) {
@@ -1831,10 +1848,13 @@ export default function ProjectDetail() {
   }
 
   async function reopenProject() {
-    if (!confirm('Reopen this project?')) return;
-    await api.updateProject(id, { status: 'reopened' });
-    await api.addStatusUpdate(id, `Project reopened by ${user.name}.`);
-    load();
+    const ok = await confirm('Reopen this project?', { title: 'Reopen Project', label: 'Reopen', danger: false });
+    if (!ok) return;
+    try {
+      await api.updateProject(id, { status: 'reopened' });
+      await api.addStatusUpdate(id, `Project reopened by ${user.name}.`);
+      load();
+    } catch (e) { toast.error(e.message); }
   }
 
   async function saveEdit(e) {
@@ -1861,14 +1881,14 @@ export default function ProjectDetail() {
     try {
       await api.updateTask(tid, data);
     } catch (err) {
-      alert(err.message || 'Failed to update task');
+      toast.error(err.message || 'Failed to update task');
     } finally {
       load(); // always refresh so Kanban reverts on failure
     }
   }
 
   async function duplicateTask(tid) {
-    await api.duplicateTask(tid).catch(e => alert(e.message));
+    await api.duplicateTask(tid).catch(e => toast.error(e.message));
     load();
   }
 

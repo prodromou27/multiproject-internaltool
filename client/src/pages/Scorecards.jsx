@@ -12,6 +12,8 @@ import {
   WEIGHTS, DIFFICULTY_LABELS, getRating,
   ScoreBadge, ScoreGauge, DimPicker, ScorecardBreakdown,
 } from '../components/ScorecardUtils';
+import { useToast } from '../components/Toast';
+import { useConfirm } from '../components/Confirm';
 
 /* ── Scorecard Form ───────────────────────────────────────── */
 function ScorecardForm({ initial, pendingProjects, engineers, onSave, onClose }) {
@@ -269,7 +271,9 @@ function EngineerTrendChart({ eng }) {
 
 /* ── Main page ────────────────────────────────────────────── */
 export default function Scorecards() {
-  const { user } = useAuth();
+  const { user }  = useAuth();
+  const toast     = useToast();
+  const confirm   = useConfirm();
   const isManager = user.role === 'manager';
   const [tab, setTab]                   = useState(isManager ? 'overview' : 'mine');
   const [scorecards, setCards]          = useState([]);
@@ -304,8 +308,9 @@ export default function Scorecards() {
   useEffect(() => { load(); }, []);
 
   async function deleteScorecard(id) {
-    if (!confirm('Delete this scorecard?')) return;
-    await api.deleteScorecard(id); load();
+    const ok = await confirm('Delete this scorecard?', { title: 'Delete Scorecard' });
+    if (!ok) return;
+    try { await api.deleteScorecard(id); load(); } catch (e) { toast.error(e.message); }
   }
 
   const displayed = filterEng

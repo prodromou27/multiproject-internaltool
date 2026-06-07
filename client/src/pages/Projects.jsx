@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Building2, FolderOpen, X, Bell, Pin, PinOff, Search } from 'lucide-react';
+import { Building2, FolderOpen, X, Bell, Pin, Search } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, RagBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useStatuses } from '../hooks/useStatuses';
+import { useToast } from '../components/Toast';
 
 /* ── Waiting for Customer/Vendor reason dialog ─────────────────── */
 function WaitingDialog({ title = 'Waiting for Customer', initial = '', onConfirm, onCancel }) {
@@ -180,6 +181,7 @@ function InlinePrioritySelect({ project, onUpdate }) {
 
 /* ── Customer selector with "create new" ──────────────────────── */
 function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
+  const toast = useToast();
   const [creating,  setCreating]  = useState(false);
   const [newName,   setNewName]   = useState('');
   const [saving,    setSaving]    = useState(false);
@@ -194,7 +196,7 @@ function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
       setCreating(false);
       setNewName('');
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     } finally {
       setSaving(false);
     }
@@ -234,6 +236,7 @@ function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
 
 /* ── Project Form ─────────────────────────────────────────────── */
 function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCreated }) {
+  const toast = useToast();
   const [form, setForm] = useState(
     initial || { title: '', description: '', priority: 'medium', deadline: '', customer_id: null, member_ids: [] }
   );
@@ -251,7 +254,7 @@ function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCre
     if (form.member_ids.length === 0) { setMemberError('Assign at least one engineer before saving.'); return; }
     setMemberError(''); setSaving(true);
     try { await onSave(form); onClose(); }
-    catch (err) { alert(err.message); }
+    catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
   }
 
@@ -309,6 +312,7 @@ function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCre
 /* ── Main Page ────────────────────────────────────────────────── */
 export default function Projects() {
   const { user } = useAuth();
+  const toast    = useToast();
   const isManager  = user.role === 'manager';
   const isPlanner  = user.role === 'planner';
   const canManage  = isManager || isPlanner;
@@ -345,18 +349,18 @@ export default function Projects() {
     if (newStatus === 'waiting_customer' || newStatus === 'waiting_vendor') {
       setWaitingDialog({ project, newStatus, current: project.pending_from_customer || '' });
     } else {
-      api.updateProject(project.id, { status: newStatus }).then(load).catch(e => alert(e.message));
+      api.updateProject(project.id, { status: newStatus }).then(load).catch(e => toast.error(e.message));
     }
   }
 
   function handlePriorityUpdate(project, newPriority) {
-    api.updateProject(project.id, { priority: newPriority }).then(load).catch(e => alert(e.message));
+    api.updateProject(project.id, { priority: newPriority }).then(load).catch(e => toast.error(e.message));
   }
 
   function handlePin(project, e) {
     e.preventDefault(); e.stopPropagation();
     const action = project.is_pinned ? api.unpinProject(project.id) : api.pinProject(project.id);
-    action.then(load).catch(err => alert(err.message));
+    action.then(load).catch(err => toast.error(err.message));
   }
 
   const TERMINAL = ['closed', 'cancelled'];
@@ -577,7 +581,7 @@ export default function Projects() {
             api.updateProject(waitingDialog.project.id, {
               status: waitingDialog.newStatus,
               pending_from_customer: reason,
-            }).then(load).catch(e => alert(e.message));
+            }).then(load).catch(e => toast.error(e.message));
             setWaitingDialog(null);
           }}
           onCancel={() => setWaitingDialog(null)}

@@ -4,11 +4,13 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
+import { useConfirm } from '../components/Confirm';
 
 const AUTOSAVE_MS = 1500; // debounce
 
 export default function Notes() {
-  const { user } = useAuth();
+  const { user }  = useAuth();
+  const confirm   = useConfirm();
 
   /* ── Scratchpad ──────────────────────────────────────────── */
   const [noteContent,  setNoteContent]  = useState('');
@@ -79,7 +81,8 @@ export default function Notes() {
   }
 
   async function clearDone() {
-    if (!confirm('Clear all completed items?')) return;
+    const ok = await confirm('Clear all completed items?', { title: 'Clear Completed', label: 'Clear', danger: false });
+    if (!ok) return;
     await api.clearDoneTodos().catch(() => {});
     loadTodos();
   }

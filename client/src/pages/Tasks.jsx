@@ -5,6 +5,8 @@ import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
 import { useSavedFilter } from '../hooks/useSavedFilter';
+import { useToast } from '../components/Toast';
+import { useConfirm } from '../components/Confirm';
 
 const STATUS_LABELS = {
   open: 'Open', in_progress: 'In Progress', completed: 'Completed',
@@ -157,7 +159,9 @@ function WaitingDialog({ onConfirm, onCancel, initial = '', title = 'Waiting for
 
 export default function Tasks() {
   const { user } = useAuth();
-  const location = useLocation();
+  const location  = useLocation();
+  const toast     = useToast();
+  const confirm   = useConfirm();
   const isManager = user.role === 'manager';
   const [tasks, setTasks]       = useState([]);
   const [projects, setProjects] = useState([]);
@@ -233,10 +237,13 @@ export default function Tasks() {
       setBulkWaitingDialog({ newStatus: action });
       return;
     }
+    if (action === 'delete') {
+      const ok = await confirm(`Delete ${selected.size} task(s)? This cannot be undone.`, { title: 'Delete Tasks' });
+      if (!ok) return;
+    }
     setBulkBusy(true); setBulkErr('');
     try {
       if (action === 'delete') {
-        if (!confirm(`Delete ${selected.size} task(s)?`)) return;
         await api.bulkUpdateTasks({ ids: [...selected], action: 'delete' });
       } else {
         await api.bulkUpdateTasks({ ids: [...selected], action: 'status', status: action });
@@ -268,7 +275,7 @@ export default function Tasks() {
       a.href = '/api/tasks/export' + qs;
       a.download = 'tasks.xlsx';
       a.click();
-    } catch (e) { alert('Export failed: ' + e.message); }
+    } catch (e) { toast.error('Export failed: ' + e.message); }
   }
 
   const OPEN_STATUSES = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor'];

@@ -4,14 +4,17 @@ import { api } from '../api';
 import { Modal } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
 import { useAuth } from '../App';
+import { useToast } from '../components/Toast';
+import { useConfirm } from '../components/Confirm';
 
 function CustomerForm({ initial, onSave, onClose }) {
+  const toast = useToast();
   const [form, setForm] = useState(initial || { name: '', contact_name: '', contact_email: '', contact_phone: '', address: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   async function submit(e) {
     e.preventDefault(); setSaving(true);
-    try { await onSave(form); onClose(); } catch (err) { alert(err.message); } finally { setSaving(false); }
+    try { await onSave(form); onClose(); } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   }
   return (
     <form onSubmit={submit}>
@@ -37,6 +40,8 @@ const CUSTOMER_COLUMNS = ['name*', 'contact_name', 'contact_email', 'contact_pho
 
 export default function Customers() {
   const { user } = useAuth();
+  const toast    = useToast();
+  const confirm  = useConfirm();
   const isManager  = user?.role === 'manager';
   const isPlanner  = user?.role === 'planner';
   const canCreate  = isManager || isPlanner;   // add & edit customers
@@ -60,8 +65,9 @@ export default function Customers() {
   });
 
   async function handleDelete(id) {
-    if (!confirm('Delete this customer and all their maintenance visits?')) return;
-    await api.deleteCustomer(id); load();
+    const ok = await confirm('Delete this customer and all their maintenance visits?', { title: 'Delete Customer' });
+    if (!ok) return;
+    try { await api.deleteCustomer(id); load(); } catch (e) { toast.error(e.message); }
   }
 
   return (
