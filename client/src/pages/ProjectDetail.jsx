@@ -356,10 +356,10 @@ function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, o
           <span style={{ fontSize: 12, color: 'var(--gray-400)' }}>Quick status:</span>
           <select
             value={task.status}
-            onChange={e => {
+            onChange={async e => {
               const s = e.target.value;
               if (s === 'waiting_customer' || s === 'waiting_vendor') { setWaitingStatus(s); setWaitingDialog(true); return; }
-              onUpdate(task.id, { status: s }); onClose();
+              try { await onUpdate(task.id, { status: s }); onClose(); } catch (_) { /* onUpdate shows alert */ }
             }}
             style={{ width: 'auto', padding: '3px 8px', fontSize: 12,
               borderColor: task.status === 'waiting_customer' ? '#f97316' : undefined }}
@@ -377,8 +377,9 @@ function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, o
         {waitingDialog && (
           <WaitingDialog
             initial={task.pending_from_customer || ''}
-            onConfirm={reason => {
-              onUpdate(task.id, { status: waitingStatus, pending_from_customer: reason });
+            onConfirm={async reason => {
+              try { await onUpdate(task.id, { status: waitingStatus, pending_from_customer: reason }); }
+              catch (_) { /* onUpdate shows alert */ }
               setWaitingDialog(false); onClose();
             }}
             onCancel={() => setWaitingDialog(false)}
@@ -406,9 +407,11 @@ function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, o
                 <span style={{ fontWeight: 700, color: '#0891b2', flexShrink: 0 }}>{l.hours}h</span>
                 <span style={{ flex: 1, color: 'var(--gray-600)' }}>{l.description || <em style={{ color: 'var(--gray-400)' }}>no description</em>}</span>
                 <span style={{ fontSize: 10, color: 'var(--gray-400)', flexShrink: 0 }}>{l.user_name}</span>
-                <button onClick={() => deleteTimeLog(l.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-300)', display: 'flex', alignItems: 'center', padding: '1px 3px' }}
-                  onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                  onMouseLeave={e => e.currentTarget.style.color = 'var(--gray-300)'}><Trash2 size={11} /></button>
+                {(isManager || l.user_id === user.id) && (
+                  <button onClick={() => deleteTimeLog(l.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-300)', display: 'flex', alignItems: 'center', padding: '1px 3px' }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                    onMouseLeave={e => e.currentTarget.style.color = 'var(--gray-300)'}><Trash2 size={11} /></button>
+                )}
               </li>
             ))}
           </ul>
@@ -1768,6 +1771,7 @@ export default function ProjectDetail() {
   const [statusMsg, setStatusMsg] = useState('');
   const [showEdit,         setShowEdit]         = useState(false);
   const [showAddTask,      setShowAddTask]      = useState(false);
+  const [addTaskErr,       setAddTaskErr]       = useState('');
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [showImportExcel,  setShowImportExcel]  = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -1841,13 +1845,15 @@ export default function ProjectDetail() {
 
   async function addTask(e) {
     e.preventDefault();
+    setAddTaskErr('');
     try {
       await api.createTask({ ...taskForm, project_id: Number(id) });
       setShowAddTask(false);
+      setAddTaskErr('');
       setTaskForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', is_adhoc: false });
       load();
     } catch (err) {
-      alert(err.message || 'Failed to create task');
+      setAddTaskErr(err.message || 'Failed to create task');
     }
   }
 
@@ -2277,7 +2283,7 @@ export default function ProjectDetail() {
             <div className="form-row">
               <div className="form-group"><label>Priority</label>
                 <select value={editForm.priority} onChange={setE('priority')}>
-                  <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                  <option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
                 </select>
               </div>
               <div className="form-group"><label>Status</label>
@@ -2378,14 +2384,14 @@ export default function ProjectDetail() {
       )}
 
       {showAddTask && (
-        <Modal title="Add Task" onClose={() => setShowAddTask(false)}>
+        <Modal title="Add Task" onClose={() => { setShowAddTask(false); setAddTaskErr(''); }}>
           <form onSubmit={addTask}>
             <div className="form-group"><label>Title *</label><input value={taskForm.title} onChange={setT('title')} required /></div>
             <div className="form-group"><label>Description</label><textarea value={taskForm.description} onChange={setT('description')} /></div>
             <div className="form-row">
               <div className="form-group"><label>Priority</label>
                 <select value={taskForm.priority} onChange={setT('priority')}>
-                  <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                  <option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
                 </select>
               </div>
               <div className="form-group"><label>Deadline</label><input type="date" value={taskForm.deadline} onChange={setT('deadline')} /></div>
@@ -2402,8 +2408,9 @@ export default function ProjectDetail() {
                 Mark as Ad-hoc Task
               </label>
             </div>
+            {addTaskErr && <div className="error-msg" style={{ marginBottom: 8 }}>{addTaskErr}</div>}
             <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
-              <button type="button" className="btn btn-ghost" onClick={() => setShowAddTask(false)}>Cancel</button>
+              <button type="button" className="btn btn-ghost" onClick={() => { setShowAddTask(false); setAddTaskErr(''); }}>Cancel</button>
               <button type="submit" className="btn btn-primary">Add Task</button>
             </div>
           </form>

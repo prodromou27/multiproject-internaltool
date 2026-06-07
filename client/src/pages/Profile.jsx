@@ -342,10 +342,12 @@ function TwoFactorSection({ user, onRefresh }) {
   }
 
   async function disable() {
-    if (!confirm('Disable two-factor authentication? This will reduce your account security.')) return;
+    const pw = window.prompt('Enter your current password to confirm disabling 2FA:');
+    if (pw === null) return; // cancelled
+    if (!pw.trim()) { setMsg({ type: 'error', text: 'Password is required to disable 2FA' }); return; }
     setWorking(true); setMsg({ type: '', text: '' });
     try {
-      await api.disable2fa();
+      await api.disable2fa(pw);
       setMsg({ type: 'success', text: '2FA disabled.' });
       onRefresh({ totp_enabled: 0 });
     } catch (err) {

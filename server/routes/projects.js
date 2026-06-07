@@ -211,7 +211,7 @@ router.put('/:id', requireManager, (req, res) => {
     : p.rag_override;
 
   db.prepare(`UPDATE projects SET title=COALESCE(?,title), description=COALESCE(?,description),
-    priority=COALESCE(?,priority), deadline=?, customer_id=COALESCE(?,customer_id),
+    priority=COALESCE(?,priority), deadline=?, customer_id=?,
     status=COALESCE(?,status), pending_from_customer=?,
     completion_pct=COALESCE(?,completion_pct), rag_override=?,
     updated_at=datetime('now') WHERE id=?`)

@@ -287,10 +287,11 @@ function OverviewTab() {
         <div className="section-title" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}><UsersIcon size={14} /> Team Breakdown</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           {[
-            { role: 'manager',  label: 'Managers',  count: users.managers,                          color: '#7c3aed', Icon: Shield },
-            { role: 'engineer', label: 'Engineers', count: users.engineers,                         color: '#0891b2', Icon: Cog },
-            { role: 'planner',  label: 'Planners',  count: users.total - users.managers - users.engineers, color: '#059669', Icon: LayoutDashboard },
-            { role: 'inactive', label: 'Inactive',  count: users.total - users.active,              color: 'var(--gray-400)', Icon: UserX },
+            { role: 'manager',  label: 'Managers',  count: users.managers,         color: '#7c3aed',          Icon: Shield },
+            { role: 'engineer', label: 'Engineers', count: users.engineers,        color: '#0891b2',          Icon: Cog },
+            { role: 'planner',  label: 'Planners',  count: users.planners || 0,    color: '#059669',          Icon: LayoutDashboard },
+            { role: 'pm',       label: 'PMs',       count: users.pms || 0,         color: '#0ea5e9',          Icon: ClipboardList },
+            { role: 'inactive', label: 'Inactive',  count: users.total - users.active, color: 'var(--gray-400)', Icon: UserX },
           ].map(({ label, count, color, Icon }) => (
             <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--gray-50)', borderRadius: 8 }}>
               <div style={{ width: 36, height: 36, borderRadius: 8, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -326,7 +327,7 @@ function UsersTab({ currentUser }) {
 
   const filtered = users.filter(u => {
     const q = search.toLowerCase();
-    const matchSearch = !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+    const matchSearch = !q || u.name.toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
     const matchRole = roleFilter === 'all' || u.role === roleFilter;
     return matchSearch && matchRole;
   });

@@ -70,7 +70,7 @@ export function RagBadge({ rag }) {
 }
 
 export function PriorityBadge({ p }) {
-  const icons = { high: '↑', medium: '→', low: '↓' };
+  const icons = { critical: '‼', high: '↑', medium: '→', low: '↓' };
   return (
     <span className={`badge badge-${p}`}>
       {icons[p] || ''} {p}

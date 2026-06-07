@@ -146,12 +146,16 @@ router.put('/:id', requireAuth, (req, res) => {
     return res.json({ ok: true });
   }
 
-  // Planners and PMs must be assigned to the task's project
-  if (req.user.role !== 'manager' && task.project_id) {
-    const assigned = db.prepare(
-      'SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?'
-    ).get(task.project_id, req.user.id);
-    if (!assigned) return res.status(403).json({ error: 'Forbidden — not assigned to this project' });
+  // Planners and PMs: project tasks require assignment; standalone tasks are manager-only
+  if (req.user.role !== 'manager') {
+    if (task.project_id) {
+      const assigned = db.prepare(
+        'SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?'
+      ).get(task.project_id, req.user.id);
+      if (!assigned) return res.status(403).json({ error: 'Forbidden — not assigned to this project' });
+    } else {
+      return res.status(403).json({ error: 'Forbidden — standalone tasks can only be edited by their assigned engineer or a manager' });
+    }
   }
 
   const { title, description, priority, deadline, assigned_to, status, is_adhoc, pending_from_customer } = req.body;
@@ -411,7 +415,7 @@ router.post('/:id/comments', requireAuth, (req, res) => {
 });
 
 router.delete('/:id/comments/:cid', requireAuth, (req, res) => {
-  const comment = db.prepare('SELECT * FROM task_comments WHERE id = ?').get(req.params.cid);
+  const comment = db.prepare('SELECT * FROM task_comments WHERE id = ? AND task_id = ?').get(req.params.cid, req.params.id);
   if (!comment) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'manager') {
     // managers can delete any comment

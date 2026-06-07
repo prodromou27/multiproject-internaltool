@@ -309,11 +309,12 @@ export default function Dashboard() {
   );
 
   /* ── Derived data ─────────────────────────────────────── */
+  const TASK_TERMINAL = ['completed', 'closed', 'cancelled'];
   const active          = projects.filter(p => p.status === 'active' || p.status === 'on_hold');
   const pendingClosure  = projects.filter(p => p.status === 'pending_approval');
-  const myOpen          = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled');
-  const overdueProjects = projects.filter(p => isOverdue(p.deadline) && p.status !== 'closed' && p.status !== 'pending_closure');
-  const overdueTasks    = tasks.filter(t => isOverdue(t.deadline) && t.status !== 'done' && t.status !== 'cancelled');
+  const myOpen          = tasks.filter(t => !TASK_TERMINAL.includes(t.status));
+  const overdueProjects = projects.filter(p => isOverdue(p.deadline) && !['closed', 'cancelled', 'pending_approval'].includes(p.status));
+  const overdueTasks    = tasks.filter(t => isOverdue(t.deadline) && !TASK_TERMINAL.includes(t.status));
 
   /* ════════════════════════════════════════════════════════
      Widget render helpers — return null when widget has no

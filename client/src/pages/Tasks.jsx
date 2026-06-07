@@ -68,9 +68,10 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
           <div className="form-group">
             <label>Priority</label>
             <select value={form.priority} onChange={set('priority')}>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
+              <option value="critical">Critical</option>
               <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
             </select>
           </div>
           <div className="form-group">
@@ -241,10 +242,10 @@ export default function Tasks() {
   }
 
   async function applyBulkWaiting(reason) {
+    const status = bulkWaitingDialog?.newStatus || 'waiting_customer'; // capture before clearing
     setBulkWaitingDialog(null);
     setBulkBusy(true);
     try {
-      const status = bulkWaitingDialog?.newStatus || 'waiting_customer';
       await Promise.all([...selected].map(id =>
         api.updateTask(id, { status, pending_from_customer: reason })
       ));

@@ -113,6 +113,8 @@ router.get('/stats', (req, res) => {
     (SELECT COUNT(*) FROM users WHERE active = 1)                                             AS users_active,
     (SELECT COUNT(*) FROM users WHERE role = 'manager')                                       AS users_managers,
     (SELECT COUNT(*) FROM users WHERE role = 'engineer')                                      AS users_engineers,
+    (SELECT COUNT(*) FROM users WHERE role = 'planner')                                       AS users_planners,
+    (SELECT COUNT(*) FROM users WHERE role = 'pm')                                            AS users_pms,
     (SELECT COUNT(*) FROM projects)                                                           AS proj_total,
     (SELECT COUNT(*) FROM projects WHERE status NOT IN ('closed','cancelled'))                AS proj_active,
     (SELECT COUNT(*) FROM projects WHERE status = 'closed')                                   AS proj_closed,
@@ -131,7 +133,7 @@ router.get('/stats', (req, res) => {
   `).get();
 
   res.json({
-    users:       { total: s.users_total, active: s.users_active, managers: s.users_managers, engineers: s.users_engineers },
+    users:       { total: s.users_total, active: s.users_active, managers: s.users_managers, engineers: s.users_engineers, planners: s.users_planners, pms: s.users_pms },
     projects:    { total: s.proj_total, active: s.proj_active, closed: s.proj_closed, pending_closure: s.proj_pending, overdue: s.proj_overdue },
     tasks:       { total: s.tasks_total, open: s.tasks_open, done: s.tasks_done, adhoc: s.tasks_adhoc },
     maintenance: { total: s.mv_total, report_pending: s.mv_pending, report_sent: s.mv_sent },
