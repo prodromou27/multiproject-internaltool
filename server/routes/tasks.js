@@ -116,18 +116,32 @@ router.put('/:id', requireAuth, (req, res) => {
 
   if (req.user.role === 'engineer') {
     if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-    const { status, pending_from_customer } = req.body;
-    if (!status) return res.status(400).json({ error: 'Status required' });
-    if (!VALID_TASK_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status value' });
+    const { status, pending_from_customer, title, description, priority, deadline } = req.body;
+    if (status && !VALID_TASK_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status value' });
+    if (priority && !VALID_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
+    const newStatus = status || task.status;
     let newPfc = task.pending_from_customer;
-    if (status === 'waiting_customer' || status === 'waiting_vendor') {
+    if (newStatus === 'waiting_customer' || newStatus === 'waiting_vendor') {
       newPfc = pending_from_customer !== undefined ? pending_from_customer : task.pending_from_customer;
-    } else if (status !== task.status) {
+    } else if (newStatus !== task.status) {
       newPfc = null;
     }
-    db.prepare(`UPDATE tasks SET status=?, pending_from_customer=?, updated_at=datetime('now') WHERE id=?`).run(status, newPfc, task.id);
-    if (task.status !== status) {
-      logActivity(task.project_id, req.user.id, 'task_status', `"${task.title}" → ${status}`);
+    db.prepare(`UPDATE tasks SET
+      title=COALESCE(?,title), description=COALESCE(?,description),
+      priority=COALESCE(?,priority), deadline=?,
+      status=COALESCE(?,status), pending_from_customer=?,
+      updated_at=datetime('now') WHERE id=?`)
+      .run(
+        title?.trim() || null,
+        description !== undefined ? description : null,
+        priority || null,
+        deadline !== undefined ? (deadline || null) : task.deadline,
+        status || null,
+        newPfc,
+        task.id
+      );
+    if (status && task.status !== status) {
+      logActivity(task.project_id, req.user.id, 'task_status', `"${title || task.title}" → ${status}`);
     }
     return res.json({ ok: true });
   }

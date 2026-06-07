@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckSquare, Download, Trash2, UserCheck, Clock, Search, X } from 'lucide-react';
+import { CheckSquare, Download, Trash2, UserCheck, Clock, Search, X, Pencil } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -12,6 +12,114 @@ const STATUS_LABELS = {
   waiting_customer: 'Waiting for Customer', waiting_vendor: 'Waiting for Vendor',
   pending_approval: 'Pending Approval',
 };
+
+const MANAGER_STATUSES  = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed', 'pending_approval', 'closed', 'cancelled'];
+const ENGINEER_STATUSES = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed'];
+
+/* ── Edit Task Modal ──────────────────────────────────────── */
+function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
+  const [form, setForm] = useState({
+    title:       task.title || '',
+    description: task.description || '',
+    priority:    task.priority || 'medium',
+    deadline:    task.deadline ? task.deadline.slice(0, 10) : '',
+    assigned_to: task.assigned_to || '',
+    status:      task.status || 'open',
+    pending_from_customer: task.pending_from_customer || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const isWaiting = form.status === 'waiting_customer' || form.status === 'waiting_vendor';
+  const engineers = allUsers.filter(u => u.role === 'engineer');
+
+  async function submit(e) {
+    e.preventDefault(); setErr(''); setSaving(true);
+    try {
+      const payload = {
+        title:       form.title,
+        description: form.description,
+        priority:    form.priority,
+        deadline:    form.deadline || null,
+        status:      form.status,
+        ...(isWaiting ? { pending_from_customer: form.pending_from_customer } : {}),
+        ...(isManager  ? { assigned_to: form.assigned_to ? Number(form.assigned_to) : null } : {}),
+      };
+      await api.updateTask(task.id, payload);
+      onSave();
+    } catch (ex) { setErr(ex.message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Modal title="Edit Task" onClose={onClose}>
+      <form onSubmit={submit}>
+        {err && <div className="error-msg">{err}</div>}
+        <div className="form-group">
+          <label>Title *</label>
+          <input value={form.title} onChange={set('title')} required />
+        </div>
+        <div className="form-group">
+          <label>Description</label>
+          <textarea value={form.description} onChange={set('description')} rows={3} />
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Priority</label>
+            <select value={form.priority} onChange={set('priority')}>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Deadline</label>
+            <input type="date" value={form.deadline} onChange={set('deadline')} />
+          </div>
+        </div>
+        {isManager && (
+          <div className="form-group">
+            <label>Assigned To</label>
+            <select value={form.assigned_to} onChange={set('assigned_to')}>
+              <option value="">Unassigned</option>
+              {engineers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+        )}
+        <div className="form-group">
+          <label>Status</label>
+          <select value={form.status} onChange={set('status')}>
+            {(isManager ? MANAGER_STATUSES : ENGINEER_STATUSES).map(s => (
+              <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+            ))}
+          </select>
+        </div>
+        {isWaiting && (
+          <div className="form-group">
+            <label>
+              {form.status === 'waiting_vendor' ? 'Waiting on Vendor' : 'Waiting on Customer'}{' '}
+              <span style={{ color: 'var(--danger)' }}>*</span>
+            </label>
+            <textarea
+              value={form.pending_from_customer}
+              onChange={set('pending_from_customer')}
+              placeholder="Describe what is needed before work can continue…"
+              rows={2}
+              required
+            />
+          </div>
+        )}
+        <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 /* ── "Waiting for Customer" reason dialog ─────────────────── */
 function WaitingDialog({ onConfirm, onCancel, initial = '', title = 'Waiting for Customer' }) {
@@ -66,6 +174,7 @@ export default function Tasks() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', is_adhoc: false });
   const [loading, setLoading]   = useState(true);
+  const [editTask, setEditTask] = useState(null);
 
   /* ── Bulk selection ───────────────────────────────────── */
   const [selected, setSelected]   = useState(new Set());
@@ -179,8 +288,8 @@ export default function Tasks() {
     return true;
   });
 
-  const managerStatuses  = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed', 'pending_approval', 'closed', 'cancelled'];
-  const engineerStatuses = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed'];
+  const managerStatuses  = MANAGER_STATUSES;
+  const engineerStatuses = ENGINEER_STATUSES;
   const allSelected = filtered.length > 0 && selected.size === filtered.length;
 
   return (
@@ -297,7 +406,7 @@ export default function Tasks() {
                     style={{ width: 15, height: 15, cursor: 'pointer' }} />
                 </th>
                 <th>Task</th><th>Project</th><th>Status</th><th>Priority</th>
-                <th>Assigned To</th><th>Deadline</th><th>Update Status</th>
+                <th>Assigned To</th><th>Deadline</th><th>Update Status</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -334,6 +443,18 @@ export default function Tasks() {
                       </div>
                     )}
                   </td>
+                  <td style={{ textAlign: 'center' }}>
+                    {(isManager || t.assigned_to === user.id) && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ padding: '4px 6px', color: 'var(--gray-500)' }}
+                        title="Edit task"
+                        onClick={() => setEditTask(t)}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -360,6 +481,16 @@ export default function Tasks() {
           title={bulkWaitingDialog.newStatus === 'waiting_vendor' ? 'Waiting for Vendor (bulk)' : 'Waiting for Customer (bulk)'}
           onConfirm={applyBulkWaiting}
           onCancel={() => setBulkWaitingDialog(null)}
+        />
+      )}
+
+      {editTask && (
+        <EditTaskModal
+          task={editTask}
+          allUsers={allUsers}
+          isManager={isManager}
+          onSave={() => { setEditTask(null); load(); }}
+          onClose={() => setEditTask(null)}
         />
       )}
 
