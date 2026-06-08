@@ -342,7 +342,7 @@ function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, o
           <div><span style={{ color: 'var(--gray-400)' }}>Status:</span> <StatusBadge s={task.status} /></div>
           <div><span style={{ color: 'var(--gray-400)' }}>Priority:</span> <PriorityBadge p={task.priority} /></div>
           <div><span style={{ color: 'var(--gray-400)' }}>Assigned:</span> {task.assigned_to_name || '—'}</div>
-          <div><span style={{ color: 'var(--gray-400)' }}>Deadline:</span> <span className={isOverdue(task.deadline) && !['completed','closed','cancelled'].includes(task.status) && isOverdue(task.deadline) ? 'overdue' : ''}>{fmtDate(task.deadline) || '—'}</span></div>
+          <div><span style={{ color: 'var(--gray-400)' }}>Deadline:</span> <span className={isOverdue(task.deadline) && !['completed','closed','cancelled'].includes(task.status) ? 'overdue' : ''}>{fmtDate(task.deadline) || '—'}</span></div>
         </div>
         {task.status === 'waiting_customer' && task.pending_from_customer && (
           <div style={{
@@ -625,7 +625,7 @@ function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowClick, o
         <td><StatusBadge s={task.status} /></td>
         <td><PriorityBadge p={task.priority} /></td>
         <td>{task.assigned_to_name || '—'}</td>
-        <td className={isOverdue(task.deadline) && !['completed','closed','cancelled'].includes(task.status) && isOverdue(task.deadline) ? 'overdue' : ''}>{fmtDate(task.deadline)}</td>
+        <td className={isOverdue(task.deadline) && !['completed','closed','cancelled'].includes(task.status) ? 'overdue' : ''}>{fmtDate(task.deadline)}</td>
         <td style={{ fontSize: 11, color: '#0891b2', fontWeight: task.logged_hours > 0 ? 700 : 400 }}>
           {task.logged_hours > 0 ? `${task.logged_hours}h` : '—'}
         </td>
@@ -1929,7 +1929,7 @@ export default function ProjectDetail() {
             <StatusBadge s={project.status} />
             <PriorityBadge p={project.priority} />
             {project.rag_status && <RagBadge rag={project.rag_status} />}
-            {project.deadline && <span className={'text-sm ' + (isOverdue(project.deadline) && project.status !== 'closed' ? 'overdue' : 'text-muted')}>Due: {fmtDate(project.deadline)}</span>}
+            {project.deadline && <span className={'text-sm ' + (isOverdue(project.deadline) && !['closed','cancelled'].includes(project.status) ? 'overdue' : 'text-muted')}>Due: {fmtDate(project.deadline)}</span>}
           </div>
         </div>
         <div className="flex gap-8">
@@ -1945,7 +1945,7 @@ export default function ProjectDetail() {
             </button>
           )}
           {/* Edit — manager/planner only, not when closed */}
-          {canManage && project.status !== 'closed' && (
+          {canManage && !['closed','cancelled'].includes(project.status) && (
             <button className="btn btn-ghost btn-sm" onClick={() => {
               setEditForm({ title: project.title, description: project.description, priority: project.priority, deadline: project.deadline?.slice(0, 10) || '', status: project.status, customer_id: project.customer_id || '', pending_from_customer: project.pending_from_customer || '', completion_pct: project.completion_pct ?? '', rag_override: project.rag_override || '' });
               setShowEdit(true);
@@ -2264,9 +2264,15 @@ export default function ProjectDetail() {
                 <thead><tr><th>Name</th><th>Email</th><th>Role</th>{isManager && <th>Action</th>}</tr></thead>
                 <tbody>{project.members?.map(m => (
                   <tr key={m.id}>
-                    <td>{m.name}</td><td>{m.email}</td>
+                    <td>{m.name}</td><td>{m.email || '—'}</td>
                     <td><span className={`badge badge-${m.role}`}>{m.role}</span></td>
-                    {isManager && <td><button className="btn btn-sm btn-danger" onClick={() => api.removeMember(id, m.id).then(load)}>Remove</button></td>}
+                    {isManager && <td><button className="btn btn-sm btn-danger" onClick={async () => {
+                      const ok = await confirm(`Remove ${m.name} from this project?`, { title: 'Remove Member', label: 'Remove' });
+                      if (!ok) return;
+                      await api.removeMember(id, m.id).catch(e => { toast.error(e.message); return null; });
+                      toast.success(`${m.name} removed`);
+                      load();
+                    }}>Remove</button></td>}
                   </tr>
                 ))}</tbody>
               </table>

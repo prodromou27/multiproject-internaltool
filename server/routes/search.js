@@ -128,7 +128,7 @@ router.get('/smart', requireAuth, (req, res) => {
       SELECT p.id, p.title, p.status, p.priority, p.deadline,
              cu.name AS customer_name, u.name AS created_by_name,
              (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status != 'cancelled') AS task_count,
-             (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status = 'done')       AS done_count
+             (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status IN ('completed','closed')) AS done_count
       FROM projects p
       LEFT JOIN customers cu ON p.customer_id = cu.id
       LEFT JOIN users u ON p.created_by = u.id
@@ -178,7 +178,7 @@ router.get('/smart', requireAuth, (req, res) => {
     if (priority)    { c.push('t.priority = ?');       p.push(priority); }
     if (unassigned === '1') { c.push('t.assigned_to IS NULL'); }
     if (overdue === '1') {
-      c.push("t.deadline IS NOT NULL AND t.deadline < ? AND t.status NOT IN ('done','cancelled')");
+      c.push("t.deadline IS NOT NULL AND t.deadline < ? AND t.status NOT IN ('completed','closed','cancelled')");
       p.push(today);
     }
     if (date_from) { c.push('date(t.created_at) >= ?'); p.push(date_from); }

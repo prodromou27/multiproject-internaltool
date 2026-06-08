@@ -55,7 +55,7 @@ export default function Notes() {
   const [todosLoading, setTodosLoading] = useState(true);
 
   const loadTodos = useCallback(() => {
-    api.getTodos().then(d => { setTodos(d); setTodosLoading(false); }).catch(() => setTodosLoading(false));
+    api.getTodos().then(d => { setTodos(d ?? []); setTodosLoading(false); }).catch(() => setTodosLoading(false));
   }, []);
 
   useEffect(() => { loadTodos(); }, [loadTodos]);

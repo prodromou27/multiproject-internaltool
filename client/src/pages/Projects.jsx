@@ -556,7 +556,7 @@ export default function Projects() {
                       <span className="text-muted" style={{ fontSize: 12 }}>No tasks</span>
                     )}
                   </td>
-                  <td className={isOverdue(p.deadline) && p.status !== 'closed' ? 'overdue' : ''}>{fmtDate(p.deadline)}</td>
+                  <td className={isOverdue(p.deadline) && !['closed','cancelled'].includes(p.status) ? 'overdue' : ''}>{fmtDate(p.deadline)}</td>
                   <td>{p.created_by_name}</td>
                   {isManager && (
                     <td>

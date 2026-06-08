@@ -312,7 +312,7 @@ export default function Dashboard() {
 
   /* ── Derived data ─────────────────────────────────────── */
   const TASK_TERMINAL = ['completed', 'closed', 'cancelled'];
-  const active          = projects.filter(p => p.status === 'active' || p.status === 'on_hold');
+  const active          = projects.filter(p => !['closed', 'cancelled'].includes(p.status));
   const pendingClosure  = projects.filter(p => p.status === 'pending_approval');
   const myOpen          = tasks.filter(t => !TASK_TERMINAL.includes(t.status));
   const overdueProjects = projects.filter(p => isOverdue(p.deadline) && !['closed', 'cancelled', 'pending_approval'].includes(p.status));
@@ -677,7 +677,7 @@ export default function Dashboard() {
                       <Link to={`/projects/${p.id}`} style={{ flex:1, fontWeight:600, minWidth:120, color:'var(--gray-900)' }}>{p.title}</Link>
                       <StatusBadge s={p.status} />
                       {p.deadline && (
-                        <span className={'text-sm ' + (isOverdue(p.deadline) && p.status !== 'closed' ? 'overdue' : 'text-muted')}>
+                        <span className={'text-sm ' + (isOverdue(p.deadline) && !['closed','cancelled'].includes(p.status) ? 'overdue' : 'text-muted')}>
                           {fmtDate(p.deadline)}
                         </span>
                       )}
@@ -910,7 +910,7 @@ export default function Dashboard() {
                       <Link to={`/projects/${p.id}`} style={{ flex:1, fontWeight:600, minWidth:120, color:'var(--gray-900)' }}>{p.title}</Link>
                       <StatusBadge s={p.status} />
                       {p.deadline && (
-                        <span className={'text-sm ' + (isOverdue(p.deadline) && p.status !== 'closed' ? 'overdue' : 'text-muted')}>
+                        <span className={'text-sm ' + (isOverdue(p.deadline) && !['closed','cancelled'].includes(p.status) ? 'overdue' : 'text-muted')}>
                           {fmtDate(p.deadline)}
                         </span>
                       )}
@@ -1071,7 +1071,7 @@ export default function Dashboard() {
                         style={{ flex:1, fontWeight:600, minWidth:120, color:'var(--gray-900)' }}>{p.title}</Link>
                       <StatusBadge s={p.status} />
                       {p.deadline && (
-                        <span className={'text-sm ' + (isOverdue(p.deadline) && p.status !== 'closed' ? 'overdue' : 'text-muted')}>
+                        <span className={'text-sm ' + (isOverdue(p.deadline) && !['closed','cancelled'].includes(p.status) ? 'overdue' : 'text-muted')}>
                           {fmtDate(p.deadline)}
                         </span>
                       )}

@@ -21,7 +21,7 @@ router.get('/', requireAuth, (req, res) => {
     u.name as assigned_to_name, p.title as project_title
     FROM tasks t LEFT JOIN users u ON t.assigned_to = u.id
     LEFT JOIN projects p ON t.project_id = p.id
-    WHERE t.deadline >= ? AND t.deadline < ? AND t.status NOT IN ('done','cancelled')`;
+    WHERE t.deadline >= ? AND t.deadline < ? AND t.status NOT IN ('completed','closed','cancelled')`;
   const taskParams = [start, end];
   if (!isManager) { taskQ += ' AND t.assigned_to = ?'; taskParams.push(req.user.id); }
   const tasks = db.prepare(taskQ).all(...taskParams).map(r => ({ ...r, type: 'task' }));

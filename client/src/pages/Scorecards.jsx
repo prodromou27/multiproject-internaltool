@@ -226,7 +226,7 @@ function EngineerSummaryCard({ eng }) {
       <ScoreGauge score={eng.avg_adjusted} size={76} />
       <div style={{ flex: 1, minWidth: 140 }}>
         <div style={{ fontWeight: 700, fontSize: 14 }}>{eng.name}</div>
-        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>{eng.email}</div>
+        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>{eng.email || '—'}</div>
         <ScoreBadge score={eng.avg_adjusted} />
         <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>{eng.scorecard_count} project{eng.scorecard_count !== 1 ? 's' : ''} evaluated</div>
       </div>
@@ -527,7 +527,7 @@ export default function Scorecards() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 700, fontSize: 14 }}>{eng.name}</div>
-                          <div style={{ fontSize: 11, color: '#9ca3af' }}>{eng.email} · {eng.scorecards.length} scorecard{eng.scorecards.length !== 1 ? 's' : ''}</div>
+                          <div style={{ fontSize: 11, color: '#9ca3af' }}>{eng.email || '—'} · {eng.scorecards.length} scorecard{eng.scorecards.length !== 1 ? 's' : ''}</div>
                         </div>
                         {latest && (
                           <div style={{ textAlign: 'right', flexShrink: 0 }}>

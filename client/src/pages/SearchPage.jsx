@@ -225,7 +225,7 @@ function PBadge({ p }) {
 
 function ProjectCard({ item, navigate }) {
   const today = new Date().toISOString().slice(0, 10);
-  const od = item.deadline && item.deadline < today && item.status !== 'closed';
+  const od = item.deadline && item.deadline < today && !['closed','cancelled'].includes(item.status);
   const pct = item.task_count > 0 ? Math.round((item.done_count / item.task_count) * 100) : null;
 
   return (

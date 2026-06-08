@@ -52,7 +52,7 @@ function TrendsTab() {
 
   useEffect(() => {
     api.reportMonthly()
-      .then(d => { setData(d); setLoading(false); })
+      .then(d => { setData(d ?? []); setLoading(false); })
       .catch(e => { setError(e.message); setLoading(false); });
   }, []);
 
@@ -168,6 +168,10 @@ export default function Reports() {
   if (loading || !summary) return <div className="page"><p className="text-muted">Loading…</p></div>;
 
   const byStatus = Object.fromEntries(summary.byStatus.map(s => [s.status, s.count]));
+  // "Active" = everything that isn't closed or cancelled
+  const activeCount = summary.byStatus
+    .filter(s => s.status !== 'closed' && s.status !== 'cancelled')
+    .reduce((sum, s) => sum + s.count, 0);
 
   return (
     <div className="page">
@@ -186,7 +190,7 @@ export default function Reports() {
         <>
           <div className="grid-4" style={{ marginBottom: 24 }}>
             <div className="card stat"><div className="stat-value">{summary.total}</div><div className="stat-label">Total Projects</div></div>
-            <div className="card stat"><div className="stat-value" style={{ color: 'var(--primary)' }}>{byStatus.active || 0}</div><div className="stat-label">Active</div></div>
+            <div className="card stat"><div className="stat-value" style={{ color: 'var(--primary)' }}>{activeCount}</div><div className="stat-label">Active</div></div>
             <div className="card stat"><div className="stat-value" style={{ color: 'var(--success)' }}>{byStatus.closed || 0}</div><div className="stat-label">Closed</div></div>
             <div className="card stat"><div className="stat-value" style={{ color: 'var(--danger)' }}>{summary.overdue}</div><div className="stat-label">Overdue</div></div>
           </div>
@@ -253,7 +257,7 @@ export default function Reports() {
                   </div>}
                 </td>
                 <td>{p.member_count}</td>
-                <td className={isOverdue(p.deadline) && p.status !== 'closed' ? 'overdue' : ''}>{fmtDate(p.deadline)}</td>
+                <td className={isOverdue(p.deadline) && !['closed','cancelled'].includes(p.status) ? 'overdue' : ''}>{fmtDate(p.deadline)}</td>
               </tr>
             ))}</tbody>
           </table>

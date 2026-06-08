@@ -5,7 +5,7 @@ const { requireManager } = require('../middleware/auth');
 router.get('/summary', requireManager, (req, res) => {
   const total = db.prepare('SELECT COUNT(*) as c FROM projects').get().c;
   const byStatus = db.prepare('SELECT status, COUNT(*) as count FROM projects GROUP BY status').all();
-  const overdue = db.prepare(`SELECT COUNT(*) as c FROM projects WHERE deadline < date('now') AND status NOT IN ('closed')`).get().c;
+  const overdue = db.prepare(`SELECT COUNT(*) as c FROM projects WHERE deadline < date('now') AND status NOT IN ('closed','cancelled','pending_approval')`).get().c;
   const taskStats = db.prepare(`SELECT
     COUNT(*) as total,
     SUM(CASE WHEN status IN ('completed','closed') THEN 1 ELSE 0 END) as done,

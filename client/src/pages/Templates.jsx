@@ -249,7 +249,7 @@ export default function Templates() {
   const [newForm,   setNewForm]   = useState({ name: '', description: '' });
   const [saving,    setSaving]    = useState(false);
 
-  const load = () => api.templates().then(d => { setTemplates(d); setLoading(false); });
+  const load = () => api.templates().then(d => { setTemplates(d ?? []); setLoading(false); });
   useEffect(() => { load(); }, []);
 
   async function createTemplate(e) {

@@ -377,7 +377,7 @@ export default function CalendarPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    api.calendar(monthStr).then(d => { setData(d); setLoading(false); });
+    api.calendar(monthStr).then(d => { setData(d ?? { tasks: [], projects: [], visits: [] }); setLoading(false); });
   }, [monthStr]);
 
   useEffect(() => { load(); }, [load]);

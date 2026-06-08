@@ -325,7 +325,7 @@ function UsersTab({ currentUser }) {
   const toast   = useToast();
   const confirm = useConfirm();
 
-  const load = () => api.adminUsers().then(d => { setUsers(d); setLoading(false); });
+  const load = () => api.adminUsers().then(d => { setUsers(d ?? []); setLoading(false); });
   useEffect(() => { load(); }, []);
 
   const filtered = users.filter(u => {
@@ -390,7 +390,7 @@ function UsersTab({ currentUser }) {
                   <tr key={u.id} style={{ opacity: u.active ? 1 : 0.5 }}>
                     <td>
                       <div style={{ fontWeight: 600 }}>{u.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{u.email}</div>
+                      <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{u.email || '—'}</div>
                     </td>
                     <td><span className={`badge badge-${u.role}`}>{u.role}</span></td>
                     <td>
@@ -466,7 +466,7 @@ function ProjectsAdminTab() {
   const [search,   setSearch]   = useState('');
   const [loading,  setLoading]  = useState(true);
 
-  useEffect(() => { api.projects().then(d => { setProjects(d); setLoading(false); }); }, []);
+  useEffect(() => { api.projects().then(d => { setProjects(d ?? []); setLoading(false); }); }, []);
 
   const counts = ['all','in_progress','not_started','on_hold','pending_approval','closed','cancelled'].reduce((acc, k) => {
     acc[k] = k === 'all' ? projects.length : projects.filter(p => p.status === k).length;
@@ -559,7 +559,7 @@ function MaintenanceAdminTab() {
   const [search,  setSearch]  = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { api.maintenanceVisits({}).then(d => { setVisits(d); setLoading(false); }); }, []);
+  useEffect(() => { api.maintenanceVisits({}).then(d => { setVisits(d ?? []); setLoading(false); }); }, []);
 
   const counts = ['all','scheduled','in_progress','completed','cancelled'].reduce((acc, k) => {
     acc[k] = k === 'all' ? visits.length : visits.filter(v => v.status === k).length;
@@ -1255,7 +1255,7 @@ function WeeklyReportTab() {
                           checked={schedule.recipients?.includes(m.id) || false}
                           onChange={() => toggleRecipient(m.id)} />
                         <span style={{ fontWeight: 600 }}>{m.name}</span>
-                        <span style={{ color: 'var(--gray-400)', fontSize: 12 }}>{m.email}</span>
+                        <span style={{ color: 'var(--gray-400)', fontSize: 12 }}>{m.email || '—'}</span>
                       </label>
                     ))}
                   </div>
@@ -1627,7 +1627,7 @@ function LocalizationTab() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { api.getLocalization().then(d => { setCfg(d); setSaved(d); setLoading(false); }).catch(() => setLoading(false)); }, []);
+  useEffect(() => { api.getLocalization().then(d => { if (d) { setCfg(d); setSaved(d); } setLoading(false); }).catch(() => setLoading(false)); }, []);
 
   const set = (k, v) => setCfg(c => ({ ...c, [k]: v }));
   const toggleLang = code => set('supported_languages',
@@ -1945,7 +1945,7 @@ function LoggingTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getLogging().then(d => { setCfg(d); setSaved(d); setLoading(false); }).catch(() => setLoading(false));
+    api.getLogging().then(d => { if (d) { setCfg(d); setSaved(d); } setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
   const set = (k, v) => setCfg(c => ({ ...c, [k]: v }));
@@ -2566,7 +2566,7 @@ function SecurityTab() {
 
   useEffect(() => {
     api.getSecuritySettings()
-      .then(d => { setCfg(d); setSaved(d); setLoading(false); })
+      .then(d => { if (d) { setCfg(d); setSaved(d); } setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 

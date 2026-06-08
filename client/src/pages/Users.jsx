@@ -25,7 +25,9 @@ function UserTable({ users, loading }) {
               <tr key={u.id}>
                 <td style={{ fontWeight: 600 }}>{u.name}</td>
                 <td>
-                  <a href={`mailto:${u.email}`} style={{ color: 'var(--gray-700)' }}>{u.email}</a>
+                  {u.email
+                    ? <a href={`mailto:${u.email}`} style={{ color: 'var(--gray-700)' }}>{u.email}</a>
+                    : <span className="text-muted">—</span>}
                 </td>
                 <td><span className={`badge ${roleInfo.cls}`}>{roleInfo.label}</span></td>
                 <td className="text-muted text-sm">
@@ -46,12 +48,12 @@ export default function Users() {
   const [search, setSearch]   = useState('');
 
   useEffect(() => {
-    api.users().then(u => { setUsers(u); setLoading(false); });
+    api.users().then(u => { setUsers(u ?? []); setLoading(false); });
   }, []);
 
   const q = search.toLowerCase().trim();
   const visible = q
-    ? users.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q))
+    ? users.filter(u => u.name.toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q) || u.role.toLowerCase().includes(q))
     : users;
 
   const managers  = visible.filter(u => u.role === 'manager');

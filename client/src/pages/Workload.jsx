@@ -35,7 +35,7 @@ function EngineerCard({ eng }) {
   const [expanded, setExpanded] = useState(false);
   const taskCount  = eng.open_tasks.length;
   const visitCount = eng.visits.length;
-  const initials   = eng.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+  const initials   = (eng.name || '?').split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
   return (
     <div className="card" style={{ marginBottom: 14, transition: 'box-shadow .15s' }}>
@@ -52,7 +52,7 @@ function EngineerCard({ eng }) {
         {/* Name + email */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>{eng.name}</div>
-          <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>{eng.email}</div>
+          <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>{eng.email || '—'}</div>
         </div>
 
         {/* Stat pills */}
@@ -337,14 +337,14 @@ export default function Workload() {
   const loadSnapshot = () => {
     setLoading(true); setError('');
     api.workload()
-      .then(d => { setEngineers(d); setLoading(false); })
+      .then(d => { setEngineers(d ?? []); setLoading(false); })
       .catch(e => { setError(e.message); setLoading(false); });
   };
 
   const loadForecast = () => {
     setFLoading(true);
     api.workloadForecast()
-      .then(d => { setForecast(d); setFLoading(false); })
+      .then(d => { setForecast(d ?? []); setFLoading(false); })
       .catch(e => { setError(e.message); setFLoading(false); });
   };
 

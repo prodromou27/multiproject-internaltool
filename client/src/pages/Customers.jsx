@@ -52,7 +52,7 @@ export default function Customers() {
   const [search,      setSearch]      = useState('');
   const [loading,     setLoading]     = useState(true);
 
-  const load = () => api.customers().then(d => { setCustomers(d); setLoading(false); });
+  const load = () => api.customers().then(d => { setCustomers(d ?? []); setLoading(false); });
   useEffect(() => { load(); }, []);
 
   const filtered = customers.filter(c => {
