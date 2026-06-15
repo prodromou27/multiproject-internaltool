@@ -79,9 +79,13 @@ const avatarUpload = multer({
 /* ── Login ───────────────────────────────────────────────── */
 router.post('/login', (req, res) => {
   const { email, password } = req.body;
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  // Use a constant-time compare even on "not found" to avoid timing oracle
-  const passwordOk = user && bcrypt.compareSync(password, user.password);
+  // Normalize the email the same way it is stored (creation/forgot-password all
+  // lowercase + trim) so a mixed-case or padded login still matches.
+  const normEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  const user = normEmail ? db.prepare('SELECT * FROM users WHERE email = ?').get(normEmail) : null;
+  // Use a constant-time compare even on "not found" to avoid timing oracle.
+  // Guard against a missing/non-string password (bcrypt throws on undefined).
+  const passwordOk = user && typeof password === 'string' && bcrypt.compareSync(password, user.password);
   if (!passwordOk)
     return res.status(401).json({ error: 'Invalid email or password' });
   if (!user.active)

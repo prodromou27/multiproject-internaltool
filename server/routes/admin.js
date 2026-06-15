@@ -6,6 +6,15 @@ const { requireManager } = require('../middleware/auth');
 // All admin routes require manager role
 router.use(requireManager);
 
+// Number of active managers OTHER than the given user. Used to prevent the
+// system from being left with zero administrators (demote/deactivate/delete
+// of the final manager would lock everyone out of admin functions).
+function otherActiveManagerCount(excludeUserId) {
+  return db.prepare(
+    "SELECT COUNT(*) AS c FROM users WHERE role = 'manager' AND active = 1 AND id != ?"
+  ).get(excludeUserId).c;
+}
+
 /* ─── Users ─────────────────────────────────────────────── */
 
 router.get('/users', (req, res) => {
@@ -54,6 +63,9 @@ router.put('/users/:id', (req, res) => {
     return res.status(400).json({ error: 'Invalid email format' });
   if (role && !['manager', 'engineer', 'planner', 'pm'].includes(role))
     return res.status(400).json({ error: 'Invalid role' });
+  // Block demoting the last active manager (incl. self) out of the manager role.
+  if (role && role !== 'manager' && user.role === 'manager' && user.active && otherActiveManagerCount(user.id) === 0)
+    return res.status(400).json({ error: 'Cannot change the role of the last active manager' });
   try {
     db.prepare(`UPDATE users SET
       name  = COALESCE(?, name),
@@ -84,6 +96,9 @@ router.post('/users/:id/toggle-active', (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   // Prevent deactivating yourself
   if (user.id === req.user.id) return res.status(400).json({ error: 'You cannot deactivate yourself' });
+  // Prevent deactivating the last remaining active manager
+  if (user.active && user.role === 'manager' && otherActiveManagerCount(user.id) === 0)
+    return res.status(400).json({ error: 'Cannot deactivate the last active manager' });
   db.prepare('UPDATE users SET active = ? WHERE id = ?').run(user.active ? 0 : 1, user.id);
   res.json({ active: !user.active });
 });
@@ -92,8 +107,24 @@ router.delete('/users/:id', (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.id === req.user.id) return res.status(400).json({ error: 'You cannot delete yourself' });
-  db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
-  res.json({ ok: true });
+  // Prevent deleting the last remaining active manager
+  if (user.role === 'manager' && user.active && otherActiveManagerCount(user.id) === 0)
+    return res.status(400).json({ error: 'Cannot delete the last active manager' });
+  try {
+    db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+    res.json({ ok: true });
+  } catch (e) {
+    // created_by / authored references (projects, tasks, comments, activity) are
+    // NOT NULL with no cascade, so deleting a user who has authored records hits
+    // a foreign-key constraint. Surface an actionable message instead of a 500.
+    if (e.code && e.code.startsWith('SQLITE_CONSTRAINT')) {
+      return res.status(409).json({
+        error: 'This user has created projects, tasks or other records and cannot be deleted. Deactivate the account instead to preserve history.',
+      });
+    }
+    console.error('[admin/users DELETE]', e.message);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
 });
 
 router.post('/users/:id/toggle-2fa-exempt', (req, res) => {

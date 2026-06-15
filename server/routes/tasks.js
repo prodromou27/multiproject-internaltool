@@ -75,8 +75,11 @@ router.post('/', requireAuth, (req, res) => {
   if (priority && !VALID_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
   if (req.user.role === 'engineer' && !project_id) return res.status(400).json({ error: 'Engineers must link a project' });
 
-  // Engineers always self-assign regardless of what was passed
+  // Engineers may only create tasks on projects they are assigned to,
+  // and always self-assign regardless of what was passed.
   if (req.user.role === 'engineer') {
+    const member = db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(project_id, req.user.id);
+    if (!member) return res.status(403).json({ error: 'You can only add tasks to projects you are assigned to' });
     assigned_to = req.user.id;
   }
 
