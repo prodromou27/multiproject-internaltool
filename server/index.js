@@ -1,3 +1,13 @@
+// Load .env file (no dotenv dependency needed)
+const fs0 = require('fs'), path0 = require('path');
+const envPath = path0.join(__dirname, '.env');
+if (fs0.existsSync(envPath)) {
+  fs0.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+  });
+}
+
 const express    = require('express');
 const https      = require('https');
 const http       = require('http');

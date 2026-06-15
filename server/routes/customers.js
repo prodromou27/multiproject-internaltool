@@ -3,6 +3,7 @@ const multer  = require('multer');
 const ExcelJS = require('exceljs');
 const db = require('../db');
 const { requireAuth, requireManager, requireManagerOrPlanner } = require('../middleware/auth');
+const { encryptCustomer, decryptCustomer } = require('../fieldCipher');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -53,12 +54,12 @@ router.get('/', requireAuth, (req, res) => {
       )
       ORDER BY c.name
     `).all(req.user.id, req.user.id);
-    return res.json(rows);
+    return res.json(rows.map(decryptCustomer));
   }
   const rows = db.prepare(`SELECT c.*, u.name as created_by_name,
     (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = c.id) as visit_count
     FROM customers c LEFT JOIN users u ON c.created_by = u.id ORDER BY c.name`).all();
-  res.json(rows);
+  res.json(rows.map(decryptCustomer));
 });
 
 // ── Template download — MUST be before /:id ─────────────────────────────────
@@ -97,14 +98,15 @@ router.get('/:id', requireAuth, (req, res) => {
     `).get(req.user.id, c.id, req.user.id, c.id);
     if (!allowed) return res.status(403).json({ error: 'Forbidden' });
   }
-  res.json(c);
+  res.json(decryptCustomer(c));
 });
 
 router.post('/', requireManagerOrPlanner, (req, res) => {
   const { name, contact_name, contact_email, contact_phone, address, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
+  const enc = encryptCustomer({ contact_name, contact_email, contact_phone, address, notes });
   const result = db.prepare('INSERT INTO customers (name, contact_name, contact_email, contact_phone, address, notes, created_by) VALUES (?,?,?,?,?,?,?)')
-    .run(name, contact_name || null, contact_email || null, contact_phone || null, address || null, notes || null, req.user.id);
+    .run(name, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, req.user.id);
   res.json({ id: result.lastInsertRowid });
 });
 
@@ -154,13 +156,20 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
         return;
       }
       try {
+        const enc = encryptCustomer({
+          contact_name:  row.contact_name  || null,
+          contact_email: row.contact_email || null,
+          contact_phone: row.contact_phone || null,
+          address:       row.address       || null,
+          notes:         row.notes         || null,
+        });
         insertStmt.run(
           row.name,
-          row.contact_name   || null,
-          row.contact_email  || null,
-          row.contact_phone  || null,
-          row.address        || null,
-          row.notes          || null,
+          enc.contact_name,
+          enc.contact_email,
+          enc.contact_phone,
+          enc.address,
+          enc.notes,
           req.user.id
         );
         imported++;
@@ -180,16 +189,17 @@ router.put('/:id', requireManagerOrPlanner, (req, res) => {
   const existing = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
   const { name, contact_name, contact_email, contact_phone, address, notes } = req.body;
+  // Decrypt existing values so they can be used as fallback when a field isn't supplied
+  const dec = decryptCustomer(existing);
+  const enc = encryptCustomer({
+    contact_name:  contact_name  !== undefined ? (contact_name  || null) : dec.contact_name,
+    contact_email: contact_email !== undefined ? (contact_email || null) : dec.contact_email,
+    contact_phone: contact_phone !== undefined ? (contact_phone || null) : dec.contact_phone,
+    address:       address       !== undefined ? (address       || null) : dec.address,
+    notes:         notes         !== undefined ? (notes         || null) : dec.notes,
+  });
   db.prepare('UPDATE customers SET name=COALESCE(?,name), contact_name=?, contact_email=?, contact_phone=?, address=?, notes=? WHERE id=?')
-    .run(
-      name || null,
-      contact_name  !== undefined ? (contact_name  || null) : existing.contact_name,
-      contact_email !== undefined ? (contact_email || null) : existing.contact_email,
-      contact_phone !== undefined ? (contact_phone || null) : existing.contact_phone,
-      address       !== undefined ? (address       || null) : existing.address,
-      notes         !== undefined ? (notes         || null) : existing.notes,
-      id
-    );
+    .run(name || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, id);
   res.json({ ok: true });
 });
 
