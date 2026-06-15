@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { decrypt } = require('../fieldCipher');
 
 // ── Quick search (top bar dropdown) ──────────────────────────────────────────
 router.get('/', requireAuth, (req, res) => {
@@ -59,24 +60,32 @@ router.get('/', requireAuth, (req, res) => {
     customers = db.prepare(`
       SELECT id, name, contact_name, contact_email
       FROM customers
-      WHERE name LIKE ? OR contact_name LIKE ? OR contact_email LIKE ?
+      WHERE name LIKE ?
       ORDER BY name ASC LIMIT 5
-    `).all(like, like, like);
+    `).all(like);
   } else {
     // Engineer: only customers they have worked with
     customers = db.prepare(`
       SELECT DISTINCT cu.id, cu.name, cu.contact_name, cu.contact_email
       FROM customers cu
-      WHERE (cu.name LIKE ? OR cu.contact_name LIKE ? OR cu.contact_email LIKE ?)
+      WHERE cu.name LIKE ?
         AND (
           EXISTS (SELECT 1 FROM projects p JOIN project_assignments pa ON pa.project_id = p.id WHERE p.customer_id = cu.id AND pa.user_id = ?)
           OR EXISTS (SELECT 1 FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id WHERE mv.customer_id = cu.id AND mve.user_id = ?)
         )
       ORDER BY cu.name ASC LIMIT 5
-    `).all(like, like, like, req.user.id, req.user.id);
+    `).all(like, req.user.id, req.user.id);
   }
 
-  res.json({ projects, tasks, customers });
+  res.json({
+    projects,
+    tasks,
+    customers: customers.map(c => ({
+      ...c,
+      contact_name:  decrypt(c.contact_name),
+      contact_email: decrypt(c.contact_email),
+    })),
+  });
 });
 
 // ── Smart structured search ──────────────────────────────────────────────────
@@ -259,12 +268,12 @@ router.get('/smart', requireAuth, (req, res) => {
     }
 
     if (like) {
-      c.push('(cu.name LIKE ? OR cu.contact_name LIKE ? OR cu.contact_email LIKE ?)');
-      p.push(like, like, like);
+      c.push('cu.name LIKE ?');
+      p.push(like);
     }
 
     const where = c.length ? 'WHERE ' + c.join(' AND ') : '';
-    results.customers = db.prepare(`
+    const rawCustomers = db.prepare(`
       SELECT cu.id, cu.name, cu.contact_name, cu.contact_email, cu.contact_phone,
              (SELECT COUNT(*) FROM projects          WHERE customer_id = cu.id) AS project_count,
              (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = cu.id) AS visit_count
@@ -272,6 +281,12 @@ router.get('/smart', requireAuth, (req, res) => {
       ${where}
       ORDER BY cu.name ASC LIMIT 20
     `).all(...p);
+    results.customers = rawCustomers.map(c => ({
+      ...c,
+      contact_name:  decrypt(c.contact_name),
+      contact_email: decrypt(c.contact_email),
+      contact_phone: decrypt(c.contact_phone),
+    }));
   }
 
   res.json({

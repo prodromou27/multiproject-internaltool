@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const { requireAuth, requireManager } = require('../middleware/auth');
 const { notify } = require('../notifications');
+const { decrypt } = require('../fieldCipher');
 
 /* ── RAG computation ───────────────────────────────────────── */
 function computeRag(row) {
@@ -132,7 +133,13 @@ router.get('/:id', requireAuth, (req, res) => {
   }
   const members = db.prepare('SELECT u.id, u.name, u.email, u.role FROM project_assignments pa JOIN users u ON pa.user_id = u.id WHERE pa.project_id = ?').all(p.id);
   const updates = db.prepare('SELECT s.*, u.name as user_name FROM project_status_updates s JOIN users u ON s.user_id = u.id WHERE s.project_id = ? ORDER BY s.created_at DESC').all(p.id);
-  res.json({ ...p, members, updates });
+  res.json({
+    ...p,
+    customer_contact: decrypt(p.customer_contact),
+    customer_email:   decrypt(p.customer_email),
+    members,
+    updates,
+  });
 });
 
 /* ── Activity feed ─────────────────────────────────────────── */

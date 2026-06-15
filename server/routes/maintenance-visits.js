@@ -4,6 +4,7 @@ const ExcelJS = require('exceljs');
 const db = require('../db');
 const { requireAuth, requireManager, requireManagerOrPlanner, requireDownloadManagerOrPlanner } = require('../middleware/auth');
 const { notify } = require('../notifications');
+const { decrypt } = require('../fieldCipher');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -27,10 +28,14 @@ const BASE_SELECT = `
   LEFT JOIN users rs ON mv.report_sent_by = rs.id
   LEFT JOIN users rc ON mv.report_sent_to_customer_by = rc.id`;
 
-// Parse the CSV of engineer IDs into an array of numbers
+// Parse the CSV of engineer IDs into an array of numbers, and decrypt
+// any customer PII fields that came through the JOIN as ciphertext.
 function parseEngIds(row) {
   return {
     ...row,
+    contact_name:  decrypt(row.contact_name),
+    contact_email: decrypt(row.contact_email),
+    contact_phone: decrypt(row.contact_phone),
     engineer_ids: row.engineer_ids_csv
       ? row.engineer_ids_csv.split(',').map(Number)
       : [],
