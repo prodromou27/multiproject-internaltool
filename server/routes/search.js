@@ -3,6 +3,52 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
 
+// Customer contact fields are encrypted at rest, so a SQL LIKE on them can't
+// match. Instead we fetch the set the user is allowed to see, decrypt in the
+// app layer, then substring-filter. Visibility mirrors the customers route:
+// managers/planners see all; engineers see only customers tied to their own
+// projects or maintenance visits.
+function searchCustomers(req, term, limit) {
+  const needle = (term || '').trim().toLowerCase();
+
+  let rows;
+  if (req.user.role === 'manager' || req.user.role === 'planner') {
+    rows = db.prepare(`
+      SELECT cu.id, cu.name, cu.contact_name, cu.contact_email, cu.contact_phone,
+             (SELECT COUNT(*) FROM projects           WHERE customer_id = cu.id) AS project_count,
+             (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = cu.id) AS visit_count
+      FROM customers cu ORDER BY cu.name ASC
+    `).all();
+  } else {
+    rows = db.prepare(`
+      SELECT DISTINCT cu.id, cu.name, cu.contact_name, cu.contact_email, cu.contact_phone,
+             (SELECT COUNT(*) FROM projects           WHERE customer_id = cu.id) AS project_count,
+             (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = cu.id) AS visit_count
+      FROM customers cu
+      WHERE EXISTS (SELECT 1 FROM projects p JOIN project_assignments pa ON pa.project_id = p.id WHERE p.customer_id = cu.id AND pa.user_id = ?)
+         OR EXISTS (SELECT 1 FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id WHERE mv.customer_id = cu.id AND mve.user_id = ?)
+      ORDER BY cu.name ASC
+    `).all(req.user.id, req.user.id);
+  }
+
+  const out = [];
+  for (const r of rows) {
+    const dec = {
+      ...r,
+      contact_name:  decrypt(r.contact_name),
+      contact_email: decrypt(r.contact_email),
+      contact_phone: decrypt(r.contact_phone),
+    };
+    const hay = [dec.name, dec.contact_name, dec.contact_email]
+      .filter(Boolean).join(' ').toLowerCase();
+    if (!needle || hay.includes(needle)) {
+      out.push(dec);
+      if (out.length >= limit) break;
+    }
+  }
+  return out;
+}
+
 // ── Quick search (top bar dropdown) ──────────────────────────────────────────
 router.get('/', requireAuth, (req, res) => {
   const q = (req.query.q || '').trim();
@@ -53,39 +99,12 @@ router.get('/', requireAuth, (req, res) => {
     `).all(req.user.id, like, like);
   }
 
-  // Customers visible to manager + planner; engineers see only customers
-  // linked to their assigned projects / maintenance visits
-  let customers = [];
-  if (req.user.role === 'manager' || req.user.role === 'planner') {
-    customers = db.prepare(`
-      SELECT id, name, contact_name, contact_email
-      FROM customers
-      WHERE name LIKE ?
-      ORDER BY name ASC LIMIT 5
-    `).all(like);
-  } else {
-    // Engineer: only customers they have worked with
-    customers = db.prepare(`
-      SELECT DISTINCT cu.id, cu.name, cu.contact_name, cu.contact_email
-      FROM customers cu
-      WHERE cu.name LIKE ?
-        AND (
-          EXISTS (SELECT 1 FROM projects p JOIN project_assignments pa ON pa.project_id = p.id WHERE p.customer_id = cu.id AND pa.user_id = ?)
-          OR EXISTS (SELECT 1 FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id WHERE mv.customer_id = cu.id AND mve.user_id = ?)
-        )
-      ORDER BY cu.name ASC LIMIT 5
-    `).all(like, req.user.id, req.user.id);
-  }
+  // Customers — decrypt-and-filter (PII columns are encrypted at rest).
+  // Visibility is enforced inside searchCustomers().
+  const customers = searchCustomers(req, q, 5)
+    .map(({ contact_phone, project_count, visit_count, ...rest }) => rest);
 
-  res.json({
-    projects,
-    tasks,
-    customers: customers.map(c => ({
-      ...c,
-      contact_name:  decrypt(c.contact_name),
-      contact_email: decrypt(c.contact_email),
-    })),
-  });
+  res.json({ projects, tasks, customers });
 });
 
 // ── Smart structured search ──────────────────────────────────────────────────
@@ -255,38 +274,10 @@ router.get('/smart', requireAuth, (req, res) => {
   }
 
   // ── Customers ─────────────────────────────────────────────────────────────
+  // PII columns are encrypted at rest, so matching happens in the app layer
+  // (decrypt-and-filter). Visibility + substring matching live in searchCustomers().
   if (entity === 'all' || entity === 'customers') {
-    const c = [], p = [];
-
-    // Engineers only see customers linked to their projects/visits
-    if (req.user.role === 'engineer') {
-      c.push(`(
-        EXISTS (SELECT 1 FROM projects pr JOIN project_assignments pa ON pa.project_id = pr.id WHERE pr.customer_id = cu.id AND pa.user_id = ?)
-        OR EXISTS (SELECT 1 FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id WHERE mv.customer_id = cu.id AND mve.user_id = ?)
-      )`);
-      p.push(req.user.id, req.user.id);
-    }
-
-    if (like) {
-      c.push('cu.name LIKE ?');
-      p.push(like);
-    }
-
-    const where = c.length ? 'WHERE ' + c.join(' AND ') : '';
-    const rawCustomers = db.prepare(`
-      SELECT cu.id, cu.name, cu.contact_name, cu.contact_email, cu.contact_phone,
-             (SELECT COUNT(*) FROM projects          WHERE customer_id = cu.id) AS project_count,
-             (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = cu.id) AS visit_count
-      FROM customers cu
-      ${where}
-      ORDER BY cu.name ASC LIMIT 20
-    `).all(...p);
-    results.customers = rawCustomers.map(c => ({
-      ...c,
-      contact_name:  decrypt(c.contact_name),
-      contact_email: decrypt(c.contact_email),
-      contact_phone: decrypt(c.contact_phone),
-    }));
+    results.customers = searchCustomers(req, q, 20);
   }
 
   res.json({

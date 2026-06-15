@@ -74,6 +74,18 @@ app.use('/api/auth/change-password-first', authLimiter);
 app.use('/api/auth/forgot-password',       authLimiter);
 app.use('/api/auth/reset-password',        authLimiter);
 
+// ── Rate limiting on bulk-import endpoints ───────────────────────────────────
+// Each import can insert up to 5,000 rows; cap the burst rate to protect the DB.
+const importLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 10,                  // max 10 imports per window per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many imports. Please wait a few minutes and try again.' },
+});
+app.use('/api/customers/import',          importLimiter);
+app.use('/api/maintenance-visits/import', importLimiter);
+
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/projects', require('./routes/projects'));
