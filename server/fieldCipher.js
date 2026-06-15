@@ -16,14 +16,25 @@ const ALGO    = 'aes-256-gcm';
 const IV_LEN  = 12;   // 96-bit IV, recommended for GCM
 const PREFIX  = 'enc:';
 
+// Memoize the derived key buffer. Re-derives only if CUSTOMER_FIELD_KEY changes
+// (e.g. in tests), so the hot path — called per field per row per request — is
+// a cheap string comparison rather than a Buffer.from() + length check every time.
+let _cachedHex = null;
+let _cachedKey = null;
+
 function getKey() {
   const hex = process.env.CUSTOMER_FIELD_KEY;
-  if (!hex) return null;
+  if (!hex) { _cachedHex = null; _cachedKey = null; return null; }
+  if (hex === _cachedHex) return _cachedKey;
+
+  _cachedHex = hex;
   if (hex.length !== 64) {
     console.warn('[fieldCipher] CUSTOMER_FIELD_KEY must be exactly 64 hex chars. Encryption disabled.');
+    _cachedKey = null;
     return null;
   }
-  return Buffer.from(hex, 'hex');
+  _cachedKey = Buffer.from(hex, 'hex');
+  return _cachedKey;
 }
 
 /** Returns true when a valid key is configured. */
