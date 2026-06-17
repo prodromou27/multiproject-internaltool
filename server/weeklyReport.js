@@ -20,15 +20,19 @@ function daysDiff(str) {
 }
 
 // ── Gather all report data ────────────────────────────────────────────────────
-function gatherReportData() {
+async function gatherReportData() {
   const now        = new Date();
   const todayStr   = now.toISOString().slice(0, 10);
+  const past1Str   = new Date(now - 1  * 86400000).toISOString().slice(0, 10);
+  const past3Str   = new Date(now - 3  * 86400000).toISOString().slice(0, 10);
   const past7Str   = new Date(now - 7  * 86400000).toISOString().slice(0, 10);
   const next7Str   = new Date(now + 7  * 86400000).toISOString().slice(0, 10);
   const next14Str  = new Date(now + 14 * 86400000).toISOString().slice(0, 10);
+  // 'YYYY-MM-DD HH:MM:SS' cutoff matching how timestamps are stored
+  const past7DateTime = new Date(now - 7 * 86400000).toISOString().slice(0, 19).replace('T', ' ');
 
   // 1. Projects opened in past 7 days
-  const projectsOpened = db.prepare(`
+  const projectsOpened = await db.prepare(`
     SELECT p.id, p.title, p.priority, p.deadline, p.status,
            cu.name AS customer_name, u.name AS created_by_name
     FROM projects p
@@ -39,7 +43,7 @@ function gatherReportData() {
   `).all(past7Str);
 
   // 2. Upcoming deadlines (next 14 days) — projects + tasks
-  const upcomingProjectDeadlines = db.prepare(`
+  const upcomingProjectDeadlines = await db.prepare(`
     SELECT 'project' AS type, p.id, p.title, p.deadline, p.status, p.priority,
            cu.name AS customer_name, NULL AS assigned_to
     FROM projects p
@@ -49,7 +53,7 @@ function gatherReportData() {
     ORDER BY p.deadline ASC LIMIT 20
   `).all(todayStr, next14Str);
 
-  const upcomingTaskDeadlines = db.prepare(`
+  const upcomingTaskDeadlines = await db.prepare(`
     SELECT 'task' AS type, t.id, t.title, t.deadline, t.status, t.priority,
            p.title AS customer_name, u.name AS assigned_to
     FROM tasks t
@@ -65,7 +69,7 @@ function gatherReportData() {
     .slice(0, 30);
 
   // 3. Open high-priority tasks
-  const highPriorityTasks = db.prepare(`
+  const highPriorityTasks = await db.prepare(`
     SELECT t.id, t.title, t.status, t.deadline, t.created_at,
            p.title AS project_title, u.name AS assigned_to_name,
            cu.name AS customer_name
@@ -79,7 +83,7 @@ function gatherReportData() {
   `).all();
 
   // 4. Maintenance visits this week (past 7 days + next 7 days)
-  const maintenanceVisits = db.prepare(`
+  const maintenanceVisits = await db.prepare(`
     SELECT mv.id, mv.title, mv.status, mv.scheduled_date,
            mv.report_sent, mv.report_sent_to_customer,
            cu.name AS customer_name,
@@ -95,7 +99,7 @@ function gatherReportData() {
   `).all(past7Str, next7Str);
 
   // 5. All reports pending (completed/passed visits without report)
-  const reportsPending = db.prepare(`
+  const reportsPending = await db.prepare(`
     SELECT mv.id, mv.title, mv.scheduled_date,
            cu.name AS customer_name,
            (SELECT GROUP_CONCAT(u2.name, ', ')
@@ -110,7 +114,7 @@ function gatherReportData() {
   `).all(todayStr);
 
   // 6. Engineer workload
-  const engineerWorkload = db.prepare(`
+  const engineerWorkload = await db.prepare(`
     SELECT u.id, u.name,
            COUNT(CASE WHEN t.status IN ('open','in_progress') THEN 1 END)              AS open_tasks,
            COUNT(CASE WHEN t.status IN ('open','in_progress') AND t.priority='high' THEN 1 END) AS high_tasks,
@@ -127,7 +131,7 @@ function gatherReportData() {
   `).all(past7Str, todayStr);
 
   // 7. Closure approvals pending
-  const closurePending = db.prepare(`
+  const closurePending = await db.prepare(`
     SELECT p.id, p.title, p.priority, p.deadline, p.closure_requested_at,
            cu.name AS customer_name
     FROM projects p
@@ -137,26 +141,27 @@ function gatherReportData() {
   `).all();
 
   // 8. New customers this week
-  const newCustomers = db.prepare(`
+  const newCustomers = await db.prepare(`
     SELECT id, name, contact_name, contact_email
     FROM customers
     WHERE date(created_at) >= ?
     ORDER BY created_at DESC
   `).all(past7Str);
 
-  // 9. SLA snapshot
+  // 9. SLA snapshot. Date-modifier cutoffs (SQLite date('now','-N days')) are
+  // computed in JS and passed as parameters since Postgres has no such function.
   const slaSnapshot = {
-    mvReportBreaches:   db.prepare(`SELECT COUNT(*) AS n FROM maintenance_visits WHERE report_sent=0 AND status!='cancelled' AND scheduled_date < date('now','-7 days')`).get().n,
-    closureBreaches:    db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status='pending_closure' AND closure_requested_at < date('now','-3 days')`).get().n,
-    highTaskBreaches:   db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE priority='high' AND status NOT IN ('done','cancelled') AND date(created_at) < date('now','-1 day')`).get().n,
-    staleProjects:      db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status IN ('active','on_hold') AND updated_at < datetime('now','-7 days')`).get().n,
+    mvReportBreaches:   (await db.prepare(`SELECT COUNT(*) AS n FROM maintenance_visits WHERE report_sent=0 AND status!='cancelled' AND scheduled_date < ?`).get(past7Str)).n,
+    closureBreaches:    (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status='pending_closure' AND closure_requested_at < ?`).get(past3Str)).n,
+    highTaskBreaches:   (await db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE priority='high' AND status NOT IN ('done','cancelled') AND date(created_at) < ?`).get(past1Str)).n,
+    staleProjects:      (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status IN ('active','on_hold') AND updated_at < ?`).get(past7DateTime)).n,
   };
 
   // 10. Summary stats
   const stats = {
-    activeProjects:  db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status IN ('active','on_hold')`).get().n,
-    openTasks:       db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE status IN ('open','in_progress')`).get().n,
-    overdueProjects: db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE deadline < ? AND status NOT IN ('closed','cancelled')`).get(todayStr).n,
+    activeProjects:  (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status IN ('active','on_hold')`).get()).n,
+    openTasks:       (await db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE status IN ('open','in_progress')`).get()).n,
+    overdueProjects: (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE deadline < ? AND status NOT IN ('closed','cancelled')`).get(todayStr)).n,
     pendingClosure:  closurePending.length,
   };
 
@@ -477,14 +482,14 @@ function buildSubject(data) {
 }
 
 // ── Get report recipients from DB ─────────────────────────────────────────────
-function getRecipients() {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
+async function getRecipients() {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
   if (!row) return [];
   try {
     const cfg = JSON.parse(row.value);
     if (!cfg.recipients?.length) return [];
     // Fetch emails for recipient user IDs
-    const users = db.prepare(
+    const users = await db.prepare(
       `SELECT email FROM users WHERE id IN (${cfg.recipients.map(() => '?').join(',')}) AND active = 1`
     ).all(...cfg.recipients);
     return users.map(u => u.email);
@@ -495,10 +500,10 @@ function getRecipients() {
 async function sendWeeklyReport() {
   console.log('[weekly-report] Generating report…');
   try {
-    const data       = gatherReportData();
+    const data       = await gatherReportData();
     const html       = buildReportHtml(data);
     const subject    = buildSubject(data);
-    const recipients = getRecipients();
+    const recipients = await getRecipients();
 
     if (!recipients.length) {
       console.log('[weekly-report] No recipients configured — skipping send.');
@@ -508,12 +513,12 @@ async function sendWeeklyReport() {
     await sendEmail({ to: recipients, subject, html });
 
     // Record last sent timestamp
-    const row = db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
+    const row = await db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
     if (row) {
       try {
         const cfg = JSON.parse(row.value);
         cfg.last_sent = new Date().toISOString();
-        db.prepare("UPDATE settings SET value = ? WHERE key = 'weekly_report_config'").run(JSON.stringify(cfg));
+        await db.prepare("UPDATE settings SET value = ? WHERE key = 'weekly_report_config'").run(JSON.stringify(cfg));
       } catch(_) {}
     }
 

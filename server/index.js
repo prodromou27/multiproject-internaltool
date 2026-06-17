@@ -151,13 +151,13 @@ app.get('*', (req, res) => {
 });
 
 // ── Daily next-day visit reminders ───────────────────────────────────────────
-function sendNextDayReminders() {
+async function sendNextDayReminders() {
   try {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = tomorrow.toISOString().slice(0, 10);
 
-    const visits = db.prepare(`
+    const visits = await db.prepare(`
       SELECT mv.id, mv.title, mv.scheduled_date,
              cu.name AS customer_name,
              mve.user_id,
@@ -214,32 +214,45 @@ const certDir  = path.join(__dirname, 'certs');
 const certFile = path.join(certDir, 'cert.pem');
 const keyFile  = path.join(certDir, 'key.pem');
 
-if (fs.existsSync(certFile) && fs.existsSync(keyFile)) {
-  const tlsOptions = { cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) };
+// Initialize the database (create schema + seed) before accepting traffic, then
+// start the server. In containers there are no TLS certs, so we serve HTTP on
+// PORT (TLS is terminated by an upstream proxy / load balancer).
+(async () => {
+  try {
+    await db.init();
+    console.log('[db] schema ready');
+  } catch (e) {
+    console.error('[db] initialization failed — refusing to start:', e.message);
+    process.exit(1);
+  }
 
-  https.createServer(tlsOptions, app).listen(HTTPS_PORT, '0.0.0.0', () => {
-    console.log(`Server running on https://0.0.0.0:${HTTPS_PORT}`);
-    scheduleDailyReminders();
-    initScheduler();
-  });
+  if (fs.existsSync(certFile) && fs.existsSync(keyFile)) {
+    const tlsOptions = { cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) };
 
-  const httpRedirect = http.createServer((req, res) => {
-    const host = (req.headers.host || 'localhost').replace(/:\d+$/, '');
-    res.writeHead(301, { Location: `https://${host}${req.url}` });
-    res.end();
-  });
-  httpRedirect.on('error', (err) => {
-    console.warn(`[HTTP redirect] Could not bind port ${HTTP_PORT}: ${err.message} — skipping`);
-  });
-  httpRedirect.listen(HTTP_PORT, '0.0.0.0', () => {
-    console.log(`HTTP redirect listening on port ${HTTP_PORT} → HTTPS`);
-  });
+    https.createServer(tlsOptions, app).listen(HTTPS_PORT, '0.0.0.0', () => {
+      console.log(`Server running on https://0.0.0.0:${HTTPS_PORT}`);
+      scheduleDailyReminders();
+      initScheduler();
+    });
 
-} else {
-  const PORT = process.env.PORT || 3001;
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://0.0.0.0:${PORT} (no TLS certs found)`);
-    scheduleDailyReminders();
-    initScheduler();
-  });
-}
+    const httpRedirect = http.createServer((req, res) => {
+      const host = (req.headers.host || 'localhost').replace(/:\d+$/, '');
+      res.writeHead(301, { Location: `https://${host}${req.url}` });
+      res.end();
+    });
+    httpRedirect.on('error', (err) => {
+      console.warn(`[HTTP redirect] Could not bind port ${HTTP_PORT}: ${err.message} — skipping`);
+    });
+    httpRedirect.listen(HTTP_PORT, '0.0.0.0', () => {
+      console.log(`HTTP redirect listening on port ${HTTP_PORT} → HTTPS`);
+    });
+
+  } else {
+    const PORT = process.env.PORT || 3001;
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://0.0.0.0:${PORT} (no TLS certs found)`);
+      scheduleDailyReminders();
+      initScheduler();
+    });
+  }
+})();

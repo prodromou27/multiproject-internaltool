@@ -10,8 +10,8 @@ let _timeout  = null;
 let _interval = null;
 
 // ── Read config from DB ───────────────────────────────────────────────────────
-function getConfig() {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
+async function getConfig() {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
   if (!row) return null;
   try { return JSON.parse(row.value); } catch { return null; }
 }
@@ -39,9 +39,9 @@ function clearSchedule() {
 }
 
 // ── Schedule or re-schedule based on current DB config ───────────────────────
-function reschedule() {
+async function reschedule() {
   clearSchedule();
-  const cfg = getConfig();
+  const cfg = await getConfig();
 
   if (!cfg?.enabled) {
     console.log('[weekly-report] Scheduler disabled.');
@@ -65,11 +65,11 @@ function reschedule() {
 }
 
 // ── Init on startup ───────────────────────────────────────────────────────────
-function initScheduler() {
+async function initScheduler() {
   // Ensure default config exists if none set
-  const existing = db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
+  const existing = await db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
   if (!existing) {
-    db.prepare("INSERT INTO settings (key, value) VALUES ('weekly_report_config', ?)")
+    await db.prepare("INSERT INTO settings (key, value) VALUES ('weekly_report_config', ?)")
       .run(JSON.stringify({
         enabled:    false,
         day:        1,      // Monday
@@ -79,7 +79,7 @@ function initScheduler() {
         last_sent:  null,
       }));
   }
-  reschedule();
+  await reschedule();
 }
 
 module.exports = { initScheduler, reschedule };

@@ -7,8 +7,8 @@ const http  = require('http');
 const db    = require('./db');
 
 // ── Fetch settings from DB ───────────────────────────────────────────────────
-function getSettings() {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get();
+async function getSettings() {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get();
   if (!row) return null;
   try { return JSON.parse(row.value); } catch { return null; }
 }
@@ -103,9 +103,9 @@ async function sendWebex(cfg, msg, engineerEmail) {
 }
 
 // ── Persist notification to DB for a specific user ──────────────────────────
-function persistNotification(userId, type, title, body, link) {
+async function persistNotification(userId, type, title, body, link) {
   try {
-    db.prepare(
+    await db.prepare(
       `INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)`
     ).run(userId, type, title, body || null, link || null);
   } catch (e) {
@@ -206,24 +206,24 @@ function notify(event, data) {
         const body = data.project_title
           ? `${data.task_title} · ${data.project_title}`
           : data.task_title;
-        persistNotification(data.engineer_id, event, 'New task assigned to you', body, '/tasks');
+        await persistNotification(data.engineer_id, event, 'New task assigned to you', body, '/tasks');
       } else if (event === 'project.assigned' && data.engineer_id) {
         const link = data.project_id ? `/projects/${data.project_id}` : '/projects';
-        persistNotification(data.engineer_id, event, `Added to project: ${data.project_title}`, null, link);
+        await persistNotification(data.engineer_id, event, `Added to project: ${data.project_title}`, null, link);
       } else if (event === 'visit.assigned' && data.engineer_id) {
         const body = `${data.visit_title} · ${data.customer_name} · ${data.scheduled_date}`;
-        persistNotification(data.engineer_id, event, 'Maintenance visit assigned to you', body, '/maintenance-visits');
+        await persistNotification(data.engineer_id, event, 'Maintenance visit assigned to you', body, '/maintenance-visits');
       } else if (event === 'visit.reminder' && data.engineer_id) {
         // Dedup: only create one reminder per visit per user per day
         const dedupLink = `/maintenance-visits?reminder=${data.visit_id}`;
         const today = new Date().toISOString().slice(0, 10);
         try {
-          const exists = db.prepare(
+          const exists = await db.prepare(
             `SELECT 1 FROM notifications WHERE user_id = ? AND link = ? AND date(created_at) = ?`
           ).get(data.engineer_id, dedupLink, today);
           if (!exists) {
             const body = `${data.visit_title} · ${data.customer_name} · ${data.scheduled_date}`;
-            persistNotification(data.engineer_id, event, '🔔 Visit tomorrow: ' + data.visit_title, body, dedupLink);
+            await persistNotification(data.engineer_id, event, '🔔 Visit tomorrow: ' + data.visit_title, body, dedupLink);
           }
         } catch (e) {
           console.error('[notify visit.reminder dedup]', e.message);
@@ -231,16 +231,18 @@ function notify(event, data) {
       } else if (event === 'report.submitted') {
         // Notify all active managers
         try {
-          const managers = db.prepare("SELECT id FROM users WHERE role = 'manager' AND active = 1").all();
+          const managers = await db.prepare("SELECT id FROM users WHERE role = 'manager' AND active = 1").all();
           const body = `${data.visit_title} · ${data.customer_name} · by ${data.engineer_name}`;
-          managers.forEach(m => persistNotification(m.id, event, 'Report submitted for review', body, '/maintenance-visits'));
+          for (const m of managers) {
+            await persistNotification(m.id, event, 'Report submitted for review', body, '/maintenance-visits');
+          }
         } catch (e) {
           console.error('[notify persist managers]', e.message);
         }
       }
 
       // ── External channels (Teams / Webex) ─────────────────────────────────
-      const settings = getSettings();
+      const settings = await getSettings();
       if (!settings) return;
 
       const notifyOn = settings.notify_on || {};

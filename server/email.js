@@ -5,8 +5,8 @@ const nodemailer = require('nodemailer');
 const db = require('./db');
 
 // ── Read SMTP settings from DB ───────────────────────────────────────────────
-function getSmtpSettings() {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'email_smtp'").get();
+async function getSmtpSettings() {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'email_smtp'").get();
   if (!row) return null;
   try { return JSON.parse(row.value); } catch { return null; }
 }
@@ -25,7 +25,7 @@ function createTransport(smtp) {
 
 // ── Send an email ─────────────────────────────────────────────────────────────
 async function sendEmail({ to, subject, html, text }) {
-  const smtp = getSmtpSettings();
+  const smtp = await getSmtpSettings();
   if (!smtp?.host) throw new Error('Email SMTP is not configured. Please set it up in Admin → Weekly Report.');
 
   const transporter = createTransport(smtp);
