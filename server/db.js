@@ -41,6 +41,9 @@ const pool = new Pool({
 
 pool.on('error', (err) => console.error('[pg pool]', err.message));
 
+// Tables with no `id` column — never append RETURNING id to inserts into these.
+const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|task_dependencies|task_custom_values|user_project_pins)\b/i;
+
 // ── SQL translation (SQLite → Postgres), memoized per unique SQL string ──────
 const _cache = new Map();
 
@@ -63,6 +66,11 @@ function translate(sql) {
 
   // GROUP_CONCAT(expr, sep) → string_agg(expr, sep)
   s = s.replace(/\bGROUP_CONCAT\(/gi, 'string_agg(');
+
+  // SQLite LIKE is case-insensitive for ASCII; Postgres LIKE is case-sensitive.
+  // Use ILIKE so search keeps matching case-insensitively. (\bLIKE\b doesn't
+  // match inside ILIKE, so this is safe and idempotent.)
+  s = s.replace(/\bLIKE\b/g, 'ILIKE');
 
   // INSERT OR IGNORE → INSERT ... ON CONFLICT DO NOTHING
   s = s.replace(/\bINSERT\s+OR\s+IGNORE\s+INTO\b/gi, 'INSERT INTO');
@@ -92,9 +100,9 @@ function makeInterface(runner) {
         async run(...params) {
           let sql = translate(rawSql);
           // Auto-return the new id for inserts so callers get lastInsertRowid.
-          // OR-IGNORE / ON-CONFLICT and explicit RETURNING are left alone; every
-          // plain INSERT in this app targets a table with an `id` column.
-          if (/^\s*insert\s/i.test(sql) && !/returning/i.test(sql) && !/on\s+conflict/i.test(sql)) {
+          // Skip OR-IGNORE / ON-CONFLICT, statements with explicit RETURNING, and
+          // the id-less tables (settings + junction tables) which have no `id`.
+          if (/^\s*insert\s/i.test(sql) && !/returning/i.test(sql) && !/on\s+conflict/i.test(sql) && !NO_ID_TABLE_RE.test(sql)) {
             sql = sql.replace(/;?\s*$/, '') + ' RETURNING id';
           }
           const r = await runner.query(sql, params);

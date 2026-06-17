@@ -134,7 +134,7 @@ router.get('/export', requireDownloadManagerOrPlanner, async (req, res) => {
     LEFT JOIN customers c ON mv.customer_id = c.id
     LEFT JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
     LEFT JOIN users u ON u.id = mve.user_id
-    GROUP BY mv.id
+    GROUP BY mv.id, c.name
     ORDER BY mv.scheduled_date DESC
   `).all());
 
