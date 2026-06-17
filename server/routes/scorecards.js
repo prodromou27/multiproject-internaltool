@@ -82,7 +82,7 @@ router.get('/pending-projects', requireManager, async (req, res) => {
            ON sc.project_id = p.id AND sc.engineer_id = pa.user_id
     WHERE p.status IN ('closed','completed')
     GROUP BY p.id
-    HAVING total_engineers > scored_engineers
+    HAVING COUNT(DISTINCT pa.user_id) > COUNT(DISTINCT sc.engineer_id)
     ORDER BY p.title
   `).all());
 
