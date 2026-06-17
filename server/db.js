@@ -604,6 +604,14 @@ if (!userColsTotp.includes('password_changed_at'))   db.exec("ALTER TABLE users 
 // Back-fill: treat created_at as password-set date for existing users
 db.exec("UPDATE users SET password_changed_at = created_at WHERE password_changed_at IS NULL");
 
+// Migrate: users — add iCal feed-token columns.
+// A long-lived, revocable token scoped ONLY to the read-only calendar feed
+// (GET /api/calendar/ical). Stored as a SHA-256 hash at rest so the raw value
+// never sits in the DB; it grants no API access, unlike a session JWT.
+const userColsIcal = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+if (!userColsIcal.includes('ical_token_hash'))       db.exec("ALTER TABLE users ADD COLUMN ical_token_hash TEXT");
+if (!userColsIcal.includes('ical_token_created_at')) db.exec("ALTER TABLE users ADD COLUMN ical_token_created_at TEXT");
+
 // Password-reset tokens (for self-service forgot-password flow)
 db.exec(`
   CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -646,6 +654,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_mv_scheduled_date       ON maintenance_visits(scheduled_date);
   CREATE INDEX IF NOT EXISTS idx_scorecards_engineer     ON project_scorecards(engineer_id);
   CREATE INDEX IF NOT EXISTS idx_scorecards_project      ON project_scorecards(project_id);
+  CREATE INDEX IF NOT EXISTS idx_users_ical_token        ON users(ical_token_hash);
 `);
 
 // ── Feature tables: pinned projects, custom task fields ──────────────────────

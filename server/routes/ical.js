@@ -1,6 +1,6 @@
 const router = require('express').Router();
+const crypto = require('crypto');
 const db     = require('../db');
-const { verifyJwt } = require('../middleware/auth');
 
 // Escape special iCal text characters
 function icalEsc(str) {
@@ -34,24 +34,29 @@ function fold(line) {
 }
 
 /**
- * GET /api/calendar/ical?token=JWT
+ * GET /api/calendar/ical?token=FEED_TOKEN
  *
  * Returns an .ics feed containing:
  *  - Upcoming maintenance visits (as events)
  *  - Tasks with deadlines (as all-day events)
  *
- * Authentication is via the ?token= query param so the URL can be
- * pasted into a calendar app as a subscription URL.
+ * Authentication is via a dedicated, long-lived iCal feed token passed in the
+ * ?token= query param so the URL can be pasted into a calendar app. The token
+ * is an opaque random value (issued by POST /api/auth/ical-token) stored only
+ * as a SHA-256 hash; we look the user up by that hash. Unlike a session JWT it
+ * is scoped to this read-only feed and grants NO access to any other API — so
+ * it is safe for it to land in third-party calendar-server and proxy logs.
  */
 router.get('/', (req, res) => {
-  // Auth via query param (same JWT used for API calls)
-  let user;
-  try {
-    user = verifyJwt(req.query.token);
-  } catch {
+  const raw = req.query.token;
+  if (!raw || typeof raw !== 'string')
     return res.status(401).send('Invalid or missing token');
-  }
-  if (!user?.id) return res.status(401).send('Invalid token');
+
+  const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
+  const user = db.prepare(
+    "SELECT id, name, role FROM users WHERE ical_token_hash = ? AND active = 1"
+  ).get(tokenHash);
+  if (!user) return res.status(401).send('Invalid or missing token');
 
   const lines = [
     'BEGIN:VCALENDAR',

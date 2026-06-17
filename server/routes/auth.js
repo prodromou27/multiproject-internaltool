@@ -381,6 +381,36 @@ router.post('/download-token', requireAuth, (req, res) => {
   res.json({ token });
 });
 
+/* ── iCal feed token ─────────────────────────────────────────
+   A long-lived, revocable token scoped ONLY to the read-only
+   calendar feed (GET /api/calendar/ical?token=…). Stored as a
+   SHA-256 hash at rest; the raw value is shown to the user once
+   on generation. Unlike a session JWT this token grants no API
+   access, so it is safe to embed in a subscription URL that ends
+   up in third-party calendar-server and reverse-proxy logs.
+   ──────────────────────────────────────────────────────────── */
+
+// Status — whether the user currently has a feed token (never returns the token)
+router.get('/ical-token', requireAuth, (req, res) => {
+  const row = db.prepare('SELECT ical_token_created_at FROM users WHERE id = ?').get(req.user.id);
+  res.json({ enabled: !!(row && row.ical_token_created_at), created_at: row ? row.ical_token_created_at : null });
+});
+
+// Generate / regenerate — invalidates any previous feed URL, returns the raw token once
+router.post('/ical-token', requireAuth, (req, res) => {
+  const rawToken  = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  db.prepare("UPDATE users SET ical_token_hash = ?, ical_token_created_at = datetime('now') WHERE id = ?")
+    .run(tokenHash, req.user.id);
+  res.json({ token: rawToken });
+});
+
+// Revoke — invalidates the current feed URL without issuing a new one
+router.delete('/ical-token', requireAuth, (req, res) => {
+  db.prepare('UPDATE users SET ical_token_hash = NULL, ical_token_created_at = NULL WHERE id = ?').run(req.user.id);
+  res.json({ ok: true });
+});
+
 // POST /api/auth/avatar — upload profile picture
 router.post('/avatar', requireAuth, (req, res, next) => {
   avatarUpload.single('avatar')(req, res, err => {
