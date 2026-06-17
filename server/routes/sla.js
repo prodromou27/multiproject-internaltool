@@ -18,12 +18,12 @@ function workingDaysBetween(startStr, endStr) {
   return count;
 }
 
-router.get('/overview', requireManager, (req, res) => {
+router.get('/overview', requireManager, async (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
 
   // ── 1. MV Report Complete SLA (7 working days from scheduled_date) ────
   const MV_SLA = 7;
-  const allMVs = db.prepare(`
+  const allMVs = (await db.prepare(`
     SELECT mv.id, mv.title, mv.scheduled_date, mv.report_sent, mv.report_sent_at,
            mv.report_sent_to_customer, mv.status,
            c.name AS customer_name,
@@ -33,7 +33,7 @@ router.get('/overview', requireManager, (req, res) => {
     FROM maintenance_visits mv
     JOIN customers c ON mv.customer_id = c.id
     WHERE mv.status != 'cancelled'
-  `).all();
+  `).all());
 
   const mvItems = allMVs.map(mv => {
     // If report already complete, measure days to completion; otherwise days elapsed so far
@@ -61,13 +61,13 @@ router.get('/overview', requireManager, (req, res) => {
 
   // ── 2. Project Status Update SLA (every 7 calendar days) ─────────────
   const PROJ_SLA = 7;
-  const activeProjects = db.prepare(`
+  const activeProjects = (await db.prepare(`
     SELECT p.id, p.title, p.status, p.created_at,
       (SELECT MAX(psu.created_at) FROM project_status_updates psu
        WHERE psu.project_id = p.id) AS last_status_update
     FROM projects p
     WHERE p.status NOT IN ('closed', 'cancelled', 'pending_approval')
-  `).all();
+  `).all());
 
   const projItems = activeProjects.map(p => {
     const lastUpdate = (p.last_status_update || p.created_at).slice(0, 10);
@@ -85,7 +85,7 @@ router.get('/overview', requireManager, (req, res) => {
 
   // ── 3. High-priority task first response (1 working day) ─────────────
   const TASK_SLA = 1;
-  const highPriTasks = db.prepare(`
+  const highPriTasks = (await db.prepare(`
     SELECT t.id, t.title, t.created_at, t.status,
            p.title AS project_title,
            u.name  AS assigned_to_name
@@ -93,7 +93,7 @@ router.get('/overview', requireManager, (req, res) => {
     LEFT JOIN projects p ON t.project_id = p.id
     LEFT JOIN users u ON t.assigned_to = u.id
     WHERE t.priority = 'high' AND t.status = 'open'
-  `).all();
+  `).all());
 
   const taskItems = highPriTasks.map(t => {
     const wd = workingDaysBetween(t.created_at.slice(0, 10), today);
@@ -110,11 +110,11 @@ router.get('/overview', requireManager, (req, res) => {
 
   // ── 4. Closure approval SLA (3 working days) ──────────────────────────
   const CLOSURE_SLA = 3;
-  const pendingClosure = db.prepare(`
+  const pendingClosure = (await db.prepare(`
     SELECT p.id, p.title, p.closure_requested_at
     FROM projects p
     WHERE p.status = 'pending_approval' AND p.closure_requested_at IS NOT NULL
-  `).all();
+  `).all());
 
   const closureItems = pendingClosure.map(p => {
     const wd = workingDaysBetween(p.closure_requested_at.slice(0, 10), today);

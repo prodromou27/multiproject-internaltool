@@ -35,15 +35,15 @@ const DEFAULT_CONFIG = {
   ],
 };
 
-router.get('/', requireAuth, (req, res) => {
-  const row = db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
+router.get('/', requireAuth, async (req, res) => {
+  const row = (await db.prepare("SELECT value FROM settings WHERE key='status_config'").get());
   if (row) {
     try { return res.json(JSON.parse(row.value)); } catch {}
   }
   res.json(DEFAULT_CONFIG);
 });
 
-router.put('/', requireManager, (req, res) => {
+router.put('/', requireManager, async (req, res) => {
   const config = req.body;
   if (!config || typeof config !== 'object') return res.status(400).json({ error: 'Invalid config' });
   // Basic validation
@@ -53,7 +53,7 @@ router.put('/', requireManager, (req, res) => {
       if (!s.value || !s.label) return res.status(400).json({ error: 'Each status needs value and label' });
     }
   }
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('status_config', ?)").run(JSON.stringify(config));
+  (await db.prepare("INSERT INTO settings (key, value) VALUES ('status_config', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify(config)));
   res.json({ ok: true });
 });
 

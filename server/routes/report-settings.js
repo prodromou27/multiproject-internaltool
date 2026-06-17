@@ -6,14 +6,14 @@ const { gatherReportData, buildReportHtml, buildSubject, sendWeeklyReport } = re
 const { reschedule } = require('../reportScheduler');
 
 // ── SMTP settings ─────────────────────────────────────────────────────────────
-router.get('/smtp', requireManager, (req, res) => {
+router.get('/smtp', requireManager, async (req, res) => {
   const smtp = getSmtpSettings() || {};
   // Never return the password in GET response
   const { password, ...safe } = smtp;
   res.json({ ...safe, password_set: !!password });
 });
 
-router.put('/smtp', requireManager, (req, res) => {
+router.put('/smtp', requireManager, async (req, res) => {
   const current = getSmtpSettings() || {};
   const { password, ...rest } = req.body;
   // If no new password provided, keep the existing one
@@ -22,7 +22,7 @@ router.put('/smtp', requireManager, (req, res) => {
     ...rest,
     password: (password && password !== '••••••••') ? password : (current.password || ''),
   };
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('email_smtp', ?)").run(JSON.stringify(merged));
+  (await db.prepare("INSERT INTO settings (key, value) VALUES ('email_smtp', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify(merged)));
   res.json({ ok: true });
 });
 
@@ -51,16 +51,16 @@ router.post('/smtp/test', requireManager, async (req, res) => {
 });
 
 // ── Weekly report schedule config ─────────────────────────────────────────────
-router.get('/schedule', requireManager, (req, res) => {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
+router.get('/schedule', requireManager, async (req, res) => {
+  const row = (await db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get());
   if (!row) return res.json({ enabled: false, day: 1, hour: 9, minute: 0, recipients: [], last_sent: null });
   try { res.json(JSON.parse(row.value)); } catch { res.json({}); }
 });
 
-router.put('/schedule', requireManager, (req, res) => {
+router.put('/schedule', requireManager, async (req, res) => {
   const { enabled, day, hour, minute, recipients } = req.body;
-  const current = (() => {
-    const row = db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
+  const current = await (async () => {
+    const row = (await db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get());
     if (!row) return {};
     try { return JSON.parse(row.value); } catch { return {}; }
   })();
@@ -72,14 +72,14 @@ router.put('/schedule', requireManager, (req, res) => {
     minute:     Number(minute) ?? 0,
     recipients: Array.isArray(recipients) ? recipients : (current.recipients || []),
   };
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('weekly_report_config', ?)").run(JSON.stringify(updated));
+  (await db.prepare("INSERT INTO settings (key, value) VALUES ('weekly_report_config', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify(updated)));
   // Reschedule with new config
-  reschedule();
+  await reschedule();
   res.json({ ok: true });
 });
 
 // ── Preview — returns HTML for display in browser ─────────────────────────────
-router.get('/preview', requireManager, (req, res) => {
+router.get('/preview', requireManager, async (req, res) => {
   try {
     const data = gatherReportData();
     const html = buildReportHtml(data);
@@ -91,7 +91,7 @@ router.get('/preview', requireManager, (req, res) => {
 });
 
 // ── Preview as JSON — returns data + subject for display in the panel ─────────
-router.get('/preview-data', requireManager, (req, res) => {
+router.get('/preview-data', requireManager, async (req, res) => {
   try {
     const data    = gatherReportData();
     const subject = buildSubject(data);
@@ -116,10 +116,10 @@ router.post('/send-now', requireManager, async (req, res) => {
 });
 
 // ── Get managers list (for recipient selection) ───────────────────────────────
-router.get('/managers', requireManager, (req, res) => {
-  const managers = db.prepare(
+router.get('/managers', requireManager, async (req, res) => {
+  const managers = (await db.prepare(
     "SELECT id, name, email FROM users WHERE role = 'manager' AND active = 1 ORDER BY name ASC"
-  ).all();
+  ).all());
   res.json(managers);
 });
 

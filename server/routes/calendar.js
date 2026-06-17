@@ -3,7 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 
 // Returns all events for a given month: tasks (by deadline), project deadlines, maintenance visits
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { month } = req.query; // YYYY-MM
   if (!month || !/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'month param required (YYYY-MM)' });
 
@@ -24,7 +24,7 @@ router.get('/', requireAuth, (req, res) => {
     WHERE t.deadline >= ? AND t.deadline < ? AND t.status NOT IN ('completed','closed','cancelled')`;
   const taskParams = [start, end];
   if (!isManager) { taskQ += ' AND t.assigned_to = ?'; taskParams.push(req.user.id); }
-  const tasks = db.prepare(taskQ).all(...taskParams).map(r => ({ ...r, type: 'task' }));
+  const tasks = (await db.prepare(taskQ).all(...taskParams)).map(r => ({ ...r, type: 'task' }));
 
   // Project deadlines in the month
   let projQ = `SELECT p.id, p.title, p.deadline as date, p.status, p.priority
@@ -34,7 +34,7 @@ router.get('/', requireAuth, (req, res) => {
     projQ += ' AND EXISTS (SELECT 1 FROM project_assignments pa WHERE pa.project_id = p.id AND pa.user_id = ?)';
     projParams.push(req.user.id);
   }
-  const projects = db.prepare(projQ).all(...projParams).map(r => ({ ...r, type: 'project' }));
+  const projects = (await db.prepare(projQ).all(...projParams)).map(r => ({ ...r, type: 'project' }));
 
   // Maintenance visits in the month
   let mvQ = `SELECT mv.id, mv.title, mv.scheduled_date as date, mv.status, mv.report_sent,
@@ -51,7 +51,7 @@ router.get('/', requireAuth, (req, res) => {
     mvQ += ' AND EXISTS (SELECT 1 FROM maintenance_visit_engineers WHERE visit_id = mv.id AND user_id = ?)';
     mvParams.push(req.user.id);
   }
-  const visits = db.prepare(mvQ).all(...mvParams).map(r => ({ ...r, type: 'maintenance' }));
+  const visits = (await db.prepare(mvQ).all(...mvParams)).map(r => ({ ...r, type: 'maintenance' }));
 
   res.json({ tasks, projects, visits });
 });

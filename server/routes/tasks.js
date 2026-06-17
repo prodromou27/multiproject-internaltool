@@ -5,15 +5,15 @@ const { requireAuth, requireManager, requireDownloadAuth } = require('../middlew
 const { notify } = require('../notifications');
 
 /* ── helper: log activity into a project ──────────────────── */
-function logActivity(project_id, user_id, action, detail) {
+async function logActivity(project_id, user_id, action, detail) {
   if (!project_id) return;
   try {
-    db.prepare(`INSERT INTO project_activity (project_id, user_id, action, detail) VALUES (?, ?, ?, ?)`)
-      .run(project_id, user_id, action, detail || null);
+    (await db.prepare(`INSERT INTO project_activity (project_id, user_id, action, detail) VALUES (?, ?, ?, ?)`)
+      .run(project_id, user_id, action, detail || null));
   } catch (_) { /* non-fatal */ }
 }
 
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { project_id, assigned_to, adhoc } = req.query;
   let q = `SELECT t.*, u.name as assigned_to_name, c.name as created_by_name,
     COALESCE((SELECT ROUND(SUM(hours),1) FROM time_logs WHERE task_id = t.id),0) as logged_hours
@@ -35,18 +35,18 @@ router.get('/', requireAuth, (req, res) => {
   if (adhoc === '1') { q += ' AND t.is_adhoc = 1'; }
   q += ' ORDER BY t.created_at DESC';
 
-  let rows = db.prepare(q).all(...params);
+  let rows = (await db.prepare(q).all(...params));
 
   // Augment with is_blocked (has unfinished dependencies)
   if (rows.length && project_id) {
     const ids = rows.map(t => t.id);
     const placeholders = ids.map(() => '?').join(',');
-    const deps = db.prepare(`
+    const deps = (await db.prepare(`
       SELECT td.task_id, t.status as dep_status
       FROM task_dependencies td
       JOIN tasks t ON td.depends_on_id = t.id
       WHERE td.task_id IN (${placeholders})
-    `).all(...ids);
+    `).all(...ids));
     const depsMap = {};
     deps.forEach(d => {
       if (!depsMap[d.task_id]) depsMap[d.task_id] = [];
@@ -65,7 +65,7 @@ router.get('/', requireAuth, (req, res) => {
 const VALID_TASK_STATUSES = new Set(['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','cancelled','closed']);
 const VALID_PRIORITIES    = new Set(['low','medium','high','critical']);
 
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   if (req.user.role === 'pm' || req.user.role === 'planner') return res.status(403).json({ error: 'Forbidden' });
   const { project_id, title, description, priority, deadline, is_adhoc } = req.body;
   let { assigned_to } = req.body;
@@ -78,13 +78,13 @@ router.post('/', requireAuth, (req, res) => {
   // Engineers may only create tasks on projects they are assigned to,
   // and always self-assign regardless of what was passed.
   if (req.user.role === 'engineer') {
-    const member = db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(project_id, req.user.id);
+    const member = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(project_id, req.user.id));
     if (!member) return res.status(403).json({ error: 'You can only add tasks to projects you are assigned to' });
     assigned_to = req.user.id;
   }
 
-  const result = db.prepare(`INSERT INTO tasks (project_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(project_id || null, title, description, priority || 'medium', deadline || null, assigned_to || null, req.user.id, is_adhoc ? 1 : 0);
+  const result = (await db.prepare(`INSERT INTO tasks (project_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(project_id || null, title, description, priority || 'medium', deadline || null, assigned_to || null, req.user.id, is_adhoc ? 1 : 0));
 
   // Log activity
   const taskId = result.lastInsertRowid;
@@ -92,8 +92,8 @@ router.post('/', requireAuth, (req, res) => {
 
   // Notify if engineer is assigned
   if (assigned_to) {
-    const engineer = db.prepare('SELECT name, email FROM users WHERE id = ?').get(assigned_to);
-    const project  = project_id ? db.prepare('SELECT title FROM projects WHERE id = ?').get(project_id) : null;
+    const engineer = (await db.prepare('SELECT name, email FROM users WHERE id = ?').get(assigned_to));
+    const project  = project_id ? (await db.prepare('SELECT title FROM projects WHERE id = ?').get(project_id)) : null;
     if (engineer) {
       notify('task.assigned', {
         engineer_id:    assigned_to,
@@ -111,8 +111,8 @@ router.post('/', requireAuth, (req, res) => {
   res.json({ id: taskId });
 });
 
-router.put('/:id', requireAuth, (req, res) => {
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+router.put('/:id', requireAuth, async (req, res) => {
+  const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
   if (!task) return res.status(404).json({ error: 'Not found' });
 
   if (req.user.role === 'engineer') {
@@ -127,7 +127,7 @@ router.put('/:id', requireAuth, (req, res) => {
     } else if (newStatus !== task.status) {
       newPfc = null;
     }
-    db.prepare(`UPDATE tasks SET
+    (await db.prepare(`UPDATE tasks SET
       title=COALESCE(?,title), description=COALESCE(?,description),
       priority=COALESCE(?,priority), deadline=?,
       status=COALESCE(?,status), pending_from_customer=?,
@@ -140,7 +140,7 @@ router.put('/:id', requireAuth, (req, res) => {
         status || null,
         newPfc,
         task.id
-      );
+      ));
     if (status && task.status !== status) {
       logActivity(task.project_id, req.user.id, 'task_status', `"${title || task.title}" → ${status}`);
     }
@@ -171,12 +171,12 @@ router.put('/:id', requireAuth, (req, res) => {
     newPfc = pending_from_customer !== undefined ? pending_from_customer : task.pending_from_customer;
   }
 
-  db.prepare(`UPDATE tasks SET title=COALESCE(?,title), description=COALESCE(?,description),
+  (await db.prepare(`UPDATE tasks SET title=COALESCE(?,title), description=COALESCE(?,description),
     priority=COALESCE(?,priority), deadline=?, assigned_to=COALESCE(?,assigned_to),
     status=COALESCE(?,status), is_adhoc=COALESCE(?,is_adhoc),
     pending_from_customer=?, updated_at=datetime('now') WHERE id=?`)
     .run(title, description, priority, deadline ?? task.deadline, assigned_to, status,
-         is_adhoc != null ? (is_adhoc ? 1 : 0) : null, newPfc, task.id);
+         is_adhoc != null ? (is_adhoc ? 1 : 0) : null, newPfc, task.id));
 
   // Log status change
   if (status && status !== task.status) {
@@ -185,8 +185,8 @@ router.put('/:id', requireAuth, (req, res) => {
 
   // Notify if engineer assignment changed
   if (assigned_to != null && assigned_to !== task.assigned_to && assigned_to) {
-    const engineer = db.prepare('SELECT name, email FROM users WHERE id = ?').get(assigned_to);
-    const project  = task.project_id ? db.prepare('SELECT title FROM projects WHERE id = ?').get(task.project_id) : null;
+    const engineer = (await db.prepare('SELECT name, email FROM users WHERE id = ?').get(assigned_to));
+    const project  = task.project_id ? (await db.prepare('SELECT title FROM projects WHERE id = ?').get(task.project_id)) : null;
     if (engineer) {
       notify('task.assigned', {
         engineer_id:    assigned_to,
@@ -205,7 +205,7 @@ router.put('/:id', requireAuth, (req, res) => {
 });
 
 /* ── Bulk operations ──────────────────────────────────────── */
-router.post('/bulk', requireAuth, (req, res) => {
+router.post('/bulk', requireAuth, async (req, res) => {
   if (req.user.role === 'planner' || req.user.role === 'pm')
     return res.status(403).json({ error: 'Forbidden' });
   const { ids, action, status } = req.body;
@@ -216,18 +216,18 @@ router.post('/bulk', requireAuth, (req, res) => {
 
   if (action === 'delete') {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
-    const del = db.prepare('DELETE FROM tasks WHERE id = ?');
-    const run = db.transaction(() => ids.forEach(id => del.run(id)));
-    run();
+    await db.transaction(async (tx) => {
+      const del = tx.prepare('DELETE FROM tasks WHERE id = ?');
+      for (const id of ids) await del.run(id);
+    });
     return res.json({ ok: true, affected: ids.length });
   }
 
   if (action === 'status') {
     if (!status) return res.status(400).json({ error: 'Status required' });
     if (!VALID_TASK_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status value' });
-    const upd = db.prepare(`UPDATE tasks SET status=?, updated_at=datetime('now') WHERE id=?`);
     // engineers can only update their own tasks
-    const tasks = db.prepare(`SELECT id, assigned_to, project_id FROM tasks WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+    const tasks = (await db.prepare(`SELECT id, assigned_to, project_id FROM tasks WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids));
     let allowed_ids;
     if (req.user.role === 'manager') {
       allowed_ids = tasks.map(t => t.id);
@@ -236,12 +236,14 @@ router.post('/bulk', requireAuth, (req, res) => {
     } else {
       // planner/pm: tasks in their assigned projects or assigned to them
       const myProjects = new Set(
-        db.prepare('SELECT project_id FROM project_assignments WHERE user_id = ?').all(req.user.id).map(r => r.project_id)
+        (await db.prepare('SELECT project_id FROM project_assignments WHERE user_id = ?').all(req.user.id)).map(r => r.project_id)
       );
       allowed_ids = tasks.filter(t => t.assigned_to === req.user.id || myProjects.has(t.project_id)).map(t => t.id);
     }
-    const run = db.transaction(() => allowed_ids.forEach(id => upd.run(status, id)));
-    run();
+    await db.transaction(async (tx) => {
+      const upd = tx.prepare(`UPDATE tasks SET status=?, updated_at=datetime('now') WHERE id=?`);
+      for (const id of allowed_ids) await upd.run(status, id);
+    });
     return res.json({ ok: true, affected: allowed_ids.length });
   }
 
@@ -276,7 +278,7 @@ router.get('/export', requireDownloadAuth, async (req, res) => {
   if (filter === 'adhoc') q += ` AND t.is_adhoc = 1`;
   q += ' ORDER BY t.created_at DESC';
 
-  const rows = db.prepare(q).all(...exportParams);
+  const rows = (await db.prepare(q).all(...exportParams));
   const wsData = [
     ['Title','Status','Priority','Deadline','Project','Assigned To','Created By','Hours Logged','Ad-hoc'],
     ...rows.map(r => [r.title, r.status, r.priority, r.deadline || '', r.project || '', r.assigned_to || '', r.created_by, r.logged_hours, r.is_adhoc ? 'Yes' : 'No']),
@@ -292,117 +294,117 @@ router.get('/export', requireDownloadAuth, async (req, res) => {
 });
 
 /* ── Duplicate a task ─────────────────────────────────────── */
-router.post('/:id/duplicate', requireAuth, (req, res) => {
+router.post('/:id/duplicate', requireAuth, async (req, res) => {
   if (req.user.role === 'planner' || req.user.role === 'pm')
     return res.status(403).json({ error: 'Forbidden' });
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
   if (!task) return res.status(404).json({ error: 'Not found' });
   // Engineers: can only duplicate tasks assigned to them
   if (req.user.role === 'engineer') {
     if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
   }
-  const result = db.prepare(`
+  const result = (await db.prepare(`
     INSERT INTO tasks (project_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(task.project_id, task.title + ' (copy)', task.description, task.priority, task.deadline,
-         task.assigned_to, req.user.id, task.is_adhoc);
+         task.assigned_to, req.user.id, task.is_adhoc));
   logActivity(task.project_id, req.user.id, 'task_created', task.title + ' (copy)');
   res.json({ id: result.lastInsertRowid });
 });
 
 /* ── Overdue counts (lightweight — used by sidebar badges) ── */
-router.get('/overdue-counts', requireAuth, (req, res) => {
+router.get('/overdue-counts', requireAuth, async (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   let taskCount = 0;
   if (req.user.role === 'engineer') {
-    taskCount = db.prepare(`
+    taskCount = (await db.prepare(`
       SELECT COUNT(*) AS cnt FROM tasks
       WHERE assigned_to = ? AND deadline < ? AND status NOT IN ('completed','closed','cancelled')
-    `).get(req.user.id, today).cnt;
+    `).get(req.user.id, today)).cnt;
   } else if (req.user.role === 'manager') {
-    taskCount = db.prepare(`
+    taskCount = (await db.prepare(`
       SELECT COUNT(*) AS cnt FROM tasks
       WHERE deadline < ? AND status NOT IN ('completed','closed','cancelled')
-    `).get(today).cnt;
+    `).get(today)).cnt;
   }
   // planners and PMs have no task visibility — taskCount stays 0
 
   const visitCount = req.user.role === 'engineer'
-    ? db.prepare(`SELECT COUNT(*) AS cnt FROM maintenance_visits mv
+    ? (await db.prepare(`SELECT COUNT(*) AS cnt FROM maintenance_visits mv
         JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
         WHERE mve.user_id = ? AND mv.scheduled_date < ? AND mv.status = 'scheduled'
-      `).get(req.user.id, today).cnt
-    : db.prepare(`SELECT COUNT(*) AS cnt FROM maintenance_visits
+      `).get(req.user.id, today)).cnt
+    : (await db.prepare(`SELECT COUNT(*) AS cnt FROM maintenance_visits
         WHERE scheduled_date < ? AND status = 'scheduled'
-      `).get(today).cnt;
+      `).get(today)).cnt;
 
   res.json({ tasks: taskCount, visits: visitCount });
 });
 
-router.delete('/:id', requireManager, (req, res) => {
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+router.delete('/:id', requireManager, async (req, res) => {
+  const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
   if (task) logActivity(task.project_id, req.user.id, 'task_deleted', task.title);
-  db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
+  (await db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id));
   res.json({ ok: true });
 });
 
 /* ── Task Comments ────────────────────────────────────────── */
-router.get('/:id/comments', requireAuth, (req, res) => {
+router.get('/:id/comments', requireAuth, async (req, res) => {
   if (req.user.role === 'planner' || req.user.role === 'pm')
     return res.status(403).json({ error: 'Forbidden' });
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
   if (!task) return res.status(404).json({ error: 'Not found' });
   // Engineers can only access their own tasks
   if (req.user.role === 'engineer' && task.assigned_to !== req.user.id)
     return res.status(403).json({ error: 'Forbidden' });
-  const rows = db.prepare(`
+  const rows = (await db.prepare(`
     SELECT tc.*, u.name as user_name, u.role as user_role
     FROM task_comments tc
     JOIN users u ON tc.user_id = u.id
     WHERE tc.task_id = ?
     ORDER BY tc.created_at ASC
-  `).all(req.params.id);
+  `).all(req.params.id));
   res.json(rows);
 });
 
-router.post('/:id/comments', requireAuth, (req, res) => {
+router.post('/:id/comments', requireAuth, async (req, res) => {
   if (req.user.role === 'planner' || req.user.role === 'pm')
     return res.status(403).json({ error: 'Forbidden' });
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
   if (!task) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'engineer' && task.assigned_to !== req.user.id)
     return res.status(403).json({ error: 'Forbidden' });
   const { message } = req.body;
   if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
-  const result = db.prepare(`INSERT INTO task_comments (task_id, user_id, message) VALUES (?, ?, ?)`)
-    .run(req.params.id, req.user.id, message.trim());
+  const result = (await db.prepare(`INSERT INTO task_comments (task_id, user_id, message) VALUES (?, ?, ?)`)
+    .run(req.params.id, req.user.id, message.trim()));
   logActivity(task.project_id, req.user.id, 'task_comment', `"${task.title}"`);
 
   // Detect @mentions and notify each unique mentioned user
-  const allUsers = db.prepare('SELECT id, name FROM users WHERE active = 1').all();
+  const allUsers = (await db.prepare('SELECT id, name FROM users WHERE active = 1').all());
   const lower = message.toLowerCase();
   const notified = new Set();
-  allUsers.forEach(u => {
-    if (u.id === req.user.id) return; // don't self-notify
+  for (const u of allUsers) {
+    if (u.id === req.user.id) continue; // don't self-notify
     const firstName = u.name.split(' ')[0].toLowerCase();
     const fullName  = u.name.toLowerCase().replace(/\s+/g, '');
     if (lower.includes('@' + firstName) || lower.includes('@' + fullName)) {
       if (!notified.has(u.id)) {
         notified.add(u.id);
         try {
-          db.prepare(`INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)`)
+          await db.prepare(`INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)`)
             .run(u.id, 'mention', `${req.user.name} mentioned you`, `In task "${task.title}": ${message.trim().slice(0, 80)}`,
               task.project_id ? `/projects/${task.project_id}` : null);
         } catch (_) {}
       }
     }
-  });
+  }
 
   res.json({ id: result.lastInsertRowid });
 });
 
-router.delete('/:id/comments/:cid', requireAuth, (req, res) => {
-  const comment = db.prepare('SELECT * FROM task_comments WHERE id = ? AND task_id = ?').get(req.params.cid, req.params.id);
+router.delete('/:id/comments/:cid', requireAuth, async (req, res) => {
+  const comment = (await db.prepare('SELECT * FROM task_comments WHERE id = ? AND task_id = ?').get(req.params.cid, req.params.id));
   if (!comment) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'manager') {
     // managers can delete any comment
@@ -410,33 +412,33 @@ router.delete('/:id/comments/:cid', requireAuth, (req, res) => {
     // everyone else can only delete their own comments
     return res.status(403).json({ error: 'Forbidden' });
   }
-  db.prepare('DELETE FROM task_comments WHERE id = ?').run(req.params.cid);
+  (await db.prepare('DELETE FROM task_comments WHERE id = ?').run(req.params.cid));
   res.json({ ok: true });
 });
 
 /* ── Task Dependencies ────────────────────────────────────── */
 // GET tasks this task depends on
-router.get('/:id/dependencies', requireAuth, (req, res) => {
+router.get('/:id/dependencies', requireAuth, async (req, res) => {
   if (req.user.role === 'planner' || req.user.role === 'pm')
     return res.status(403).json({ error: 'Forbidden' });
   // Verify the caller has visibility of the parent task before exposing its deps
-  const task = db.prepare('SELECT assigned_to, project_id FROM tasks WHERE id = ?').get(req.params.id);
+  const task = (await db.prepare('SELECT assigned_to, project_id FROM tasks WHERE id = ?').get(req.params.id));
   if (!task) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'engineer') {
     if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
   }
-  const rows = db.prepare(`
+  const rows = (await db.prepare(`
     SELECT t.id, t.title, t.status, t.priority, t.deadline
     FROM task_dependencies td
     JOIN tasks t ON td.depends_on_id = t.id
     WHERE td.task_id = ?
     ORDER BY t.created_at ASC
-  `).all(req.params.id);
+  `).all(req.params.id));
   res.json(rows);
 });
 
 // BFS reachability: returns true if startId can reach targetId via existing dependencies
-function canReach(startId, targetId) {
+async function canReach(startId, targetId) {
   const visited = new Set();
   const queue = [Number(startId)];
   const depStmt = db.prepare('SELECT depends_on_id FROM task_dependencies WHERE task_id = ?');
@@ -445,29 +447,30 @@ function canReach(startId, targetId) {
     if (current === Number(targetId)) return true;
     if (visited.has(current)) continue;
     visited.add(current);
-    depStmt.all(current).forEach(d => queue.push(d.depends_on_id));
+    const deps = await depStmt.all(current);
+    deps.forEach(d => queue.push(d.depends_on_id));
   }
   return false;
 }
 
 // Add a dependency
-router.post('/:id/dependencies', requireManager, (req, res) => {
+router.post('/:id/dependencies', requireManager, async (req, res) => {
   const { depends_on_id } = req.body;
   if (!depends_on_id) return res.status(400).json({ error: 'depends_on_id required' });
   if (Number(depends_on_id) === Number(req.params.id))
     return res.status(400).json({ error: 'A task cannot depend on itself' });
   // Full transitive cycle check: would depends_on_id eventually reach this task?
-  if (canReach(depends_on_id, req.params.id))
+  if (await canReach(depends_on_id, req.params.id))
     return res.status(400).json({ error: 'Circular dependency detected' });
   try {
-    db.prepare('INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?)').run(req.params.id, depends_on_id);
+    (await db.prepare('INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?)').run(req.params.id, depends_on_id));
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // Remove a dependency
-router.delete('/:id/dependencies/:depId', requireManager, (req, res) => {
-  db.prepare('DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?').run(req.params.id, req.params.depId);
+router.delete('/:id/dependencies/:depId', requireManager, async (req, res) => {
+  (await db.prepare('DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?').run(req.params.id, req.params.depId));
   res.json({ ok: true });
 });
 

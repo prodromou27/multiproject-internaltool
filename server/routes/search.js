@@ -8,19 +8,19 @@ const { decrypt } = require('../fieldCipher');
 // app layer, then substring-filter. Visibility mirrors the customers route:
 // managers/planners see all; engineers see only customers tied to their own
 // projects or maintenance visits.
-function searchCustomers(req, term, limit) {
+async function searchCustomers(req, term, limit) {
   const needle = (term || '').trim().toLowerCase();
 
   let rows;
   if (req.user.role === 'manager' || req.user.role === 'planner') {
-    rows = db.prepare(`
+    rows = (await db.prepare(`
       SELECT cu.id, cu.name, cu.contact_name, cu.contact_email, cu.contact_phone,
              (SELECT COUNT(*) FROM projects           WHERE customer_id = cu.id) AS project_count,
              (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = cu.id) AS visit_count
       FROM customers cu ORDER BY cu.name ASC
-    `).all();
+    `).all());
   } else {
-    rows = db.prepare(`
+    rows = (await db.prepare(`
       SELECT DISTINCT cu.id, cu.name, cu.contact_name, cu.contact_email, cu.contact_phone,
              (SELECT COUNT(*) FROM projects           WHERE customer_id = cu.id) AS project_count,
              (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = cu.id) AS visit_count
@@ -28,7 +28,7 @@ function searchCustomers(req, term, limit) {
       WHERE EXISTS (SELECT 1 FROM projects p JOIN project_assignments pa ON pa.project_id = p.id WHERE p.customer_id = cu.id AND pa.user_id = ?)
          OR EXISTS (SELECT 1 FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id WHERE mv.customer_id = cu.id AND mve.user_id = ?)
       ORDER BY cu.name ASC
-    `).all(req.user.id, req.user.id);
+    `).all(req.user.id, req.user.id));
   }
 
   const out = [];
@@ -50,7 +50,7 @@ function searchCustomers(req, term, limit) {
 }
 
 // ── Quick search (top bar dropdown) ──────────────────────────────────────────
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ projects: [], tasks: [], customers: [] });
 
@@ -58,27 +58,27 @@ router.get('/', requireAuth, (req, res) => {
 
   let projects;
   if (req.user.role === 'manager') {
-    projects = db.prepare(`
+    projects = (await db.prepare(`
       SELECT p.id, p.title, p.status, p.priority, p.deadline, cu.name as customer_name
       FROM projects p
       LEFT JOIN customers cu ON p.customer_id = cu.id
       WHERE p.title LIKE ? OR p.description LIKE ?
       ORDER BY p.updated_at DESC LIMIT 8
-    `).all(like, like);
+    `).all(like, like));
   } else {
-    projects = db.prepare(`
+    projects = (await db.prepare(`
       SELECT p.id, p.title, p.status, p.priority, p.deadline, cu.name as customer_name
       FROM projects p
       JOIN project_assignments pa ON pa.project_id = p.id AND pa.user_id = ?
       LEFT JOIN customers cu ON p.customer_id = cu.id
       WHERE p.title LIKE ? OR p.description LIKE ?
       ORDER BY p.updated_at DESC LIMIT 8
-    `).all(req.user.id, like, like);
+    `).all(req.user.id, like, like));
   }
 
   let tasks;
   if (req.user.role === 'manager') {
-    tasks = db.prepare(`
+    tasks = (await db.prepare(`
       SELECT t.id, t.title, t.status, t.priority, t.deadline, t.project_id,
              p.title as project_title, u.name as assigned_to_name
       FROM tasks t
@@ -86,9 +86,9 @@ router.get('/', requireAuth, (req, res) => {
       LEFT JOIN users u ON t.assigned_to = u.id
       WHERE t.title LIKE ? OR t.description LIKE ?
       ORDER BY t.updated_at DESC LIMIT 8
-    `).all(like, like);
+    `).all(like, like));
   } else {
-    tasks = db.prepare(`
+    tasks = (await db.prepare(`
       SELECT t.id, t.title, t.status, t.priority, t.deadline, t.project_id,
              p.title as project_title, u.name as assigned_to_name
       FROM tasks t
@@ -96,19 +96,19 @@ router.get('/', requireAuth, (req, res) => {
       LEFT JOIN users u ON t.assigned_to = u.id
       WHERE t.assigned_to = ? AND (t.title LIKE ? OR t.description LIKE ?)
       ORDER BY t.updated_at DESC LIMIT 8
-    `).all(req.user.id, like, like);
+    `).all(req.user.id, like, like));
   }
 
   // Customers — decrypt-and-filter (PII columns are encrypted at rest).
   // Visibility is enforced inside searchCustomers().
-  const customers = searchCustomers(req, q, 5)
+  const customers = (await searchCustomers(req, q, 5))
     .map(({ contact_phone, project_count, visit_count, ...rest }) => rest);
 
   res.json({ projects, tasks, customers });
 });
 
 // ── Smart structured search ──────────────────────────────────────────────────
-router.get('/smart', requireAuth, (req, res) => {
+router.get('/smart', requireAuth, async (req, res) => {
   const {
     q = '',
     entity = 'all',     // all | projects | tasks | mv | customers
@@ -152,7 +152,7 @@ router.get('/smart', requireAuth, (req, res) => {
     if (date_to)   { c.push('date(p.created_at) <= ?'); p.push(date_to); }
 
     const where = c.length ? 'WHERE ' + c.join(' AND ') : '';
-    results.projects = db.prepare(`
+    results.projects = (await db.prepare(`
       SELECT p.id, p.title, p.status, p.priority, p.deadline,
              cu.name AS customer_name, u.name AS created_by_name,
              (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status != 'cancelled') AS task_count,
@@ -162,7 +162,7 @@ router.get('/smart', requireAuth, (req, res) => {
       LEFT JOIN users u ON p.created_by = u.id
       ${where}
       ORDER BY p.updated_at DESC LIMIT 50
-    `).all(...p);
+    `).all(...p));
   }
 
   // ── Tasks ─────────────────────────────────────────────────────────────────
@@ -213,7 +213,7 @@ router.get('/smart', requireAuth, (req, res) => {
     if (date_to)   { c.push('date(t.created_at) <= ?'); p.push(date_to); }
 
     const where = c.length ? 'WHERE ' + c.join(' AND ') : '';
-    results.tasks = db.prepare(`
+    results.tasks = (await db.prepare(`
       SELECT t.id, t.title, t.status, t.priority, t.deadline, t.project_id, t.is_adhoc,
              t.created_at,
              p.title AS project_title, p.status AS project_status,
@@ -227,7 +227,7 @@ router.get('/smart', requireAuth, (req, res) => {
       ORDER BY CASE t.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
                t.deadline ASC, t.updated_at DESC
       LIMIT 50
-    `).all(...p);
+    `).all(...p));
   }
 
   // ── Maintenance Visits ────────────────────────────────────────────────────
@@ -259,7 +259,7 @@ router.get('/smart', requireAuth, (req, res) => {
     if (date_to)   { c.push('mv.scheduled_date <= ?'); p.push(date_to); }
 
     const where = c.length ? 'WHERE ' + c.join(' AND ') : '';
-    results.mv = db.prepare(`
+    results.mv = (await db.prepare(`
       SELECT mv.id, mv.title, mv.status, mv.scheduled_date,
              mv.report_sent, mv.report_sent_to_customer,
              cu.name AS customer_name,
@@ -270,14 +270,14 @@ router.get('/smart', requireAuth, (req, res) => {
       JOIN customers cu ON mv.customer_id = cu.id
       ${where}
       ORDER BY mv.scheduled_date DESC LIMIT 50
-    `).all(...p);
+    `).all(...p));
   }
 
   // ── Customers ─────────────────────────────────────────────────────────────
   // PII columns are encrypted at rest, so matching happens in the app layer
   // (decrypt-and-filter). Visibility + substring matching live in searchCustomers().
   if (entity === 'all' || entity === 'customers') {
-    results.customers = searchCustomers(req, q, 20);
+    results.customers = await searchCustomers(req, q, 20);
   }
 
   res.json({

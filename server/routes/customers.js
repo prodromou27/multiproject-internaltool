@@ -36,10 +36,10 @@ function sheetToJson(worksheet) {
   return rows;
 }
 
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   // Engineers only see customers from their own visits/projects
   if (req.user.role === 'engineer') {
-    const rows = db.prepare(`
+    const rows = (await db.prepare(`
       SELECT DISTINCT c.id, c.name, c.contact_name, c.contact_email, c.contact_phone, c.address,
         (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = c.id) as visit_count
       FROM customers c
@@ -53,12 +53,12 @@ router.get('/', requireAuth, (req, res) => {
         WHERE pa.user_id = ? AND p.customer_id IS NOT NULL
       )
       ORDER BY c.name
-    `).all(req.user.id, req.user.id);
+    `).all(req.user.id, req.user.id));
     return res.json(rows.map(decryptCustomer));
   }
-  const rows = db.prepare(`SELECT c.*, u.name as created_by_name,
+  const rows = (await db.prepare(`SELECT c.*, u.name as created_by_name,
     (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = c.id) as visit_count
-    FROM customers c LEFT JOIN users u ON c.created_by = u.id ORDER BY c.name`).all();
+    FROM customers c LEFT JOIN users u ON c.created_by = u.id ORDER BY c.name`).all());
   res.json(rows.map(decryptCustomer));
 });
 
@@ -78,14 +78,14 @@ router.get('/template/download', requireManagerOrPlanner, async (req, res) => {
   res.send(buf);
 });
 
-router.get('/:id', requireAuth, (req, res) => {
+router.get('/:id', requireAuth, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
-  const c = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+  const c = (await db.prepare('SELECT * FROM customers WHERE id = ?').get(id));
   if (!c) return res.status(404).json({ error: 'Not found' });
   // Engineers may only view customers from their own assigned visits/projects
   if (req.user.role === 'engineer') {
-    const allowed = db.prepare(`
+    const allowed = (await db.prepare(`
       SELECT 1 FROM (
         SELECT mv.customer_id FROM maintenance_visits mv
         JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
@@ -95,18 +95,18 @@ router.get('/:id', requireAuth, (req, res) => {
         JOIN project_assignments pa ON pa.project_id = p.id
         WHERE pa.user_id = ? AND p.customer_id = ?
       )
-    `).get(req.user.id, c.id, req.user.id, c.id);
+    `).get(req.user.id, c.id, req.user.id, c.id));
     if (!allowed) return res.status(403).json({ error: 'Forbidden' });
   }
   res.json(decryptCustomer(c));
 });
 
-router.post('/', requireManagerOrPlanner, (req, res) => {
+router.post('/', requireManagerOrPlanner, async (req, res) => {
   const { name, contact_name, contact_email, contact_phone, address, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
   const enc = encryptCustomer({ contact_name, contact_email, contact_phone, address, notes });
-  const result = db.prepare('INSERT INTO customers (name, contact_name, contact_email, contact_phone, address, notes, created_by) VALUES (?,?,?,?,?,?,?)')
-    .run(name, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, req.user.id);
+  const result = (await db.prepare('INSERT INTO customers (name, contact_name, contact_email, contact_phone, address, notes, created_by) VALUES (?,?,?,?,?,?,?)')
+    .run(name, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, req.user.id));
   res.json({ id: result.lastInsertRowid });
 });
 
@@ -135,58 +135,51 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
     return out;
   };
 
-  const insertStmt = db.prepare(
-    'INSERT INTO customers (name, contact_name, contact_email, contact_phone, address, notes, created_by) VALUES (?,?,?,?,?,?,?)'
-  );
+  // Per-row autocommit (not one big transaction): this import is partial-success
+  // by design — invalid rows are skipped and reported. A single Postgres
+  // transaction would abort entirely on the first failing row.
+  const insertStmt   = db.prepare('INSERT INTO customers (name, contact_name, contact_email, contact_phone, address, notes, created_by) VALUES (?,?,?,?,?,?,?)');
   const dupCheckStmt = db.prepare('SELECT 1 FROM customers WHERE lower(name) = lower(?)');
 
   let imported = 0;
   const errors = [];
 
-  const importMany = db.transaction(() => {
-    rows.forEach((rawRow, i) => {
-      const row = normalize(rawRow);
-      const rowNum = i + 2;
-      if (!row.name) {
-        errors.push({ row: rowNum, error: 'Missing required field: name' });
-        return;
-      }
-      if (dupCheckStmt.get(row.name)) {
-        errors.push({ row: rowNum, error: `Customer "${row.name}" already exists — skipped` });
-        return;
-      }
-      try {
-        const enc = encryptCustomer({
-          contact_name:  row.contact_name  || null,
-          contact_email: row.contact_email || null,
-          contact_phone: row.contact_phone || null,
-          address:       row.address       || null,
-          notes:         row.notes         || null,
-        });
-        insertStmt.run(
-          row.name,
-          enc.contact_name,
-          enc.contact_email,
-          enc.contact_phone,
-          enc.address,
-          enc.notes,
-          req.user.id
-        );
-        imported++;
-      } catch (e) {
-        errors.push({ row: rowNum, error: e.message });
-      }
-    });
-  });
+  for (let i = 0; i < rows.length; i++) {
+    const row = normalize(rows[i]);
+    const rowNum = i + 2;
+    if (!row.name) {
+      errors.push({ row: rowNum, error: 'Missing required field: name' });
+      continue;
+    }
+    if (await dupCheckStmt.get(row.name)) {
+      errors.push({ row: rowNum, error: `Customer "${row.name}" already exists — skipped` });
+      continue;
+    }
+    try {
+      const enc = encryptCustomer({
+        contact_name:  row.contact_name  || null,
+        contact_email: row.contact_email || null,
+        contact_phone: row.contact_phone || null,
+        address:       row.address       || null,
+        notes:         row.notes         || null,
+      });
+      await insertStmt.run(
+        row.name, enc.contact_name, enc.contact_email, enc.contact_phone,
+        enc.address, enc.notes, req.user.id
+      );
+      imported++;
+    } catch (e) {
+      errors.push({ row: rowNum, error: e.message });
+    }
+  }
 
-  importMany();
   res.json({ imported, skipped: errors.length, errors });
 });
 
-router.put('/:id', requireManagerOrPlanner, (req, res) => {
+router.put('/:id', requireManagerOrPlanner, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
-  const existing = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+  const existing = (await db.prepare('SELECT * FROM customers WHERE id = ?').get(id));
   if (!existing) return res.status(404).json({ error: 'Not found' });
   const { name, contact_name, contact_email, contact_phone, address, notes } = req.body;
   // Decrypt existing values so they can be used as fallback when a field isn't supplied
@@ -198,15 +191,15 @@ router.put('/:id', requireManagerOrPlanner, (req, res) => {
     address:       address       !== undefined ? (address       || null) : dec.address,
     notes:         notes         !== undefined ? (notes         || null) : dec.notes,
   });
-  db.prepare('UPDATE customers SET name=COALESCE(?,name), contact_name=?, contact_email=?, contact_phone=?, address=?, notes=? WHERE id=?')
-    .run(name || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, id);
+  (await db.prepare('UPDATE customers SET name=COALESCE(?,name), contact_name=?, contact_email=?, contact_phone=?, address=?, notes=? WHERE id=?')
+    .run(name || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, id));
   res.json({ ok: true });
 });
 
-router.delete('/:id', requireManagerOrPlanner, (req, res) => {
+router.delete('/:id', requireManagerOrPlanner, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
-  db.prepare('DELETE FROM customers WHERE id = ?').run(id);
+  (await db.prepare('DELETE FROM customers WHERE id = ?').run(id));
   res.json({ ok: true });
 });
 

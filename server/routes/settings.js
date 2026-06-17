@@ -7,8 +7,8 @@ const { sendTest } = require('../notifications');
 const updateMgr = require('../update-manager');
 
 // GET /api/settings/integrations
-router.get('/integrations', requireManager, (req, res) => {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get();
+router.get('/integrations', requireManager, async (req, res) => {
+  const row = (await db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get());
   if (!row) return res.json({});
   try { res.json(JSON.parse(row.value)); } catch { res.json({}); }
 });
@@ -26,7 +26,7 @@ function validateWebhookUrl(url) {
 }
 
 // POST /api/settings/integrations
-router.post('/integrations', requireManager, (req, res) => {
+router.post('/integrations', requireManager, async (req, res) => {
   // Validate all webhook_url fields before storing
   const body = req.body;
   for (const [platform, cfg] of Object.entries(body || {})) {
@@ -36,7 +36,7 @@ router.post('/integrations', requireManager, (req, res) => {
     }
   }
   const value = JSON.stringify(body);
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('integrations', ?)").run(value);
+  (await db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(value));
   res.json({ ok: true });
 });
 
@@ -62,15 +62,15 @@ const DEFAULT_LOCALIZATION = {
   timezone: 'Asia/Nicosia',
 };
 
-router.get('/localization', requireManager, (req, res) => {
-  const row = db.prepare("SELECT value FROM settings WHERE key='localization_config'").get();
+router.get('/localization', requireManager, async (req, res) => {
+  const row = (await db.prepare("SELECT value FROM settings WHERE key='localization_config'").get());
   if (!row) return res.json(DEFAULT_LOCALIZATION);
   try { res.json({ ...DEFAULT_LOCALIZATION, ...JSON.parse(row.value) }); }
   catch { res.json(DEFAULT_LOCALIZATION); }
 });
 
-router.put('/localization', requireManager, (req, res) => {
-  db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES ('localization_config',?)").run(JSON.stringify(req.body));
+router.put('/localization', requireManager, async (req, res) => {
+  (await db.prepare("INSERT INTO settings (key,value) VALUES ('localization_config',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify(req.body)));
   res.json({ ok: true });
 });
 
@@ -85,8 +85,8 @@ const ALERT_DEFAULTS = {
   integration_token_expiring:{ enabled: true,  email: false },
 };
 
-router.get('/admin-notifications', requireManager, (req, res) => {
-  const row = db.prepare("SELECT value FROM settings WHERE key='admin_notifications_config'").get();
+router.get('/admin-notifications', requireManager, async (req, res) => {
+  const row = (await db.prepare("SELECT value FROM settings WHERE key='admin_notifications_config'").get());
   if (!row) return res.json(ALERT_DEFAULTS);
   try {
     const saved = JSON.parse(row.value);
@@ -97,13 +97,13 @@ router.get('/admin-notifications', requireManager, (req, res) => {
   } catch { res.json(ALERT_DEFAULTS); }
 });
 
-router.put('/admin-notifications', requireManager, (req, res) => {
-  db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES ('admin_notifications_config',?)").run(JSON.stringify(req.body));
+router.put('/admin-notifications', requireManager, async (req, res) => {
+  (await db.prepare("INSERT INTO settings (key,value) VALUES ('admin_notifications_config',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify(req.body)));
   res.json({ ok: true });
 });
 
 // POST /api/settings/system-alerts/check — run real checks, push in-app notifications
-router.post('/system-alerts/check', requireManager, (req, res) => {
+router.post('/system-alerts/check', requireManager, async (req, res) => {
   const alerts = [];
 
   // 1. Upload storage size
@@ -122,7 +122,7 @@ router.post('/system-alerts/check', requireManager, (req, res) => {
 
   // 2. SMTP / email queue
   try {
-    const smtpRow = db.prepare("SELECT value FROM settings WHERE key='report_smtp_config'").get();
+    const smtpRow = (await db.prepare("SELECT value FROM settings WHERE key='report_smtp_config'").get());
     if (smtpRow) {
       const smtp = JSON.parse(smtpRow.value);
       if (smtp.enabled && !smtp.host) alerts.push({ type: 'email_queue_failed', level: 'error', message: 'SMTP is enabled but host is not configured — emails cannot be sent' });
@@ -131,7 +131,7 @@ router.post('/system-alerts/check', requireManager, (req, res) => {
 
   // 3. Integration webhook check
   try {
-    const intRow = db.prepare("SELECT value FROM settings WHERE key='integrations'").get();
+    const intRow = (await db.prepare("SELECT value FROM settings WHERE key='integrations'").get());
     if (intRow) {
       const integrations = JSON.parse(intRow.value);
       Object.entries(integrations).forEach(([platform, cfg]) => {
@@ -143,7 +143,7 @@ router.post('/system-alerts/check', requireManager, (req, res) => {
 
   // 4. Failed login attempts (tracked in settings as a counter)
   try {
-    const faRow = db.prepare("SELECT value FROM settings WHERE key='failed_login_count'").get();
+    const faRow = (await db.prepare("SELECT value FROM settings WHERE key='failed_login_count'").get());
     if (faRow && Number(faRow.value) >= 5)
       alerts.push({ type: 'unauthorized_access', level: 'warning', message: `${faRow.value} failed login attempts recorded` });
   } catch {}
@@ -151,13 +151,15 @@ router.post('/system-alerts/check', requireManager, (req, res) => {
   // Push warning/error alerts as in-app notifications to all managers
   const bad = alerts.filter(a => a.level !== 'ok');
   if (bad.length > 0) {
-    const managers = db.prepare("SELECT id FROM users WHERE role='manager' AND active=1").all();
-    const ins = db.prepare("INSERT INTO notifications (user_id,type,title,body) VALUES (?,?,?,?)");
-    db.transaction(() => {
-      bad.forEach(alert => managers.forEach(m => {
-        ins.run(m.id, 'system_alert', `System Alert: ${alert.type.replace(/_/g, ' ')}`, alert.message);
-      }));
-    })();
+    const managers = (await db.prepare("SELECT id FROM users WHERE role='manager' AND active=1").all());
+    await db.transaction(async (tx) => {
+      const ins = tx.prepare("INSERT INTO notifications (user_id,type,title,body) VALUES (?,?,?,?)");
+      for (const alert of bad) {
+        for (const m of managers) {
+          await ins.run(m.id, 'system_alert', `System Alert: ${alert.type.replace(/_/g, ' ')}`, alert.message);
+        }
+      }
+    });
   }
 
   res.json({ alerts, checked_at: new Date().toISOString() });
@@ -176,23 +178,23 @@ const DEFAULT_LOGGING = {
   log_download_enabled: true,
 };
 
-router.get('/logging', requireManager, (req, res) => {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'logging_config'").get();
+router.get('/logging', requireManager, async (req, res) => {
+  const row = (await db.prepare("SELECT value FROM settings WHERE key = 'logging_config'").get());
   if (!row) return res.json(DEFAULT_LOGGING);
   try { res.json({ ...DEFAULT_LOGGING, ...JSON.parse(row.value) }); }
   catch { res.json(DEFAULT_LOGGING); }
 });
 
-router.put('/logging', requireManager, (req, res) => {
+router.put('/logging', requireManager, async (req, res) => {
   const value = JSON.stringify(req.body);
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('logging_config', ?)").run(value);
+  (await db.prepare("INSERT INTO settings (key, value) VALUES ('logging_config', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(value));
   res.json({ ok: true });
 });
 
 // GET /api/settings/logging/download — export recent activity as a log file
-router.get('/logging/download', requireManager, (req, res) => {
-  const config = (() => {
-    const row = db.prepare("SELECT value FROM settings WHERE key = 'logging_config'").get();
+router.get('/logging/download', requireManager, async (req, res) => {
+  const config = await (async () => {
+    const row = (await db.prepare("SELECT value FROM settings WHERE key = 'logging_config'").get());
     if (!row) return DEFAULT_LOGGING;
     try { return { ...DEFAULT_LOGGING, ...JSON.parse(row.value) }; } catch { return DEFAULT_LOGGING; }
   })();
@@ -201,7 +203,7 @@ router.get('/logging/download', requireManager, (req, res) => {
     return res.status(403).json({ error: 'Log download is disabled.' });
 
   // Pull recent activity rows
-  const rows = db.prepare(`
+  const rows = (await db.prepare(`
     SELECT pa.created_at, u.name as user_name, u.email, pa.action, pa.detail,
            p.title as project_title
     FROM project_activity pa
@@ -209,7 +211,7 @@ router.get('/logging/download', requireManager, (req, res) => {
     LEFT JOIN projects p ON p.id = pa.project_id
     ORDER BY pa.created_at DESC
     LIMIT 1000
-  `).all();
+  `).all());
 
   const mask = config.sensitive_data_masking;
   const lines = [
@@ -235,7 +237,7 @@ router.get('/logging/download', requireManager, (req, res) => {
 /* ── System Update ──────────────────────────────────────────── */
 
 // GET /api/settings/system-update/status
-router.get('/system-update/status', requireManager, (req, res) => {
+router.get('/system-update/status', requireManager, async (req, res) => {
   res.json(updateMgr.state);
 });
 
@@ -252,7 +254,7 @@ router.post('/system-update/check', requireManager, async (req, res) => {
 });
 
 // POST /api/settings/system-update/start  — install + build (async)
-router.post('/system-update/start', requireManager, (req, res) => {
+router.post('/system-update/start', requireManager, async (req, res) => {
   if (updateMgr.state.running) return res.status(409).json({ error: 'Update already in progress' });
   updateMgr.state.phase   = 'queued';
   updateMgr.state.log     = [];
@@ -266,7 +268,7 @@ router.post('/system-update/start', requireManager, (req, res) => {
 });
 
 // POST /api/settings/system-update/restart  — restart the server
-router.post('/system-update/restart', requireManager, (req, res) => {
+router.post('/system-update/restart', requireManager, async (req, res) => {
   res.json({ ok: true, message: 'Restarting…' });
   updateMgr.scheduleRestart();
 });
@@ -274,19 +276,19 @@ router.post('/system-update/restart', requireManager, (req, res) => {
 /* ── Security / password policy ─────────────────────────────── */
 const DEFAULT_SECURITY = { password_expiry_days: 90 };
 
-router.get('/security', requireManager, (req, res) => {
-  const row = db.prepare("SELECT value FROM settings WHERE key='security_policy'").get();
+router.get('/security', requireManager, async (req, res) => {
+  const row = (await db.prepare("SELECT value FROM settings WHERE key='security_policy'").get());
   if (!row) return res.json(DEFAULT_SECURITY);
   try { res.json({ ...DEFAULT_SECURITY, ...JSON.parse(row.value) }); }
   catch { res.json(DEFAULT_SECURITY); }
 });
 
-router.put('/security', requireManager, (req, res) => {
+router.put('/security', requireManager, async (req, res) => {
   const { password_expiry_days } = req.body;
   const days = Math.max(0, parseInt(password_expiry_days, 10) || 0);
   // Also update the standalone key used by auth.js for fast lookup
-  db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES ('password_expiry_days',?)").run(String(days));
-  db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES ('security_policy',?)").run(JSON.stringify({ password_expiry_days: days }));
+  (await db.prepare("INSERT INTO settings (key,value) VALUES ('password_expiry_days',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(String(days)));
+  (await db.prepare("INSERT INTO settings (key,value) VALUES ('security_policy',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify({ password_expiry_days: days })));
   res.json({ ok: true, password_expiry_days: days });
 });
 

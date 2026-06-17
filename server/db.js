@@ -21,8 +21,18 @@
  *   - plain INSERT (id table) → auto-appended RETURNING id for lastInsertRowid
  * INSERT OR REPLACE upserts are rewritten by hand at their call sites.
  */
-const { Pool } = require('pg');
+const pg = require('pg');
+const { Pool } = pg;
 const bcrypt = require('bcryptjs');
+
+// node-pg returns int8 (bigint) and numeric as STRINGS by default. SQLite gave
+// JS numbers, and the app does arithmetic/comparisons on COUNT/SUM/AVG/ROUND
+// results everywhere, so coerce them back to numbers globally. All such values
+// in this app are well within IEEE-754 safe range.
+if (pg.types && pg.types.setTypeParser) {
+  pg.types.setTypeParser(20,   v => (v === null ? null : parseInt(v, 10)));   // int8  / bigint
+  pg.types.setTypeParser(1700, v => (v === null ? null : parseFloat(v)));     // numeric
+}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,

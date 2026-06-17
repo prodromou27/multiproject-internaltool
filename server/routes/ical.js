@@ -47,15 +47,15 @@ function fold(line) {
  * is scoped to this read-only feed and grants NO access to any other API — so
  * it is safe for it to land in third-party calendar-server and proxy logs.
  */
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const raw = req.query.token;
   if (!raw || typeof raw !== 'string')
     return res.status(401).send('Invalid or missing token');
 
   const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
-  const user = db.prepare(
+  const user = (await db.prepare(
     "SELECT id, name, role FROM users WHERE ical_token_hash = ? AND active = 1"
-  ).get(tokenHash);
+  ).get(tokenHash));
   if (!user) return res.status(401).send('Invalid or missing token');
 
   const lines = [
@@ -95,10 +95,10 @@ router.get('/', (req, res) => {
        ORDER BY mv.scheduled_date`;
 
   const visits = user.role === 'engineer'
-    ? db.prepare(visitQuery).all(user.id)
+    ? (await db.prepare(visitQuery).all(user.id))
     : (user.role === 'planner' || user.role === 'pm')
-    ? db.prepare(visitQuery).all(user.id)
-    : db.prepare(visitQuery).all();
+    ? (await db.prepare(visitQuery).all(user.id))
+    : (await db.prepare(visitQuery).all());
 
   for (const v of visits) {
     const dtstart = icalDate(v.scheduled_date);
@@ -132,7 +132,7 @@ router.get('/', (req, res) => {
        ORDER BY t.deadline`;
 
   const taskParams = user.role === 'manager' ? [] : [user.id];
-  const tasks = db.prepare(taskQuery).all(...taskParams);
+  const tasks = (await db.prepare(taskQuery).all(...taskParams));
 
   for (const t of tasks) {
     const dtstart = icalDate(t.deadline);

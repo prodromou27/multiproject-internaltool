@@ -39,28 +39,32 @@ const upload = multer({
   },
 });
 
-router.get('/:project_id', requireAuth, (req, res) => {
+router.get('/:project_id', requireAuth, async (req, res) => {
   // Engineers can only see attachments for their projects
   if (req.user.role === 'engineer') {
-    const assigned = db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(req.params.project_id, req.user.id);
+    const assigned = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(req.params.project_id, req.user.id));
     if (!assigned) return res.status(403).json({ error: 'Forbidden' });
   }
-  const rows = db.prepare('SELECT a.*, u.name as uploaded_by_name FROM attachments a JOIN users u ON a.uploaded_by = u.id WHERE a.project_id = ? ORDER BY a.created_at DESC').all(req.params.project_id);
+  const rows = (await db.prepare('SELECT a.*, u.name as uploaded_by_name FROM attachments a JOIN users u ON a.uploaded_by = u.id WHERE a.project_id = ? ORDER BY a.created_at DESC').all(req.params.project_id));
   res.json(rows);
 });
 
-router.post('/:project_id', requireAuth, (req, res) => {
-  upload.single('file')(req, res, (uploadErr) => {
+router.post('/:project_id', requireAuth, async (req, res) => {
+  upload.single('file')(req, res, async (uploadErr) => {
     if (uploadErr) return res.status(400).json({ error: uploadErr.message });
-    handleUpload(req, res);
+    try {
+      await handleUpload(req, res);
+    } catch (e) {
+      if (!res.headersSent) res.status(500).json({ error: 'Upload failed' });
+    }
   });
 });
 
-function handleUpload(req, res) {
+async function handleUpload(req, res) {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   // Engineers can only attach to their own projects
   if (req.user.role === 'engineer') {
-    const assigned = db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(req.params.project_id, req.user.id);
+    const assigned = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(req.params.project_id, req.user.id));
     if (!assigned) {
       fs.unlink(req.file.path, () => {}); // clean up
       return res.status(403).json({ error: 'Forbidden' });
@@ -83,17 +87,17 @@ function handleUpload(req, res) {
     }
   }
 
-  const result = db.prepare(
+  const result = (await db.prepare(
     'INSERT INTO attachments (project_id, original_name, stored_name, mime_type, size, uploaded_by, enc_iv, enc_tag) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(req.params.project_id, req.file.originalname, req.file.filename, req.file.mimetype, req.file.size, req.user.id, encIv, encTag);
+  ).run(req.params.project_id, req.file.originalname, req.file.filename, req.file.mimetype, req.file.size, req.user.id, encIv, encTag));
   res.json({ id: result.lastInsertRowid, original_name: req.file.originalname, encrypted: !!encIv });
 }
 
-router.get('/:project_id/download/:id', requireAuth, (req, res) => {
-  const att = db.prepare('SELECT * FROM attachments WHERE id = ? AND project_id = ?').get(req.params.id, req.params.project_id);
+router.get('/:project_id/download/:id', requireAuth, async (req, res) => {
+  const att = (await db.prepare('SELECT * FROM attachments WHERE id = ? AND project_id = ?').get(req.params.id, req.params.project_id));
   if (!att) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'engineer') {
-    const assigned = db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(att.project_id, req.user.id);
+    const assigned = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(att.project_id, req.user.id));
     if (!assigned) return res.status(403).json({ error: 'Forbidden' });
   }
   // Guard against path traversal (stored_name should always be a plain filename)
@@ -124,14 +128,14 @@ router.get('/:project_id/download/:id', requireAuth, (req, res) => {
   res.download(filePath, downloadName);
 });
 
-router.delete('/:project_id/:id', requireAuth, (req, res) => {
-  const att = db.prepare('SELECT * FROM attachments WHERE id = ? AND project_id = ?').get(req.params.id, req.params.project_id);
+router.delete('/:project_id/:id', requireAuth, async (req, res) => {
+  const att = (await db.prepare('SELECT * FROM attachments WHERE id = ? AND project_id = ?').get(req.params.id, req.params.project_id));
   if (!att) return res.status(404).json({ error: 'Not found' });
   // Only the uploader or a manager can delete
   if (req.user.role !== 'manager' && att.uploaded_by !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
   const filePath = path.join(uploadDir, att.stored_name);
   fs.unlink(filePath, () => {});
-  db.prepare('DELETE FROM attachments WHERE id = ?').run(att.id);
+  (await db.prepare('DELETE FROM attachments WHERE id = ?').run(att.id));
   res.json({ ok: true });
 });
 

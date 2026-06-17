@@ -140,7 +140,7 @@ router.post('/:id/import-excel/preview', requireAuth, upload.single('file'), asy
   if (!req.file)       return res.status(400).json({ error: 'No file uploaded' });
 
   const projectId = parseInt(req.params.id);
-  const project   = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+  const project   = (await db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId));
   if (!project) return res.status(404).json({ error: 'Project not found' });
 
   try {
@@ -154,11 +154,11 @@ router.post('/:id/import-excel/preview', requireAuth, upload.single('file'), asy
 
 // POST /api/projects/:id/import-excel/confirm
 // Inserts the selected tasks into the DB
-router.post('/:id/import-excel/confirm', requireAuth, (req, res) => {
+router.post('/:id/import-excel/confirm', requireAuth, async (req, res) => {
   if (!canManage(req)) return res.status(403).json({ error: 'Forbidden' });
 
   const projectId = parseInt(req.params.id);
-  const project   = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+  const project   = (await db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId));
   if (!project) return res.status(404).json({ error: 'Project not found' });
 
   const { tasks } = req.body;
@@ -166,24 +166,20 @@ router.post('/:id/import-excel/confirm', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'No tasks provided' });
   }
 
-  const insert = db.prepare(`
-    INSERT INTO tasks (project_id, title, description, status, priority, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, 'open', 'medium', ?, datetime('now'), datetime('now'))
-  `);
-
-  const doInsert = db.transaction((list) => {
-    let created = 0;
-    for (const t of list) {
+  const created = await db.transaction(async (tx) => {
+    const insert = tx.prepare(`
+      INSERT INTO tasks (project_id, title, description, status, priority, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, 'open', 'medium', ?, datetime('now'), datetime('now'))
+    `);
+    let n = 0;
+    for (const t of tasks) {
       const title = String(t.title || '').trim();
       if (!title) continue;
-
-      insert.run(projectId, title, null, req.user.id);
-      created++;
+      await insert.run(projectId, title, null, req.user.id);
+      n++;
     }
-    return created;
+    return n;
   });
-
-  const created = doInsert(tasks);
   res.json({ created, message: `${created} task${created !== 1 ? 's' : ''} imported successfully` });
 });
 

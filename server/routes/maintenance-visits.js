@@ -44,17 +44,19 @@ function parseEngIds(row) {
 
 // Replace the full engineer set for a visit (within an existing transaction or standalone).
 // Always coerces IDs to positive integers — rejects anything that doesn't parse cleanly.
-const replaceEngineers = db.transaction((visitId, engineerIds) => {
-  db.prepare('DELETE FROM maintenance_visit_engineers WHERE visit_id = ?').run(visitId);
-  const ins = db.prepare('INSERT OR IGNORE INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?)');
-  (engineerIds || []).forEach(uid => {
-    const intId = parseInt(uid, 10);
-    if (Number.isFinite(intId) && intId > 0) ins.run(visitId, intId);
+async function replaceEngineers(visitId, engineerIds) {
+  await db.transaction(async (tx) => {
+    await tx.prepare('DELETE FROM maintenance_visit_engineers WHERE visit_id = ?').run(visitId);
+    const ins = tx.prepare('INSERT OR IGNORE INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?)');
+    for (const uid of (engineerIds || [])) {
+      const intId = parseInt(uid, 10);
+      if (Number.isFinite(intId) && intId > 0) await ins.run(visitId, intId);
+    }
   });
-});
+}
 
-function isAssignedEngineer(visitId, userId) {
-  return !!db.prepare('SELECT 1 FROM maintenance_visit_engineers WHERE visit_id = ? AND user_id = ?').get(visitId, userId);
+async function isAssignedEngineer(visitId, userId) {
+  return !!(await db.prepare('SELECT 1 FROM maintenance_visit_engineers WHERE visit_id = ? AND user_id = ?').get(visitId, userId));
 }
 
 // Convert an ExcelJS cell value to string, handling dates and rich text.
@@ -90,7 +92,7 @@ function sheetToJson(worksheet) {
 }
 
 // ── List ─────────────────────────────────────────────────────────────────────
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { month, engineer_id, customer_id, review_pending, not_completed, overview, pending_report } = req.query;
   let q = BASE_SELECT + ' WHERE 1=1';
   const params = [];
@@ -115,12 +117,12 @@ router.get('/', requireAuth, (req, res) => {
   if (review_pending) { q += ' AND mv.report_sent = 1 AND mv.report_sent_to_customer = 0'; }
   if (not_completed)  { q += " AND mv.status NOT IN ('completed', 'cancelled')"; }
   q += ' ORDER BY mv.scheduled_date ASC';
-  res.json(db.prepare(q).all(...params).map(parseEngIds));
+  res.json((await db.prepare(q).all(...params)).map(parseEngIds));
 });
 
 // ── Export to Excel (MUST be before /:id) ───────────────────────────────────
 router.get('/export', requireDownloadManagerOrPlanner, async (req, res) => {
-  const rows = db.prepare(`
+  const rows = (await db.prepare(`
     SELECT mv.title, mv.scheduled_date, mv.status,
       c.name as customer,
       GROUP_CONCAT(u.name, ', ') as engineers,
@@ -134,7 +136,7 @@ router.get('/export', requireDownloadManagerOrPlanner, async (req, res) => {
     LEFT JOIN users u ON u.id = mve.user_id
     GROUP BY mv.id
     ORDER BY mv.scheduled_date DESC
-  `).all();
+  `).all());
 
   const wsData = [
     ['Title','Customer','Scheduled Date','Status','Engineers','Report Status','Notes'],
@@ -166,34 +168,34 @@ router.get('/template/download', requireDownloadManagerOrPlanner, async (req, re
 });
 
 // ── Get single ───────────────────────────────────────────────────────────────
-router.get('/:id', requireAuth, (req, res) => {
-  const mv = db.prepare(BASE_SELECT + ' WHERE mv.id = ?').get(req.params.id);
+router.get('/:id', requireAuth, async (req, res) => {
+  const mv = (await db.prepare(BASE_SELECT + ' WHERE mv.id = ?').get(req.params.id));
   if (!mv) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role === 'engineer' && !isAssignedEngineer(mv.id, req.user.id))
+  if (req.user.role === 'engineer' && !await isAssignedEngineer(mv.id, req.user.id))
     return res.status(403).json({ error: 'Forbidden' });
   res.json(parseEngIds(mv));
 });
 
 // ── Create ───────────────────────────────────────────────────────────────────
-router.post('/', requireManagerOrPlanner, (req, res) => {
+router.post('/', requireManagerOrPlanner, async (req, res) => {
   const { customer_id, title, description, scheduled_date, engineer_ids, notes } = req.body;
   if (!customer_id || !title || !scheduled_date)
     return res.status(400).json({ error: 'customer_id, title and scheduled_date are required' });
 
-  const result = db.prepare(
+  const result = (await db.prepare(
     'INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, notes, created_by) VALUES (?,?,?,?,?,?)'
-  ).run(customer_id, title, description || null, scheduled_date, notes || null, req.user.id);
+  ).run(customer_id, title, description || null, scheduled_date, notes || null, req.user.id));
 
   const visitId = result.lastInsertRowid;
 
   if (Array.isArray(engineer_ids) && engineer_ids.length) {
     const safeIds = engineer_ids.map(id => parseInt(id, 10)).filter(id => Number.isFinite(id) && id > 0);
-    replaceEngineers(visitId, safeIds);
+    await replaceEngineers(visitId, safeIds);
     if (safeIds.length) {
-      const customer = db.prepare('SELECT name FROM customers WHERE id = ?').get(customer_id);
+      const customer = (await db.prepare('SELECT name FROM customers WHERE id = ?').get(customer_id));
       const placeholders = safeIds.map(() => '?').join(',');
       const engineerMap = {};
-      db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders})`).all(...safeIds)
+      (await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders})`).all(...safeIds))
         .forEach(e => { engineerMap[e.id] = e; });
       safeIds.forEach(uid => {
         const eng = engineerMap[uid];
@@ -232,8 +234,8 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
     return out;
   };
 
-  const customers = db.prepare('SELECT id, name FROM customers').all();
-  const users     = db.prepare("SELECT id, name, email FROM users WHERE role='engineer'").all();
+  const customers = (await db.prepare('SELECT id, name FROM customers').all());
+  const users     = (await db.prepare("SELECT id, name, email FROM users WHERE role='engineer'").all());
   const findCustomer = (name) => customers.find(c => c.name.toLowerCase() === name.toLowerCase())?.id || null;
   const findEngineer = (q) => {
     if (!q) return null;
@@ -249,49 +251,49 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
   let imported = 0;
   const errors = [];
 
-  const importMany = db.transaction(() => {
-    rows.forEach((rawRow, i) => {
-      const row = normalize(rawRow);
-      const rowNum = i + 2;
-      if (!row.customer_name) { errors.push({ row: rowNum, error: 'Missing: customer_name' }); return; }
-      if (!row.title)          { errors.push({ row: rowNum, error: 'Missing: title' });         return; }
-      if (!row.scheduled_date) { errors.push({ row: rowNum, error: 'Missing: scheduled_date' }); return; }
+  // Per-row autocommit — partial-success import (invalid rows skipped/reported).
+  for (let i = 0; i < rows.length; i++) {
+    const row = normalize(rows[i]);
+    const rowNum = i + 2;
+    if (!row.customer_name) { errors.push({ row: rowNum, error: 'Missing: customer_name' }); continue; }
+    if (!row.title)          { errors.push({ row: rowNum, error: 'Missing: title' });         continue; }
+    if (!row.scheduled_date) { errors.push({ row: rowNum, error: 'Missing: scheduled_date' }); continue; }
 
-      const customerId = findCustomer(row.customer_name);
-      if (!customerId) { errors.push({ row: rowNum, error: `Customer not found: "${row.customer_name}"` }); return; }
+    const customerId = findCustomer(row.customer_name);
+    if (!customerId) { errors.push({ row: rowNum, error: `Customer not found: "${row.customer_name}"` }); continue; }
 
-      // engineer_names can be comma-separated
-      const engNames = (row.engineer_names || row.engineer_name || '').split(',').map(s => s.trim()).filter(Boolean);
-      const engIds = [];
-      for (const name of engNames) {
-        const id = findEngineer(name);
-        if (!id) { errors.push({ row: rowNum, error: `Engineer not found: "${name}"` }); return; }
-        engIds.push(id);
-      }
+    // engineer_names can be comma-separated
+    const engNames = (row.engineer_names || row.engineer_name || '').split(',').map(s => s.trim()).filter(Boolean);
+    const engIds = [];
+    let missingEng = false;
+    for (const name of engNames) {
+      const id = findEngineer(name);
+      if (!id) { errors.push({ row: rowNum, error: `Engineer not found: "${name}"` }); missingEng = true; break; }
+      engIds.push(id);
+    }
+    if (missingEng) continue;
 
-      try {
-        const r = insertStmt.run(customerId, row.title, row.description || null, row.scheduled_date, row.notes || null, req.user.id);
-        engIds.forEach(uid => insEng.run(r.lastInsertRowid, uid));
-        imported++;
-      } catch (e) {
-        errors.push({ row: rowNum, error: e.message });
-      }
-    });
-  });
+    try {
+      const r = await insertStmt.run(customerId, row.title, row.description || null, row.scheduled_date, row.notes || null, req.user.id);
+      for (const uid of engIds) await insEng.run(r.lastInsertRowid, uid);
+      imported++;
+    } catch (e) {
+      errors.push({ row: rowNum, error: e.message });
+    }
+  }
 
-  importMany();
   res.json({ imported, skipped: errors.length, errors });
 });
 
 // ── Update ───────────────────────────────────────────────────────────────────
-router.put('/:id', requireAuth, (req, res) => {
-  const mv = db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(req.params.id);
+router.put('/:id', requireAuth, async (req, res) => {
+  const mv = (await db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(req.params.id));
   if (!mv) return res.status(404).json({ error: 'Not found' });
 
   if (req.user.role === 'engineer') {
-    if (!isAssignedEngineer(mv.id, req.user.id)) return res.status(403).json({ error: 'Forbidden' });
+    if (!await isAssignedEngineer(mv.id, req.user.id)) return res.status(403).json({ error: 'Forbidden' });
     const { notes } = req.body;
-    db.prepare(`UPDATE maintenance_visits SET notes=?, updated_at=datetime('now') WHERE id=?`).run(notes ?? mv.notes, mv.id);
+    (await db.prepare(`UPDATE maintenance_visits SET notes=?, updated_at=datetime('now') WHERE id=?`).run(notes ?? mv.notes, mv.id));
     return res.json({ ok: true });
   }
 
@@ -303,24 +305,24 @@ router.put('/:id', requireAuth, (req, res) => {
   const VALID_STATUSES = ['scheduled', 'in_progress', 'completed', 'cancelled'];
   if (status !== undefined && !VALID_STATUSES.includes(status))
     return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
-  db.prepare(`UPDATE maintenance_visits SET
+  (await db.prepare(`UPDATE maintenance_visits SET
     customer_id=COALESCE(?,customer_id), title=COALESCE(?,title),
     description=COALESCE(?,description), scheduled_date=COALESCE(?,scheduled_date),
     status=COALESCE(?,status), notes=COALESCE(?,notes), updated_at=datetime('now') WHERE id=?`)
-    .run(customer_id, title, description, scheduled_date, status, notes, mv.id);
+    .run(customer_id, title, description, scheduled_date, status, notes, mv.id));
 
   // Replace engineer set if provided
   if (Array.isArray(engineer_ids)) {
     const safeIds = engineer_ids.map(id => parseInt(id, 10)).filter(id => Number.isFinite(id) && id > 0);
-    const oldIds  = db.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(mv.id).map(r => r.user_id);
-    replaceEngineers(mv.id, safeIds);
+    const oldIds  = (await db.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(mv.id)).map(r => r.user_id);
+    await replaceEngineers(mv.id, safeIds);
     // Notify newly added engineers
     const newIds = safeIds.filter(id => !oldIds.includes(id));
     if (newIds.length) {
-      const customer = db.prepare('SELECT name FROM customers WHERE id = ?').get(customer_id || mv.customer_id);
+      const customer = (await db.prepare('SELECT name FROM customers WHERE id = ?').get(customer_id || mv.customer_id));
       const placeholders = newIds.map(() => '?').join(',');
       const engineerMap = {};
-      db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders})`).all(...newIds)
+      (await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders})`).all(...newIds))
         .forEach(e => { engineerMap[e.id] = e; });
       newIds.forEach(uid => {
         const eng = engineerMap[uid];
@@ -340,15 +342,15 @@ router.put('/:id', requireAuth, (req, res) => {
 });
 
 // ── Report sent / unsent ─────────────────────────────────────────────────────
-router.post('/:id/report-sent', requireAuth, (req, res) => {
-  const mv = db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(req.params.id);
+router.post('/:id/report-sent', requireAuth, async (req, res) => {
+  const mv = (await db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(req.params.id));
   if (!mv) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role === 'engineer' && !isAssignedEngineer(mv.id, req.user.id))
+  if (req.user.role === 'engineer' && !await isAssignedEngineer(mv.id, req.user.id))
     return res.status(403).json({ error: 'Forbidden' });
-  db.prepare(`UPDATE maintenance_visits SET report_sent=1, report_sent_at=datetime('now'), report_sent_by=?, updated_at=datetime('now') WHERE id=?`)
-    .run(req.user.id, mv.id);
+  (await db.prepare(`UPDATE maintenance_visits SET report_sent=1, report_sent_at=datetime('now'), report_sent_by=?, updated_at=datetime('now') WHERE id=?`)
+    .run(req.user.id, mv.id));
   // Notify all managers that a report was submitted
-  const customer = db.prepare('SELECT name FROM customers WHERE id = ?').get(mv.customer_id);
+  const customer = (await db.prepare('SELECT name FROM customers WHERE id = ?').get(mv.customer_id));
   notify('report.submitted', {
     engineer_name: req.user.name,
     visit_title:   mv.title,
@@ -357,59 +359,59 @@ router.post('/:id/report-sent', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-router.post('/:id/report-unsent', requireManager, (req, res) => {
-  const mv = db.prepare('SELECT id FROM maintenance_visits WHERE id = ?').get(req.params.id);
+router.post('/:id/report-unsent', requireManager, async (req, res) => {
+  const mv = (await db.prepare('SELECT id FROM maintenance_visits WHERE id = ?').get(req.params.id));
   if (!mv) return res.status(404).json({ error: 'Not found' });
-  db.prepare(`UPDATE maintenance_visits SET report_sent=0, report_sent_at=NULL, report_sent_by=NULL, updated_at=datetime('now') WHERE id=?`).run(mv.id);
+  (await db.prepare(`UPDATE maintenance_visits SET report_sent=0, report_sent_at=NULL, report_sent_by=NULL, updated_at=datetime('now') WHERE id=?`).run(mv.id));
   res.json({ ok: true });
 });
 
 // ── Report sent to customer / undo (manager or planner) ──────────────────────
-router.post('/:id/report-customer-sent', requireManagerOrPlanner, (req, res) => {
-  const mv = db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(req.params.id);
+router.post('/:id/report-customer-sent', requireManagerOrPlanner, async (req, res) => {
+  const mv = (await db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(req.params.id));
   if (!mv) return res.status(404).json({ error: 'Not found' });
   if (!mv.report_sent) return res.status(400).json({ error: 'Report must be marked sent by engineer first' });
-  db.prepare(`UPDATE maintenance_visits SET
+  (await db.prepare(`UPDATE maintenance_visits SET
       report_sent_to_customer=1,
       report_sent_to_customer_at=datetime('now'),
       report_sent_to_customer_by=?,
       status='completed',
       updated_at=datetime('now')
     WHERE id=?`)
-    .run(req.user.id, mv.id);
+    .run(req.user.id, mv.id));
   res.json({ ok: true });
 });
 
-router.post('/:id/report-customer-unsent', requireManagerOrPlanner, (req, res) => {
+router.post('/:id/report-customer-unsent', requireManagerOrPlanner, async (req, res) => {
   // Revert customer-sent flag; restore status to in_progress so it can be actioned again
-  const mv = db.prepare('SELECT status FROM maintenance_visits WHERE id = ?').get(req.params.id);
+  const mv = (await db.prepare('SELECT status FROM maintenance_visits WHERE id = ?').get(req.params.id));
   const revertStatus = mv?.status === 'completed' ? 'in_progress' : (mv?.status ?? 'in_progress');
-  db.prepare(`UPDATE maintenance_visits SET
+  (await db.prepare(`UPDATE maintenance_visits SET
       report_sent_to_customer=0,
       report_sent_to_customer_at=NULL,
       report_sent_to_customer_by=NULL,
       status=?,
       updated_at=datetime('now')
-    WHERE id=?`).run(revertStatus, req.params.id);
+    WHERE id=?`).run(revertStatus, req.params.id));
   res.json({ ok: true });
 });
 
 // ── Mark as completed (PM, manager, or planner) ─────────────────────────────
-router.post('/:id/complete', requireAuth, (req, res) => {
+router.post('/:id/complete', requireAuth, async (req, res) => {
   const { role } = req.user;
   if (!['manager', 'planner', 'pm'].includes(role))
     return res.status(403).json({ error: 'Forbidden' });
-  const mv = db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(req.params.id);
+  const mv = (await db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(req.params.id));
   if (!mv) return res.status(404).json({ error: 'Not found' });
   if (mv.status === 'cancelled') return res.status(400).json({ error: 'Cannot complete a cancelled visit' });
   if (mv.status === 'completed') return res.json({ ok: true }); // idempotent
-  db.prepare(`UPDATE maintenance_visits SET status='completed', updated_at=datetime('now') WHERE id=?`).run(mv.id);
+  (await db.prepare(`UPDATE maintenance_visits SET status='completed', updated_at=datetime('now') WHERE id=?`).run(mv.id));
   res.json({ ok: true });
 });
 
 // ── Delete ───────────────────────────────────────────────────────────────────
-router.delete('/:id', requireManagerOrPlanner, (req, res) => {
-  db.prepare('DELETE FROM maintenance_visits WHERE id = ?').run(req.params.id);
+router.delete('/:id', requireManagerOrPlanner, async (req, res) => {
+  (await db.prepare('DELETE FROM maintenance_visits WHERE id = ?').run(req.params.id));
   res.json({ ok: true });
 });
 

@@ -3,9 +3,9 @@
  * Call this from any route after a mutating action.
  * Non-fatal — errors are swallowed so they never break the main response.
  */
-function logAudit(db, req, entityType, entityId, entityTitle, action, detail) {
+async function logAudit(db, req, entityType, entityId, entityTitle, action, detail) {
   try {
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO audit_log
         (user_id, user_name, user_role, entity_type, entity_id, entity_title, action, detail, ip_address)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
