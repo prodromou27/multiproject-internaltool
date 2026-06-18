@@ -49,6 +49,11 @@ app.use(helmet({
       objectSrc:   ["'none'"],
       baseUri:     ["'self'"],
       formAction:  ["'self'"],
+      // The container serves plain HTTP (TLS is terminated upstream by the
+      // reverse proxy, or absent on a direct-access dev box). Disable helmet's
+      // default upgrade-insecure-requests, which would otherwise force the
+      // browser to fetch same-origin assets over HTTPS and blank the page.
+      upgradeInsecureRequests: null,
     },
   },
   hsts: certsExist ? { maxAge: 31536000, includeSubDomains: true } : false,
