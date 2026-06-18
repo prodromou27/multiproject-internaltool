@@ -35,12 +35,30 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "==> Deploying '$ENVIRONMENT' from branch '$BRANCH'"
 
-# 1. Secrets must exist.
+# 1. Secrets must exist and be filled in.
 if [ ! -f .env ]; then
   echo "ERROR: .env not found at repo root." >&2
-  echo "       cp deploy/env.${ENVIRONMENT}.example .env  &&  edit the secrets." >&2
+  echo "       ./deploy/gen-secrets.sh ${ENVIRONMENT}   # generates one with fresh secrets" >&2
+  echo "       (or: cp deploy/env.${ENVIRONMENT}.example .env  &&  edit it)" >&2
   exit 1
 fi
+
+# Preflight: validate the secrets so we fail before a long build, not after.
+set -a; . ./.env; set +a
+errs=0
+if grep -q 'CHANGE_ME' .env; then
+  echo "ERROR: .env still contains CHANGE_ME placeholders — fill in real secrets." >&2; errs=1
+fi
+if [ -z "${POSTGRES_PASSWORD:-}" ]; then
+  echo "ERROR: POSTGRES_PASSWORD is empty." >&2; errs=1
+fi
+if [ "${#JWT_SECRET}" -lt 32 ]; then
+  echo "ERROR: JWT_SECRET must be at least 32 characters (got ${#JWT_SECRET})." >&2; errs=1
+fi
+if [ -n "${CUSTOMER_FIELD_KEY:-}" ] && ! printf '%s' "$CUSTOMER_FIELD_KEY" | grep -qE '^[0-9a-fA-F]{64}$'; then
+  echo "ERROR: CUSTOMER_FIELD_KEY must be exactly 64 hex chars (or empty to disable encryption)." >&2; errs=1
+fi
+[ "$errs" -eq 0 ] || { echo "Fix .env and re-run." >&2; exit 1; }
 
 # 2. Pull the target branch (fast-forward only — never silently rebases local edits).
 git fetch --all --prune
@@ -48,7 +66,8 @@ git checkout "$BRANCH"
 git pull --ff-only origin "$BRANCH"
 echo "==> Now at $(git rev-parse --short HEAD): $(git log -1 --pretty=%s)"
 
-# 3. Build + start.
+# 3. Validate the compose config, then build + start.
+docker compose "${COMPOSE[@]}" config -q
 docker compose "${COMPOSE[@]}" up -d --build
 
 # 4. Wait for the app container to become healthy.

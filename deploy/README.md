@@ -44,18 +44,25 @@ cd /opt/app
 
 ## 2. Configure secrets (per machine)
 
-```bash
-# DEV box:
-cp deploy/env.dev.example .env
-# PROD box:
-cp deploy/env.prod.example .env
+Easiest — generate `.env` with fresh secrets from the template:
 
-# Fill in strong, unique values (different per environment):
+```bash
+./deploy/gen-secrets.sh dev     # on the DEV box
+./deploy/gen-secrets.sh prod    # on the PROD box   (writes .env, mode 600)
+```
+
+Then review `.env` (`APP_PORT`, `TRUST_PROXY`, etc.). Or do it by hand:
+
+```bash
+cp deploy/env.prod.example .env
 openssl rand -hex 24   # → POSTGRES_PASSWORD
 openssl rand -hex 48   # → JWT_SECRET
 openssl rand -hex 32   # → CUSTOMER_FIELD_KEY   (exactly 64 hex chars)
 nano .env
 ```
+
+`deploy.sh` runs a preflight check and refuses to deploy if secrets are still
+`CHANGE_ME`, `JWT_SECRET` is under 32 chars, or `CUSTOMER_FIELD_KEY` isn't 64 hex.
 
 **Back up `CUSTOMER_FIELD_KEY`** in a secrets manager — losing it makes encrypted
 customer PII unrecoverable. Never commit `.env` (it's gitignored).
@@ -83,11 +90,39 @@ and rebuilds. To deploy a specific build, `git checkout <tag>` first or set
 
 ## 4. TLS (production)
 
-The app container serves plain HTTP on the published port. In production, front it
-with a TLS-terminating reverse proxy (nginx / Caddy / Traefik) on the host that
-forwards 443 → `127.0.0.1:8080`. Keep `APP_PORT` bound to localhost if a proxy is
-in front (set `APP_PORT=127.0.0.1:8080` is not supported by the simple mapping —
-instead restrict via firewalld or run the proxy on the same host).
+The app container serves plain HTTP. In production, front it with a TLS-terminating
+reverse proxy on the host. A ready nginx config is in
+[`deploy/nginx.conf.example`](nginx.conf.example) (Caddy one-liner alternative
+included):
+
+```bash
+sudo cp deploy/nginx.conf.example /etc/nginx/conf.d/solutionshub.conf
+# edit server_name; then get a cert:
+sudo dnf install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d app.example.com
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+In `.env` set `APP_PORT=127.0.0.1:8080` (only the proxy can reach the app) and
+`TRUST_PROXY=1` (so the audit log and rate limiter see the real client IP from
+`X-Forwarded-For`). The prod env template already has both.
+
+## 4b. Auto-start on boot (systemd, optional)
+
+Docker's `restart: unless-stopped` already restarts containers when the daemon
+starts. To manage the whole stack as one service and re-apply config on boot,
+install the unit:
+
+```bash
+sudo cp deploy/systemd/solutionshub.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now solutionshub
+sudo systemctl status solutionshub
+```
+
+The app handles `SIGTERM` (stops accepting connections, drains, closes the DB
+pool), so `systemctl stop` / `docker compose down` / redeploys shut down cleanly
+instead of being force-killed.
 
 ## 5. Backups (production)
 

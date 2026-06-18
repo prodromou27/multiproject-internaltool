@@ -31,6 +31,7 @@ services:
   app:
     build: .
     restart: unless-stopped
+    init: true            # tini as PID 1 — proper signal forwarding + zombie reaping
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-app}
       PORT: "8080"
@@ -40,6 +41,9 @@ services:
       # 64-char hex key for customer PII encryption. Empty = encryption disabled
       # (plaintext passthrough). Set this in .env to encrypt at rest.
       CUSTOMER_FIELD_KEY: ${CUSTOMER_FIELD_KEY:-}
+      # Number of reverse-proxy hops to trust for the client IP (set to 1 when
+      # behind nginx/Caddy). Empty = don't trust X-Forwarded-For.
+      TRUST_PROXY: ${TRUST_PROXY:-}
     depends_on:
       db:
         condition: service_healthy

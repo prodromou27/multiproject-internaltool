@@ -22,6 +22,16 @@ const { notify } = require('./notifications');
 
 const app = express();
 
+// ── Reverse-proxy awareness ──────────────────────────────────────────────────
+// In production the app sits behind a TLS-terminating proxy (nginx/Caddy). Set
+// TRUST_PROXY to the number of proxy hops so req.ip and the rate limiter read the
+// real client IP from X-Forwarded-For. Left off by default — trusting the header
+// without a proxy in front would let clients spoof their IP.
+if (process.env.TRUST_PROXY) {
+  const hops = Number(process.env.TRUST_PROXY);
+  app.set('trust proxy', Number.isFinite(hops) ? hops : 1);
+}
+
 // ── Security headers ─────────────────────────────────────────────────────────
 // HSTS is enabled whenever TLS certs exist (regardless of NODE_ENV).
 const certsExist = fs.existsSync(path.join(__dirname, 'certs', 'cert.pem')) &&
@@ -236,14 +246,16 @@ const keyFile  = path.join(certDir, 'key.pem');
     process.exit(1);
   }
 
+  const servers = [];
+
   if (fs.existsSync(certFile) && fs.existsSync(keyFile)) {
     const tlsOptions = { cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) };
 
-    https.createServer(tlsOptions, app).listen(HTTPS_PORT, '0.0.0.0', () => {
+    servers.push(https.createServer(tlsOptions, app).listen(HTTPS_PORT, '0.0.0.0', () => {
       console.log(`Server running on https://0.0.0.0:${HTTPS_PORT}`);
       scheduleDailyReminders();
       initScheduler();
-    });
+    }));
 
     const httpRedirect = http.createServer((req, res) => {
       const host = (req.headers.host || 'localhost').replace(/:\d+$/, '');
@@ -256,13 +268,40 @@ const keyFile  = path.join(certDir, 'key.pem');
     httpRedirect.listen(HTTP_PORT, '0.0.0.0', () => {
       console.log(`HTTP redirect listening on port ${HTTP_PORT} → HTTPS`);
     });
+    servers.push(httpRedirect);
 
   } else {
     const PORT = process.env.PORT || 3001;
-    app.listen(PORT, '0.0.0.0', () => {
+    servers.push(app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://0.0.0.0:${PORT} (no TLS certs found)`);
       scheduleDailyReminders();
       initScheduler();
-    });
+    }));
   }
+
+  // ── Graceful shutdown ──────────────────────────────────────────────────────
+  // Docker/systemd send SIGTERM on stop/restart. Stop accepting connections,
+  // then close the pg pool, so restarts are clean instead of waiting for SIGKILL.
+  let shuttingDown = false;
+  async function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[shutdown] ${signal} received — closing servers…`);
+    const forceTimer = setTimeout(() => {
+      console.error('[shutdown] timed out — forcing exit');
+      process.exit(1);
+    }, 10000).unref();
+    try {
+      await Promise.all(servers.map(s => new Promise(res => s.close(res))));
+      await db.pool.end();
+      clearTimeout(forceTimer);
+      console.log('[shutdown] clean exit');
+      process.exit(0);
+    } catch (e) {
+      console.error('[shutdown] error:', e.message);
+      process.exit(1);
+    }
+  }
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
 })();

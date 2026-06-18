@@ -1,0 +1,30 @@
+# systemd unit to bring the Docker Compose stack up on boot and down on stop.
+#
+# Install (PROD box; adjust WorkingDirectory if not /opt/app):
+#   sudo cp deploy/systemd/solutionshub.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now solutionshub
+#
+# Manage:  sudo systemctl {start|stop|restart|status} solutionshub
+#
+# For a DEV box, remove the "-f docker-compose.prod.yml" from the ExecStart/Stop
+# lines below. Docker's own restart:unless-stopped already restarts containers
+# when the daemon starts; this unit additionally re-runs `up -d` (applying any
+# config changes) and gives you a single service to start/stop the whole stack.
+
+[Unit]
+Description=SolutionsHub (Docker Compose stack)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/app
+ExecStart=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+ExecStop=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

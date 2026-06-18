@@ -42,3 +42,6 @@ Thumbs.db
 
 # Temp / debug scripts
 check_migration.js
+
+# Stray local DB file at repo root
+/firewall_cleanup.db
