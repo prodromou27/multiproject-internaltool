@@ -1,8 +1,9 @@
 # Deployment — Linux / Docker / PostgreSQL
 
 The app runs as a single Node container (Express API + built React SPA) against a
-PostgreSQL database. This replaces the previous Windows/SQLite setup (preserved on
-the `Windows_Server` branch). Migration work lives on `dev`.
+PostgreSQL database. This replaces the previous Windows/SQLite setup. For the
+Linux/Docker/PostgreSQL deployment path, `dev` is the test/staging branch and `prod`
+is the production branch.
 
 ## Stack
 
@@ -20,6 +21,8 @@ the `Windows_Server` branch). Migration work lives on `dev`.
 | `DATABASE_URL` | yes | `postgres://user:pass@host:5432/db` |
 | `JWT_SECRET` | yes (prod) | ≥32 chars; server refuses to start in production without it |
 | `CUSTOMER_FIELD_KEY` | recommended | 64-char hex; enables customer PII encryption at rest (empty = plaintext passthrough) |
+| `ATTACHMENT_KEY` | recommended | 64-char hex; enables uploaded-file encryption at rest |
+| `APP_URL` | yes for email flows | public base URL used in password reset links |
 | `PORT` | no | defaults to 8080 |
 | `ADMIN_PASSWORD` | no | sets the first-run admin password (otherwise random, printed once) |
 
@@ -29,7 +32,7 @@ See `server/.env.example`.
 
 ```bash
 # from the repo root
-cp server/.env.example .env       # set POSTGRES_PASSWORD / JWT_SECRET / CUSTOMER_FIELD_KEY
+cp deploy/env.dev.example .env    # set POSTGRES_PASSWORD / JWT_SECRET / encryption keys
 docker compose up --build
 ```
 
@@ -60,12 +63,37 @@ Also exercise: `/api/search?q=…` (PII substring match), the iCal feed-token fl
 (`POST /api/auth/ical-token` → use it on `/api/calendar/ical?token=…`), bulk Excel
 import, and the admin last-manager guards.
 
+For a repeatable baseline check, run:
+
+```bash
+SMOKE_PASSWORD='<admin password>' ./deploy/smoke-test.sh
+```
+
+Use [`docs/SECURITY_OWASP.md`](SECURITY_OWASP.md) as the OWASP Top 10 release
+checklist before promoting DEV to PROD.
+
 ## PROD promotion
 
-PROD uses the same app image against a managed Postgres (set `DATABASE_URL`, drop the
-compose `db` service). To carry existing data over from the old SQLite database, run
-the one-time migration from a full (non-`--omit=dev`) install with the legacy
-`app.db` available:
+PROD uses the same Docker/PostgreSQL architecture as DEV. Promote only the exact DEV
+commit that passed verification:
+
+```bash
+git fetch origin
+git checkout prod
+git merge --ff-only dev
+git push origin prod
+```
+
+If `prod` does not exist yet, create it from the verified DEV commit:
+
+```bash
+git checkout -b prod dev
+git push -u origin prod
+```
+
+Then run `./deploy/deploy.sh prod` on the PROD box. To carry existing data over from
+the old SQLite database, run the one-time migration from a full (non-`--omit=dev`)
+install with the legacy `app.db` available:
 
 ```bash
 cd server

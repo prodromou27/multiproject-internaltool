@@ -5,6 +5,7 @@
 const https = require('https');
 const http  = require('http');
 const db    = require('./db');
+const { assertPublicHttpUrl } = require('./security');
 
 // ── Fetch settings from DB ───────────────────────────────────────────────────
 async function getSettings() {
@@ -13,20 +14,11 @@ async function getSettings() {
   try { return JSON.parse(row.value); } catch { return null; }
 }
 
-// ── Block requests to private / loopback addresses (SSRF guard) ─────────────
-function isPrivateHost(hostname) {
-  // Reject localhost, loopback, link-local, RFC-1918, and AWS metadata endpoint
-  return /^(localhost|127\.|0\.0\.0\.0|::1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.)/.test(hostname);
-}
-
-// ── Generic HTTP/S POST (no external deps) ───────────────────────────────────
-function postJSON(url, body, extraHeaders = {}) {
+// Generic HTTP/S POST (no external deps). Outbound URLs are DNS-resolved and
+// blocked if they target private, loopback, link-local, or metadata addresses.
+async function postJSON(url, body, extraHeaders = {}) {
+  const u = await assertPublicHttpUrl(url, { label: 'Outbound notification URL' });
   return new Promise((resolve, reject) => {
-    let u;
-    try { u = new URL(url); } catch (e) { return reject(new Error('Invalid URL: ' + url)); }
-    if (isPrivateHost(u.hostname)) {
-      return reject(new Error(`Webhook URL points to a private/internal host: ${u.hostname}`));
-    }
     const data = JSON.stringify(body);
     const options = {
       hostname: u.hostname,

@@ -54,12 +54,12 @@ router.get('/', requireAuth, async (req, res) => {
       )
       ORDER BY c.name
     `).all(req.user.id, req.user.id));
-    return res.json(rows.map(decryptCustomer));
+    return res.json(rows.map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name)));
   }
   const rows = (await db.prepare(`SELECT c.*, u.name as created_by_name,
     (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = c.id) as visit_count
     FROM customers c LEFT JOIN users u ON c.created_by = u.id ORDER BY c.name`).all());
-  res.json(rows.map(decryptCustomer));
+  res.json(rows.map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name)));
 });
 
 // ── Template download — MUST be before /:id ─────────────────────────────────
@@ -103,10 +103,14 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 router.post('/', requireManagerOrPlanner, async (req, res) => {
   const { name, contact_name, contact_email, contact_phone, address, notes } = req.body;
-  if (!name) return res.status(400).json({ error: 'Name required' });
-  const enc = encryptCustomer({ contact_name, contact_email, contact_phone, address, notes });
+  if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
+  const existing = (await db.prepare('SELECT id, name FROM customers').all()).map(decryptCustomer);
+  if (existing.some(c => c.name?.toLowerCase() === name.trim().toLowerCase())) {
+    return res.status(409).json({ error: 'Customer already exists' });
+  }
+  const enc = encryptCustomer({ name: name.trim(), contact_name, contact_email, contact_phone, address, notes });
   const result = (await db.prepare('INSERT INTO customers (name, contact_name, contact_email, contact_phone, address, notes, created_by) VALUES (?,?,?,?,?,?,?)')
-    .run(name, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, req.user.id));
+    .run(enc.name, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, req.user.id));
   res.json({ id: result.lastInsertRowid });
 });
 
@@ -138,8 +142,11 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
   // Per-row autocommit (not one big transaction): this import is partial-success
   // by design — invalid rows are skipped and reported. A single Postgres
   // transaction would abort entirely on the first failing row.
-  const insertStmt   = db.prepare('INSERT INTO customers (name, contact_name, contact_email, contact_phone, address, notes, created_by) VALUES (?,?,?,?,?,?,?)');
-  const dupCheckStmt = db.prepare('SELECT 1 FROM customers WHERE lower(name) = lower(?)');
+  const insertStmt = db.prepare('INSERT INTO customers (name, contact_name, contact_email, contact_phone, address, notes, created_by) VALUES (?,?,?,?,?,?,?)');
+  const existingNames = new Set((await db.prepare('SELECT name FROM customers').all())
+    .map(decryptCustomer)
+    .map(c => c.name?.toLowerCase())
+    .filter(Boolean));
 
   let imported = 0;
   const errors = [];
@@ -151,12 +158,14 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
       errors.push({ row: rowNum, error: 'Missing required field: name' });
       continue;
     }
-    if (await dupCheckStmt.get(row.name)) {
+    const normalizedName = row.name.toLowerCase();
+    if (existingNames.has(normalizedName)) {
       errors.push({ row: rowNum, error: `Customer "${row.name}" already exists — skipped` });
       continue;
     }
     try {
       const enc = encryptCustomer({
+        name:          row.name,
         contact_name:  row.contact_name  || null,
         contact_email: row.contact_email || null,
         contact_phone: row.contact_phone || null,
@@ -164,9 +173,10 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
         notes:         row.notes         || null,
       });
       await insertStmt.run(
-        row.name, enc.contact_name, enc.contact_email, enc.contact_phone,
+        enc.name, enc.contact_name, enc.contact_email, enc.contact_phone,
         enc.address, enc.notes, req.user.id
       );
+      existingNames.add(normalizedName);
       imported++;
     } catch (e) {
       errors.push({ row: rowNum, error: e.message });
@@ -182,9 +192,17 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
   const existing = (await db.prepare('SELECT * FROM customers WHERE id = ?').get(id));
   if (!existing) return res.status(404).json({ error: 'Not found' });
   const { name, contact_name, contact_email, contact_phone, address, notes } = req.body;
+  if (name !== undefined && !name?.trim()) return res.status(400).json({ error: 'Name cannot be empty' });
+  if (name?.trim()) {
+    const allCustomers = (await db.prepare('SELECT id, name FROM customers').all()).map(decryptCustomer);
+    if (allCustomers.some(c => c.id !== id && c.name?.toLowerCase() === name.trim().toLowerCase())) {
+      return res.status(409).json({ error: 'Customer already exists' });
+    }
+  }
   // Decrypt existing values so they can be used as fallback when a field isn't supplied
   const dec = decryptCustomer(existing);
   const enc = encryptCustomer({
+    name:          name          !== undefined ? name.trim() : dec.name,
     contact_name:  contact_name  !== undefined ? (contact_name  || null) : dec.contact_name,
     contact_email: contact_email !== undefined ? (contact_email || null) : dec.contact_email,
     contact_phone: contact_phone !== undefined ? (contact_phone || null) : dec.contact_phone,
@@ -192,7 +210,7 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
     notes:         notes         !== undefined ? (notes         || null) : dec.notes,
   });
   (await db.prepare('UPDATE customers SET name=COALESCE(?,name), contact_name=?, contact_email=?, contact_phone=?, address=?, notes=? WHERE id=?')
-    .run(name || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, id));
+    .run(enc.name || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, id));
   res.json({ ok: true });
 });
 

@@ -5,6 +5,47 @@ const path   = require('path');
 const { requireManager } = require('../middleware/auth');
 const { sendTest } = require('../notifications');
 const updateMgr = require('../update-manager');
+const { assertPublicHttpUrl, isInAppUpdateEnabled, requireInAppUpdateEnabled } = require('../security');
+const { getRuntimeConfigIssues } = require('../config');
+const { isEncrypted, keyStatus } = require('../fieldCipher');
+const pkg = require('../package.json');
+
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function bool(value, fallback = false) {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+async function customerEncryptionReport() {
+  const fields = ['name', 'contact_name', 'contact_email', 'contact_phone', 'address', 'notes'];
+  const rows = await db.prepare('SELECT id, name, contact_name, contact_email, contact_phone, address, notes FROM customers').all();
+  let plaintext_fields = 0;
+  let encrypted_fields = 0;
+  let affected_rows = 0;
+
+  for (const row of rows) {
+    let rowHasPlaintext = false;
+    for (const f of fields) {
+      const value = row[f];
+      if (value === null || value === undefined || value === '') continue;
+      if (isEncrypted(value)) encrypted_fields++;
+      else {
+        plaintext_fields++;
+        rowHasPlaintext = true;
+      }
+    }
+    if (rowHasPlaintext) affected_rows++;
+  }
+
+  return {
+    rows: rows.length,
+    encrypted_fields,
+    plaintext_fields,
+    affected_rows,
+  };
+}
 
 // GET /api/settings/integrations
 router.get('/integrations', requireManager, async (req, res) => {
@@ -12,16 +53,13 @@ router.get('/integrations', requireManager, async (req, res) => {
   if (!row) return res.json({});
   try { res.json(JSON.parse(row.value)); } catch { res.json({}); }
 });
-
-// ── Validate webhook URLs to prevent SSRF ────────────────────────────────────
-const PRIVATE_HOST_RE = /^(localhost|127\.|0\.0\.0\.0|::1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.)/;
-function validateWebhookUrl(url) {
-  if (!url) return null; // empty is fine — integration is just unconfigured
+// Validate webhook URLs before storing them. This resolves DNS and rejects
+// loopback/private/link-local destinations to prevent SSRF.
+async function validateWebhookUrl(url) {
+  if (!url) return null; // empty is fine: integration is just unconfigured
   try {
-    const u = new URL(url);
-    if (!['http:', 'https:'].includes(u.protocol)) return 'Webhook URL must use http or https';
-    if (PRIVATE_HOST_RE.test(u.hostname)) return `Webhook URL must not point to a private or internal host (${u.hostname})`;
-  } catch { return 'Invalid webhook URL format'; }
+    await assertPublicHttpUrl(url, { label: 'Webhook URL' });
+  } catch (e) { return e.message; }
   return null;
 }
 
@@ -31,7 +69,7 @@ router.post('/integrations', requireManager, async (req, res) => {
   const body = req.body;
   for (const [platform, cfg] of Object.entries(body || {})) {
     if (cfg && typeof cfg === 'object' && cfg.webhook_url) {
-      const err = validateWebhookUrl(cfg.webhook_url);
+      const err = await validateWebhookUrl(cfg.webhook_url);
       if (err) return res.status(400).json({ error: `${platform} webhook_url: ${err}` });
     }
   }
@@ -70,7 +108,19 @@ router.get('/localization', requireManager, async (req, res) => {
 });
 
 router.put('/localization', requireManager, async (req, res) => {
-  (await db.prepare("INSERT INTO settings (key,value) VALUES ('localization_config',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify(req.body)));
+  const body = isPlainObject(req.body) ? req.body : {};
+  const cfg = {
+    default_language: ['en', 'el'].includes(body.default_language) ? body.default_language : DEFAULT_LOCALIZATION.default_language,
+    supported_languages: Array.isArray(body.supported_languages)
+      ? body.supported_languages.filter(v => ['en', 'el'].includes(v)).slice(0, 2)
+      : DEFAULT_LOCALIZATION.supported_languages,
+    date_format: ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'].includes(body.date_format) ? body.date_format : DEFAULT_LOCALIZATION.date_format,
+    time_format: ['24h', '12h'].includes(body.time_format) ? body.time_format : DEFAULT_LOCALIZATION.time_format,
+    number_format: ['1,000.00', '1.000,00', '1000.00'].includes(body.number_format) ? body.number_format : DEFAULT_LOCALIZATION.number_format,
+    timezone: typeof body.timezone === 'string' && body.timezone.length <= 80 ? body.timezone : DEFAULT_LOCALIZATION.timezone,
+  };
+  if (!cfg.supported_languages.length) cfg.supported_languages = DEFAULT_LOCALIZATION.supported_languages;
+  (await db.prepare("INSERT INTO settings (key,value) VALUES ('localization_config',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify(cfg)));
   res.json({ ok: true });
 });
 
@@ -83,6 +133,7 @@ const ALERT_DEFAULTS = {
   high_error_rate:           { enabled: true,  email: false },
   unauthorized_access:       { enabled: true,  email: true  },
   integration_token_expiring:{ enabled: true,  email: false },
+  customer_encryption_incomplete:{ enabled: true, email: true },
 };
 
 router.get('/admin-notifications', requireManager, async (req, res) => {
@@ -98,7 +149,15 @@ router.get('/admin-notifications', requireManager, async (req, res) => {
 });
 
 router.put('/admin-notifications', requireManager, async (req, res) => {
-  (await db.prepare("INSERT INTO settings (key,value) VALUES ('admin_notifications_config',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify(req.body)));
+  const body = isPlainObject(req.body) ? req.body : {};
+  const cfg = {};
+  Object.keys(ALERT_DEFAULTS).forEach(k => {
+    cfg[k] = {
+      enabled: bool(body[k]?.enabled, ALERT_DEFAULTS[k].enabled),
+      email: bool(body[k]?.email, ALERT_DEFAULTS[k].email),
+    };
+  });
+  (await db.prepare("INSERT INTO settings (key,value) VALUES ('admin_notifications_config',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify(cfg)));
   res.json({ ok: true });
 });
 
@@ -148,6 +207,20 @@ router.post('/system-alerts/check', requireManager, async (req, res) => {
       alerts.push({ type: 'unauthorized_access', level: 'warning', message: `${faRow.value} failed login attempts recorded` });
   } catch {}
 
+  // 5. Customer encryption coverage
+  try {
+    const coverage = await customerEncryptionReport();
+    if (coverage.plaintext_fields > 0) {
+      alerts.push({
+        type: 'customer_encryption_incomplete',
+        level: process.env.NODE_ENV === 'production' ? 'error' : 'warning',
+        message: `${coverage.plaintext_fields} customer field(s) across ${coverage.affected_rows} row(s) are still plaintext. Run the customer encryption backfill after setting CUSTOMER_FIELD_KEY.`,
+      });
+    } else {
+      alerts.push({ type: 'customer_encryption_incomplete', level: 'ok', message: 'All populated customer fields are encrypted.' });
+    }
+  } catch {}
+
   // Push warning/error alerts as in-app notifications to all managers
   const bad = alerts.filter(a => a.level !== 'ok');
   if (bad.length > 0) {
@@ -186,7 +259,19 @@ router.get('/logging', requireManager, async (req, res) => {
 });
 
 router.put('/logging', requireManager, async (req, res) => {
-  const value = JSON.stringify(req.body);
+  const body = isPlainObject(req.body) ? req.body : {};
+  const cfg = {
+    log_level: ['debug', 'info', 'warn', 'error'].includes(body.log_level) ? body.log_level : DEFAULT_LOGGING.log_level,
+    logging_provider: ['file', 'console'].includes(body.logging_provider) ? body.logging_provider : DEFAULT_LOGGING.logging_provider,
+    log_retention_days: Math.min(3650, Math.max(1, parseInt(body.log_retention_days, 10) || DEFAULT_LOGGING.log_retention_days)),
+    structured_logging: bool(body.structured_logging, DEFAULT_LOGGING.structured_logging),
+    correlation_id_enabled: bool(body.correlation_id_enabled, DEFAULT_LOGGING.correlation_id_enabled),
+    request_logging: bool(body.request_logging, DEFAULT_LOGGING.request_logging),
+    exception_logging: bool(body.exception_logging, DEFAULT_LOGGING.exception_logging),
+    sensitive_data_masking: bool(body.sensitive_data_masking, DEFAULT_LOGGING.sensitive_data_masking),
+    log_download_enabled: bool(body.log_download_enabled, DEFAULT_LOGGING.log_download_enabled),
+  };
+  const value = JSON.stringify(cfg);
   (await db.prepare("INSERT INTO settings (key, value) VALUES ('logging_config', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(value));
   res.json({ ok: true });
 });
@@ -238,11 +323,119 @@ router.get('/logging/download', requireManager, async (req, res) => {
 
 // GET /api/settings/system-update/status
 router.get('/system-update/status', requireManager, async (req, res) => {
-  res.json(updateMgr.state);
+  res.json({ ...updateMgr.state, updates_enabled: isInAppUpdateEnabled() });
 });
 
-// POST /api/settings/system-update/check  — run npm outdated
-router.post('/system-update/check', requireManager, async (req, res) => {
+// GET /api/settings/deployment-health
+router.get('/deployment-health', requireManager, async (req, res) => {
+  const checks = [];
+  const add = (key, label, status, detail) => checks.push({ key, label, status, detail });
+  const isProd = process.env.NODE_ENV === 'production';
+  const { errors, warnings } = getRuntimeConfigIssues(process.env);
+
+  if (errors.length) add('runtime_config', 'Runtime configuration', 'error', errors.join('; '));
+  else if (warnings.length) add('runtime_config', 'Runtime configuration', 'warning', warnings.join('; '));
+  else add('runtime_config', 'Runtime configuration', 'ok', 'Required environment values are present.');
+
+  try {
+    await db.prepare('SELECT 1 AS ok').get();
+    add('database', 'PostgreSQL connection', 'ok', 'Database query succeeded.');
+  } catch {
+    add('database', 'PostgreSQL connection', 'error', 'Database query failed.');
+  }
+
+  add(
+    'attachment_encryption',
+    'Attachment encryption',
+    process.env.ATTACHMENT_KEY ? 'ok' : (isProd ? 'error' : 'warning'),
+    process.env.ATTACHMENT_KEY ? 'ATTACHMENT_KEY is configured.' : 'ATTACHMENT_KEY is not configured.'
+  );
+  add(
+    'customer_field_encryption',
+    'Customer field encryption',
+    process.env.CUSTOMER_FIELD_KEY ? 'ok' : (isProd ? 'error' : 'warning'),
+    process.env.CUSTOMER_FIELD_KEY ? 'CUSTOMER_FIELD_KEY is configured.' : 'CUSTOMER_FIELD_KEY is not configured.'
+  );
+  try {
+    const key = keyStatus();
+    add(
+      'customer_key_management',
+      'Customer encryption key',
+      key.configured ? 'ok' : (isProd ? 'error' : 'warning'),
+      key.configured
+        ? `AES-256-GCM key active. Fingerprint: ${key.fingerprint}.`
+        : 'No active customer encryption key.'
+    );
+    const coverage = await customerEncryptionReport();
+    add(
+      'customer_encryption_coverage',
+      'Customer encryption coverage',
+      coverage.plaintext_fields > 0 ? (isProd ? 'error' : 'warning') : 'ok',
+      coverage.plaintext_fields > 0
+        ? `${coverage.plaintext_fields} populated customer field(s) across ${coverage.affected_rows} row(s) are plaintext.`
+        : `All populated customer fields are encrypted across ${coverage.rows} customer row(s).`
+    );
+  } catch {
+    add('customer_encryption_coverage', 'Customer encryption coverage', 'warning', 'Could not inspect customer encryption coverage.');
+  }
+  add(
+    'app_url',
+    'Public app URL',
+    process.env.APP_URL ? (isProd && process.env.APP_URL.startsWith('http://') ? 'warning' : 'ok') : (isProd ? 'error' : 'warning'),
+    process.env.APP_URL || 'APP_URL is not configured.'
+  );
+  add(
+    'in_app_updates',
+    'In-app updates',
+    isProd && isInAppUpdateEnabled() ? 'warning' : 'ok',
+    isInAppUpdateEnabled() ? 'In-app package updates are enabled.' : 'In-app package updates are disabled; use Docker/branch deployment.'
+  );
+  add(
+    'cors',
+    'CORS policy',
+    'ok',
+    process.env.ALLOWED_ORIGIN ? `Restricted to ${process.env.ALLOWED_ORIGIN}.` : 'Cross-origin requests are disabled.'
+  );
+  add(
+    'reverse_proxy',
+    'Reverse proxy trust',
+    process.env.TRUST_PROXY ? 'ok' : (isProd ? 'warning' : 'ok'),
+    process.env.TRUST_PROXY ? `Trusting ${process.env.TRUST_PROXY} proxy hop(s).` : 'TRUST_PROXY is not set.'
+  );
+
+  const uploadsDir = path.join(__dirname, '../uploads');
+  let uploadBytes = 0;
+  try {
+    if (fs.existsSync(uploadsDir)) {
+      for (const f of fs.readdirSync(uploadsDir)) {
+        try { uploadBytes += fs.statSync(path.join(uploadsDir, f)).size; } catch {}
+      }
+    }
+    add('uploads_storage', 'Uploads storage', uploadBytes > 500 * 1024 * 1024 ? 'warning' : 'ok', `${(uploadBytes / 1024 / 1024).toFixed(1)} MB in uploads.`);
+  } catch {
+    add('uploads_storage', 'Uploads storage', 'warning', 'Could not inspect uploads directory.');
+  }
+
+  const status = checks.some(c => c.status === 'error')
+    ? 'error'
+    : checks.some(c => c.status === 'warning') ? 'warning' : 'ok';
+
+  res.json({
+    status,
+    checked_at: new Date().toISOString(),
+    app: {
+      name: pkg.name,
+      version: pkg.version,
+      node_env: process.env.NODE_ENV || 'development',
+      uptime_seconds: Math.round(process.uptime()),
+      pid: process.pid,
+    },
+    checks,
+  });
+});
+
+// POST /api/settings/system-update/check
+router.post('/system-update/check', requireManager, requireInAppUpdateEnabled, async (req, res) => {
   if (updateMgr.state.running) return res.status(409).json({ error: 'Update in progress' });
   try {
     const outdated = await updateMgr.checkOutdated();
@@ -254,7 +447,7 @@ router.post('/system-update/check', requireManager, async (req, res) => {
 });
 
 // POST /api/settings/system-update/start  — install + build (async)
-router.post('/system-update/start', requireManager, async (req, res) => {
+router.post('/system-update/start', requireManager, requireInAppUpdateEnabled, async (req, res) => {
   if (updateMgr.state.running) return res.status(409).json({ error: 'Update already in progress' });
   updateMgr.state.phase   = 'queued';
   updateMgr.state.log     = [];
@@ -268,7 +461,7 @@ router.post('/system-update/start', requireManager, async (req, res) => {
 });
 
 // POST /api/settings/system-update/restart  — restart the server
-router.post('/system-update/restart', requireManager, async (req, res) => {
+router.post('/system-update/restart', requireManager, requireInAppUpdateEnabled, async (req, res) => {
   res.json({ ok: true, message: 'Restarting…' });
   updateMgr.scheduleRestart();
 });
@@ -285,7 +478,7 @@ router.get('/security', requireManager, async (req, res) => {
 
 router.put('/security', requireManager, async (req, res) => {
   const { password_expiry_days } = req.body;
-  const days = Math.max(0, parseInt(password_expiry_days, 10) || 0);
+  const days = Math.min(3650, Math.max(0, parseInt(password_expiry_days, 10) || 0));
   // Also update the standalone key used by auth.js for fast lookup
   (await db.prepare("INSERT INTO settings (key,value) VALUES ('password_expiry_days',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(String(days)));
   (await db.prepare("INSERT INTO settings (key,value) VALUES ('security_policy',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify({ password_expiry_days: days })));

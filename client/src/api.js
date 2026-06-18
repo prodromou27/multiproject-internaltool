@@ -11,6 +11,14 @@ function forceLogout() {
   window.location.href = '/login';
 }
 
+function handleUnauthorized(status) {
+  if (status === 401) {
+    forceLogout();
+    return true;
+  }
+  return false;
+}
+
 async function req(method, path, body) {
   const res = await fetch(BASE + path, {
     method,
@@ -23,11 +31,22 @@ async function req(method, path, body) {
   const data = await res.json().catch(() => ({}));
 
   // Token expired or invalid → log out immediately
-  if (res.status === 401) {
-    forceLogout();
-    return; // never reached, but keeps TS happy
-  }
+  if (handleUnauthorized(res.status)) return;
 
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+async function upload(path, field, file) {
+  const fd = new FormData();
+  fd.append(field, file);
+  const res = await fetch(BASE + path, {
+    method: 'POST',
+    headers: { ...(token() ? { Authorization: 'Bearer ' + token() } : {}) },
+    body: fd,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (handleUnauthorized(res.status)) return;
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
@@ -39,7 +58,6 @@ export const api = {
   setup2fa: () => req('GET', '/auth/2fa/setup'),
   enable2fa: (code) => req('POST', '/auth/2fa/enable', { code }),
   disable2fa: (password) => req('DELETE', '/auth/2fa', { password }),
-  register: (name, email, password, role) => req('POST', '/auth/register', { name, email, password, role }),
   users: () => req('GET', '/auth/users'),
   me: () => req('GET', '/auth/me'),
   updateProfile: (data) => req('PUT', '/auth/profile', data),
@@ -54,13 +72,7 @@ export const api = {
   getSecuritySettings: () => req('GET', '/settings/security'),
   saveSecuritySettings: (data) => req('PUT', '/settings/security', data),
   uploadAvatar: (file) => {
-    const fd = new FormData();
-    fd.append('avatar', file);
-    return fetch(`${BASE}/auth/avatar`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token() },
-      body: fd,
-    }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.statusText); return d; }));
+    return upload('/auth/avatar', 'avatar', file);
   },
   removeAvatar: () => req('DELETE', '/auth/avatar'),
 
@@ -97,15 +109,9 @@ export const api = {
   // attachments
   attachments: (project_id) => req('GET', `/attachments/${project_id}`),
   uploadAttachment: (project_id, file) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    return fetch(`/api/attachments/${project_id}`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token() },
-      body: fd
-    }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.statusText); return d; }));
+    return upload(`/attachments/${project_id}`, 'file', file);
   },
-  downloadAttachment: (project_id, id) => `/api/attachments/${project_id}/download/${id}`,
+  downloadAttachmentUrl: (project_id, id, downloadToken) => `${BASE}/attachments/${project_id}/download/${id}?token=${encodeURIComponent(downloadToken)}`,
   deleteAttachment: (project_id, id) => req('DELETE', `/attachments/${project_id}/${id}`),
 
   // kpis
@@ -148,13 +154,7 @@ export const api = {
   deleteCustomer: (id) => req('DELETE', `/customers/${id}`),
   customersTemplateUrl: () => `${BASE}/customers/template/download`,
   importCustomers: (file) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    return fetch(`${BASE}/customers/import`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token() },
-      body: fd,
-    }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.statusText); return d; }));
+    return upload('/customers/import', 'file', file);
   },
 
   // maintenance visits
@@ -170,13 +170,7 @@ export const api = {
   deleteVisit: (id) => req('DELETE', `/maintenance-visits/${id}`),
   maintenanceVisitsTemplateUrl: () => `${BASE}/maintenance-visits/template/download`,
   importVisits: (file) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    return fetch(`${BASE}/maintenance-visits/import`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token() },
-      body: fd,
-    }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.statusText); return d; }));
+    return upload('/maintenance-visits/import', 'file', file);
   },
 
   // milestones
@@ -193,13 +187,7 @@ export const api = {
 
   // Excel effort-sheet import
   importExcelPreview: (projectId, file) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    return fetch(`${BASE}/projects/${projectId}/import-excel/preview`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token() },
-      body: fd,
-    }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.statusText); return d; }));
+    return upload(`/projects/${projectId}/import-excel/preview`, 'file', file);
   },
   importExcelConfirm: (projectId, tasks) => req('POST', `/projects/${projectId}/import-excel/confirm`, { tasks }),
 
@@ -281,6 +269,7 @@ export const api = {
   systemUpdateCheck:   () => req('POST', '/settings/system-update/check', {}),
   systemUpdateStart:   () => req('POST', '/settings/system-update/start', {}),
   systemUpdateRestart: () => req('POST', '/settings/system-update/restart', {}),
+  deploymentHealth:    () => req('GET',  '/settings/deployment-health'),
 
   // localization settings
   getLocalization: () => req('GET', '/settings/localization'),

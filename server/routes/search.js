@@ -35,6 +35,7 @@ async function searchCustomers(req, term, limit) {
   for (const r of rows) {
     const dec = {
       ...r,
+      name:          decrypt(r.name),
       contact_name:  decrypt(r.contact_name),
       contact_email: decrypt(r.contact_email),
       contact_phone: decrypt(r.contact_phone),
@@ -104,6 +105,7 @@ router.get('/', requireAuth, async (req, res) => {
   const customers = (await searchCustomers(req, q, 5))
     .map(({ contact_phone, project_count, visit_count, ...rest }) => rest);
 
+  projects = projects.map(p => ({ ...p, customer_name: decrypt(p.customer_name) }));
   res.json({ projects, tasks, customers });
 });
 
@@ -162,7 +164,7 @@ router.get('/smart', requireAuth, async (req, res) => {
       LEFT JOIN users u ON p.created_by = u.id
       ${where}
       ORDER BY p.updated_at DESC LIMIT 50
-    `).all(...p));
+    `).all(...p)).map(r => ({ ...r, customer_name: decrypt(r.customer_name) }));
   }
 
   // ── Tasks ─────────────────────────────────────────────────────────────────
@@ -227,7 +229,7 @@ router.get('/smart', requireAuth, async (req, res) => {
       ORDER BY CASE t.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
                t.deadline ASC, t.updated_at DESC
       LIMIT 50
-    `).all(...p));
+    `).all(...p)).map(r => ({ ...r, customer_name: decrypt(r.customer_name) }));
   }
 
   // ── Maintenance Visits ────────────────────────────────────────────────────
@@ -270,7 +272,7 @@ router.get('/smart', requireAuth, async (req, res) => {
       JOIN customers cu ON mv.customer_id = cu.id
       ${where}
       ORDER BY mv.scheduled_date DESC LIMIT 50
-    `).all(...p));
+    `).all(...p)).map(r => ({ ...r, customer_name: decrypt(r.customer_name) }));
   }
 
   // ── Customers ─────────────────────────────────────────────────────────────

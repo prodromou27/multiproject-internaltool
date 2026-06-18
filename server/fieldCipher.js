@@ -4,8 +4,9 @@
  * Encrypted values are stored as a compact prefixed string:
  *   enc:<iv_hex>.<tag_hex>.<ciphertext_base64>
  *
- * Plaintext values are stored and returned as-is.  If CUSTOMER_FIELD_KEY
- * is not configured the module falls back to plaintext (backward-compatible).
+ * Plaintext values are stored and returned as-is outside production when
+ * CUSTOMER_FIELD_KEY is not configured. Production config validation requires
+ * the key so customer data is encrypted at rest.
  *
  * Set CUSTOMER_FIELD_KEY in .env to a 64-character hex string (32 bytes):
  *   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -42,6 +43,21 @@ function isConfigured() { return !!getKey(); }
 
 /** Returns true if value is already encrypted. */
 function isEncrypted(v) { return typeof v === 'string' && v.startsWith(PREFIX); }
+
+function keyFingerprint() {
+  const key = getKey();
+  if (!key) return null;
+  return crypto.createHash('sha256').update(key).digest('hex').slice(0, 12);
+}
+
+function keyStatus() {
+  return {
+    configured: isConfigured(),
+    fingerprint: keyFingerprint(),
+    algorithm: ALGO,
+    key_env: 'CUSTOMER_FIELD_KEY',
+  };
+}
 
 /**
  * Encrypt a plain text string.
@@ -96,11 +112,12 @@ function decrypt(value) {
 
 /**
  * Encrypt all PII fields of a customer record object (in place).
- * @param {object} fields  { contact_name, contact_email, contact_phone, address, notes }
+ * @param {object} fields  { name, contact_name, contact_email, contact_phone, address, notes }
  * @returns {object}  New object with encrypted values
  */
 function encryptCustomer(fields) {
   return {
+    name:          encrypt(fields.name),
     contact_name:  encrypt(fields.contact_name),
     contact_email: encrypt(fields.contact_email),
     contact_phone: encrypt(fields.contact_phone),
@@ -118,6 +135,7 @@ function decryptCustomer(row) {
   if (!row) return row;
   return {
     ...row,
+    name:          decrypt(row.name),
     contact_name:  decrypt(row.contact_name),
     contact_email: decrypt(row.contact_email),
     contact_phone: decrypt(row.contact_phone),
@@ -126,4 +144,4 @@ function decryptCustomer(row) {
   };
 }
 
-module.exports = { isConfigured, encrypt, decrypt, encryptCustomer, decryptCustomer };
+module.exports = { isConfigured, isEncrypted, keyStatus, encrypt, decrypt, encryptCustomer, decryptCustomer };

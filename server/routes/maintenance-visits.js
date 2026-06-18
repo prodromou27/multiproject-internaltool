@@ -33,6 +33,7 @@ const BASE_SELECT = `
 function parseEngIds(row) {
   return {
     ...row,
+    customer_name:  decrypt(row.customer_name),
     contact_name:  decrypt(row.contact_name),
     contact_email: decrypt(row.contact_email),
     contact_phone: decrypt(row.contact_phone),
@@ -140,7 +141,7 @@ router.get('/export', requireDownloadManagerOrPlanner, async (req, res) => {
 
   const wsData = [
     ['Title','Customer','Scheduled Date','Status','Engineers','Report Status','Notes'],
-    ...rows.map(r => [r.title, r.customer || '', r.scheduled_date || '', r.status, r.engineers || '', r.report_status, r.notes || '']),
+    ...rows.map(r => [r.title, decrypt(r.customer) || '', r.scheduled_date || '', r.status, r.engineers || '', r.report_status, r.notes || '']),
   ];
   const workbook  = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Visits');
@@ -202,7 +203,7 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
         if (eng && customer) {
           notify('visit.assigned', {
             engineer_id: uid, engineer_name: eng.name, engineer_email: eng.email,
-            visit_title: title, customer_name: customer.name, scheduled_date,
+            visit_title: title, customer_name: decrypt(customer.name), scheduled_date,
           });
         }
       });
@@ -234,7 +235,8 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
     return out;
   };
 
-  const customers = (await db.prepare('SELECT id, name FROM customers').all());
+  const customers = (await db.prepare('SELECT id, name FROM customers').all())
+    .map(c => ({ ...c, name: decrypt(c.name) }));
   const users     = (await db.prepare("SELECT id, name, email FROM users WHERE role='engineer'").all());
   const findCustomer = (name) => customers.find(c => c.name.toLowerCase() === name.toLowerCase())?.id || null;
   const findEngineer = (q) => {
@@ -330,7 +332,7 @@ router.put('/:id', requireAuth, async (req, res) => {
           notify('visit.assigned', {
             engineer_id: uid, engineer_name: eng.name, engineer_email: eng.email,
             visit_title: title || mv.title,
-            customer_name: customer.name,
+            customer_name: decrypt(customer.name),
             scheduled_date: scheduled_date || mv.scheduled_date,
           });
         }
@@ -354,7 +356,7 @@ router.post('/:id/report-sent', requireAuth, async (req, res) => {
   notify('report.submitted', {
     engineer_name: req.user.name,
     visit_title:   mv.title,
-    customer_name: customer?.name || '—',
+    customer_name: customer ? decrypt(customer.name) : '—',
   });
   res.json({ ok: true });
 });

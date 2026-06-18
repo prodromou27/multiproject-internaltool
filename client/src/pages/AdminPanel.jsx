@@ -2118,6 +2118,102 @@ function StepDot({ phase, stepKey }) {
   );
 }
 
+function DeploymentHealthTab() {
+  const toast = useToast();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = async (quiet = false) => {
+    if (quiet) setRefreshing(true);
+    else setLoading(true);
+    try {
+      setData(await api.deploymentHealth());
+    } catch (e) {
+      toast.error(e.message || 'Failed to load deployment health');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const meta = {
+    ok: { label: 'Healthy', color: 'var(--success)', bg: '#dcfce7', Icon: CheckCircle2 },
+    warning: { label: 'Needs Attention', color: '#b45309', bg: '#fef3c7', Icon: AlertTriangle },
+    error: { label: 'Action Required', color: 'var(--danger)', bg: '#fee2e2', Icon: ShieldAlert },
+  };
+
+  if (loading) return <p className="text-muted">Loading...</p>;
+  if (!data) return <p className="text-muted">Deployment health is unavailable.</p>;
+
+  const top = meta[data.status] || meta.warning;
+  const TopIcon = top.Icon;
+
+  return (
+    <div style={{ maxWidth: 880 }}>
+      <div className="card" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ width: 48, height: 48, borderRadius: 8, background: top.bg, color: top.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <TopIcon size={24} />
+        </div>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 16, fontWeight: 800 }}>{top.label}</div>
+          <div style={{ fontSize: 13, color: 'var(--gray-500)', marginTop: 3 }}>
+            Last checked {fmtDate(data.checked_at)}
+          </div>
+        </div>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => load(true)}
+          disabled={refreshing}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          {refreshing ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={13} />}
+          Refresh
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+        {[
+          ['Environment', data.app?.node_env],
+          ['Version', data.app?.version],
+          ['Uptime', `${Math.floor((data.app?.uptime_seconds || 0) / 60)} min`],
+          ['Process', data.app?.pid],
+        ].map(([label, value]) => (
+          <div key={label} className="card" style={{ padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, marginTop: 4 }}>{value || '-'}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
+            <HardDrive size={15} /> Deployment Checklist
+          </h3>
+        </div>
+        <div style={{ padding: '6px 20px 14px' }}>
+          {(data.checks || []).map(check => {
+            const m = meta[check.status] || meta.warning;
+            const Icon = m.Icon;
+            return (
+              <div key={check.key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 0', borderBottom: '1px solid var(--gray-100)' }}>
+                <Icon size={16} color={m.color} style={{ flexShrink: 0, marginTop: 1 }} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{check.label}</div>
+                  <div style={{ color: 'var(--gray-500)', fontSize: 12, marginTop: 2, lineHeight: 1.45 }}>{check.detail}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SystemUpdateTab() {
   const toast   = useToast();
   const confirm = useConfirm();
@@ -2193,6 +2289,7 @@ function SystemUpdateTab() {
   const isRunning = !!status?.running;
   const isDone    = phase === 'done';
   const isError   = phase === 'error';
+  const updatesDisabled = status?.updates_enabled === false;
 
   const logLines = status?.log || [];
 
@@ -2222,7 +2319,7 @@ function SystemUpdateTab() {
             <button
               className="btn btn-ghost btn-sm"
               onClick={checkUpdates}
-              disabled={checking || isRunning}
+              disabled={checking || isRunning || updatesDisabled}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
             >
               {checking ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={13} />}
@@ -2231,7 +2328,7 @@ function SystemUpdateTab() {
             <button
               className="btn btn-primary btn-sm"
               onClick={startUpdate}
-              disabled={isRunning || restarting}
+              disabled={isRunning || restarting || updatesDisabled}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
             >
               {isRunning
@@ -2244,6 +2341,26 @@ function SystemUpdateTab() {
       </div>
 
       {/* ── Outdated packages ── */}
+      {updatesDisabled && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 16,
+            borderColor: '#fde68a',
+            background: '#fffbeb',
+            color: '#92400e',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 10,
+          }}
+        >
+          <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+            In-app updates are disabled in this environment. Use the approved Docker and branch deployment pipeline.
+          </div>
+        </div>
+      )}
+
       {status?.outdated !== null && status?.outdated !== undefined && (
         <div className="card" style={{ marginBottom: 16 }}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -2369,7 +2486,7 @@ function SystemUpdateTab() {
           <button
             className="btn btn-primary"
             onClick={restartServer}
-            disabled={restarting}
+            disabled={restarting || updatesDisabled}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
           >
             {restarting
@@ -2640,27 +2757,46 @@ function SecurityTab() {
 /* ── MAIN PAGE ───────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
 const TABS = [
-  { key: 'overview',       label: 'Overview',          Icon: LayoutDashboard },
-  { key: 'users',          label: 'Users',             Icon: UsersIcon },
-  { key: 'projects',       label: 'Projects',          Icon: FolderOpen },
-  { key: 'maintenance',    label: 'Maintenance',       Icon: Wrench },
-  { key: 'statuses',       label: 'Status Management', Icon: Tag },
-  { key: 'stats',          label: 'System Stats',      Icon: BarChart3 },
-  { key: 'activity',       label: 'Activity',          Icon: Activity },
-  { key: 'export',         label: 'Data Export',       Icon: FileSpreadsheet },
-  { key: 'integrations',   label: 'Integrations',      Icon: Globe },
-  { key: 'weekly_report',  label: 'Weekly Report',     Icon: ScrollText },
-  { key: 'logging',        label: 'Logging',           Icon: Database },
-  { key: 'localization',   label: 'Localization',      Icon: Globe },
-  { key: 'admin_alerts',   label: 'Admin Alerts',      Icon: ShieldAlert },
-  { key: 'system_update',  label: 'System Update',     Icon: Download },
-  { key: 'audit_log',      label: 'Audit Log',         Icon: ClipboardList },
-  { key: 'security',       label: 'Security',          Icon: Shield },
+  { key: 'overview',       label: 'Overview',          Icon: LayoutDashboard, group: 'operations' },
+  { key: 'users',          label: 'Users',             Icon: UsersIcon,       group: 'operations' },
+  { key: 'projects',       label: 'Projects',          Icon: FolderOpen,      group: 'operations' },
+  { key: 'maintenance',    label: 'Maintenance',       Icon: Wrench,          group: 'operations' },
+  { key: 'statuses',       label: 'Status Management', Icon: Tag,             group: 'configuration' },
+  { key: 'stats',          label: 'System Stats',      Icon: BarChart3,       group: 'operations' },
+  { key: 'activity',       label: 'Activity',          Icon: Activity,        group: 'operations' },
+  { key: 'export',         label: 'Data Export',       Icon: FileSpreadsheet, group: 'maintenance' },
+  { key: 'integrations',   label: 'Integrations',      Icon: Globe,           group: 'configuration' },
+  { key: 'weekly_report',  label: 'Weekly Report',     Icon: ScrollText,      group: 'configuration' },
+  { key: 'logging',        label: 'Logging',           Icon: Database,        group: 'security' },
+  { key: 'localization',   label: 'Localization',      Icon: Globe,           group: 'configuration' },
+  { key: 'admin_alerts',   label: 'Admin Alerts',      Icon: ShieldAlert,     group: 'security' },
+  { key: 'deployment',     label: 'Deployment Health', Icon: HardDrive,       group: 'maintenance' },
+  { key: 'system_update',  label: 'System Update',     Icon: Download,        group: 'maintenance' },
+  { key: 'audit_log',      label: 'Audit Log',         Icon: ClipboardList,   group: 'security' },
+  { key: 'security',       label: 'Security',          Icon: Shield,          group: 'security' },
+];
+
+const TAB_GROUPS = [
+  { key: 'all',           label: 'All' },
+  { key: 'operations',    label: 'Operations' },
+  { key: 'configuration', label: 'Configuration' },
+  { key: 'security',      label: 'Security' },
+  { key: 'maintenance',   label: 'Maintenance' },
 ];
 
 export default function AdminPanel() {
   const { user } = useAuth();
   const [tab, setTab] = useState('overview');
+  const [tabGroup, setTabGroup] = useState('all');
+  const [tabSearch, setTabSearch] = useState('');
+  const activeTab = TABS.find(t => t.key === tab) || TABS[0];
+  const visibleTabs = TABS.filter(t => {
+    const inGroup = tabGroup === 'all' || t.group === tabGroup;
+    const matches = !tabSearch.trim() || t.label.toLowerCase().includes(tabSearch.trim().toLowerCase());
+    return inGroup && matches;
+  });
+  const shownTabs = visibleTabs.length ? visibleTabs : TABS;
+  const ActiveIcon = activeTab.Icon;
 
   return (
     <div className="page">
@@ -2676,27 +2812,58 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', borderBottom: '2px solid var(--gray-100)', marginBottom: 24, paddingTop: 16 }}>
-        {TABS.map(({ key, label, Icon }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '8px 14px', border: 'none', borderRadius: '6px 6px 0 0',
-              background: tab === key ? '#fff' : 'transparent',
-              color: tab === key ? 'var(--primary)' : 'var(--gray-500)',
-              fontWeight: tab === key ? 700 : 500,
-              fontSize: 13, cursor: 'pointer',
-              borderBottom: tab === key ? '2px solid var(--primary)' : '2px solid transparent',
-              marginBottom: -2, transition: 'all .15s',
-            }}
-          >
-            <Icon size={14} />
-            {label}
-          </button>
-        ))}
+      <div style={{ padding: '16px 0 20px' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 10 }}>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {TAB_GROUPS.map(g => (
+              <button
+                key={g.key}
+                type="button"
+                onClick={() => setTabGroup(g.key)}
+                className={tabGroup === g.key ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+          <input
+            value={tabSearch}
+            onChange={e => setTabSearch(e.target.value)}
+            placeholder="Search settings"
+            aria-label="Search admin settings"
+            style={{ width: 220, maxWidth: '100%', fontSize: 13 }}
+          />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
+          {shownTabs.map(({ key, label, Icon }) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                minHeight: 42, padding: '9px 11px', borderRadius: 8,
+                border: tab === key ? '1px solid var(--primary)' : '1px solid var(--gray-200)',
+                background: tab === key ? '#eff6ff' : '#fff',
+                color: tab === key ? 'var(--primary)' : 'var(--gray-600)',
+                fontWeight: tab === key ? 700 : 600,
+                fontSize: 12,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <Icon size={15} style={{ flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+            </button>
+          ))}
+        </div>
+        {visibleTabs.length === 0 && (
+          <p className="text-sm text-muted mt-8">No settings matched. Showing all sections.</p>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 14, fontSize: 13, color: 'var(--gray-500)' }}>
+          <ActiveIcon size={15} />
+          <strong style={{ color: 'var(--gray-700)' }}>{activeTab.label}</strong>
+        </div>
       </div>
 
       {tab === 'overview'     && <OverviewTab />}
@@ -2712,6 +2879,7 @@ export default function AdminPanel() {
       {tab === 'logging'       && <LoggingTab />}
       {tab === 'localization'  && <LocalizationTab />}
       {tab === 'admin_alerts'  && <AdminAlertsTab />}
+      {tab === 'deployment'    && <DeploymentHealthTab />}
       {tab === 'system_update' && <SystemUpdateTab />}
       {tab === 'audit_log'    && <AuditLogTab />}
       {tab === 'security'     && <SecurityTab />}

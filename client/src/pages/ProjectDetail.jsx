@@ -28,6 +28,7 @@ function AttachmentsSection({ projectId }) {
   const confirm   = useConfirm();
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
 
   const load = () => api.attachments(projectId).then(setAttachments);
@@ -35,11 +36,16 @@ function AttachmentsSection({ projectId }) {
 
   async function handleFiles(files) {
     setUploading(true);
-    for (const file of files) {
-      await api.uploadAttachment(projectId, file);
+    try {
+      for (const file of files) {
+        await api.uploadAttachment(projectId, file);
+      }
+      await load();
+    } catch (e) {
+      toast.error(e.message || 'Upload failed');
+    } finally {
+      setUploading(false);
     }
-    await load();
-    setUploading(false);
   }
 
   function onInputChange(e) {
@@ -57,6 +63,19 @@ function AttachmentsSection({ projectId }) {
     const ok = await confirm('Remove this attachment?', { title: 'Remove Attachment', label: 'Remove' });
     if (!ok) return;
     try { await api.deleteAttachment(projectId, id); load(); } catch (e) { toast.error(e.message); }
+  }
+
+  async function downloadAttachment(attachment) {
+    setDownloadingId(attachment.id);
+    try {
+      const { token } = await api.downloadToken();
+      const url = api.downloadAttachmentUrl(projectId, attachment.id, token);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      toast.error(e.message || 'Could not prepare download');
+    } finally {
+      setDownloadingId(null);
+    }
   }
 
   function getIcon(mime) {
@@ -103,7 +122,22 @@ function AttachmentsSection({ projectId }) {
                   <tr key={a.id}>
                     <td>
                       <span style={{ marginRight: 6 }}>{getIcon(a.mime_type)}</span>
-                      <a href={api.downloadAttachment(projectId, a.id)} target="_blank" rel="noreferrer">{a.original_name}</a>
+                      <button
+                        type="button"
+                        onClick={() => downloadAttachment(a)}
+                        disabled={downloadingId === a.id}
+                        style={{
+                          border: 0,
+                          padding: 0,
+                          background: 'transparent',
+                          color: 'var(--primary)',
+                          cursor: downloadingId === a.id ? 'wait' : 'pointer',
+                          font: 'inherit',
+                          textAlign: 'left',
+                        }}
+                      >
+                        {downloadingId === a.id ? 'Preparing...' : a.original_name}
+                      </button>
                     </td>
                     <td className="text-muted text-sm">{fileSize(a.size)}</td>
                     <td className="text-sm">{a.uploaded_by_name}</td>
@@ -1901,7 +1935,7 @@ export default function ProjectDetail() {
   }
 
   const engineers = allUsers.filter(u => u.role === 'engineer');
-  const addableUsers = allUsers.filter(u => u.role !== 'manager');
+  const addableUsers = engineers;
   const taskCount = tasks.filter(t => t.status !== 'cancelled').length;
   const doneCount = tasks.filter(t => t.status === 'completed' || t.status === 'closed').length;
   const filteredTasks = taskSearch.trim()

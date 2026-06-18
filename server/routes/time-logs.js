@@ -1,12 +1,12 @@
 const router = require('express').Router();
 const db = require('../db');
-const { requireAuth, requireManager } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
 
 // GET /api/time-logs?task_id=X  or  ?visit_id=X
 router.get('/', requireAuth, async (req, res) => {
   const { task_id, visit_id } = req.query;
-  if (!task_id && !visit_id)
-    return res.status(400).json({ error: 'task_id or visit_id required' });
+  if ((!task_id && !visit_id) || (task_id && visit_id))
+    return res.status(400).json({ error: 'Provide exactly one of task_id or visit_id' });
 
   // ── Access control: verify the caller can see the target task / visit ────
   if (task_id) {
@@ -21,6 +21,8 @@ router.get('/', requireAuth, async (req, res) => {
     }
   }
   if (visit_id) {
+    const visit = (await db.prepare('SELECT id FROM maintenance_visits WHERE id = ?').get(visit_id));
+    if (!visit) return res.status(404).json({ error: 'Visit not found' });
     if (req.user.role === 'engineer') {
       const a = (await db.prepare('SELECT 1 FROM maintenance_visit_engineers WHERE visit_id = ? AND user_id = ?').get(visit_id, req.user.id));
       if (!a) return res.status(403).json({ error: 'Forbidden' });
@@ -48,17 +50,26 @@ router.post('/', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'hours must be a positive number' });
   if (Number(hours) > 24)
     return res.status(400).json({ error: 'Hours per entry cannot exceed 24' });
-  if (!task_id && !visit_id)
-    return res.status(400).json({ error: 'task_id or visit_id required' });
+  if ((!task_id && !visit_id) || (task_id && visit_id))
+    return res.status(400).json({ error: 'Provide exactly one of task_id or visit_id' });
+  if (description && description.length > 2000)
+    return res.status(400).json({ error: 'Description cannot exceed 2000 characters' });
 
-  // Engineers can only log time to their own tasks/visits
-  if (req.user.role === 'engineer') {
-    if (task_id) {
-      const task = (await db.prepare('SELECT assigned_to FROM tasks WHERE id = ?').get(task_id));
-      if (!task || task.assigned_to !== req.user.id)
-        return res.status(403).json({ error: 'You can only log time to your own tasks' });
+  if (task_id) {
+    const task = (await db.prepare('SELECT assigned_to, project_id FROM tasks WHERE id = ?').get(task_id));
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    if (req.user.role === 'engineer' && task.assigned_to !== req.user.id)
+      return res.status(403).json({ error: 'You can only log time to your own tasks' });
+    if ((req.user.role === 'planner' || req.user.role === 'pm') && task.project_id) {
+      const assigned = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(task.project_id, req.user.id));
+      if (!assigned) return res.status(403).json({ error: 'Forbidden' });
     }
-    if (visit_id) {
+  }
+
+  if (visit_id) {
+    const visit = (await db.prepare('SELECT id FROM maintenance_visits WHERE id = ?').get(visit_id));
+    if (!visit) return res.status(404).json({ error: 'Visit not found' });
+    if (req.user.role === 'engineer') {
       const assigned = (await db.prepare(
         'SELECT 1 FROM maintenance_visit_engineers WHERE visit_id = ? AND user_id = ?'
       ).get(visit_id, req.user.id));
@@ -87,6 +98,8 @@ router.delete('/:id', requireAuth, async (req, res) => {
 // GET /api/time-logs/summary?user_id=X&month=YYYY-MM
 router.get('/summary', requireAuth, async (req, res) => {
   const { user_id, month } = req.query;
+  if (month && !/^\d{4}-\d{2}$/.test(month))
+    return res.status(400).json({ error: 'month must use YYYY-MM format' });
   const uid = (req.user.role === 'engineer') ? req.user.id : (user_id ? Number(user_id) : null);
   let q = 'SELECT COALESCE(SUM(hours),0) as total, COUNT(*) as entries FROM time_logs WHERE 1=1';
   const params = [];

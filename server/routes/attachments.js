@@ -3,7 +3,7 @@ const multer = require('multer');
 const path   = require('path');
 const fs     = require('fs');
 const db     = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireDownloadAuth } = require('../middleware/auth');
 const cipher = require('../cipher');
 
 const uploadDir = path.join(__dirname, '..', 'uploads');
@@ -93,7 +93,7 @@ async function handleUpload(req, res) {
   res.json({ id: result.lastInsertRowid, original_name: req.file.originalname, encrypted: !!encIv });
 }
 
-router.get('/:project_id/download/:id', requireAuth, async (req, res) => {
+router.get('/:project_id/download/:id', requireDownloadAuth, async (req, res) => {
   const att = (await db.prepare('SELECT * FROM attachments WHERE id = ? AND project_id = ?').get(req.params.id, req.params.project_id));
   if (!att) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'engineer') {

@@ -3,6 +3,7 @@
  */
 const db         = require('./db');
 const { sendEmail } = require('./email');
+const { decrypt, decryptCustomer } = require('./fieldCipher');
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
 function fmtDate(str) {
@@ -165,18 +166,20 @@ async function gatherReportData() {
     pendingClosure:  closurePending.length,
   };
 
+  const decCustomerName = r => ({ ...r, customer_name: decrypt(r.customer_name) });
+
   return {
     generatedAt: now,
     period: { from: past7Str, to: next7Str, today: todayStr },
     stats,
-    projectsOpened,
-    upcomingDeadlines,
-    highPriorityTasks,
-    maintenanceVisits,
-    reportsPending,
+    projectsOpened: projectsOpened.map(decCustomerName),
+    upcomingDeadlines: upcomingDeadlines.map(decCustomerName),
+    highPriorityTasks: highPriorityTasks.map(decCustomerName),
+    maintenanceVisits: maintenanceVisits.map(decCustomerName),
+    reportsPending: reportsPending.map(decCustomerName),
     engineerWorkload,
-    closurePending,
-    newCustomers,
+    closurePending: closurePending.map(decCustomerName),
+    newCustomers: newCustomers.map(decryptCustomer),
     slaSnapshot,
   };
 }

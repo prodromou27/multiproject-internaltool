@@ -6,10 +6,11 @@ PostgreSQL in Docker. Deploys are pulled per-box with `deploy/deploy.sh`.
 | Environment | Branch | Machine | Postgres |
 |-------------|--------|---------|----------|
 | DEV  | `dev`  | dev box  | bundled container (`pgdata` volume) |
-| PROD | `main` | prod box | bundled container (`pgdata` volume) |
+| PROD | `prod` | prod box | bundled container (`pgdata` volume) |
 
-Workflow: changes land on `dev` → deploy to the DEV box → verify → merge `dev`
-into `main` → deploy to the PROD box.
+Workflow: changes land on `dev`, deploy to the DEV box, verify, promote the exact
+tested commit to `prod`, then deploy to the PROD box. The legacy `main` and
+`Windows_Server` branches are not part of this AlmaLinux/Docker/PostgreSQL flow.
 
 ---
 
@@ -58,14 +59,27 @@ cp deploy/env.prod.example .env
 openssl rand -hex 24   # → POSTGRES_PASSWORD
 openssl rand -hex 48   # → JWT_SECRET
 openssl rand -hex 32   # → CUSTOMER_FIELD_KEY   (exactly 64 hex chars)
+openssl rand -hex 32   # → ATTACHMENT_KEY       (exactly 64 hex chars)
 nano .env
 ```
 
 `deploy.sh` runs a preflight check and refuses to deploy if secrets are still
-`CHANGE_ME`, `JWT_SECRET` is under 32 chars, or `CUSTOMER_FIELD_KEY` isn't 64 hex.
+`CHANGE_ME`, `JWT_SECRET` is under 32 chars, or either encryption key isn't 64 hex.
 
-**Back up `CUSTOMER_FIELD_KEY`** in a secrets manager — losing it makes encrypted
-customer PII unrecoverable. Never commit `.env` (it's gitignored).
+**Back up `CUSTOMER_FIELD_KEY` and `ATTACHMENT_KEY`** in a secrets manager. Losing
+either key makes the corresponding encrypted data unrecoverable. Never commit `.env`
+(it's gitignored).
+
+After enabling or changing `CUSTOMER_FIELD_KEY`, run the customer encryption
+backfill from the `server/` directory:
+
+```bash
+npm run encrypt:customers -- --dry
+npm run encrypt:customers
+```
+
+The Admin `Deployment Health` tab reports the active customer-key fingerprint and
+whether any populated customer fields are still plaintext.
 
 ## 3. Deploy
 
@@ -87,6 +101,38 @@ Log in at `http://<host>:8080` as `admin@company.com` and change the password.
 Re-deploying later is the same command — it pulls the latest commit on the branch
 and rebuilds. To deploy a specific build, `git checkout <tag>` first or set
 `DEPLOY_BRANCH=<branch>`.
+
+## 3b. Promote DEV to PROD
+
+Only promote after the DEV box is running the commit you intend to release and the
+verification checklist passes.
+
+```bash
+git fetch origin
+git checkout prod
+git merge --ff-only dev
+git push origin prod
+```
+
+If `prod` does not exist yet, create it from the verified DEV commit:
+
+```bash
+git checkout -b prod dev
+git push -u origin prod
+```
+
+Then deploy from the PROD box:
+
+```bash
+./deploy/deploy.sh prod
+```
+
+Use a tag for important releases:
+
+```bash
+git tag prod-YYYYMMDD
+git push origin prod-YYYYMMDD
+```
 
 ## 4. TLS (production)
 
@@ -177,3 +223,11 @@ curl -s -o /dev/null -w '%{http_code}\n' $BASE/api/projects                     
 ```
 
 See the project-root `docs/DEPLOY.md` for the fuller verification checklist.
+
+You can also run the automated smoke test against a live environment:
+
+```bash
+SMOKE_PASSWORD='<admin password>' ./deploy/smoke-test.sh
+```
+
+Security controls are tracked in [`docs/SECURITY_OWASP.md`](../docs/SECURITY_OWASP.md).

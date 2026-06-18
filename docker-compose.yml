@@ -8,7 +8,8 @@
 #   docker compose up -d --build
 #
 # Secrets come from a .env file next to this file (see deploy/env.*.example):
-#   POSTGRES_PASSWORD, JWT_SECRET, CUSTOMER_FIELD_KEY, and optionally APP_PORT.
+#   POSTGRES_PASSWORD, JWT_SECRET, CUSTOMER_FIELD_KEY, ATTACHMENT_KEY,
+#   APP_URL, and optionally APP_PORT.
 
 services:
   db:
@@ -41,6 +42,13 @@ services:
       # 64-char hex key for customer PII encryption. Empty = encryption disabled
       # (plaintext passthrough). Set this in .env to encrypt at rest.
       CUSTOMER_FIELD_KEY: ${CUSTOMER_FIELD_KEY:-}
+      # 64-char hex key for attachment encryption. Empty = uploads are stored
+      # as plain files for backward compatibility.
+      ATTACHMENT_KEY: ${ATTACHMENT_KEY:-}
+      # Public base URL used in password reset emails.
+      APP_URL: ${APP_URL:?set APP_URL in .env}
+      # Keep false in production; use the Docker/branch deployment pipeline.
+      ALLOW_IN_APP_UPDATES: ${ALLOW_IN_APP_UPDATES:-false}
       # Number of reverse-proxy hops to trust for the client IP (set to 1 when
       # behind nginx/Caddy). Empty = don't trust X-Forwarded-For.
       TRUST_PROXY: ${TRUST_PROXY:-}

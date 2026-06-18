@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const crypto = require('crypto');
 const db     = require('../db');
+const { decrypt } = require('../fieldCipher');
 
 // Escape special iCal text characters
 function icalEsc(str) {
@@ -109,7 +110,7 @@ router.get('/', async (req, res) => {
     const dtend = end.toISOString().slice(0, 10).replace(/-/g, '');
     lines.push('BEGIN:VEVENT');
     lines.push(fold(`UID:visit-${v.id}@solutionshub`));
-    lines.push(fold(`SUMMARY:🔧 ${icalEsc(v.title)} – ${icalEsc(v.customer_name)}`));
+    lines.push(fold(`SUMMARY:🔧 ${icalEsc(v.title)} – ${icalEsc(decrypt(v.customer_name))}`));
     lines.push(fold(`DTSTART;VALUE=DATE:${dtstart}`));
     lines.push(fold(`DTEND;VALUE=DATE:${dtend}`));
     if (v.description) lines.push(fold(`DESCRIPTION:${icalEsc(v.description)}`));

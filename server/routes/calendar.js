@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { decrypt } = require('../fieldCipher');
 
 // Returns all events for a given month: tasks (by deadline), project deadlines, maintenance visits
 router.get('/', requireAuth, async (req, res) => {
@@ -51,7 +52,7 @@ router.get('/', requireAuth, async (req, res) => {
     mvQ += ' AND EXISTS (SELECT 1 FROM maintenance_visit_engineers WHERE visit_id = mv.id AND user_id = ?)';
     mvParams.push(req.user.id);
   }
-  const visits = (await db.prepare(mvQ).all(...mvParams)).map(r => ({ ...r, type: 'maintenance' }));
+  const visits = (await db.prepare(mvQ).all(...mvParams)).map(r => ({ ...r, customer_name: decrypt(r.customer_name), type: 'maintenance' }));
 
   res.json({ tasks, projects, visits });
 });

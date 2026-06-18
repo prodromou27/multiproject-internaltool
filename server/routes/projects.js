@@ -65,6 +65,24 @@ async function notifyPendingScores(projectId, projectTitle) {
   } catch (_) { /* non-fatal */ }
 }
 
+function normalizeIdList(values, label) {
+  if (!Array.isArray(values)) return { error: `${label} must be an array` };
+  if (values.length > 100) return { error: `${label} cannot contain more than 100 entries` };
+  const ids = [...new Set(values.map(v => Number(v)).filter(Number.isInteger).filter(v => v > 0))];
+  if (ids.length !== values.length) return { error: `${label} must contain only positive integer IDs` };
+  return { ids };
+}
+
+async function loadEngineerMap(ids) {
+  if (!ids.length) return {};
+  const placeholders = ids.map(() => '?').join(',');
+  const engineerMap = {};
+  (await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders}) AND role = 'engineer' AND active = 1`)
+    .all(...ids))
+    .forEach(e => { engineerMap[e.id] = e; });
+  return engineerMap;
+}
+
 // List projects — engineers/planners see only assigned ones; managers and PMs see all
 router.get('/', requireAuth, async (req, res) => {
   const taskCols = `
@@ -98,6 +116,7 @@ router.get('/', requireAuth, async (req, res) => {
   // Use manually stored completion_pct when set; otherwise derive from task counts
   res.json(rows.map(r => ({
     ...r,
+    customer_name: decrypt(r.customer_name),
     rag_status:     computeRag(r),
     completion_pct: r.completion_pct != null
       ? r.completion_pct
@@ -133,6 +152,7 @@ router.get('/:id', requireAuth, async (req, res) => {
   const updates = (await db.prepare('SELECT s.*, u.name as user_name FROM project_status_updates s JOIN users u ON s.user_id = u.id WHERE s.project_id = ? ORDER BY s.created_at DESC').all(p.id));
   res.json({
     ...p,
+    customer_name:    decrypt(p.customer_name),
     customer_contact: decrypt(p.customer_contact),
     customer_email:   decrypt(p.customer_email),
     members,
@@ -162,33 +182,34 @@ router.get('/:id/activity', requireAuth, async (req, res) => {
 router.post('/', requireManager, async (req, res) => {
   const { title, description, priority, deadline, customer_id, member_ids } = req.body;
   if (!title) return res.status(400).json({ error: 'Title required' });
+  let engineerMap = {};
+  let normalizedMemberIds = [];
+  if (Array.isArray(member_ids) && member_ids.length > 0) {
+    const normalized = normalizeIdList(member_ids, 'member_ids');
+    if (normalized.error) return res.status(400).json({ error: normalized.error });
+    normalizedMemberIds = normalized.ids;
+    engineerMap = await loadEngineerMap(normalizedMemberIds);
+    if (Object.keys(engineerMap).length !== normalizedMemberIds.length)
+      return res.status(400).json({ error: 'member_ids may only include active engineers' });
+  }
   const result = (await db.prepare('INSERT INTO projects (title, description, priority, deadline, customer_id, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(title, description, priority || 'medium', deadline || null, customer_id || null, req.user.id));
   const pid = result.lastInsertRowid;
   logActivity(pid, req.user.id, 'project_created', title);
-  if (Array.isArray(member_ids) && member_ids.length > 0) {
-    // Batch-fetch all engineers in one query (avoids N individual SELECT queries)
-    const placeholders = member_ids.map(() => '?').join(',');
-    const engineerMap = {};
-    (await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders}) AND role = 'engineer'`)
-      .all(...member_ids))
-      .forEach(e => { engineerMap[e.id] = e; });
-
+  if (normalizedMemberIds.length > 0) {
     const ins = db.prepare('INSERT OR IGNORE INTO project_assignments (project_id, user_id) VALUES (?, ?)');
-    for (const uid of member_ids) {
+    for (const uid of normalizedMemberIds) {
       await ins.run(pid, uid);
       const engineer = engineerMap[uid];
-      if (engineer) {
-        logActivity(pid, req.user.id, 'member_added', engineer.name);
-        notify('project.assigned', {
-          engineer_id:    uid,
-          engineer_name:  engineer.name,
-          engineer_email: engineer.email,
-          project_id:     pid,
-          project_title:  title,
-          deadline:       deadline || null,
-          priority:       priority || 'medium',
-        });
-      }
+      logActivity(pid, req.user.id, 'member_added', engineer.name);
+      notify('project.assigned', {
+        engineer_id:    uid,
+        engineer_name:  engineer.name,
+        engineer_email: engineer.email,
+        project_id:     pid,
+        project_title:  title,
+        deadline:       deadline || null,
+        priority:       priority || 'medium',
+      });
     }
   }
   res.json({ id: pid });
@@ -283,31 +304,29 @@ router.post('/:id/members', requireManager, async (req, res) => {
     return res.status(400).json({ error: 'user_ids array required' });
   const pid = req.params.id;
   const project = (await db.prepare('SELECT title, deadline, priority FROM projects WHERE id = ?').get(pid));
+  if (!project) return res.status(404).json({ error: 'Project not found' });
 
-  // Batch-fetch engineers in one query
-  const placeholders = user_ids.map(() => '?').join(',');
-  const engineerMap = {};
-  (await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders}) AND role = 'engineer'`)
-    .all(...user_ids))
-    .forEach(e => { engineerMap[e.id] = e; });
+  const normalized = normalizeIdList(user_ids, 'user_ids');
+  if (normalized.error) return res.status(400).json({ error: normalized.error });
+  const engineerMap = await loadEngineerMap(normalized.ids);
+  if (Object.keys(engineerMap).length !== normalized.ids.length)
+    return res.status(400).json({ error: 'user_ids may only include active engineers' });
 
   const ins = db.prepare('INSERT OR IGNORE INTO project_assignments (project_id, user_id) VALUES (?, ?)');
-  for (const uid of user_ids) {
+  for (const uid of normalized.ids) {
     const result = await ins.run(pid, uid);
     if (result.changes > 0) {
       const engineer = engineerMap[uid];
-      if (engineer && project) {
-        logActivity(pid, req.user.id, 'member_added', engineer.name);
-        notify('project.assigned', {
-          engineer_id:    uid,
-          engineer_name:  engineer.name,
-          engineer_email: engineer.email,
-          project_id:     parseInt(pid),
-          project_title:  project.title,
-          deadline:       project.deadline || null,
-          priority:       project.priority,
-        });
-      }
+      logActivity(pid, req.user.id, 'member_added', engineer.name);
+      notify('project.assigned', {
+        engineer_id:    uid,
+        engineer_name:  engineer.name,
+        engineer_email: engineer.email,
+        project_id:     parseInt(pid),
+        project_title:  project.title,
+        deadline:       project.deadline || null,
+        priority:       project.priority,
+      });
     }
   }
   res.json({ ok: true });

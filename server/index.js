@@ -16,9 +16,14 @@ const path       = require('path');
 const fs         = require('fs');
 const helmet     = require('helmet');
 const rateLimit  = require('express-rate-limit');
+const { validateRuntimeConfig } = require('./config');
+
+validateRuntimeConfig();
+
 require('./db'); // initialize DB
 const db = require('./db');
 const { notify } = require('./notifications');
+const { decrypt } = require('./fieldCipher');
 
 const app = express();
 
@@ -201,7 +206,7 @@ async function sendNextDayReminders() {
       notify('visit.reminder', {
         visit_id:       v.id,
         visit_title:    v.title,
-        customer_name:  v.customer_name,
+        customer_name:  decrypt(v.customer_name),
         scheduled_date: v.scheduled_date,
         engineer_id:    v.user_id,
         engineer_name:  v.engineer_name,

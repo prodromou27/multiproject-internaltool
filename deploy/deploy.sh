@@ -2,8 +2,8 @@
 #
 # One-command deploy for a single machine.
 #
-#   ./deploy/deploy.sh dev      # DEV box  → tracks the 'dev' branch
-#   ./deploy/deploy.sh prod     # PROD box → tracks the 'main' branch
+#   ./deploy/deploy.sh dev      # DEV box  -> tracks the 'dev' branch
+#   ./deploy/deploy.sh prod     # PROD box -> tracks the 'prod' branch
 #
 # What it does: pulls the right branch, rebuilds the image, brings the stack up
 # with the correct compose overrides, and waits for the app to report healthy.
@@ -21,7 +21,7 @@ case "$ENVIRONMENT" in
     COMPOSE=(-f docker-compose.yml)
     ;;
   prod)
-    BRANCH="${DEPLOY_BRANCH:-main}"
+    BRANCH="${DEPLOY_BRANCH:-prod}"
     COMPOSE=(-f docker-compose.yml -f docker-compose.prod.yml)
     ;;
   *)
@@ -52,11 +52,27 @@ fi
 if [ -z "${POSTGRES_PASSWORD:-}" ]; then
   echo "ERROR: POSTGRES_PASSWORD is empty." >&2; errs=1
 fi
-if [ "${#JWT_SECRET}" -lt 32 ]; then
-  echo "ERROR: JWT_SECRET must be at least 32 characters (got ${#JWT_SECRET})." >&2; errs=1
+jwt_secret="${JWT_SECRET:-}"
+if [ "${#jwt_secret}" -lt 32 ]; then
+  echo "ERROR: JWT_SECRET must be at least 32 characters (got ${#jwt_secret})." >&2; errs=1
+fi
+if [ "$ENVIRONMENT" = "prod" ] && [ -z "${CUSTOMER_FIELD_KEY:-}" ]; then
+  echo "ERROR: CUSTOMER_FIELD_KEY is required for prod." >&2; errs=1
 fi
 if [ -n "${CUSTOMER_FIELD_KEY:-}" ] && ! printf '%s' "$CUSTOMER_FIELD_KEY" | grep -qE '^[0-9a-fA-F]{64}$'; then
   echo "ERROR: CUSTOMER_FIELD_KEY must be exactly 64 hex chars (or empty to disable encryption)." >&2; errs=1
+fi
+if [ "$ENVIRONMENT" = "prod" ] && [ -z "${ATTACHMENT_KEY:-}" ]; then
+  echo "ERROR: ATTACHMENT_KEY is required for prod." >&2; errs=1
+fi
+if [ -n "${ATTACHMENT_KEY:-}" ] && ! printf '%s' "$ATTACHMENT_KEY" | grep -qE '^[0-9a-fA-F]{64}$'; then
+  echo "ERROR: ATTACHMENT_KEY must be exactly 64 hex chars (or empty to disable encryption)." >&2; errs=1
+fi
+if [ -z "${APP_URL:-}" ]; then
+  echo "ERROR: APP_URL is required." >&2; errs=1
+fi
+if [ -n "${APP_URL:-}" ] && ! printf '%s' "$APP_URL" | grep -qE '^https?://[^[:space:]]+$'; then
+  echo "ERROR: APP_URL must be a valid http(s) URL." >&2; errs=1
 fi
 [ "$errs" -eq 0 ] || { echo "Fix .env and re-run." >&2; exit 1; }
 

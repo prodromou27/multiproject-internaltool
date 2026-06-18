@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
+const { decrypt } = require('../fieldCipher');
 
 // GET /api/workload — full engineer workload snapshot
 // Replaces 4N individual queries with 4 batched queries (was: 80 queries for 20 engineers)
@@ -56,7 +57,7 @@ router.get('/', requireManager, async (req, res) => {
   engineerIds.forEach(id => { tasksMap[id] = []; visitsMap[id] = []; doneMap[id] = 0; hoursMap[id] = 0; });
   allTasks.forEach(t  => tasksMap[t.assigned_to].push(t));
   doneCounts.forEach(r => { doneMap[r.assigned_to] = r.c; });
-  allVisits.forEach(v => visitsMap[v.user_id].push(v));
+  allVisits.forEach(v => visitsMap[v.user_id].push({ ...v, customer_name: decrypt(v.customer_name) }));
   allHours.forEach(r  => { hoursMap[r.user_id] = Math.round(r.total * 10) / 10; });
 
   const result = engineers.map(eng => ({
@@ -132,7 +133,9 @@ router.get('/forecast', requireManager, async (req, res) => {
   const result = engineers.map(eng => {
     const weekData = weeks.map(w => {
       const tasks  = allTasks.filter(t => t.assigned_to === eng.id && t.deadline  >= w.start && t.deadline  <= w.end);
-      const visits = allVisits.filter(v => v.user_id    === eng.id && v.scheduled_date >= w.start && v.scheduled_date <= w.end);
+      const visits = allVisits
+        .filter(v => v.user_id === eng.id && v.scheduled_date >= w.start && v.scheduled_date <= w.end)
+        .map(v => ({ ...v, customer_name: decrypt(v.customer_name) }));
       return { ...w, tasks, visits, total: tasks.length + visits.length };
     });
     return { ...eng, weeks: weekData };

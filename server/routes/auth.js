@@ -10,6 +10,45 @@ const db        = require('../db');
 const { signJwt, verifyJwt, requireAuth } = require('../middleware/auth');
 const { sendEmail } = require('../email');
 
+async function upsertSetting(key, value) {
+  await db.prepare(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value'
+  ).run(key, String(value));
+}
+
+async function recordAuthEvent(req, action, detail, user = null) {
+  try {
+    await db.prepare(`
+      INSERT INTO audit_log
+        (user_id, user_name, user_role, entity_type, entity_id, entity_title, action, detail, ip_address)
+      VALUES (?, ?, ?, 'auth', ?, ?, ?, ?, ?)
+    `).run(
+      user?.id ?? null,
+      user?.name ?? 'Anonymous',
+      user?.role ?? null,
+      user?.id ?? null,
+      user?.email ?? null,
+      action,
+      detail ?? null,
+      req.ip ?? null,
+    );
+  } catch (_) { /* non-fatal */ }
+}
+
+async function recordFailedLogin(req, email, reason, user = null) {
+  try {
+    const row = await db.prepare("SELECT value FROM settings WHERE key='failed_login_count'").get();
+    const next = (parseInt(row?.value, 10) || 0) + 1;
+    await upsertSetting('failed_login_count', next);
+  } catch (_) { /* non-fatal */ }
+  await recordAuthEvent(req, 'login_failed', `${reason}: ${email || '(blank)'}`, user);
+}
+
+async function recordSuccessfulLogin(req, user) {
+  await upsertSetting('failed_login_count', 0);
+  await recordAuthEvent(req, 'login_success', user.email || null, user);
+}
+
 // Helper: read password_expiry_days from settings (0 = disabled)
 async function getPasswordExpiryDays() {
   const row = (await db.prepare("SELECT value FROM settings WHERE key='password_expiry_days'").get());
@@ -86,10 +125,14 @@ router.post('/login', async (req, res) => {
   // Use a constant-time compare even on "not found" to avoid timing oracle.
   // Guard against a missing/non-string password (bcrypt throws on undefined).
   const passwordOk = user && typeof password === 'string' && bcrypt.compareSync(password, user.password);
-  if (!passwordOk)
+  if (!passwordOk) {
+    await recordFailedLogin(req, normEmail, 'invalid_credentials');
     return res.status(401).json({ error: 'Invalid email or password' });
-  if (!user.active)
+  }
+  if (!user.active) {
+    await recordFailedLogin(req, normEmail, 'inactive_account', user);
     return res.status(403).json({ error: 'Account is deactivated. Contact your administrator.' });
+  }
   (await db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").run(user.id));
 
   // Check password expiry — sets must_change_password=1 on the user record if expired
@@ -107,6 +150,7 @@ router.post('/login', async (req, res) => {
     { id: user.id, name: user.name, email: user.email, role: user.role },
     { expiresIn: '24h' }
   );
+  await recordSuccessfulLogin(req, user);
   res.json({
     token,
     user: { id: user.id, name: user.name, email: user.email, role: user.role, avatar_url: user.avatar_url || null },
@@ -143,6 +187,7 @@ router.post('/2fa/verify', async (req, res) => {
   if (!valid) return res.status(401).json({ error: 'Invalid authentication code' });
 
   _markTotpUsed(user.id, normalizedCode);
+  await recordSuccessfulLogin(req, user);
 
   // Check expiry after 2FA succeeds (same as regular login)
   const passwordExpired = await checkPasswordExpiry(user);

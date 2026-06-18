@@ -2,6 +2,7 @@ const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
+const { decrypt } = require('../fieldCipher');
 
 // All admin routes require manager role
 router.use(requireManager);
@@ -202,6 +203,10 @@ router.get('/activity', async (req, res) => {
     'Marked MV report sent for "' || c.name || '" — ' || mv.title as description
     FROM maintenance_visits mv JOIN users u ON mv.report_sent_by = u.id JOIN customers c ON mv.customer_id = c.id
     WHERE mv.report_sent = 1 ORDER BY mv.report_sent_at DESC LIMIT ?`).all(limit));
+
+  mvReports.forEach(r => {
+    r.description = r.description.replace(/"([^"]+)"/, (_, name) => `"${decrypt(name)}"`);
+  });
 
   // New projects
   const newProjects = (await db.prepare(`SELECT 'new_project' as type, p.created_at, u.name as actor,

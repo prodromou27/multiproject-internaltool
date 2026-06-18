@@ -5,7 +5,10 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "migrate:from-sqlite": "node scripts/sqlite-to-postgres.js"
+    "test": "node --test",
+    "audit:prod": "npm audit --omit=dev",
+    "migrate:from-sqlite": "node scripts/sqlite-to-postgres.js",
+    "encrypt:customers": "node scripts/encrypt-existing-customers.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

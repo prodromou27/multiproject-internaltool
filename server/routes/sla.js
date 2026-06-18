@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
+const { decrypt } = require('../fieldCipher');
 
 // Count Mon–Fri days from startStr (exclusive) to endStr (inclusive)
 function workingDaysBetween(startStr, endStr) {
@@ -42,7 +43,7 @@ router.get('/overview', requireManager, async (req, res) => {
     return {
       id: mv.id,
       title: mv.title,
-      customer_name: mv.customer_name,
+      customer_name: decrypt(mv.customer_name),
       engineer_names: mv.engineer_names,
       scheduled_date: mv.scheduled_date,
       report_sent: mv.report_sent,

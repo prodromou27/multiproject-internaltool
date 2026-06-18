@@ -31,9 +31,12 @@ router.get('/todos', requireAuth, async (req, res) => {
 router.post('/todos', requireAuth, async (req, res) => {
   const { title, order_index } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'Title required' });
+  if (title.trim().length > 250) return res.status(400).json({ error: 'Title cannot exceed 250 characters' });
+  const order = order_index === undefined ? 0 : Number(order_index);
+  if (!Number.isInteger(order) || order < 0) return res.status(400).json({ error: 'order_index must be a non-negative integer' });
   const result = (await db.prepare(
     'INSERT INTO personal_todos (user_id, title, order_index) VALUES (?, ?, ?)'
-  ).run(req.user.id, title.trim(), order_index ?? 0));
+  ).run(req.user.id, title.trim(), order));
   res.json({ id: result.lastInsertRowid });
 });
 
@@ -41,13 +44,18 @@ router.put('/todos/:id', requireAuth, async (req, res) => {
   const { title, done, order_index } = req.body;
   const todo = (await db.prepare('SELECT * FROM personal_todos WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id));
   if (!todo) return res.status(404).json({ error: 'Not found' });
+  if (title !== undefined && !title?.trim()) return res.status(400).json({ error: 'Title cannot be empty' });
+  if (title?.trim().length > 250) return res.status(400).json({ error: 'Title cannot exceed 250 characters' });
+  const order = order_index === undefined ? null : Number(order_index);
+  if (order !== null && (!Number.isInteger(order) || order < 0))
+    return res.status(400).json({ error: 'order_index must be a non-negative integer' });
   (await db.prepare(`
     UPDATE personal_todos
     SET title = COALESCE(?, title),
         done  = COALESCE(?, done),
         order_index = COALESCE(?, order_index)
     WHERE id = ? AND user_id = ?
-  `).run(title || null, done !== undefined ? (done ? 1 : 0) : null, order_index ?? null, req.params.id, req.user.id));
+  `).run(title?.trim() || null, done !== undefined ? (done ? 1 : 0) : null, order, req.params.id, req.user.id));
   res.json({ ok: true });
 });
 
