@@ -1,36 +1,42 @@
-# Development stack: PostgreSQL + the app container.
+# Base stack: PostgreSQL (bundled) + the app container.
 #
-#   docker compose up --build
+# Deploy via the helper script (recommended):
+#   ./deploy/deploy.sh dev      # this file only
+#   ./deploy/deploy.sh prod     # this file + docker-compose.prod.yml override
 #
-# PROD uses the same app image against a managed Postgres — point DATABASE_URL at
-# it and drop the `db` service. Override secrets via a .env file next to this
-# compose file (POSTGRES_PASSWORD, JWT_SECRET, CUSTOMER_FIELD_KEY).
+# Or directly:
+#   docker compose up -d --build
+#
+# Secrets come from a .env file next to this file (see deploy/env.*.example):
+#   POSTGRES_PASSWORD, JWT_SECRET, CUSTOMER_FIELD_KEY, and optionally APP_PORT.
 
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devsecret}
-      POSTGRES_DB: app
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-app}"]
       interval: 5s
       timeout: 5s
       retries: 10
     ports:
-      - "5432:5432"   # exposed for local debugging; remove in PROD
+      - "127.0.0.1:5432:5432"   # localhost-only (debugging); prod override removes it
 
   app:
     build: .
+    restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://app:${POSTGRES_PASSWORD:-devsecret}@db:5432/app
+      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-app}
       PORT: "8080"
       NODE_ENV: production
       # Must be >= 32 chars in production or the server refuses to start.
-      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me-please-32-characters!!}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       # 64-char hex key for customer PII encryption. Empty = encryption disabled
       # (plaintext passthrough). Set this in .env to encrypt at rest.
       CUSTOMER_FIELD_KEY: ${CUSTOMER_FIELD_KEY:-}
@@ -38,9 +44,15 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "${APP_PORT:-8080}:8080"
     volumes:
       - uploads:/app/server/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
 volumes:
   pgdata:

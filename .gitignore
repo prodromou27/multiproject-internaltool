@@ -29,6 +29,9 @@ server/certs/*.pfx
 .env.*
 !.env.example
 
+# Database backups produced by deploy/backup.sh
+deploy/backups/
+
 # Editor / OS
 .DS_Store
 Thumbs.db

@@ -87,6 +87,16 @@ app.use('/api/customers/import',          importLimiter);
 app.use('/api/maintenance-visits/import', importLimiter);
 
 // ── Routes ───────────────────────────────────────────────────────────────────
+// ── Health check (no auth) — used by Docker/compose healthchecks & load balancers
+app.get('/api/health', async (req, res) => {
+  try {
+    await db.prepare('SELECT 1 AS ok').get();
+    res.json({ status: 'ok', db: 'up' });
+  } catch (e) {
+    res.status(503).json({ status: 'degraded', db: 'down' });
+  }
+});
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api/tasks', require('./routes/tasks'));

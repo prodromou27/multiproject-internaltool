@@ -1,0 +1,23 @@
+# Production overrides — applied on top of docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# (the deploy/deploy.sh prod path does this for you).
+#
+# - Postgres is NOT published to the host (only reachable on the internal
+#   compose network by the app). Use deploy/backup.sh for dumps.
+# - Log rotation so container logs don't fill the disk.
+
+services:
+  db:
+    ports: []          # do not expose Postgres on the host in production
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  app:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
