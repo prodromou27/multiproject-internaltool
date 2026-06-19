@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench,
   Building2, Award, BarChart2, Users as UsersIcon, Settings, LogOut, Search, X,
@@ -546,7 +546,7 @@ function SidebarContent({ user, logout, onNav }) {
               </NavLink>
             ))}
             <NavLink
-              to="/admin"
+              to="/settings"
               onClick={onNav}
               className={({ isActive }) => 'admin-link' + (isActive ? ' active' : '')}
             >
@@ -695,6 +695,11 @@ function PrivateRoute({ children, allowedRoles }) {
   return <Layout>{children}</Layout>;
 }
 
+function LegacySettingsRedirect() {
+  const { section } = useParams();
+  return <Navigate to={section ? `/settings/${section}` : '/settings'} replace />;
+}
+
 /* ── App root ────────────────────────────────────────────── */
 export default function App() {
   const [user, setUser] = useState(() => {
@@ -731,7 +736,10 @@ export default function App() {
           <Route path="/scorecards"          element={<PrivateRoute allowedRoles={['manager']}><Scorecards /></PrivateRoute>} />
           <Route path="/reports"             element={<PrivateRoute allowedRoles={['manager']}><Reports /></PrivateRoute>} />
           <Route path="/users"               element={<PrivateRoute allowedRoles={['manager']}><UsersPage /></PrivateRoute>} />
-          <Route path="/admin"               element={<PrivateRoute allowedRoles={['manager']}><AdminPanel /></PrivateRoute>} />
+          <Route path="/settings"            element={<PrivateRoute allowedRoles={['manager']}><AdminPanel /></PrivateRoute>} />
+          <Route path="/settings/:section"   element={<PrivateRoute allowedRoles={['manager']}><AdminPanel /></PrivateRoute>} />
+          <Route path="/admin"               element={<LegacySettingsRedirect />} />
+          <Route path="/admin/:section"      element={<LegacySettingsRedirect />} />
           <Route path="/templates"           element={<PrivateRoute allowedRoles={['manager']}><Templates /></PrivateRoute>} />
           <Route path="/workload"            element={<PrivateRoute allowedRoles={['manager']}><Workload /></PrivateRoute>} />
           <Route path="/sla"               element={<PrivateRoute allowedRoles={['manager']}><SLAPage /></PrivateRoute>} />

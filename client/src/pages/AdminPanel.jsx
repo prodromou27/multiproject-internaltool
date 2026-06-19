@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
+import { useNavigate, useParams } from 'react-router-dom';
 import { fmtDate, Modal, StatusBadge, PriorityBadge, isOverdue } from '../components/Shared';
 import { useStatuses } from '../hooks/useStatuses';
 import { useToast } from '../components/Toast';
@@ -2785,11 +2786,69 @@ const TAB_GROUPS = [
   { key: 'operations',    label: 'Operations' },
 ];
 
+const TAB_KEYS = new Set(TABS.map(t => t.key));
+const STATUS_STYLES = {
+  ok:      { label: 'OK',     color: 'var(--success)', bg: '#ecfdf5' },
+  warning: { label: 'Review', color: 'var(--warning)', bg: '#fffbeb' },
+  error:   { label: 'Issue',  color: 'var(--danger)',  bg: '#fef2f2' },
+};
+
+function SettingsStatusPill({ status }) {
+  if (!status) return null;
+  const s = STATUS_STYLES[status] || STATUS_STYLES.warning;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      padding: '1px 6px', borderRadius: 999, background: s.bg, color: s.color,
+      fontSize: 10, fontWeight: 800, lineHeight: 1.5, whiteSpace: 'nowrap',
+    }}>
+      {s.label}
+    </span>
+  );
+}
+
 export default function AdminPanel() {
   const { user } = useAuth();
-  const [tab, setTab] = useState('overview');
+  const navigate = useNavigate();
+  const { section } = useParams();
+  const initialTab = TAB_KEYS.has(section) ? section : 'overview';
+  const [tab, setTab] = useState(initialTab);
   const [tabGroup, setTabGroup] = useState('all');
   const [tabSearch, setTabSearch] = useState('');
+  const [sectionStatus, setSectionStatus] = useState({});
+
+  useEffect(() => {
+    if (!section) return;
+    if (TAB_KEYS.has(section)) setTab(section);
+    else navigate('/settings', { replace: true });
+  }, [section, navigate]);
+
+  useEffect(() => {
+    let mounted = true;
+    Promise.allSettled([api.deploymentHealth(), api.getSecuritySettings()])
+      .then(([deployment, security]) => {
+        if (!mounted) return;
+        const next = {};
+        if (deployment.status === 'fulfilled') {
+          next.deployment = deployment.value?.status || 'warning';
+        } else {
+          next.deployment = 'warning';
+        }
+        if (security.status === 'fulfilled') {
+          next.security = Number(security.value?.password_expiry_days ?? 0) > 0 ? 'ok' : 'warning';
+        } else {
+          next.security = 'warning';
+        }
+        setSectionStatus(next);
+      });
+    return () => { mounted = false; };
+  }, []);
+
+  function selectTab(key) {
+    setTab(key);
+    navigate(key === 'overview' ? '/settings' : `/settings/${key}`);
+  }
+
   const activeTab = TABS.find(t => t.key === tab) || TABS[0];
   const activeGroup = TAB_GROUPS.find(g => g.key === activeTab.group);
   const visibleTabs = TABS.filter(t => {
@@ -2842,7 +2901,7 @@ export default function AdminPanel() {
           {shownTabs.map(({ key, label, Icon, desc }) => (
             <button
               key={key}
-              onClick={() => setTab(key)}
+              onClick={() => selectTab(key)}
               style={{
                 display: 'grid', gridTemplateColumns: '18px minmax(0, 1fr)', gap: 8,
                 minHeight: 68, padding: '10px 11px', borderRadius: 8,
@@ -2857,7 +2916,10 @@ export default function AdminPanel() {
             >
               <Icon size={15} style={{ flexShrink: 0, marginTop: 1 }} />
               <span style={{ minWidth: 0 }}>
-                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, minWidth: 0 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                  <SettingsStatusPill status={sectionStatus[key]} />
+                </span>
                 <span style={{ display: 'block', marginTop: 3, color: tab === key ? 'var(--primary)' : 'var(--gray-400)', fontSize: 11, fontWeight: 500, lineHeight: 1.25 }}>
                   {desc}
                 </span>
