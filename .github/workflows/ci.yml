@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - DEV-2
+      - dev
+      - main
+  pull_request:
+
+jobs:
+  server:
+    name: Server tests and audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Run server tests
+        working-directory: server
+        run: npm test
+
+      - name: Audit server production dependencies
+        working-directory: server
+        run: npm audit --omit=dev
+
+  client:
+    name: Client build and audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build client
+        working-directory: client
+        run: npm run build
+
+      - name: Audit client production dependencies
+        working-directory: client
+        run: npm audit --omit=dev
+
+  compose:
+    name: Compose validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose config
+        run: |
+          POSTGRES_PASSWORD=dummy_password \
+          JWT_SECRET=dummy_jwt_secret_value_at_least_32_chars \
+          CUSTOMER_FIELD_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+          ATTACHMENT_KEY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+          APP_URL=http://localhost:8080 \
+          docker compose config

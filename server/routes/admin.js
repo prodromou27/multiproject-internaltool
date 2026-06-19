@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
+const { logAudit } = require('../auditLog');
 
 // All admin routes require manager role
 router.use(requireManager);
@@ -48,6 +49,7 @@ router.post('/users', async (req, res) => {
     const result = (await db.prepare(
       "INSERT INTO users (name, email, password, role, must_change_password, password_changed_at) VALUES (?, ?, ?, ?, 1, datetime('now'))"
     ).run(name.trim(), emailVal, hash, role));
+    await logAudit(db, req, 'user', result.lastInsertRowid, name.trim(), 'user_created', `role=${role}; email=${emailVal || ''}`);
     res.json({ id: result.lastInsertRowid, name, email: emailVal, role });
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already in use' });
@@ -74,6 +76,7 @@ router.put('/users/:id', async (req, res) => {
       role  = COALESCE(?, role)
       WHERE id = ?`
     ).run(name?.trim() || null, email ? email.trim().toLowerCase() : null, role || null, user.id));
+    await logAudit(db, req, 'user', user.id, user.name, 'user_updated', `role ${user.role}->${role || user.role}; email_changed=${email ? 'yes' : 'no'}`);
     res.json({ ok: true });
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already in use' });
@@ -86,9 +89,12 @@ router.post('/users/:id/reset-password', async (req, res) => {
   const { password } = req.body;
   if (!password || password.length < 12)
     return res.status(400).json({ error: 'Password must be at least 12 characters' });
+  const user = (await db.prepare('SELECT id, name FROM users WHERE id = ?').get(req.params.id));
+  if (!user) return res.status(404).json({ error: 'User not found' });
   const hash = bcrypt.hashSync(password, 12);
   // Force the user to choose a new password on their next login
   (await db.prepare("UPDATE users SET password = ?, must_change_password = 1, password_changed_at = datetime('now') WHERE id = ?").run(hash, req.params.id));
+  await logAudit(db, req, 'user', req.params.id, user.name, 'user_password_reset', 'Admin reset user password');
   res.json({ ok: true });
 });
 
@@ -101,6 +107,7 @@ router.post('/users/:id/toggle-active', async (req, res) => {
   if (user.active && user.role === 'manager' && (await otherActiveManagerCount(user.id)) === 0)
     return res.status(400).json({ error: 'Cannot deactivate the last active manager' });
   (await db.prepare('UPDATE users SET active = ? WHERE id = ?').run(user.active ? 0 : 1, user.id));
+  await logAudit(db, req, 'user', user.id, user.name, user.active ? 'user_deactivated' : 'user_activated', `role=${user.role}`);
   res.json({ active: !user.active });
 });
 
@@ -113,6 +120,7 @@ router.delete('/users/:id', async (req, res) => {
     return res.status(400).json({ error: 'Cannot delete the last active manager' });
   try {
     (await db.prepare('DELETE FROM users WHERE id = ?').run(user.id));
+    await logAudit(db, req, 'user', user.id, user.name, 'user_deleted', `role=${user.role}`);
     res.json({ ok: true });
   } catch (e) {
     // created_by / authored references (projects, tasks, comments, activity) are
@@ -133,6 +141,7 @@ router.post('/users/:id/toggle-2fa-exempt', async (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   const newVal = user.totp_exempt ? 0 : 1;
   (await db.prepare('UPDATE users SET totp_exempt = ? WHERE id = ?').run(newVal, user.id));
+  await logAudit(db, req, 'user', user.id, null, newVal ? 'user_2fa_exempted' : 'user_2fa_required', null);
   res.json({ totp_exempt: !!newVal });
 });
 

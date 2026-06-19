@@ -8,6 +8,7 @@ const updateMgr = require('../update-manager');
 const { assertPublicHttpUrl, isInAppUpdateEnabled, requireInAppUpdateEnabled } = require('../security');
 const { getRuntimeConfigIssues } = require('../config');
 const { isEncrypted, keyStatus } = require('../fieldCipher');
+const { logAudit } = require('../auditLog');
 const pkg = require('../package.json');
 
 function isPlainObject(value) {
@@ -16,6 +17,10 @@ function isPlainObject(value) {
 
 function bool(value, fallback = false) {
   return typeof value === 'boolean' ? value : fallback;
+}
+
+async function logSettingsChange(req, action, detail = null) {
+  await logAudit(db, req, 'settings', action, 'Settings', action, detail);
 }
 
 async function customerEncryptionReport() {
@@ -75,6 +80,7 @@ router.post('/integrations', requireManager, async (req, res) => {
   }
   const value = JSON.stringify(body);
   (await db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(value));
+  await logSettingsChange(req, 'integrations_updated', `platforms=${Object.keys(body || {}).join(',')}`);
   res.json({ ok: true });
 });
 
@@ -121,6 +127,7 @@ router.put('/localization', requireManager, async (req, res) => {
   };
   if (!cfg.supported_languages.length) cfg.supported_languages = DEFAULT_LOCALIZATION.supported_languages;
   (await db.prepare("INSERT INTO settings (key,value) VALUES ('localization_config',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify(cfg)));
+  await logSettingsChange(req, 'localization_updated', `language=${cfg.default_language}; timezone=${cfg.timezone}`);
   res.json({ ok: true });
 });
 
@@ -158,6 +165,7 @@ router.put('/admin-notifications', requireManager, async (req, res) => {
     };
   });
   (await db.prepare("INSERT INTO settings (key,value) VALUES ('admin_notifications_config',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify(cfg)));
+  await logSettingsChange(req, 'admin_notifications_updated', null);
   res.json({ ok: true });
 });
 
@@ -235,6 +243,7 @@ router.post('/system-alerts/check', requireManager, async (req, res) => {
     });
   }
 
+  await logSettingsChange(req, 'system_alerts_checked', `alerts=${alerts.length}; actionable=${bad.length}`);
   res.json({ alerts, checked_at: new Date().toISOString() });
 });
 
@@ -273,6 +282,7 @@ router.put('/logging', requireManager, async (req, res) => {
   };
   const value = JSON.stringify(cfg);
   (await db.prepare("INSERT INTO settings (key, value) VALUES ('logging_config', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(value));
+  await logSettingsChange(req, 'logging_updated', `level=${cfg.log_level}; download=${cfg.log_download_enabled}`);
   res.json({ ok: true });
 });
 
@@ -440,6 +450,7 @@ router.post('/system-update/check', requireManager, requireInAppUpdateEnabled, a
   try {
     const outdated = await updateMgr.checkOutdated();
     updateMgr.state.outdated = outdated;
+    await logSettingsChange(req, 'system_update_checked', null);
     res.json({ outdated });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -455,6 +466,7 @@ router.post('/system-update/start', requireManager, requireInAppUpdateEnabled, a
   updateMgr.state.done_at = null;
   updateMgr.state.needs_restart = false;
   updateMgr.state.started_at = new Date().toISOString();
+  await logSettingsChange(req, 'system_update_started', null);
   res.json({ ok: true, message: 'Update started' });
   // Run asynchronously — client polls /status
   setImmediate(() => updateMgr.runUpdate());
@@ -462,6 +474,7 @@ router.post('/system-update/start', requireManager, requireInAppUpdateEnabled, a
 
 // POST /api/settings/system-update/restart  — restart the server
 router.post('/system-update/restart', requireManager, requireInAppUpdateEnabled, async (req, res) => {
+  await logSettingsChange(req, 'system_restart_requested', null);
   res.json({ ok: true, message: 'Restarting…' });
   updateMgr.scheduleRestart();
 });
@@ -482,6 +495,7 @@ router.put('/security', requireManager, async (req, res) => {
   // Also update the standalone key used by auth.js for fast lookup
   (await db.prepare("INSERT INTO settings (key,value) VALUES ('password_expiry_days',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(String(days)));
   (await db.prepare("INSERT INTO settings (key,value) VALUES ('security_policy',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify({ password_expiry_days: days })));
+  await logSettingsChange(req, 'security_policy_updated', `password_expiry_days=${days}`);
   res.json({ ok: true, password_expiry_days: days });
 });
 
