@@ -2757,31 +2757,32 @@ function SecurityTab() {
 /* ── MAIN PAGE ───────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
 const TABS = [
-  { key: 'overview',       label: 'Overview',          Icon: LayoutDashboard, group: 'operations' },
-  { key: 'users',          label: 'Users',             Icon: UsersIcon,       group: 'operations' },
-  { key: 'projects',       label: 'Projects',          Icon: FolderOpen,      group: 'operations' },
-  { key: 'maintenance',    label: 'Maintenance',       Icon: Wrench,          group: 'operations' },
-  { key: 'statuses',       label: 'Status Management', Icon: Tag,             group: 'configuration' },
-  { key: 'stats',          label: 'System Stats',      Icon: BarChart3,       group: 'operations' },
-  { key: 'activity',       label: 'Activity',          Icon: Activity,        group: 'operations' },
-  { key: 'export',         label: 'Data Export',       Icon: FileSpreadsheet, group: 'maintenance' },
-  { key: 'integrations',   label: 'Integrations',      Icon: Globe,           group: 'configuration' },
-  { key: 'weekly_report',  label: 'Weekly Report',     Icon: ScrollText,      group: 'configuration' },
-  { key: 'logging',        label: 'Logging',           Icon: Database,        group: 'security' },
-  { key: 'localization',   label: 'Localization',      Icon: Globe,           group: 'configuration' },
-  { key: 'admin_alerts',   label: 'Admin Alerts',      Icon: ShieldAlert,     group: 'security' },
-  { key: 'deployment',     label: 'Deployment Health', Icon: HardDrive,       group: 'maintenance' },
-  { key: 'system_update',  label: 'System Update',     Icon: Download,        group: 'maintenance' },
-  { key: 'audit_log',      label: 'Audit Log',         Icon: ClipboardList,   group: 'security' },
-  { key: 'security',       label: 'Security',          Icon: Shield,          group: 'security' },
+  { key: 'overview',       label: 'Overview',           Icon: LayoutDashboard, group: 'overview',      desc: 'Health, activity, and manager attention items' },
+  { key: 'users',          label: 'Users & Access',     Icon: UsersIcon,       group: 'people',        desc: 'Accounts, roles, activation, passwords, and 2FA exceptions' },
+  { key: 'projects',       label: 'Projects',           Icon: FolderOpen,      group: 'people',        desc: 'Project administration and status visibility' },
+  { key: 'maintenance',    label: 'Maintenance Visits', Icon: Wrench,          group: 'people',        desc: 'Visit administration and report status' },
+  { key: 'statuses',       label: 'Status Workflow',    Icon: Tag,             group: 'configuration', desc: 'Project status labels, colors, and workflow rules' },
+  { key: 'integrations',   label: 'Integrations',       Icon: Globe,           group: 'configuration', desc: 'External service and SMTP configuration' },
+  { key: 'weekly_report',  label: 'Weekly Report',      Icon: ScrollText,      group: 'configuration', desc: 'Report schedule, recipients, and preview' },
+  { key: 'localization',   label: 'Localization',       Icon: Globe,           group: 'configuration', desc: 'Language and regional settings' },
+  { key: 'security',       label: 'Security Policy',    Icon: Shield,          group: 'security',      desc: 'Password expiry and reset policy' },
+  { key: 'audit_log',      label: 'Audit Log',          Icon: ClipboardList,   group: 'security',      desc: 'Traceable record of system changes' },
+  { key: 'logging',        label: 'Logging',            Icon: Database,        group: 'security',      desc: 'Application logging and retention settings' },
+  { key: 'admin_alerts',   label: 'System Alerts',      Icon: ShieldAlert,     group: 'security',      desc: 'Manager alert preferences for operational issues' },
+  { key: 'stats',          label: 'System Stats',       Icon: BarChart3,       group: 'operations',    desc: 'Database, storage, and usage metrics' },
+  { key: 'activity',       label: 'Activity Feed',      Icon: Activity,        group: 'operations',    desc: 'Recent application activity' },
+  { key: 'deployment',     label: 'Deployment Health',  Icon: HardDrive,       group: 'operations',    desc: 'Runtime configuration and deploy status checks' },
+  { key: 'export',         label: 'Data Export',        Icon: FileSpreadsheet, group: 'operations',    desc: 'Download operational data' },
+  { key: 'system_update',  label: 'System Update',      Icon: Download,        group: 'operations',    desc: 'Controlled application update workflow' },
 ];
 
 const TAB_GROUPS = [
-  { key: 'all',           label: 'All' },
-  { key: 'operations',    label: 'Operations' },
+  { key: 'all',           label: 'All Settings' },
+  { key: 'overview',      label: 'Overview' },
+  { key: 'people',        label: 'People & Work' },
   { key: 'configuration', label: 'Configuration' },
-  { key: 'security',      label: 'Security' },
-  { key: 'maintenance',   label: 'Maintenance' },
+  { key: 'security',      label: 'Security & Audit' },
+  { key: 'operations',    label: 'Operations' },
 ];
 
 export default function AdminPanel() {
@@ -2790,9 +2791,11 @@ export default function AdminPanel() {
   const [tabGroup, setTabGroup] = useState('all');
   const [tabSearch, setTabSearch] = useState('');
   const activeTab = TABS.find(t => t.key === tab) || TABS[0];
+  const activeGroup = TAB_GROUPS.find(g => g.key === activeTab.group);
   const visibleTabs = TABS.filter(t => {
     const inGroup = tabGroup === 'all' || t.group === tabGroup;
-    const matches = !tabSearch.trim() || t.label.toLowerCase().includes(tabSearch.trim().toLowerCase());
+    const q = tabSearch.trim().toLowerCase();
+    const matches = !q || t.label.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q);
     return inGroup && matches;
   });
   const shownTabs = visibleTabs.length ? visibleTabs : TABS;
@@ -2803,9 +2806,9 @@ export default function AdminPanel() {
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
           <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Settings size={22} /> Admin Control Panel
+            <Settings size={22} /> Settings
           </h1>
-          <p className="text-sm text-muted mt-4">Full system management — managers only</p>
+          <p className="text-sm text-muted mt-4">System configuration, access control, security, and operations</p>
         </div>
         <div style={{ fontSize: 12, color: 'var(--gray-400)', textAlign: 'right' }}>
           Signed in as<br /><strong style={{ color: 'var(--gray-700)' }}>{user.name}</strong>
@@ -2830,19 +2833,19 @@ export default function AdminPanel() {
             value={tabSearch}
             onChange={e => setTabSearch(e.target.value)}
             placeholder="Search settings"
-            aria-label="Search admin settings"
+            aria-label="Search settings"
             style={{ width: 220, maxWidth: '100%', fontSize: 13 }}
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
-          {shownTabs.map(({ key, label, Icon }) => (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 8 }}>
+          {shownTabs.map(({ key, label, Icon, desc }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                minHeight: 42, padding: '9px 11px', borderRadius: 8,
+                display: 'grid', gridTemplateColumns: '18px minmax(0, 1fr)', gap: 8,
+                minHeight: 68, padding: '10px 11px', borderRadius: 8,
                 border: tab === key ? '1px solid var(--primary)' : '1px solid var(--gray-200)',
                 background: tab === key ? '#eff6ff' : '#fff',
                 color: tab === key ? 'var(--primary)' : 'var(--gray-600)',
@@ -2852,8 +2855,13 @@ export default function AdminPanel() {
                 textAlign: 'left',
               }}
             >
-              <Icon size={15} style={{ flexShrink: 0 }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+              <Icon size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                <span style={{ display: 'block', marginTop: 3, color: tab === key ? 'var(--primary)' : 'var(--gray-400)', fontSize: 11, fontWeight: 500, lineHeight: 1.25 }}>
+                  {desc}
+                </span>
+              </span>
             </button>
           ))}
         </div>
@@ -2863,6 +2871,7 @@ export default function AdminPanel() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 14, fontSize: 13, color: 'var(--gray-500)' }}>
           <ActiveIcon size={15} />
           <strong style={{ color: 'var(--gray-700)' }}>{activeTab.label}</strong>
+          <span>in {activeGroup?.label || 'Settings'}</span>
         </div>
       </div>
 

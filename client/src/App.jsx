@@ -551,7 +551,7 @@ function SidebarContent({ user, logout, onNav }) {
               className={({ isActive }) => 'admin-link' + (isActive ? ' active' : '')}
             >
               <Settings size={16} />
-              Admin
+              Settings
             </NavLink>
           </>
         )}
