@@ -446,6 +446,8 @@ async function init() {
     );
   `);
 
+  await applyCompatibilityMigrations();
+
   // Indexes (mirror the SQLite set)
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_tasks_project_id        ON tasks(project_id);
@@ -479,6 +481,57 @@ async function init() {
 
   await seedStatusConfig();
   await seedAdmin();
+}
+
+async function applyCompatibilityMigrations() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      id         TEXT PRIMARY KEY,
+      applied_at TEXT DEFAULT ${NOW}
+    );
+  `);
+
+  const migrations = [
+    ['20260619_compat_columns', `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_exempt INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS ical_token_hash TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS ical_token_created_at TEXT;
+
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_at TEXT;
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS pending_from_customer TEXT;
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS completion_pct INTEGER;
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS rag_override TEXT;
+
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_adhoc INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS pending_from_customer TEXT;
+
+      ALTER TABLE attachments ADD COLUMN IF NOT EXISTS enc_iv TEXT;
+      ALTER TABLE attachments ADD COLUMN IF NOT EXISTS enc_tag TEXT;
+
+      ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS report_sent_to_customer INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS report_sent_to_customer_at TEXT;
+      ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS report_sent_to_customer_by INTEGER REFERENCES users(id);
+    `],
+  ];
+
+  for (const [id, sql] of migrations) {
+    const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
+    if (rows.length) continue;
+    await pool.query('BEGIN');
+    try {
+      await pool.query(sql);
+      await pool.query('INSERT INTO schema_migrations (id) VALUES ($1)', [id]);
+      await pool.query('COMMIT');
+    } catch (e) {
+      await pool.query('ROLLBACK');
+      throw e;
+    }
+  }
 }
 
 async function seedStatusConfig() {

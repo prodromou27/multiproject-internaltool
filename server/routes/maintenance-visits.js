@@ -60,6 +60,34 @@ async function isAssignedEngineer(visitId, userId) {
   return !!(await db.prepare('SELECT 1 FROM maintenance_visit_engineers WHERE visit_id = ? AND user_id = ?').get(visitId, userId));
 }
 
+function isIsoDate(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime());
+}
+
+async function validateCustomerId(customerId) {
+  const id = Number(customerId);
+  if (!Number.isInteger(id) || id <= 0) return { error: 'customer_id must be a positive integer' };
+  const customer = await db.prepare('SELECT id, name FROM customers WHERE id = ?').get(id);
+  if (!customer) return { error: 'customer_id does not exist' };
+  return { id, customer };
+}
+
+async function validateEngineerIds(values) {
+  if (values === undefined) return { ids: undefined, engineers: {} };
+  if (!Array.isArray(values)) return { error: 'engineer_ids must be an array' };
+  if (values.length > 100) return { error: 'engineer_ids cannot contain more than 100 entries' };
+  const ids = [...new Set(values.map(v => Number(v)).filter(Number.isInteger).filter(v => v > 0))];
+  if (ids.length !== values.length) return { error: 'engineer_ids must contain only positive integer IDs' };
+  if (!ids.length) return { ids, engineers: {} };
+  const placeholders = ids.map(() => '?').join(',');
+  const engineers = {};
+  (await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders}) AND role='engineer' AND active=1`).all(...ids))
+    .forEach(e => { engineers[e.id] = e; });
+  if (Object.keys(engineers).length !== ids.length)
+    return { error: 'engineer_ids may only include active engineers' };
+  return { ids, engineers };
+}
+
 // Convert an ExcelJS cell value to string, handling dates and rich text.
 function cellToString(v) {
   if (v === null || v === undefined) return '';
@@ -182,28 +210,29 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
   const { customer_id, title, description, scheduled_date, engineer_ids, notes } = req.body;
   if (!customer_id || !title || !scheduled_date)
     return res.status(400).json({ error: 'customer_id, title and scheduled_date are required' });
+  if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'title is required' });
+  if (title.trim().length > 500) return res.status(400).json({ error: 'title cannot exceed 500 characters' });
+  if (!isIsoDate(scheduled_date)) return res.status(400).json({ error: 'scheduled_date must be YYYY-MM-DD' });
+  const customerCheck = await validateCustomerId(customer_id);
+  if (customerCheck.error) return res.status(400).json({ error: customerCheck.error });
+  const engineerCheck = await validateEngineerIds(engineer_ids);
+  if (engineerCheck.error) return res.status(400).json({ error: engineerCheck.error });
 
   const result = (await db.prepare(
     'INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, notes, created_by) VALUES (?,?,?,?,?,?)'
-  ).run(customer_id, title, description || null, scheduled_date, notes || null, req.user.id));
+  ).run(customerCheck.id, title.trim(), description || null, scheduled_date, notes || null, req.user.id));
 
   const visitId = result.lastInsertRowid;
 
-  if (Array.isArray(engineer_ids) && engineer_ids.length) {
-    const safeIds = engineer_ids.map(id => parseInt(id, 10)).filter(id => Number.isFinite(id) && id > 0);
-    await replaceEngineers(visitId, safeIds);
-    if (safeIds.length) {
-      const customer = (await db.prepare('SELECT name FROM customers WHERE id = ?').get(customer_id));
-      const placeholders = safeIds.map(() => '?').join(',');
-      const engineerMap = {};
-      (await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders})`).all(...safeIds))
-        .forEach(e => { engineerMap[e.id] = e; });
-      safeIds.forEach(uid => {
-        const eng = engineerMap[uid];
-        if (eng && customer) {
+  if (engineerCheck.ids?.length) {
+    await replaceEngineers(visitId, engineerCheck.ids);
+    if (engineerCheck.ids.length) {
+      engineerCheck.ids.forEach(uid => {
+        const eng = engineerCheck.engineers[uid];
+        if (eng && customerCheck.customer) {
           notify('visit.assigned', {
             engineer_id: uid, engineer_name: eng.name, engineer_email: eng.email,
-            visit_title: title, customer_name: decrypt(customer.name), scheduled_date,
+            visit_title: title.trim(), customer_name: decrypt(customerCheck.customer.name), scheduled_date,
           });
         }
       });
@@ -307,27 +336,34 @@ router.put('/:id', requireAuth, async (req, res) => {
   const VALID_STATUSES = ['scheduled', 'in_progress', 'completed', 'cancelled'];
   if (status !== undefined && !VALID_STATUSES.includes(status))
     return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
+  if (title !== undefined && (typeof title !== 'string' || !title.trim())) return res.status(400).json({ error: 'title cannot be empty' });
+  if (typeof title === 'string' && title.trim().length > 500) return res.status(400).json({ error: 'title cannot exceed 500 characters' });
+  if (scheduled_date !== undefined && !isIsoDate(scheduled_date)) return res.status(400).json({ error: 'scheduled_date must be YYYY-MM-DD' });
+  let customerCheck = { id: customer_id };
+  if (customer_id !== undefined) {
+    customerCheck = customer_id === null || customer_id === ''
+      ? { id: null }
+      : await validateCustomerId(customer_id);
+    if (customerCheck.error) return res.status(400).json({ error: customerCheck.error });
+  }
+  const engineerCheck = await validateEngineerIds(engineer_ids);
+  if (engineerCheck.error) return res.status(400).json({ error: engineerCheck.error });
   (await db.prepare(`UPDATE maintenance_visits SET
     customer_id=COALESCE(?,customer_id), title=COALESCE(?,title),
     description=COALESCE(?,description), scheduled_date=COALESCE(?,scheduled_date),
     status=COALESCE(?,status), notes=COALESCE(?,notes), updated_at=datetime('now') WHERE id=?`)
-    .run(customer_id, title, description, scheduled_date, status, notes, mv.id));
+    .run(customerCheck.id, title?.trim() || null, description, scheduled_date, status, notes, mv.id));
 
   // Replace engineer set if provided
-  if (Array.isArray(engineer_ids)) {
-    const safeIds = engineer_ids.map(id => parseInt(id, 10)).filter(id => Number.isFinite(id) && id > 0);
+  if (engineerCheck.ids !== undefined) {
     const oldIds  = (await db.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(mv.id)).map(r => r.user_id);
-    await replaceEngineers(mv.id, safeIds);
+    await replaceEngineers(mv.id, engineerCheck.ids);
     // Notify newly added engineers
-    const newIds = safeIds.filter(id => !oldIds.includes(id));
+    const newIds = engineerCheck.ids.filter(id => !oldIds.includes(id));
     if (newIds.length) {
-      const customer = (await db.prepare('SELECT name FROM customers WHERE id = ?').get(customer_id || mv.customer_id));
-      const placeholders = newIds.map(() => '?').join(',');
-      const engineerMap = {};
-      (await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders})`).all(...newIds))
-        .forEach(e => { engineerMap[e.id] = e; });
+      const customer = customerCheck.customer || (await db.prepare('SELECT name FROM customers WHERE id = ?').get(mv.customer_id));
       newIds.forEach(uid => {
-        const eng = engineerMap[uid];
+        const eng = engineerCheck.engineers[uid];
         if (eng && customer) {
           notify('visit.assigned', {
             engineer_id: uid, engineer_name: eng.name, engineer_email: eng.email,
@@ -348,6 +384,8 @@ router.post('/:id/report-sent', requireAuth, async (req, res) => {
   const mv = (await db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(req.params.id));
   if (!mv) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'engineer' && !await isAssignedEngineer(mv.id, req.user.id))
+    return res.status(403).json({ error: 'Forbidden' });
+  if (!['manager', 'planner', 'engineer'].includes(req.user.role))
     return res.status(403).json({ error: 'Forbidden' });
   (await db.prepare(`UPDATE maintenance_visits SET report_sent=1, report_sent_at=datetime('now'), report_sent_by=?, updated_at=datetime('now') WHERE id=?`)
     .run(req.user.id, mv.id));

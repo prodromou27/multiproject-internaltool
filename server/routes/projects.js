@@ -83,6 +83,25 @@ async function loadEngineerMap(ids) {
   return engineerMap;
 }
 
+const VALID_PROJECT_PRIORITIES = new Set(['low', 'medium', 'high']);
+const VALID_PROJECT_STATUSES = new Set([
+  'not_started', 'in_progress', 'waiting_customer', 'waiting_vendor', 'on_hold',
+  'delayed', 'completed_engineer', 'completed', 'pending_approval', 'closed', 'reopened', 'cancelled',
+]);
+const VALID_RAG = new Set(['red', 'amber', 'green']);
+
+function isIsoDate(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime());
+}
+
+function normalizeOptionalId(value, label) {
+  if (value === undefined) return { value: undefined };
+  if (value === null || value === '') return { value: null };
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) return { error: `${label} must be a positive integer` };
+  return { value: n };
+}
+
 // List projects — engineers/planners see only assigned ones; managers and PMs see all
 router.get('/', requireAuth, async (req, res) => {
   const taskCols = `
@@ -181,7 +200,18 @@ router.get('/:id/activity', requireAuth, async (req, res) => {
 
 router.post('/', requireManager, async (req, res) => {
   const { title, description, priority, deadline, customer_id, member_ids } = req.body;
-  if (!title) return res.status(400).json({ error: 'Title required' });
+  if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'Title required' });
+  if (title.trim().length > 500) return res.status(400).json({ error: 'Title cannot exceed 500 characters' });
+  if (description !== undefined && description !== null && typeof description !== 'string') return res.status(400).json({ error: 'Description must be text' });
+  if (description && description.length > 10000) return res.status(400).json({ error: 'Description cannot exceed 10000 characters' });
+  if (priority && !VALID_PROJECT_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
+  if (deadline && !isIsoDate(deadline)) return res.status(400).json({ error: 'deadline must be YYYY-MM-DD' });
+  const normalizedCustomer = normalizeOptionalId(customer_id, 'customer_id');
+  if (normalizedCustomer.error) return res.status(400).json({ error: normalizedCustomer.error });
+  if (normalizedCustomer.value) {
+    const customer = await db.prepare('SELECT id FROM customers WHERE id = ?').get(normalizedCustomer.value);
+    if (!customer) return res.status(400).json({ error: 'customer_id does not exist' });
+  }
   let engineerMap = {};
   let normalizedMemberIds = [];
   if (Array.isArray(member_ids) && member_ids.length > 0) {
@@ -192,7 +222,7 @@ router.post('/', requireManager, async (req, res) => {
     if (Object.keys(engineerMap).length !== normalizedMemberIds.length)
       return res.status(400).json({ error: 'member_ids may only include active engineers' });
   }
-  const result = (await db.prepare('INSERT INTO projects (title, description, priority, deadline, customer_id, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(title, description, priority || 'medium', deadline || null, customer_id || null, req.user.id));
+  const result = (await db.prepare('INSERT INTO projects (title, description, priority, deadline, customer_id, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(title.trim(), description || null, priority || 'medium', deadline || null, normalizedCustomer.value || null, req.user.id));
   const pid = result.lastInsertRowid;
   logActivity(pid, req.user.id, 'project_created', title);
   if (normalizedMemberIds.length > 0) {
@@ -220,6 +250,25 @@ router.put('/:id', requireManager, async (req, res) => {
   if (!p) return res.status(404).json({ error: 'Not found' });
 
   const { title, description, priority, deadline, customer_id, status, pending_from_customer, completion_pct, rag_override } = req.body;
+  if (title !== undefined && (typeof title !== 'string' || !title.trim())) return res.status(400).json({ error: 'Title cannot be empty' });
+  if (typeof title === 'string' && title.trim().length > 500) return res.status(400).json({ error: 'Title cannot exceed 500 characters' });
+  if (description !== undefined && description !== null && typeof description !== 'string') return res.status(400).json({ error: 'Description must be text' });
+  if (description && description.length > 10000) return res.status(400).json({ error: 'Description cannot exceed 10000 characters' });
+  if (priority && !VALID_PROJECT_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
+  if (status && !VALID_PROJECT_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status value' });
+  if (deadline && !isIsoDate(deadline)) return res.status(400).json({ error: 'deadline must be YYYY-MM-DD' });
+  const normalizedCustomer = normalizeOptionalId(customer_id, 'customer_id');
+  if (normalizedCustomer.error) return res.status(400).json({ error: normalizedCustomer.error });
+  if (normalizedCustomer.value) {
+    const customer = await db.prepare('SELECT id FROM customers WHERE id = ?').get(normalizedCustomer.value);
+    if (!customer) return res.status(400).json({ error: 'customer_id does not exist' });
+  }
+  if (completion_pct !== undefined) {
+    const pct = Number(completion_pct);
+    if (!Number.isInteger(pct) || pct < 0 || pct > 100) return res.status(400).json({ error: 'completion_pct must be an integer between 0 and 100' });
+  }
+  if (rag_override !== undefined && rag_override !== '' && rag_override !== null && !VALID_RAG.has(rag_override))
+    return res.status(400).json({ error: 'Invalid rag_override value' });
 
   // Manage pending_from_customer: set when requires_reason status, clear when leaving it, preserve otherwise
   let newPfc;
@@ -241,7 +290,7 @@ router.put('/:id', requireManager, async (req, res) => {
     status=COALESCE(?,status), pending_from_customer=?,
     completion_pct=COALESCE(?,completion_pct), rag_override=?,
     updated_at=datetime('now') WHERE id=?`)
-    .run(title, description, priority, deadline ?? p.deadline, customer_id !== undefined ? customer_id : p.customer_id, status, newPfc,
+    .run(title?.trim() || null, description, priority, deadline ?? p.deadline, normalizedCustomer.value !== undefined ? normalizedCustomer.value : p.customer_id, status, newPfc,
          completion_pct !== undefined ? completion_pct : null, newRagOverride, p.id));
   if (status && status !== p.status) {
     logActivity(p.id, req.user.id, 'status_changed', `${p.status} → ${status}`);

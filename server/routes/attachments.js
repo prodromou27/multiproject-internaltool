@@ -76,9 +76,9 @@ async function handleUpload(req, res) {
   // Encrypt the file in-place if a key is configured
   if (cipher.isConfigured()) {
     try {
-      const raw = fs.readFileSync(req.file.path);
+      const raw = await fs.promises.readFile(req.file.path);
       const { data, iv, tag } = cipher.encrypt(raw);
-      fs.writeFileSync(req.file.path, data);
+      await fs.promises.writeFile(req.file.path, data);
       encIv  = iv;
       encTag = tag;
     } catch (e) {
@@ -113,7 +113,7 @@ router.get('/:project_id/download/:id', requireDownloadAuth, async (req, res) =>
   // If the file was encrypted, decrypt in-memory before sending
   if (att.enc_iv && att.enc_tag) {
     try {
-      const raw       = fs.readFileSync(filePath);
+      const raw       = await fs.promises.readFile(filePath);
       const plaintext = cipher.decrypt(raw, att.enc_iv, att.enc_tag);
       res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
       res.setHeader('Content-Type', att.mime_type || 'application/octet-stream');

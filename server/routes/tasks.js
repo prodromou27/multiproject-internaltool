@@ -63,7 +63,7 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 const VALID_TASK_STATUSES = new Set(['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','cancelled','closed']);
-const VALID_PRIORITIES    = new Set(['low','medium','high','critical']);
+const VALID_PRIORITIES    = new Set(['low','medium','high']);
 
 router.post('/', requireAuth, async (req, res) => {
   if (req.user.role === 'pm' || req.user.role === 'planner') return res.status(403).json({ error: 'Forbidden' });

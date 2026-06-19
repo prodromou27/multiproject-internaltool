@@ -10,6 +10,8 @@ const db        = require('../db');
 const { signJwt, verifyJwt, requireAuth } = require('../middleware/auth');
 const { sendEmail } = require('../email');
 
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('not-the-real-password', 12);
+
 async function upsertSetting(key, value) {
   await db.prepare(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value'
@@ -99,7 +101,13 @@ const avatarStorage = multer.diskStorage({
     cb(null, dir);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    const extByType = {
+      'image/jpeg': '.jpg',
+      'image/png':  '.png',
+      'image/gif':  '.gif',
+      'image/webp': '.webp',
+    };
+    const ext = extByType[file.mimetype] || '.jpg';
     cb(null, `avatar_${req.user.id}${ext}`);
   },
 });
@@ -115,6 +123,25 @@ const avatarUpload = multer({
   },
 });
 
+function hasValidImageMagic(filePath, mimeType) {
+  let b;
+  try { b = fs.readFileSync(filePath); }
+  catch { return false; }
+  if (mimeType === 'image/jpeg') return b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+  if (mimeType === 'image/png')  return b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a;
+  if (mimeType === 'image/gif')  return b.length >= 6 && (b.subarray(0, 6).toString('ascii') === 'GIF87a' || b.subarray(0, 6).toString('ascii') === 'GIF89a');
+  if (mimeType === 'image/webp') return b.length >= 12 && b.subarray(0, 4).toString('ascii') === 'RIFF' && b.subarray(8, 12).toString('ascii') === 'WEBP';
+  return false;
+}
+
+function removeOldAvatarFiles(userId, keepPath) {
+  const dir = path.join(__dirname, '../uploads/avatars');
+  for (const ext of ['.jpg', '.png', '.gif', '.webp']) {
+    const p = path.join(dir, `avatar_${userId}${ext}`);
+    if (p !== keepPath) fs.unlink(p, () => {});
+  }
+}
+
 /* ── Login ───────────────────────────────────────────────── */
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
@@ -124,7 +151,8 @@ router.post('/login', async (req, res) => {
   const user = normEmail ? (await db.prepare('SELECT * FROM users WHERE email = ?').get(normEmail)) : null;
   // Use a constant-time compare even on "not found" to avoid timing oracle.
   // Guard against a missing/non-string password (bcrypt throws on undefined).
-  const passwordOk = user && typeof password === 'string' && bcrypt.compareSync(password, user.password);
+  const candidateHash = user?.password || DUMMY_PASSWORD_HASH;
+  const passwordOk = typeof password === 'string' && bcrypt.compareSync(password, candidateHash) && !!user;
   if (!passwordOk) {
     await recordFailedLogin(req, normEmail, 'invalid_credentials');
     return res.status(401).json({ error: 'Invalid email or password' });
@@ -461,6 +489,11 @@ router.post('/avatar', requireAuth, async (req, res, next) => {
   avatarUpload.single('avatar')(req, res, async err => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!hasValidImageMagic(req.file.path, req.file.mimetype)) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: 'Uploaded file content does not match an allowed image type' });
+    }
+    removeOldAvatarFiles(req.user.id, req.file.path);
     const url = `/uploads/avatars/${req.file.filename}`;
     (await db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(url, req.user.id));
     const u = (await db.prepare('SELECT id, name, email, role, avatar_url FROM users WHERE id = ?').get(req.user.id));
@@ -481,5 +514,7 @@ router.delete('/avatar', requireAuth, async (req, res) => {
   const token = signJwt({ id: updated.id, name: updated.name, email: updated.email, role: updated.role }, { expiresIn: '24h' });
   res.json({ user: { id: updated.id, name: updated.name, email: updated.email, role: updated.role, avatar_url: null }, token });
 });
+
+router._hasValidImageMagic = hasValidImageMagic;
 
 module.exports = router;
