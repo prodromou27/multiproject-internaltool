@@ -8,10 +8,12 @@
 # What it does: pulls the right branch, rebuilds the image, brings the stack up
 # with the correct compose overrides, and waits for the app to report healthy.
 #
-# Requirements on the box: git, docker, docker compose plugin, and a .env file at
-# the repo root (copy from deploy/env.<env>.example and fill in the secrets).
+# Requirements on the box: git, docker, docker compose plugin, and openssl for
+# first-time dev secret generation. Prod still requires a reviewed .env file.
 #
 # Override the branch with DEPLOY_BRANCH=... if your branch names differ.
+# Example:
+#   DEPLOY_BRANCH=DEV-2 ./deploy/deploy.sh dev
 set -euo pipefail
 
 ENVIRONMENT="${1:-}"
@@ -35,12 +37,18 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "==> Deploying '$ENVIRONMENT' from branch '$BRANCH'"
 
-# 1. Secrets must exist and be filled in.
+# 1. Secrets must exist and be filled in. For dev/staging branches, bootstrap a
+# .env automatically so a fresh clone can deploy in one command.
 if [ ! -f .env ]; then
-  echo "ERROR: .env not found at repo root." >&2
-  echo "       ./deploy/gen-secrets.sh ${ENVIRONMENT}   # generates one with fresh secrets" >&2
-  echo "       (or: cp deploy/env.${ENVIRONMENT}.example .env  &&  edit it)" >&2
-  exit 1
+  if [ "$ENVIRONMENT" = "dev" ]; then
+    echo "==> .env not found; generating a dev .env with fresh secrets."
+    ./deploy/gen-secrets.sh dev
+  else
+    echo "ERROR: .env not found at repo root." >&2
+    echo "       ./deploy/gen-secrets.sh ${ENVIRONMENT}   # generates one with fresh secrets" >&2
+    echo "       (or: cp deploy/env.${ENVIRONMENT}.example .env  &&  edit it)" >&2
+    exit 1
+  fi
 fi
 
 # Preflight: validate the secrets so we fail before a long build, not after.

@@ -102,6 +102,21 @@ Re-deploying later is the same command — it pulls the latest commit on the bra
 and rebuilds. To deploy a specific build, `git checkout <tag>` first or set
 `DEPLOY_BRANCH=<branch>`.
 
+To test another development branch from the same folder and Docker stack, keep
+the environment as `dev` and override only the branch:
+
+```bash
+DEPLOY_BRANCH=DEV-2 ./deploy/deploy.sh dev
+```
+
+If `.env` is missing on a dev deploy, the script generates one automatically
+from `deploy/env.dev.example` with fresh secrets. Pass `APP_URL` or `APP_PORT`
+in the same command when the defaults are not right for the box:
+
+```bash
+APP_URL=http://dev.example.com:8080 APP_PORT=8080 DEPLOY_BRANCH=DEV-2 ./deploy/deploy.sh dev
+```
+
 ## 3b. Promote DEV to PROD
 
 Only promote after the DEV box is running the commit you intend to release and the

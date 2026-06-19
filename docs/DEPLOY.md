@@ -41,6 +41,27 @@ Compose starts `db` (postgres:16, healthchecked, named volume `pgdata`) and `app
 the app logs). The app is published on `http://localhost:8080`. Uploads persist on the
 `uploads` volume.
 
+For the server deploy path, use the helper script. It will generate a dev `.env`
+automatically if one is missing:
+
+```bash
+./deploy/deploy.sh dev
+```
+
+To deploy a development test branch such as `DEV-2` from the same folder and Docker
+stack, override only the branch:
+
+```bash
+DEPLOY_BRANCH=DEV-2 ./deploy/deploy.sh dev
+```
+
+On a first deploy with no `.env`, you can also set the public URL/port in that
+same command:
+
+```bash
+APP_URL=http://dev.example.com:8080 APP_PORT=8080 DEPLOY_BRANCH=DEV-2 ./deploy/deploy.sh dev
+```
+
 ## Verification checklist (run against the live container)
 
 ```bash
