@@ -2778,7 +2778,6 @@ const TABS = [
 ];
 
 const TAB_GROUPS = [
-  { key: 'all',           label: 'All Settings' },
   { key: 'overview',      label: 'Overview' },
   { key: 'people',        label: 'People & Work' },
   { key: 'configuration', label: 'Configuration' },
@@ -2813,7 +2812,6 @@ export default function AdminPanel() {
   const { section } = useParams();
   const initialTab = TAB_KEYS.has(section) ? section : 'overview';
   const [tab, setTab] = useState(initialTab);
-  const [tabGroup, setTabGroup] = useState('all');
   const [tabSearch, setTabSearch] = useState('');
   const [sectionStatus, setSectionStatus] = useState({});
 
@@ -2851,13 +2849,8 @@ export default function AdminPanel() {
 
   const activeTab = TABS.find(t => t.key === tab) || TABS[0];
   const activeGroup = TAB_GROUPS.find(g => g.key === activeTab.group);
-  const visibleTabs = TABS.filter(t => {
-    const inGroup = tabGroup === 'all' || t.group === tabGroup;
-    const q = tabSearch.trim().toLowerCase();
-    const matches = !q || t.label.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q);
-    return inGroup && matches;
-  });
-  const shownTabs = visibleTabs.length ? visibleTabs : TABS;
+  const q = tabSearch.trim().toLowerCase();
+  const filteredTabs = TABS.filter(t => !q || t.label.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q));
   const ActiveIcon = activeTab.Icon;
 
   return (
@@ -2874,88 +2867,187 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      <div style={{ padding: '16px 0 20px' }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 10 }}>
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {TAB_GROUPS.map(g => (
-              <button
-                key={g.key}
-                type="button"
-                onClick={() => setTabGroup(g.key)}
-                className={tabGroup === g.key ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
-              >
-                {g.label}
-              </button>
-            ))}
+      <div className="settings-shell">
+        <aside className="settings-nav" aria-label="Settings sections">
+          <div className="settings-search">
+            <input
+              value={tabSearch}
+              onChange={e => setTabSearch(e.target.value)}
+              placeholder="Search settings"
+              aria-label="Search settings"
+            />
           </div>
-          <input
-            value={tabSearch}
-            onChange={e => setTabSearch(e.target.value)}
-            placeholder="Search settings"
-            aria-label="Search settings"
-            style={{ width: 220, maxWidth: '100%', fontSize: 13 }}
-          />
-        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 8 }}>
-          {shownTabs.map(({ key, label, Icon, desc }) => (
-            <button
-              key={key}
-              onClick={() => selectTab(key)}
-              style={{
-                display: 'grid', gridTemplateColumns: '18px minmax(0, 1fr)', gap: 8,
-                minHeight: 68, padding: '10px 11px', borderRadius: 8,
-                border: tab === key ? '1px solid var(--primary)' : '1px solid var(--gray-200)',
-                background: tab === key ? '#eff6ff' : '#fff',
-                color: tab === key ? 'var(--primary)' : 'var(--gray-600)',
-                fontWeight: tab === key ? 700 : 600,
-                fontSize: 12,
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
-            >
-              <Icon size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, minWidth: 0 }}>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
-                  <SettingsStatusPill status={sectionStatus[key]} />
-                </span>
-                <span style={{ display: 'block', marginTop: 3, color: tab === key ? 'var(--primary)' : 'var(--gray-400)', fontSize: 11, fontWeight: 500, lineHeight: 1.25 }}>
-                  {desc}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
-        {visibleTabs.length === 0 && (
-          <p className="text-sm text-muted mt-8">No settings matched. Showing all sections.</p>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 14, fontSize: 13, color: 'var(--gray-500)' }}>
-          <ActiveIcon size={15} />
-          <strong style={{ color: 'var(--gray-700)' }}>{activeTab.label}</strong>
-          <span>in {activeGroup?.label || 'Settings'}</span>
-        </div>
+          {TAB_GROUPS.map(group => {
+            const groupTabs = filteredTabs.filter(t => t.group === group.key);
+            if (!groupTabs.length) return null;
+            return (
+              <div key={group.key} className="settings-nav-group">
+                <div className="settings-nav-heading">{group.label}</div>
+                {groupTabs.map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => selectTab(key)}
+                    className={'settings-nav-item' + (tab === key ? ' active' : '')}
+                  >
+                    <Icon size={16} />
+                    <span>{label}</span>
+                    <SettingsStatusPill status={sectionStatus[key]} />
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+
+          {filteredTabs.length === 0 && (
+            <p className="text-sm text-muted" style={{ padding: '8px 10px' }}>No settings matched.</p>
+          )}
+        </aside>
+
+        <section className="settings-content">
+          <div className="settings-content-header">
+            <div className="settings-content-icon"><ActiveIcon size={18} /></div>
+            <div>
+              <div className="settings-content-kicker">{activeGroup?.label || 'Settings'}</div>
+              <h2>{activeTab.label}</h2>
+              <p>{activeTab.desc}</p>
+            </div>
+            <SettingsStatusPill status={sectionStatus[activeTab.key]} />
+          </div>
+
+          {tab === 'overview'     && <OverviewTab />}
+          {tab === 'users'        && <UsersTab currentUser={user} />}
+          {tab === 'projects'     && <ProjectsAdminTab />}
+          {tab === 'maintenance'  && <MaintenanceAdminTab />}
+          {tab === 'statuses'     && <StatusManagementTab />}
+          {tab === 'stats'        && <StatsTab />}
+          {tab === 'activity'     && <ActivityTab />}
+          {tab === 'export'       && <DataExportTab />}
+          {tab === 'integrations'  && <IntegrationsTab />}
+          {tab === 'weekly_report' && <WeeklyReportTab />}
+          {tab === 'logging'       && <LoggingTab />}
+          {tab === 'localization'  && <LocalizationTab />}
+          {tab === 'admin_alerts'  && <AdminAlertsTab />}
+          {tab === 'deployment'    && <DeploymentHealthTab />}
+          {tab === 'system_update' && <SystemUpdateTab />}
+          {tab === 'audit_log'     && <AuditLogTab />}
+          {tab === 'security'      && <SecurityTab />}
+        </section>
       </div>
 
-      {tab === 'overview'     && <OverviewTab />}
-      {tab === 'users'        && <UsersTab currentUser={user} />}
-      {tab === 'projects'     && <ProjectsAdminTab />}
-      {tab === 'maintenance'  && <MaintenanceAdminTab />}
-      {tab === 'statuses'     && <StatusManagementTab />}
-      {tab === 'stats'        && <StatsTab />}
-      {tab === 'activity'     && <ActivityTab />}
-      {tab === 'export'       && <DataExportTab />}
-      {tab === 'integrations'  && <IntegrationsTab />}
-      {tab === 'weekly_report' && <WeeklyReportTab />}
-      {tab === 'logging'       && <LoggingTab />}
-      {tab === 'localization'  && <LocalizationTab />}
-      {tab === 'admin_alerts'  && <AdminAlertsTab />}
-      {tab === 'deployment'    && <DeploymentHealthTab />}
-      {tab === 'system_update' && <SystemUpdateTab />}
-      {tab === 'audit_log'    && <AuditLogTab />}
-      {tab === 'security'     && <SecurityTab />}
-
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .settings-shell {
+          display: grid;
+          grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+          gap: 20px;
+          align-items: start;
+          margin-top: 18px;
+        }
+        .settings-nav {
+          position: sticky;
+          top: 18px;
+          align-self: start;
+          border: 1px solid var(--gray-200);
+          border-radius: 8px;
+          background: #fff;
+          padding: 12px;
+          max-height: calc(100vh - 36px);
+          overflow-y: auto;
+        }
+        .settings-search input {
+          width: 100%;
+          font-size: 13px;
+          margin-bottom: 12px;
+        }
+        .settings-nav-group + .settings-nav-group { margin-top: 14px; }
+        .settings-nav-heading {
+          padding: 0 6px 6px;
+          color: var(--gray-400);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: .04em;
+          text-transform: uppercase;
+        }
+        .settings-nav-item {
+          width: 100%;
+          min-height: 38px;
+          display: grid;
+          grid-template-columns: 18px minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 8px;
+          border: 1px solid transparent;
+          border-radius: 6px;
+          background: transparent;
+          color: var(--gray-600);
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 650;
+          padding: 8px 9px;
+          text-align: left;
+        }
+        .settings-nav-item span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .settings-nav-item:hover {
+          background: var(--gray-50);
+          color: var(--gray-800);
+        }
+        .settings-nav-item.active {
+          background: #eff6ff;
+          border-color: #bfdbfe;
+          color: var(--primary);
+        }
+        .settings-content { min-width: 0; }
+        .settings-content-header {
+          display: grid;
+          grid-template-columns: 42px minmax(0, 1fr) auto;
+          gap: 12px;
+          align-items: center;
+          margin-bottom: 16px;
+          padding-bottom: 14px;
+          border-bottom: 1px solid var(--gray-100);
+        }
+        .settings-content-icon {
+          width: 42px;
+          height: 42px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #eff6ff;
+          color: var(--primary);
+        }
+        .settings-content-kicker {
+          color: var(--gray-400);
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: .04em;
+          text-transform: uppercase;
+          margin-bottom: 2px;
+        }
+        .settings-content-header h2 {
+          margin: 0;
+          font-size: 20px;
+          line-height: 1.2;
+        }
+        .settings-content-header p {
+          margin: 3px 0 0;
+          color: var(--gray-500);
+          font-size: 13px;
+        }
+        @media (max-width: 900px) {
+          .settings-shell { grid-template-columns: 1fr; }
+          .settings-nav {
+            position: static;
+            max-height: none;
+            overflow: visible;
+          }
+        }
+      `}</style>
     </div>
   );
 }
