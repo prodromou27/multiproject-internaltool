@@ -64,17 +64,17 @@ jwt_secret="${JWT_SECRET:-}"
 if [ "${#jwt_secret}" -lt 32 ]; then
   echo "ERROR: JWT_SECRET must be at least 32 characters (got ${#jwt_secret})." >&2; errs=1
 fi
-if [ "$ENVIRONMENT" = "prod" ] && [ -z "${CUSTOMER_FIELD_KEY:-}" ]; then
-  echo "ERROR: CUSTOMER_FIELD_KEY is required for prod." >&2; errs=1
+if [ -z "${CUSTOMER_FIELD_KEY:-}" ]; then
+  echo "ERROR: CUSTOMER_FIELD_KEY is required because the Docker app runs with NODE_ENV=production." >&2; errs=1
 fi
 if [ -n "${CUSTOMER_FIELD_KEY:-}" ] && ! printf '%s' "$CUSTOMER_FIELD_KEY" | grep -qE '^[0-9a-fA-F]{64}$'; then
-  echo "ERROR: CUSTOMER_FIELD_KEY must be exactly 64 hex chars (or empty to disable encryption)." >&2; errs=1
+  echo "ERROR: CUSTOMER_FIELD_KEY must be exactly 64 hex chars." >&2; errs=1
 fi
-if [ "$ENVIRONMENT" = "prod" ] && [ -z "${ATTACHMENT_KEY:-}" ]; then
-  echo "ERROR: ATTACHMENT_KEY is required for prod." >&2; errs=1
+if [ -z "${ATTACHMENT_KEY:-}" ]; then
+  echo "ERROR: ATTACHMENT_KEY is required because the Docker app runs with NODE_ENV=production." >&2; errs=1
 fi
 if [ -n "${ATTACHMENT_KEY:-}" ] && ! printf '%s' "$ATTACHMENT_KEY" | grep -qE '^[0-9a-fA-F]{64}$'; then
-  echo "ERROR: ATTACHMENT_KEY must be exactly 64 hex chars (or empty to disable encryption)." >&2; errs=1
+  echo "ERROR: ATTACHMENT_KEY must be exactly 64 hex chars." >&2; errs=1
 fi
 if [ -z "${APP_URL:-}" ]; then
   echo "ERROR: APP_URL is required." >&2; errs=1
