@@ -230,6 +230,7 @@ function PersonalInfoSection({ user, onRefresh }) {
 
 /* ── Change password section ─────────────────────────────── */
 function ChangePasswordSection() {
+  const { user, login } = useAuth();
   const [form, setForm]   = useState({ current_password: '', new_password: '', confirm: '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg]       = useState({ type: '', text: '' });
@@ -237,11 +238,12 @@ function ChangePasswordSection() {
 
   async function submit(e) {
     e.preventDefault();
-    if (form.new_password.length < 6) { setMsg({ type: 'error', text: 'New password must be at least 6 characters' }); return; }
+    if (form.new_password.length < 12) { setMsg({ type: 'error', text: 'New password must be at least 12 characters' }); return; }
     if (form.new_password !== form.confirm) { setMsg({ type: 'error', text: 'New passwords do not match' }); return; }
     setSaving(true); setMsg({ type: '', text: '' });
     try {
-      await api.changePassword({ current_password: form.current_password, new_password: form.new_password });
+      const data = await api.changePassword({ current_password: form.current_password, new_password: form.new_password });
+      if (data?.token) login(user, data.token);
       setMsg({ type: 'success', text: 'Password changed successfully!' });
       setForm({ current_password: '', new_password: '', confirm: '' });
     } catch (err) {
@@ -273,7 +275,7 @@ function ChangePasswordSection() {
             type="password"
             value={form.new_password}
             onChange={set('new_password')}
-            placeholder="At least 6 characters"
+            placeholder="At least 12 characters"
             required
             autoComplete="new-password"
           />

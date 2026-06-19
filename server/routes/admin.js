@@ -73,7 +73,8 @@ router.put('/users/:id', async (req, res) => {
     (await db.prepare(`UPDATE users SET
       name  = COALESCE(?, name),
       email = COALESCE(?, email),
-      role  = COALESCE(?, role)
+      role  = COALESCE(?, role),
+      token_version = token_version + 1
       WHERE id = ?`
     ).run(name?.trim() || null, email ? email.trim().toLowerCase() : null, role || null, user.id));
     await logAudit(db, req, 'user', user.id, user.name, 'user_updated', `role ${user.role}->${role || user.role}; email_changed=${email ? 'yes' : 'no'}`);
@@ -93,7 +94,7 @@ router.post('/users/:id/reset-password', async (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   const hash = bcrypt.hashSync(password, 12);
   // Force the user to choose a new password on their next login
-  (await db.prepare("UPDATE users SET password = ?, must_change_password = 1, password_changed_at = datetime('now') WHERE id = ?").run(hash, req.params.id));
+  (await db.prepare("UPDATE users SET password = ?, must_change_password = 1, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ?").run(hash, req.params.id));
   await logAudit(db, req, 'user', req.params.id, user.name, 'user_password_reset', 'Admin reset user password');
   res.json({ ok: true });
 });
@@ -106,7 +107,7 @@ router.post('/users/:id/toggle-active', async (req, res) => {
   // Prevent deactivating the last remaining active manager
   if (user.active && user.role === 'manager' && (await otherActiveManagerCount(user.id)) === 0)
     return res.status(400).json({ error: 'Cannot deactivate the last active manager' });
-  (await db.prepare('UPDATE users SET active = ? WHERE id = ?').run(user.active ? 0 : 1, user.id));
+  (await db.prepare('UPDATE users SET active = ?, token_version = token_version + 1 WHERE id = ?').run(user.active ? 0 : 1, user.id));
   await logAudit(db, req, 'user', user.id, user.name, user.active ? 'user_deactivated' : 'user_activated', `role=${user.role}`);
   res.json({ active: !user.active });
 });
@@ -140,7 +141,7 @@ router.post('/users/:id/toggle-2fa-exempt', async (req, res) => {
   const user = (await db.prepare('SELECT id, totp_exempt FROM users WHERE id = ?').get(req.params.id));
   if (!user) return res.status(404).json({ error: 'User not found' });
   const newVal = user.totp_exempt ? 0 : 1;
-  (await db.prepare('UPDATE users SET totp_exempt = ? WHERE id = ?').run(newVal, user.id));
+  (await db.prepare('UPDATE users SET totp_exempt = ?, token_version = token_version + 1 WHERE id = ?').run(newVal, user.id));
   await logAudit(db, req, 'user', user.id, null, newVal ? 'user_2fa_exempted' : 'user_2fa_required', null);
   res.json({ totp_exempt: !!newVal });
 });

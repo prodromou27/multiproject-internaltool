@@ -51,6 +51,17 @@ async function recordSuccessfulLogin(req, user) {
   await recordAuthEvent(req, 'login_success', user.email || null, user);
 }
 
+function sessionPayload(user, extra = {}) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    token_version: user.token_version ?? 0,
+    ...extra,
+  };
+}
+
 // Helper: read password_expiry_days from settings (0 = disabled)
 async function getPasswordExpiryDays() {
   const row = (await db.prepare("SELECT value FROM settings WHERE key='password_expiry_days'").get());
@@ -170,12 +181,12 @@ router.post('/login', async (req, res) => {
 
   // If TOTP is enabled and user is not exempt, require 2FA step
   if (user.totp_enabled && !user.totp_exempt) {
-    const partialToken = signJwt({ id: user.id, partial: true }, { expiresIn: '5m' });
+    const partialToken = signJwt({ id: user.id, token_version: user.token_version ?? 0, partial: true }, { expiresIn: '5m' });
     return res.json({ requires_2fa: true, partial_token: partialToken });
   }
 
   const token = signJwt(
-    { id: user.id, name: user.name, email: user.email, role: user.role },
+    sessionPayload(user),
     { expiresIn: '24h' }
   );
   await recordSuccessfulLogin(req, user);
@@ -199,6 +210,8 @@ router.post('/2fa/verify', async (req, res) => {
   const user = (await db.prepare('SELECT * FROM users WHERE id = ?').get(payload.id));
   if (!user || !user.active)
     return res.status(403).json({ error: 'Account is deactivated. Contact your administrator.' });
+  if ((payload.token_version ?? 0) !== (user.token_version ?? 0))
+    return res.status(401).json({ error: 'Session expired — please log in again.' });
   if (!user.totp_enabled || !user.totp_secret)
     return res.status(400).json({ error: '2FA not configured for this account' });
 
@@ -222,7 +235,7 @@ router.post('/2fa/verify', async (req, res) => {
   const mustChange = !!((await db.prepare('SELECT must_change_password FROM users WHERE id = ?').get(user.id))?.must_change_password);
 
   const token = signJwt(
-    { id: user.id, name: user.name, email: user.email, role: user.role },
+    sessionPayload(user),
     { expiresIn: '24h' }
   );
   res.json({
@@ -315,10 +328,10 @@ router.put('/profile', requireAuth, async (req, res) => {
     const clash = (await db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email.trim().toLowerCase(), req.user.id));
     if (clash) return res.status(400).json({ error: 'Email already in use by another account' });
   }
-  (await db.prepare('UPDATE users SET name = ?, email = COALESCE(?, email) WHERE id = ?')
+  (await db.prepare('UPDATE users SET name = ?, email = COALESCE(?, email), token_version = token_version + 1 WHERE id = ?')
     .run(name.trim(), email?.trim() || null, req.user.id));
-  const u = (await db.prepare('SELECT id, name, email, role, avatar_url FROM users WHERE id = ?').get(req.user.id));
-  const token = signJwt({ id: u.id, name: u.name, email: u.email, role: u.role }, { expiresIn: '24h' });
+  const u = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
+  const token = signJwt(sessionPayload(u), { expiresIn: '24h' });
   res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, avatar_url: u.avatar_url }, token });
 });
 
@@ -330,9 +343,10 @@ router.post('/change-password', requireAuth, async (req, res) => {
   const u = (await db.prepare('SELECT password FROM users WHERE id = ?').get(req.user.id));
   if (!bcrypt.compareSync(current_password || '', u.password))
     return res.status(400).json({ error: 'Current password is incorrect' });
-  (await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now') WHERE id = ?")
+  (await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ?")
     .run(bcrypt.hashSync(new_password, 12), req.user.id));
-  res.json({ ok: true });
+  const updated = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
+  res.json({ ok: true, token: signJwt(sessionPayload(updated), { expiresIn: '24h' }) });
 });
 
 // POST /api/auth/change-password-first
@@ -346,9 +360,10 @@ router.post('/change-password-first', requireAuth, async (req, res) => {
   if (!u) return res.status(404).json({ error: 'User not found' });
   if (!u.must_change_password)
     return res.status(403).json({ error: 'Use /change-password to update your password' });
-  (await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now') WHERE id = ?")
+  (await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ?")
     .run(bcrypt.hashSync(new_password, 12), req.user.id));
-  res.json({ ok: true });
+  const updated = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
+  res.json({ ok: true, token: signJwt(sessionPayload(updated), { expiresIn: '24h' }) });
 });
 
 /* ── HTML escaping — used in email templates to prevent stored XSS ── */
@@ -433,7 +448,7 @@ router.post('/reset-password', async (req, res) => {
   // Mark token used and update password
   await db.transaction(async (tx) => {
     await tx.prepare('UPDATE password_reset_tokens SET used = 1 WHERE id = ?').run(row.id);
-    await tx.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now') WHERE id = ?")
+    await tx.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ?")
       .run(bcrypt.hashSync(new_password, 12), row.user_id);
   });
 
@@ -448,7 +463,7 @@ router.post('/reset-password', async (req, res) => {
    ──────────────────────────────────────────────────────────── */
 router.post('/download-token', requireAuth, async (req, res) => {
   const token = signJwt(
-    { id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role, download: true },
+    sessionPayload(req.user, { download: true }),
     { expiresIn: '60s' }
   );
   res.json({ token });
@@ -496,8 +511,8 @@ router.post('/avatar', requireAuth, async (req, res, next) => {
     removeOldAvatarFiles(req.user.id, req.file.path);
     const url = `/uploads/avatars/${req.file.filename}`;
     (await db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(url, req.user.id));
-    const u = (await db.prepare('SELECT id, name, email, role, avatar_url FROM users WHERE id = ?').get(req.user.id));
-    const token = signJwt({ id: u.id, name: u.name, email: u.email, role: u.role }, { expiresIn: '24h' });
+    const u = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
+    const token = signJwt(sessionPayload(u), { expiresIn: '24h' });
     res.json({ avatar_url: url, user: { id: u.id, name: u.name, email: u.email, role: u.role, avatar_url: url }, token });
   });
 });
@@ -510,8 +525,8 @@ router.delete('/avatar', requireAuth, async (req, res) => {
     fs.unlink(filePath, () => {});
   }
   (await db.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?').run(req.user.id));
-  const updated = (await db.prepare('SELECT id, name, email, role, avatar_url FROM users WHERE id = ?').get(req.user.id));
-  const token = signJwt({ id: updated.id, name: updated.name, email: updated.email, role: updated.role }, { expiresIn: '24h' });
+  const updated = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
+  const token = signJwt(sessionPayload(updated), { expiresIn: '24h' });
   res.json({ user: { id: updated.id, name: updated.name, email: updated.email, role: updated.role, avatar_url: null }, token });
 });
 

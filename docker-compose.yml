@@ -41,6 +41,8 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-app}
       PORT: "8080"
       NODE_ENV: production
+      DEPLOY_BRANCH: ${DEPLOY_BRANCH:-}
+      APP_REVISION: ${APP_REVISION:-unknown}
       # Must be >= 32 chars in production or the server refuses to start.
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       # 64-char hex key for customer PII encryption. Empty = encryption disabled

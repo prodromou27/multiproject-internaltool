@@ -283,7 +283,8 @@ query param).
 
 ## 10. Known open item
 
-One security improvement is **flagged but not yet done**: the iCal feed
-(`/api/calendar/ical?token=`) authenticates with a **full 24h session JWT in the URL**,
-which grants full API access and leaks into calendar-provider and proxy logs. The
-recommended fix is a dedicated, revocable, calendar-read-only feed token.
+The next major session-hardening improvement is to move browser sessions from
+`localStorage` bearer tokens to `HttpOnly`, `Secure`, `SameSite` cookies with CSRF
+protection. The current JWTs are version-checked against the database and scoped
+tokens are used for downloads and iCal feed URLs, but cookie-backed sessions would
+reduce token exposure if browser-side script injection ever occurred.

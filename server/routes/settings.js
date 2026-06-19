@@ -23,6 +23,26 @@ async function logSettingsChange(req, action, detail = null) {
   await logAudit(db, req, 'settings', action, 'Settings', action, detail);
 }
 
+function bytes(n) {
+  if (!Number.isFinite(n)) return 'unknown';
+  if (n >= 1024 * 1024 * 1024) return `${(n / 1024 / 1024 / 1024).toFixed(1)} GB`;
+  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.round(n / 1024)} KB`;
+}
+
+function directoryBytes(dir) {
+  let total = 0;
+  if (!fs.existsSync(dir)) return total;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, entry.name);
+    try {
+      if (entry.isDirectory()) total += directoryBytes(p);
+      else total += fs.statSync(p).size;
+    } catch {}
+  }
+  return total;
+}
+
 async function customerEncryptionReport() {
   const fields = ['name', 'contact_name', 'contact_email', 'contact_phone', 'address', 'notes'];
   const rows = await db.prepare('SELECT id, name, contact_name, contact_email, contact_phone, address, notes FROM customers').all();
@@ -353,6 +373,12 @@ router.get('/deployment-health', requireManager, async (req, res) => {
   } catch {
     add('database', 'PostgreSQL connection', 'error', 'Database query failed.');
   }
+  try {
+    const migrations = await db.prepare('SELECT COUNT(*)::int AS count FROM schema_migrations').get();
+    add('schema_migrations', 'Schema migrations', 'ok', `${migrations?.count ?? 0} compatibility migration(s) applied.`);
+  } catch {
+    add('schema_migrations', 'Schema migrations', 'warning', 'Could not inspect schema migration status.');
+  }
 
   add(
     'attachment_encryption',
@@ -412,18 +438,41 @@ router.get('/deployment-health', requireManager, async (req, res) => {
     process.env.TRUST_PROXY ? 'ok' : (isProd ? 'warning' : 'ok'),
     process.env.TRUST_PROXY ? `Trusting ${process.env.TRUST_PROXY} proxy hop(s).` : 'TRUST_PROXY is not set.'
   );
+  add(
+    'deployment_revision',
+    'Deployment revision',
+    process.env.APP_REVISION && process.env.APP_REVISION !== 'unknown' ? 'ok' : 'warning',
+    `branch=${process.env.DEPLOY_BRANCH || 'unknown'}; revision=${process.env.APP_REVISION || 'unknown'}`
+  );
 
   const uploadsDir = path.join(__dirname, '../uploads');
-  let uploadBytes = 0;
   try {
-    if (fs.existsSync(uploadsDir)) {
-      for (const f of fs.readdirSync(uploadsDir)) {
-        try { uploadBytes += fs.statSync(path.join(uploadsDir, f)).size; } catch {}
-      }
-    }
-    add('uploads_storage', 'Uploads storage', uploadBytes > 500 * 1024 * 1024 ? 'warning' : 'ok', `${(uploadBytes / 1024 / 1024).toFixed(1)} MB in uploads.`);
+    const uploadBytes = directoryBytes(uploadsDir);
+    add('uploads_storage', 'Uploads storage', uploadBytes > 500 * 1024 * 1024 ? 'warning' : 'ok', `${bytes(uploadBytes)} in uploads.`);
   } catch {
     add('uploads_storage', 'Uploads storage', 'warning', 'Could not inspect uploads directory.');
+  }
+  try {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    const probe = path.join(uploadsDir, `.write-test-${process.pid}-${Date.now()}`);
+    fs.writeFileSync(probe, 'ok');
+    fs.unlinkSync(probe);
+    add('uploads_writable', 'Uploads volume writable', 'ok', 'App can write to the uploads volume.');
+  } catch {
+    add('uploads_writable', 'Uploads volume writable', 'error', 'App cannot write to the uploads volume.');
+  }
+  try {
+    if (typeof fs.statfsSync === 'function') {
+      const stats = fs.statfsSync(uploadsDir);
+      const free = Number(stats.bavail) * Number(stats.bsize);
+      const total = Number(stats.blocks) * Number(stats.bsize);
+      const pctFree = total > 0 ? (free / total) * 100 : 0;
+      add('disk_free', 'Disk free space', pctFree < 10 ? 'warning' : 'ok', `${bytes(free)} free of ${bytes(total)} (${pctFree.toFixed(1)}% free).`);
+    } else {
+      add('disk_free', 'Disk free space', 'warning', 'Disk free-space API is unavailable in this Node runtime.');
+    }
+  } catch {
+    add('disk_free', 'Disk free space', 'warning', 'Could not inspect disk free space.');
   }
 
   const status = checks.some(c => c.status === 'error')
@@ -437,6 +486,8 @@ router.get('/deployment-health', requireManager, async (req, res) => {
       name: pkg.name,
       version: pkg.version,
       node_env: process.env.NODE_ENV || 'development',
+      deploy_branch: process.env.DEPLOY_BRANCH || null,
+      revision: process.env.APP_REVISION || null,
       uptime_seconds: Math.round(process.uptime()),
       pid: process.pid,
     },

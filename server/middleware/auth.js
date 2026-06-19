@@ -26,12 +26,15 @@ function verifyJwt(token) {
 }
 
 async function freshActiveUser(payload) {
-  if (!payload?.id) return null;
+  if (!payload?.id) return { errorStatus: 401, error: 'Invalid token' };
   const user = await db.prepare(
-    'SELECT id, name, email, role, active FROM users WHERE id = ?'
+    'SELECT id, name, email, role, active, token_version FROM users WHERE id = ?'
   ).get(payload.id);
-  if (!user || !user.active) return null;
-  return { id: user.id, name: user.name, email: user.email, role: user.role };
+  if (!user || !user.active) return { errorStatus: 403, error: 'Account is deactivated or no longer exists' };
+  if ((payload.token_version ?? 0) !== (user.token_version ?? 0)) return { errorStatus: 401, error: 'Session expired' };
+  return {
+    user: { id: user.id, name: user.name, email: user.email, role: user.role, token_version: user.token_version ?? 0 },
+  };
 }
 
 async function requireAuth(req, res, next) {
@@ -43,9 +46,9 @@ async function requireAuth(req, res, next) {
     if (payload.partial || payload.download) {
       return res.status(401).json({ error: 'Invalid token scope' });
     }
-    const user = await freshActiveUser(payload);
-    if (!user) return res.status(403).json({ error: 'Account is deactivated or no longer exists' });
-    req.user = user;
+    const result = await freshActiveUser(payload);
+    if (result.errorStatus) return res.status(result.errorStatus).json({ error: result.error });
+    req.user = result.user;
     next();
   } catch {
     res.status(401).json({ error: 'Invalid token' });
@@ -69,9 +72,9 @@ async function requireDownloadAuth(req, res, next) {
     if (fromQuery && !fromHeader && !payload.download)
       return res.status(401).json({ error: 'A scoped download token is required for URL-based downloads. Use POST /api/auth/download-token.' });
     if (payload.partial) return res.status(401).json({ error: 'Invalid token scope' });
-    const user = await freshActiveUser(payload);
-    if (!user) return res.status(403).json({ error: 'Account is deactivated or no longer exists' });
-    req.user = user;
+    const result = await freshActiveUser(payload);
+    if (result.errorStatus) return res.status(result.errorStatus).json({ error: result.error });
+    req.user = result.user;
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' });

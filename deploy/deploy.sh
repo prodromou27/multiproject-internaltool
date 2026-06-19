@@ -89,10 +89,19 @@ git fetch --all --prune
 git checkout "$BRANCH"
 git pull --ff-only origin "$BRANCH"
 echo "==> Now at $(git rev-parse --short HEAD): $(git log -1 --pretty=%s)"
+export DEPLOY_BRANCH="$BRANCH"
+export APP_REVISION="$(git rev-parse --short HEAD)"
 
 # 3. Validate the compose config, then build + start.
 docker compose "${COMPOSE[@]}" config -q
-docker compose "${COMPOSE[@]}" up -d --build
+docker compose "${COMPOSE[@]}" build app
+
+# Existing named volumes may have been created by older root-running images.
+# Normalize ownership before starting the non-root app container.
+docker compose "${COMPOSE[@]}" run --rm --no-deps --user root --entrypoint sh app \
+  -c 'mkdir -p /app/server/uploads && chown -R app:app /app/server/uploads'
+
+docker compose "${COMPOSE[@]}" up -d
 
 # 4. Wait for the app container to become healthy.
 echo "==> Waiting for app health…"

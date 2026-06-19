@@ -99,9 +99,9 @@ export default function Login() {
     if (newPw !== confirmPw) { setError('Passwords do not match'); return; }
     setError(''); setLoading(true);
     try {
-      await api.firstTimeChangePassword(newPw);
+      const data = await api.firstTimeChangePassword(newPw);
       localStorage.removeItem('token');
-      login(pendingUser, pendingToken);
+      login(pendingUser, data?.token || pendingToken);
       navigate('/');
     } catch (err) {
       setError(err.message || 'Failed to set password');

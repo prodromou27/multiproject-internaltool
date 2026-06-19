@@ -167,7 +167,8 @@ async function init() {
       must_change_password INTEGER NOT NULL DEFAULT 0,
       password_changed_at  TEXT,
       ical_token_hash      TEXT,
-      ical_token_created_at TEXT
+      ical_token_created_at TEXT,
+      token_version        INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS customers (
@@ -501,6 +502,7 @@ async function applyCompatibilityMigrations() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS ical_token_hash TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS ical_token_created_at TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
 
       ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_at TEXT;
       ALTER TABLE projects ADD COLUMN IF NOT EXISTS pending_from_customer TEXT;
@@ -516,6 +518,9 @@ async function applyCompatibilityMigrations() {
       ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS report_sent_to_customer INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS report_sent_to_customer_at TEXT;
       ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS report_sent_to_customer_by INTEGER REFERENCES users(id);
+    `],
+    ['20260619_token_version', `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
     `],
   ];
 
