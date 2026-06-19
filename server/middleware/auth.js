@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const db = require('../db');
 
 // Fail fast at startup if JWT_SECRET is missing or too short
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -16,20 +17,35 @@ const _secret = JWT_SECRET || require('crypto').randomBytes(32).toString('hex');
 
 /** Sign a JWT payload with the module-private secret */
 function signJwt(payload, options) {
-  return jwt.sign(payload, _secret, options);
+  return jwt.sign(payload, _secret, { algorithm: 'HS256', ...options });
 }
 
 /** Verify a JWT and return its decoded payload (throws on invalid/expired) */
 function verifyJwt(token) {
-  return jwt.verify(token, _secret);
+  return jwt.verify(token, _secret, { algorithms: ['HS256'] });
 }
 
-function requireAuth(req, res, next) {
+async function freshActiveUser(payload) {
+  if (!payload?.id) return null;
+  const user = await db.prepare(
+    'SELECT id, name, email, role, active FROM users WHERE id = ?'
+  ).get(payload.id);
+  if (!user || !user.active) return null;
+  return { id: user.id, name: user.name, email: user.email, role: user.role };
+}
+
+async function requireAuth(req, res, next) {
   const header = req.headers.authorization;
   const token  = header ? header.split(' ')[1] : null;
   if (!token) return res.status(401).json({ error: 'No token' });
   try {
-    req.user = verifyJwt(token);
+    const payload = verifyJwt(token);
+    if (payload.partial || payload.download) {
+      return res.status(401).json({ error: 'Invalid token scope' });
+    }
+    const user = await freshActiveUser(payload);
+    if (!user) return res.status(403).json({ error: 'Account is deactivated or no longer exists' });
+    req.user = user;
     next();
   } catch {
     res.status(401).json({ error: 'Invalid token' });
@@ -41,7 +57,7 @@ function requireAuth(req, res, next) {
 // When it arrives via the URL query string (?token=) we only accept short-lived download
 // tokens (issued by POST /api/auth/download-token, TTL 60 s, claim download:true) so that
 // full 24-hour session JWTs are never captured in server / proxy access logs.
-function requireDownloadAuth(req, res, next) {
+async function requireDownloadAuth(req, res, next) {
   const header = req.headers.authorization;
   const fromHeader = header ? header.split(' ')[1] : null;
   const fromQuery  = req.query.token || null;
@@ -52,7 +68,10 @@ function requireDownloadAuth(req, res, next) {
     // URL-embedded tokens must be explicitly scoped for downloads
     if (fromQuery && !fromHeader && !payload.download)
       return res.status(401).json({ error: 'A scoped download token is required for URL-based downloads. Use POST /api/auth/download-token.' });
-    req.user = payload;
+    if (payload.partial) return res.status(401).json({ error: 'Invalid token scope' });
+    const user = await freshActiveUser(payload);
+    if (!user) return res.status(403).json({ error: 'Account is deactivated or no longer exists' });
+    req.user = user;
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' });

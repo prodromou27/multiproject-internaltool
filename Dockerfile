@@ -28,7 +28,11 @@ COPY server/ ./
 COPY --from=client-build /client/dist /app/client/dist
 
 # Uploaded files live here (mounted as a volume in compose for persistence)
-RUN mkdir -p /app/server/uploads
+RUN addgroup -S app && adduser -S app -G app \
+  && mkdir -p /app/server/uploads \
+  && chown -R app:app /app
+
+USER app
 
 EXPOSE 8080
 CMD ["node", "index.js"]

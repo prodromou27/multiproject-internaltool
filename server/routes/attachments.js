@@ -2,6 +2,7 @@ const router = require('express').Router();
 const multer = require('multer');
 const path   = require('path');
 const fs     = require('fs');
+const crypto = require('crypto');
 const db     = require('../db');
 const { requireAuth, requireDownloadAuth } = require('../middleware/auth');
 const cipher = require('../cipher');
@@ -23,8 +24,9 @@ const ALLOWED_MIME_TYPES = new Set([
 const storage = multer.diskStorage({
   destination: uploadDir,
   filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e6);
-    cb(null, unique + path.extname(file.originalname));
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const safeExt = /^\.[a-z0-9]{1,10}$/.test(ext) ? ext : '';
+    cb(null, `${Date.now()}-${crypto.randomBytes(16).toString('hex')}${safeExt}`);
   }
 });
 const upload = multer({
@@ -38,6 +40,17 @@ const upload = multer({
     }
   },
 });
+
+function safeStoredName(storedName) {
+  const safeName = path.basename(String(storedName || ''));
+  return safeName && safeName === storedName ? safeName : null;
+}
+
+function safeDownloadName(originalName) {
+  return path.basename(String(originalName || 'download'))
+    .replace(/[^\w\s.\-()]/g, '_')
+    .trim() || 'download';
+}
 
 router.get('/:project_id', requireAuth, async (req, res) => {
   // Engineers can only see attachments for their projects
@@ -89,8 +102,8 @@ async function handleUpload(req, res) {
 
   const result = (await db.prepare(
     'INSERT INTO attachments (project_id, original_name, stored_name, mime_type, size, uploaded_by, enc_iv, enc_tag) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(req.params.project_id, req.file.originalname, req.file.filename, req.file.mimetype, req.file.size, req.user.id, encIv, encTag));
-  res.json({ id: result.lastInsertRowid, original_name: req.file.originalname, encrypted: !!encIv });
+  ).run(req.params.project_id, safeDownloadName(req.file.originalname), req.file.filename, req.file.mimetype, req.file.size, req.user.id, encIv, encTag));
+  res.json({ id: result.lastInsertRowid, original_name: safeDownloadName(req.file.originalname), encrypted: !!encIv });
 }
 
 router.get('/:project_id/download/:id', requireDownloadAuth, async (req, res) => {
@@ -100,15 +113,11 @@ router.get('/:project_id/download/:id', requireDownloadAuth, async (req, res) =>
     const assigned = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(att.project_id, req.user.id));
     if (!assigned) return res.status(403).json({ error: 'Forbidden' });
   }
-  // Guard against path traversal (stored_name should always be a plain filename)
-  const safeName = path.basename(att.stored_name);
-  if (!safeName || safeName !== att.stored_name)
+  const safeName = safeStoredName(att.stored_name);
+  if (!safeName)
     return res.status(400).json({ error: 'Invalid file reference' });
   const filePath = path.join(uploadDir, safeName);
-  // Sanitize the download filename to prevent Content-Disposition header injection.
-  const downloadName = path.basename(att.original_name)
-    .replace(/[^\w\s.\-()\[\]]/g, '_')
-    .trim() || 'download';
+  const downloadName = safeDownloadName(att.original_name);
 
   // If the file was encrypted, decrypt in-memory before sending
   if (att.enc_iv && att.enc_tag) {
@@ -133,10 +142,15 @@ router.delete('/:project_id/:id', requireAuth, async (req, res) => {
   if (!att) return res.status(404).json({ error: 'Not found' });
   // Only the uploader or a manager can delete
   if (req.user.role !== 'manager' && att.uploaded_by !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-  const filePath = path.join(uploadDir, att.stored_name);
+  const safeName = safeStoredName(att.stored_name);
+  if (!safeName) return res.status(400).json({ error: 'Invalid file reference' });
+  const filePath = path.join(uploadDir, safeName);
   fs.unlink(filePath, () => {});
   (await db.prepare('DELETE FROM attachments WHERE id = ?').run(att.id));
   res.json({ ok: true });
 });
+
+router._safeStoredName = safeStoredName;
+router._safeDownloadName = safeDownloadName;
 
 module.exports = router;

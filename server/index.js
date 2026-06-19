@@ -149,16 +149,21 @@ app.use('/api', (req, res) => {
   res.status(404).json({ error: 'API endpoint not found' });
 });
 
-// Serve uploaded files — avatars are displayed in-browser; all other uploads are forced to download
-app.use('/uploads', (req, res, next) => {
-  // Avatars are displayed as <img> in the UI — no forced download
-  if (!req.path.startsWith('/avatars/')) {
-    res.setHeader('Content-Disposition', 'attachment');
-  }
-  // Never allow browser to sniff MIME type (defense-in-depth against SVG/HTML injection)
+// Public uploads are limited to user avatars. Project attachments live in the
+// same volume but must be retrieved through /api/attachments, where project
+// membership and scoped download-token checks are enforced.
+app.use('/uploads/avatars', (req, res, next) => {
+  // Never allow browser to sniff MIME type (defense-in-depth against image upload abuse)
   res.setHeader('X-Content-Type-Options', 'nosniff');
   next();
-}, express.static(path.join(__dirname, 'uploads')));
+}, express.static(path.join(__dirname, 'uploads', 'avatars'), {
+  fallthrough: false,
+  immutable: true,
+  maxAge: '1h',
+}));
+app.use('/uploads', (req, res) => {
+  res.status(404).json({ error: 'Upload not found' });
+});
 
 // ── Global error handler — catches unhandled errors from any route ────────────
 // Keeps stack traces out of API responses in all environments.
