@@ -215,7 +215,7 @@ function EventChip({ event, onClick, draggable, onDragStart }) {
       onDragStart={e => { e.stopPropagation(); onDragStart?.(event, e); }}
       style={{
         background: s.bg, color: s.color, borderRadius: 4, padding: '1px 5px',
-        fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+        fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
         overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 2,
         borderLeft: `3px solid ${s.color}`, lineHeight: '18px',
         display: 'flex', alignItems: 'center', gap: 3, cursor: draggable ? 'grab' : 'pointer',
