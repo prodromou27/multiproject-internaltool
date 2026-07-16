@@ -289,7 +289,7 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
       {mentionOpen && filtered.length > 0 && (
         <div style={{
           position: 'absolute', bottom: '100%', left: 0, zIndex: 100,
-          background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 8,
+          background: 'var(--surface)', border: '1px solid var(--gray-200)', borderRadius: 8,
           boxShadow: '0 4px 16px rgba(0,0,0,.12)', minWidth: 200, marginBottom: 2,
           overflow: 'hidden',
         }}>
@@ -299,7 +299,7 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
               onMouseDown={e => { e.preventDefault(); insertMention(u.name); }}
               style={{
                 padding: '7px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-                background: i === mentionIndex ? '#eff6ff' : '#fff',
+                background: i === mentionIndex ? 'var(--primary-light)' : 'var(--surface)',
                 borderBottom: i < filtered.length - 1 ? '1px solid var(--gray-100)' : 'none',
               }}
             >

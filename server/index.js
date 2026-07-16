@@ -75,6 +75,17 @@ app.use(cors(allowedOrigin ? {
   origin: false,
 }));
 
+// ── Response compression (optional) ──────────────────────────────────────────
+// Gzips API JSON and static assets when the `compression` package is present.
+// To enable: `npm install compression` in server/ (updates package-lock.json so
+// the Docker `npm ci` step picks it up). Guarded so the server boots without it.
+try {
+  const compression = require('compression');
+  app.use(compression());
+} catch {
+  // module not installed — responses served uncompressed
+}
+
 app.use(express.json({ limit: '1mb' }));
 
 // ── Rate limiting on auth endpoints ──────────────────────────────────────────
@@ -180,7 +191,17 @@ app.use((err, req, res, next) => {
 
 // Serve React build in production
 const clientBuild = path.join(__dirname, '../client/dist');
-app.use(express.static(clientBuild));
+app.use(express.static(clientBuild, {
+  setHeaders(res, filePath) {
+    // Vite emits content-hashed filenames under /assets — safe to cache forever.
+    // Everything else (index.html, logos) must revalidate so deploys take effect.
+    if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  },
+}));
 app.get('*', (req, res) => {
   res.sendFile(path.join(clientBuild, 'index.html'));
 });

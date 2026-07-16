@@ -29,6 +29,11 @@
   --gray-800:       #1f2937;
   --gray-900:       #111827;
 
+  /* Elevated surfaces (cards, dropdowns, popovers) — flips in dark mode */
+  --surface:          #ffffff;
+  --highlight:        #f0f9ff;
+  --highlight-strong: #e0f2fe;
+
   --sidebar-bg:     #0f172a;
   --sidebar-w:      228px;
   --topbar-h:       56px;
@@ -816,6 +821,9 @@ tr:hover td { background: var(--gray-50); transition: background .1s; }
   --gray-700: #c8d5e0;
   --gray-800: #e2ebf3;
   --gray-900: #f1f7fb;
+  --surface:          #1e293b;
+  --highlight:        rgba(59,130,246,.12);
+  --highlight-strong: rgba(59,130,246,.22);
   --primary-light:  rgba(37,99,235,.18);
   --primary-ring:   rgba(37,99,235,.22);
   --danger-light:   rgba(220,38,38,.15);

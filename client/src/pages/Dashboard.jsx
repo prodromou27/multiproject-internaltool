@@ -98,18 +98,18 @@ function WidgetCustomizer({ prefs, defs, onToggle, onReorder, onReset, onClose }
       onClick={onClose}
     >
       <div
-        style={{ background:'#fff', borderRadius:14, padding:24,
+        style={{ background:'var(--surface)', borderRadius:14, padding:24,
           width:420, maxWidth:'94vw', boxShadow:'0 20px 60px rgba(0,0,0,.18)' }}
         onClick={e => e.stopPropagation()}
       >
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
           <div style={{ fontWeight:700, fontSize:16 }}>Customize Dashboard</div>
           <button onClick={onClose}
-            style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}>
+            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray-400)', padding:4 }}>
             <X size={18} />
           </button>
         </div>
-        <p style={{ fontSize:12, color:'#6b7280', marginBottom:16 }}>
+        <p style={{ fontSize:12, color:'var(--gray-500)', marginBottom:16 }}>
           Drag to reorder &bull; Show/Hide to toggle visibility
         </p>
 
@@ -134,17 +134,17 @@ function WidgetCustomizer({ prefs, defs, onToggle, onReorder, onReset, onClose }
                 style={{
                   display:'flex', alignItems:'center', gap:10,
                   padding:'10px 12px', borderRadius:8, cursor:'grab',
-                  background: overIdx === idx ? '#eff6ff' : hidden ? '#f9fafb' : '#fff',
-                  border:`1px solid ${overIdx === idx ? '#93c5fd' : '#e5e7eb'}`,
+                  background: overIdx === idx ? 'var(--primary-light)' : hidden ? 'var(--gray-50)' : 'var(--surface)',
+                  border:`1px solid ${overIdx === idx ? 'var(--primary)' : 'var(--gray-200)'}`,
                   opacity: dragFrom === idx ? 0.35 : hidden ? 0.65 : 1,
                   transition:'background .1s, border-color .1s',
                   userSelect:'none',
                 }}
               >
-                <GripVertical size={14} color="#d1d5db" style={{ flexShrink:0 }} />
+                <GripVertical size={14} color="var(--gray-300)" style={{ flexShrink:0 }} />
                 <span style={{ flex:1, fontSize:13,
                   fontWeight: hidden ? 400 : 600,
-                  color: hidden ? '#9ca3af' : '#111827' }}>
+                  color: hidden ? 'var(--gray-400)' : 'var(--gray-900)' }}>
                   {def.label}
                 </span>
                 <button
@@ -152,8 +152,8 @@ function WidgetCustomizer({ prefs, defs, onToggle, onReorder, onReset, onClose }
                   style={{
                     padding:'3px 12px', borderRadius:20, fontSize:11, fontWeight:700,
                     border:'none', cursor:'pointer', flexShrink:0,
-                    background: hidden ? '#f3f4f6' : '#dbeafe',
-                    color:      hidden ? '#6b7280' : '#1d4ed8',
+                    background: hidden ? 'var(--gray-100)' : 'var(--primary-light)',
+                    color:      hidden ? 'var(--gray-500)' : 'var(--primary)',
                     transition:'all .1s',
                   }}
                 >
@@ -167,8 +167,8 @@ function WidgetCustomizer({ prefs, defs, onToggle, onReorder, onReset, onClose }
         <div style={{ display:'flex', justifyContent:'space-between', marginTop:18 }}>
           <button
             onClick={onReset}
-            style={{ background:'none', border:'1px solid #e5e7eb', borderRadius:8,
-              padding:'6px 14px', fontSize:12, cursor:'pointer', color:'#6b7280' }}
+            style={{ background:'none', border:'1px solid var(--gray-200)', borderRadius:8,
+              padding:'6px 14px', fontSize:12, cursor:'pointer', color:'var(--gray-500)' }}
           >
             Reset to default
           </button>

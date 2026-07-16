@@ -61,7 +61,7 @@ async function gatherReportData() {
     LEFT JOIN projects p ON t.project_id = p.id
     LEFT JOIN users u ON t.assigned_to = u.id
     WHERE t.deadline IS NOT NULL AND t.deadline >= ? AND t.deadline <= ?
-      AND t.status NOT IN ('done','cancelled')
+      AND t.status NOT IN ('completed','closed','cancelled')
     ORDER BY t.deadline ASC LIMIT 20
   `).all(todayStr, next14Str);
 
@@ -78,7 +78,7 @@ async function gatherReportData() {
     LEFT JOIN projects p  ON t.project_id  = p.id
     LEFT JOIN users u     ON t.assigned_to  = u.id
     LEFT JOIN customers cu ON p.customer_id = cu.id
-    WHERE t.priority = 'high' AND t.status NOT IN ('done','cancelled')
+    WHERE t.priority = 'high' AND t.status NOT IN ('completed','closed','cancelled')
     ORDER BY t.deadline ASC, t.created_at ASC
     LIMIT 30
   `).all();
@@ -119,8 +119,8 @@ async function gatherReportData() {
     SELECT u.id, u.name,
            COUNT(CASE WHEN t.status IN ('open','in_progress') THEN 1 END)              AS open_tasks,
            COUNT(CASE WHEN t.status IN ('open','in_progress') AND t.priority='high' THEN 1 END) AS high_tasks,
-           COUNT(CASE WHEN t.status='done' AND date(t.updated_at) >= ? THEN 1 END)    AS done_this_week,
-           COUNT(CASE WHEN t.deadline < ? AND t.status NOT IN ('done','cancelled') THEN 1 END) AS overdue_tasks,
+           COUNT(CASE WHEN t.status IN ('completed','closed') AND date(t.updated_at) >= ? THEN 1 END)    AS done_this_week,
+           COUNT(CASE WHEN t.deadline < ? AND t.status NOT IN ('completed','closed','cancelled') THEN 1 END) AS overdue_tasks,
            COUNT(DISTINCT pa.project_id) AS project_count
     FROM users u
     LEFT JOIN tasks t ON t.assigned_to = u.id
@@ -137,7 +137,7 @@ async function gatherReportData() {
            cu.name AS customer_name
     FROM projects p
     LEFT JOIN customers cu ON p.customer_id = cu.id
-    WHERE p.status = 'pending_closure'
+    WHERE p.status = 'pending_approval'
     ORDER BY p.closure_requested_at ASC
   `).all();
 
@@ -153,8 +153,8 @@ async function gatherReportData() {
   // computed in JS and passed as parameters since Postgres has no such function.
   const slaSnapshot = {
     mvReportBreaches:   (await db.prepare(`SELECT COUNT(*) AS n FROM maintenance_visits WHERE report_sent=0 AND status!='cancelled' AND scheduled_date < ?`).get(past7Str)).n,
-    closureBreaches:    (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status='pending_closure' AND closure_requested_at < ?`).get(past3Str)).n,
-    highTaskBreaches:   (await db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE priority='high' AND status NOT IN ('done','cancelled') AND date(created_at) < ?`).get(past1Str)).n,
+    closureBreaches:    (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status='pending_approval' AND closure_requested_at < ?`).get(past3Str)).n,
+    highTaskBreaches:   (await db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE priority='high' AND status NOT IN ('completed','closed','cancelled') AND date(created_at) < ?`).get(past1Str)).n,
     staleProjects:      (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status IN ('active','on_hold') AND updated_at < ?`).get(past7DateTime)).n,
   };
 
@@ -192,7 +192,7 @@ const priorityPill = p => {
 };
 const statusPill = s => {
   const map = {
-    active:'#dbeafe:#1d4ed8', on_hold:'#fef9c3:#b45309', pending_closure:'#ede9fe:#6d28d9',
+    active:'#dbeafe:#1d4ed8', on_hold:'#fef9c3:#b45309', pending_approval:'#ede9fe:#6d28d9',
     closed:'#f0fdf4:#15803d', open:'#dbeafe:#1d4ed8', in_progress:'#fef9c3:#b45309',
     done:'#dcfce7:#15803d', scheduled:'#ede9fe:#6d28d9', completed:'#dcfce7:#15803d',
     cancelled:'#f1f5f9:#64748b',

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench,
@@ -8,28 +8,31 @@ import {
   Moon, Sun, AtSign, ShieldCheck, Zap,
 } from 'lucide-react';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Projects from './pages/Projects';
-import ProjectDetail from './pages/ProjectDetail';
-import Tasks from './pages/Tasks';
-import Reports from './pages/Reports';
-import UsersPage from './pages/Users';
-import CalendarPage from './pages/CalendarPage';
-import MaintenanceVisits from './pages/MaintenanceVisits';
-import Customers from './pages/Customers';
-import AdminPanel from './pages/AdminPanel';
-import Scorecards from './pages/Scorecards';
-import CustomerResponses from './pages/CustomerResponses';
-import Templates from './pages/Templates';
-import Workload from './pages/Workload';
-import Notes from './pages/Notes';
-import Profile from './pages/Profile';
-import SLAPage from './pages/SLAPage';
-import SearchPage from './pages/SearchPage';
 import { api } from './api';
 import { StatusProvider } from './hooks/useStatuses';
 import { ToastProvider } from './components/Toast';
 import { ConfirmProvider } from './components/Confirm';
+
+// Route-level code splitting: each page loads on first visit instead of in the
+// initial bundle. Login stays eager so the unauthenticated first paint is instant.
+const Dashboard         = lazy(() => import('./pages/Dashboard'));
+const Projects          = lazy(() => import('./pages/Projects'));
+const ProjectDetail     = lazy(() => import('./pages/ProjectDetail'));
+const Tasks             = lazy(() => import('./pages/Tasks'));
+const Reports           = lazy(() => import('./pages/Reports'));
+const UsersPage         = lazy(() => import('./pages/Users'));
+const CalendarPage      = lazy(() => import('./pages/CalendarPage'));
+const MaintenanceVisits = lazy(() => import('./pages/MaintenanceVisits'));
+const Customers         = lazy(() => import('./pages/Customers'));
+const AdminPanel        = lazy(() => import('./pages/AdminPanel'));
+const Scorecards        = lazy(() => import('./pages/Scorecards'));
+const CustomerResponses = lazy(() => import('./pages/CustomerResponses'));
+const Templates         = lazy(() => import('./pages/Templates'));
+const Workload          = lazy(() => import('./pages/Workload'));
+const Notes             = lazy(() => import('./pages/Notes'));
+const Profile           = lazy(() => import('./pages/Profile'));
+const SLAPage           = lazy(() => import('./pages/SLAPage'));
+const SearchPage        = lazy(() => import('./pages/SearchPage'));
 
 export const AuthContext = createContext(null);
 export function useAuth() { return useContext(AuthContext); }
@@ -157,7 +160,7 @@ function NotificationBell() {
             fontSize: 9, fontWeight: 800, lineHeight: 1,
             borderRadius: 10, minWidth: 15, height: 15,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '0 3px', border: '2px solid #fff',
+            padding: '0 3px', border: '2px solid var(--surface)',
           }}>
             {unread > 9 ? '9+' : unread}
           </span>
@@ -169,7 +172,7 @@ function NotificationBell() {
         <div style={{
           position: 'absolute', top: 'calc(100% + 8px)', right: 0,
           width: 340, maxHeight: 480, overflowY: 'auto',
-          background: '#fff', borderRadius: 12,
+          background: 'var(--surface)', borderRadius: 12,
           boxShadow: '0 12px 40px rgba(0,0,0,.15)',
           border: '1px solid var(--gray-100)', zIndex: 2000,
         }}>
@@ -177,7 +180,7 @@ function NotificationBell() {
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '12px 14px', borderBottom: '1px solid var(--gray-100)',
-            position: 'sticky', top: 0, background: '#fff', zIndex: 1,
+            position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1,
           }}>
             <span style={{ fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
               <Bell size={13} /> Notifications
@@ -216,15 +219,15 @@ function NotificationBell() {
                 style={{
                   display: 'flex', gap: 10, padding: '10px 14px',
                   cursor: n.link ? 'pointer' : 'default',
-                  background: n.read ? '#fff' : '#f0f9ff',
+                  background: n.read ? 'var(--surface)' : 'var(--highlight)',
                   borderBottom: '1px solid var(--gray-50)',
                   transition: 'background .1s',
                   alignItems: 'flex-start',
                 }}
-                onMouseEnter={e => { if (n.link) e.currentTarget.style.background = n.read ? 'var(--gray-50)' : '#e0f2fe'; }}
-                onMouseLeave={e => e.currentTarget.style.background = n.read ? '#fff' : '#f0f9ff'}
+                onMouseEnter={e => { if (n.link) e.currentTarget.style.background = n.read ? 'var(--gray-50)' : 'var(--highlight-strong)'; }}
+                onMouseLeave={e => e.currentTarget.style.background = n.read ? 'var(--surface)' : 'var(--highlight)'}
               >
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: n.read ? 'var(--gray-100)' : '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: n.read ? 'var(--gray-100)' : 'var(--highlight-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
                   {NOTIF_ICONS[n.type] || <Bell size={14} color="var(--gray-500)" />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -282,7 +285,7 @@ function GlobalSearch() {
   const hasResults = results && (results.projects?.length || results.tasks?.length || results.customers?.length);
   function go(path) { navigate(path); setQuery(''); setResults(null); setOpen(false); }
 
-  const statusDot = { active: '#22c55e', on_hold: '#94a3b8', pending_closure: '#f59e0b', closed: '#6b7280' };
+  const statusDot = { active: '#22c55e', on_hold: '#94a3b8', pending_approval: '#f59e0b', closed: '#6b7280' };
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -307,7 +310,7 @@ function GlobalSearch() {
         <div style={{
           position: 'absolute', top: 'calc(100% + 8px)', right: 0,
           width: 'min(380px, calc(100vw - 20px))',
-          background: '#fff', borderRadius: 12,
+          background: 'var(--surface)', borderRadius: 12,
           boxShadow: '0 12px 40px rgba(0,0,0,.15)',
           border: '1px solid var(--gray-100)', zIndex: 2000,
         }}>
@@ -315,7 +318,7 @@ function GlobalSearch() {
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '10px 12px', borderBottom: '1px solid var(--gray-100)',
-            position: 'sticky', top: 0, background: '#fff',
+            position: 'sticky', top: 0, background: 'var(--surface)',
           }}>
             <Search size={14} color="var(--gray-400)" style={{ flexShrink: 0 }} />
             <input
@@ -685,6 +688,15 @@ function Layout({ children }) {
 }
 
 /* ── Route guard ─────────────────────────────────────────── */
+function PageLoader() {
+  return (
+    <div className="page" style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--gray-400)', paddingTop: 48 }}>
+      <span style={{ width: 16, height: 16, border: '2px solid var(--gray-200)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin .7s linear infinite', display: 'inline-block' }} />
+      Loading…
+    </div>
+  );
+}
+
 function PrivateRoute({ children, allowedRoles }) {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
@@ -692,7 +704,7 @@ function PrivateRoute({ children, allowedRoles }) {
     const fallback = user.role === 'planner' || user.role === 'pm' ? '/maintenance-visits' : '/';
     return <Navigate to={fallback} replace />;
   }
-  return <Layout>{children}</Layout>;
+  return <Layout><Suspense fallback={<PageLoader />}>{children}</Suspense></Layout>;
 }
 
 function LegacySettingsRedirect() {
