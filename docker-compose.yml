@@ -53,6 +53,8 @@ services:
       ATTACHMENT_KEY: ${ATTACHMENT_KEY:-}
       # Public base URL used in password reset emails.
       APP_URL: ${APP_URL:?set APP_URL in .env}
+      # Used only when the users table is empty. First login forces a change.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       # Keep false in production; use the Docker/branch deployment pipeline.
       ALLOW_IN_APP_UPDATES: ${ALLOW_IN_APP_UPDATES:-false}
       # Number of reverse-proxy hops to trust for the client IP (set to 1 when

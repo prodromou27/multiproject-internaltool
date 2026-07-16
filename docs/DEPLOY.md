@@ -24,7 +24,7 @@ is the production branch.
 | `ATTACHMENT_KEY` | recommended | 64-char hex; enables uploaded-file encryption at rest |
 | `APP_URL` | yes for email flows | public base URL used in password reset links |
 | `PORT` | no | defaults to 8080 |
-| `ADMIN_PASSWORD` | no | sets the first-run admin password (otherwise random, printed once) |
+| `ADMIN_PASSWORD` | no | first-run password; defaults to `admin` and forces immediate change |
 
 See `server/.env.example`.
 
@@ -75,9 +75,9 @@ APP_URL=http://dev.example.com:8080 APP_PORT=8080 DEPLOY_BRANCH=DEV-2 ./deploy/d
 
 ```bash
 BASE=http://localhost:8080
-# 1. login (use the admin password from the app logs)
+# 1. login (first empty-database credentials are admin / admin)
 TOKEN=$(curl -s $BASE/api/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"admin@company.com","password":"<from logs>"}' | jq -r .token)
+  -d '{"email":"admin","password":"admin"}' | jq -r .token)
 # 2. core reads
 curl -s -o /dev/null -w '%{http_code}\n' $BASE/api/projects        -H "Authorization: Bearer $TOKEN"  # 200
 curl -s -o /dev/null -w '%{http_code}\n' $BASE/api/reports/summary -H "Authorization: Bearer $TOKEN"  # 200

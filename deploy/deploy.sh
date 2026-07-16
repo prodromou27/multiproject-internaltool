@@ -124,4 +124,4 @@ done
 
 docker compose "${COMPOSE[@]}" ps
 echo "==> Deploy of '$ENVIRONMENT' complete."
-echo "    First run prints the seeded admin password in: docker compose ${COMPOSE[*]} logs app | grep -A4 'admin account'"
+echo "    First empty-database login: admin / admin (immediate password change required)."

@@ -107,14 +107,9 @@ The shorter command below is sufficient once Docker is already installed.
 ```
 
 The script pulls the right branch, rebuilds, starts the stack, and waits for the
-app healthcheck (`/api/health`). On the very first run the seeded admin password
-is printed once to the app logs:
-
-```bash
-docker compose logs app | grep -A4 'admin account'
-```
-
-Log in at `http://<host>:8080` as `admin@company.com` and change the password.
+app healthcheck (`/api/health`). On the first empty-database installation, log in
+at `http://<host>:8080` with username `admin` and password `admin`. The application
+immediately requires a new password.
 
 Re-deploying later is the same command — it pulls the latest commit on the branch
 and rebuilds. To deploy a specific build, `git checkout <tag>` first or set

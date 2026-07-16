@@ -158,7 +158,8 @@ router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   // Normalize the email the same way it is stored (creation/forgot-password all
   // lowercase + trim) so a mixed-case or padded login still matches.
-  const normEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  const identifier = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  const normEmail = identifier === 'admin' ? 'admin@company.com' : identifier;
   const user = normEmail ? (await db.prepare('SELECT * FROM users WHERE email = ?').get(normEmail)) : null;
   // Use a constant-time compare even on "not found" to avoid timing oracle.
   // Guard against a missing/non-string password (bcrypt throws on undefined).

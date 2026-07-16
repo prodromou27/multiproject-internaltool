@@ -582,16 +582,17 @@ async function seedStatusConfig() {
 async function seedAdmin() {
   const { rows } = await pool.query('SELECT COUNT(*)::int AS c FROM users');
   if (rows[0].c > 0) return;
-  const crypto = require('crypto');
-  const generatedPassword = process.env.ADMIN_PASSWORD ||
-    crypto.randomBytes(12).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
+  // Bootstrap credentials apply only when the users table is empty. Force a
+  // secure password replacement immediately after the first login.
+  const generatedPassword = process.env.ADMIN_PASSWORD || 'admin';
   const hash = bcrypt.hashSync(generatedPassword, 12);
   await pool.query(
-    "INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4)",
+    "INSERT INTO users (name, email, password, role, must_change_password) VALUES ($1, $2, $3, $4, 1)",
     ['Admin Manager', 'admin@company.com', hash, 'manager']
   );
   console.log('═══════════════════════════════════════════════════════');
   console.log('  First-run admin account created:');
+  console.log('    Username: admin');
   console.log('    Email:    admin@company.com');
   console.log(`    Password: ${generatedPassword} (shown once — change immediately)`);
   console.log('  CHANGE THIS PASSWORD IMMEDIATELY after first login!');

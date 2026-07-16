@@ -174,20 +174,21 @@ export default function Login() {
         {step === 'login' && (
           <form onSubmit={handleLogin}>
             <div className="form-group">
-              <label>Email Address</label>
+              <label>Username or Email</label>
               <div style={{ position: 'relative' }}>
                 <Mail size={14} style={{
                   position: 'absolute', left: 11, top: '50%',
                   transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none',
                 }} />
                 <input
-                  type="email"
+                  type="text"
                   value={form.email}
                   onChange={set('email')}
-                  placeholder="you@odysseycs.com"
+                  placeholder="admin or you@odysseycs.com"
                   style={{ paddingLeft: 32 }}
                   required
                   autoFocus
+                  autoComplete="username"
                 />
               </div>
             </div>

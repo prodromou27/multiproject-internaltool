@@ -34,8 +34,8 @@ The DB layer (`db.js`) is **self-migrating**: on every startup it creates missin
 tables, runs idempotent `ALTER TABLE` column additions, performs table-rebuild
 migrations (relaxing status `CHECK` constraints, making email optional), seeds
 default status configuration, creates performance indexes, and — if the users table
-is empty — seeds a first-run `admin@company.com` manager with a randomly generated
-password printed once to the console.
+is empty — seeds a first-run `admin` (`admin@company.com`) manager with password
+`admin` and requires an immediate password change after login.
 
 ## 3. Data model (core tables)
 
