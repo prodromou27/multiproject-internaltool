@@ -83,6 +83,24 @@ whether any populated customer fields are still plaintext.
 
 ## 3. Deploy
 
+For a fresh Docker server, install prerequisites, generate secrets, deploy, and
+perform future updates with one idempotent command:
+
+```bash
+sudo APP_URL=http://SERVER_IP:8080 DEPLOY_BRANCH=DEV-2 ./deploy/bootstrap.sh dev
+```
+
+The bootstrap supports AlmaLinux/RHEL (`dnf`) and Ubuntu/Debian (`apt-get`). It
+installs Docker only when missing, preserves an existing `.env` and named Docker
+volumes, pulls the selected branch, rebuilds the app, and waits for the healthcheck.
+For production behind a reverse proxy:
+
+```bash
+sudo APP_URL=https://app.example.com DEPLOY_BRANCH=prod ./deploy/bootstrap.sh prod
+```
+
+The shorter command below is sufficient once Docker is already installed.
+
 ```bash
 ./deploy/deploy.sh dev     # on the DEV box
 ./deploy/deploy.sh prod    # on the PROD box

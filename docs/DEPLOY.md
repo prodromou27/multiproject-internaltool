@@ -30,6 +30,15 @@ See `server/.env.example`.
 
 ## Run on DEV (Docker Compose)
 
+Fresh server install and future updates can use the same command:
+
+```bash
+sudo APP_URL=http://SERVER_IP:8080 DEPLOY_BRANCH=DEV-2 ./deploy/bootstrap.sh dev
+```
+
+This installs Docker when needed, generates `.env` secrets on first run, preserves
+existing secrets/data on updates, deploys the branch, and verifies container health.
+
 ```bash
 # from the repo root
 cp deploy/env.dev.example .env    # set POSTGRES_PASSWORD / JWT_SECRET / encryption keys
