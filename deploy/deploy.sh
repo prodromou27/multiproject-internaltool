@@ -98,7 +98,9 @@ docker compose "${COMPOSE[@]}" build app
 
 # Existing named volumes may have been created by older root-running images.
 # Normalize ownership before starting the non-root app container.
-docker compose "${COMPOSE[@]}" run --rm --no-deps --user root --entrypoint sh app \
+# The app service drops every Linux capability. The one-off ownership repair
+# therefore needs CAP_CHOWN explicitly even though it runs as uid 0.
+docker compose "${COMPOSE[@]}" run --rm --no-deps --user root --cap-add CHOWN --entrypoint sh app \
   -c 'mkdir -p /app/server/uploads && chown -R app:app /app/server/uploads'
 
 docker compose "${COMPOSE[@]}" up -d
