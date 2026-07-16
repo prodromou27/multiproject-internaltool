@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench,
@@ -33,6 +33,7 @@ const Notes             = lazy(() => import('./pages/Notes'));
 const Profile           = lazy(() => import('./pages/Profile'));
 const SLAPage           = lazy(() => import('./pages/SLAPage'));
 const SearchPage        = lazy(() => import('./pages/SearchPage'));
+const EngineerHub       = lazy(() => import('./pages/EngineerHub'));
 
 export const AuthContext = createContext(null);
 export function useAuth() { return useContext(AuthContext); }
@@ -142,6 +143,7 @@ function NotificationBell() {
     <div ref={ref} style={{ position: 'relative' }}>
       {/* Bell button */}
       <button
+        className="topbar-action"
         onClick={() => setOpen(o => !o)}
         style={{
           position: 'relative', background: 'none', border: 'none',
@@ -151,6 +153,8 @@ function NotificationBell() {
           transition: 'color .15s',
         }}
         aria-label="Notifications"
+        aria-expanded={open}
+        aria-haspopup="menu"
       >
         <Bell size={18} />
         {unread > 0 && (
@@ -169,7 +173,7 @@ function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div style={{
+        <div className="topbar-popover notification-popover" role="menu" aria-label="Notifications" style={{
           position: 'absolute', top: 'calc(100% + 8px)', right: 0,
           width: 340, maxHeight: 480, overflowY: 'auto',
           background: 'var(--surface)', borderRadius: 12,
@@ -261,6 +265,12 @@ function GlobalSearch() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const showSearch = () => setOpen(true);
+    window.addEventListener('solutionshub:open-search', showSearch);
+    return () => window.removeEventListener('solutionshub:open-search', showSearch);
+  }, []);
+
+  useEffect(() => {
     if (query.length < 2) { setResults(null); return; }
     setLoading(true);
     const t = setTimeout(() => {
@@ -292,6 +302,7 @@ function GlobalSearch() {
       {/* Icon button */}
       <button
         onClick={() => setOpen(o => !o)}
+        className="topbar-action"
         style={{
           position: 'relative', background: 'none', border: 'none',
           cursor: 'pointer', padding: 6, borderRadius: 8,
@@ -300,14 +311,16 @@ function GlobalSearch() {
           transition: 'color .15s',
         }}
         aria-label="Search"
-        title="Search (Ctrl+K)"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        title="Global search"
       >
         <Search size={18} />
       </button>
 
       {/* Dropdown panel */}
       {open && (
-        <div style={{
+        <div className="topbar-popover search-popover" role="search" aria-label="Global search" style={{
           position: 'absolute', top: 'calc(100% + 8px)', right: 0,
           width: 'min(380px, calc(100vw - 20px))',
           background: 'var(--surface)', borderRadius: 12,
@@ -327,11 +340,13 @@ function GlobalSearch() {
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && query.length >= 2) go(`/search?q=${encodeURIComponent(query)}`); if (e.key === 'Escape') setOpen(false); }}
               placeholder="Search projects, tasks, customers…"
+              aria-label="Search projects, tasks, and customers"
               style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13,
                 padding: 0, background: 'none', color: 'var(--gray-900)' }}
             />
             {query && (
               <button onClick={() => { setQuery(''); setResults(null); inputRef.current?.focus(); }}
+                aria-label="Clear search"
                 style={{ background: 'none', border: 'none', cursor: 'pointer',
                   color: 'var(--gray-400)', padding: 2, display: 'flex', flexShrink: 0 }}>
                 <X size={13} />
@@ -342,8 +357,10 @@ function GlobalSearch() {
           {/* Results */}
           <div style={{ maxHeight: 360, overflowY: 'auto' }}>
             {query.length < 2 && (
-              <div style={{ padding: '16px', color: 'var(--gray-400)', fontSize: 13, textAlign: 'center' }}>
-                Type to search…
+              <div className="search-empty-state">
+                <Search size={22} aria-hidden="true" />
+                <span>Type at least 2 characters to search</span>
+                <small><kbd>Enter</kbd> opens Smart Search · <kbd>Esc</kbd> closes</small>
               </div>
             )}
             {query.length >= 2 && loading && (
@@ -408,7 +425,9 @@ function GlobalSearch() {
           </div>
 
           {/* Smart Search footer */}
-          <div
+          <button
+            type="button"
+            className="search-footer"
             onClick={() => go(`/search?q=${encodeURIComponent(query)}`)}
             style={{ padding: '10px 14px', borderTop: '1px solid var(--gray-100)', cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: 8,
@@ -418,7 +437,7 @@ function GlobalSearch() {
           >
             <Zap size={13} />
             Open Smart Search{query ? ` for "${query}"` : ''} →
-          </div>
+          </button>
         </div>
       )}
     </div>
@@ -428,7 +447,7 @@ function GlobalSearch() {
 /* ── Hamburger icon ──────────────────────────────────────── */
 function Hamburger({ open, onClick }) {
   return (
-    <button className="hamburger" onClick={onClick} aria-label="Toggle menu">
+    <button className="hamburger" onClick={onClick} aria-label="Toggle menu" aria-expanded={open}>
       <span style={{ transform: open ? 'translateY(7px) rotate(45deg)' : 'none' }} />
       <span style={{ opacity: open ? 0 : 1 }} />
       <span style={{ transform: open ? 'translateY(-7px) rotate(-45deg)' : 'none' }} />
@@ -479,6 +498,7 @@ function SidebarContent({ user, logout, onNav }) {
 
   const NAV_ENGINEER = [
     { to: '/',                   label: 'Dashboard',  icon: LayoutDashboard, end: true },
+    { to: '/my-day',             label: 'My Day',     icon: Zap },
     { to: '/calendar',           label: 'Calendar',   icon: CalendarDays },
     { to: '/projects',           label: 'Projects',   icon: FolderOpen },
     { to: '/tasks',              label: 'Tasks',      icon: CheckSquare,   badge: overdue.tasks },
@@ -615,37 +635,121 @@ function SidebarContent({ user, logout, onNav }) {
   );
 }
 
+const COMMANDS = [
+  { label: 'Search everything', action: 'search', icon: Search, roles: ['manager','engineer','planner','pm'] },
+  { label: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['manager','engineer','planner','pm'] },
+  { label: 'My Day', path: '/my-day', icon: Zap, roles: ['engineer'] },
+  { label: 'Calendar', path: '/calendar', icon: CalendarDays, roles: ['manager','engineer'] },
+  { label: 'Projects', path: '/projects', icon: FolderOpen, roles: ['manager','engineer','pm'] },
+  { label: 'Tasks', path: '/tasks', icon: CheckSquare, roles: ['manager','engineer'] },
+  { label: 'Maintenance visits', path: '/maintenance-visits', icon: Wrench, roles: ['manager','engineer','planner','pm'] },
+  { label: 'Customers', path: '/customers', icon: Building2, roles: ['manager'] },
+  { label: 'Reports', path: '/reports', icon: BarChart2, roles: ['manager'] },
+  { label: 'SLA dashboard', path: '/sla', icon: ShieldCheck, roles: ['manager'] },
+  { label: 'Team workload', path: '/workload', icon: UsersIcon, roles: ['manager'] },
+  { label: 'My notes', path: '/notes', icon: StickyNote, roles: ['manager','engineer','planner','pm'] },
+  { label: 'My profile', path: '/profile', icon: UserCircle, roles: ['manager','engineer','planner','pm'] },
+  { label: 'Settings', path: '/settings', icon: Settings, roles: ['manager'] },
+];
+
+function CommandPalette({ open, onClose }) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const inputRef = useRef(null);
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
+  const commands = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return COMMANDS.filter(c => c.roles.includes(user.role) && (!q || c.label.toLowerCase().includes(q)));
+  }, [query, user.role]);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery('');
+    setActive(0);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [open]);
+
+  useEffect(() => setActive(0), [query]);
+  if (!open) return null;
+
+  function run(command) {
+    if (!command) return;
+    onClose();
+    if (command.action === 'search') {
+      requestAnimationFrame(() => window.dispatchEvent(new Event('solutionshub:open-search')));
+      return;
+    }
+    navigate(command.path);
+  }
+
+  function onKeyDown(e) {
+    if (e.key === 'Escape') onClose();
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => Math.min(i + 1, commands.length - 1)); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setActive(i => Math.max(i - 1, 0)); }
+    if (e.key === 'Enter') { e.preventDefault(); run(commands[active]); }
+  }
+
+  return (
+    <div className="command-backdrop" onMouseDown={onClose} role="presentation">
+      <div className="command-palette" role="dialog" aria-modal="true" aria-label="Command palette" onMouseDown={e => e.stopPropagation()}>
+        <div className="command-input-row">
+          <Search size={18} aria-hidden="true" />
+          <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onKeyDown}
+            placeholder="Go to a page or run a command…" aria-label="Search commands" />
+          <kbd>Esc</kbd>
+        </div>
+        <div className="command-results" role="listbox">
+          {commands.map((command, index) => {
+            const Icon = command.icon;
+            return (
+              <button key={command.path || command.action} type="button" role="option" aria-selected={index === active}
+                className={`command-item${index === active ? ' active' : ''}`}
+                onMouseEnter={() => setActive(index)} onClick={() => run(command)}>
+                <Icon size={17} /> <span>{command.label}</span><span className="command-hint">Open</span>
+              </button>
+            );
+          })}
+          {!commands.length && <div className="command-empty">No matching commands</div>}
+        </div>
+        <div className="command-footer"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>Enter</kbd> open</span></div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Layout ──────────────────────────────────────────────── */
 function Layout({ children }) {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
 
   useEffect(() => { setOpen(false); }, [location.pathname]);
   useEffect(() => {
     const handler = e => {
-      if (e.key === 'Escape') { setOpen(false); return; }
+      if (e.key === 'Escape') { setOpen(false); setPaletteOpen(false); return; }
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
-        navigate('/search');
+        setPaletteOpen(value => !value);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [navigate]);
+  }, []);
 
   const initials = user.name?.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
   return (
     <div className="layout">
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       {/* Desktop sidebar */}
-      <aside className={`sidebar${open ? ' open' : ''}`}>
+      <aside className={`sidebar${open ? ' open' : ''}`} aria-label="Primary navigation">
         <SidebarContent user={user} logout={logout} onNav={() => setOpen(false)} />
       </aside>
 
       {/* Mobile overlay */}
-      <div className={`sidebar-overlay${open ? ' open' : ''}`} onClick={() => setOpen(false)} />
+      <div className={`sidebar-overlay${open ? ' open' : ''}`} onClick={() => setOpen(false)} aria-hidden="true" />
 
       {/* Mobile topbar */}
       <header className="topbar">
@@ -757,6 +861,7 @@ export default function App() {
           <Route path="/sla"               element={<PrivateRoute allowedRoles={['manager']}><SLAPage /></PrivateRoute>} />
           <Route path="/notes"               element={<PrivateRoute><Notes /></PrivateRoute>} />
           <Route path="/search"             element={<PrivateRoute><SearchPage /></PrivateRoute>} />
+          <Route path="/my-day"             element={<PrivateRoute allowedRoles={['engineer']}><EngineerHub /></PrivateRoute>} />
           <Route path="/profile"             element={<PrivateRoute><Profile /></PrivateRoute>} />
           <Route path="/customer-responses"  element={<PrivateRoute><CustomerResponses /></PrivateRoute>} />
           <Route path="*"                    element={<Navigate to="/" replace />} />

@@ -106,6 +106,7 @@ router.get('/overview', requireManager, async (req, res) => {
       created_at: t.created_at,
       working_days: wd,
       breached: wd >= TASK_SLA,
+      at_risk: wd === TASK_SLA - 1,
     };
   });
 
@@ -152,7 +153,8 @@ router.get('/overview', requireManager, async (req, res) => {
       sla_days: TASK_SLA,
       total:    taskItems.length,
       breached: taskItems.filter(r => r.breached).length,
-      ok:       taskItems.filter(r => !r.breached).length,
+      at_risk:  taskItems.filter(r => r.at_risk).length,
+      ok:       taskItems.filter(r => !r.breached && !r.at_risk).length,
       items:    taskItems,
     },
     closure_approval: {
@@ -162,6 +164,24 @@ router.get('/overview', requireManager, async (req, res) => {
       at_risk:  closureItems.filter(r => r.at_risk).length,
       breached: closureItems.filter(r => r.breached).length,
       items:    closureItems,
+    },
+    forecast: {
+      predicted_breaches_next_working_day:
+        mvItems.filter(r => r.at_risk).length +
+        projItems.filter(r => r.at_risk).length +
+        taskItems.filter(r => r.at_risk).length +
+        closureItems.filter(r => r.at_risk).length,
+      current_breaches:
+        mvItems.filter(r => r.breached).length +
+        projItems.filter(r => r.breached).length +
+        taskItems.filter(r => r.breached).length +
+        closureItems.filter(r => r.breached).length,
+      escalation_recommended: [
+        ...mvItems.filter(r => r.breached).map(r => ({ type: 'maintenance', id: r.id, title: r.title })),
+        ...projItems.filter(r => r.breached).map(r => ({ type: 'project', id: r.id, title: r.title })),
+        ...taskItems.filter(r => r.breached).map(r => ({ type: 'task', id: r.id, title: r.title })),
+        ...closureItems.filter(r => r.breached).map(r => ({ type: 'closure', id: r.id, title: r.title })),
+      ].slice(0, 20),
     },
   });
 });

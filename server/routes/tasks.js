@@ -38,7 +38,7 @@ router.get('/', requireAuth, async (req, res) => {
   let rows = (await db.prepare(q).all(...params));
 
   // Augment with is_blocked (has unfinished dependencies)
-  if (rows.length && project_id) {
+  if (rows.length) {
     const ids = rows.map(t => t.id);
     const placeholders = ids.map(() => '?').join(',');
     const deps = (await db.prepare(`
@@ -63,7 +63,7 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 const VALID_TASK_STATUSES = new Set(['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','cancelled','closed']);
-const VALID_PRIORITIES    = new Set(['low','medium','high']);
+const VALID_PRIORITIES    = new Set(['low','medium','high','critical']);
 
 router.post('/', requireAuth, async (req, res) => {
   if (req.user.role === 'pm' || req.user.role === 'planner') return res.status(403).json({ error: 'Forbidden' });

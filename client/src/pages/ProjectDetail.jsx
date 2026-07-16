@@ -1839,6 +1839,15 @@ export default function ProjectDetail() {
     api.projectActivity(id),
   ]).then(([p, t, u, c, act]) => {
     setProject(p);
+    if (isEngineer) {
+      try {
+        const recent = JSON.parse(localStorage.getItem(`hub_recent_projects_${user.id}`) || '[]');
+        localStorage.setItem(`hub_recent_projects_${user.id}`, JSON.stringify([
+          { id: p.id, title: p.title, status: p.status, viewedAt: Date.now() },
+          ...recent.filter(item => item.id !== p.id),
+        ].slice(0, 6)));
+      } catch {}
+    }
     setTasks(t);
     setAllUsers(u);
     setCustomers(c);

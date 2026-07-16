@@ -4,6 +4,7 @@ import { CheckSquare, FolderOpen, Wrench, ChevronLeft, ChevronRight, Check, X, P
 import { api } from '../api';
 import { useAuth } from '../App';
 import { fmtDate, Modal } from '../components/Shared';
+import { useToast } from '../components/Toast';
 
 const DAYS   = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -205,17 +206,19 @@ function ContextMenu({ x, y, date, onNewVisit, onClose }) {
 }
 
 /* ── Event chip ──────────────────────────────────────────── */
-function EventChip({ event, onClick }) {
+function EventChip({ event, onClick, draggable, onDragStart }) {
   const s = TYPE_STYLE[event.type];
   return (
     <div
       onClick={e => { e.stopPropagation(); onClick(event); }}
+      draggable={draggable}
+      onDragStart={e => { e.stopPropagation(); onDragStart?.(event, e); }}
       style={{
         background: s.bg, color: s.color, borderRadius: 4, padding: '1px 5px',
         fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
         overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 2,
         borderLeft: `3px solid ${s.color}`, lineHeight: '18px',
-        display: 'flex', alignItems: 'center', gap: 3,
+        display: 'flex', alignItems: 'center', gap: 3, cursor: draggable ? 'grab' : 'pointer',
       }}
       title={event.title || event.customer_name}
     >
@@ -421,6 +424,7 @@ function ICalSubscribe() {
 /* ══════════════════════════════════════════════════════════ */
 export default function CalendarPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const isManagerOrPlanner = user.role === 'manager' || user.role === 'planner';
 
   const now = new Date();
@@ -430,6 +434,8 @@ export default function CalendarPage() {
   const [selected, setSelected] = useState(null);
   const [filters, setFilters] = useState({ task: true, project: true, maintenance: true });
   const [loading, setLoading] = useState(true);
+  const [draggedEvent, setDraggedEvent] = useState(null);
+  const [dragOverDate, setDragOverDate] = useState(null);
 
   // New-visit modal state
   const [newVisitDate, setNewVisitDate] = useState(null); // null = closed, string = open with prefill
@@ -499,6 +505,29 @@ export default function CalendarPage() {
     if (!isManagerOrPlanner || !dateStr) return;
     e.preventDefault();
     setCtxMenu({ x: e.clientX, y: e.clientY, date: dateStr });
+  }
+
+  function canReschedule(event) {
+    if (event.type === 'project') return user.role === 'manager';
+    if (event.type === 'maintenance') return user.role === 'manager' || user.role === 'planner';
+    return user.role === 'manager' || (user.role === 'engineer' && event.assigned_to === user.id);
+  }
+
+  async function reschedule(event, date) {
+    setDraggedEvent(null); setDragOverDate(null);
+    if (!event || !date || event.date?.slice(0, 10) === date || !canReschedule(event)) return;
+    const previous = data;
+    const bucket = event.type === 'task' ? 'tasks' : event.type === 'project' ? 'projects' : 'visits';
+    setData(current => ({ ...current, [bucket]: current[bucket].map(item => item.id === event.id ? { ...item, date } : item) }));
+    try {
+      if (event.type === 'task') await api.updateTask(event.id, { deadline: date });
+      else if (event.type === 'project') await api.updateProject(event.id, { deadline: date });
+      else await api.updateVisit(event.id, { scheduled_date: date });
+      toast.success(`Rescheduled to ${fmtDate(date)}`);
+    } catch (error) {
+      setData(previous);
+      toast.error(error.message || 'Could not reschedule event');
+    }
   }
 
   return (
@@ -576,11 +605,16 @@ export default function CalendarPage() {
                       key={idx}
                       onDoubleClick={() => handleCellDoubleClick(dateStr)}
                       onContextMenu={e => handleCellContextMenu(e, dateStr)}
+                      onDragOver={dateStr ? e => { e.preventDefault(); setDragOverDate(dateStr); } : undefined}
+                      onDragLeave={() => setDragOverDate(null)}
+                      onDrop={dateStr ? e => { e.preventDefault(); reschedule(draggedEvent, dateStr); } : undefined}
                       style={{
                         minHeight: 80, padding: '4px 4px 4px 6px',
                         borderRight: '1px solid var(--gray-100)',
                         borderBottom: '1px solid var(--gray-100)',
-                        background: !day
+                        background: dragOverDate === dateStr
+                          ? 'var(--primary-light)'
+                          : !day
                           ? 'var(--gray-50)'
                           : isWeekend
                             ? '#fafafa'
@@ -630,7 +664,13 @@ export default function CalendarPage() {
                           </div>
 
                           {events.slice(0, 3).map((e, i) => (
-                            <EventChip key={i} event={e} onClick={setSelected} />
+                            <EventChip key={i} event={e} onClick={setSelected}
+                              draggable={canReschedule(e)}
+                              onDragStart={(event, dragEvent) => {
+                                setDraggedEvent(event);
+                                dragEvent.dataTransfer.effectAllowed = 'move';
+                                dragEvent.dataTransfer.setData('text/plain', `${event.type}:${event.id}`);
+                              }} />
                           ))}
                           {events.length > 3 && (
                             <div style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, paddingLeft: 4 }}>

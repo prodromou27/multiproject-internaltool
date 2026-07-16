@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckSquare, Download, Trash2, UserCheck, Clock, Search, X, Pencil } from 'lucide-react';
+import { CheckSquare, Download, Trash2, UserCheck, Clock, Search, X, Pencil, LockKeyhole, Columns3, ArrowUpDown } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -17,6 +17,10 @@ const STATUS_LABELS = {
 
 const MANAGER_STATUSES  = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed', 'pending_approval', 'closed', 'cancelled'];
 const ENGINEER_STATUSES = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed'];
+const TASK_COLUMNS = [
+  ['project', 'Project'], ['status', 'Status'], ['priority', 'Priority'],
+  ['assignee', 'Assigned To'], ['deadline', 'Deadline'], ['update', 'Update Status'],
+];
 
 /* ── Edit Task Modal ──────────────────────────────────────── */
 function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
@@ -177,6 +181,14 @@ export default function Tasks() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [search, setSearch]     = useState('');
   const [myTasksOnly, setMyTasksOnly] = useState(false);
+  const [presets, setPresets] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('hub_task_filter_presets') || '[]'); } catch { return []; }
+  });
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('hub_task_columns') || JSON.stringify(TASK_COLUMNS.map(([id]) => id)))); }
+    catch { return new Set(TASK_COLUMNS.map(([id]) => id)); }
+  });
+  const [sort, setSort] = useState({ key: 'deadline', direction: 'asc' });
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', is_adhoc: false });
   const [loading, setLoading]   = useState(true);
@@ -200,6 +212,42 @@ export default function Tasks() {
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const engineers = allUsers.filter(u => u.role === 'engineer');
 
+  function applyPreset(preset) {
+    setFilter(preset.filter || 'all');
+    setPriorityFilter(preset.priorityFilter || 'all');
+    setMyTasksOnly(!!preset.myTasksOnly);
+    setSearch(preset.search || '');
+  }
+
+  function savePreset() {
+    const name = window.prompt('Preset name')?.trim();
+    if (!name) return;
+    const next = [...presets.filter(p => p.name.toLowerCase() !== name.toLowerCase()),
+      { name, filter, priorityFilter, myTasksOnly, search }];
+    setPresets(next);
+    localStorage.setItem('hub_task_filter_presets', JSON.stringify(next));
+    toast.success(`Saved filter preset “${name}”`);
+  }
+
+  function deletePreset(name) {
+    const next = presets.filter(p => p.name !== name);
+    setPresets(next);
+    localStorage.setItem('hub_task_filter_presets', JSON.stringify(next));
+  }
+
+  function toggleColumn(id) {
+    setVisibleColumns(current => {
+      const next = new Set(current);
+      next.has(id) ? next.delete(id) : next.add(id);
+      localStorage.setItem('hub_task_columns', JSON.stringify([...next]));
+      return next;
+    });
+  }
+
+  function changeSort(key) {
+    setSort(current => ({ key, direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc' }));
+  }
+
   async function createTask(e) {
     e.preventDefault(); setCreateErr('');
     try {
@@ -214,11 +262,19 @@ export default function Tasks() {
   const [waitingDialog, setWaitingDialog] = useState(null);
   const [bulkWaitingDialog, setBulkWaitingDialog] = useState(null); // { newStatus }
 
-  function handleStatusChange(task, newStatus) {
+  async function handleStatusChange(task, newStatus) {
     if (newStatus === 'waiting_customer' || newStatus === 'waiting_vendor') {
       setWaitingDialog({ id: task.id, newStatus, current: task.pending_from_customer || '' });
     } else {
-      api.updateTask(task.id, { status: newStatus }).then(load);
+      const previousStatus = task.status;
+      setTasks(current => current.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
+      try {
+        await api.updateTask(task.id, { status: newStatus });
+        toast.success('Task status updated');
+      } catch (error) {
+        setTasks(current => current.map(t => t.id === task.id ? { ...t, status: previousStatus } : t));
+        toast.error(error.message || 'Could not update task');
+      }
     }
   }
 
@@ -313,6 +369,16 @@ export default function Tasks() {
     }
     return true;
   });
+  const sortedFiltered = [...filtered].sort((a, b) => {
+    const project = task => projects.find(p => p.id === task.project_id)?.title || '';
+    const values = {
+      task: task => task.title || '', project, status: task => task.status || '',
+      priority: task => task.priority || '', assignee: task => task.assigned_to_name || '',
+      deadline: task => task.deadline || '9999-12-31',
+    };
+    const getter = values[sort.key] || values.task;
+    return getter(a).localeCompare(getter(b), undefined, { numeric: true }) * (sort.direction === 'asc' ? 1 : -1);
+  });
 
   const managerStatuses  = MANAGER_STATUSES;
   const engineerStatuses = ENGINEER_STATUSES;
@@ -326,12 +392,33 @@ export default function Tasks() {
           <button className="btn btn-ghost btn-sm" onClick={exportTasks} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <Download size={13} /> Export
           </button>
+          <details className="column-picker">
+            <summary className="btn btn-ghost btn-sm"><Columns3 size={13} /> Columns</summary>
+            <div className="column-picker-menu">
+              {TASK_COLUMNS.map(([id, label]) => <label key={id}><input type="checkbox" checked={visibleColumns.has(id)} onChange={() => toggleColumn(id)} /> {label}</label>)}
+            </div>
+          </details>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Task</button>
         </div>
       </div>
 
       {/* Filters */}
       <div className="card" style={{ marginBottom: 16 }}>
+        <div className="filter-presets">
+          <select defaultValue="" onChange={e => { const preset = presets.find(p => p.name === e.target.value); if (preset) applyPreset(preset); e.target.value = ''; }}>
+            <option value="">Apply saved preset…</option>
+            {presets.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+          </select>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={savePreset}>Save current filters</button>
+          {presets.length > 0 && (
+            <details className="preset-manage">
+              <summary>Manage</summary>
+              <div className="preset-menu">
+                {presets.map(p => <div key={p.name}><span>{p.name}</span><button type="button" onClick={() => deletePreset(p.name)} aria-label={`Delete ${p.name}`}>×</button></div>)}
+              </div>
+            </details>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 340 }}>
             <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
@@ -433,7 +520,7 @@ export default function Tasks() {
         </>
       )}
 
-      {loading ? <p className="text-muted">Loading…</p> : filtered.length === 0 ? (
+      {loading ? <div className="skeleton-table" aria-label="Loading tasks"><span /><span /><span /><span /><span /></div> : filtered.length === 0 ? (
         <div className="empty">
           <div className="empty-icon"><CheckSquare size={40} strokeWidth={1.2} /></div>
           <p>{search.trim() ? `No tasks matching "${search}"` : myTasksOnly ? 'No tasks assigned to you in this view' : 'No tasks found'}</p>
@@ -452,12 +539,17 @@ export default function Tasks() {
                   <input type="checkbox" checked={allSelected} onChange={toggleAll}
                     style={{ width: 15, height: 15, cursor: 'pointer' }} />
                 </th>
-                <th>Task</th><th>Project</th><th>Status</th><th>Priority</th>
-                <th>Assigned To</th><th>Deadline</th><th>Update Status</th><th></th>
+                <th><button className="table-sort" onClick={() => changeSort('task')}>Task <ArrowUpDown size={11} /></button></th>
+                {visibleColumns.has('project') && <th><button className="table-sort" onClick={() => changeSort('project')}>Project <ArrowUpDown size={11} /></button></th>}
+                {visibleColumns.has('status') && <th><button className="table-sort" onClick={() => changeSort('status')}>Status <ArrowUpDown size={11} /></button></th>}
+                {visibleColumns.has('priority') && <th><button className="table-sort" onClick={() => changeSort('priority')}>Priority <ArrowUpDown size={11} /></button></th>}
+                {visibleColumns.has('assignee') && <th><button className="table-sort" onClick={() => changeSort('assignee')}>Assigned To <ArrowUpDown size={11} /></button></th>}
+                {visibleColumns.has('deadline') && <th><button className="table-sort" onClick={() => changeSort('deadline')}>Deadline <ArrowUpDown size={11} /></button></th>}
+                {visibleColumns.has('update') && <th>Update Status</th>}<th></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(t => (
+              {sortedFiltered.map(t => (
                 <tr key={t.id} style={{ background: selected.has(t.id) ? 'var(--primary-light)' : '' }}>
                   <td>
                     <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggleSelect(t.id)}
@@ -466,13 +558,18 @@ export default function Tasks() {
                   <td>
                     <span style={{ fontWeight: 500 }}>{t.title}</span>
                     {t.is_adhoc ? <span className="badge badge-adhoc" style={{ marginLeft: 6 }}>adhoc</span> : null}
+                    {t.is_blocked ? (
+                      <span className="badge badge-blocked" style={{ marginLeft: 6 }} title={`Blocked by ${t.dep_count || 1} unfinished task(s)`}>
+                        <LockKeyhole size={10} /> Blocked
+                      </span>
+                    ) : null}
                   </td>
-                  <td>{projects.find(p => p.id === t.project_id)?.title || <span className="text-muted">—</span>}</td>
-                  <td><StatusBadge s={t.status} /></td>
-                  <td><PriorityBadge p={t.priority} /></td>
-                  <td>{t.assigned_to_name || '—'}</td>
-                  <td className={isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status) ? 'overdue' : ''}>{fmtDate(t.deadline)}</td>
-                  <td>
+                  {visibleColumns.has('project') && <td>{projects.find(p => p.id === t.project_id)?.title || <span className="text-muted">—</span>}</td>}
+                  {visibleColumns.has('status') && <td><StatusBadge s={t.status} /></td>}
+                  {visibleColumns.has('priority') && <td><PriorityBadge p={t.priority} /></td>}
+                  {visibleColumns.has('assignee') && <td>{t.assigned_to_name || '—'}</td>}
+                  {visibleColumns.has('deadline') && <td className={isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status) ? 'overdue' : ''}>{fmtDate(t.deadline)}</td>}
+                  {visibleColumns.has('update') && <td>
                     <select
                       value={t.status}
                       onChange={e => handleStatusChange(t, e.target.value)}
@@ -489,7 +586,7 @@ export default function Tasks() {
                         ⏳ {t.pending_from_customer}
                       </div>
                     )}
-                  </td>
+                  </td>}
                   <td style={{ textAlign: 'center' }}>
                     {(isManager || t.assigned_to === user.id) && (
                       <button

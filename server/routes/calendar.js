@@ -18,7 +18,7 @@ router.get('/', requireAuth, async (req, res) => {
   const isManagerOrPlanner = req.user.role === 'manager' || req.user.role === 'planner';
 
   // Tasks with deadlines in the month
-  let taskQ = `SELECT t.id, t.title, t.deadline as date, t.status, t.priority, t.is_adhoc,
+  let taskQ = `SELECT t.id, t.title, t.deadline as date, t.status, t.priority, t.is_adhoc, t.assigned_to,
     u.name as assigned_to_name, p.title as project_title
     FROM tasks t LEFT JOIN users u ON t.assigned_to = u.id
     LEFT JOIN projects p ON t.project_id = p.id

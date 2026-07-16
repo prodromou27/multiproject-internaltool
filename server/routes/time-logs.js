@@ -84,6 +84,24 @@ router.post('/', requireAuth, async (req, res) => {
   res.json({ id: result.lastInsertRowid });
 });
 
+// GET /api/time-logs/mine?from=YYYY-MM-DD&to=YYYY-MM-DD
+router.get('/mine', requireAuth, async (req, res) => {
+  const { from, to } = req.query;
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  if (!iso.test(from || '') || !iso.test(to || ''))
+    return res.status(400).json({ error: 'from and to must use YYYY-MM-DD format' });
+  if (from > to) return res.status(400).json({ error: 'from must be before or equal to to' });
+  const rows = await db.prepare(`
+    SELECT tl.*, t.title AS task_title, mv.title AS visit_title
+    FROM time_logs tl
+    LEFT JOIN tasks t ON tl.task_id = t.id
+    LEFT JOIN maintenance_visits mv ON tl.visit_id = mv.id
+    WHERE tl.user_id = ? AND substr(tl.logged_at, 1, 10) BETWEEN ? AND ?
+    ORDER BY tl.logged_at DESC
+  `).all(req.user.id, from, to);
+  res.json(rows);
+});
+
 // DELETE /api/time-logs/:id
 router.delete('/:id', requireAuth, async (req, res) => {
   const log = (await db.prepare('SELECT * FROM time_logs WHERE id = ?').get(req.params.id));

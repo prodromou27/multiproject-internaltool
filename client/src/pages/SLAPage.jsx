@@ -189,7 +189,7 @@ function ProjectItems({ items }) {
 }
 
 function TaskItems({ items }) {
-  const show = items.filter(i => i.breached);
+  const show = items.filter(i => i.breached || i.at_risk);
   if (!show.length) return null;
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -210,7 +210,7 @@ function TaskItems({ items }) {
               <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{item.project_title || '—'}</td>
               <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{item.assigned_to_name || 'Unassigned'}</td>
               <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{fmtDate(item.created_at)}</td>
-              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#ef4444' }}>{item.working_days}</td>
+              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.working_days}</td>
             </tr>
           ))}
         </tbody>
@@ -260,7 +260,7 @@ function OverallHealth({ data }) {
   const counts = [
     { label: 'MV Reports',       breached: mv?.breached || 0,             at_risk: mv?.at_risk || 0 },
     { label: 'Status Updates',   breached: project_status?.breached || 0, at_risk: project_status?.at_risk || 0 },
-    { label: 'High-Prio Tasks',  breached: high_priority_tasks?.breached || 0, at_risk: 0 },
+    { label: 'High-Prio Tasks',  breached: high_priority_tasks?.breached || 0, at_risk: high_priority_tasks?.at_risk || 0 },
     { label: 'Closure Reviews',  breached: closure_approval?.breached || 0,    at_risk: closure_approval?.at_risk || 0 },
   ];
 
@@ -338,12 +338,23 @@ export default function SLAPage() {
         </button>
       </div>
 
-      {loading && <p className="text-muted">Loading SLA data…</p>}
+      {loading && <div className="grid-2"><div className="skeleton-table"><span /><span /><span /></div><div className="skeleton-table"><span /><span /><span /></div></div>}
       {error   && <div className="alert alert-danger">{error}</div>}
 
       {data && !loading && (
         <>
           <OverallHealth data={data} />
+
+          <div className={`alert ${data.forecast?.current_breaches ? 'alert-danger' : data.forecast?.predicted_breaches_next_working_day ? 'alert-warning' : 'alert-success'}`} style={{ marginBottom: 18 }}>
+            <strong>SLA forecast:</strong>{' '}
+            {data.forecast?.predicted_breaches_next_working_day || 0} predicted breach(es) next working day · {data.forecast?.current_breaches || 0} active breach(es).
+            {data.forecast?.escalation_recommended?.length > 0 && (
+              <div style={{ marginTop: 5, fontSize: 12 }}>
+                Escalation recommended: {data.forecast.escalation_recommended.slice(0, 5).map(item => item.title).join(', ')}
+                {data.forecast.escalation_recommended.length > 5 ? ` +${data.forecast.escalation_recommended.length - 5} more` : ''}
+              </div>
+            )}
+          </div>
 
           <div className="grid-2" style={{ gap: 16 }}>
             <SLACard
