@@ -287,7 +287,9 @@ customers, for engineer/customer/team-level history and MSP reporting.
   filters, search, server-side pagination, and row actions: view, edit, duplicate
   (copies customer/category/title/etc., resets date to today and status to the
   default, does **not** copy duration/status/attachments/audit metadata), mark
-  complete, create follow-up task.
+  complete, create follow-up task. Search is debounced, superseded list requests
+  are cancelled, out-of-range pages are corrected, and failed loads show a Retry
+  action rather than an empty list.
 - **Quick Log form** — primary fields (customer, date, category, title, duration,
   status, notes) up front; a collapsible "More Details" section for
   subcategory/technology/times/location/ticket/billable/related-entity/follow-up

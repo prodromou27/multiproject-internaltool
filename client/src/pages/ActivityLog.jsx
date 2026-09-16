@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ClipboardList, Search, Copy, CheckCircle2, ListPlus, Paperclip, Upload, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -377,6 +377,8 @@ export default function ActivityLog() {
   const [page, setPage] = useState(1);
   const pageSize = 25;
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const listRequest = useRef(null);
   const [metaError, setMetaError] = useState('');
 
   const [datePreset, setDatePreset] = useSavedFilter('activity_log_date_preset', 'this_week');
@@ -388,6 +390,7 @@ export default function ActivityLog() {
   const [technologyFilter, setTechnologyFilter] = useState('');
   const [billableFilter, setBillableFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const [showForm, setShowForm] = useState(false);
   const [editActivity, setEditActivity] = useState(null);
@@ -405,9 +408,16 @@ export default function ActivityLog() {
     return [null, null];
   }
 
-  const load = () => {
+  const load = useCallback(() => {
+    listRequest.current?.abort();
+    const controller = new AbortController();
+    listRequest.current = controller;
     setLoading(true);
-    const [from, to] = dateRange();
+    setLoadError('');
+    const [from, to] = datePreset === 'today' ? todayRange()
+      : datePreset === 'this_week' ? weekRange()
+      : datePreset === 'this_month' ? monthRange()
+      : datePreset === 'custom' ? [customFrom, customTo] : [null, null];
     const params = { page, page_size: pageSize };
     if (from) params.from = from;
     if (to) params.to = to;
@@ -416,13 +426,28 @@ export default function ActivityLog() {
     if (statusFilter) params.status = statusFilter;
     if (technologyFilter) params.technology_id = technologyFilter;
     if (billableFilter) params.billable_classification = billableFilter;
-    if (search.trim()) params.search = search.trim();
-    return api.serviceActivities(params).then(d => { setRows(d.rows); setTotal(d.total); setLoading(false); })
-      .catch(e => { toast.error(e.message); setLoading(false); });
-  };
+    if (debouncedSearch) params.search = debouncedSearch;
+    return api.serviceActivities(params, { signal: controller.signal }).then(d => {
+      if (controller.signal.aborted) return;
+      const lastPage = Math.max(1, Math.ceil(d.total / pageSize));
+      if (page > lastPage) { setPage(lastPage); return; }
+      setRows(d.rows);
+      setTotal(d.total);
+    }).catch(e => {
+      if (!controller.signal.aborted) setLoadError(e.message || 'Failed to load activities');
+    }).finally(() => {
+      if (!controller.signal.aborted) setLoading(false);
+    });
+  }, [page, datePreset, customFrom, customTo, customerFilter, categoryFilter, statusFilter, technologyFilter, billableFilter, debouncedSearch]);
 
-  useEffect(() => { load(); }, [page, datePreset, customFrom, customTo, customerFilter, categoryFilter, statusFilter, technologyFilter, billableFilter]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { const t = setTimeout(() => { setPage(1); load(); }, 300); return () => clearTimeout(t); }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    load();
+    return () => listRequest.current?.abort();
+  }, [load]);
+  useEffect(() => {
+    const timer = setTimeout(() => { setPage(1); setDebouncedSearch(search.trim()); }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   async function handleCreate(payload) {
     await api.createServiceActivity(payload);
@@ -525,7 +550,12 @@ export default function ActivityLog() {
         </div>
       </div>
 
-      {loading ? <div className="skeleton-table"><span /><span /><span /><span /></div> : rows.length === 0 ? (
+      {loading ? <div className="skeleton-table"><span /><span /><span /><span /></div> : loadError ? (
+        <div className="error-msg" role="alert">
+          <p>{loadError}</p>
+          <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
+        </div>
+      ) : rows.length === 0 ? (
         <div className="empty">
           <div className="empty-icon"><ClipboardList size={40} strokeWidth={1.2} /></div>
           <p>No activities found for this view</p>
