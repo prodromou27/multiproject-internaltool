@@ -3,60 +3,109 @@
 A code-grounded description of the application: architecture, data model, security,
 and every feature module with notes on how each is handled.
 
-> Last reviewed: 2026-06-16.
+> Last reviewed: 2026-09-16.
 
 ---
 
 ## 1. What it is
 
 **SolutionsHub** is a full-stack operations-management platform for an engineering
-services organization. It runs the full lifecycle of client **projects**, field
-**maintenance visits**, **task** execution, engineer **workload** and **performance
-scoring**, **SLA** tracking, and a secure **customer** database — behind role-based
-access control, 2FA, and field-level PII encryption.
+services organization, including MSP (managed services provider) teams. It runs the
+full lifecycle of client **projects**, field **maintenance visits**, **task**
+execution, day-to-day **service activity logging** for MSP engineers, engineer
+**workload** and **performance scoring**, **SLA** tracking, and a secure **customer**
+database — behind role-based access control, 2FA, and field-level PII encryption.
 
 ## 2. Architecture & stack
 
 | Layer | Technology |
 |-------|-----------|
 | Backend | Node.js + Express |
-| Database | SQLite via `better-sqlite3` (synchronous, single-file `app.db`, WAL mode, foreign keys ON) |
+| Database | **PostgreSQL** via the `pg` driver (see "Database dialect" note below — this is not obvious from reading route files in isolation) |
 | Frontend | React 18 + Vite SPA (built to `client/dist`, served statically by Express) |
-| Transport | HTTPS on port 443 (self-signed certs in `server/certs`), HTTP:80 → HTTPS redirect; falls back to HTTP:3001 if no certs |
+| Transport | HTTPS on port 443 (self-signed certs in `server/certs`), HTTP:80 → HTTPS redirect; falls back to HTTP:3001/8080 if no certs |
 | Auth | JWT (stateless), bcrypt password hashing, TOTP 2FA |
 | Config | Hand-rolled `.env` loader at startup (no dotenv dependency) |
+| Deployment | Docker multi-stage build (`Dockerfile`) + `docker-compose.yml`/`docker-compose.prod.yml`, Postgres as a separate compose service |
 
 **Single-process deployment:** Express serves both the JSON API (`/api/*`) and the
-compiled React app (SPA catch-all `app.get('*')`). Unknown `/api/*` paths return a
-JSON 404 *before* the SPA fallback so API misses don't return HTML.
+compiled React app (SPA catch-all). Unknown `/api/*` paths return a JSON 404 *before*
+the SPA fallback so API misses don't return HTML.
 
-The DB layer (`db.js`) is **self-migrating**: on every startup it creates missing
-tables, runs idempotent `ALTER TABLE` column additions, performs table-rebuild
-migrations (relaxing status `CHECK` constraints, making email optional), seeds
-default status configuration, creates performance indexes, and — if the users table
-is empty — seeds a first-run `admin` (`admin@company.com`) manager with password
-`admin` and requires an immediate password change after login.
+**⚠️ Database dialect — read this before touching `server/db.js` or any route SQL.**
+The app was originally written against `better-sqlite3` (synchronous calls,
+`db.prepare(sql).get/all/run(...params)`) and was later migrated to PostgreSQL without
+rewriting any of the ~25 route files. `server/db.js` now wraps a `pg` `Pool` behind an
+async facade with the *same call shape*, and its `translate()` function rewrites
+SQLite-flavored SQL into real Postgres SQL before every query: `?` → `$1, $2, …`,
+`datetime('now')`/`date('now')` → `to_char(...)` text-timestamp expressions,
+`GROUP_CONCAT` → `string_agg`, `LIKE` → `ILIKE`, `INSERT OR IGNORE` →
+`ON CONFLICT DO NOTHING`, and a plain `INSERT` auto-appends `RETURNING id` (skipped for
+a hardcoded allowlist of id-less junction tables, `NO_ID_TABLE_RE`). **Every route in
+this codebase writes SQL in the SQLite-shaped dialect** — this is the established,
+consistent convention, not a mix of styles. Writing raw Postgres placeholders (`$1`)
+into a new route would be inconsistent with 100% of existing code and should be
+avoided; use `?` and let `translate()` handle it.
+
+`db.js` is also **self-migrating**: `init()` runs a full `CREATE TABLE IF NOT EXISTS`
+schema (the "final state," so fresh installs get every column immediately) followed by
+`applyCompatibilityMigrations()` — a hand-maintained, ordered list of
+`[migration_id, sql]` tuples tracked in a `schema_migrations` table, each applied once
+inside a transaction, for `ALTER TABLE ADD COLUMN IF NOT EXISTS` changes needed on
+already-deployed databases. Both paths must be kept in sync when adding a column — see
+existing migration tuples for the pattern. After schema/migrations, it seeds default
+status configuration, service-activity lookups (categories/technologies), creates
+performance indexes, and — if the `users` table is empty — seeds a first-run `admin`
+manager account with a forced password change on first login.
 
 ## 3. Data model (core tables)
 
 - **users** — name, email (unique, optional), bcrypt password, role, active flag,
-  avatar, TOTP secret/enabled/exempt, `must_change_password`, `password_changed_at`
+  avatar, TOTP secret/enabled/exempt, `must_change_password`, `password_changed_at`,
+  `token_version` (bumped to invalidate outstanding JWTs on sensitive changes)
+- **teams** / **team_members** — MSP/engineering team grouping with a
+  `service_activity_enabled` flag gating the Service Activity Tracking module per team;
+  many-to-many membership via `team_members`
 - **projects** — title, description, status (free-text, config-driven), priority,
   deadline, `customer_id`, `completion_pct`, `rag_override`, closure tracking,
   `pending_from_customer`
 - **tasks** — project link (nullable for ad-hoc), title, status, priority,
   `assigned_to`, `is_adhoc`, deadline
 - **task_dependencies**, **task_comments**, **task_custom_values**
-- **customers** — name + 5 **encrypted** PII fields (contact name/email/phone,
-  address, notes)
+- **customers** — name + encrypted PII fields (name, contact name/email/phone,
+  address, notes, primary_contact, location, service_notes — **encrypted**, see §6);
+  plus service-tracking fields: `customer_code`, `active`, `service_activity_enabled`,
+  contract fields (`contract_type`, `contract_start_date`/`end_date`,
+  `reporting_frequency`, `included_hours`, `contract_hour_period`), and per-customer
+  activity-logging requirement toggles (`require_duration`, `require_ticket_reference`,
+  `require_technology`, `require_category`, `require_notes`,
+  `require_billable_classification`)
+- **customer_teams** / **customer_engineers** — many-to-many customer↔team assignment,
+  plus an optional explicit customer↔engineer allowlist for tighter restriction
 - **maintenance_visits** + **maintenance_visit_engineers** (many-to-many) —
   scheduled date, dual report-sent tracking (internal + to-customer)
 - **kpis**, **project_milestones**, **project_scorecards**, **project_custom_fields**,
   **project_status_updates**, **project_activity**, **project_templates** /
   **project_template_tasks**, **user_project_pins**
+- **activity_categories** / **activity_subcategories** — admin-managed lookup for
+  service activity classification, with a `require_attachment` flag per category
+- **technologies** — admin-managed lookup (Firewall, M365, Intune, WAF, PAM, …), shared
+  by service activities and intended as the base for a future Asset/Device model
+- **service_activities** — the core MSP operations-log row: human-readable
+  `activity_reference` (`ACT-YYYY-NNNNNN`, unique), customer/team/engineer FKs,
+  date/time/duration, category/subcategory, title/description, status, priority, work
+  location, billable classification, ticket/case references, follow-up fields,
+  optional links to an existing project/task/maintenance visit, an optional
+  "Change Details" block (change type/reason/previous-new state/risk/rollback/approval,
+  shown only for Configuration/Security Change categories), and audit columns
+  (`created_by/at`, `updated_by/at`, `completed_at`)
+- **service_activity_technologies** — many-to-many activity↔technology tagging
 - **time_logs**, **personal_notes**, **personal_todos**
-- **notifications**, **audit_log**, **password_reset_tokens**, **settings** (key/value),
-  **attachments** (with encryption IV/tag columns)
+- **notifications**, **audit_log**, **password_reset_tokens**, **settings** (generic
+  key/value JSON store — used for `status_config` and `service_activity_settings`),
+  **attachments** (encryption IV/tag columns; links to *either* `project_id` *or*
+  `service_activity_id`, both nullable — see §11 for why this isn't a clean
+  polymorphic design)
 
 ## 4. Authentication & session handling
 
@@ -69,12 +118,15 @@ is empty — seeds a first-run `admin` (`admin@company.com`) manager with passwo
   `must_change_password` if elapsed.
 - If TOTP is enabled (and not exempt), returns a **5-minute partial token** and
   `requires_2fa: true` instead of a session token.
-- Otherwise returns a **24-hour JWT** (`{id, name, email, role}`) plus
+- Otherwise returns a **24-hour JWT** (`{id, name, email, role, token_version}`) plus
   `must_change_password` / `password_expired` flags.
 
 **JWT** is signed with a module-private secret (`JWT_SECRET` from `.env`; in production
 the server refuses to start without one ≥32 chars; in dev it falls back to a random
-per-process secret). The secret is never exported.
+per-process secret). The secret is never exported. Every authenticated request
+re-fetches the user and compares `token_version`, so role/password/active-status
+changes invalidate all of that user's outstanding tokens immediately rather than
+waiting up to 24h.
 
 **2FA (TOTP)** via `speakeasy` + `qrcode`:
 - `/2fa/setup` generates a secret, stores it, returns only the QR data-URL (raw secret
@@ -96,14 +148,14 @@ per-process secret). The secret is never exported.
 60-second scoped token (`download: true` claim) so the 24h session JWT never lands in
 proxy/access logs.
 
-## 5. Authorization (roles)
+## 5. Authorization (roles + team scoping)
 
 Four roles: **manager**, **planner**, **pm**, **engineer**. Enforced by middleware
 (`requireAuth`, `requireManager`, `requireManagerOrPlanner`) plus per-route ownership
 checks:
 
 - **Manager** — full access; only role that reaches `/api/admin/*`, reports,
-  scorecards, workload, audit.
+  scorecards, workload, audit, and Service Activity Tracking admin settings.
 - **Planner / PM** — broad project visibility (scoped to assigned projects for some
   views); **no task list visibility** (`GET /tasks` returns `[]`); cannot edit tasks.
 - **Engineer** — sees only their own assigned tasks, visits, and the customers tied to
@@ -114,21 +166,48 @@ Data isolation is enforced at the **SQL level** (engineers' customer/visit/task 
 are filtered by `project_assignments` / `maintenance_visit_engineers` membership), not
 just hidden in the UI.
 
+**Service Activity Tracking module** adds a second, orthogonal scoping axis:
+**team membership**, independent of role. An engineer only sees the module (nav, route,
+API) if they belong to ≥1 team with `service_activity_enabled = true`
+(`requireServiceActivityAccess` middleware on every route in
+`routes/serviceActivities.js`); managers bypass this check entirely. Within the module,
+an engineer may only act on a customer that is (a) active, (b) has service tracking
+enabled, (c) is assigned to a team the engineer belongs to, and (d) — if the customer
+has an explicit `customer_engineers` allowlist — includes that engineer. All four
+conditions are re-verified server-side on every create/update
+(`isCustomerAuthorizedForEngineer` in `server/serviceActivities.js`); `engineer_id`/
+`team_id` are **always derived from the authenticated session**, never trusted from the
+request body. This module deliberately does **not** introduce a granular
+permission-table system (e.g. `ServiceActivity.ViewOwn`) — it reuses the existing
+role+membership pattern rather than adding a second authorization paradigm. See §11 for
+the tradeoff.
+
 **Admin safety guards:** the system cannot be left with zero admins — demoting,
 deactivating, or deleting the **last active manager** is blocked; self-deactivation and
-self-deletion are blocked; deleting a user who authored records returns an actionable
-409 (suggesting deactivation) instead of a raw FK 500.
+self-deletion are blocked; deleting a user who authored records, or a **customer with
+logged service activity** (`ON DELETE RESTRICT`), returns an actionable 409 (suggesting
+deactivation) instead of a raw FK error.
 
 ## 6. Security mechanisms
 
-- **Customer PII encryption** — AES-256-GCM field-level encryption (`fieldCipher.js`) on
-  5 customer columns, stored as `enc:<iv>.<tag>.<ciphertext>`, fresh random 96-bit IV
-  per write, key memoized from `CUSTOMER_FIELD_KEY`. Transparent decrypt on read across
-  customers, projects, maintenance-visits, and search routes. Backward-compatible
-  plaintext passthrough; an idempotent backfill script
-  (`scripts/encrypt-existing-customers.js`) encrypts legacy rows.
+- **Customer PII encryption** — AES-256-GCM field-level encryption (`fieldCipher.js`)
+  on customer columns (name, contact name/email/phone, address, notes,
+  primary_contact, location, service_notes), stored as `enc:<iv>.<tag>.<ciphertext>`,
+  fresh random 96-bit IV per write, key memoized from `CUSTOMER_FIELD_KEY`. Transparent
+  decrypt on read across customers, projects, maintenance-visits, service-activity, and
+  search routes. Backward-compatible plaintext passthrough; an idempotent backfill
+  script (`scripts/encrypt-existing-customers.js`) encrypts legacy rows.
+  **Caveat**: because `customers.name` is encrypted, it can't be matched with SQL
+  `LIKE`/`ILIKE` — routes that need to search by customer name decrypt-and-filter in
+  the application layer instead (see `search.js`'s `matchingCustomerIds()` /
+  `searchCustomers()`, and the duplicate-name check in `customers.js`). This means
+  **every** customer row is decrypted on every create/update (to check name
+  uniqueness) and on every name-search — see §11 for the scaling concern.
 - **Attachment encryption** — uploaded files encrypted at rest (AES-GCM via `cipher.js`)
-  with IV/tag stored per row; decrypted in-memory on download.
+  with IV/tag stored per row; decrypted in-memory on download. Shared, factored-out
+  validation (`server/uploadUtils.js`: MIME allowlist, magic-byte content sniffing,
+  safe filename handling) is reused by both the project-attachment and
+  service-activity-attachment routes.
 - **Helmet** — CSP (no inline scripts, no framing), HSTS when TLS present,
   `X-Content-Type-Options: nosniff`.
 - **Rate limiting** — 20 failed attempts/15 min on all auth endpoints (successful logins
@@ -139,8 +218,10 @@ self-deletion are blocked; deleting a user who authored records returns an actio
   for non-avatar files.
 - **Path-traversal guards** — downloads use `path.basename` + equality check; download
   filenames sanitized against header injection.
-- **SSRF guard** — webhook URLs validated against private/loopback/link-local/metadata
-  ranges.
+- **SSRF guard** (`security.js`) — webhook URLs validated against
+  private/loopback/link-local/metadata ranges for both IPv4 and IPv4-mapped/compatible
+  IPv6 literals (the IPv6 branch delegates to the same range check as IPv4 rather than
+  maintaining a second prefix list).
 - **SQL injection** — fully parameterized; the only string interpolation into SQL is
   generated `?` placeholder lists and static fragments.
 - **Global error handler** — keeps stack traces out of responses (generic message in
@@ -170,15 +251,76 @@ duplication, bulk status/delete (≤500 IDs, role-scoped), time logging, and Exc
 export. Engineers self-assign and are confined to their own tasks and member projects.
 
 ### Customers
-CRM-lite with encrypted PII. Excel import (≤5,000 rows, duplicate detection by
-normalized name, downloadable template). Engineers see only customers linked to their
-work.
+CRM-lite with encrypted PII, now extended with service-contract fields (see §3) and
+team/engineer assignment. Excel import (≤5,000 rows, duplicate detection by normalized
+name, downloadable template). Engineers see only customers linked to their work
+(project/visit assignment for the legacy modules; team/engineer assignment for Service
+Activity Tracking).
 
 ### Maintenance Visits
 Multi-engineer scheduled visits with **dual report tracking** (internal `report_sent` +
 `report_sent_to_customer`), each with timestamp and actor. Excel import/export, time
 logging, **automated next-day email reminders** (fired daily at 08:00, deduplicated per
 visit/user/day), and a per-engineer **iCal subscription feed**.
+
+### Service Activity Tracking (MSP Operations Log)
+Lets engineers on enabled teams log day-to-day operational work (support, maintenance,
+upgrades, config changes, monitoring, customer meetings, etc.) against authorized
+customers, for engineer/customer/team-level history and MSP reporting.
+
+- **Activity Log** (`/activity-log`) — engineer-facing list with Today/This
+  Week/This Month/custom-range presets, customer/category/status/technology/billable
+  filters, search, server-side pagination, and row actions: view, edit, duplicate
+  (copies customer/category/title/etc., resets date to today and status to the
+  default, does **not** copy duration/status/attachments/audit metadata), mark
+  complete, create follow-up task.
+- **Quick Log form** — primary fields (customer, date, category, title, duration,
+  status, notes) up front; a collapsible "More Details" section for
+  subcategory/technology/times/location/ticket/billable/related-entity/follow-up
+  fields; a further collapsible "Change Details" section that only appears for
+  Configuration/Security Change categories. Client-side validation mirrors the
+  server's.
+- **Reference numbers** — `ACT-YYYY-NNNNNN`, generated inside the create transaction
+  with a retry loop for race safety; this module is the first place in the codebase to
+  introduce human-readable reference numbers (everything else uses raw DB ids).
+- **Categories/subcategories/technologies** — admin-managed lookups (22 seeded
+  categories, 12 seeded technologies), each category optionally requiring an
+  attachment before an activity in it can be marked Completed (checked at the
+  Completed-transition point, not at creation — see §11 for why).
+- **Customer-specific rules** — per-customer toggles requiring duration, ticket
+  reference, technology, category, notes, and/or billable classification, enforced
+  server-side on create.
+- **Follow-up tasks** — "Create Follow-Up Task" reuses the existing Tasks module
+  (creates a real `tasks` row, links it back via `related_task_id`) rather than
+  duplicating task data.
+- **Contract hour tracking** — for customers with `included_hours` +
+  `contract_hour_period` set, `GET /customers/:id/contract-hours` sums
+  "Included in Contract"-classified activity minutes for the current monthly/annual
+  period and returns consumed/remaining hours, shown as a progress bar on the
+  Customer Service Profile page.
+- **Customer Service Profile** (`/customers/:id/service-profile`, manager) — activity
+  timeline, summary tiles, and category/engineer/technology/billable breakdown charts
+  for one customer, with the same filter set as the main list.
+- **Engineer dashboard card** — Activities Today/This Week, hours logged, customers
+  worked on, follow-ups pending, recent activities; shown on `/my-day` only when the
+  engineer has ≥1 enabled team.
+- **Service Operations dashboard** (`/service-operations`, manager) — month-to-date (or
+  custom range) totals, customer-facing vs. internal hours, and activities-by-team/
+  engineer/customer/category/technology charts.
+- **Reports** (`Reports` page, "Service Activity" tab) — Customer, Engineer, and Team
+  activity reports (filterable, with summary + Excel export), plus a **Monthly MSP
+  Service Report** mode (customer + month picker, computes the month's date bounds
+  and reuses the customer-report endpoint with a formatted header).
+- **Admin settings** (`Settings → Service Activity Tracking`) — team creation/
+  membership/enablement, category/technology management (with per-category
+  require-attachment toggle), and module-wide settings (`allow_attachments`,
+  `allow_follow_up_task_creation`, `retention_days` — enforced server-side, e.g. the
+  attachment-upload and follow-up-task routes 403 when disabled). Retention is a
+  **manual, audited** purge action (shows how many activities are past the cutoff, a
+  manager clicks to delete them) — deliberately not an automatic background job.
+- **Audit trail** — activity create/update/status-change/customer-change/billable-
+  change/complete/follow-up-created/attachment-upload/delete all call the existing
+  `logAudit()` helper, same convention as every other module.
 
 ### Calendar
 Month view (`?month=YYYY-MM`) unifying task deadlines, project deadlines, and visits —
@@ -212,15 +354,17 @@ on read/write and manager-only deletion of others' logs. Monthly summaries per u
 ### Reports (manager)
 Summary stats, by-status breakdown, engineer load, KPI health (sorted worst-first),
 6-month trend charts (tasks created/completed/on-time, visits scheduled/completed/
-reported, hours logged — built with batched range queries), pending-closure list, and a
-scheduled **weekly email digest** (`reportScheduler.js`).
+reported, hours logged — built with batched range queries), pending-closure list, a
+scheduled **weekly email digest** (`reportScheduler.js`), and the Service Activity
+report tab described above.
 
 ### Search
 **Quick search** (top-bar) and **smart structured search** (entity + status/priority/
 customer/date/overdue filters). Because PII columns are encrypted and can't be
-`LIKE`-matched in SQL, customer search uses a shared **decrypt-and-filter** helper that
-enforces role visibility, decrypts candidates, then substring-matches
-name/contact/email in the app layer.
+`LIKE`-matched in SQL, customer search — and any filter that matches *by* customer name
+(project/task/maintenance-visit search) — uses decrypt-and-filter helpers
+(`searchCustomers()`, `matchingCustomerIds()`) that enforce role visibility, decrypt
+candidates, then substring-match in the app layer.
 
 ### Notifications
 In-app bell + optional **Microsoft Teams** (MessageCard webhook) and **Cisco Webex**
@@ -235,10 +379,12 @@ personal todos — not visible to managers.
 ### Admin Panel (manager)
 User CRUD (create forces password change on first login), password reset,
 activate/deactivate, role change, 2FA exemption toggle; consolidated system stats
-(single query); cross-entity activity feed; plus settings tabs for localization,
-security policy (password expiry), integrations (Teams/Webex webhooks, event toggles),
-reporting schedule, status configuration (label/color/order per project/task/visit
-status), and the audit log.
+(single query); cross-entity activity feed; settings tabs for localization, security
+policy (password expiry), integrations (Teams/Webex webhooks, event toggles), reporting
+schedule, status configuration (label/color/order per project/task/visit/**service
+activity** status — the status editor is now shared across four entity types via the
+same generic `settings.status_config` JSON blob), the audit log, and the Service
+Activity Tracking admin tab described above.
 
 ### Audit Log (manager)
 Append-only record (user, role, entity type/id/title, action, detail, IP, timestamp)
@@ -256,6 +402,8 @@ each issuing a fresh token when identity fields change.
   every 24h.
 - **Weekly report scheduler** — configurable day/hour/recipients via settings.
 - Both started only after the server successfully binds.
+- Service Activity Tracking has **no** background job — retention purge is a manual,
+  manager-triggered admin action, not a scheduled task (see §11).
 
 ## 9. API surface (prefixes)
 
@@ -268,23 +416,86 @@ query param).
 | `/api/auth` | login, 2FA, password mgmt, profile, avatar, download-token |
 | `/api/projects` | project CRUD, members, activity, Excel import |
 | `/api/tasks` | task CRUD, comments, dependencies, bulk ops, export |
-| `/api/customers` | customer CRUD, import, template |
+| `/api/customers` | customer CRUD, import, template, team/engineer assignment, service-activity summary, contract-hours |
 | `/api/maintenance-visits` | visit CRUD, engineer assignment, reports, import/export |
 | `/api/calendar` + `/api/calendar/ical` | month feed, iCal subscription |
-| `/api/reports` | summary, monthly trends, projects |
+| `/api/reports` | summary, monthly trends, projects, service-activity customer/engineer/team/overview reports + export |
 | `/api/kpis`, `/api/milestones`, `/api/scorecards` | per-project metrics & evaluations |
 | `/api/workload` | engineer load + 4-week forecast |
 | `/api/time-logs` | hour logging + summaries |
 | `/api/sla` | live SLA overview |
 | `/api/attachments` | per-project file upload/download (encrypted) |
+| `/api/teams` | team CRUD, membership, `/teams/mine` (module access check) |
+| `/api/activity-categories`, `/api/technologies` | Service Activity Tracking lookups (admin CRUD + read for all) |
+| `/api/service-activities` | activity CRUD, complete, duplicate, follow-up-task, attachments, export, `/meta` |
+| `/api/service-activity-settings` | module-wide toggles, retention status/purge |
 | `/api/notifications`, `/api/notes`, `/api/search` | bell, scratchpad, global search |
 | `/api/settings`, `/api/report-settings`, `/api/statuses` | configuration |
 | `/api/templates`, `/api/audit`, `/api/admin` | templates, audit log, user admin |
 
-## 10. Known open item
+## 10. Testing
 
-The next major session-hardening improvement is to move browser sessions from
-`localStorage` bearer tokens to `HttpOnly`, `Secure`, `SameSite` cookies with CSRF
-protection. The current JWTs are version-checked against the database and scoped
-tokens are used for downloads and iCal feed URLs, but cookie-backed sessions would
-reduce token exposure if browser-side script injection ever occurred.
+- `server/test/*.test.js` — pure-function unit tests (`node --test`, no external
+  dependencies): SQL dialect translation, field encryption round-trips, SSRF guard
+  range checks, upload magic-byte validation, JWT scope checks, activity-reference
+  formatting.
+- `server/test/serviceActivities.integration.test.js` — route-level integration tests
+  for the Service Activity Tracking module (team-gating, IDOR resistance, customer
+  authorization, manager view-all, historical-completion creation, reference
+  uniqueness, direct-URL bypass rejection), run against an in-memory Postgres
+  (`pg-mem`) rather than pure functions, since this behavior only exists at the route
+  handler level. `server/index.js` isn't booted directly for tests (its TLS/rate-limit/
+  scheduler bootstrap isn't structured for import) — a minimal Express app mounts the
+  real route modules instead. This is the **only** module with route-level test
+  coverage; every other module relies solely on manual QA (see §11).
+- CI (`.github/workflows/ci.yml`) runs `npm test` + `npm audit` for both server and
+  client, and validates `docker compose config`, on push to `DEV-2`/`dev`/`main` and on
+  any pull request.
+
+## 11. Known limitations / improvement targets
+
+Flagged for a reviewer (human or AI) looking to improve functionality, UI, or security:
+
+- **No granular permission system.** All authorization is role checks (`manager`/
+  `planner`/`pm`/`engineer`) plus ad-hoc per-route membership checks
+  (`project_assignments`, `maintenance_visit_engineers`, and now `team_members`/
+  `customer_teams`/`customer_engineers`). This is simple and consistent, but there's no
+  single place to audit "who can do what" — a real RBAC/permission table would be a
+  significant architectural improvement if the app's user base or role complexity
+  grows.
+- **`server/routes/serviceActivities.js` repeats the same "manager or owning engineer"
+  ownership check inline 8+ times** rather than as a shared middleware/helper — a
+  future endpoint added to this file (or copied elsewhere) could easily omit it.
+- **Encrypted-field search doesn't scale.** Because `customers.name` (and other PII)
+  is encrypted, every duplicate-name check and every name-based search decrypts *every*
+  customer row in memory (AES-GCM per row) rather than using an index. Fine at current
+  scale; would need a blind-index/hash column (or moving uniqueness enforcement off
+  the encrypted column) if the customer table grows large.
+- **Attachments aren't cleanly polymorphic.** The `attachments` table has two nullable
+  owner columns (`project_id`, `service_activity_id`) instead of a generic
+  `entity_type`/`entity_id` pair. Works for two owners; a third would make this
+  layout genuinely awkward.
+- **No real Postgres verification in this dev pass.** The Service Activity Tracking
+  schema and integration tests were validated against `pg-mem` (in-memory emulator),
+  not a live PostgreSQL instance — high confidence but not certainty; recommend running
+  the full test suite + a manual QA pass against a real `docker compose up` environment
+  before production use.
+- **Service Activity retention is manual, not automatic.** By design (see §7) — an
+  automatic background purge was deliberately not added without being asked, but if
+  that's wanted, the fields/status endpoint already exist to build on.
+- **No PDF export anywhere in the app** (Excel/`exceljs` only) — intentional (no PDF
+  library is present), but worth a deliberate decision if PDF reports become a
+  requirement rather than leaving it unaddressed.
+- **Sessions are `localStorage` bearer tokens**, not `HttpOnly`/`Secure`/`SameSite`
+  cookies. JWTs are version-checked against the database and scoped tokens are used
+  for downloads/iCal, which mitigates but doesn't eliminate the exposure if browser-side
+  script injection ever occurred. This was already a known item before the Service
+  Activity Tracking work.
+- **UI**: no component library (hand-rolled CSS + `lucide-react` icons + heavy inline
+  `style={{}}` objects throughout). Consistent, but a design-system pass (shared
+  form components, consistent spacing tokens, etc.) could reduce duplication —
+  `AdminPanel.jsx` alone is 3000+ lines.
+- **List pagination is inconsistent across the app.** Service Activity Tracking uses
+  real server-side `LIMIT`/`OFFSET` pagination; most older modules (Tasks, Projects,
+  Customers) fetch the full table and filter/paginate client-side. Fine at current
+  data volumes; a scaling risk if any of those tables grow large.
