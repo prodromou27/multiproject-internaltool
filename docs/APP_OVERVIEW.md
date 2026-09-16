@@ -289,7 +289,9 @@ customers, for engineer/customer/team-level history and MSP reporting.
   Completed-transition point, not at creation — see §11 for why).
 - **Customer-specific rules** — per-customer toggles requiring duration, ticket
   reference, technology, category, notes, and/or billable classification, enforced
-  server-side on create.
+  server-side on create and on the merged state of partial updates. Updates also
+  recheck customer authorization and validate retained related-entity links; activity
+  fields and technology assignments are saved in one transaction.
 - **Follow-up tasks** — "Create Follow-Up Task" reuses the existing Tasks module
   (creates a real `tasks` row, links it back via `related_task_id`) rather than
   duplicating task data.
@@ -449,7 +451,7 @@ query param).
   real route modules instead. This is the **only** module with route-level test
   coverage; every other module relies solely on manual QA (see §11).
 - CI (`.github/workflows/ci.yml`) runs `npm test` + `npm audit` for both server and
-  client, and validates `docker compose config`, on push to `DEV-2`/`dev`/`main` and on
+  client, and validates `docker compose config`, on push to `DEV-2`/`DEV-3`/`dev`/`main` and on
   any pull request.
 
 ## 11. Known limitations / improvement targets

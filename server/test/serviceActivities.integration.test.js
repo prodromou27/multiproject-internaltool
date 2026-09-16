@@ -271,3 +271,68 @@ test('direct URL access to a disabled team\'s data is rejected server-side regar
   const { status } = await api('/api/service-activities/meta', { token: ids.tokenDisabled });
   assert.equal(status, 403);
 });
+
+async function createActivity(overrides = {}) {
+  return api('/api/service-activities', {
+    method: 'POST', token: ids.tokenEnabled,
+    body: { customer_id: ids.customer, activity_date: '2026-01-15',
+      category_id: ids.category, title: 'Validation regression', status: 'planned', ...overrides },
+  });
+}
+
+test('invalid dates, durations, text and technology IDs return 400 instead of reaching storage', async () => {
+  for (const body of [
+    { activity_date: '2026-02-30' }, { duration_minutes: 'abc' },
+    { duration_minutes: 1.5 }, { duration_minutes: 1441 }, { title: 123 },
+    { technology_ids: [999999] }, { technology_ids: [1, 1] },
+  ]) {
+    const result = await createActivity(body);
+    assert.equal(result.status, 400, JSON.stringify(body));
+  }
+});
+
+test('partial edits preserve required fields and reject attempts to clear them', async () => {
+  await db.prepare('UPDATE customers SET require_duration=1, require_ticket_reference=1, require_notes=1 WHERE id=?').run(ids.customer);
+  try {
+    const created = await createActivity({ duration_minutes: 60, ticket_reference: 'CASE-1', description: 'Work notes' });
+    assert.equal(created.status, 200);
+    const update = body => api(`/api/service-activities/${created.data.id}`, {
+      method: 'PUT', token: ids.tokenEnabled, body,
+    });
+    assert.equal((await update({ title: 'Updated title' })).status, 200);
+    for (const body of [{ duration_minutes: null }, { ticket_reference: '' }, { description: '' }, { category_id: null }, { activity_date: null }]) {
+      assert.equal((await update(body)).status, 400, JSON.stringify(body));
+    }
+    const stored = await db.prepare('SELECT duration_minutes, ticket_reference, description FROM service_activities WHERE id=?').get(created.data.id);
+    assert.equal(stored.duration_minutes, 60);
+    assert.equal(stored.ticket_reference, 'CASE-1');
+    assert.equal(stored.description, 'Work notes');
+  } finally {
+    await db.prepare('UPDATE customers SET require_duration=0, require_ticket_reference=0, require_notes=0 WHERE id=?').run(ids.customer);
+  }
+});
+
+test('changing customers revalidates retained related project links', async () => {
+  const project = await db.prepare('INSERT INTO projects (title, customer_id, created_by) VALUES (?, ?, ?)').run('Customer-specific project', ids.customer, ids.manager);
+  const created = await createActivity({ related_project_id: project.lastInsertRowid });
+  assert.equal(created.status, 200);
+  const result = await api(`/api/service-activities/${created.data.id}`, {
+    method: 'PUT', token: ids.tokenManager, body: { customer_id: ids.customerUnassigned },
+  });
+  assert.equal(result.status, 400);
+  assert.match(result.data.error, /project.*customer/i);
+});
+
+test('revoked customer access prevents editing an existing owned activity', async () => {
+  const created = await createActivity();
+  assert.equal(created.status, 200);
+  await db.prepare('DELETE FROM customer_teams WHERE customer_id=? AND team_id=?').run(ids.customer, ids.teamEnabled);
+  try {
+    const result = await api(`/api/service-activities/${created.data.id}`, {
+      method: 'PUT', token: ids.tokenEnabled, body: { title: 'After access revoked' },
+    });
+    assert.equal(result.status, 403);
+  } finally {
+    await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(ids.customer, ids.teamEnabled);
+  }
+});

@@ -7,7 +7,7 @@ import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 
-const iso = d => d.toISOString().slice(0, 10);
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 function todayRange() { const t = iso(new Date()); return [t, t]; }
 function weekRange() {
   const now = new Date(); const day = (now.getDay() + 6) % 7;

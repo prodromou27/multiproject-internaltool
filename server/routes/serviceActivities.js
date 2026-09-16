@@ -63,6 +63,10 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
   const customer = await db.prepare('SELECT * FROM customers WHERE id = ?').get(customerId);
   if (!customer) return { error: 'Customer not found' };
 
+  if (body.title != null && typeof body.title !== 'string') return { error: 'Title must be text' };
+  for (const field of ['ticket_reference', 'description']) {
+    if (body[field] != null && typeof body[field] !== 'string') return { error: `${field} must be text` };
+  }
   const title = body.title?.trim();
   if (isCreate || body.title !== undefined) {
     if (!title) return { error: 'Title is required' };
@@ -70,15 +74,18 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
   }
 
   const activityDate = body.activity_date;
-  if (isCreate && !activityDate) return { error: 'Activity date is required' };
+  if (!activityDate) return { error: 'Activity date is required' };
   if (activityDate) {
     const d = new Date(activityDate + 'T00:00:00');
-    if (isNaN(d)) return { error: 'Invalid activity date' };
+    if (typeof activityDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(activityDate) || isNaN(d)
+      || d.getFullYear() !== Number(activityDate.slice(0, 4))
+      || d.getMonth() + 1 !== Number(activityDate.slice(5, 7))
+      || d.getDate() !== Number(activityDate.slice(8, 10))) return { error: 'Invalid activity date' };
     const today = new Date(); today.setHours(23, 59, 59, 999);
     if (d > today) return { error: 'Activity date cannot be in the future' };
   }
 
-  if (isCreate && !body.category_id) return { error: 'Category is required' };
+  if (!body.category_id) return { error: 'Category is required' };
   if (body.category_id) {
     const cat = await db.prepare('SELECT 1 FROM activity_categories WHERE id = ? AND active = 1').get(body.category_id);
     if (!cat) return { error: 'Invalid category' };
@@ -95,8 +102,23 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
   if (body.start_time && body.end_time && body.end_time < body.start_time)
     return { error: 'End time cannot be before start time' };
 
-  if (body.duration_minutes != null && body.duration_minutes !== '' && Number(body.duration_minutes) <= 0)
-    return { error: 'Duration must be greater than zero' };
+  for (const field of ['duration_minutes', 'billable_minutes']) {
+    const value = body[field];
+    if (value != null && value !== '' && (!['number', 'string'].includes(typeof value)
+      || !Number.isSafeInteger(Number(value)) || Number(value) < (field === 'duration_minutes' ? 1 : 0)
+      || Number(value) > 1440)) return { error: `${field} must be whole minutes within one day` };
+  }
+  if (body.technology_ids !== undefined) {
+    if (!Array.isArray(body.technology_ids) || body.technology_ids.length > 100
+      || body.technology_ids.some(id => !Number.isSafeInteger(id) || id <= 0)
+      || new Set(body.technology_ids).size !== body.technology_ids.length)
+      return { error: 'Technology IDs must be a list of unique positive integers' };
+    if (body.technology_ids.length) {
+      const ids = body.technology_ids;
+      const rows = await db.prepare(`SELECT id FROM technologies WHERE active = 1 AND id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+      if (rows.length !== ids.length) return { error: 'Invalid or inactive technology' };
+    }
+  }
 
   if (body.follow_up_required && !body.follow_up_date)
     return { error: 'Follow-up date is required when follow-up is required' };
@@ -119,11 +141,11 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
 
   // Customer-specific requirement rules
   const durationProvided = body.duration_minutes != null && body.duration_minutes !== '';
-  if (customer.require_duration && isCreate && !durationProvided) return { error: 'Duration is required for this customer' };
-  if (customer.require_ticket_reference && isCreate && !body.ticket_reference?.trim()) return { error: 'Ticket reference is required for this customer' };
-  if (customer.require_technology && isCreate && !(Array.isArray(body.technology_ids) && body.technology_ids.length)) return { error: 'At least one technology is required for this customer' };
-  if (customer.require_notes && isCreate && !body.description?.trim()) return { error: 'Notes are required for this customer' };
-  if (customer.require_billable_classification && isCreate && !body.billable_classification) return { error: 'Billable classification is required for this customer' };
+  if (customer.require_duration && !durationProvided) return { error: 'Duration is required for this customer' };
+  if (customer.require_ticket_reference && !body.ticket_reference?.trim()) return { error: 'Ticket reference is required for this customer' };
+  if (customer.require_technology && !(Array.isArray(body.technology_ids) && body.technology_ids.length)) return { error: 'At least one technology is required for this customer' };
+  if (customer.require_notes && !body.description?.trim()) return { error: 'Notes are required for this customer' };
+  if (customer.require_billable_classification && !body.billable_classification) return { error: 'Billable classification is required for this customer' };
 
   return { customer };
 }
@@ -330,15 +352,17 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, async (req, res) =
   const body = req.body || {};
   const customerId = body.customer_id || existing.customer_id;
 
-  // Changing the customer on an existing activity requires the same authorization check.
-  if (body.customer_id && body.customer_id !== existing.customer_id) {
-    if (req.user.role !== 'manager') {
-      const authorized = await isCustomerAuthorizedForEngineer(req.user.id, customerId, req.enabledTeamIds);
-      if (!authorized) return res.status(403).json({ error: 'You are not authorized to log activity for this customer' });
-    }
+  // Re-check access even if the customer is unchanged: assignments can be revoked.
+  if (req.user.role !== 'manager') {
+    const authorized = await isCustomerAuthorizedForEngineer(req.user.id, customerId, req.enabledTeamIds);
+    if (!authorized) return res.status(403).json({ error: 'You are not authorized to log activity for this customer' });
   }
 
-  const validation = await validateActivityPayload(body, { customerId, isCreate: false });
+  const existingTechnologies = body.technology_ids === undefined
+    ? await db.prepare('SELECT technology_id FROM service_activity_technologies WHERE service_activity_id = ?').all(id)
+    : [];
+  const effective = { ...existing, ...body, technology_ids: body.technology_ids === undefined ? existingTechnologies.map(t => t.technology_id) : body.technology_ids };
+  const validation = await validateActivityPayload(effective, { customerId, isCreate: false });
   if (validation.error) return res.status(400).json({ error: validation.error });
 
   const statuses = await getStatusConfig();
@@ -358,56 +382,54 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, async (req, res) =
     ? (existing.completed_at || (body.activity_date || existing.activity_date) + ' 00:00:00')
     : (newStatus === existing.status ? existing.completed_at : null);
 
-  await db.prepare(`UPDATE service_activities SET
-      customer_id=?, activity_date=COALESCE(?,activity_date), start_time=?, end_time=?,
-      duration_minutes=?, category_id=COALESCE(?,category_id), subcategory_id=?,
-      title=COALESCE(?,title), description=?, status=COALESCE(?,status), priority=?,
-      work_location=?, customer_impact=?, ticket_reference=?, external_case_reference=?,
-      billable_classification=?, billable_minutes=?, follow_up_required=COALESCE(?,follow_up_required), follow_up_date=?,
-      related_project_id=?, related_task_id=?, related_visit_id=?,
-      change_type=?, change_reason=?, previous_state=?, new_state=?, change_risk=?, rollback_available=?,
-      customer_approval_reference=?, verified_by=?, verification_notes=?,
-      updated_by=?, updated_at=datetime('now'), completed_at=?
-    WHERE id=?`)
-    .run(
-      customerId, body.activity_date || null, body.start_time !== undefined ? (body.start_time || null) : existing.start_time,
-      body.end_time !== undefined ? (body.end_time || null) : existing.end_time,
-      body.duration_minutes !== undefined ? (body.duration_minutes || null) : existing.duration_minutes,
-      body.category_id || null, body.subcategory_id !== undefined ? (body.subcategory_id || null) : existing.subcategory_id,
-      body.title?.trim() || null, body.description !== undefined ? (body.description || null) : existing.description,
-      body.status || null, body.priority !== undefined ? (body.priority || null) : existing.priority,
-      body.work_location !== undefined ? (body.work_location || null) : existing.work_location,
-      body.customer_impact !== undefined ? (body.customer_impact || null) : existing.customer_impact,
-      body.ticket_reference !== undefined ? (body.ticket_reference || null) : existing.ticket_reference,
-      body.external_case_reference !== undefined ? (body.external_case_reference || null) : existing.external_case_reference,
-      body.billable_classification !== undefined ? (body.billable_classification || null) : existing.billable_classification,
-      body.billable_minutes !== undefined ? (body.billable_minutes || null) : existing.billable_minutes,
-      body.follow_up_required != null ? (body.follow_up_required ? 1 : 0) : null,
-      body.follow_up_date !== undefined ? (body.follow_up_date || null) : existing.follow_up_date,
-      body.related_project_id !== undefined ? (body.related_project_id || null) : existing.related_project_id,
-      body.related_task_id !== undefined ? (body.related_task_id || null) : existing.related_task_id,
-      body.related_visit_id !== undefined ? (body.related_visit_id || null) : existing.related_visit_id,
-      body.change_type !== undefined ? (body.change_type || null) : existing.change_type,
-      body.change_reason !== undefined ? (body.change_reason || null) : existing.change_reason,
-      body.previous_state !== undefined ? (body.previous_state || null) : existing.previous_state,
-      body.new_state !== undefined ? (body.new_state || null) : existing.new_state,
-      body.change_risk !== undefined ? (body.change_risk || null) : existing.change_risk,
-      body.rollback_available != null ? (body.rollback_available ? 1 : 0) : existing.rollback_available,
-      body.customer_approval_reference !== undefined ? (body.customer_approval_reference || null) : existing.customer_approval_reference,
-      body.verified_by !== undefined ? (body.verified_by || null) : existing.verified_by,
-      body.verification_notes !== undefined ? (body.verification_notes || null) : existing.verification_notes,
-      req.user.id, completedAt, id
-    );
+  await db.transaction(async (tx) => {
+    await tx.prepare(`UPDATE service_activities SET
+        customer_id=?, activity_date=COALESCE(?,activity_date), start_time=?, end_time=?,
+        duration_minutes=?, category_id=COALESCE(?,category_id), subcategory_id=?,
+        title=COALESCE(?,title), description=?, status=COALESCE(?,status), priority=?,
+        work_location=?, customer_impact=?, ticket_reference=?, external_case_reference=?,
+        billable_classification=?, billable_minutes=?, follow_up_required=COALESCE(?,follow_up_required), follow_up_date=?,
+        related_project_id=?, related_task_id=?, related_visit_id=?,
+        change_type=?, change_reason=?, previous_state=?, new_state=?, change_risk=?, rollback_available=?,
+        customer_approval_reference=?, verified_by=?, verification_notes=?,
+        updated_by=?, updated_at=datetime('now'), completed_at=?
+      WHERE id=?`)
+      .run(
+        customerId, body.activity_date || null, body.start_time !== undefined ? (body.start_time || null) : existing.start_time,
+        body.end_time !== undefined ? (body.end_time || null) : existing.end_time,
+        body.duration_minutes !== undefined ? (body.duration_minutes || null) : existing.duration_minutes,
+        body.category_id || null, body.subcategory_id !== undefined ? (body.subcategory_id || null) : existing.subcategory_id,
+        body.title?.trim() || null, body.description !== undefined ? (body.description || null) : existing.description,
+        body.status || null, body.priority !== undefined ? (body.priority || null) : existing.priority,
+        body.work_location !== undefined ? (body.work_location || null) : existing.work_location,
+        body.customer_impact !== undefined ? (body.customer_impact || null) : existing.customer_impact,
+        body.ticket_reference !== undefined ? (body.ticket_reference || null) : existing.ticket_reference,
+        body.external_case_reference !== undefined ? (body.external_case_reference || null) : existing.external_case_reference,
+        body.billable_classification !== undefined ? (body.billable_classification || null) : existing.billable_classification,
+        body.billable_minutes !== undefined ? (body.billable_minutes || null) : existing.billable_minutes,
+        body.follow_up_required != null ? (body.follow_up_required ? 1 : 0) : null,
+        body.follow_up_date !== undefined ? (body.follow_up_date || null) : existing.follow_up_date,
+        body.related_project_id !== undefined ? (body.related_project_id || null) : existing.related_project_id,
+        body.related_task_id !== undefined ? (body.related_task_id || null) : existing.related_task_id,
+        body.related_visit_id !== undefined ? (body.related_visit_id || null) : existing.related_visit_id,
+        body.change_type !== undefined ? (body.change_type || null) : existing.change_type,
+        body.change_reason !== undefined ? (body.change_reason || null) : existing.change_reason,
+        body.previous_state !== undefined ? (body.previous_state || null) : existing.previous_state,
+        body.new_state !== undefined ? (body.new_state || null) : existing.new_state,
+        body.change_risk !== undefined ? (body.change_risk || null) : existing.change_risk,
+        body.rollback_available != null ? (body.rollback_available ? 1 : 0) : existing.rollback_available,
+        body.customer_approval_reference !== undefined ? (body.customer_approval_reference || null) : existing.customer_approval_reference,
+        body.verified_by !== undefined ? (body.verified_by || null) : existing.verified_by,
+        body.verification_notes !== undefined ? (body.verification_notes || null) : existing.verification_notes,
+        req.user.id, completedAt, id
+      );
 
-  if (Array.isArray(body.technology_ids)) {
-    await db.transaction(async (tx) => {
+    if (Array.isArray(body.technology_ids)) {
       await tx.prepare('DELETE FROM service_activity_technologies WHERE service_activity_id = ?').run(id);
       const insTech = tx.prepare('INSERT INTO service_activity_technologies (service_activity_id, technology_id) VALUES (?, ?)');
-      for (const techId of body.technology_ids) {
-        if (Number.isInteger(techId) && techId > 0) await insTech.run(id, techId);
-      }
-    });
-  }
+      for (const techId of body.technology_ids) await insTech.run(id, techId);
+    }
+  });
 
   if (body.status && body.status !== existing.status) {
     await logAudit(db, req, 'service_activity', id, body.title?.trim() || existing.title, 'activity_status_changed', `status ${existing.status}->${body.status}`);
