@@ -4,7 +4,7 @@
 # (see docker-compose.yml); this image is the app only.
 
 # ── Stage 1: build the React client ──────────────────────────────────────────
-FROM node:20-alpine AS client-build
+FROM node:24-alpine AS client-build
 WORKDIR /client
 COPY client/package*.json ./
 RUN npm ci
@@ -12,7 +12,7 @@ COPY client/ ./
 RUN npm run build
 
 # ── Stage 2: server runtime ──────────────────────────────────────────────────
-FROM node:20-alpine AS runtime
+FROM node:24-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app/server
 
