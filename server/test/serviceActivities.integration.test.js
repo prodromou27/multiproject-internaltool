@@ -76,17 +76,20 @@ const { signJwt } = require('../middleware/auth');
 
 let server, baseUrl;
 
-async function api(path, { method = 'GET', token, body } = {}) {
+async function api(path, { method = 'GET', token, body, cookie, origin, csrf = true } = {}) {
   const res = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(cookie ? { Cookie: cookie } : {}),
+      ...(origin ? { Origin: origin } : {}),
+      ...(csrf ? { 'X-SolutionsHub-Request': '1' } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  return { status: res.status, data };
+  return { status: res.status, data, headers: res.headers };
 }
 
 let ids = {};
@@ -96,6 +99,8 @@ test.before(async () => {
 
   const app = express();
   app.use(express.json());
+  app.use('/api', require('../middleware/session').protectCookieRequests);
+  app.use('/api/auth', require('../routes/auth'));
   app.use('/api/teams', require('../routes/teams'));
   app.use('/api/customers', require('../routes/customers'));
   app.use('/api/service-activities', require('../routes/serviceActivities'));
@@ -467,4 +472,53 @@ test('custom field definitions and typed values reject invalid input', async () 
     assert.equal((await api(`${base}/values/${task}`, { method: 'PUT', token: ids.tokenManager, body: { values } })).status, 400);
   }
   assert.equal((await api(`${base}/values/${task}`, { method: 'PUT', token: ids.tokenManager, body: { values: { [select.data.id]: 'Production', [date.data.id]: '2026-02-28' } } })).status, 200);
+});
+
+test('browser cookies enforce CSRF, required password changes, renewal and logout revocation', async () => {
+  const email = 'cookie-user@test.local';
+  const initialPassword = 'initial-password-123';
+  const userId = (await db.prepare('INSERT INTO users (name, email, password, role, must_change_password) VALUES (?, ?, ?, ?, 1)')
+    .run('Cookie user', email, bcrypt.hashSync(initialPassword, 4), 'manager')).lastInsertRowid;
+  const loggedIn = await api('/api/auth/login', { method: 'POST', body: { email, password: initialPassword } });
+  assert.equal(loggedIn.status, 200);
+  const setCookie = loggedIn.headers.get('set-cookie');
+  assert.match(setCookie, /HttpOnly/);
+  assert.match(setCookie, /SameSite=Strict/);
+  assert.match(setCookie, /Path=\/api/);
+  assert.equal(loggedIn.headers.get('cache-control'), 'no-store');
+  const cookie = setCookie.split(';')[0];
+  const me = await api('/api/auth/me', { cookie });
+  assert.equal(me.status, 200);
+  assert.equal(me.data.id, userId);
+  assert.equal(me.data.must_change_password, 1);
+  const restricted = await api('/api/service-activities', { cookie });
+  assert.equal(restricted.status, 403);
+  assert.equal(restricted.data.code, 'PASSWORD_CHANGE_REQUIRED');
+  const exportDenied = await fetch(`${baseUrl}/api/service-activities/export`, { headers: { Cookie: cookie } });
+  assert.equal(exportDenied.status, 403);
+  const body = { new_password: 'replacement-password-123' };
+  assert.equal((await api('/api/auth/change-password-first', { method: 'POST', cookie, csrf: false, body })).status, 403);
+  assert.equal((await api('/api/auth/change-password-first', { method: 'POST', cookie, origin: 'https://attacker.example', body })).status, 403);
+  const changed = await api('/api/auth/change-password-first', { method: 'POST', cookie, body });
+  assert.equal(changed.status, 200);
+  const renewedCookie = changed.headers.get('set-cookie').split(';')[0];
+  assert.equal((await api('/api/auth/me', { cookie })).status, 401);
+  assert.equal((await api('/api/service-activities', { cookie: renewedCookie })).status, 200);
+  const profile = await api('/api/auth/profile', { method: 'PUT', cookie: renewedCookie, body: { name: 'Cookie User', email: 'COOKIE-USER@TEST.LOCAL' } });
+  assert.equal(profile.status, 200);
+  assert.equal(profile.data.user.email, email);
+  const profileCookie = profile.headers.get('set-cookie').split(';')[0];
+  assert.equal((await api('/api/auth/me', { cookie: renewedCookie })).status, 401);
+  const loggedOut = await api('/api/auth/logout', { method: 'POST', cookie: profileCookie });
+  assert.equal(loggedOut.status, 200);
+  assert.match(loggedOut.headers.get('set-cookie'), /Expires=Thu, 01 Jan 1970/);
+  assert.equal((await api('/api/auth/me', { cookie: profileCookie })).status, 401);
+  assert.equal((await api('/api/auth/me', { token: profile.data.token })).status, 401);
+});
+
+test('2FA partial tokens do not grant cookie-based access', async () => {
+  const partial = signJwt({ id: ids.manager, partial: true }, { expiresIn: '5m' });
+  const result = await api('/api/auth/me', { cookie: `solutionshub_session=${partial}` });
+  assert.equal(result.status, 401);
+  assert.match(result.data.error, /scope/);
 });

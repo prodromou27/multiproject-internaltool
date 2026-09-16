@@ -41,7 +41,7 @@ function AvatarSection({ user, onRefresh }) {
     try {
       const data = await api.uploadAvatar(file);
       if (data.error) throw new Error(data.error);
-      // Update auth context + localStorage with new user + token
+      // Refresh the current user after the server renews the session cookie.
       login({ ...user, avatar_url: data.avatar_url }, data.token);
       setMsg({ type: 'success', text: 'Profile picture updated!' });
       onRefresh(data.user);
@@ -468,11 +468,9 @@ export default function Profile() {
   useEffect(() => {
     api.me().then(fresh => {
       setUser(u => ({ ...u, ...fresh }));
-      // Sync avatar_url into localStorage/context without re-issuing token
+      // Sync refreshed profile data into the auth context.
       if (fresh.avatar_url !== ctxUser.avatar_url) {
-        const stored = JSON.parse(localStorage.getItem('user') || '{}');
-        stored.avatar_url = fresh.avatar_url;
-        localStorage.setItem('user', JSON.stringify(stored));
+        login({ ...ctxUser, ...fresh });
       }
     }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const { requestToken, sessionCookie } = require('./session');
 
 // Fail fast at startup if JWT_SECRET is missing or too short
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -28,31 +29,33 @@ function verifyJwt(token) {
 async function freshActiveUser(payload) {
   if (!payload?.id) return { errorStatus: 401, error: 'Invalid token' };
   const user = await db.prepare(
-    'SELECT id, name, email, role, active, token_version FROM users WHERE id = ?'
+    'SELECT id, name, email, role, active, token_version, must_change_password FROM users WHERE id = ?'
   ).get(payload.id);
-  if (!user || !user.active) return { errorStatus: 403, error: 'Account is deactivated or no longer exists' };
+  if (!user || !user.active) return { errorStatus: 401, error: 'Account is deactivated or no longer exists' };
   if ((payload.token_version ?? 0) !== (user.token_version ?? 0)) return { errorStatus: 401, error: 'Session expired' };
   return {
-    user: { id: user.id, name: user.name, email: user.email, role: user.role, token_version: user.token_version ?? 0 },
+    user: { id: user.id, name: user.name, email: user.email, role: user.role,
+      token_version: user.token_version ?? 0, must_change_password: !!user.must_change_password },
   };
 }
 
 async function requireAuth(req, res, next) {
-  const header = req.headers.authorization;
-  const token  = header ? header.split(' ')[1] : null;
+  const token = requestToken(req);
   if (!token) return res.status(401).json({ error: 'No token' });
+  let payload;
   try {
-    const payload = verifyJwt(token);
-    if (payload.partial || payload.download) {
-      return res.status(401).json({ error: 'Invalid token scope' });
-    }
-    const result = await freshActiveUser(payload);
-    if (result.errorStatus) return res.status(result.errorStatus).json({ error: result.error });
-    req.user = result.user;
-    next();
+    payload = verifyJwt(token);
   } catch {
-    res.status(401).json({ error: 'Invalid token' });
+    return res.status(401).json({ error: 'Invalid token' });
   }
+  if (payload.partial || payload.download) return res.status(401).json({ error: 'Invalid token scope' });
+  const result = await freshActiveUser(payload);
+  if (result.errorStatus) return res.status(result.errorStatus).json({ error: result.error });
+  if (result.user.must_change_password && !(req.baseUrl === '/api/auth'
+    && ['/me', '/change-password-first', '/change-password', '/logout'].includes(req.path)))
+    return res.status(403).json({ error: 'Change your password before continuing', code: 'PASSWORD_CHANGE_REQUIRED' });
+  req.user = result.user;
+  next();
 }
 
 // Used only by file-download routes that must accept ?token= (export, template endpoints).
@@ -62,34 +65,34 @@ async function requireAuth(req, res, next) {
 // full 24-hour session JWTs are never captured in server / proxy access logs.
 async function requireDownloadAuth(req, res, next) {
   const header = req.headers.authorization;
-  const fromHeader = header ? header.split(' ')[1] : null;
+  const fromHeader = header ? /^Bearer\s+(\S+)$/i.exec(header)?.[1] : null;
   const fromQuery  = req.query.token || null;
-  const token = fromHeader || fromQuery;
+  const fromCookie = sessionCookie(req);
+  const token = fromHeader || fromQuery || fromCookie;
   if (!token) return res.status(401).json({ error: 'No token' });
-  try {
-    const payload = verifyJwt(token);
-    // URL-embedded tokens must be explicitly scoped for downloads
-    if (fromQuery && !fromHeader && !payload.download)
-      return res.status(401).json({ error: 'A scoped download token is required for URL-based downloads. Use POST /api/auth/download-token.' });
-    if (payload.partial) return res.status(401).json({ error: 'Invalid token scope' });
-    const result = await freshActiveUser(payload);
-    if (result.errorStatus) return res.status(result.errorStatus).json({ error: result.error });
-    req.user = result.user;
-    next();
-  } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
-  }
+  let payload;
+  try { payload = verifyJwt(token); }
+  catch { return res.status(401).json({ error: 'Invalid or expired token' }); }
+  // URL-embedded tokens must be explicitly scoped for downloads.
+  if (fromQuery && !fromHeader && !payload.download)
+    return res.status(401).json({ error: 'A scoped download token is required for URL-based downloads. Use POST /api/auth/download-token.' });
+  if (payload.partial || (!fromHeader && !fromQuery && payload.download)) return res.status(401).json({ error: 'Invalid token scope' });
+  const result = await freshActiveUser(payload);
+  if (result.errorStatus) return res.status(result.errorStatus).json({ error: result.error });
+  if (result.user.must_change_password) return res.status(403).json({ error: 'Change your password before continuing', code: 'PASSWORD_CHANGE_REQUIRED' });
+  req.user = result.user;
+  next();
 }
 
 function requireManager(req, res, next) {
-  requireAuth(req, res, () => {
+  return requireAuth(req, res, () => {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
     next();
   });
 }
 
 function requireManagerOrPlanner(req, res, next) {
-  requireAuth(req, res, () => {
+  return requireAuth(req, res, () => {
     if (req.user.role !== 'manager' && req.user.role !== 'planner')
       return res.status(403).json({ error: 'Managers and planners only' });
     next();
@@ -97,7 +100,7 @@ function requireManagerOrPlanner(req, res, next) {
 }
 
 function requireDownloadManagerOrPlanner(req, res, next) {
-  requireDownloadAuth(req, res, () => {
+  return requireDownloadAuth(req, res, () => {
     if (req.user.role !== 'manager' && req.user.role !== 'planner')
       return res.status(403).json({ error: 'Managers and planners only' });
     next();

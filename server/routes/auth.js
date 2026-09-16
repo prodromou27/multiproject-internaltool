@@ -8,6 +8,7 @@ const speakeasy = require('speakeasy');
 const QRCode    = require('qrcode');
 const db        = require('../db');
 const { signJwt, verifyJwt, requireAuth } = require('../middleware/auth');
+const { requestToken, setSessionCookie, clearSessionCookie } = require('../middleware/session');
 const { sendEmail } = require('../email');
 
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('not-the-real-password', 12);
@@ -61,6 +62,23 @@ function sessionPayload(user, extra = {}) {
     ...extra,
   };
 }
+
+function issueSession(req, res, user) {
+  const token = signJwt(sessionPayload(user), { expiresIn: '24h' });
+  setSessionCookie(req, res, token);
+  return token;
+}
+
+router.post('/logout', async (req, res) => {
+  clearSessionCookie(req, res);
+  let payload;
+  try { payload = verifyJwt(requestToken(req)); } catch { return res.json({ ok: true }); }
+  if (!payload.partial && !payload.download) {
+    await db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ? AND token_version = ?')
+      .run(payload.id, payload.token_version ?? 0);
+  }
+  res.json({ ok: true });
+});
 
 // Helper: read password_expiry_days from settings (0 = disabled)
 async function getPasswordExpiryDays() {
@@ -186,10 +204,7 @@ router.post('/login', async (req, res) => {
     return res.json({ requires_2fa: true, partial_token: partialToken });
   }
 
-  const token = signJwt(
-    sessionPayload(user),
-    { expiresIn: '24h' }
-  );
+  const token = issueSession(req, res, user);
   await recordSuccessfulLogin(req, user);
   res.json({
     token,
@@ -235,10 +250,7 @@ router.post('/2fa/verify', async (req, res) => {
   const passwordExpired = await checkPasswordExpiry(user);
   const mustChange = !!((await db.prepare('SELECT must_change_password FROM users WHERE id = ?').get(user.id))?.must_change_password);
 
-  const token = signJwt(
-    sessionPayload(user),
-    { expiresIn: '24h' }
-  );
+  const token = issueSession(req, res, user);
   res.json({
     token,
     user: { id: user.id, name: user.name, email: user.email, role: user.role, avatar_url: user.avatar_url || null },
@@ -314,15 +326,17 @@ router.get('/users', requireAuth, async (req, res) => {
 
 // GET /api/auth/me — current user profile
 router.get('/me', requireAuth, async (req, res) => {
-  const u = (await db.prepare('SELECT id, name, email, role, avatar_url, created_at, last_login, totp_enabled FROM users WHERE id = ?').get(req.user.id));
+  const u = (await db.prepare('SELECT id, name, email, role, avatar_url, created_at, last_login, totp_enabled, must_change_password FROM users WHERE id = ?').get(req.user.id));
   if (!u) return res.status(404).json({ error: 'User not found' });
+  res.setHeader('Cache-Control', 'no-store');
   res.json(u);
 });
 
 // PUT /api/auth/profile — update name and/or email
 router.put('/profile', requireAuth, async (req, res) => {
   const { name, email } = req.body;
-  if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 120) return res.status(400).json({ error: 'Name must contain 1 to 120 characters' });
+  if (email != null && typeof email !== 'string') return res.status(400).json({ error: 'Email must be text' });
   if (email?.trim()) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
       return res.status(400).json({ error: 'Invalid email format' });
@@ -330,9 +344,9 @@ router.put('/profile', requireAuth, async (req, res) => {
     if (clash) return res.status(400).json({ error: 'Email already in use by another account' });
   }
   (await db.prepare('UPDATE users SET name = ?, email = COALESCE(?, email), token_version = token_version + 1 WHERE id = ?')
-    .run(name.trim(), email?.trim() || null, req.user.id));
+    .run(name.trim(), email?.trim().toLowerCase() || null, req.user.id));
   const u = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
-  const token = signJwt(sessionPayload(u), { expiresIn: '24h' });
+  const token = issueSession(req, res, u);
   res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, avatar_url: u.avatar_url }, token });
 });
 
@@ -347,7 +361,7 @@ router.post('/change-password', requireAuth, async (req, res) => {
   (await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ?")
     .run(bcrypt.hashSync(new_password, 12), req.user.id));
   const updated = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
-  res.json({ ok: true, token: signJwt(sessionPayload(updated), { expiresIn: '24h' }) });
+  res.json({ ok: true, token: issueSession(req, res, updated) });
 });
 
 // POST /api/auth/change-password-first
@@ -364,7 +378,7 @@ router.post('/change-password-first', requireAuth, async (req, res) => {
   (await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ?")
     .run(bcrypt.hashSync(new_password, 12), req.user.id));
   const updated = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
-  res.json({ ok: true, token: signJwt(sessionPayload(updated), { expiresIn: '24h' }) });
+  res.json({ ok: true, token: issueSession(req, res, updated) });
 });
 
 /* ── HTML escaping — used in email templates to prevent stored XSS ── */
@@ -513,7 +527,7 @@ router.post('/avatar', requireAuth, async (req, res, next) => {
     const url = `/uploads/avatars/${req.file.filename}`;
     (await db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(url, req.user.id));
     const u = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
-    const token = signJwt(sessionPayload(u), { expiresIn: '24h' });
+    const token = issueSession(req, res, u);
     res.json({ avatar_url: url, user: { id: u.id, name: u.name, email: u.email, role: u.role, avatar_url: url }, token });
   });
 });
@@ -527,7 +541,7 @@ router.delete('/avatar', requireAuth, async (req, res) => {
   }
   (await db.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?').run(req.user.id));
   const updated = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
-  const token = signJwt(sessionPayload(updated), { expiresIn: '24h' });
+  const token = issueSession(req, res, updated);
   res.json({ user: { id: updated.id, name: updated.name, email: updated.email, role: updated.role, avatar_url: null }, token });
 });
 

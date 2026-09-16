@@ -1,39 +1,44 @@
 const BASE = '/api';
 
-function token() {
-  return localStorage.getItem('token');
-}
-
 function forceLogout() {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
+  fetch(BASE + '/auth/logout', { method: 'POST', credentials: 'same-origin', keepalive: true,
+    headers: { 'X-SolutionsHub-Request': '1' } }).catch(() => {});
   // Hard redirect — clears React state and lands on login
   window.location.href = '/login';
 }
 
-function handleUnauthorized(status) {
-  if (status === 401) {
+function handleUnauthorized(status, data, redirect) {
+  if (redirect && status === 401) {
     forceLogout();
     return true;
   }
+  if (redirect && data.code === 'PASSWORD_CHANGE_REQUIRED') window.location.href = '/login';
   return false;
 }
 
-async function req(method, path, body) {
+async function req(method, path, body, { redirectOnUnauthorized = true, signal } = {}) {
   const res = await fetch(BASE + path, {
     method,
+    credentials: 'same-origin',
+    signal,
     headers: {
       'Content-Type': 'application/json',
-      ...(token() ? { Authorization: 'Bearer ' + token() } : {})
+      'X-SolutionsHub-Request': '1',
     },
     body: body != null ? JSON.stringify(body) : undefined
   });
   const data = await res.json().catch(() => ({}));
 
   // Token expired or invalid → log out immediately
-  if (handleUnauthorized(res.status)) return;
-
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!res.ok) {
+    handleUnauthorized(res.status, data, redirectOnUnauthorized);
+    const error = new Error(data.error || res.statusText);
+    error.status = res.status;
+    error.code = data.code;
+    throw error;
+  }
   return data;
 }
 
@@ -42,33 +47,37 @@ async function upload(path, field, file) {
   fd.append(field, file);
   const res = await fetch(BASE + path, {
     method: 'POST',
-    headers: { ...(token() ? { Authorization: 'Bearer ' + token() } : {}) },
+    credentials: 'same-origin',
+    headers: { 'X-SolutionsHub-Request': '1' },
     body: fd,
   });
   const data = await res.json().catch(() => ({}));
-  if (handleUnauthorized(res.status)) return;
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!res.ok) {
+    handleUnauthorized(res.status, data, true);
+    throw new Error(data.error || res.statusText);
+  }
   return data;
 }
 
 export const api = {
   // auth
-  login: (email, password) => req('POST', '/auth/login', { email, password }),
-  verify2fa: (partial_token, code) => req('POST', '/auth/2fa/verify', { partial_token, code }),
+  login: (email, password) => req('POST', '/auth/login', { email, password }, { redirectOnUnauthorized: false }),
+  logout: () => req('POST', '/auth/logout', {}, { redirectOnUnauthorized: false }),
+  verify2fa: (partial_token, code) => req('POST', '/auth/2fa/verify', { partial_token, code }, { redirectOnUnauthorized: false }),
   setup2fa: () => req('GET', '/auth/2fa/setup'),
   enable2fa: (code) => req('POST', '/auth/2fa/enable', { code }),
   disable2fa: (password) => req('DELETE', '/auth/2fa', { password }),
   users: () => req('GET', '/auth/users'),
-  me: () => req('GET', '/auth/me'),
+  me: (options) => req('GET', '/auth/me', undefined, options),
   updateProfile: (data) => req('PUT', '/auth/profile', data),
   changePassword: (data) => req('POST', '/auth/change-password', data),
   firstTimeChangePassword: (new_password) => req('POST', '/auth/change-password-first', { new_password }),
-  forgotPassword: (email) => req('POST', '/auth/forgot-password', { email }),
+  forgotPassword: (email) => req('POST', '/auth/forgot-password', { email }, { redirectOnUnauthorized: false }),
   downloadToken: () => req('POST', '/auth/download-token', {}),
   icalTokenStatus: () => req('GET', '/auth/ical-token'),
   generateIcalToken: () => req('POST', '/auth/ical-token', {}),
   revokeIcalToken: () => req('DELETE', '/auth/ical-token'),
-  resetPassword: (token, new_password) => req('POST', '/auth/reset-password', { token, new_password }),
+  resetPassword: (token, new_password) => req('POST', '/auth/reset-password', { token, new_password }, { redirectOnUnauthorized: false }),
   getSecuritySettings: () => req('GET', '/settings/security'),
   saveSecuritySettings: (data) => req('PUT', '/settings/security', data),
   uploadAvatar: (file) => {
@@ -286,7 +295,7 @@ export const api = {
   saveLogging: (data) => req('PUT', '/settings/logging', data),
   downloadLogs: () => {
     return fetch(`${BASE}/settings/logging/download`, {
-      headers: { Authorization: 'Bearer ' + token() },
+      credentials: 'same-origin',
     }).then(r => {
       if (!r.ok) throw new Error(r.statusText);
       return r.blob();

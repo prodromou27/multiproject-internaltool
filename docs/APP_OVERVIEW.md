@@ -128,6 +128,15 @@ re-fetches the user and compares `token_version`, so role/password/active-status
 changes invalidate all of that user's outstanding tokens immediately rather than
 waiting up to 24h.
 
+**Browser sessions** use a 24-hour `HttpOnly`, `SameSite=Strict` cookie scoped to
+`/api`; HTTPS deployments (`APP_URL=https://...`) also set `Secure`. The browser
+loads its current identity from `/api/auth/me` rather than trusting saved user data.
+State-changing cookie requests require `X-SolutionsHub-Request: 1` and reject
+untrusted origins. Logout clears the cookie and revokes the user's current sessions.
+Bearer tokens remain supported for API clients, and login responses retain the
+token for compatibility. Required password changes are enforced by the API,
+including downloads, and resume after a browser reload.
+
 **2FA (TOTP)** via `speakeasy` + `qrcode`:
 - `/2fa/setup` generates a secret, stores it, returns only the QR data-URL (raw secret
   never sent in a response).
@@ -493,11 +502,6 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
 - **No PDF export anywhere in the app** (Excel/`exceljs` only) — intentional (no PDF
   library is present), but worth a deliberate decision if PDF reports become a
   requirement rather than leaving it unaddressed.
-- **Sessions are `localStorage` bearer tokens**, not `HttpOnly`/`Secure`/`SameSite`
-  cookies. JWTs are version-checked against the database and scoped tokens are used
-  for downloads/iCal, which mitigates but doesn't eliminate the exposure if browser-side
-  script injection ever occurred. This was already a known item before the Service
-  Activity Tracking work.
 - **UI**: no component library (hand-rolled CSS + `lucide-react` icons + heavy inline
   `style={{}}` objects throughout). Consistent, but a design-system pass (shared
   form components, consistent spacing tokens, etc.) could reduce duplication —

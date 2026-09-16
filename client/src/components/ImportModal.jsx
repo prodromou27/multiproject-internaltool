@@ -3,8 +3,7 @@ import { Upload } from 'lucide-react';
 import { Modal } from './Shared';
 
 async function downloadWithAuth(url) {
-  const token = localStorage.getItem('token');
-  const res = await fetch(url, { headers: token ? { Authorization: 'Bearer ' + token } : {} });
+  const res = await fetch(url, { credentials: 'same-origin' });
   if (!res.ok) throw new Error('Could not download template');
   const blob = await res.blob();
   const parts = url.split('/');

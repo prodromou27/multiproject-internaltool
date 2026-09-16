@@ -1,9 +1,11 @@
 {
   "name": "project-manager-client",
   "version": "1.0.0",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "node --test",
     "preview": "vite preview",
     "audit:prod": "npm audit --omit=dev"
   },

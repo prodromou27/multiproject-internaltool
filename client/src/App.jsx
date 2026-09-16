@@ -10,7 +10,7 @@ import {
 import Login from './pages/Login';
 import { api } from './api';
 import { StatusProvider } from './hooks/useStatuses';
-import { ToastProvider } from './components/Toast';
+import { ToastProvider, useToast } from './components/Toast';
 import { ConfirmProvider } from './components/Confirm';
 
 // Route-level code splitting: each page loads on first visit instead of in the
@@ -483,6 +483,7 @@ function OverdueDot({ count }) {
 }
 
 function SidebarContent({ user, logout, onNav }) {
+  const toast = useToast();
   const { dark, toggleDark, saAccess } = useAuth();
   const isManager = user.role === 'manager';
   const isPlanner = user.role === 'planner';
@@ -635,7 +636,7 @@ function SidebarContent({ user, logout, onNav }) {
           {dark ? <Sun size={14} /> : <Moon size={14} />}
           {dark ? 'Light Mode' : 'Dark Mode'}
         </button>
-        <button onClick={() => { onNav(); logout(); }}>
+        <button onClick={async () => { try { await logout(); onNav(); } catch (e) { toast.error(e.message || 'Unable to sign out'); } }}>
           <LogOut size={14} />
           Sign Out
         </button>
@@ -833,15 +834,31 @@ function LegacySettingsRedirect() {
 
 /* ── App root ────────────────────────────────────────────── */
 export default function App() {
-  const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
-  });
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState('');
+  const [passwordChangeUser, setPasswordChangeUser] = useState(null);
   const [dark, toggleDark] = useDarkMode();
   // Service Activity Tracking module access is team-membership-driven, not role-driven,
   // so it's fetched separately from the login payload and re-checked on every mount.
   // This only controls nav/route visibility (UX) — every server route independently
   // re-verifies team membership + enablement on each request.
   const [saAccess, setSaAccess] = useState({ enabled: false, teams: [], loaded: false });
+
+  useEffect(() => {
+    // Remove legacy browser-stored credentials; identity now comes from the API.
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    let mounted = true;
+    api.me({ redirectOnUnauthorized: false }).then(fresh => {
+      if (!mounted) return;
+      if (fresh.must_change_password) setPasswordChangeUser(fresh);
+      else setUser(fresh);
+    }).catch(error => {
+      if (mounted && ![401, 403].includes(error.status)) setAuthError(error.message || 'Unable to restore your session');
+    }).finally(() => { if (mounted) setAuthLoading(false); });
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     if (!user) { setSaAccess({ enabled: false, teams: [], loaded: false }); return; }
@@ -852,19 +869,21 @@ export default function App() {
     return () => { mounted = false; };
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const login = (userData, token) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
+  const login = (userData) => {
+    setPasswordChangeUser(null);
     setUser(userData);
   };
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  const logout = async () => {
+    await api.logout();
+    setPasswordChangeUser(null);
     setUser(null);
   };
 
+  if (authLoading) return <PageLoader />;
+  if (authError) return <div className="page"><p className="error-msg" role="alert">{authError}</p><button className="btn btn-primary" onClick={() => window.location.reload()}>Retry</button></div>;
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, dark, toggleDark, saAccess }}>
+    <AuthContext.Provider value={{ user, login, logout, dark, toggleDark, saAccess, passwordChangeUser }}>
       <ToastProvider>
       <ConfirmProvider>
       <StatusProvider enabled={!!user}>

@@ -88,6 +88,7 @@ try {
 }
 
 app.use(express.json({ limit: '1mb' }));
+app.use('/api', require('./middleware/session').protectCookieRequests);
 
 // ── Rate limiting on auth endpoints ──────────────────────────────────────────
 const authLimiter = rateLimit({

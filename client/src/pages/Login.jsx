@@ -5,7 +5,7 @@ import { api } from '../api';
 import { useAuth } from '../App';
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, passwordChangeUser } = useAuth();
   const navigate  = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -24,7 +24,6 @@ export default function Login() {
 
   // Forced password change (first-time or expired)
   const [pendingUser,     setPendingUser]     = useState(null);
-  const [pendingToken,    setPendingToken]    = useState('');
   const [isExpired,       setIsExpired]       = useState(false); // true = expired, false = first-time
   const [newPw,           setNewPw]           = useState('');
   const [confirmPw,       setConfirmPw]       = useState('');
@@ -45,18 +44,20 @@ export default function Login() {
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  function finishLogin(user, token, must_change_password, password_expired) {
+  function finishLogin(user, must_change_password, password_expired) {
     if (must_change_password) {
       setPendingUser(user);
-      setPendingToken(token);
       setIsExpired(!!password_expired);
-      localStorage.setItem('token', token);
       setStep('set_password');
     } else {
-      login(user, token);
+      login(user);
       navigate('/');
     }
   }
+
+  useEffect(() => {
+    if (passwordChangeUser) finishLogin(passwordChangeUser, true, false);
+  }, [passwordChangeUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -68,7 +69,7 @@ export default function Login() {
         setStep('2fa');
         setTimeout(() => codeRef.current?.focus(), 100);
       } else {
-        finishLogin(res.user, res.token, res.must_change_password, res.password_expired);
+        finishLogin(res.user, res.must_change_password, res.password_expired);
       }
     } catch (err) {
       setError(err.message || 'Invalid email or password');
@@ -83,7 +84,7 @@ export default function Login() {
     setError(''); setLoading(true);
     try {
       const res = await api.verify2fa(partialToken, code.replace(/\s/g, ''));
-      finishLogin(res.user, res.token, res.must_change_password, res.password_expired);
+      finishLogin(res.user, res.must_change_password, res.password_expired);
     } catch (err) {
       setError(err.message || 'Invalid authentication code');
       setCode('');
@@ -99,9 +100,8 @@ export default function Login() {
     if (newPw !== confirmPw) { setError('Passwords do not match'); return; }
     setError(''); setLoading(true);
     try {
-      const data = await api.firstTimeChangePassword(newPw);
-      localStorage.removeItem('token');
-      login(pendingUser, data?.token || pendingToken);
+      await api.firstTimeChangePassword(newPw);
+      login({ ...pendingUser, must_change_password: 0 });
       navigate('/');
     } catch (err) {
       setError(err.message || 'Failed to set password');
