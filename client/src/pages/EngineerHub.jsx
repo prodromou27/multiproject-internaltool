@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarDays, CheckCircle2, Clock, ClipboardList, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { fmtDate, isOverdue, PriorityBadge, StatusBadge } from '../components/Shared';
 import { useToast } from '../components/Toast';
+import { useConfirm } from '../components/Confirm';
 
 const KANBAN = [
   ['open', 'To do'], ['in_progress', 'In progress'],
@@ -68,6 +69,10 @@ function ServiceActivityCard() {
 export default function EngineerHub() {
   const { user, saAccess } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
+  const timerKey = `hub_engineer_timer_${user.id}`;
+  const savingTimer = useRef(false);
+  const [timerSaving, setTimerSaving] = useState(false);
   const today = iso(new Date());
   const month = today.slice(0, 7);
   const [tasks, setTasks] = useState([]);
@@ -77,7 +82,12 @@ export default function EngineerHub() {
   const [loading, setLoading] = useState(true);
   const [dragged, setDragged] = useState(null);
   const [timer, setTimer] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('hub_engineer_timer') || 'null'); } catch { return null; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(timerKey) || 'null');
+      return saved && Number.isSafeInteger(saved.taskId) && saved.taskId > 0
+        && typeof saved.title === 'string' && Number.isFinite(saved.startedAt) && saved.startedAt > 0
+        && saved.startedAt <= Date.now() ? saved : null;
+    } catch { return null; }
   });
   const [tick, setTick] = useState(Date.now());
   const [checklists, setChecklists] = useState(() => {
@@ -126,16 +136,32 @@ export default function EngineerHub() {
 
   function startTimer(task) {
     const value = { taskId: task.id, title: task.title, startedAt: Date.now() };
-    localStorage.setItem('hub_engineer_timer', JSON.stringify(value)); setTimer(value); setTick(Date.now());
+    try { localStorage.setItem(timerKey, JSON.stringify(value)); }
+    catch { toast.error('Could not save the timer in this browser'); return; }
+    setTimer(value); setTick(Date.now());
+  }
+
+  function clearTimer() {
+    setTimer(null);
+    try { localStorage.removeItem(timerKey); } catch { /* The visible timer is already cleared. */ }
+  }
+
+  async function discardTimer() {
+    if (savingTimer.current) return;
+    if (await confirm('Discard this timer without logging time?', { title: 'Discard timer', label: 'Discard' })) clearTimer();
   }
 
   async function stopTimer() {
-    if (!timer) return;
+    if (!timer || savingTimer.current) return;
     const hours = Math.max(0.02, Math.round(((Date.now() - timer.startedAt) / 3600000) * 100) / 100);
+    if (hours > 24) { toast.error('This timer exceeds 24 hours. Log the correct time from Tasks, then discard the timer.'); return; }
+    savingTimer.current = true;
+    setTimerSaving(true);
     try {
       await api.logTime({ task_id: timer.taskId, hours, description: 'Tracked from My Day timer' });
-      localStorage.removeItem('hub_engineer_timer'); setTimer(null); toast.success(`${hours}h logged`); load();
+      clearTimer(); toast.success(`${hours}h logged`); load();
     } catch (error) { toast.error(error.message || 'Could not save time'); }
+    finally { savingTimer.current = false; setTimerSaving(false); }
   }
 
   async function quickNote(task, note) {
@@ -189,7 +215,7 @@ export default function EngineerHub() {
         <div className="stat-card"><strong>{todayTotal.toFixed(1)}h</strong><span>Logged today</span></div>
       </div>
 
-      {timer && <div className="active-timer"><Play size={15} /><div><strong>{timer.title}</strong><span>{formatElapsed(elapsed)}</span></div><button className="btn btn-danger btn-sm" onClick={stopTimer}><Pause size={12} /> Stop & log</button></div>}
+      {timer && <div className="active-timer"><Play size={15} /><div><strong>{timer.title}</strong><span>{formatElapsed(elapsed)}</span></div><button className="btn btn-danger btn-sm" disabled={timerSaving} onClick={stopTimer}><Pause size={12} /> {timerSaving ? 'Saving…' : 'Stop & log'}</button><button className="btn btn-ghost btn-sm" disabled={timerSaving} onClick={discardTimer}><TimerReset size={12} /> Discard</button></div>}
 
       <div className="grid-2 engineer-summary">
         <section className="card"><div className="section-header"><h2 className="section-title">Today & overdue</h2><CalendarDays size={16} /></div>

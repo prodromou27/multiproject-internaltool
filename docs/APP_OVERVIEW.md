@@ -271,12 +271,19 @@ current user unless requested by a manager. Time log IDs, hours and date filters
 are validated before querying or storing data.
 Engineers self-assign and are confined to their own tasks and member projects.
 
+### My Day timer
+The engineer timer is stored per user and validates saved values before resuming.
+Saving disables further submissions; failed saves keep the timer available to retry.
+Timers exceeding the 24-hour entry limit require manually logging the correct hours.
+A confirmed Discard action clears a timer without recording time. Legacy shared
+timers are not resumed because their owner cannot be determined safely.
+
 ### Customers
-CRM-lite with encrypted PII, now extended with service-contract fields (see §3) and
-validated text, finite non-negative included hours, and valid contract date ranges.
+CRM-lite with encrypted PII, service-contract fields (see §3), and team/engineer
+assignment. Validates text, finite non-negative included hours, and contract date ranges.
 Partial edits preserve omitted contract values and allow explicitly clearing
 optional contract fields.
-team/engineer assignment. Excel import (≤5,000 rows, duplicate detection by normalized
+Excel import (≤5,000 rows, duplicate detection by normalized
 name, downloadable template). Engineers see only customers linked to their work
 (project/visit assignment for the legacy modules; team/engineer assignment for Service
 Activity Tracking).
