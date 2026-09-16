@@ -257,6 +257,12 @@ milestones, KPIs, custom fields, task dependencies, attachments, Excel import,
 templates, and a **closure-approval workflow** (request → manager approves/rejects).
 Project detail decrypts the linked customer's contact fields for display.
 
+Project creation saves memberships in the same transaction. Closure requests and
+approvals save their status and update message atomically, and conditional writes
+prevent duplicate lifecycle updates from concurrent requests. Project dates and
+member lists are validated; deadlines can be cleared, and pinning respects project
+visibility.
+
 ### Tasks
 Per-project or ad-hoc. Statuses validated against an enum; priorities
 low/medium/high/critical. Supports comments with **@mention notifications**,

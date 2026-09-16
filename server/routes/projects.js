@@ -91,7 +91,8 @@ const VALID_PROJECT_STATUSES = new Set([
 const VALID_RAG = new Set(['red', 'amber', 'green']);
 
 function isIsoDate(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime());
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
+    && new Date(value).toISOString().slice(0, 10) === value;
 }
 
 function normalizeOptionalId(value, label) {
@@ -145,6 +146,13 @@ router.get('/', requireAuth, async (req, res) => {
 
 /* ── Pin / unpin a project ─────────────────────────────────── */
 router.post('/:id/pin', requireAuth, async (req, res) => {
+  if (!/^\d+$/.test(req.params.id) || !Number.isSafeInteger(Number(req.params.id)) || Number(req.params.id) < 1)
+    return res.status(400).json({ error: 'Invalid project ID' });
+  const project = await db.prepare('SELECT id FROM projects WHERE id = ?').get(req.params.id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+  if (!['manager', 'pm'].includes(req.user.role)
+    && !await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(project.id, req.user.id))
+    return res.status(403).json({ error: 'Forbidden' });
   const id = parseInt(req.params.id, 10);
   (await db.prepare('INSERT OR IGNORE INTO user_project_pins (user_id, project_id) VALUES (?, ?)').run(req.user.id, id));
   res.json({ ok: true });
@@ -214,7 +222,7 @@ router.post('/', requireManager, async (req, res) => {
   }
   let engineerMap = {};
   let normalizedMemberIds = [];
-  if (Array.isArray(member_ids) && member_ids.length > 0) {
+  if (member_ids !== undefined) {
     const normalized = normalizeIdList(member_ids, 'member_ids');
     if (normalized.error) return res.status(400).json({ error: normalized.error });
     normalizedMemberIds = normalized.ids;
@@ -222,13 +230,16 @@ router.post('/', requireManager, async (req, res) => {
     if (Object.keys(engineerMap).length !== normalizedMemberIds.length)
       return res.status(400).json({ error: 'member_ids may only include active engineers' });
   }
-  const result = (await db.prepare('INSERT INTO projects (title, description, priority, deadline, customer_id, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(title.trim(), description || null, priority || 'medium', deadline || null, normalizedCustomer.value || null, req.user.id));
-  const pid = result.lastInsertRowid;
+  const pid = await db.transaction(async tx => {
+    const result = await tx.prepare('INSERT INTO projects (title, description, priority, deadline, customer_id, created_by) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(title.trim(), description || null, priority || 'medium', deadline || null, normalizedCustomer.value || null, req.user.id);
+    const ins = tx.prepare('INSERT OR IGNORE INTO project_assignments (project_id, user_id) VALUES (?, ?)');
+    for (const uid of normalizedMemberIds) await ins.run(result.lastInsertRowid, uid);
+    return result.lastInsertRowid;
+  });
   logActivity(pid, req.user.id, 'project_created', title);
   if (normalizedMemberIds.length > 0) {
-    const ins = db.prepare('INSERT OR IGNORE INTO project_assignments (project_id, user_id) VALUES (?, ?)');
     for (const uid of normalizedMemberIds) {
-      await ins.run(pid, uid);
       const engineer = engineerMap[uid];
       logActivity(pid, req.user.id, 'member_added', engineer.name);
       notify('project.assigned', {
@@ -250,6 +261,8 @@ router.put('/:id', requireManager, async (req, res) => {
   if (!p) return res.status(404).json({ error: 'Not found' });
 
   const { title, description, priority, deadline, customer_id, status, pending_from_customer, completion_pct, rag_override } = req.body;
+  if (pending_from_customer != null && (typeof pending_from_customer !== 'string' || pending_from_customer.length > 10000))
+    return res.status(400).json({ error: 'pending_from_customer must be text of at most 10000 characters' });
   if (title !== undefined && (typeof title !== 'string' || !title.trim())) return res.status(400).json({ error: 'Title cannot be empty' });
   if (typeof title === 'string' && title.trim().length > 500) return res.status(400).json({ error: 'Title cannot exceed 500 characters' });
   if (description !== undefined && description !== null && typeof description !== 'string') return res.status(400).json({ error: 'Description must be text' });
@@ -290,7 +303,7 @@ router.put('/:id', requireManager, async (req, res) => {
     status=COALESCE(?,status), pending_from_customer=?,
     completion_pct=COALESCE(?,completion_pct), rag_override=?,
     updated_at=datetime('now') WHERE id=?`)
-    .run(title?.trim() || null, description, priority, deadline ?? p.deadline, normalizedCustomer.value !== undefined ? normalizedCustomer.value : p.customer_id, status, newPfc,
+    .run(title?.trim() || null, description, priority, deadline === undefined ? p.deadline : (deadline || null), normalizedCustomer.value !== undefined ? normalizedCustomer.value : p.customer_id, status, newPfc,
          completion_pct !== undefined ? completion_pct : null, newRagOverride, p.id));
   if (status && status !== p.status) {
     logActivity(p.id, req.user.id, 'status_changed', `${p.status} → ${status}`);
@@ -312,8 +325,15 @@ router.post('/:id/request-closure', requireAuth, async (req, res) => {
     if (!assigned) return res.status(403).json({ error: 'Forbidden — you are not assigned to this project' });
   }
   if (['closed', 'cancelled', 'pending_approval'].includes(p.status)) return res.status(400).json({ error: 'Cannot request closure in current status' });
-  (await db.prepare(`UPDATE projects SET status='pending_approval', closure_requested_at=datetime('now'), updated_at=datetime('now') WHERE id=?`).run(p.id));
-  (await db.prepare('INSERT INTO project_status_updates (project_id, user_id, message) VALUES (?, ?, ?)').run(p.id, req.user.id, 'Closure requested by ' + req.user.name));
+  const changed = await db.transaction(async tx => {
+    const result = await tx.prepare(`UPDATE projects SET status='pending_approval', closure_requested_at=datetime('now'), updated_at=datetime('now')
+      WHERE id=? AND status NOT IN ('closed','cancelled','pending_approval')`).run(p.id);
+    if (!result.changes) return false;
+    await tx.prepare('INSERT INTO project_status_updates (project_id, user_id, message) VALUES (?, ?, ?)')
+      .run(p.id, req.user.id, 'Closure requested by ' + req.user.name);
+    return true;
+  });
+  if (!changed) return res.status(409).json({ error: 'Project status changed. Refresh before requesting closure.' });
   logActivity(p.id, req.user.id, 'closure_requested', null);
   res.json({ ok: true });
 });
@@ -323,8 +343,15 @@ router.post('/:id/approve-closure', requireManager, async (req, res) => {
   const p = (await db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id));
   if (!p) return res.status(404).json({ error: 'Not found' });
   if (p.status !== 'pending_approval') return res.status(400).json({ error: 'Project is not pending approval' });
-  (await db.prepare(`UPDATE projects SET status='closed', closed_by=?, closed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`).run(req.user.id, p.id));
-  (await db.prepare('INSERT INTO project_status_updates (project_id, user_id, message) VALUES (?, ?, ?)').run(p.id, req.user.id, 'Project closed and approved by ' + req.user.name));
+  const changed = await db.transaction(async tx => {
+    const result = await tx.prepare(`UPDATE projects SET status='closed', closed_by=?, closed_at=datetime('now'), updated_at=datetime('now')
+      WHERE id=? AND status='pending_approval'`).run(req.user.id, p.id);
+    if (!result.changes) return false;
+    await tx.prepare('INSERT INTO project_status_updates (project_id, user_id, message) VALUES (?, ?, ?)')
+      .run(p.id, req.user.id, 'Project closed and approved by ' + req.user.name);
+    return true;
+  });
+  if (!changed) return res.status(409).json({ error: 'Project is no longer pending approval' });
   logActivity(p.id, req.user.id, 'project_closed', null);
   notifyPendingScores(p.id, p.title);
   res.json({ ok: true });
@@ -333,12 +360,12 @@ router.post('/:id/approve-closure', requireManager, async (req, res) => {
 router.post('/:id/status-update', requireAuth, async (req, res) => {
   if (req.user.role === 'pm') return res.status(403).json({ error: 'Forbidden — PMs have read-only access to projects' });
   const { message } = req.body;
-  if (!message) return res.status(400).json({ error: 'Message required' });
+  if (typeof message !== 'string' || !message.trim()) return res.status(400).json({ error: 'Message required' });
   if (message.length > 2000) return res.status(400).json({ error: 'Message cannot exceed 2000 characters' });
   // Non-managers must be assigned to the project
+  const p = await db.prepare('SELECT id FROM projects WHERE id = ?').get(req.params.id);
+  if (!p) return res.status(404).json({ error: 'Not found' });
   if (req.user.role !== 'manager') {
-    const p = (await db.prepare('SELECT id FROM projects WHERE id = ?').get(req.params.id));
-    if (!p) return res.status(404).json({ error: 'Not found' });
     const assigned = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(req.params.id, req.user.id));
     if (!assigned) return res.status(403).json({ error: 'Forbidden — you are not assigned to this project' });
   }

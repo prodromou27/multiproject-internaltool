@@ -102,6 +102,7 @@ test.before(async () => {
   app.use('/api', require('../middleware/session').protectCookieRequests);
   app.use('/api/auth', require('../routes/auth'));
   app.use('/api/tasks', require('../routes/tasks'));
+  app.use('/api/projects', require('../routes/projects'));
   app.use('/api/time-logs', require('../routes/time-logs'));
   app.use('/api/teams', require('../routes/teams'));
   app.use('/api/customers', require('../routes/customers'));
@@ -664,4 +665,39 @@ test('customer contracts validate merged dates and allow clearing optional field
   stored = await db.prepare('SELECT customer_code, contract_type, contract_start_date, contract_end_date, included_hours FROM customers WHERE id=?').get(created.data.id);
   assert.ok(Object.values(stored).every(value => value === null));
   assert.equal((await api('/api/customers', { method: 'POST', token: ids.tokenManager, body: { name: [] } })).status, 400);
+});
+
+test('projects validate memberships, calendar dates, status updates and pin access', async () => {
+  for (const body of [{ title: 'Invalid members', member_ids: {} }, { title: 'Invalid date', deadline: '2026-02-30' },
+    { title: 'Wrong role', member_ids: [ids.manager] }]) {
+    assert.equal((await api('/api/projects', { method: 'POST', token: ids.tokenManager, body })).status, 400);
+  }
+  const created = await api('/api/projects', { method: 'POST', token: ids.tokenManager,
+    body: { title: 'Project review', deadline: '2026-12-01', member_ids: [ids.engineerEnabled] } });
+  assert.equal(created.status, 200);
+  const endpoint = `/api/projects/${created.data.id}`;
+  assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenManager, body: { deadline: null } })).status, 200);
+  assert.equal((await db.prepare('SELECT deadline FROM projects WHERE id=?').get(created.data.id)).deadline, null);
+  assert.equal((await api(`${endpoint}/pin`, { method: 'POST', token: ids.tokenDisabled })).status, 403);
+  assert.equal((await api(`${endpoint}/pin`, { method: 'POST', token: ids.tokenEnabled })).status, 200);
+  for (const message of [{}, '   ']) {
+    assert.equal((await api(`${endpoint}/status-update`, { method: 'POST', token: ids.tokenManager, body: { message } })).status, 400);
+  }
+  assert.equal((await api('/api/projects/99999999/status-update', { method: 'POST', token: ids.tokenManager, body: { message: 'Missing project' } })).status, 404);
+  assert.equal((await api(`${endpoint}/request-closure`, { method: 'POST', token: ids.tokenDisabled })).status, 403);
+  assert.equal((await api(`${endpoint}/request-closure`, { method: 'POST', token: ids.tokenEnabled })).status, 200);
+  assert.equal((await api(`${endpoint}/approve-closure`, { method: 'POST', token: ids.tokenEnabled })).status, 403);
+  assert.equal((await api(`${endpoint}/approve-closure`, { method: 'POST', token: ids.tokenManager })).status, 200);
+  const updates = await db.prepare('SELECT message FROM project_status_updates WHERE project_id=?').all(created.data.id);
+  assert.equal(updates.length, 2);
+});
+
+test('concurrent project closure requests and approvals write one update each on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Concurrent closure', ids.manager)).lastInsertRowid;
+  for (const action of ['request-closure', 'approve-closure']) {
+    const results = await Promise.all([0, 1, 2].map(() => api(`/api/projects/${project}/${action}`, { method: 'POST', token: ids.tokenManager })));
+    assert.equal(results.filter(r => r.status === 200).length, 1);
+    assert.ok(results.every(r => [200, 400, 409].includes(r.status)));
+  }
+  assert.equal((await db.prepare('SELECT message FROM project_status_updates WHERE project_id=?').all(project)).length, 2);
 });
