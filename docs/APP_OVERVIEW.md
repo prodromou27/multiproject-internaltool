@@ -427,6 +427,11 @@ assignment, @mentions, report submitted, visit reminders, scorecard-pending. Per
 toggles in settings.
 
 ### Notes
+Scratchpad saves are serialized; failed saves remain unsaved and display an error.
+Per-user browser drafts recover unsaved text on return, and editing is disabled when
+the original note cannot load. To-do failures preserve the current item or input
+instead of displaying a successful change. The API validates note/title types and
+boolean completion values.
 Private per-user scratchpad (`personal_notes`, one row per user, ≤50 k chars) and
 personal todos — not visible to managers.
 

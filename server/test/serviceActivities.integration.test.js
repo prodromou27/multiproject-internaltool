@@ -102,6 +102,7 @@ test.before(async () => {
   app.use('/api', require('../middleware/session').protectCookieRequests);
   app.use('/api/auth', require('../routes/auth'));
   app.use('/api/admin', require('../routes/admin'));
+  app.use('/api/notes', require('../routes/notes'));
   app.use('/api/tasks', require('../routes/tasks'));
   app.use('/api/projects', require('../routes/projects'));
   app.use('/api/maintenance-visits', require('../routes/maintenance-visits'));
@@ -797,4 +798,21 @@ test('concurrent manager self-demotions preserve an active manager on PostgreSQL
     for (const row of original) await db.prepare('UPDATE users SET active=1 WHERE id=?').run(row.id);
     for (const id of managers) await db.prepare('UPDATE users SET active=0 WHERE id=?').run(id);
   }
+});
+
+test('personal notes and todos reject malformed values and isolate users', async () => {
+  assert.equal((await api('/api/notes/note', { method: 'PUT', token: ids.tokenEnabled, body: { content: {} } })).status, 400);
+  assert.equal((await api('/api/notes/note', { method: 'PUT', token: ids.tokenEnabled, body: { content: 'Private scratchpad' } })).status, 200);
+  assert.equal((await api('/api/notes/note', { token: ids.tokenEnabled })).data.content, 'Private scratchpad');
+  assert.equal((await api('/api/notes/note', { token: ids.tokenDisabled })).data.content, '');
+  assert.equal((await api('/api/notes/todos', { method: 'POST', token: ids.tokenEnabled, body: { title: {} } })).status, 400);
+  const created = await api('/api/notes/todos', { method: 'POST', token: ids.tokenEnabled, body: { title: 'Private todo' } });
+  assert.equal(created.status, 200);
+  const endpoint = `/api/notes/todos/${created.data.id}`;
+  for (const body of [{ title: {} }, { done: 'false' }]) {
+    assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenEnabled, body })).status, 400);
+  }
+  assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenDisabled, body: { done: true } })).status, 404);
+  assert.equal((await api(endpoint, { method: 'DELETE', token: ids.tokenDisabled })).status, 200);
+  assert.equal((await api('/api/notes/todos', { token: ids.tokenEnabled })).data.length, 1);
 });

@@ -17,35 +17,68 @@ export default function Notes() {
   const [noteSaved,    setNoteSaved]    = useState(true);
   const [noteUpdated,  setNoteUpdated]  = useState('');
   const [noteLoading,  setNoteLoading]  = useState(true);
+  const [noteError, setNoteError] = useState('');
+  const [noteReady, setNoteReady] = useState(false);
+  const [todoError, setTodoError] = useState('');
+  const draftKey = `hub_note_draft_${user.id}`;
+  const latestContent = useRef('');
+  const saveQueue = useRef(Promise.resolve());
+  const mounted = useRef(true);
   const autoSaveTimer = useRef(null);
 
   const loadNote = useCallback(() => {
+    setNoteLoading(true);
     api.getNote().then(d => {
-      setNoteContent(d.content || '');
+      let draft = null;
+      try { draft = localStorage.getItem(draftKey); } catch { /* Server content remains available. */ }
+      const content = draft ?? d.content ?? '';
+      latestContent.current = content;
+      setNoteContent(content);
       setNoteUpdated(d.updated_at || '');
       setNoteLoading(false);
-      setNoteSaved(true);
-    }).catch(() => setNoteLoading(false));
-  }, []);
+      setNoteSaved(content === (d.content || ''));
+      setNoteReady(true);
+      setNoteError('');
+    }).catch(error => { setNoteError(error.message || 'Could not load your note'); setNoteLoading(false); });
+  }, [draftKey]);
 
   useEffect(() => { loadNote(); }, [loadNote]);
 
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; clearTimeout(autoSaveTimer.current); };
+  }, []);
+
+  function saveContent(content) {
+    saveQueue.current = saveQueue.current.catch(() => {}).then(async () => {
+      if (!mounted.current) return;
+      try {
+        await api.saveNote(content);
+        if (mounted.current && latestContent.current === content) {
+          setNoteSaved(true);
+          setNoteError('');
+          setNoteUpdated(new Date().toISOString());
+          try { localStorage.removeItem(draftKey); } catch { /* Keep recovery data if storage is unavailable. */ }
+        }
+      } catch (error) {
+        if (mounted.current) { setNoteSaved(false); setNoteError(error.message || 'Could not save your note'); }
+      }
+    });
+    return saveQueue.current;
+  }
+
   function handleNoteChange(val) {
     setNoteContent(val);
+    latestContent.current = val;
+    try { localStorage.setItem(draftKey, val); } catch { /* Unsaved state remains visible. */ }
     setNoteSaved(false);
     clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(async () => {
-      await api.saveNote(val).catch(() => {});
-      setNoteSaved(true);
-      setNoteUpdated(new Date().toISOString());
-    }, AUTOSAVE_MS);
+    autoSaveTimer.current = setTimeout(() => saveContent(val), AUTOSAVE_MS);
   }
 
   async function saveNoteNow() {
     clearTimeout(autoSaveTimer.current);
-    await api.saveNote(noteContent).catch(() => {});
-    setNoteSaved(true);
-    setNoteUpdated(new Date().toISOString());
+    await saveContent(latestContent.current);
   }
 
   /* ── Todos ───────────────────────────────────────────────── */
@@ -55,7 +88,8 @@ export default function Notes() {
   const [todosLoading, setTodosLoading] = useState(true);
 
   const loadTodos = useCallback(() => {
-    api.getTodos().then(d => { setTodos(d ?? []); setTodosLoading(false); }).catch(() => setTodosLoading(false));
+    api.getTodos().then(d => { setTodos(d ?? []); setTodosLoading(false); setTodoError(''); })
+      .catch(error => { setTodoError(error.message || 'Could not load your to-do list'); setTodosLoading(false); });
   }, []);
 
   useEffect(() => { loadTodos(); }, [loadTodos]);
@@ -64,27 +98,29 @@ export default function Notes() {
     e.preventDefault();
     if (!newTitle.trim()) return;
     setAdding(true);
-    await api.createTodo(newTitle.trim()).catch(() => {});
-    setNewTitle('');
-    setAdding(false);
-    loadTodos();
+    try { await api.createTodo(newTitle.trim()); setNewTitle(''); loadTodos(); }
+    catch (error) { setTodoError(error.message); }
+    finally { setAdding(false); }
   }
 
   async function toggleTodo(todo) {
-    await api.updateTodo(todo.id, { done: !todo.done }).catch(() => {});
-    setTodos(prev => prev.map(t => t.id === todo.id ? { ...t, done: todo.done ? 0 : 1 } : t));
+    try {
+      await api.updateTodo(todo.id, { done: !todo.done });
+      setTodos(prev => prev.map(t => t.id === todo.id ? { ...t, done: todo.done ? 0 : 1 } : t));
+      setTodoError('');
+    } catch (error) { setTodoError(error.message); }
   }
 
   async function deleteTodo(id) {
-    await api.deleteTodo(id).catch(() => {});
-    setTodos(prev => prev.filter(t => t.id !== id));
+    try { await api.deleteTodo(id); setTodos(prev => prev.filter(t => t.id !== id)); setTodoError(''); }
+    catch (error) { setTodoError(error.message); }
   }
 
   async function clearDone() {
     const ok = await confirm('Clear all completed items?', { title: 'Clear Completed', label: 'Clear', danger: false });
     if (!ok) return;
-    await api.clearDoneTodos().catch(() => {});
-    loadTodos();
+    try { await api.clearDoneTodos(); loadTodos(); }
+    catch (error) { setTodoError(error.message); }
     // No toast needed — the visual change is instant
   }
 
@@ -108,6 +144,8 @@ export default function Notes() {
         </div>
       </div>
 
+      {noteError && <div className="error-msg" role="alert">{noteError}{!noteReady && <button className="btn btn-ghost btn-sm" onClick={loadNote}>Retry loading note</button>}</div>}
+      {todoError && <div className="error-msg" role="alert">{todoError}<button className="btn btn-ghost btn-sm" onClick={loadTodos}>Retry loading list</button></div>}
       <div className="grid-2" style={{ gap: 20, alignItems: 'start' }}>
 
         {/* ── Left: Scratchpad ─────────────────────────────── */}
@@ -141,6 +179,8 @@ export default function Notes() {
             <p className="text-muted text-sm">Loading…</p>
           ) : (
             <textarea
+              disabled={!noteReady}
+              maxLength={50000}
               value={noteContent}
               onChange={e => handleNoteChange(e.target.value)}
               placeholder={`Jot down anything, ${user.name.split(' ')[0]}…\n\nIdeas, reminders, links, quick calculations — this is your private space.`}

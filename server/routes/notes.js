@@ -10,6 +10,7 @@ router.get('/note', requireAuth, async (req, res) => {
 
 router.put('/note', requireAuth, async (req, res) => {
   const { content } = req.body;
+  if (typeof content !== 'string') return res.status(400).json({ error: 'Note must be text' });
   if (content && content.length > 50000)
     return res.status(400).json({ error: 'Note cannot exceed 50,000 characters' });
   (await db.prepare(`
@@ -30,7 +31,7 @@ router.get('/todos', requireAuth, async (req, res) => {
 
 router.post('/todos', requireAuth, async (req, res) => {
   const { title, order_index } = req.body;
-  if (!title?.trim()) return res.status(400).json({ error: 'Title required' });
+  if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'Title required' });
   if (title.trim().length > 250) return res.status(400).json({ error: 'Title cannot exceed 250 characters' });
   const order = order_index === undefined ? 0 : Number(order_index);
   if (!Number.isInteger(order) || order < 0) return res.status(400).json({ error: 'order_index must be a non-negative integer' });
@@ -44,7 +45,8 @@ router.put('/todos/:id', requireAuth, async (req, res) => {
   const { title, done, order_index } = req.body;
   const todo = (await db.prepare('SELECT * FROM personal_todos WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id));
   if (!todo) return res.status(404).json({ error: 'Not found' });
-  if (title !== undefined && !title?.trim()) return res.status(400).json({ error: 'Title cannot be empty' });
+  if (title !== undefined && (typeof title !== 'string' || !title.trim())) return res.status(400).json({ error: 'Title cannot be empty' });
+  if (done !== undefined && ![true, false, 0, 1].includes(done)) return res.status(400).json({ error: 'done must be a boolean' });
   if (title?.trim().length > 250) return res.status(400).json({ error: 'Title cannot exceed 250 characters' });
   const order = order_index === undefined ? null : Number(order_index);
   if (order !== null && (!Number.isInteger(order) || order < 0))
