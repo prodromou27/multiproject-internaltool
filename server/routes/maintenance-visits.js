@@ -45,15 +45,11 @@ function parseEngIds(row) {
 
 // Replace the full engineer set for a visit (within an existing transaction or standalone).
 // Always coerces IDs to positive integers — rejects anything that doesn't parse cleanly.
-async function replaceEngineers(visitId, engineerIds) {
-  await db.transaction(async (tx) => {
-    await tx.prepare('DELETE FROM maintenance_visit_engineers WHERE visit_id = ?').run(visitId);
-    const ins = tx.prepare('INSERT OR IGNORE INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?)');
-    for (const uid of (engineerIds || [])) {
-      const intId = parseInt(uid, 10);
-      if (Number.isFinite(intId) && intId > 0) await ins.run(visitId, intId);
-    }
-  });
+async function replaceEngineers(visitId, engineerIds, tx) {
+  if (!tx) return db.transaction(client => replaceEngineers(visitId, engineerIds, client));
+  await tx.prepare('DELETE FROM maintenance_visit_engineers WHERE visit_id = ?').run(visitId);
+  const ins = tx.prepare('INSERT OR IGNORE INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?)');
+  for (const uid of engineerIds || []) await ins.run(visitId, uid);
 }
 
 async function isAssignedEngineer(visitId, userId) {
@@ -61,7 +57,16 @@ async function isAssignedEngineer(visitId, userId) {
 }
 
 function isIsoDate(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime());
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
+    && new Date(value).toISOString().slice(0, 10) === value;
+}
+
+function validateVisitText(body) {
+  for (const field of ['notes', 'description']) {
+    if (body[field] != null && (typeof body[field] !== 'string' || body[field].length > 10000))
+      return `${field} must be text of at most 10000 characters`;
+  }
+  return null;
 }
 
 async function validateCustomerId(customerId) {
@@ -207,6 +212,8 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 // ── Create ───────────────────────────────────────────────────────────────────
 router.post('/', requireManagerOrPlanner, async (req, res) => {
+  const inputError = validateVisitText(req.body);
+  if (inputError) return res.status(400).json({ error: inputError });
   const { customer_id, title, description, scheduled_date, engineer_ids, notes } = req.body;
   if (!customer_id || !title || !scheduled_date)
     return res.status(400).json({ error: 'customer_id, title and scheduled_date are required' });
@@ -218,14 +225,16 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
   const engineerCheck = await validateEngineerIds(engineer_ids);
   if (engineerCheck.error) return res.status(400).json({ error: engineerCheck.error });
 
-  const result = (await db.prepare(
-    'INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, notes, created_by) VALUES (?,?,?,?,?,?)'
-  ).run(customerCheck.id, title.trim(), description || null, scheduled_date, notes || null, req.user.id));
+  const visitId = await db.transaction(async tx => {
+    const result = await tx.prepare(
+      'INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, notes, created_by) VALUES (?,?,?,?,?,?)'
+    ).run(customerCheck.id, title.trim(), description || null, scheduled_date, notes || null, req.user.id);
 
-  const visitId = result.lastInsertRowid;
+    await replaceEngineers(result.lastInsertRowid, engineerCheck.ids || [], tx);
+    return result.lastInsertRowid;
+  });
 
   if (engineerCheck.ids?.length) {
-    await replaceEngineers(visitId, engineerCheck.ids);
     if (engineerCheck.ids.length) {
       engineerCheck.ids.forEach(uid => {
         const eng = engineerCheck.engineers[uid];
@@ -318,6 +327,8 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
 
 // ── Update ───────────────────────────────────────────────────────────────────
 router.put('/:id', requireAuth, async (req, res) => {
+  const inputError = validateVisitText(req.body);
+  if (inputError) return res.status(400).json({ error: inputError });
   const mv = (await db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(req.params.id));
   if (!mv) return res.status(404).json({ error: 'Not found' });
 
@@ -348,16 +359,20 @@ router.put('/:id', requireAuth, async (req, res) => {
   }
   const engineerCheck = await validateEngineerIds(engineer_ids);
   if (engineerCheck.error) return res.status(400).json({ error: engineerCheck.error });
-  (await db.prepare(`UPDATE maintenance_visits SET
-    customer_id=COALESCE(?,customer_id), title=COALESCE(?,title),
-    description=COALESCE(?,description), scheduled_date=COALESCE(?,scheduled_date),
-    status=COALESCE(?,status), notes=COALESCE(?,notes), updated_at=datetime('now') WHERE id=?`)
-    .run(customerCheck.id, title?.trim() || null, description, scheduled_date, status, notes, mv.id));
-
-  // Replace engineer set if provided
+  let oldIds = [];
+  await db.transaction(async tx => {
+    await tx.prepare('SELECT id FROM maintenance_visits WHERE id = ? FOR UPDATE').get(mv.id);
+    await tx.prepare(`UPDATE maintenance_visits SET
+      customer_id=COALESCE(?,customer_id), title=COALESCE(?,title),
+      description=COALESCE(?,description), scheduled_date=COALESCE(?,scheduled_date),
+      status=COALESCE(?,status), notes=COALESCE(?,notes), updated_at=datetime('now') WHERE id=?`)
+      .run(customerCheck.id, title?.trim() || null, description, scheduled_date, status, notes, mv.id);
+    if (engineerCheck.ids !== undefined) {
+      oldIds = (await tx.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(mv.id)).map(r => r.user_id);
+      await replaceEngineers(mv.id, engineerCheck.ids, tx);
+    }
+  });
   if (engineerCheck.ids !== undefined) {
-    const oldIds  = (await db.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(mv.id)).map(r => r.user_id);
-    await replaceEngineers(mv.id, engineerCheck.ids);
     // Notify newly added engineers
     const newIds = engineerCheck.ids.filter(id => !oldIds.includes(id));
     if (newIds.length) {
@@ -387,8 +402,11 @@ router.post('/:id/report-sent', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   if (!['manager', 'planner', 'engineer'].includes(req.user.role))
     return res.status(403).json({ error: 'Forbidden' });
-  (await db.prepare(`UPDATE maintenance_visits SET report_sent=1, report_sent_at=datetime('now'), report_sent_by=?, updated_at=datetime('now') WHERE id=?`)
+  if (mv.status === 'cancelled') return res.status(400).json({ error: 'Cannot submit a report for a cancelled visit' });
+  const changed = (await db.prepare(`UPDATE maintenance_visits SET report_sent=1, report_sent_at=datetime('now'), report_sent_by=?, updated_at=datetime('now')
+    WHERE id=? AND report_sent=0 AND status <> 'cancelled'`)
     .run(req.user.id, mv.id));
+  if (!changed.changes) return res.json({ ok: true });
   // Notify all managers that a report was submitted
   const customer = (await db.prepare('SELECT name FROM customers WHERE id = ?').get(mv.customer_id));
   notify('report.submitted', {
@@ -402,7 +420,11 @@ router.post('/:id/report-sent', requireAuth, async (req, res) => {
 router.post('/:id/report-unsent', requireManager, async (req, res) => {
   const mv = (await db.prepare('SELECT id FROM maintenance_visits WHERE id = ?').get(req.params.id));
   if (!mv) return res.status(404).json({ error: 'Not found' });
-  (await db.prepare(`UPDATE maintenance_visits SET report_sent=0, report_sent_at=NULL, report_sent_by=NULL, updated_at=datetime('now') WHERE id=?`).run(mv.id));
+  (await db.prepare(`UPDATE maintenance_visits SET
+    status=CASE WHEN report_sent_to_customer=1 AND status='completed' THEN 'in_progress' ELSE status END,
+    report_sent=0, report_sent_at=NULL, report_sent_by=NULL,
+    report_sent_to_customer=0, report_sent_to_customer_at=NULL, report_sent_to_customer_by=NULL,
+    updated_at=datetime('now') WHERE id=?`).run(mv.id));
   res.json({ ok: true });
 });
 
@@ -411,28 +433,31 @@ router.post('/:id/report-customer-sent', requireManagerOrPlanner, async (req, re
   const mv = (await db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(req.params.id));
   if (!mv) return res.status(404).json({ error: 'Not found' });
   if (!mv.report_sent) return res.status(400).json({ error: 'Report must be marked sent by engineer first' });
-  (await db.prepare(`UPDATE maintenance_visits SET
+  if (mv.status === 'cancelled') return res.status(400).json({ error: 'Cannot forward a report for a cancelled visit' });
+  if (mv.report_sent_to_customer) return res.json({ ok: true });
+  const changed = (await db.prepare(`UPDATE maintenance_visits SET
       report_sent_to_customer=1,
       report_sent_to_customer_at=datetime('now'),
       report_sent_to_customer_by=?,
       status='completed',
       updated_at=datetime('now')
-    WHERE id=?`)
+    WHERE id=? AND report_sent=1 AND report_sent_to_customer=0 AND status <> 'cancelled'`)
     .run(req.user.id, mv.id));
+  if (!changed.changes) return res.status(409).json({ error: 'Visit report changed. Refresh before forwarding.' });
   res.json({ ok: true });
 });
 
 router.post('/:id/report-customer-unsent', requireManagerOrPlanner, async (req, res) => {
   // Revert customer-sent flag; restore status to in_progress so it can be actioned again
   const mv = (await db.prepare('SELECT status FROM maintenance_visits WHERE id = ?').get(req.params.id));
-  const revertStatus = mv?.status === 'completed' ? 'in_progress' : (mv?.status ?? 'in_progress');
+  if (!mv) return res.status(404).json({ error: 'Not found' });
   (await db.prepare(`UPDATE maintenance_visits SET
       report_sent_to_customer=0,
       report_sent_to_customer_at=NULL,
       report_sent_to_customer_by=NULL,
-      status=?,
+      status=CASE WHEN report_sent_to_customer=1 AND status='completed' THEN 'in_progress' ELSE status END,
       updated_at=datetime('now')
-    WHERE id=?`).run(revertStatus, req.params.id));
+    WHERE id=?`).run(req.params.id));
   res.json({ ok: true });
 });
 
@@ -445,7 +470,9 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
   if (!mv) return res.status(404).json({ error: 'Not found' });
   if (mv.status === 'cancelled') return res.status(400).json({ error: 'Cannot complete a cancelled visit' });
   if (mv.status === 'completed') return res.json({ ok: true }); // idempotent
-  (await db.prepare(`UPDATE maintenance_visits SET status='completed', updated_at=datetime('now') WHERE id=?`).run(mv.id));
+  const changed = (await db.prepare(`UPDATE maintenance_visits SET status='completed', updated_at=datetime('now')
+    WHERE id=? AND status <> 'cancelled'`).run(mv.id));
+  if (!changed.changes) return res.status(409).json({ error: 'Visit was cancelled before completion' });
   res.json({ ok: true });
 });
 

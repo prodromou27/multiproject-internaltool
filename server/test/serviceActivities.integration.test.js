@@ -103,6 +103,7 @@ test.before(async () => {
   app.use('/api/auth', require('../routes/auth'));
   app.use('/api/tasks', require('../routes/tasks'));
   app.use('/api/projects', require('../routes/projects'));
+  app.use('/api/maintenance-visits', require('../routes/maintenance-visits'));
   app.use('/api/time-logs', require('../routes/time-logs'));
   app.use('/api/teams', require('../routes/teams'));
   app.use('/api/customers', require('../routes/customers'));
@@ -700,4 +701,47 @@ test('concurrent project closure requests and approvals write one update each on
     assert.ok(results.every(r => [200, 400, 409].includes(r.status)));
   }
   assert.equal((await db.prepare('SELECT message FROM project_status_updates WHERE project_id=?').all(project)).length, 2);
+});
+
+test('maintenance visits validate dates, assignments and engineer notes', async () => {
+  const body = { title: 'Reviewed visit', customer_id: ids.customer, scheduled_date: '2026-11-01', engineer_ids: [ids.engineerEnabled] };
+  for (const invalid of [{ ...body, scheduled_date: '2026-02-30' }, { ...body, engineer_ids: [ids.manager] }, { ...body, notes: {} }]) {
+    assert.equal((await api('/api/maintenance-visits', { method: 'POST', token: ids.tokenManager, body: invalid })).status, 400);
+  }
+  const created = await api('/api/maintenance-visits', { method: 'POST', token: ids.tokenManager, body });
+  assert.equal(created.status, 200);
+  const endpoint = `/api/maintenance-visits/${created.data.id}`;
+  assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenDisabled, body: { notes: 'Private' } })).status, 403);
+  assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenEnabled, body: { notes: {} } })).status, 400);
+  assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenEnabled, body: { notes: 'Engineer notes' } })).status, 200);
+  assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenManager,
+    body: { title: 'Rescheduled visit', engineer_ids: [ids.engineerDisabled] } })).status, 200);
+  const assigned = await db.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id=?').all(created.data.id);
+  assert.deepEqual(assigned, [{ user_id: ids.engineerDisabled }]);
+});
+
+test('maintenance report transitions preserve original attribution and clear downstream flags', async () => {
+  const visit = (await db.prepare('INSERT INTO maintenance_visits (customer_id, title, scheduled_date, status, created_by) VALUES (?, ?, ?, ?, ?)')
+    .run(ids.customer, 'Report transitions', '2026-11-01', 'in_progress', ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?)').run(visit, ids.engineerEnabled);
+  const endpoint = `/api/maintenance-visits/${visit}`;
+  assert.equal((await api(`${endpoint}/report-sent`, { method: 'POST', token: ids.tokenEnabled })).status, 200);
+  assert.equal((await api(`${endpoint}/report-sent`, { method: 'POST', token: ids.tokenManager })).status, 200);
+  assert.equal((await db.prepare('SELECT report_sent_by FROM maintenance_visits WHERE id=?').get(visit)).report_sent_by, ids.engineerEnabled);
+  assert.equal((await api(`${endpoint}/report-customer-sent`, { method: 'POST', token: ids.tokenManager })).status, 200);
+  assert.equal((await api(`${endpoint}/report-unsent`, { method: 'POST', token: ids.tokenManager })).status, 200);
+  let stored = await db.prepare('SELECT status, report_sent, report_sent_to_customer, report_sent_to_customer_by FROM maintenance_visits WHERE id=?').get(visit);
+  assert.equal(stored.status, 'in_progress');
+  assert.equal(stored.report_sent, 0);
+  assert.equal(stored.report_sent_to_customer, 0);
+  assert.equal(stored.report_sent_to_customer_by, null);
+  assert.equal((await api(`${endpoint}/report-customer-sent`, { method: 'POST', token: ids.tokenManager })).status, 400);
+  await db.prepare("UPDATE maintenance_visits SET status='completed' WHERE id=?").run(visit);
+  assert.equal((await api(`${endpoint}/report-customer-unsent`, { method: 'POST', token: ids.tokenManager })).status, 200);
+  assert.equal((await db.prepare('SELECT status FROM maintenance_visits WHERE id=?').get(visit)).status, 'completed');
+  await db.prepare("UPDATE maintenance_visits SET status='cancelled' WHERE id=?").run(visit);
+  for (const action of ['report-sent', 'report-customer-sent', 'complete']) {
+    assert.equal((await api(`${endpoint}/${action}`, { method: 'POST', token: ids.tokenManager })).status, 400);
+  }
+  assert.equal((await api('/api/maintenance-visits/99999999/report-customer-unsent', { method: 'POST', token: ids.tokenManager })).status, 404);
 });

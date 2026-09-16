@@ -297,6 +297,10 @@ Activity Tracking).
 ### Maintenance Visits
 Multi-engineer scheduled visits with **dual report tracking** (internal `report_sent` +
 `report_sent_to_customer`), each with timestamp and actor. Excel import/export, time
+logging inputs validate text and real calendar dates; visit creation and reassignment
+save the visit and engineer set atomically. Report submission preserves its first
+actor/timestamp, undoing the internal report clears downstream forwarding metadata,
+and cancelled visits cannot be reported, forwarded or completed.
 logging, **automated next-day email reminders** (fired daily at 08:00, deduplicated per
 visit/user/day), and a per-engineer **iCal subscription feed**.
 
