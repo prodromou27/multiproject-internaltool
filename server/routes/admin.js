@@ -11,10 +11,18 @@ router.use(requireManager);
 // Number of active managers OTHER than the given user. Used to prevent the
 // system from being left with zero administrators (demote/deactivate/delete
 // of the final manager would lock everyone out of admin functions).
-async function otherActiveManagerCount(excludeUserId) {
-  return (await db.prepare(
-    "SELECT COUNT(*) AS c FROM users WHERE role = 'manager' AND active = 1 AND id != ?"
-  ).get(excludeUserId)).c;
+async function changeManagedUser(req, mutate) {
+  return db.transaction(async tx => {
+    // Serialize manager mutations in a stable order before checking the invariant.
+    await tx.prepare("SELECT id FROM users WHERE role='manager' ORDER BY id FOR UPDATE").all();
+    const actor = await tx.prepare('SELECT role, active, token_version FROM users WHERE id=?').get(req.user.id);
+    if (!actor?.active || actor.role !== 'manager' || actor.token_version !== req.user.token_version)
+      return { status: 401, error: 'Session changed. Please sign in again.' };
+    const user = await tx.prepare('SELECT * FROM users WHERE id=? FOR UPDATE').get(req.params.id);
+    if (!user) return { status: 404, error: 'User not found' };
+    const others = await tx.prepare("SELECT COUNT(*) AS c FROM users WHERE role='manager' AND active=1 AND id<>?").get(user.id);
+    return mutate(tx, user, Number(others.c));
+  });
 }
 
 /* ─── Users ─────────────────────────────────────────────── */
@@ -33,54 +41,57 @@ router.get('/users', async (req, res) => {
 
 router.post('/users', async (req, res) => {
   const { name, email, password, role } = req.body;
-  if (!name || !password || !role)
+  if (typeof name !== 'string' || typeof password !== 'string' || !role)
     return res.status(400).json({ error: 'name, password and role are required' });
   if (name.trim().length < 2 || name.trim().length > 100)
     return res.status(400).json({ error: 'Name must be between 2 and 100 characters' });
   if (!['manager', 'engineer', 'planner', 'pm'].includes(role))
     return res.status(400).json({ error: 'role must be manager, engineer, planner or pm' });
+  if (email != null && typeof email !== 'string') return res.status(400).json({ error: 'Email must be text' });
   const emailVal = email ? email.trim().toLowerCase() : null;
   if (emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal))
     return res.status(400).json({ error: 'Invalid email format' });
-  if (password.length < 12)
-    return res.status(400).json({ error: 'Password must be at least 12 characters' });
+  if (password.length < 12 || Buffer.byteLength(password, 'utf8') > 72)
+    return res.status(400).json({ error: 'Password must contain at least 12 characters and at most 72 UTF-8 bytes' });
   try {
-    const hash = bcrypt.hashSync(password, 12);
+    const hash = await bcrypt.hash(password, 12);
     const result = (await db.prepare(
       "INSERT INTO users (name, email, password, role, must_change_password, password_changed_at) VALUES (?, ?, ?, ?, 1, datetime('now'))"
     ).run(name.trim(), emailVal, hash, role));
     await logAudit(db, req, 'user', result.lastInsertRowid, name.trim(), 'user_created', `role=${role}; email=${emailVal || ''}`);
     res.json({ id: result.lastInsertRowid, name, email: emailVal, role });
   } catch (e) {
-    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already in use' });
+    if (e.code === '23505' || /unique/i.test(e.message)) return res.status(409).json({ error: 'Email already in use' });
     console.error('[admin/users POST]', e.message);
     res.status(500).json({ error: 'Failed to create user' });
   }
 });
 
 router.put('/users/:id', async (req, res) => {
-  const user = (await db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id));
-  if (!user) return res.status(404).json({ error: 'User not found' });
   const { name, email, role } = req.body;
+  if (name !== undefined && (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100))
+    return res.status(400).json({ error: 'Name must be between 2 and 100 characters' });
+  if (email != null && typeof email !== 'string') return res.status(400).json({ error: 'Email must be text' });
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
     return res.status(400).json({ error: 'Invalid email format' });
-  if (role && !['manager', 'engineer', 'planner', 'pm'].includes(role))
+  if (role !== undefined && !['manager', 'engineer', 'planner', 'pm'].includes(role))
     return res.status(400).json({ error: 'Invalid role' });
-  // Block demoting the last active manager (incl. self) out of the manager role.
-  if (role && role !== 'manager' && user.role === 'manager' && user.active && (await otherActiveManagerCount(user.id)) === 0)
-    return res.status(400).json({ error: 'Cannot change the role of the last active manager' });
   try {
-    (await db.prepare(`UPDATE users SET
-      name  = COALESCE(?, name),
-      email = COALESCE(?, email),
-      role  = COALESCE(?, role),
-      token_version = token_version + 1
-      WHERE id = ?`
-    ).run(name?.trim() || null, email ? email.trim().toLowerCase() : null, role || null, user.id));
+    const result = await changeManagedUser(req, async (tx, user, others) => {
+      if (role && role !== 'manager' && user.role === 'manager' && user.active && others === 0)
+        return { status: 400, error: 'Cannot change the role of the last active manager' };
+      await tx.prepare(`UPDATE users SET
+        name = COALESCE(?, name), email = ?, role = COALESCE(?, role),
+        token_version = token_version + 1 WHERE id = ?`
+      ).run(name?.trim() || null, email === undefined ? user.email : (email?.trim().toLowerCase() || null), role || null, user.id);
+      return { user };
+    });
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    const { user } = result;
     await logAudit(db, req, 'user', user.id, user.name, 'user_updated', `role ${user.role}->${role || user.role}; email_changed=${email ? 'yes' : 'no'}`);
     res.json({ ok: true });
   } catch (e) {
-    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already in use' });
+    if (e.code === '23505' || /unique/i.test(e.message)) return res.status(409).json({ error: 'Email already in use' });
     console.error('[admin/users PUT]', e.message);
     res.status(500).json({ error: 'Failed to update user' });
   }
@@ -88,11 +99,11 @@ router.put('/users/:id', async (req, res) => {
 
 router.post('/users/:id/reset-password', async (req, res) => {
   const { password } = req.body;
-  if (!password || password.length < 12)
-    return res.status(400).json({ error: 'Password must be at least 12 characters' });
+  if (typeof password !== 'string' || password.length < 12 || Buffer.byteLength(password, 'utf8') > 72)
+    return res.status(400).json({ error: 'Password must contain at least 12 characters and at most 72 UTF-8 bytes' });
   const user = (await db.prepare('SELECT id, name FROM users WHERE id = ?').get(req.params.id));
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const hash = bcrypt.hashSync(password, 12);
+  const hash = await bcrypt.hash(password, 12);
   // Force the user to choose a new password on their next login
   (await db.prepare("UPDATE users SET password = ?, must_change_password = 1, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ?").run(hash, req.params.id));
   await logAudit(db, req, 'user', req.params.id, user.name, 'user_password_reset', 'Admin reset user password');
@@ -100,27 +111,30 @@ router.post('/users/:id/reset-password', async (req, res) => {
 });
 
 router.post('/users/:id/toggle-active', async (req, res) => {
-  const user = (await db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id));
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  // Prevent deactivating yourself
-  if (user.id === req.user.id) return res.status(400).json({ error: 'You cannot deactivate yourself' });
-  // Prevent deactivating the last remaining active manager
-  if (user.active && user.role === 'manager' && (await otherActiveManagerCount(user.id)) === 0)
-    return res.status(400).json({ error: 'Cannot deactivate the last active manager' });
-  (await db.prepare('UPDATE users SET active = ?, token_version = token_version + 1 WHERE id = ?').run(user.active ? 0 : 1, user.id));
+  const result = await changeManagedUser(req, async (tx, user, others) => {
+    if (user.id === req.user.id) return { status: 400, error: 'You cannot deactivate yourself' };
+    if (user.active && user.role === 'manager' && others === 0)
+      return { status: 400, error: 'Cannot deactivate the last active manager' };
+    await tx.prepare('UPDATE users SET active = ?, token_version = token_version + 1 WHERE id = ?').run(user.active ? 0 : 1, user.id);
+    return { user };
+  });
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  const { user } = result;
   await logAudit(db, req, 'user', user.id, user.name, user.active ? 'user_deactivated' : 'user_activated', `role=${user.role}`);
   res.json({ active: !user.active });
 });
 
 router.delete('/users/:id', async (req, res) => {
-  const user = (await db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id));
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  if (user.id === req.user.id) return res.status(400).json({ error: 'You cannot delete yourself' });
-  // Prevent deleting the last remaining active manager
-  if (user.role === 'manager' && user.active && (await otherActiveManagerCount(user.id)) === 0)
-    return res.status(400).json({ error: 'Cannot delete the last active manager' });
   try {
-    (await db.prepare('DELETE FROM users WHERE id = ?').run(user.id));
+    const result = await changeManagedUser(req, async (tx, user, others) => {
+      if (user.id === req.user.id) return { status: 400, error: 'You cannot delete yourself' };
+      if (user.role === 'manager' && user.active && others === 0)
+        return { status: 400, error: 'Cannot delete the last active manager' };
+      await tx.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+      return { user };
+    });
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    const { user } = result;
     await logAudit(db, req, 'user', user.id, user.name, 'user_deleted', `role=${user.role}`);
     res.json({ ok: true });
   } catch (e) {

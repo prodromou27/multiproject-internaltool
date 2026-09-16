@@ -263,6 +263,11 @@ prevent duplicate lifecycle updates from concurrent requests. Project dates and
 member lists are validated; deadlines can be cleared, and pinning respects project
 visibility.
 
+Manager role changes, account activation and deletion serialize within a transaction
+and re-check the acting manager's session before enforcing the last-manager guard.
+Admin user inputs validate types and bcrypt's 72-byte password limit; hashes are
+computed asynchronously, duplicate emails return 409, and optional emails can be cleared.
+
 ### Tasks
 Per-project or ad-hoc. Statuses validated against an enum; priorities
 low/medium/high/critical. Supports comments with **@mention notifications**,
@@ -296,12 +301,12 @@ Activity Tracking).
 
 ### Maintenance Visits
 Multi-engineer scheduled visits with **dual report tracking** (internal `report_sent` +
-`report_sent_to_customer`), each with timestamp and actor. Excel import/export, time
-logging inputs validate text and real calendar dates; visit creation and reassignment
+`report_sent_to_customer`), each with timestamp and actor. Inputs validate text and
+real calendar dates; visit creation and reassignment
 save the visit and engineer set atomically. Report submission preserves its first
 actor/timestamp, undoing the internal report clears downstream forwarding metadata,
 and cancelled visits cannot be reported, forwarded or completed.
-logging, **automated next-day email reminders** (fired daily at 08:00, deduplicated per
+Excel import/export, time logging, **automated next-day email reminders** (fired daily at 08:00, deduplicated per
 visit/user/day), and a per-engineer **iCal subscription feed**.
 
 ### Service Activity Tracking (MSP Operations Log)

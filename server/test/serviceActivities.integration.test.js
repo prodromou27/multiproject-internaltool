@@ -101,6 +101,7 @@ test.before(async () => {
   app.use(express.json());
   app.use('/api', require('../middleware/session').protectCookieRequests);
   app.use('/api/auth', require('../routes/auth'));
+  app.use('/api/admin', require('../routes/admin'));
   app.use('/api/tasks', require('../routes/tasks'));
   app.use('/api/projects', require('../routes/projects'));
   app.use('/api/maintenance-visits', require('../routes/maintenance-visits'));
@@ -744,4 +745,56 @@ test('maintenance report transitions preserve original attribution and clear dow
     assert.equal((await api(`${endpoint}/${action}`, { method: 'POST', token: ids.tokenManager })).status, 400);
   }
   assert.equal((await api('/api/maintenance-visits/99999999/report-customer-unsent', { method: 'POST', token: ids.tokenManager })).status, 404);
+});
+
+test('admin user input validation, duplicate emails and email clearing return predictable results', async () => {
+  const body = { name: 'Admin test engineer', email: 'admin-test@test.local', password: 'new-password-123', role: 'engineer' };
+  for (const invalid of [{ ...body, name: {} }, { ...body, email: {} }, { ...body, password: {} }, { ...body, password: 'x'.repeat(73) }]) {
+    assert.equal((await api('/api/admin/users', { method: 'POST', token: ids.tokenManager, body: invalid })).status, 400);
+  }
+  const created = await api('/api/admin/users', { method: 'POST', token: ids.tokenManager, body });
+  assert.equal(created.status, 200);
+  assert.equal((await api('/api/admin/users', { method: 'POST', token: ids.tokenManager, body })).status, 409);
+  const endpoint = `/api/admin/users/${created.data.id}`;
+  assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenManager, body: { name: {} } })).status, 400);
+  assert.equal((await api(`${endpoint}/reset-password`, { method: 'POST', token: ids.tokenManager, body: { password: {} } })).status, 400);
+  assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenManager, body: { email: null } })).status, 200);
+  assert.equal((await db.prepare('SELECT email FROM users WHERE id=?').get(created.data.id)).email, null);
+  assert.equal((await api(`/api/admin/users/${ids.manager}/toggle-active`, { method: 'POST', token: ids.tokenManager })).status, 400);
+  assert.equal((await api(`/api/admin/users/${ids.manager}`, { method: 'DELETE', token: ids.tokenManager })).status, 400);
+  assert.equal((await api('/api/admin/users', { method: 'POST', token: ids.tokenEnabled, body })).status, 403);
+});
+
+test('the final active manager cannot demote themselves', async () => {
+  const original = await db.prepare("SELECT id FROM users WHERE role='manager' AND active=1").all();
+  const user = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+    .run('Final manager', 'final-manager@test.local', bcrypt.hashSync('pw', 4), 'manager')).lastInsertRowid;
+  try {
+    for (const row of original) await db.prepare('UPDATE users SET active=0 WHERE id=?').run(row.id);
+    assert.equal((await api(`/api/admin/users/${user}`, { method: 'PUT', token: signJwt({ id: user }), body: { role: 'engineer' } })).status, 400);
+    assert.equal((await db.prepare('SELECT role FROM users WHERE id=?').get(user)).role, 'manager');
+  } finally {
+    for (const row of original) await db.prepare('UPDATE users SET active=1 WHERE id=?').run(row.id);
+    await db.prepare('UPDATE users SET active=0 WHERE id=?').run(user);
+  }
+});
+
+test('concurrent manager self-demotions preserve an active manager on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const original = await db.prepare("SELECT id FROM users WHERE role='manager' AND active=1").all();
+  const managers = [];
+  for (const suffix of ['a', 'b']) managers.push((await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+    .run(`Concurrent manager ${suffix}`, `concurrent-manager-${suffix}@test.local`, bcrypt.hashSync('pw', 4), 'manager')).lastInsertRowid);
+  try {
+    for (const row of original) await db.prepare('UPDATE users SET active=0 WHERE id=?').run(row.id);
+    const results = await Promise.all(managers.map(id => api(`/api/admin/users/${id}`, {
+      method: 'PUT', token: signJwt({ id }), body: { role: 'engineer' },
+    })));
+    assert.equal(results.filter(r => r.status === 200).length, 1);
+    assert.ok(results.every(r => [200, 400, 401].includes(r.status)));
+    const remaining = await db.prepare("SELECT COUNT(*) AS c FROM users WHERE role='manager' AND active=1").get();
+    assert.equal(Number(remaining.c), 1);
+  } finally {
+    for (const row of original) await db.prepare('UPDATE users SET active=1 WHERE id=?').run(row.id);
+    for (const id of managers) await db.prepare('UPDATE users SET active=0 WHERE id=?').run(id);
+  }
 });
