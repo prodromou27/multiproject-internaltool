@@ -653,6 +653,8 @@ const COMMANDS = [
   { label: 'Tasks', path: '/tasks', icon: CheckSquare, roles: ['manager','engineer'] },
   { label: 'Maintenance visits', path: '/maintenance-visits', icon: Wrench, roles: ['manager','engineer','planner','pm'] },
   { label: 'Customers', path: '/customers', icon: Building2, roles: ['manager'] },
+  { label: 'Activity Log', path: '/activity-log', icon: ClipboardList, roles: ['manager','engineer','pm'], requiresServiceActivity: true },
+  { label: 'Service Operations', path: '/service-operations', icon: Activity, roles: ['manager'] },
   { label: 'Reports', path: '/reports', icon: BarChart2, roles: ['manager'] },
   { label: 'SLA dashboard', path: '/sla', icon: ShieldCheck, roles: ['manager'] },
   { label: 'Team workload', path: '/workload', icon: UsersIcon, roles: ['manager'] },
@@ -662,15 +664,19 @@ const COMMANDS = [
 ];
 
 function CommandPalette({ open, onClose }) {
-  const { user } = useAuth();
+  const { user, saAccess } = useAuth();
   const navigate = useNavigate();
   const inputRef = useRef(null);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const commands = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return COMMANDS.filter(c => c.roles.includes(user.role) && (!q || c.label.toLowerCase().includes(q)));
-  }, [query, user.role]);
+    return COMMANDS.filter(c =>
+      c.roles.includes(user.role) &&
+      (!c.requiresServiceActivity || user.role === 'manager' || saAccess?.enabled) &&
+      (!q || c.label.toLowerCase().includes(q))
+    );
+  }, [query, user.role, saAccess?.enabled]);
 
   useEffect(() => {
     if (!open) return;
