@@ -102,6 +102,7 @@ test.before(async () => {
   app.use('/api', require('../middleware/session').protectCookieRequests);
   app.use('/api/auth', require('../routes/auth'));
   app.use('/api/tasks', require('../routes/tasks'));
+  app.use('/api/time-logs', require('../routes/time-logs'));
   app.use('/api/teams', require('../routes/teams'));
   app.use('/api/customers', require('../routes/customers'));
   app.use('/api/service-activities', require('../routes/serviceActivities'));
@@ -607,4 +608,38 @@ test('bulk task edits respect role boundaries and clear waiting notes', async ()
   const stored = await db.prepare('SELECT status, pending_from_customer FROM tasks WHERE id=?').get(task);
   assert.equal(stored.status, 'in_progress');
   assert.equal(stored.pending_from_customer, null);
+});
+
+test('time logs enforce task visibility, ownership and private summaries', async () => {
+  const task = (await db.prepare('INSERT INTO tasks (title, assigned_to, created_by) VALUES (?, ?, ?)')
+    .run('Time log task', ids.engineerEnabled, ids.manager)).lastInsertRowid;
+  const body = { task_id: task, hours: 1.5, description: 'Work performed' };
+  assert.equal((await api('/api/time-logs', { method: 'POST', token: ids.tokenDisabled, body })).status, 403);
+  const created = await api('/api/time-logs', { method: 'POST', token: ids.tokenEnabled, body });
+  assert.equal(created.status, 200);
+  assert.equal((await api(`/api/time-logs?task_id=${task}`, { token: ids.tokenDisabled })).status, 403);
+  assert.equal((await api(`/api/time-logs/${created.data.id}`, { method: 'DELETE', token: ids.tokenDisabled })).status, 403);
+  for (const role of ['planner', 'pm']) {
+    const user = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+      .run(`Time ${role}`, `time-${role}@test.local`, bcrypt.hashSync('pw', 4), role)).lastInsertRowid;
+    const token = signJwt({ id: user });
+    assert.equal((await api(`/api/time-logs?task_id=${task}`, { token })).status, 403);
+    assert.equal((await api('/api/time-logs', { method: 'POST', token, body })).status, 403);
+    const summary = await api(`/api/time-logs/summary?user_id=${ids.engineerEnabled}`, { token });
+    assert.equal(summary.status, 200);
+    assert.equal(Number(summary.data.total), 0);
+  }
+  assert.equal(Number((await api(`/api/time-logs/summary?user_id=${ids.engineerEnabled}`, { token: ids.tokenManager })).data.total), 1.5);
+});
+
+test('time log input validation rejects malformed targets, hours and dates', async () => {
+  for (const body of [{ task_id: -1, hours: 1 }, { task_id: {}, hours: 1 }, { task_id: 1, hours: true },
+    { task_id: 1, hours: [1] }, { task_id: 1, hours: 'Infinity' }, { task_id: 1, hours: 25 },
+    { task_id: 1, hours: 1, description: {} }, { task_id: 1, visit_id: 1, hours: 1 }]) {
+    assert.equal((await api('/api/time-logs', { method: 'POST', token: ids.tokenManager, body })).status, 400, JSON.stringify(body));
+  }
+  for (const path of ['/api/time-logs?task_id=abc', '/api/time-logs/mine?from=2026-02-30&to=2026-03-01',
+    '/api/time-logs/summary?month=2026-13', '/api/time-logs/summary?user_id=abc']) {
+    assert.equal((await api(path, { token: ids.tokenManager })).status, 400, path);
+  }
 });

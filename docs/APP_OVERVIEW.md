@@ -265,6 +265,10 @@ duplication, bulk status/delete (≤500 IDs, role-scoped), time logging, and Exc
 export. Bulk edits enforce the same manager/engineer boundary as individual edits.
 Managers can clear an assignee or deadline; task inputs validate text, dates and
 references, and new assignments require an active engineer.
+Task time logs follow task visibility (manager or assigned engineer); maintenance
+visit logging retains planner/PM access. Aggregate hours are restricted to the
+current user unless requested by a manager. Time log IDs, hours and date filters
+are validated before querying or storing data.
 Engineers self-assign and are confined to their own tasks and member projects.
 
 ### Customers
