@@ -65,8 +65,42 @@ router.get('/', requireAuth, async (req, res) => {
 const VALID_TASK_STATUSES = new Set(['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','cancelled','closed']);
 const VALID_PRIORITIES    = new Set(['low','medium','high','critical']);
 
+function validateTaskInput(body, creating = false) {
+  if (creating || body.title !== undefined) {
+    if (typeof body.title !== 'string' || !body.title.trim()) return 'Title required';
+    if (body.title.trim().length > 500) return 'Title cannot exceed 500 characters';
+  }
+  for (const [field, max] of [['description', 10000], ['pending_from_customer', 10000]]) {
+    if (body[field] != null && (typeof body[field] !== 'string' || body[field].length > max))
+      return `${field} must be text of at most ${max} characters`;
+  }
+  if (body.priority !== undefined && !VALID_PRIORITIES.has(body.priority)) return 'Invalid priority value';
+  if (body.status !== undefined && !VALID_TASK_STATUSES.has(body.status)) return 'Invalid status value';
+  if (body.deadline != null && body.deadline !== '') {
+    if (typeof body.deadline !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.deadline)
+      || Number.isNaN(Date.parse(body.deadline)) || new Date(body.deadline).toISOString().slice(0, 10) !== body.deadline)
+      return 'Deadline must be a valid YYYY-MM-DD date';
+  }
+  for (const field of ['project_id', 'assigned_to']) {
+    if (body[field] != null && body[field] !== '' && (!Number.isSafeInteger(Number(body[field])) || Number(body[field]) < 1))
+      return `${field} must be a positive integer`;
+  }
+  return null;
+}
+
+async function validateTaskRelationships(projectId, assigneeId) {
+  if (projectId && !await db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return 'Project not found';
+  if (assigneeId) {
+    const user = await db.prepare('SELECT role, active FROM users WHERE id = ?').get(assigneeId);
+    if (!user || !user.active || user.role !== 'engineer') return 'Assign tasks to an active engineer';
+  }
+  return null;
+}
+
 router.post('/', requireAuth, async (req, res) => {
   if (req.user.role === 'pm' || req.user.role === 'planner') return res.status(403).json({ error: 'Forbidden' });
+  const inputError = validateTaskInput(req.body, true);
+  if (inputError) return res.status(400).json({ error: inputError });
   const { project_id, title, description, priority, deadline, is_adhoc } = req.body;
   let { assigned_to } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'Title required' });
@@ -83,8 +117,11 @@ router.post('/', requireAuth, async (req, res) => {
     assigned_to = req.user.id;
   }
 
+  const relationshipError = await validateTaskRelationships(project_id, assigned_to);
+  if (relationshipError) return res.status(400).json({ error: relationshipError });
+
   const result = (await db.prepare(`INSERT INTO tasks (project_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(project_id || null, title, description, priority || 'medium', deadline || null, assigned_to || null, req.user.id, is_adhoc ? 1 : 0));
+    .run(project_id || null, title.trim(), description, priority || 'medium', deadline || null, assigned_to || null, req.user.id, is_adhoc ? 1 : 0));
 
   // Log activity
   const taskId = result.lastInsertRowid;
@@ -114,6 +151,10 @@ router.post('/', requireAuth, async (req, res) => {
 router.put('/:id', requireAuth, async (req, res) => {
   const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
   if (!task) return res.status(404).json({ error: 'Not found' });
+  if (req.user.role !== 'manager' && (req.user.role !== 'engineer' || task.assigned_to !== req.user.id))
+    return res.status(403).json({ error: 'Forbidden' });
+  const inputError = validateTaskInput(req.body);
+  if (inputError) return res.status(400).json({ error: inputError });
 
   if (req.user.role === 'engineer') {
     if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
@@ -156,6 +197,11 @@ router.put('/:id', requireAuth, async (req, res) => {
   }
 
   const { title, description, priority, deadline, assigned_to, status, is_adhoc, pending_from_customer } = req.body;
+  const nextAssignee = assigned_to === undefined ? task.assigned_to : (assigned_to || null);
+  if (assigned_to !== undefined && nextAssignee !== task.assigned_to) {
+    const relationshipError = await validateTaskRelationships(null, nextAssignee);
+    if (relationshipError) return res.status(400).json({ error: relationshipError });
+  }
 
   // Validate enum fields for non-engineer callers
   if (status    && !VALID_TASK_STATUSES.has(status))    return res.status(400).json({ error: 'Invalid status value' });
@@ -172,10 +218,10 @@ router.put('/:id', requireAuth, async (req, res) => {
   }
 
   (await db.prepare(`UPDATE tasks SET title=COALESCE(?,title), description=COALESCE(?,description),
-    priority=COALESCE(?,priority), deadline=?, assigned_to=COALESCE(?,assigned_to),
+    priority=COALESCE(?,priority), deadline=?, assigned_to=?,
     status=COALESCE(?,status), is_adhoc=COALESCE(?,is_adhoc),
     pending_from_customer=?, updated_at=datetime('now') WHERE id=?`)
-    .run(title, description, priority, deadline ?? task.deadline, assigned_to, status,
+    .run(title?.trim(), description, priority, deadline === undefined ? task.deadline : (deadline || null), nextAssignee, status,
          is_adhoc != null ? (is_adhoc ? 1 : 0) : null, newPfc, task.id));
 
   // Log status change
@@ -206,6 +252,7 @@ router.put('/:id', requireAuth, async (req, res) => {
 
 /* ── Bulk operations ──────────────────────────────────────── */
 router.post('/bulk', requireAuth, async (req, res) => {
+  if (req.user.role !== 'manager' && req.user.role !== 'engineer') return res.status(403).json({ error: 'Forbidden' });
   if (req.user.role === 'planner' || req.user.role === 'pm')
     return res.status(403).json({ error: 'Forbidden' });
   const { ids, action, status } = req.body;
@@ -233,16 +280,12 @@ router.post('/bulk', requireAuth, async (req, res) => {
       allowed_ids = tasks.map(t => t.id);
     } else if (req.user.role === 'engineer') {
       allowed_ids = tasks.filter(t => t.assigned_to === req.user.id).map(t => t.id);
-    } else {
-      // planner/pm: tasks in their assigned projects or assigned to them
-      const myProjects = new Set(
-        (await db.prepare('SELECT project_id FROM project_assignments WHERE user_id = ?').all(req.user.id)).map(r => r.project_id)
-      );
-      allowed_ids = tasks.filter(t => t.assigned_to === req.user.id || myProjects.has(t.project_id)).map(t => t.id);
     }
     await db.transaction(async (tx) => {
-      const upd = tx.prepare(`UPDATE tasks SET status=?, updated_at=datetime('now') WHERE id=?`);
-      for (const id of allowed_ids) await upd.run(status, id);
+      const upd = tx.prepare(`UPDATE tasks SET status=?,
+        pending_from_customer=CASE WHEN ? IN ('waiting_customer','waiting_vendor') THEN pending_from_customer ELSE NULL END,
+        updated_at=datetime('now') WHERE id=?`);
+      for (const id of allowed_ids) await upd.run(status, status, id);
     });
     return res.json({ ok: true, affected: allowed_ids.length });
   }
@@ -375,7 +418,8 @@ router.post('/:id/comments', requireAuth, async (req, res) => {
   if (req.user.role === 'engineer' && task.assigned_to !== req.user.id)
     return res.status(403).json({ error: 'Forbidden' });
   const { message } = req.body;
-  if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
+  if (typeof message !== 'string' || !message.trim()) return res.status(400).json({ error: 'Message required' });
+  if (message.length > 10000) return res.status(400).json({ error: 'Message cannot exceed 10000 characters' });
   const result = (await db.prepare(`INSERT INTO task_comments (task_id, user_id, message) VALUES (?, ?, ?)`)
     .run(req.params.id, req.user.id, message.trim()));
   logActivity(task.project_id, req.user.id, 'task_comment', `"${task.title}"`);

@@ -262,7 +262,10 @@ Per-project or ad-hoc. Statuses validated against an enum; priorities
 low/medium/high/critical. Supports comments with **@mention notifications**,
 dependencies with a **transitive cycle check** (BFS) and `is_blocked` computation,
 duplication, bulk status/delete (≤500 IDs, role-scoped), time logging, and Excel
-export. Engineers self-assign and are confined to their own tasks and member projects.
+export. Bulk edits enforce the same manager/engineer boundary as individual edits.
+Managers can clear an assignee or deadline; task inputs validate text, dates and
+references, and new assignments require an active engineer.
+Engineers self-assign and are confined to their own tasks and member projects.
 
 ### Customers
 CRM-lite with encrypted PII, now extended with service-contract fields (see §3) and

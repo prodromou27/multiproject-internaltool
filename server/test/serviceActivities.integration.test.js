@@ -101,6 +101,7 @@ test.before(async () => {
   app.use(express.json());
   app.use('/api', require('../middleware/session').protectCookieRequests);
   app.use('/api/auth', require('../routes/auth'));
+  app.use('/api/tasks', require('../routes/tasks'));
   app.use('/api/teams', require('../routes/teams'));
   app.use('/api/customers', require('../routes/customers'));
   app.use('/api/service-activities', require('../routes/serviceActivities'));
@@ -569,4 +570,41 @@ test('concurrent reset requests consume a token only once on PostgreSQL', { skip
   const stored = await db.prepare('SELECT password, token_version FROM users WHERE id = ?').get(user);
   assert.equal(await bcrypt.compare(`concurrent-password-${winner}`, stored.password), true);
   assert.equal(stored.token_version, 1);
+});
+
+test('task edits can clear assignments and validate fields and relationships', async () => {
+  const created = await api('/api/tasks', { method: 'POST', token: ids.tokenManager,
+    body: { title: '  Assignment test  ', assigned_to: ids.engineerEnabled, deadline: '2026-10-15' } });
+  assert.equal(created.status, 200);
+  const endpoint = `/api/tasks/${created.data.id}`;
+  assert.equal((await db.prepare('SELECT title FROM tasks WHERE id=?').get(created.data.id)).title, 'Assignment test');
+  for (const body of [{ title: {} }, { title: '' }, { title: 'x'.repeat(501) }, { description: [] },
+    { deadline: '2026-02-30' }, { priority: '' }, { assigned_to: ids.manager }, { assigned_to: 99999999 }]) {
+    assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenManager, body })).status, 400, JSON.stringify(body));
+  }
+  assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenManager, body: { assigned_to: null, deadline: null } })).status, 200);
+  const task = await db.prepare('SELECT assigned_to, deadline FROM tasks WHERE id=?').get(created.data.id);
+  assert.equal(task.assigned_to, null);
+  assert.equal(task.deadline, null);
+  assert.equal((await api('/api/tasks', { method: 'POST', token: ids.tokenManager,
+    body: { title: 'Missing project', project_id: 99999999 } })).status, 400);
+});
+
+test('bulk task edits respect role boundaries and clear waiting notes', async () => {
+  const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Bulk project', ids.manager)).lastInsertRowid;
+  const task = (await db.prepare('INSERT INTO tasks (title, project_id, assigned_to, created_by, status, pending_from_customer) VALUES (?, ?, ?, ?, ?, ?)')
+    .run('Bulk task', project, ids.engineerEnabled, ids.manager, 'waiting_customer', 'Old waiting note')).lastInsertRowid;
+  for (const role of ['planner', 'pm']) {
+    const user = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+      .run(`Bulk ${role}`, `bulk-${role}@test.local`, bcrypt.hashSync('pw', 4), role)).lastInsertRowid;
+    await db.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?)').run(project, user);
+    assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: signJwt({ id: user }),
+      body: { ids: [task], action: 'status', status: 'completed' } })).status, 403);
+  }
+  const body = { ids: [task], action: 'status', status: 'in_progress' };
+  assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenDisabled, body })).data.affected, 0);
+  assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenEnabled, body })).data.affected, 1);
+  const stored = await db.prepare('SELECT status, pending_from_customer FROM tasks WHERE id=?').get(task);
+  assert.equal(stored.status, 'in_progress');
+  assert.equal(stored.pending_from_customer, null);
 });
