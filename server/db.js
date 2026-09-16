@@ -42,7 +42,7 @@ const pool = new Pool({
 pool.on('error', (err) => console.error('[pg pool]', err.message));
 
 // Tables with no `id` column — never append RETURNING id to inserts into these.
-const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|task_dependencies|task_custom_values|user_project_pins)\b/i;
+const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|service_activity_technologies)\b/i;
 
 // ── SQL translation (SQLite → Postgres), memoized per unique SQL string ──────
 const _cache = new Map();
@@ -172,15 +172,33 @@ async function init() {
     );
 
     CREATE TABLE IF NOT EXISTS customers (
-      id            SERIAL PRIMARY KEY,
-      name          TEXT NOT NULL,
-      contact_name  TEXT,
-      contact_email TEXT,
-      contact_phone TEXT,
-      address       TEXT,
-      notes         TEXT,
-      created_by    INTEGER REFERENCES users(id),
-      created_at    TEXT DEFAULT ${NOW}
+      id                             SERIAL PRIMARY KEY,
+      name                           TEXT NOT NULL,
+      contact_name                   TEXT,
+      contact_email                  TEXT,
+      contact_phone                  TEXT,
+      address                        TEXT,
+      notes                          TEXT,
+      created_by                     INTEGER REFERENCES users(id),
+      created_at                     TEXT DEFAULT ${NOW},
+      customer_code                  TEXT,
+      active                         INTEGER NOT NULL DEFAULT 1,
+      service_activity_enabled       INTEGER NOT NULL DEFAULT 0,
+      primary_contact                TEXT,
+      location                       TEXT,
+      contract_type                  TEXT,
+      contract_start_date            TEXT,
+      contract_end_date              TEXT,
+      reporting_frequency            TEXT,
+      included_hours                 REAL,
+      contract_hour_period           TEXT CHECK(contract_hour_period IN ('monthly','annual')),
+      service_notes                  TEXT,
+      require_duration                INTEGER NOT NULL DEFAULT 0,
+      require_ticket_reference        INTEGER NOT NULL DEFAULT 0,
+      require_technology              INTEGER NOT NULL DEFAULT 0,
+      require_category                INTEGER NOT NULL DEFAULT 0,
+      require_notes                   INTEGER NOT NULL DEFAULT 0,
+      require_billable_classification INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS projects (
@@ -247,7 +265,7 @@ async function init() {
 
     CREATE TABLE IF NOT EXISTS attachments (
       id            SERIAL PRIMARY KEY,
-      project_id    INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      project_id    INTEGER REFERENCES projects(id) ON DELETE CASCADE,
       original_name TEXT NOT NULL,
       stored_name   TEXT NOT NULL,
       mime_type     TEXT,
@@ -445,6 +463,114 @@ async function init() {
       value    TEXT,
       PRIMARY KEY (task_id, field_id)
     );
+
+    -- ── Service Activity Tracking (MSP Operations Log) ──────────────────────
+    CREATE TABLE IF NOT EXISTS teams (
+      id                        SERIAL PRIMARY KEY,
+      name                      TEXT NOT NULL UNIQUE,
+      description               TEXT,
+      service_activity_enabled  INTEGER NOT NULL DEFAULT 0,
+      created_at                TEXT DEFAULT ${NOW}
+    );
+
+    CREATE TABLE IF NOT EXISTS team_members (
+      team_id     INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      added_at    TEXT DEFAULT ${NOW},
+      PRIMARY KEY (team_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS customer_teams (
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      team_id     INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      PRIMARY KEY (customer_id, team_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS customer_engineers (
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      PRIMARY KEY (customer_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS activity_categories (
+      id         SERIAL PRIMARY KEY,
+      name       TEXT NOT NULL UNIQUE,
+      active     INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${NOW}
+    );
+
+    CREATE TABLE IF NOT EXISTS activity_subcategories (
+      id          SERIAL PRIMARY KEY,
+      category_id INTEGER NOT NULL REFERENCES activity_categories(id) ON DELETE CASCADE,
+      name        TEXT NOT NULL,
+      active      INTEGER NOT NULL DEFAULT 1,
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT DEFAULT ${NOW},
+      UNIQUE(category_id, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS technologies (
+      id         SERIAL PRIMARY KEY,
+      name       TEXT NOT NULL UNIQUE,
+      active     INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${NOW}
+    );
+
+    CREATE TABLE IF NOT EXISTS service_activities (
+      id                          SERIAL PRIMARY KEY,
+      activity_reference          TEXT NOT NULL UNIQUE,
+      customer_id                 INTEGER NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+      team_id                     INTEGER NOT NULL REFERENCES teams(id) ON DELETE RESTRICT,
+      engineer_id                 INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      activity_date               TEXT NOT NULL,
+      start_time                  TEXT,
+      end_time                    TEXT,
+      duration_minutes            INTEGER,
+      category_id                 INTEGER NOT NULL REFERENCES activity_categories(id) ON DELETE RESTRICT,
+      subcategory_id              INTEGER REFERENCES activity_subcategories(id) ON DELETE SET NULL,
+      title                       TEXT NOT NULL,
+      description                 TEXT,
+      status                      TEXT NOT NULL DEFAULT 'planned',
+      priority                    TEXT CHECK(priority IN ('low','medium','high','critical')),
+      work_location               TEXT CHECK(work_location IN ('remote','onsite','internal','hybrid')),
+      customer_impact             TEXT,
+      ticket_reference            TEXT,
+      external_case_reference     TEXT,
+      billable_classification     TEXT CHECK(billable_classification IN ('included_in_contract','billable','non_billable','internal','not_applicable')),
+      billable_minutes            INTEGER,
+      follow_up_required          INTEGER NOT NULL DEFAULT 0,
+      follow_up_date              TEXT,
+      related_project_id          INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+      related_task_id             INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+      related_visit_id            INTEGER REFERENCES maintenance_visits(id) ON DELETE SET NULL,
+      change_type                 TEXT,
+      change_reason               TEXT,
+      previous_state               TEXT,
+      new_state                   TEXT,
+      change_risk                 TEXT,
+      rollback_available           INTEGER,
+      customer_approval_reference TEXT,
+      verified_by                 INTEGER REFERENCES users(id),
+      verification_notes          TEXT,
+      created_by                  INTEGER NOT NULL REFERENCES users(id),
+      created_at                  TEXT DEFAULT ${NOW},
+      updated_by                  INTEGER REFERENCES users(id),
+      updated_at                  TEXT DEFAULT ${NOW},
+      completed_at                TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS service_activity_technologies (
+      service_activity_id INTEGER NOT NULL REFERENCES service_activities(id) ON DELETE CASCADE,
+      technology_id        INTEGER NOT NULL REFERENCES technologies(id) ON DELETE CASCADE,
+      PRIMARY KEY (service_activity_id, technology_id)
+    );
+
+    -- Added here (not on the attachments CREATE TABLE above) because attachments
+    -- is defined earlier in this file, before service_activities exists.
+    ALTER TABLE attachments ADD COLUMN IF NOT EXISTS service_activity_id INTEGER REFERENCES service_activities(id) ON DELETE CASCADE;
+    CREATE INDEX IF NOT EXISTS idx_attachments_activity ON attachments(service_activity_id);
   `);
 
   await applyCompatibilityMigrations();
@@ -478,10 +604,22 @@ async function init() {
     CREATE INDEX IF NOT EXISTS idx_tcv_task_id             ON task_custom_values(task_id);
     CREATE INDEX IF NOT EXISTS idx_upp_user_id             ON user_project_pins(user_id);
     CREATE INDEX IF NOT EXISTS idx_users_ical_token        ON users(ical_token_hash);
+
+    CREATE INDEX IF NOT EXISTS idx_sa_customer_date        ON service_activities(customer_id, activity_date);
+    CREATE INDEX IF NOT EXISTS idx_sa_engineer_date         ON service_activities(engineer_id, activity_date);
+    CREATE INDEX IF NOT EXISTS idx_sa_team_date             ON service_activities(team_id, activity_date);
+    CREATE INDEX IF NOT EXISTS idx_sa_category              ON service_activities(category_id);
+    CREATE INDEX IF NOT EXISTS idx_sa_status                ON service_activities(status);
+    CREATE INDEX IF NOT EXISTS idx_sa_reference             ON service_activities(activity_reference);
+    CREATE INDEX IF NOT EXISTS idx_sat_technology           ON service_activity_technologies(technology_id);
+    CREATE INDEX IF NOT EXISTS idx_team_members_user        ON team_members(user_id);
+    CREATE INDEX IF NOT EXISTS idx_customer_teams_team      ON customer_teams(team_id);
+    CREATE INDEX IF NOT EXISTS idx_customer_engineers_user  ON customer_engineers(user_id);
   `);
 
   await seedStatusConfig();
   await seedAdmin();
+  await seedServiceActivityLookups();
 }
 
 async function applyCompatibilityMigrations() {
@@ -521,6 +659,28 @@ async function applyCompatibilityMigrations() {
     `],
     ['20260619_token_version', `
       ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
+    `],
+    ['20260916_service_activity_tracking', `
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_code TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS active INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_activity_enabled INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS primary_contact TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS location TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_type TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_start_date TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_end_date TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS reporting_frequency TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS included_hours REAL;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_hour_period TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_notes TEXT;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS require_duration INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS require_ticket_reference INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS require_technology INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS require_category INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS require_notes INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS require_billable_classification INTEGER NOT NULL DEFAULT 0;
+
+      ALTER TABLE attachments ALTER COLUMN project_id DROP NOT NULL;
     `],
   ];
 
@@ -572,6 +732,14 @@ async function seedStatusConfig() {
       { value: 'completed',  label: 'Completed',  bg: '#dcfce7', text: '#166534', dot: '#22c55e', requires_reason: false, is_terminal: false },
       { value: 'cancelled',  label: 'Cancelled',  bg: '#fee2e2', text: '#991b1b', dot: '#ef4444', requires_reason: false, is_terminal: true  },
     ],
+    service_activity: [
+      { value: 'planned',          label: 'Planned',              bg: '#eff6ff', text: '#1e40af', dot: '#3b82f6', requires_reason: false, is_terminal: false },
+      { value: 'in_progress',      label: 'In Progress',          bg: '#fef9c3', text: '#854d0e', dot: '#eab308', requires_reason: false, is_terminal: false },
+      { value: 'waiting_customer', label: 'Waiting for Customer', bg: '#fff7ed', text: '#9a3412', dot: '#f97316', requires_reason: true,  is_terminal: false },
+      { value: 'waiting_vendor',   label: 'Waiting for Vendor',   bg: '#faf5ff', text: '#6b21a8', dot: '#a855f7', requires_reason: true,  is_terminal: false },
+      { value: 'completed',        label: 'Completed',            bg: '#dcfce7', text: '#166534', dot: '#22c55e', requires_reason: false, is_terminal: true  },
+      { value: 'cancelled',        label: 'Cancelled',            bg: '#fee2e2', text: '#991b1b', dot: '#ef4444', requires_reason: false, is_terminal: true  },
+    ],
   });
   await pool.query(
     "INSERT INTO settings (key, value) VALUES ('status_config', $1) ON CONFLICT (key) DO NOTHING",
@@ -597,6 +765,62 @@ async function seedAdmin() {
   console.log(`    Password: ${generatedPassword} (shown once — change immediately)`);
   console.log('  CHANGE THIS PASSWORD IMMEDIATELY after first login!');
   console.log('═══════════════════════════════════════════════════════');
+}
+
+const DEFAULT_ACTIVITY_CATEGORIES = [
+  'Support', 'Incident Resolution', 'Troubleshooting', 'Maintenance', 'Preventive Maintenance',
+  'Upgrade', 'Patch / Firmware Update', 'Configuration Change', 'Security Change',
+  'Review / Health Check', 'Monitoring', 'Backup / Restore', 'User Administration',
+  'Documentation', 'Customer Meeting', 'Vendor Coordination', 'Change Implementation',
+  'Testing / Validation', 'Investigation', 'Advisory / Consultation',
+  'Internal Operational Work', 'Other',
+];
+
+const DEFAULT_TECHNOLOGIES = [
+  'Firewall', 'Network', 'Microsoft 365', 'Intune', 'WAF', 'PAM', 'Microsegmentation',
+  'Endpoint Security', 'Email Security', 'Load Balancer', 'Backup', 'Vulnerability Management',
+];
+
+async function seedServiceActivityLookups() {
+  const { rows: catRows } = await pool.query('SELECT COUNT(*)::int AS c FROM activity_categories');
+  if (catRows[0].c === 0) {
+    for (let i = 0; i < DEFAULT_ACTIVITY_CATEGORIES.length; i++) {
+      await pool.query(
+        'INSERT INTO activity_categories (name, sort_order) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING',
+        [DEFAULT_ACTIVITY_CATEGORIES[i], i]
+      );
+    }
+  }
+
+  const { rows: techRows } = await pool.query('SELECT COUNT(*)::int AS c FROM technologies');
+  if (techRows[0].c === 0) {
+    for (let i = 0; i < DEFAULT_TECHNOLOGIES.length; i++) {
+      await pool.query(
+        'INSERT INTO technologies (name, sort_order) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING',
+        [DEFAULT_TECHNOLOGIES[i], i]
+      );
+    }
+  }
+
+  // Patch pre-existing status_config rows (created before this module existed)
+  // so the service_activity status group is always present.
+  const { rows: statusRows } = await pool.query("SELECT value FROM settings WHERE key = 'status_config'");
+  if (statusRows.length) {
+    try {
+      const config = JSON.parse(statusRows[0].value);
+      if (!Array.isArray(config.service_activity)) {
+        config.service_activity = [
+          { value: 'planned',          label: 'Planned',              bg: '#eff6ff', text: '#1e40af', dot: '#3b82f6', requires_reason: false, is_terminal: false },
+          { value: 'in_progress',      label: 'In Progress',          bg: '#fef9c3', text: '#854d0e', dot: '#eab308', requires_reason: false, is_terminal: false },
+          { value: 'waiting_customer', label: 'Waiting for Customer', bg: '#fff7ed', text: '#9a3412', dot: '#f97316', requires_reason: true,  is_terminal: false },
+          { value: 'waiting_vendor',   label: 'Waiting for Vendor',   bg: '#faf5ff', text: '#6b21a8', dot: '#a855f7', requires_reason: true,  is_terminal: false },
+          { value: 'completed',        label: 'Completed',            bg: '#dcfce7', text: '#166534', dot: '#22c55e', requires_reason: false, is_terminal: true  },
+          { value: 'cancelled',        label: 'Cancelled',            bg: '#fee2e2', text: '#991b1b', dot: '#ef4444', requires_reason: false, is_terminal: true  },
+        ];
+        await pool.query("UPDATE settings SET value = $1 WHERE key = 'status_config'", [JSON.stringify(config)]);
+      }
+    } catch (_) { /* leave as-is if unparsable */ }
+  }
 }
 
 module.exports = {

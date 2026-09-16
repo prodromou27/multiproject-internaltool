@@ -19,7 +19,7 @@ export function StatusBadge({ s }) {
   // Try each entity type in turn
   let def = null;
   if (config) {
-    for (const et of ['project', 'task', 'visit']) {
+    for (const et of ['project', 'task', 'visit', 'service_activity']) {
       def = getStatusDef(config, et, s);
       if (def) break;
     }

@@ -117,12 +117,15 @@ function decrypt(value) {
  */
 function encryptCustomer(fields) {
   return {
-    name:          encrypt(fields.name),
-    contact_name:  encrypt(fields.contact_name),
-    contact_email: encrypt(fields.contact_email),
-    contact_phone: encrypt(fields.contact_phone),
-    address:       encrypt(fields.address),
-    notes:         encrypt(fields.notes),
+    name:            encrypt(fields.name),
+    contact_name:    encrypt(fields.contact_name),
+    contact_email:   encrypt(fields.contact_email),
+    contact_phone:   encrypt(fields.contact_phone),
+    address:         encrypt(fields.address),
+    notes:           encrypt(fields.notes),
+    primary_contact: encrypt(fields.primary_contact),
+    location:        encrypt(fields.location),
+    service_notes:   encrypt(fields.service_notes),
   };
 }
 
@@ -135,12 +138,15 @@ function decryptCustomer(row) {
   if (!row) return row;
   return {
     ...row,
-    name:          decrypt(row.name),
-    contact_name:  decrypt(row.contact_name),
-    contact_email: decrypt(row.contact_email),
-    contact_phone: decrypt(row.contact_phone),
-    address:       decrypt(row.address),
-    notes:         decrypt(row.notes),
+    name:            decrypt(row.name),
+    contact_name:    decrypt(row.contact_name),
+    contact_email:   decrypt(row.contact_email),
+    contact_phone:   decrypt(row.contact_phone),
+    address:         decrypt(row.address),
+    notes:           decrypt(row.notes),
+    primary_contact: row.primary_contact !== undefined ? decrypt(row.primary_contact) : undefined,
+    location:        row.location        !== undefined ? decrypt(row.location)        : undefined,
+    service_notes:   row.service_notes   !== undefined ? decrypt(row.service_notes)   : undefined,
   };
 }
 

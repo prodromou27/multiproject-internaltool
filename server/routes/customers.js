@@ -101,16 +101,39 @@ router.get('/:id', requireAuth, async (req, res) => {
   res.json(decryptCustomer(c));
 });
 
+const VALID_CONTRACT_HOUR_PERIODS = new Set(['monthly', 'annual']);
+
 router.post('/', requireManagerOrPlanner, async (req, res) => {
-  const { name, contact_name, contact_email, contact_phone, address, notes } = req.body;
+  const {
+    name, contact_name, contact_email, contact_phone, address, notes,
+    customer_code, active, service_activity_enabled, primary_contact, location,
+    contract_type, contract_start_date, contract_end_date, reporting_frequency,
+    included_hours, contract_hour_period, service_notes,
+    require_duration, require_ticket_reference, require_technology,
+    require_category, require_notes, require_billable_classification,
+  } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
+  if (contract_hour_period && !VALID_CONTRACT_HOUR_PERIODS.has(contract_hour_period))
+    return res.status(400).json({ error: 'Invalid contract_hour_period' });
   const existing = (await db.prepare('SELECT id, name FROM customers').all()).map(decryptCustomer);
   if (existing.some(c => c.name?.toLowerCase() === name.trim().toLowerCase())) {
     return res.status(409).json({ error: 'Customer already exists' });
   }
-  const enc = encryptCustomer({ name: name.trim(), contact_name, contact_email, contact_phone, address, notes });
-  const result = (await db.prepare('INSERT INTO customers (name, contact_name, contact_email, contact_phone, address, notes, created_by) VALUES (?,?,?,?,?,?,?)')
-    .run(enc.name, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, req.user.id));
+  const enc = encryptCustomer({ name: name.trim(), contact_name, contact_email, contact_phone, address, notes, primary_contact, location, service_notes });
+  const result = (await db.prepare(`INSERT INTO customers
+    (name, contact_name, contact_email, contact_phone, address, notes, created_by,
+     customer_code, active, service_activity_enabled, primary_contact, location,
+     contract_type, contract_start_date, contract_end_date, reporting_frequency,
+     included_hours, contract_hour_period, service_notes,
+     require_duration, require_ticket_reference, require_technology,
+     require_category, require_notes, require_billable_classification)
+    VALUES (?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?,?)`)
+    .run(enc.name, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, req.user.id,
+      customer_code || null, active === false ? 0 : 1, service_activity_enabled ? 1 : 0, enc.primary_contact, enc.location,
+      contract_type || null, contract_start_date || null, contract_end_date || null, reporting_frequency || null,
+      included_hours != null && included_hours !== '' ? Number(included_hours) : null, contract_hour_period || null, enc.service_notes,
+      require_duration ? 1 : 0, require_ticket_reference ? 1 : 0, require_technology ? 1 : 0,
+      require_category ? 1 : 0, require_notes ? 1 : 0, require_billable_classification ? 1 : 0));
   res.json({ id: result.lastInsertRowid });
 });
 
@@ -191,8 +214,17 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
   const existing = (await db.prepare('SELECT * FROM customers WHERE id = ?').get(id));
   if (!existing) return res.status(404).json({ error: 'Not found' });
-  const { name, contact_name, contact_email, contact_phone, address, notes } = req.body;
+  const {
+    name, contact_name, contact_email, contact_phone, address, notes,
+    customer_code, active, service_activity_enabled, primary_contact, location,
+    contract_type, contract_start_date, contract_end_date, reporting_frequency,
+    included_hours, contract_hour_period, service_notes,
+    require_duration, require_ticket_reference, require_technology,
+    require_category, require_notes, require_billable_classification,
+  } = req.body;
   if (name !== undefined && !name?.trim()) return res.status(400).json({ error: 'Name cannot be empty' });
+  if (contract_hour_period && !VALID_CONTRACT_HOUR_PERIODS.has(contract_hour_period))
+    return res.status(400).json({ error: 'Invalid contract_hour_period' });
   if (name?.trim()) {
     const allCustomers = (await db.prepare('SELECT id, name FROM customers').all()).map(decryptCustomer);
     if (allCustomers.some(c => c.id !== id && c.name?.toLowerCase() === name.trim().toLowerCase())) {
@@ -202,16 +234,181 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
   // Decrypt existing values so they can be used as fallback when a field isn't supplied
   const dec = decryptCustomer(existing);
   const enc = encryptCustomer({
-    name:          name          !== undefined ? name.trim() : dec.name,
-    contact_name:  contact_name  !== undefined ? (contact_name  || null) : dec.contact_name,
-    contact_email: contact_email !== undefined ? (contact_email || null) : dec.contact_email,
-    contact_phone: contact_phone !== undefined ? (contact_phone || null) : dec.contact_phone,
-    address:       address       !== undefined ? (address       || null) : dec.address,
-    notes:         notes         !== undefined ? (notes         || null) : dec.notes,
+    name:            name            !== undefined ? name.trim() : dec.name,
+    contact_name:    contact_name    !== undefined ? (contact_name    || null) : dec.contact_name,
+    contact_email:   contact_email   !== undefined ? (contact_email   || null) : dec.contact_email,
+    contact_phone:   contact_phone   !== undefined ? (contact_phone   || null) : dec.contact_phone,
+    address:         address         !== undefined ? (address         || null) : dec.address,
+    notes:           notes           !== undefined ? (notes           || null) : dec.notes,
+    primary_contact: primary_contact !== undefined ? (primary_contact || null) : dec.primary_contact,
+    location:        location        !== undefined ? (location        || null) : dec.location,
+    service_notes:   service_notes   !== undefined ? (service_notes   || null) : dec.service_notes,
   });
-  (await db.prepare('UPDATE customers SET name=COALESCE(?,name), contact_name=?, contact_email=?, contact_phone=?, address=?, notes=? WHERE id=?')
-    .run(enc.name || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, id));
+  (await db.prepare(`UPDATE customers SET
+      name=COALESCE(?,name), contact_name=?, contact_email=?, contact_phone=?, address=?, notes=?,
+      customer_code=COALESCE(?,customer_code), active=COALESCE(?,active),
+      service_activity_enabled=COALESCE(?,service_activity_enabled),
+      primary_contact=?, location=?,
+      contract_type=COALESCE(?,contract_type), contract_start_date=COALESCE(?,contract_start_date),
+      contract_end_date=COALESCE(?,contract_end_date), reporting_frequency=COALESCE(?,reporting_frequency),
+      included_hours=COALESCE(?,included_hours), contract_hour_period=COALESCE(?,contract_hour_period),
+      service_notes=?,
+      require_duration=COALESCE(?,require_duration), require_ticket_reference=COALESCE(?,require_ticket_reference),
+      require_technology=COALESCE(?,require_technology), require_category=COALESCE(?,require_category),
+      require_notes=COALESCE(?,require_notes), require_billable_classification=COALESCE(?,require_billable_classification)
+    WHERE id=?`)
+    .run(enc.name || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes,
+      customer_code !== undefined ? (customer_code || null) : null,
+      active != null ? (active ? 1 : 0) : null,
+      service_activity_enabled != null ? (service_activity_enabled ? 1 : 0) : null,
+      enc.primary_contact, enc.location,
+      contract_type !== undefined ? (contract_type || null) : null,
+      contract_start_date !== undefined ? (contract_start_date || null) : null,
+      contract_end_date !== undefined ? (contract_end_date || null) : null,
+      reporting_frequency !== undefined ? (reporting_frequency || null) : null,
+      included_hours !== undefined ? (included_hours !== '' && included_hours != null ? Number(included_hours) : null) : null,
+      contract_hour_period !== undefined ? (contract_hour_period || null) : null,
+      enc.service_notes,
+      require_duration != null ? (require_duration ? 1 : 0) : null,
+      require_ticket_reference != null ? (require_ticket_reference ? 1 : 0) : null,
+      require_technology != null ? (require_technology ? 1 : 0) : null,
+      require_category != null ? (require_category ? 1 : 0) : null,
+      require_notes != null ? (require_notes ? 1 : 0) : null,
+      require_billable_classification != null ? (require_billable_classification ? 1 : 0) : null,
+      id));
   res.json({ ok: true });
+});
+
+/* ── Customer ↔ Team assignment (many-to-many) ────────────────────────── */
+router.get('/:id/teams', requireManagerOrPlanner, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  const rows = await db.prepare(`
+    SELECT t.id, t.name FROM customer_teams ct
+    JOIN teams t ON t.id = ct.team_id WHERE ct.customer_id = ? ORDER BY t.name
+  `).all(id);
+  res.json(rows);
+});
+
+router.put('/:id/teams', requireManagerOrPlanner, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  const customer = await db.prepare('SELECT 1 FROM customers WHERE id = ?').get(id);
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  const { team_ids } = req.body;
+  if (!Array.isArray(team_ids)) return res.status(400).json({ error: 'team_ids must be an array' });
+  await db.transaction(async (tx) => {
+    await tx.prepare('DELETE FROM customer_teams WHERE customer_id = ?').run(id);
+    const ins = tx.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)');
+    for (const tid of team_ids) {
+      if (Number.isInteger(tid) && tid > 0) await ins.run(id, tid);
+    }
+  });
+  res.json({ ok: true });
+});
+
+/* ── Customer ↔ Engineer restriction (optional, additive) ─────────────── */
+router.get('/:id/engineers', requireManagerOrPlanner, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  const rows = await db.prepare(`
+    SELECT u.id, u.name, u.email FROM customer_engineers ce
+    JOIN users u ON u.id = ce.user_id WHERE ce.customer_id = ? ORDER BY u.name
+  `).all(id);
+  res.json(rows);
+});
+
+router.put('/:id/engineers', requireManagerOrPlanner, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  const customer = await db.prepare('SELECT 1 FROM customers WHERE id = ?').get(id);
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  const { user_ids } = req.body;
+  if (!Array.isArray(user_ids)) return res.status(400).json({ error: 'user_ids must be an array' });
+  await db.transaction(async (tx) => {
+    await tx.prepare('DELETE FROM customer_engineers WHERE customer_id = ?').run(id);
+    const ins = tx.prepare('INSERT INTO customer_engineers (customer_id, user_id) VALUES (?, ?)');
+    for (const uid of user_ids) {
+      if (Number.isInteger(uid) && uid > 0) await ins.run(id, uid);
+    }
+  });
+  res.json({ ok: true });
+});
+
+/* ── Customer Service Profile: activity timeline + summary ────────────── */
+router.get('/:id/service-activities', requireManagerOrPlanner, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  const { from, to, engineer_id, category_id, technology_id, status, page = 1, page_size = 25 } = req.query;
+  const limit = Math.min(Math.max(parseInt(page_size, 10) || 25, 1), 200);
+  const offset = (Math.max(parseInt(page, 10) || 1, 1) - 1) * limit;
+
+  let where = 'WHERE sa.customer_id = ?';
+  const params = [id];
+  if (from)   { where += ' AND sa.activity_date >= ?'; params.push(from); }
+  if (to)     { where += ' AND sa.activity_date <= ?'; params.push(to); }
+  if (engineer_id) { where += ' AND sa.engineer_id = ?'; params.push(engineer_id); }
+  if (category_id) { where += ' AND sa.category_id = ?'; params.push(category_id); }
+  if (status)       { where += ' AND sa.status = ?'; params.push(status); }
+  if (technology_id) { where += ' AND EXISTS (SELECT 1 FROM service_activity_technologies sat WHERE sat.service_activity_id = sa.id AND sat.technology_id = ?)'; params.push(technology_id); }
+
+  const rows = await db.prepare(`
+    SELECT sa.id, sa.activity_reference, sa.activity_date, sa.title, sa.status, sa.duration_minutes,
+      sa.billable_classification, cat.name AS category_name, u.name AS engineer_name
+    FROM service_activities sa
+    JOIN activity_categories cat ON cat.id = sa.category_id
+    JOIN users u ON u.id = sa.engineer_id
+    ${where}
+    ORDER BY sa.activity_date DESC, sa.id DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
+
+  const { total } = await db.prepare(`SELECT COUNT(*) AS total FROM service_activities sa ${where}`).get(...params);
+  res.json({ rows, total, page: Number(page), page_size: limit });
+});
+
+router.get('/:id/service-summary', requireManagerOrPlanner, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  const { from, to } = req.query;
+  let where = 'WHERE sa.customer_id = ?';
+  const params = [id];
+  if (from) { where += ' AND sa.activity_date >= ?'; params.push(from); }
+  if (to)   { where += ' AND sa.activity_date <= ?'; params.push(to); }
+
+  const totals = await db.prepare(`
+    SELECT COUNT(*) AS total_activities,
+      COALESCE(ROUND(SUM(duration_minutes) / 60.0, 1), 0) AS total_hours
+    FROM service_activities sa ${where}
+  `).get(...params);
+
+  const byCategory = await db.prepare(`
+    SELECT cat.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+    FROM service_activities sa JOIN activity_categories cat ON cat.id = sa.category_id
+    ${where} GROUP BY cat.name ORDER BY hours DESC
+  `).all(...params);
+
+  const byEngineer = await db.prepare(`
+    SELECT u.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+    FROM service_activities sa JOIN users u ON u.id = sa.engineer_id
+    ${where} GROUP BY u.name ORDER BY hours DESC
+  `).all(...params);
+
+  const byTechnology = await db.prepare(`
+    SELECT tech.name, COUNT(*) AS count
+    FROM service_activities sa
+    JOIN service_activity_technologies sat ON sat.service_activity_id = sa.id
+    JOIN technologies tech ON tech.id = sat.technology_id
+    ${where} GROUP BY tech.name ORDER BY count DESC
+  `).all(...params);
+
+  const byBillable = await db.prepare(`
+    SELECT COALESCE(billable_classification, 'not_set') AS classification,
+      COUNT(*) AS count, COALESCE(ROUND(SUM(duration_minutes) / 60.0, 1), 0) AS hours
+    FROM service_activities sa ${where} GROUP BY billable_classification
+  `).all(...params);
+
+  res.json({ ...totals, byCategory, byEngineer, byTechnology, byBillable });
 });
 
 router.delete('/:id', requireManagerOrPlanner, async (req, res) => {

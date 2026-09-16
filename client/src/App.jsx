@@ -5,7 +5,7 @@ import {
   Building2, Award, BarChart2, Users as UsersIcon, Settings, LogOut, Search, X,
   ExternalLink, MessageSquare, Ticket, Database, Bell, CheckCheck, Trash2,
   ClipboardList, Briefcase, Wrench as WrenchIcon, FileText, StickyNote, UserCircle,
-  Moon, Sun, AtSign, ShieldCheck, Zap,
+  Moon, Sun, AtSign, ShieldCheck, Zap, Activity,
 } from 'lucide-react';
 import Login from './pages/Login';
 import { api } from './api';
@@ -34,6 +34,9 @@ const Profile           = lazy(() => import('./pages/Profile'));
 const SLAPage           = lazy(() => import('./pages/SLAPage'));
 const SearchPage        = lazy(() => import('./pages/SearchPage'));
 const EngineerHub       = lazy(() => import('./pages/EngineerHub'));
+const ActivityLog       = lazy(() => import('./pages/ActivityLog'));
+const ServiceOperations = lazy(() => import('./pages/ServiceOperations'));
+const CustomerServiceProfile = lazy(() => import('./pages/CustomerServiceProfile'));
 
 export const AuthContext = createContext(null);
 export function useAuth() { return useContext(AuthContext); }
@@ -457,13 +460,14 @@ function Hamburger({ open, onClick }) {
 
 /* ── Sidebar content ─────────────────────────────────────── */
 const NAV_MANAGER_EXTRA = [
-  { to: '/customers',  label: 'Customers',  icon: Building2 },
-  { to: '/workload',   label: 'Workload',   icon: UsersIcon },
-  { to: '/templates',  label: 'Templates',  icon: LayoutDashboard },
-  { to: '/scorecards', label: 'Scorecards', icon: Award },
-  { to: '/reports',    label: 'Reports',    icon: BarChart2 },
-  { to: '/sla',        label: 'SLA',        icon: ShieldCheck },
-  { to: '/users',      label: 'Team',       icon: UsersIcon },
+  { to: '/customers',          label: 'Customers',          icon: Building2 },
+  { to: '/workload',           label: 'Workload',           icon: UsersIcon },
+  { to: '/templates',          label: 'Templates',          icon: LayoutDashboard },
+  { to: '/scorecards',         label: 'Scorecards',         icon: Award },
+  { to: '/reports',            label: 'Reports',            icon: BarChart2 },
+  { to: '/service-operations', label: 'Service Operations', icon: Activity },
+  { to: '/sla',                label: 'SLA',                icon: ShieldCheck },
+  { to: '/users',              label: 'Team',               icon: UsersIcon },
 ];
 
 function OverdueDot({ count }) {
@@ -479,7 +483,7 @@ function OverdueDot({ count }) {
 }
 
 function SidebarContent({ user, logout, onNav }) {
-  const { dark, toggleDark } = useAuth();
+  const { dark, toggleDark, saAccess } = useAuth();
   const isManager = user.role === 'manager';
   const isPlanner = user.role === 'planner';
   const isPM      = user.role === 'pm';
@@ -496,6 +500,8 @@ function SidebarContent({ user, logout, onNav }) {
     return () => { mounted = false; clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, []);
 
+  const activityLogItem = { to: '/activity-log', label: 'Activity Log', icon: ClipboardList };
+
   const NAV_ENGINEER = [
     { to: '/',                   label: 'Dashboard',  icon: LayoutDashboard, end: true },
     { to: '/my-day',             label: 'My Day',     icon: Zap },
@@ -503,6 +509,7 @@ function SidebarContent({ user, logout, onNav }) {
     { to: '/projects',           label: 'Projects',   icon: FolderOpen },
     { to: '/tasks',              label: 'Tasks',      icon: CheckSquare,   badge: overdue.tasks },
     { to: '/maintenance-visits', label: 'Maintenance',icon: Wrench,        badge: overdue.visits },
+    ...(saAccess.enabled ? [activityLogItem] : []),
   ];
   const NAV_PLANNER = [
     { to: '/',                   label: 'Dashboard',  icon: LayoutDashboard, end: true },
@@ -512,6 +519,7 @@ function SidebarContent({ user, logout, onNav }) {
     { to: '/',                   label: 'Dashboard',  icon: LayoutDashboard, end: true },
     { to: '/projects',           label: 'Projects',   icon: FolderOpen },
     { to: '/maintenance-visits', label: 'Maintenance',icon: Wrench,        badge: overdue.visits },
+    ...(saAccess.enabled ? [activityLogItem] : []),
   ];
   const NAV_MANAGER = [
     { to: '/',                   label: 'Dashboard',  icon: LayoutDashboard, end: true },
@@ -519,6 +527,7 @@ function SidebarContent({ user, logout, onNav }) {
     { to: '/projects',           label: 'Projects',   icon: FolderOpen },
     { to: '/tasks',              label: 'Tasks',      icon: CheckSquare,   badge: overdue.tasks },
     { to: '/maintenance-visits', label: 'Maintenance',icon: Wrench,        badge: overdue.visits },
+    { to: '/activity-log',       label: 'Activity Log', icon: ClipboardList },
   ];
 
   const mainNav = isManager ? NAV_MANAGER : isPlanner ? NAV_PLANNER : isPM ? NAV_PM : NAV_ENGINEER;
@@ -822,6 +831,20 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
   });
   const [dark, toggleDark] = useDarkMode();
+  // Service Activity Tracking module access is team-membership-driven, not role-driven,
+  // so it's fetched separately from the login payload and re-checked on every mount.
+  // This only controls nav/route visibility (UX) — every server route independently
+  // re-verifies team membership + enablement on each request.
+  const [saAccess, setSaAccess] = useState({ enabled: false, teams: [], loaded: false });
+
+  useEffect(() => {
+    if (!user) { setSaAccess({ enabled: false, teams: [], loaded: false }); return; }
+    let mounted = true;
+    api.teamsMine().then(d => {
+      if (mounted) setSaAccess({ enabled: !!d.service_activity_enabled, teams: d.teams || [], loaded: true });
+    }).catch(() => { if (mounted) setSaAccess({ enabled: false, teams: [], loaded: true }); });
+    return () => { mounted = false; };
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = (userData, token) => {
     localStorage.setItem('token', token);
@@ -835,7 +858,7 @@ export default function App() {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, dark, toggleDark }}>
+    <AuthContext.Provider value={{ user, login, logout, dark, toggleDark, saAccess }}>
       <ToastProvider>
       <ConfirmProvider>
       <StatusProvider enabled={!!user}>
@@ -864,6 +887,9 @@ export default function App() {
           <Route path="/my-day"             element={<PrivateRoute allowedRoles={['engineer']}><EngineerHub /></PrivateRoute>} />
           <Route path="/profile"             element={<PrivateRoute><Profile /></PrivateRoute>} />
           <Route path="/customer-responses"  element={<PrivateRoute><CustomerResponses /></PrivateRoute>} />
+          <Route path="/activity-log"        element={<PrivateRoute allowedRoles={['manager','engineer','pm']}><ActivityLog /></PrivateRoute>} />
+          <Route path="/service-operations"  element={<PrivateRoute allowedRoles={['manager']}><ServiceOperations /></PrivateRoute>} />
+          <Route path="/customers/:id/service-profile" element={<PrivateRoute allowedRoles={['manager']}><CustomerServiceProfile /></PrivateRoute>} />
           <Route path="*"                    element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

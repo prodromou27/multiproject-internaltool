@@ -13,10 +13,14 @@ test('customer encryption includes customer name and decrypts all fields', () =>
     contact_phone: '+1-555-0100',
     address: '123 Main St',
     notes: 'VIP',
+    primary_contact: 'Jane Smith (Service)',
+    location: 'Building 4',
+    service_notes: 'Prefers morning maintenance windows',
   });
 
   assert.match(encrypted.name, /^enc:/);
   assert.match(encrypted.contact_email, /^enc:/);
+  assert.match(encrypted.primary_contact, /^enc:/);
   assert.notEqual(encrypted.name, 'Acme Corp');
 
   const decrypted = cipher.decryptCustomer(encrypted);
@@ -26,6 +30,9 @@ test('customer encryption includes customer name and decrypts all fields', () =>
   assert.equal(decrypted.contact_phone, '+1-555-0100');
   assert.equal(decrypted.address, '123 Main St');
   assert.equal(decrypted.notes, 'VIP');
+  assert.equal(decrypted.primary_contact, 'Jane Smith (Service)');
+  assert.equal(decrypted.location, 'Building 4');
+  assert.equal(decrypted.service_notes, 'Prefers morning maintenance windows');
 
   const status = cipher.keyStatus();
   assert.equal(status.configured, true);

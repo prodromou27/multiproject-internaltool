@@ -300,6 +300,60 @@ export const api = {
     });
   },
 
+  // teams (Service Activity Tracking)
+  teamsMine: () => req('GET', '/teams/mine'),
+  teams: () => req('GET', '/teams'),
+  team: (id) => req('GET', `/teams/${id}`),
+  createTeam: (data) => req('POST', '/teams', data),
+  updateTeam: (id, data) => req('PUT', `/teams/${id}`, data),
+  deleteTeam: (id) => req('DELETE', `/teams/${id}`),
+  setTeamMembers: (id, user_ids) => req('PUT', `/teams/${id}/members`, { user_ids }),
+
+  // activity categories / subcategories
+  activityCategories: () => req('GET', '/activity-categories'),
+  createActivityCategory: (data) => req('POST', '/activity-categories', data),
+  updateActivityCategory: (id, data) => req('PUT', `/activity-categories/${id}`, data),
+  deleteActivityCategory: (id) => req('DELETE', `/activity-categories/${id}`),
+  createActivitySubcategory: (categoryId, data) => req('POST', `/activity-categories/${categoryId}/subcategories`, data),
+  updateActivitySubcategory: (categoryId, subId, data) => req('PUT', `/activity-categories/${categoryId}/subcategories/${subId}`, data),
+  deleteActivitySubcategory: (categoryId, subId) => req('DELETE', `/activity-categories/${categoryId}/subcategories/${subId}`),
+
+  // technologies
+  technologies: () => req('GET', '/technologies'),
+  createTechnology: (data) => req('POST', '/technologies', data),
+  updateTechnology: (id, data) => req('PUT', `/technologies/${id}`, data),
+  deleteTechnology: (id) => req('DELETE', `/technologies/${id}`),
+
+  // service activities (Activity Log / MSP Operations Log)
+  serviceActivityMeta: () => req('GET', '/service-activities/meta'),
+  serviceActivities: (params = {}) => req('GET', '/service-activities?' + new URLSearchParams(params).toString()),
+  serviceActivity: (id) => req('GET', `/service-activities/${id}`),
+  createServiceActivity: (data) => req('POST', '/service-activities', data),
+  updateServiceActivity: (id, data) => req('PUT', `/service-activities/${id}`, data),
+  deleteServiceActivity: (id) => req('DELETE', `/service-activities/${id}`),
+  completeServiceActivity: (id) => req('POST', `/service-activities/${id}/complete`, {}),
+  duplicateServiceActivity: (id) => req('POST', `/service-activities/${id}/duplicate`, {}),
+  createFollowUpTask: (id) => req('POST', `/service-activities/${id}/follow-up-task`, {}),
+  serviceActivityAttachments: (id) => req('GET', `/service-activities/${id}/attachments`),
+  uploadServiceActivityAttachment: (id, file) => upload(`/service-activities/${id}/attachments`, 'file', file),
+  downloadServiceActivityAttachmentUrl: (id, attId, downloadToken) =>
+    `${BASE}/service-activities/${id}/attachments/${attId}/download?token=${encodeURIComponent(downloadToken)}`,
+  deleteServiceActivityAttachment: (id, attId) => req('DELETE', `/service-activities/${id}/attachments/${attId}`),
+
+  // customer service profile (customer-team/engineer assignment, activity summary)
+  customerTeams: (id) => req('GET', `/customers/${id}/teams`),
+  setCustomerTeams: (id, team_ids) => req('PUT', `/customers/${id}/teams`, { team_ids }),
+  customerEngineers: (id) => req('GET', `/customers/${id}/engineers`),
+  setCustomerEngineers: (id, user_ids) => req('PUT', `/customers/${id}/engineers`, { user_ids }),
+  customerServiceActivities: (id, params = {}) => req('GET', `/customers/${id}/service-activities?` + new URLSearchParams(params).toString()),
+  customerServiceSummary: (id, params = {}) => req('GET', `/customers/${id}/service-summary?` + new URLSearchParams(params).toString()),
+
+  // service activity reports (management)
+  serviceActivityOverview: (params = {}) => req('GET', '/reports/service-activity/overview?' + new URLSearchParams(params).toString()),
+  serviceActivityCustomerReport: (params) => req('GET', '/reports/service-activity/customer?' + new URLSearchParams(params).toString()),
+  serviceActivityEngineerReport: (params) => req('GET', '/reports/service-activity/engineer?' + new URLSearchParams(params).toString()),
+  serviceActivityTeamReport: (params) => req('GET', '/reports/service-activity/team?' + new URLSearchParams(params).toString()),
+
   // weekly report settings
   getSmtp: () => req('GET', '/report-settings/smtp'),
   saveSmtp: (data) => req('PUT', '/report-settings/smtp', data),

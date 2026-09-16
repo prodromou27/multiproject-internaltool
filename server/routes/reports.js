@@ -1,6 +1,7 @@
 const router = require('express').Router();
+const ExcelJS = require('exceljs');
 const db = require('../db');
-const { requireManager } = require('../middleware/auth');
+const { requireManager, requireDownloadManagerOrPlanner } = require('../middleware/auth');
 
 router.get('/summary', requireManager, async (req, res) => {
   const total = (await db.prepare('SELECT COUNT(*) as c FROM projects').get()).c;
@@ -89,6 +90,139 @@ router.get('/monthly', requireManager, async (req, res) => {
   });
 
   res.json(result);
+});
+
+/* ── Service Activity reports ─────────────────────────────────────────── */
+function buildActivityFilters(query) {
+  const { from, to, customer_id, team_id, category_id, engineer_id, technology_id } = query;
+  let where = 'WHERE 1=1';
+  const params = [];
+  if (from)        { where += ' AND sa.activity_date >= ?'; params.push(from); }
+  if (to)          { where += ' AND sa.activity_date <= ?'; params.push(to); }
+  if (customer_id) { where += ' AND sa.customer_id = ?'; params.push(customer_id); }
+  if (team_id)     { where += ' AND sa.team_id = ?'; params.push(team_id); }
+  if (category_id) { where += ' AND sa.category_id = ?'; params.push(category_id); }
+  if (engineer_id) { where += ' AND sa.engineer_id = ?'; params.push(engineer_id); }
+  if (technology_id) {
+    where += ' AND EXISTS (SELECT 1 FROM service_activity_technologies sat WHERE sat.service_activity_id = sa.id AND sat.technology_id = ?)';
+    params.push(technology_id);
+  }
+  return { where, params };
+}
+
+async function activityReportRows(query) {
+  const { where, params } = buildActivityFilters(query);
+  return db.prepare(`
+    SELECT sa.activity_date, u.name AS engineer, cat.name AS category, sa.title,
+      sa.description AS notes, sa.duration_minutes, sa.billable_classification, sa.ticket_reference,
+      c.name AS customer, t.name AS team
+    FROM service_activities sa
+    JOIN customers c ON c.id = sa.customer_id
+    JOIN teams t ON t.id = sa.team_id
+    JOIN activity_categories cat ON cat.id = sa.category_id
+    JOIN users u ON u.id = sa.engineer_id
+    ${where}
+    ORDER BY sa.activity_date DESC
+  `).all(...params);
+}
+
+async function activityReportSummary(query) {
+  const { where, params } = buildActivityFilters(query);
+  const totals = await db.prepare(`
+    SELECT COUNT(*) AS total_activities, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS total_hours
+    FROM service_activities sa ${where}
+  `).get(...params);
+  const byCategory = await db.prepare(`
+    SELECT cat.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+    FROM service_activities sa JOIN activity_categories cat ON cat.id = sa.category_id
+    ${where} GROUP BY cat.name ORDER BY hours DESC
+  `).all(...params);
+  const byEngineer = await db.prepare(`
+    SELECT u.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+    FROM service_activities sa JOIN users u ON u.id = sa.engineer_id
+    ${where} GROUP BY u.name ORDER BY hours DESC
+  `).all(...params);
+  const byTechnology = await db.prepare(`
+    SELECT tech.name, COUNT(*) AS count
+    FROM service_activities sa
+    JOIN service_activity_technologies sat ON sat.service_activity_id = sa.id
+    JOIN technologies tech ON tech.id = sat.technology_id
+    ${where} GROUP BY tech.name ORDER BY count DESC
+  `).all(...params);
+  const byCustomer = await db.prepare(`
+    SELECT c.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+    FROM service_activities sa JOIN customers c ON c.id = sa.customer_id
+    ${where} GROUP BY c.name ORDER BY hours DESC
+  `).all(...params);
+  const byBillable = await db.prepare(`
+    SELECT COALESCE(sa.billable_classification, 'not_set') AS classification,
+      COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+    FROM service_activities sa ${where} GROUP BY sa.billable_classification
+  `).all(...params);
+  return { ...totals, byCategory, byEngineer, byTechnology, byCustomer, byBillable };
+}
+
+// Management dashboard: month-to-date (or custom range) aggregate, no entity filter required.
+router.get('/service-activity/overview', requireManager, async (req, res) => {
+  const now = new Date();
+  const defaultFrom = req.query.from || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const query = { ...req.query, from: defaultFrom };
+  const summary = await activityReportSummary(query);
+
+  const { where, params } = buildActivityFilters(query);
+  const byTeam = await db.prepare(`
+    SELECT t.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+    FROM service_activities sa JOIN teams t ON t.id = sa.team_id
+    ${where} GROUP BY t.name ORDER BY hours DESC
+  `).all(...params);
+  const customersSupported = await db.prepare(`
+    SELECT COUNT(DISTINCT sa.customer_id) AS c FROM service_activities sa ${where}
+  `).get(...params);
+  const internalVsCustomer = await db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN sa.billable_classification = 'internal' THEN sa.duration_minutes ELSE 0 END), 0) AS internal_minutes,
+      COALESCE(SUM(CASE WHEN sa.billable_classification IS NULL OR sa.billable_classification != 'internal' THEN sa.duration_minutes ELSE 0 END), 0) AS customer_minutes
+    FROM service_activities sa ${where}
+  `).get(...params);
+
+  res.json({
+    ...summary,
+    byTeam,
+    customers_supported: customersSupported.c,
+    internal_hours: Math.round((internalVsCustomer.internal_minutes / 60) * 10) / 10,
+    customer_facing_hours: Math.round((internalVsCustomer.customer_minutes / 60) * 10) / 10,
+  });
+});
+
+// Customer / Engineer / Team activity reports share the same filter+summary shape.
+router.get('/service-activity/customer', requireManager, async (req, res) => {
+  if (!req.query.customer_id) return res.status(400).json({ error: 'customer_id is required' });
+  const [rows, summary] = await Promise.all([activityReportRows(req.query), activityReportSummary(req.query)]);
+  res.json({ rows, summary });
+});
+
+router.get('/service-activity/engineer', requireManager, async (req, res) => {
+  if (!req.query.engineer_id) return res.status(400).json({ error: 'engineer_id is required' });
+  const [rows, summary] = await Promise.all([activityReportRows(req.query), activityReportSummary(req.query)]);
+  res.json({ rows, summary });
+});
+
+router.get('/service-activity/team', requireManager, async (req, res) => {
+  if (!req.query.team_id) return res.status(400).json({ error: 'team_id is required' });
+  const [rows, summary] = await Promise.all([activityReportRows(req.query), activityReportSummary(req.query)]);
+  res.json({ rows, summary });
+});
+
+router.get('/service-activity/export', requireDownloadManagerOrPlanner, async (req, res) => {
+  const rows = await activityReportRows(req.query);
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Service Activity Report');
+  worksheet.addRow(['Date', 'Customer', 'Team', 'Engineer', 'Category', 'Title', 'Notes', 'Duration (min)', 'Billable', 'Ticket']);
+  rows.forEach(r => worksheet.addRow([r.activity_date, r.customer, r.team, r.engineer, r.category, r.title, r.notes, r.duration_minutes, r.billable_classification, r.ticket_reference]));
+  const buf = await workbook.xlsx.writeBuffer();
+  res.setHeader('Content-Disposition', 'attachment; filename="service_activity_report.xlsx"');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
 });
 
 module.exports = router;

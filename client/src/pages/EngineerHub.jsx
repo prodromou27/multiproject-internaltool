@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, Clock, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Clock, ClipboardList, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { fmtDate, isOverdue, PriorityBadge, StatusBadge } from '../components/Shared';
@@ -28,8 +28,45 @@ function formatElapsed(seconds) {
   return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
 }
 
+function ServiceActivityCard() {
+  const [stats, setStats] = useState(null);
+  const [from, to] = useMemo(weekRange, []);
+  useEffect(() => {
+    const today = iso(new Date());
+    Promise.all([
+      api.serviceActivities({ from: today, to: today, page_size: 1 }),
+      api.serviceActivities({ from, to, page_size: 100 }),
+    ]).then(([todayRes, weekRes]) => {
+      const customers = new Set(weekRes.rows.map(r => r.customer_name));
+      const hours = weekRes.rows.reduce((s, r) => s + (r.duration_minutes || 0), 0) / 60;
+      const followUps = weekRes.rows.filter(r => r.follow_up_required).length;
+      setStats({
+        today: todayRes.total, week: weekRes.total, hours: Math.round(hours * 10) / 10,
+        customers: customers.size, followUps, recent: weekRes.rows.slice(0, 5),
+      });
+    }).catch(() => {});
+  }, [from, to]);
+
+  if (!stats) return null;
+
+  return (
+    <section className="card" style={{ marginTop: 16 }}>
+      <div className="section-header"><h2 className="section-title">Service Activity</h2><Link to="/activity-log">Activity Log →</Link></div>
+      <div className="grid-4" style={{ marginBottom: 12 }}>
+        <div className="stat-card"><strong>{stats.today}</strong><span>Today</span></div>
+        <div className="stat-card"><strong>{stats.week}</strong><span>This week</span></div>
+        <div className="stat-card"><strong>{stats.hours}h</strong><span>Hours logged</span></div>
+        <div className="stat-card"><strong className={stats.followUps ? 'overdue' : ''}>{stats.followUps}</strong><span>Follow-ups pending</span></div>
+      </div>
+      {stats.recent.length > 0 && stats.recent.map(r => (
+        <div className="my-day-row" key={r.id}><ClipboardList size={14} /><span>{r.title}</span><small>{r.customer_name}</small></div>
+      ))}
+    </section>
+  );
+}
+
 export default function EngineerHub() {
-  const { user } = useAuth();
+  const { user, saAccess } = useAuth();
   const toast = useToast();
   const today = iso(new Date());
   const month = today.slice(0, 7);
@@ -164,6 +201,8 @@ export default function EngineerHub() {
       </div>
 
       <section className="card" style={{ marginTop: 16 }}><div className="section-header"><h2 className="section-title">Personal Kanban</h2><Link to="/tasks">All tasks →</Link></div><div className="engineer-kanban">{KANBAN.map(([status, label]) => <div className="kanban-column" key={status} onDragOver={e => e.preventDefault()} onDrop={() => moveTask(dragged, status)}><h3>{label}<span>{tasks.filter(t => t.status === status).length}</span></h3>{tasks.filter(t => t.status === status).map(task => { const list = checklists[task.id] || []; const done = list.filter(i => i.done).length; return <article key={task.id} draggable onDragStart={() => setDragged(task)} className="kanban-card"><div className="kanban-card-title">{task.title}</div><div className="kanban-card-meta"><PriorityBadge p={task.priority} />{task.deadline && <span>{fmtDate(task.deadline)}</span>}</div>{list.map(item => <label className="checklist-item" key={item.id}><input type="checkbox" checked={item.done} onChange={() => toggleChecklist(task.id, item.id)} />{item.title}</label>)}{list.length > 0 && <div className="checklist-progress"><span style={{ width: `${done / list.length * 100}%` }} /></div>}<div className="kanban-actions"><button onClick={() => addChecklistItem(task)} title="Add checklist item"><Plus size={11} /></button>{!timer && <button onClick={() => startTimer(task)} title="Start timer"><TimerReset size={11} /></button>}<select defaultValue="" onChange={e => { if (e.target.value) quickNote(task, e.target.value); e.target.value = ''; }}><option value="">Quick update…</option>{QUICK_NOTES.map(note => <option key={note}>{note}</option>)}</select></div></article>; })}</div>)}</div></section>
+
+      {saAccess?.enabled && <ServiceActivityCard />}
 
       <div className="grid-2" style={{ marginTop: 16 }}><section className="card"><div className="section-header"><h2 className="section-title">Recurring reminders</h2><button className="btn btn-ghost btn-sm" onClick={addReminder}><Plus size={12} /> Add</button></div>{reminders.map(reminder => <div className="reminder-row" key={reminder.id}><RotateCw size={13} /><span>{reminder.title}<small>{reminder.cadence} · next {fmtDate(reminder.next)}</small></span><button className="btn btn-success btn-sm" onClick={() => completeReminder(reminder)}><CheckCircle2 size={11} /></button></div>)}{!reminders.length && <p className="text-muted">No recurring reminders.</p>}</section><section className="card"><div className="section-header"><h2 className="section-title">Projects</h2><FolderOpen size={16} /></div><h3 className="hub-subheading">Bookmarked</h3>{pinned.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge s={project.status} /></Link>)}{!pinned.length && <p className="text-muted">Pin projects from the Projects page.</p>}<h3 className="hub-subheading">Recently viewed</h3>{recentProjects.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge s={project.status} /></Link>)}</section></div>
     </div>

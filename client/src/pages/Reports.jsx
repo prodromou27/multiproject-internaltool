@@ -155,6 +155,148 @@ function TrendsTab() {
   );
 }
 
+/* ── Service Activity Report tab ──────────────────────────── */
+function ServiceActivityReportTab() {
+  const [reportType, setReportType] = useState('customer');
+  const [customers, setCustomers] = useState([]);
+  const [engineers, setEngineers] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [entityId, setEntityId] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    Promise.all([api.customers(), api.users(), api.teams()]).then(([c, u, t]) => {
+      setCustomers(c); setEngineers(u.filter(x => x.role === 'engineer')); setTeams(t);
+    }).catch(() => {});
+  }, []);
+
+  async function runReport() {
+    if (!entityId) return;
+    setLoading(true); setError('');
+    const params = { from: from || undefined, to: to || undefined };
+    if (reportType === 'customer') params.customer_id = entityId;
+    if (reportType === 'engineer') params.engineer_id = entityId;
+    if (reportType === 'team') params.team_id = entityId;
+    try {
+      const fn = reportType === 'customer' ? api.serviceActivityCustomerReport
+        : reportType === 'engineer' ? api.serviceActivityEngineerReport
+        : api.serviceActivityTeamReport;
+      const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined));
+      setResult(await fn(clean));
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  }
+
+  async function exportReport() {
+    try {
+      const { token } = await api.downloadToken();
+      const params = new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}), token });
+      if (reportType === 'customer') params.set('customer_id', entityId);
+      if (reportType === 'engineer') params.set('engineer_id', entityId);
+      if (reportType === 'team') params.set('team_id', entityId);
+      const a = document.createElement('a');
+      a.href = '/api/reports/service-activity/export?' + params.toString();
+      a.download = 'service_activity_report.xlsx';
+      a.click();
+    } catch (e) { setError(e.message); }
+  }
+
+  const entityOptions = reportType === 'customer' ? customers : reportType === 'engineer' ? engineers : teams;
+
+  return (
+    <div>
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="form-row">
+          <div className="form-group"><label>Report Type</label>
+            <select value={reportType} onChange={e => { setReportType(e.target.value); setEntityId(''); setResult(null); }}>
+              <option value="customer">Customer Activity Report</option>
+              <option value="engineer">Engineer Activity Report</option>
+              <option value="team">Team Activity Report</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>{reportType === 'customer' ? 'Customer' : reportType === 'engineer' ? 'Engineer' : 'Team'}</label>
+            <select value={entityId} onChange={e => setEntityId(e.target.value)}>
+              <option value="">Select…</option>
+              {entityOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-group"><label>From</label><input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
+          <div className="form-group"><label>To</label><input type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary" onClick={runReport} disabled={!entityId || loading}>{loading ? 'Running…' : 'Run Report'}</button>
+          {result && <button className="btn btn-ghost" onClick={exportReport}>Export to Excel</button>}
+        </div>
+      </div>
+
+      {error && <div className="alert alert-warning">{error}</div>}
+
+      {result && (
+        <>
+          <div className="grid-4" style={{ marginBottom: 20 }}>
+            <div className="card stat"><div className="stat-value">{result.summary.total_activities}</div><div className="stat-label">Total Activities</div></div>
+            <div className="card stat"><div className="stat-value">{result.summary.total_hours}h</div><div className="stat-label">Total Hours</div></div>
+            <div className="card stat"><div className="stat-value">{result.summary.byCategory.length}</div><div className="stat-label">Categories Covered</div></div>
+            <div className="card stat"><div className="stat-value">{(result.summary.byCustomer || result.summary.byEngineer || []).length}</div><div className="stat-label">{reportType === 'customer' ? 'Engineers Involved' : 'Customers Touched'}</div></div>
+          </div>
+
+          <div className="grid-2" style={{ marginBottom: 20, gap: 20 }}>
+            <ChartCard title="Hours by Category">
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={result.summary.byCategory} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="hours" name="Hours" fill="#0891b2" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+            <ChartCard title={reportType === 'engineer' ? 'Hours by Category' : 'Hours by Engineer'}>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={result.summary.byEngineer} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="hours" name="Hours" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+
+          <div className="card table-wrap">
+            <table>
+              <thead><tr><th>Date</th><th>Engineer</th><th>Category</th><th>Activity</th><th>Duration</th><th>Billable</th><th>Ticket</th></tr></thead>
+              <tbody>
+                {result.rows.map((r, i) => (
+                  <tr key={i}>
+                    <td>{fmtDate(r.activity_date)}</td>
+                    <td>{r.engineer}</td>
+                    <td>{r.category}</td>
+                    <td>{r.title}</td>
+                    <td>{r.duration_minutes != null ? `${Math.floor(r.duration_minutes / 60)}h ${r.duration_minutes % 60}m` : '—'}</td>
+                    <td>{r.billable_classification || '—'}</td>
+                    <td>{r.ticket_reference || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {result.rows.length === 0 && <p className="text-muted" style={{ padding: 16 }}>No activities in this range.</p>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Reports() {
   const [summary, setSummary] = useState(null);
   const [projects, setProjects] = useState([]);
@@ -181,7 +323,7 @@ export default function Reports() {
       </div>
 
       <div className="tabs">
-        {[['overview','Overview'],['projects','Projects'],['kpis','KPIs'],['trends','Trends']].map(([k, l]) => (
+        {[['overview','Overview'],['projects','Projects'],['kpis','KPIs'],['trends','Trends'],['service_activity','Service Activity']].map(([k, l]) => (
           <button key={k} className={'tab' + (tab === k ? ' active' : '')} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
@@ -276,6 +418,7 @@ export default function Reports() {
       )}
 
       {tab === 'trends' && <TrendsTab />}
+      {tab === 'service_activity' && <ServiceActivityReportTab />}
     </div>
   );
 }

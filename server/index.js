@@ -154,6 +154,10 @@ app.use('/api/audit',          require('./routes/audit'));
 app.use('/api/projects',       require('./routes/importExcel'));
 app.use('/api/projects/:projectId/custom-fields', require('./routes/customFields'));
 app.use('/api/calendar/ical',  require('./routes/ical'));
+app.use('/api/teams',              require('./routes/teams'));
+app.use('/api/activity-categories', require('./routes/activityCategories'));
+app.use('/api/technologies',       require('./routes/technologies'));
+app.use('/api/service-activities', require('./routes/serviceActivities'));
 
 // ── 404 handler for unknown /api/* paths (must come before the SPA catchall) ─
 app.use('/api', (req, res) => {
