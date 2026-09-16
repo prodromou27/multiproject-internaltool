@@ -519,6 +519,11 @@ async function init() {
       created_at TEXT DEFAULT ${NOW}
     );
 
+    CREATE TABLE IF NOT EXISTS service_activity_sequences (
+      year INTEGER PRIMARY KEY,
+      last_value INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS service_activities (
       id                          SERIAL PRIMARY KEY,
       activity_reference          TEXT NOT NULL UNIQUE,
@@ -546,6 +551,7 @@ async function init() {
       related_project_id          INTEGER REFERENCES projects(id) ON DELETE SET NULL,
       related_task_id             INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
       related_visit_id            INTEGER REFERENCES maintenance_visits(id) ON DELETE SET NULL,
+      follow_up_task_id            INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
       change_type                 TEXT,
       change_reason               TEXT,
       previous_state               TEXT,
@@ -686,20 +692,24 @@ async function applyCompatibilityMigrations() {
     ['20260916_activity_category_attachment_rule', `
       ALTER TABLE activity_categories ADD COLUMN IF NOT EXISTS require_attachment INTEGER NOT NULL DEFAULT 0;
     `],
+    ['20260916_activity_follow_up_task', `
+      ALTER TABLE service_activities ADD COLUMN IF NOT EXISTS follow_up_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL;
+      UPDATE service_activities SET follow_up_task_id = related_task_id, related_task_id = NULL
+      WHERE id IN (
+        SELECT sa.id FROM service_activities sa JOIN audit_log a ON a.entity_id = sa.id
+        WHERE a.entity_type = 'service_activity' AND a.action = 'follow_up_task_created'
+          AND a.detail = 'task_id=' || CAST(sa.related_task_id AS TEXT)
+      );
+    `],
   ];
 
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;
-    await pool.query('BEGIN');
-    try {
-      await pool.query(sql);
-      await pool.query('INSERT INTO schema_migrations (id) VALUES ($1)', [id]);
-      await pool.query('COMMIT');
-    } catch (e) {
-      await pool.query('ROLLBACK');
-      throw e;
-    }
+    await transaction(async (tx) => {
+      await tx.exec(sql);
+      await tx.prepare('INSERT INTO schema_migrations (id) VALUES (?)').run(id);
+    });
   }
 }
 

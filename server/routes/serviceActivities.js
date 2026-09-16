@@ -28,6 +28,29 @@ async function requireServiceActivityAccess(req, res, next) {
   next();
 }
 
+async function requireOwnedActivity(req, res, next) {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid ID' });
+  const activity = await db.prepare('SELECT * FROM service_activities WHERE id = ?').get(id);
+  if (!activity) return res.status(404).json({ error: 'Not found' });
+  if (req.user.role !== 'manager' && activity.engineer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+  req.activity = activity;
+  next();
+}
+
+async function requireAuthorizedActivityCustomer(req, res, next) {
+  if (req.user.role !== 'manager'
+    && !await isCustomerAuthorizedForEngineer(req.user.id, req.activity.customer_id, req.enabledTeamIds))
+    return res.status(403).json({ error: 'You are not authorized to log activity for this customer' });
+  next();
+}
+
+async function resolveActivityTeam(req, customerId, preferredTeamId) {
+  const assigned = await db.prepare('SELECT team_id FROM customer_teams WHERE customer_id = ? ORDER BY team_id').all(customerId);
+  const eligible = req.user.role === 'manager' ? assigned : assigned.filter(t => req.enabledTeamIds.has(t.team_id));
+  return eligible.find(t => t.team_id === preferredTeamId)?.team_id || eligible[0]?.team_id;
+}
+
 async function getStatusConfig() {
   const row = await db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
   if (!row) return [];
@@ -62,6 +85,7 @@ async function assertAttachmentRuleSatisfied(activityId, categoryId) {
 async function validateActivityPayload(body, { customerId, isCreate }) {
   const customer = await db.prepare('SELECT * FROM customers WHERE id = ?').get(customerId);
   if (!customer) return { error: 'Customer not found' };
+  if (isCreate && (!customer.active || !customer.service_activity_enabled)) return { error: 'Service Activity Tracking is not enabled for this customer' };
 
   if (body.title != null && typeof body.title !== 'string') return { error: 'Title must be text' };
   for (const field of ['ticket_reference', 'description']) {
@@ -137,6 +161,11 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
   if (body.related_visit_id) {
     const v = await db.prepare('SELECT 1 FROM maintenance_visits WHERE id = ? AND customer_id = ?').get(body.related_visit_id, customerId);
     if (!v) return { error: 'Related maintenance visit does not belong to the selected customer' };
+  }
+  if (body.follow_up_task_id) {
+    const task = await db.prepare(`SELECT t.project_id, p.customer_id FROM tasks t
+      LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?`).get(body.follow_up_task_id);
+    if (task?.project_id && task.customer_id !== Number(customerId)) return { error: 'Follow-up task does not belong to the selected customer' };
   }
 
   // Customer-specific requirement rules
@@ -237,13 +266,14 @@ router.get('/', requireAuth, requireServiceActivityAccess, async (req, res) => {
 });
 
 /* ── Detail ───────────────────────────────────────────────────────────── */
-router.get('/:id', requireAuth, requireServiceActivityAccess, async (req, res) => {
+router.get('/:id(\\d+)', requireAuth, requireServiceActivityAccess, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
   const activity = await db.prepare(`
     SELECT sa.*, c.name AS customer_name, cat.name AS category_name, sub.name AS subcategory_name,
       u.name AS engineer_name, t.name AS team_name,
-      p.title AS related_project_title, tk.title AS related_task_title, mv.title AS related_visit_title
+      p.title AS related_project_title, tk.title AS related_task_title, mv.title AS related_visit_title,
+      ft.title AS follow_up_task_title
     FROM service_activities sa
     JOIN customers c ON c.id = sa.customer_id
     JOIN activity_categories cat ON cat.id = sa.category_id
@@ -253,6 +283,7 @@ router.get('/:id', requireAuth, requireServiceActivityAccess, async (req, res) =
     LEFT JOIN projects p ON p.id = sa.related_project_id
     LEFT JOIN tasks tk ON tk.id = sa.related_task_id
     LEFT JOIN maintenance_visits mv ON mv.id = sa.related_visit_id
+    LEFT JOIN tasks ft ON ft.id = sa.follow_up_task_id
     WHERE sa.id = ?
   `).get(id);
   if (!activity) return res.status(404).json({ error: 'Not found' });
@@ -296,6 +327,7 @@ router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => 
   const engineerId = req.user.id; // never trust client-supplied engineer_id
 
   const statuses = await getStatusConfig();
+  if (body.status && !statuses.some(s => s.value === body.status)) return res.status(400).json({ error: 'Invalid status' });
   const status = body.status && statuses.some(s => s.value === body.status) ? body.status : (statuses[0]?.value || 'planned');
   const completedValue = await terminalCompletedValue(statuses);
 
@@ -342,12 +374,9 @@ router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => 
 });
 
 /* ── Update ───────────────────────────────────────────────────────────── */
-router.put('/:id', requireAuth, requireServiceActivityAccess, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!id) return res.status(400).json({ error: 'Invalid ID' });
-  const existing = await db.prepare('SELECT * FROM service_activities WHERE id = ?').get(id);
-  if (!existing) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role !== 'manager' && existing.engineer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivity, async (req, res) => {
+  const existing = req.activity;
+  const id = existing.id;
 
   const body = req.body || {};
   const customerId = body.customer_id || existing.customer_id;
@@ -361,9 +390,16 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, async (req, res) =
   const existingTechnologies = body.technology_ids === undefined
     ? await db.prepare('SELECT technology_id FROM service_activity_technologies WHERE service_activity_id = ?').all(id)
     : [];
-  const effective = { ...existing, ...body, technology_ids: body.technology_ids === undefined ? existingTechnologies.map(t => t.technology_id) : body.technology_ids };
+  const effective = { ...existing, ...body, follow_up_task_id: existing.follow_up_task_id,
+    technology_ids: body.technology_ids === undefined ? existingTechnologies.map(t => t.technology_id) : body.technology_ids };
   const validation = await validateActivityPayload(effective, { customerId, isCreate: false });
   if (validation.error) return res.status(400).json({ error: validation.error });
+
+  let teamId = existing.team_id;
+  if (Number(customerId) !== existing.customer_id) {
+    teamId = await resolveActivityTeam(req, customerId, existing.team_id);
+    if (!teamId) return res.status(400).json({ error: 'Customer has no eligible team assigned' });
+  }
 
   const statuses = await getStatusConfig();
   if (body.status && !statuses.some(s => s.value === body.status)) return res.status(400).json({ error: 'Invalid status' });
@@ -384,7 +420,7 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, async (req, res) =
 
   await db.transaction(async (tx) => {
     await tx.prepare(`UPDATE service_activities SET
-        customer_id=?, activity_date=COALESCE(?,activity_date), start_time=?, end_time=?,
+        customer_id=?, team_id=?, activity_date=COALESCE(?,activity_date), start_time=?, end_time=?,
         duration_minutes=?, category_id=COALESCE(?,category_id), subcategory_id=?,
         title=COALESCE(?,title), description=?, status=COALESCE(?,status), priority=?,
         work_location=?, customer_impact=?, ticket_reference=?, external_case_reference=?,
@@ -395,7 +431,7 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, async (req, res) =
         updated_by=?, updated_at=datetime('now'), completed_at=?
       WHERE id=?`)
       .run(
-        customerId, body.activity_date || null, body.start_time !== undefined ? (body.start_time || null) : existing.start_time,
+        customerId, teamId, body.activity_date || null, body.start_time !== undefined ? (body.start_time || null) : existing.start_time,
         body.end_time !== undefined ? (body.end_time || null) : existing.end_time,
         body.duration_minutes !== undefined ? (body.duration_minutes || null) : existing.duration_minutes,
         body.category_id || null, body.subcategory_id !== undefined ? (body.subcategory_id || null) : existing.subcategory_id,
@@ -446,14 +482,17 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, async (req, res) =
 });
 
 /* ── Complete ─────────────────────────────────────────────────────────── */
-router.post('/:id/complete', requireAuth, requireServiceActivityAccess, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!id) return res.status(400).json({ error: 'Invalid ID' });
-  const activity = await db.prepare('SELECT * FROM service_activities WHERE id = ?').get(id);
-  if (!activity) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role !== 'manager' && activity.engineer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+router.post('/:id/complete', requireAuth, requireServiceActivityAccess, requireOwnedActivity, requireAuthorizedActivityCustomer, async (req, res) => {
+  const activity = req.activity;
+  const id = activity.id;
 
   const completedValue = await terminalCompletedValue();
+  if (activity.status === completedValue) return res.json({ ok: true });
+
+  const technologyIds = (await db.prepare('SELECT technology_id FROM service_activity_technologies WHERE service_activity_id = ?').all(id)).map(t => t.technology_id);
+  const validation = await validateActivityPayload({ ...activity, technology_ids: technologyIds }, { customerId: activity.customer_id, isCreate: false });
+  if (validation.error) return res.status(400).json({ error: validation.error });
+
   const attachmentError = await assertAttachmentRuleSatisfied(id, activity.category_id);
   if (attachmentError) return res.status(400).json({ error: attachmentError });
 
@@ -464,16 +503,15 @@ router.post('/:id/complete', requireAuth, requireServiceActivityAccess, async (r
 });
 
 /* ── Duplicate ────────────────────────────────────────────────────────── */
-router.post('/:id/duplicate', requireAuth, requireServiceActivityAccess, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!id) return res.status(400).json({ error: 'Invalid ID' });
-  const activity = await db.prepare('SELECT * FROM service_activities WHERE id = ?').get(id);
-  if (!activity) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role !== 'manager' && activity.engineer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+router.post('/:id/duplicate', requireAuth, requireServiceActivityAccess, requireOwnedActivity, requireAuthorizedActivityCustomer, async (req, res) => {
+  const activity = req.activity;
+  const id = activity.id;
 
   const statuses = await getStatusConfig();
   const defaultStatus = statuses[0]?.value || 'planned';
   const today = new Date().toISOString().slice(0, 10);
+  const teamId = await resolveActivityTeam(req, activity.customer_id, activity.team_id);
+  if (!teamId) return res.status(400).json({ error: 'Customer has no eligible team assigned' });
 
   const result = await db.transaction(async (tx) => {
     const reference = await generateActivityReference(tx);
@@ -483,7 +521,7 @@ router.post('/:id/duplicate', requireAuth, requireServiceActivityAccess, async (
         title, status, work_location, billable_classification, created_by, updated_by
       ) VALUES (?,?,?,?,?,?,?, ?,?,?,?, ?,?)
     `).run(
-      reference, activity.customer_id, activity.team_id, req.user.id, today, activity.category_id, activity.subcategory_id,
+      reference, activity.customer_id, teamId, req.user.id, today, activity.category_id, activity.subcategory_id,
       activity.title, defaultStatus, activity.work_location, activity.billable_classification, req.user.id, req.user.id
     );
     const newId = insertResult.lastInsertRowid;
@@ -498,12 +536,9 @@ router.post('/:id/duplicate', requireAuth, requireServiceActivityAccess, async (
 });
 
 /* ── Create Follow-Up Task ────────────────────────────────────────────── */
-router.post('/:id/follow-up-task', requireAuth, requireServiceActivityAccess, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!id) return res.status(400).json({ error: 'Invalid ID' });
-  const activity = await db.prepare('SELECT * FROM service_activities WHERE id = ?').get(id);
-  if (!activity) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role !== 'manager' && activity.engineer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+router.post('/:id/follow-up-task', requireAuth, requireServiceActivityAccess, requireOwnedActivity, requireAuthorizedActivityCustomer, async (req, res) => {
+  const activity = req.activity;
+  const id = activity.id;
 
   const settings = await getServiceActivitySettings();
   if (!settings.allow_follow_up_task_creation) return res.status(403).json({ error: 'Follow-up task creation is disabled by an administrator' });
@@ -512,24 +547,29 @@ router.post('/:id/follow-up-task', requireAuth, requireServiceActivityAccess, as
   const project = activity.related_project_id
     ? await db.prepare('SELECT id FROM projects WHERE id = ?').get(activity.related_project_id)
     : null;
+  if (project && req.user.role !== 'manager'
+    && !await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(project.id, req.user.id))
+    return res.status(403).json({ error: 'You can only create follow-up tasks in projects you are assigned to' });
 
-  const result = await db.prepare(`
-    INSERT INTO tasks (project_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-  `).run(
-    project?.id || null,
-    `Follow-up: ${activity.title}`,
-    `Follow-up task for service activity ${activity.activity_reference}.\n\n${activity.description || ''}`.trim(),
-    'medium',
-    activity.follow_up_date || null,
-    activity.engineer_id,
-    req.user.id
-  );
-  const taskId = result.lastInsertRowid;
-  await db.prepare('UPDATE service_activities SET related_task_id = ?, updated_by = ?, updated_at=datetime(\'now\') WHERE id = ?')
-    .run(taskId, req.user.id, id);
-  await logAudit(db, req, 'service_activity', id, activity.title, 'follow_up_task_created', `task_id=${taskId}`);
-  res.json({ id: taskId });
+  const result = await db.transaction(async (tx) => {
+    const current = await tx.prepare('SELECT follow_up_task_id FROM service_activities WHERE id = ? FOR UPDATE').get(id);
+    if (current.follow_up_task_id) return { id: current.follow_up_task_id, created: false };
+    const inserted = await tx.prepare(`
+      INSERT INTO tasks (project_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(
+      project?.id || null,
+      `Follow-up: ${activity.title}`,
+      `Follow-up task for service activity ${activity.activity_reference}.\n\n${activity.description || ''}`.trim(),
+      'medium', activity.follow_up_date || null, activity.engineer_id, req.user.id
+    );
+    const taskId = inserted.lastInsertRowid;
+    await tx.prepare('UPDATE service_activities SET follow_up_task_id = ?, updated_by = ?, updated_at=datetime(\'now\') WHERE id = ?')
+      .run(taskId, req.user.id, id);
+    return { id: taskId, created: true };
+  });
+  if (result.created) await logAudit(db, req, 'service_activity', id, activity.title, 'follow_up_task_created', `task_id=${result.id}`);
+  res.json(result);
 });
 
 /* ── Export to Excel ──────────────────────────────────────────────────── */
@@ -582,12 +622,9 @@ router.get('/:id/attachments', requireAuth, requireServiceActivityAccess, async 
   res.json(rows);
 });
 
-router.post('/:id/attachments', requireAuth, requireServiceActivityAccess, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!id) return res.status(400).json({ error: 'Invalid ID' });
-  const activity = await db.prepare('SELECT engineer_id, title FROM service_activities WHERE id = ?').get(id);
-  if (!activity) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role !== 'manager' && activity.engineer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+router.post('/:id/attachments', requireAuth, requireServiceActivityAccess, requireOwnedActivity, requireAuthorizedActivityCustomer, async (req, res) => {
+  const activity = req.activity;
+  const id = activity.id;
 
   const settings = await getServiceActivitySettings();
   if (!settings.allow_attachments) return res.status(403).json({ error: 'Attachments are disabled by an administrator' });
@@ -645,8 +682,8 @@ router.get('/:id/attachments/:attId/download', requireDownloadAuth, requireServi
   res.download(filePath, downloadName);
 });
 
-router.delete('/:id/attachments/:attId', requireAuth, requireServiceActivityAccess, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
+router.delete('/:id/attachments/:attId', requireAuth, requireServiceActivityAccess, requireOwnedActivity, requireAuthorizedActivityCustomer, async (req, res) => {
+  const id = req.activity.id;
   const att = await db.prepare('SELECT * FROM attachments WHERE id = ? AND service_activity_id = ?').get(req.params.attId, id);
   if (!att) return res.status(404).json({ error: 'Not found' });
   if (req.user.role !== 'manager' && att.uploaded_by !== req.user.id) return res.status(403).json({ error: 'Forbidden' });

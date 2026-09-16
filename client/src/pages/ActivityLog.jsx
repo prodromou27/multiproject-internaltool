@@ -314,6 +314,7 @@ function ActivityDetailModal({ id, allowAttachments, onClose, onChanged }) {
         {activity.follow_up_required ? (
           <div className="alert alert-warning">Follow-up required by {fmtDate(activity.follow_up_date)}</div>
         ) : null}
+        {activity.follow_up_task_title && <div><span className="text-muted">Follow-up Task</span><div>{activity.follow_up_task_title}</div></div>}
 
         {(activity.change_type || activity.change_reason || activity.previous_state || activity.new_state) && (
           <div><span className="text-muted">Change Details</span>
@@ -453,7 +454,7 @@ export default function ActivityLog() {
   async function handleFollowUp(row) {
     const ok = await confirm(`Create a follow-up task for "${row.title}"?`, { title: 'Create Follow-Up Task' });
     if (!ok) return;
-    try { await api.createFollowUpTask(row.id); toast.success('Follow-up task created'); load(); }
+    try { const result = await api.createFollowUpTask(row.id); toast.success(result.created ? 'Follow-up task created' : 'Follow-up task already exists'); load(); }
     catch (e) { toast.error(e.message); }
   }
 

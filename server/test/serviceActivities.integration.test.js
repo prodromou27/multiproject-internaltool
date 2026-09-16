@@ -19,8 +19,10 @@ process.env.JWT_SECRET = 'x'.repeat(32);
 // TEST_DATABASE_URL must point to a fresh, disposable database (CI supplies one).
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || 'postgres://fake:fake@localhost/fake';
 
-const { newDb } = require('pg-mem');
+const { newDb, DataType } = require('pg-mem');
 const memDb = newDb();
+memDb.public.registerFunction({ name: 'substr', args: [DataType.text, DataType.integer, DataType.integer],
+  returns: DataType.text, implementation: (text, start, length) => text.substring(start - 1, start - 1 + length) });
 const { Pool: RealPool } = memDb.adapters.createPg();
 
 // pg-mem doesn't implement the round()-overload shim db.js defines for real
@@ -337,9 +339,84 @@ test('revoked customer access prevents editing an existing owned activity', asyn
       method: 'PUT', token: ids.tokenEnabled, body: { title: 'After access revoked' },
     });
     assert.equal(result.status, 403);
+    for (const action of ['complete', 'duplicate', 'follow-up-task', 'attachments']) {
+      const denied = await api(`/api/service-activities/${created.data.id}/${action}`, { method: 'POST', token: ids.tokenEnabled, body: {} });
+      assert.equal(denied.status, 403, action);
+    }
   } finally {
     await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(ids.customer, ids.teamEnabled);
   }
+});
+
+test('concurrent activity creation allocates unique references without reusing deleted numbers', async () => {
+  const created = await Promise.all(Array.from({ length: 10 }, (_, i) => createActivity({ title: `Concurrent work ${i}` })));
+  created.forEach(result => assert.equal(result.status, 200, result.data.error));
+  const references = created.map(result => result.data.activity_reference);
+  assert.equal(new Set(references).size, 10);
+  const latest = created.reduce((a, b) => a.data.activity_reference > b.data.activity_reference ? a : b);
+  await db.prepare('DELETE FROM service_activities WHERE id=?').run(latest.data.id);
+  const next = await createActivity();
+  assert.equal(next.status, 200);
+  assert.ok(next.data.activity_reference > latest.data.activity_reference);
+});
+
+test('reference counters initialize from existing activity references on upgrade', async () => {
+  const previous = await createActivity();
+  assert.equal(previous.status, 200);
+  await db.prepare('DELETE FROM service_activity_sequences WHERE year=?').run(new Date().getFullYear());
+  const next = await createActivity();
+  assert.equal(next.status, 200);
+  assert.equal(Number(next.data.activity_reference.slice(-6)), Number(previous.data.activity_reference.slice(-6)) + 1);
+});
+
+test('follow-up creation is idempotent and ad-hoc follow-ups do not prevent later activity edits', async () => {
+  const created = await createActivity();
+  assert.equal(created.status, 200);
+  const path = `/api/service-activities/${created.data.id}/follow-up-task`;
+  const first = await api(path, { method: 'POST', token: ids.tokenEnabled, body: {} });
+  const again = await api(path, { method: 'POST', token: ids.tokenEnabled, body: {} });
+  assert.equal(first.status, 200);
+  assert.equal(again.status, 200);
+  assert.equal(first.data.created, true);
+  assert.equal(again.data.created, false);
+  assert.equal(first.data.id, again.data.id);
+  const updated = await api(`/api/service-activities/${created.data.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { title: 'Edited after follow-up creation' } });
+  assert.equal(updated.status, 200, updated.data.error);
+  const activity = await db.prepare('SELECT related_task_id, follow_up_task_id FROM service_activities WHERE id=?').get(created.data.id);
+  assert.equal(activity.related_task_id, null);
+  assert.equal(activity.follow_up_task_id, first.data.id);
+});
+
+test('PostgreSQL locks prevent concurrent duplicate follow-up tasks', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const created = await createActivity();
+  const results = await Promise.all(Array.from({ length: 5 }, () => api(`/api/service-activities/${created.data.id}/follow-up-task`, { method: 'POST', token: ids.tokenEnabled, body: {} })));
+  results.forEach(result => assert.equal(result.status, 200));
+  assert.equal(new Set(results.map(result => result.data.id)).size, 1);
+  assert.equal(results.filter(result => result.data.created).length, 1);
+});
+
+test('customer changes choose an eligible team for the new customer', async () => {
+  await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(ids.customerUnassigned, ids.teamDisabled);
+  const created = await createActivity();
+  assert.equal(created.status, 200);
+  const updated = await api(`/api/service-activities/${created.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { customer_id: ids.customerUnassigned } });
+  assert.equal(updated.status, 200);
+  const stored = await db.prepare('SELECT customer_id, team_id FROM service_activities WHERE id=?').get(created.data.id);
+  assert.equal(stored.customer_id, ids.customerUnassigned);
+  assert.equal(stored.team_id, ids.teamDisabled);
+});
+
+test('export reaches the workbook route and remains scoped to the owning engineer', async () => {
+  const manager = await createActivity({ title: 'Engineer export scope marker' });
+  assert.equal(manager.status, 200);
+  const response = await fetch(`${baseUrl}/api/service-activities/export`, { headers: { Authorization: `Bearer ${ids.tokenEnabled}` } });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /spreadsheetml/);
+  const workbook = new (require('exceljs').Workbook)();
+  await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
+  const rows = workbook.getWorksheet('Service Activities').getSheetValues().slice(2);
+  assert.ok(rows.length);
+  assert.ok(rows.every(row => row[10] === 'Engineer Enabled'));
 });
 
 test('task custom fields enforce task ownership and project relationships', async () => {

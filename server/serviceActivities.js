@@ -12,19 +12,21 @@ function formatActivityReference(year, seq) {
 
 /**
  * Generate a unique activity reference inside the given transaction.
- * Retries on unique-violation to stay correct under concurrent inserts.
+ * A per-year counter row serializes allocation across concurrent transactions.
+ * Seed from existing references once so upgrades preserve their numbering.
  */
 async function generateActivityReference(tx, year = new Date().getFullYear()) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const { c } = await tx.prepare(
-      `SELECT COUNT(*) AS c FROM service_activities WHERE activity_reference LIKE ?`
-    ).get(`ACT-${year}-%`);
-    const candidate = formatActivityReference(year, Number(c) + 1 + attempt);
-    const exists = await tx.prepare('SELECT 1 FROM service_activities WHERE activity_reference = ?').get(candidate);
-    if (!exists) return candidate;
+  let counter = await tx.prepare(`UPDATE service_activity_sequences
+    SET last_value = last_value + 1 WHERE year = ? RETURNING last_value`).get(year);
+  if (!counter) {
+    counter = await tx.prepare(`INSERT INTO service_activity_sequences (year, last_value)
+      SELECT CAST(? AS INTEGER), COALESCE(MAX(CAST(substr(activity_reference, 10, 6) AS INTEGER)), 0) + 1
+      FROM service_activities WHERE activity_reference LIKE ?
+      ON CONFLICT (year) DO UPDATE SET last_value = service_activity_sequences.last_value + 1
+      RETURNING last_value`).get(year, `ACT-${year}-%`);
   }
-  // Extremely unlikely fallback — timestamp-suffixed, still matches the format's shape.
-  return formatActivityReference(year, Date.now() % 1000000);
+  if (counter.last_value > 999999) throw new Error('Service activity reference limit reached for this year');
+  return formatActivityReference(year, counter.last_value);
 }
 
 /**

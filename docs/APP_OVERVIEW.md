@@ -281,8 +281,10 @@ customers, for engineer/customer/team-level history and MSP reporting.
   fields; a further collapsible "Change Details" section that only appears for
   Configuration/Security Change categories. Client-side validation mirrors the
   server's.
-- **Reference numbers** — `ACT-YYYY-NNNNNN`, generated inside the create transaction
-  with a retry loop for race safety; this module is the first place in the codebase to
+- **Reference numbers** — `ACT-YYYY-NNNNNN`, allocated inside the create transaction
+  by an atomic per-year counter in `service_activity_sequences`, initialized from
+  existing references on upgrade. Concurrent creates cannot collide, and deleted
+  references are not reused. This module is the first place in the codebase to
   introduce human-readable reference numbers (everything else uses raw DB ids).
 - **Categories/subcategories/technologies** — admin-managed lookups (22 seeded
   categories, 12 seeded technologies), each category optionally requiring an
@@ -295,7 +297,9 @@ customers, for engineer/customer/team-level history and MSP reporting.
   fields and technology assignments are saved in one transaction.
 - **Follow-up tasks** — "Create Follow-Up Task" reuses the existing Tasks module
   (creates a real `tasks` row, links it back via `related_task_id`) rather than
-  duplicating task data.
+  duplicating task data. The dedicated `follow_up_task_id` preserves independently
+  selected related tasks and allows ad-hoc follow-ups without invalid project links.
+  Row locking makes repeated/concurrent follow-up requests return the existing task.
 - **Contract hour tracking** — for customers with `included_hours` +
   `contract_hour_period` set, `GET /customers/:id/contract-hours` sums
   "Included in Contract"-classified activity minutes for the current monthly/annual
@@ -468,9 +472,9 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
   single place to audit "who can do what" — a real RBAC/permission table would be a
   significant architectural improvement if the app's user base or role complexity
   grows.
-- **`server/routes/serviceActivities.js` repeats the same "manager or owning engineer"
-  ownership check inline 8+ times** rather than as a shared middleware/helper — a
-  future endpoint added to this file (or copied elsewhere) could easily omit it.
+- **Service Activity mutation authorization** uses shared ownership and customer
+  authorization middleware for completion, duplication, follow-ups and attachments.
+  Historical read routes retain ownership checks so users can see their own history.
 - **Encrypted-field search doesn't scale.** Because `customers.name` (and other PII)
   is encrypted, every duplicate-name check and every name-based search decrypts *every*
   customer row in memory (AES-GCM per row) rather than using an index. Fine at current
