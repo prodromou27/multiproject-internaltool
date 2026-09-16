@@ -44,8 +44,9 @@ function directoryBytes(dir) {
 }
 
 async function customerEncryptionReport() {
-  const fields = ['name', 'contact_name', 'contact_email', 'contact_phone', 'address', 'notes'];
-  const rows = await db.prepare('SELECT id, name, contact_name, contact_email, contact_phone, address, notes FROM customers').all();
+  // Must match fieldCipher.js's encryptCustomer/decryptCustomer field list exactly.
+  const fields = ['name', 'contact_name', 'contact_email', 'contact_phone', 'address', 'notes', 'primary_contact', 'location', 'service_notes'];
+  const rows = await db.prepare(`SELECT id, ${fields.join(', ')} FROM customers`).all();
   let plaintext_fields = 0;
   let encrypted_fields = 0;
   let affected_rows = 0;

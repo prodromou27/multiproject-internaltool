@@ -401,37 +401,35 @@ router.get('/:id/service-summary', requireManagerOrPlanner, async (req, res) => 
   if (from) { where += ' AND sa.activity_date >= ?'; params.push(from); }
   if (to)   { where += ' AND sa.activity_date <= ?'; params.push(to); }
 
-  const totals = await db.prepare(`
-    SELECT COUNT(*) AS total_activities,
-      COALESCE(ROUND(SUM(duration_minutes) / 60.0, 1), 0) AS total_hours
-    FROM service_activities sa ${where}
-  `).get(...params);
-
-  const byCategory = await db.prepare(`
-    SELECT cat.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
-    FROM service_activities sa JOIN activity_categories cat ON cat.id = sa.category_id
-    ${where} GROUP BY cat.name ORDER BY hours DESC
-  `).all(...params);
-
-  const byEngineer = await db.prepare(`
-    SELECT u.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
-    FROM service_activities sa JOIN users u ON u.id = sa.engineer_id
-    ${where} GROUP BY u.name ORDER BY hours DESC
-  `).all(...params);
-
-  const byTechnology = await db.prepare(`
-    SELECT tech.name, COUNT(*) AS count
-    FROM service_activities sa
-    JOIN service_activity_technologies sat ON sat.service_activity_id = sa.id
-    JOIN technologies tech ON tech.id = sat.technology_id
-    ${where} GROUP BY tech.name ORDER BY count DESC
-  `).all(...params);
-
-  const byBillable = await db.prepare(`
-    SELECT COALESCE(billable_classification, 'not_set') AS classification,
-      COUNT(*) AS count, COALESCE(ROUND(SUM(duration_minutes) / 60.0, 1), 0) AS hours
-    FROM service_activities sa ${where} GROUP BY billable_classification
-  `).all(...params);
+  const [totals, byCategory, byEngineer, byTechnology, byBillable] = await Promise.all([
+    db.prepare(`
+      SELECT COUNT(*) AS total_activities,
+        COALESCE(ROUND(SUM(duration_minutes) / 60.0, 1), 0) AS total_hours
+      FROM service_activities sa ${where}
+    `).get(...params),
+    db.prepare(`
+      SELECT cat.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+      FROM service_activities sa JOIN activity_categories cat ON cat.id = sa.category_id
+      ${where} GROUP BY cat.name ORDER BY hours DESC
+    `).all(...params),
+    db.prepare(`
+      SELECT u.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+      FROM service_activities sa JOIN users u ON u.id = sa.engineer_id
+      ${where} GROUP BY u.name ORDER BY hours DESC
+    `).all(...params),
+    db.prepare(`
+      SELECT tech.name, COUNT(*) AS count
+      FROM service_activities sa
+      JOIN service_activity_technologies sat ON sat.service_activity_id = sa.id
+      JOIN technologies tech ON tech.id = sat.technology_id
+      ${where} GROUP BY tech.name ORDER BY count DESC
+    `).all(...params),
+    db.prepare(`
+      SELECT COALESCE(billable_classification, 'not_set') AS classification,
+        COUNT(*) AS count, COALESCE(ROUND(SUM(duration_minutes) / 60.0, 1), 0) AS hours
+      FROM service_activities sa ${where} GROUP BY billable_classification
+    `).all(...params),
+  ]);
 
   res.json({ ...totals, byCategory, byEngineer, byTechnology, byBillable });
 });
@@ -439,8 +437,17 @@ router.get('/:id/service-summary', requireManagerOrPlanner, async (req, res) => 
 router.delete('/:id', requireManagerOrPlanner, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
-  (await db.prepare('DELETE FROM customers WHERE id = ?').run(id));
-  res.json({ ok: true });
+  try {
+    await db.prepare('DELETE FROM customers WHERE id = ?').run(id);
+    res.json({ ok: true });
+  } catch (e) {
+    // service_activities.customer_id is ON DELETE RESTRICT (Postgres error code 23503)
+    // so a customer with logged service activity history cannot be silently deleted.
+    if (e.code === '23503') {
+      return res.status(409).json({ error: 'Cannot delete this customer: it has service activity records. Deactivate it instead.' });
+    }
+    throw e;
+  }
 });
 
 module.exports = router;

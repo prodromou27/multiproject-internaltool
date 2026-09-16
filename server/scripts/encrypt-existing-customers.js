@@ -22,7 +22,8 @@ const db = require('../db');
 const { isConfigured, isEncrypted, encrypt, keyStatus } = require('../fieldCipher');
 
 const DRY = process.argv.includes('--dry');
-const CUSTOMER_FIELDS = ['name', 'contact_name', 'contact_email', 'contact_phone', 'address', 'notes'];
+// Must match fieldCipher.js's encryptCustomer/decryptCustomer field list exactly.
+const CUSTOMER_FIELDS = ['name', 'contact_name', 'contact_email', 'contact_phone', 'address', 'notes', 'primary_contact', 'location', 'service_notes'];
 
 async function main() {
   if (!isConfigured()) {
@@ -30,13 +31,14 @@ async function main() {
     process.exit(1);
   }
 
-  const rows = await db.prepare('SELECT id, name, contact_name, contact_email, contact_phone, address, notes FROM customers').all();
+  const rows = await db.prepare(`SELECT id, ${CUSTOMER_FIELDS.join(', ')} FROM customers`).all();
 
   let rowsChanged = 0;
   let fieldsEncrypted = 0;
 
   await db.transaction(async (tx) => {
-    const txUpdate = tx.prepare('UPDATE customers SET name=?, contact_name=?, contact_email=?, contact_phone=?, address=?, notes=? WHERE id=?');
+    const setClause = CUSTOMER_FIELDS.map(f => `${f}=?`).join(', ');
+    const txUpdate = tx.prepare(`UPDATE customers SET ${setClause} WHERE id=?`);
     for (const row of rows) {
       const next = { ...row };
       let changed = false;
@@ -53,7 +55,7 @@ async function main() {
       if (changed) {
         rowsChanged++;
         if (!DRY) {
-          await txUpdate.run(next.name, next.contact_name, next.contact_email, next.contact_phone, next.address, next.notes, row.id);
+          await txUpdate.run(...CUSTOMER_FIELDS.map(f => next[f]), row.id);
         }
       }
     }

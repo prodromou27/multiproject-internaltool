@@ -10,6 +10,8 @@ const { uploadDir, upload, safeStoredName, safeDownloadName, hasAllowedMagic } =
 const fs = require('fs');
 const path = require('path');
 const cipher = require('../cipher');
+const { decrypt: decryptField } = require('../fieldCipher');
+const { getServiceActivitySettings } = require('./serviceActivitySettings');
 
 const VALID_WORK_LOCATIONS = new Set(['remote', 'onsite', 'internal', 'hybrid']);
 const VALID_BILLABLE = new Set(['included_in_contract', 'billable', 'non_billable', 'internal', 'not_applicable']);
@@ -32,17 +34,13 @@ async function getStatusConfig() {
   try { return JSON.parse(row.value).service_activity || []; } catch { return []; }
 }
 
-async function terminalCompletedValue() {
-  const statuses = await getStatusConfig();
-  const completed = statuses.find(s => s.is_terminal && /complet/i.test(s.value));
+// Accepts an already-fetched statuses array when the caller has one (avoids a
+// redundant settings-table round trip on the hot create/update paths); falls
+// back to fetching it itself otherwise.
+async function terminalCompletedValue(statuses) {
+  const list = statuses || await getStatusConfig();
+  const completed = list.find(s => s.is_terminal && /complet/i.test(s.value));
   return completed?.value || TERMINAL_COMPLETED_FALLBACK;
-}
-
-const SETTINGS_DEFAULTS = { retention_days: null, allow_attachments: true, allow_follow_up_task_creation: true };
-async function getServiceActivitySettings() {
-  const row = await db.prepare("SELECT value FROM settings WHERE key = 'service_activity_settings'").get();
-  if (!row) return { ...SETTINGS_DEFAULTS };
-  try { return { ...SETTINGS_DEFAULTS, ...JSON.parse(row.value) }; } catch { return { ...SETTINGS_DEFAULTS }; }
 }
 
 /** Category-level "require attachment" rule can only realistically be checked once
@@ -132,16 +130,22 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
 
 /* ── Metadata for the quick-log form: categories, technologies, statuses, authorized customers ── */
 router.get('/meta', requireAuth, requireServiceActivityAccess, async (req, res) => {
-  const categories = await db.prepare('SELECT * FROM activity_categories WHERE active = 1 ORDER BY sort_order, name').all();
-  const subcategories = await db.prepare('SELECT * FROM activity_subcategories WHERE active = 1 ORDER BY sort_order, name').all();
-  const technologies = await db.prepare('SELECT * FROM technologies WHERE active = 1 ORDER BY sort_order, name').all();
-  const statuses = await getStatusConfig();
+  const [categories, subcategories, technologies, statuses, settings] = await Promise.all([
+    db.prepare('SELECT * FROM activity_categories WHERE active = 1 ORDER BY sort_order, name').all(),
+    db.prepare('SELECT * FROM activity_subcategories WHERE active = 1 ORDER BY sort_order, name').all(),
+    db.prepare('SELECT * FROM technologies WHERE active = 1 ORDER BY sort_order, name').all(),
+    getStatusConfig(),
+    getServiceActivitySettings(),
+  ]);
 
+  // customers.name is encrypted at rest (see fieldCipher.js) — decrypt before
+  // returning/sorting; sorting in SQL on ciphertext would be meaningless.
   let customers;
   if (req.user.role === 'manager') {
-    customers = await db.prepare(`
-      SELECT id, name FROM customers WHERE active = 1 AND service_activity_enabled = 1 ORDER BY name
+    const rows = await db.prepare(`
+      SELECT id, name FROM customers WHERE active = 1 AND service_activity_enabled = 1
     `).all();
+    customers = rows.map(c => ({ ...c, name: decryptField(c.name) })).sort((a, b) => a.name.localeCompare(b.name));
   } else {
     const teamIds = [...req.enabledTeamIds];
     const placeholders = teamIds.map(() => '?').join(',');
@@ -149,15 +153,13 @@ router.get('/meta', requireAuth, requireServiceActivityAccess, async (req, res) 
       SELECT DISTINCT c.id, c.name FROM customers c
       JOIN customer_teams ct ON ct.customer_id = c.id
       WHERE c.active = 1 AND c.service_activity_enabled = 1 AND ct.team_id IN (${placeholders})
-      ORDER BY c.name
     `).all(...teamIds);
     // Filter out customers with explicit engineer restrictions that don't include this engineer
     const restrictedIds = new Set((await db.prepare('SELECT DISTINCT customer_id FROM customer_engineers').all()).map(r => r.customer_id));
     const allowedRestricted = new Set((await db.prepare('SELECT customer_id FROM customer_engineers WHERE user_id = ?').all(req.user.id)).map(r => r.customer_id));
-    customers = rows.filter(c => !restrictedIds.has(c.id) || allowedRestricted.has(c.id));
+    customers = rows.filter(c => !restrictedIds.has(c.id) || allowedRestricted.has(c.id))
+      .map(c => ({ ...c, name: decryptField(c.name) })).sort((a, b) => a.name.localeCompare(b.name));
   }
-
-  const settings = await getServiceActivitySettings();
 
   res.json({
     categories: categories.map(c => ({ ...c, subcategories: subcategories.filter(s => s.category_id === c.id) })),
@@ -209,7 +211,7 @@ router.get('/', requireAuth, requireServiceActivityAccess, async (req, res) => {
   `).all(...params, limit, offset);
 
   const { total } = await db.prepare(`SELECT COUNT(*) AS total FROM service_activities sa ${where}`).get(...params);
-  res.json({ rows, total, page: Number(page), page_size: limit });
+  res.json({ rows: rows.map(r => ({ ...r, customer_name: decryptField(r.customer_name) })), total, page: Number(page), page_size: limit });
 });
 
 /* ── Detail ───────────────────────────────────────────────────────────── */
@@ -239,7 +241,7 @@ router.get('/:id', requireAuth, requireServiceActivityAccess, async (req, res) =
     JOIN technologies tech ON tech.id = sat.technology_id WHERE sat.service_activity_id = ?
   `).all(id);
 
-  res.json({ ...activity, technologies });
+  res.json({ ...activity, customer_name: decryptField(activity.customer_name), technologies });
 });
 
 /* ── Create ───────────────────────────────────────────────────────────── */
@@ -273,7 +275,7 @@ router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => 
 
   const statuses = await getStatusConfig();
   const status = body.status && statuses.some(s => s.value === body.status) ? body.status : (statuses[0]?.value || 'planned');
-  const completedValue = await terminalCompletedValue();
+  const completedValue = await terminalCompletedValue(statuses);
 
   const activity = await db.transaction(async (tx) => {
     const reference = await generateActivityReference(tx);
@@ -341,7 +343,7 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, async (req, res) =
 
   const statuses = await getStatusConfig();
   if (body.status && !statuses.some(s => s.value === body.status)) return res.status(400).json({ error: 'Invalid status' });
-  const completedValue = await terminalCompletedValue();
+  const completedValue = await terminalCompletedValue(statuses);
   const newStatus = body.status || existing.status;
 
   // Enforce "require attachment" only on the transition INTO Completed (the activity
@@ -531,7 +533,7 @@ router.get('/export', requireDownloadAuth, requireServiceActivityAccess, async (
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Service Activities');
   worksheet.addRow(['Reference', 'Date', 'Customer', 'Category', 'Title', 'Duration (min)', 'Status', 'Billable', 'Ticket', 'Engineer']);
-  rows.forEach(r => worksheet.addRow([r.activity_reference, r.activity_date, r.customer, r.category, r.title, r.duration_minutes, r.status, r.billable_classification, r.ticket_reference, r.engineer]));
+  rows.forEach(r => worksheet.addRow([r.activity_reference, r.activity_date, decryptField(r.customer), r.category, r.title, r.duration_minutes, r.status, r.billable_classification, r.ticket_reference, r.engineer]));
   const buf = await workbook.xlsx.writeBuffer();
   res.setHeader('Content-Disposition', 'attachment; filename="service_activities.xlsx"');
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -614,6 +616,7 @@ router.get('/:id/attachments/:attId/download', requireDownloadAuth, requireServi
       res.setHeader('Content-Length', plaintext.length);
       return res.send(plaintext);
     } catch (e) {
+      console.error('[service-activities] decrypt error:', e.message);
       return res.status(500).json({ error: 'Failed to decrypt file' });
     }
   }

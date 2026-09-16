@@ -53,4 +53,5 @@ router.post('/purge', requireManager, async (req, res) => {
   res.json({ ok: true, deleted: changes });
 });
 
+router.getServiceActivitySettings = getSettings;
 module.exports = router;
