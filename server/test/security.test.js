@@ -11,6 +11,13 @@ test('identifies private and loopback addresses', () => {
   assert.equal(isPrivateIp('2606:4700:4700::1111'), false);
 });
 
+test('IPv4-mapped IPv6 literals are checked against the same private ranges as IPv4', () => {
+  for (const ip of ['::ffff:172.16.0.5', '::ffff:100.64.0.1', '::ffff:127.0.0.1', '::ffff:198.18.0.1']) {
+    assert.equal(isPrivateIp(ip), true, `${ip} should be private`);
+  }
+  assert.equal(isPrivateIp('::ffff:8.8.8.8'), false);
+});
+
 test('rejects non-https and credentialed outbound URLs', async () => {
   await assert.rejects(
     () => assertPublicHttpUrl('http://example.com/hook', { label: 'Webhook URL' }),

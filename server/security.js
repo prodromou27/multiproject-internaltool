@@ -1,37 +1,37 @@
 const dns = require('dns').promises;
 const net = require('net');
 
+function isPrivateIpv4(ip) {
+  const [a, b] = ip.split('.').map(Number);
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+
 function isPrivateIp(ip) {
   if (!ip) return true;
 
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split('.').map(Number);
-    return (
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 198 && (b === 18 || b === 19)) ||
-      a >= 224
-    );
-  }
+  if (net.isIPv4(ip)) return isPrivateIpv4(ip);
 
   if (net.isIPv6(ip)) {
     const v = ip.toLowerCase();
-    return (
-      v === '::1' ||
-      v === '::' ||
-      v.startsWith('fc') ||
-      v.startsWith('fd') ||
-      v.startsWith('fe80:') ||
-      v.startsWith('::ffff:127.') ||
-      v.startsWith('::ffff:10.') ||
-      v.startsWith('::ffff:192.168.') ||
-      v.startsWith('::ffff:169.254.')
-    );
+    if (v === '::1' || v === '::' || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('fe80:')) {
+      return true;
+    }
+    // IPv4-mapped (::ffff:a.b.c.d) or IPv4-compatible (::a.b.c.d) addresses embed a
+    // literal IPv4 target — delegate to the same IPv4 range check rather than
+    // maintaining a second, easily-incomplete prefix allowlist here.
+    const mapped = v.match(/^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped && net.isIPv4(mapped[1])) return isPrivateIpv4(mapped[1]);
+    return false;
   }
 
   return true;

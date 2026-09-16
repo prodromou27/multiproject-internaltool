@@ -127,7 +127,8 @@ router.delete('/users/:id', async (req, res) => {
     // created_by / authored references (projects, tasks, comments, activity) are
     // NOT NULL with no cascade, so deleting a user who has authored records hits
     // a foreign-key constraint. Surface an actionable message instead of a 500.
-    if (e.code && e.code.startsWith('SQLITE_CONSTRAINT')) {
+    // Postgres SQLSTATE 23503 = foreign_key_violation.
+    if (e.code === '23503') {
       return res.status(409).json({
         error: 'This user has created projects, tasks or other records and cannot be deleted. Deactivate the account instead to preserve history.',
       });

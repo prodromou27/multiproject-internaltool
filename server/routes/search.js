@@ -50,6 +50,17 @@ async function searchCustomers(req, term, limit) {
   return out;
 }
 
+// customers.name is encrypted at rest, so it can't be matched with SQL LIKE.
+// Returns the ids of customers whose decrypted name contains `term` — callers
+// OR this into their WHERE clause (e.g. `p.customer_id IN (...)`) alongside
+// their own plaintext-column LIKE conditions.
+async function matchingCustomerIds(term) {
+  const needle = (term || '').trim().toLowerCase();
+  if (!needle) return [];
+  const rows = await db.prepare('SELECT id, name FROM customers').all();
+  return rows.filter(r => decrypt(r.name)?.toLowerCase().includes(needle)).map(r => r.id);
+}
+
 // ── Quick search (top bar dropdown) ──────────────────────────────────────────
 router.get('/', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim();
@@ -140,8 +151,14 @@ router.get('/smart', requireAuth, async (req, res) => {
       p.push(req.user.id);
     }
     if (like) {
-      c.push('(p.title LIKE ? OR p.description LIKE ? OR cu.name LIKE ?)');
-      p.push(like, like, like);
+      const customerIds = await matchingCustomerIds(q);
+      if (customerIds.length) {
+        c.push(`(p.title LIKE ? OR p.description LIKE ? OR p.customer_id IN (${customerIds.map(() => '?').join(',')}))`);
+        p.push(like, like, ...customerIds);
+      } else {
+        c.push('(p.title LIKE ? OR p.description LIKE ?)');
+        p.push(like, like);
+      }
     }
     if (status)      { c.push('p.status = ?');           p.push(status); }
     if (customer_id) { c.push('p.customer_id = ?');      p.push(customer_id); }
@@ -241,8 +258,14 @@ router.get('/smart', requireAuth, async (req, res) => {
       p.push(req.user.id);
     }
     if (like) {
-      c.push('(mv.title LIKE ? OR cu.name LIKE ? OR mv.description LIKE ?)');
-      p.push(like, like, like);
+      const customerIds = await matchingCustomerIds(q);
+      if (customerIds.length) {
+        c.push(`(mv.title LIKE ? OR mv.description LIKE ? OR mv.customer_id IN (${customerIds.map(() => '?').join(',')}))`);
+        p.push(like, like, ...customerIds);
+      } else {
+        c.push('(mv.title LIKE ? OR mv.description LIKE ?)');
+        p.push(like, like);
+      }
     }
     if (status)      { c.push('mv.status = ?');      p.push(status); }
     if (customer_id) { c.push('mv.customer_id = ?'); p.push(customer_id); }
