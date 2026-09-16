@@ -53,14 +53,24 @@ function ActivityForm({ meta, initial, onSave, onClose }) {
     billable_classification: initial?.billable_classification || '',
     follow_up_required: !!initial?.follow_up_required,
     follow_up_date: initial?.follow_up_date?.slice(0, 10) || '',
+    change_type: initial?.change_type || '',
+    change_reason: initial?.change_reason || '',
+    previous_state: initial?.previous_state || '',
+    new_state: initial?.new_state || '',
+    change_risk: initial?.change_risk || '',
+    rollback_available: !!initial?.rollback_available,
+    customer_approval_reference: initial?.customer_approval_reference || '',
+    verification_notes: initial?.verification_notes || '',
   }));
   const [showMore, setShowMore] = useState(false);
+  const [showChangeDetails, setShowChangeDetails] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const category = meta.categories.find(c => String(c.id) === String(form.category_id));
   const subcategories = category?.subcategories || [];
+  const isChangeCategory = /change/i.test(category?.name || '');
 
   function validate() {
     if (!form.customer_id) return 'Customer is required';
@@ -186,6 +196,45 @@ function ActivityForm({ meta, initial, onSave, onClose }) {
         </div>
       </details>
 
+      {isChangeCategory && (
+        <details className="column-picker" open={showChangeDetails} onToggle={e => setShowChangeDetails(e.target.open)} style={{ marginTop: 8 }}>
+          <summary className="btn btn-ghost btn-sm" style={{ display: 'inline-block' }}>
+            {showChangeDetails ? 'Hide' : 'Show'} Change Details
+          </summary>
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--gray-100)' }}>
+            <div className="form-row">
+              <div className="form-group"><label>Change Type</label><input value={form.change_type} onChange={set('change_type')} placeholder="e.g. Firewall rule update" /></div>
+              <div className="form-group"><label>Risk</label>
+                <select value={form.change_risk} onChange={set('change_risk')}>
+                  <option value="">Not specified</option>
+                  <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-group"><label>Change Reason</label><textarea value={form.change_reason} onChange={set('change_reason')} rows={2} /></div>
+            <div className="form-row">
+              <div className="form-group"><label>Previous State</label><textarea value={form.previous_state} onChange={set('previous_state')} rows={2} /></div>
+              <div className="form-group"><label>New State</label><textarea value={form.new_state} onChange={set('new_state')} rows={2} /></div>
+            </div>
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
+                <input type="checkbox" checked={form.rollback_available}
+                  onChange={e => setForm(f => ({ ...f, rollback_available: e.target.checked }))} style={{ width: 'auto' }} />
+                Rollback Available
+              </label>
+            </div>
+            <div className="form-group"><label>Customer Approval Reference</label><input value={form.customer_approval_reference} onChange={set('customer_approval_reference')} /></div>
+            <div className="form-group"><label>Verification Notes</label><textarea value={form.verification_notes} onChange={set('verification_notes')} rows={2} /></div>
+          </div>
+        </details>
+      )}
+
+      {category?.require_attachment && (
+        <div className="alert alert-warning" style={{ marginTop: 8 }}>
+          This category requires at least one attachment before the activity can be marked Completed.
+        </div>
+      )}
+
       <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save Activity'}</button>
@@ -195,7 +244,7 @@ function ActivityForm({ meta, initial, onSave, onClose }) {
 }
 
 /* ── Activity Detail Modal (view + attachments) ──────────────────────── */
-function ActivityDetailModal({ id, onClose, onChanged }) {
+function ActivityDetailModal({ id, allowAttachments, onClose, onChanged }) {
   const toast = useToast();
   const [activity, setActivity] = useState(null);
   const [attachments, setAttachments] = useState([]);
@@ -266,13 +315,29 @@ function ActivityDetailModal({ id, onClose, onChanged }) {
           <div className="alert alert-warning">Follow-up required by {fmtDate(activity.follow_up_date)}</div>
         ) : null}
 
+        {(activity.change_type || activity.change_reason || activity.previous_state || activity.new_state) && (
+          <div><span className="text-muted">Change Details</span>
+            <div style={{ marginTop: 4, fontSize: 12 }}>
+              {activity.change_type && <div><strong>Type:</strong> {activity.change_type}</div>}
+              {activity.change_risk && <div><strong>Risk:</strong> {activity.change_risk}</div>}
+              {activity.change_reason && <div><strong>Reason:</strong> {activity.change_reason}</div>}
+              {activity.previous_state && <div><strong>Previous State:</strong> {activity.previous_state}</div>}
+              {activity.new_state && <div><strong>New State:</strong> {activity.new_state}</div>}
+              <div><strong>Rollback Available:</strong> {activity.rollback_available ? 'Yes' : 'No'}</div>
+              {activity.customer_approval_reference && <div><strong>Customer Approval:</strong> {activity.customer_approval_reference}</div>}
+            </div>
+          </div>
+        )}
+
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <span className="text-muted"><Paperclip size={12} style={{ verticalAlign: -1 }} /> Attachments</span>
-            <label className="btn btn-ghost btn-sm" style={{ cursor: 'pointer' }}>
-              <Upload size={12} /> {uploading ? 'Uploading…' : 'Upload'}
-              <input type="file" hidden onChange={handleUpload} disabled={uploading} />
-            </label>
+            {allowAttachments !== false && (
+              <label className="btn btn-ghost btn-sm" style={{ cursor: 'pointer' }}>
+                <Upload size={12} /> {uploading ? 'Uploading…' : 'Upload'}
+                <input type="file" hidden onChange={handleUpload} disabled={uploading} />
+              </label>
+            )}
           </div>
           {attachments.length === 0
             ? <p className="text-muted" style={{ fontSize: 12 }}>No attachments yet.</p>
@@ -495,7 +560,9 @@ export default function ActivityLog() {
                       {r.status !== 'completed' && (
                         <button className="btn btn-ghost btn-sm" title="Mark Complete" onClick={() => handleComplete(r)}><CheckCircle2 size={12} /></button>
                       )}
-                      <button className="btn btn-ghost btn-sm" title="Create Follow-Up Task" onClick={() => handleFollowUp(r)}><ListPlus size={12} /></button>
+                      {meta?.settings?.allow_follow_up_task_creation !== false && (
+                        <button className="btn btn-ghost btn-sm" title="Create Follow-Up Task" onClick={() => handleFollowUp(r)}><ListPlus size={12} /></button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -525,7 +592,10 @@ export default function ActivityLog() {
         </Modal>
       )}
 
-      {viewId && <ActivityDetailModal id={viewId} onClose={() => { setViewId(null); load(); }} />}
+      {viewId && (
+        <ActivityDetailModal id={viewId} allowAttachments={meta?.settings?.allow_attachments}
+          onClose={() => { setViewId(null); load(); }} />
+      )}
     </div>
   );
 }

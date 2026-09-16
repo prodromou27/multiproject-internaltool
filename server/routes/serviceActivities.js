@@ -38,6 +38,25 @@ async function terminalCompletedValue() {
   return completed?.value || TERMINAL_COMPLETED_FALLBACK;
 }
 
+const SETTINGS_DEFAULTS = { retention_days: null, allow_attachments: true, allow_follow_up_task_creation: true };
+async function getServiceActivitySettings() {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'service_activity_settings'").get();
+  if (!row) return { ...SETTINGS_DEFAULTS };
+  try { return { ...SETTINGS_DEFAULTS, ...JSON.parse(row.value) }; } catch { return { ...SETTINGS_DEFAULTS }; }
+}
+
+/** Category-level "require attachment" rule can only realistically be checked once
+ * the activity exists (attachments FK to the activity id), so it's enforced here —
+ * at the point status is being set to the terminal Completed value — rather than
+ * at initial creation. */
+async function assertAttachmentRuleSatisfied(activityId, categoryId) {
+  const category = await db.prepare('SELECT require_attachment FROM activity_categories WHERE id = ?').get(categoryId);
+  if (!category?.require_attachment) return null;
+  const { c } = await db.prepare('SELECT COUNT(*) AS c FROM attachments WHERE service_activity_id = ?').get(activityId);
+  if (!c) return 'This category requires at least one attachment before the activity can be marked completed';
+  return null;
+}
+
 /**
  * Validate + resolve a create/update payload against customer-specific rules
  * and cross-entity ownership. Returns { error } or the resolved fields.
@@ -138,9 +157,11 @@ router.get('/meta', requireAuth, requireServiceActivityAccess, async (req, res) 
     customers = rows.filter(c => !restrictedIds.has(c.id) || allowedRestricted.has(c.id));
   }
 
+  const settings = await getServiceActivitySettings();
+
   res.json({
     categories: categories.map(c => ({ ...c, subcategories: subcategories.filter(s => s.category_id === c.id) })),
-    technologies, statuses, customers,
+    technologies, statuses, customers, settings,
   });
 });
 
@@ -322,6 +343,15 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, async (req, res) =
   if (body.status && !statuses.some(s => s.value === body.status)) return res.status(400).json({ error: 'Invalid status' });
   const completedValue = await terminalCompletedValue();
   const newStatus = body.status || existing.status;
+
+  // Enforce "require attachment" only on the transition INTO Completed (the activity
+  // already exists at this point, so attachments could have been uploaded first) —
+  // not on historical activities that were already completed, and not on unrelated edits.
+  if (newStatus === completedValue && existing.status !== completedValue) {
+    const attachmentError = await assertAttachmentRuleSatisfied(id, body.category_id || existing.category_id);
+    if (attachmentError) return res.status(400).json({ error: attachmentError });
+  }
+
   const completedAt = newStatus === completedValue
     ? (existing.completed_at || (body.activity_date || existing.activity_date) + ' 00:00:00')
     : (newStatus === existing.status ? existing.completed_at : null);
@@ -400,6 +430,9 @@ router.post('/:id/complete', requireAuth, requireServiceActivityAccess, async (r
   if (req.user.role !== 'manager' && activity.engineer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
 
   const completedValue = await terminalCompletedValue();
+  const attachmentError = await assertAttachmentRuleSatisfied(id, activity.category_id);
+  if (attachmentError) return res.status(400).json({ error: attachmentError });
+
   await db.prepare(`UPDATE service_activities SET status=?, completed_at=datetime('now'), updated_by=?, updated_at=datetime('now') WHERE id=?`)
     .run(completedValue, req.user.id, id);
   await logAudit(db, req, 'service_activity', id, activity.title, 'activity_completed', null);
@@ -447,6 +480,9 @@ router.post('/:id/follow-up-task', requireAuth, requireServiceActivityAccess, as
   const activity = await db.prepare('SELECT * FROM service_activities WHERE id = ?').get(id);
   if (!activity) return res.status(404).json({ error: 'Not found' });
   if (req.user.role !== 'manager' && activity.engineer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+  const settings = await getServiceActivitySettings();
+  if (!settings.allow_follow_up_task_creation) return res.status(403).json({ error: 'Follow-up task creation is disabled by an administrator' });
 
   // Find (or leave null) a project for this customer so the task links somewhere sensible.
   const project = activity.related_project_id
@@ -528,6 +564,9 @@ router.post('/:id/attachments', requireAuth, requireServiceActivityAccess, async
   const activity = await db.prepare('SELECT engineer_id, title FROM service_activities WHERE id = ?').get(id);
   if (!activity) return res.status(404).json({ error: 'Not found' });
   if (req.user.role !== 'manager' && activity.engineer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+  const settings = await getServiceActivitySettings();
+  if (!settings.allow_attachments) return res.status(403).json({ error: 'Attachments are disabled by an administrator' });
 
   upload.single('file')(req, res, async (uploadErr) => {
     if (uploadErr) return res.status(400).json({ error: uploadErr.message });

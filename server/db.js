@@ -493,11 +493,12 @@ async function init() {
     );
 
     CREATE TABLE IF NOT EXISTS activity_categories (
-      id         SERIAL PRIMARY KEY,
-      name       TEXT NOT NULL UNIQUE,
-      active     INTEGER NOT NULL DEFAULT 1,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT DEFAULT ${NOW}
+      id                 SERIAL PRIMARY KEY,
+      name               TEXT NOT NULL UNIQUE,
+      active             INTEGER NOT NULL DEFAULT 1,
+      sort_order         INTEGER NOT NULL DEFAULT 0,
+      require_attachment INTEGER NOT NULL DEFAULT 0,
+      created_at         TEXT DEFAULT ${NOW}
     );
 
     CREATE TABLE IF NOT EXISTS activity_subcategories (
@@ -682,6 +683,9 @@ async function applyCompatibilityMigrations() {
 
       ALTER TABLE attachments ALTER COLUMN project_id DROP NOT NULL;
     `],
+    ['20260916_activity_category_attachment_rule', `
+      ALTER TABLE activity_categories ADD COLUMN IF NOT EXISTS require_attachment INTEGER NOT NULL DEFAULT 0;
+    `],
   ];
 
   for (const [id, sql] of migrations) {
@@ -800,6 +804,14 @@ async function seedServiceActivityLookups() {
         [DEFAULT_TECHNOLOGIES[i], i]
       );
     }
+  }
+
+  const { rows: settingsRows } = await pool.query("SELECT 1 FROM settings WHERE key = 'service_activity_settings'");
+  if (!settingsRows.length) {
+    await pool.query(
+      "INSERT INTO settings (key, value) VALUES ('service_activity_settings', $1) ON CONFLICT (key) DO NOTHING",
+      [JSON.stringify({ retention_days: null, allow_attachments: true, allow_follow_up_task_creation: true })]
+    );
   }
 
   // Patch pre-existing status_config rows (created before this module existed)

@@ -18,6 +18,7 @@ export default function CustomerServiceProfile() {
   const [customer, setCustomer] = useState(null);
   const [engineers, setEngineers] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [contractHours, setContractHours] = useState(null);
   const [summary, setSummary] = useState(null);
   const [timeline, setTimeline] = useState([]);
   const [total, setTotal] = useState(0);
@@ -31,8 +32,8 @@ export default function CustomerServiceProfile() {
   const [statusFilter, setStatusFilter] = useState('');
 
   useEffect(() => {
-    Promise.all([api.customer(id), api.users(), api.activityCategories()]).then(([c, u, cats]) => {
-      setCustomer(c); setEngineers(u.filter(x => x.role === 'engineer')); setCategories(cats);
+    Promise.all([api.customer(id), api.users(), api.activityCategories(), api.customerContractHours(id)]).then(([c, u, cats, hours]) => {
+      setCustomer(c); setEngineers(u.filter(x => x.role === 'engineer')); setCategories(cats); setContractHours(hours);
     });
   }, [id]);
 
@@ -68,6 +69,27 @@ export default function CustomerServiceProfile() {
           <div className="card stat"><div className="stat-value">{summary.total_hours}h</div><div className="stat-label">Total Hours</div></div>
           <div className="card stat"><div className="stat-value">{summary.byEngineer.length}</div><div className="stat-label">Engineers Involved</div></div>
           <div className="card stat"><div className="stat-value">{summary.byCategory.length}</div><div className="stat-label">Categories</div></div>
+        </div>
+      )}
+
+      {contractHours?.enabled && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="section-title">Contract Hours ({contractHours.period === 'annual' ? 'Annual' : 'Monthly'})</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div className="progress-bar" style={{ flex: 1 }}>
+              <div className="progress-bar-fill" style={{
+                width: `${Math.min(100, (contractHours.consumed_hours / contractHours.included_hours) * 100)}%`,
+                background: contractHours.remaining_hours < 0 ? 'var(--danger)' : contractHours.remaining_hours < contractHours.included_hours * 0.2 ? 'var(--warning)' : 'var(--success)',
+              }} />
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>
+              {contractHours.consumed_hours}h used / {contractHours.included_hours}h included
+              {' · '}
+              <span style={{ color: contractHours.remaining_hours < 0 ? 'var(--danger)' : 'var(--gray-600)' }}>
+                {contractHours.remaining_hours}h remaining
+              </span>
+            </span>
+          </div>
         </div>
       )}
 

@@ -2886,6 +2886,80 @@ function TeamsAdminSection() {
   );
 }
 
+function ServiceActivityGeneralSettings() {
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [settings, setSettings] = useState(null);
+  const [retention, setRetention] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = () => Promise.all([api.getServiceActivitySettings(), api.serviceActivityRetentionStatus()])
+    .then(([s, r]) => { setSettings(s); setRetention(r); });
+  useEffect(() => { load(); }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api.saveServiceActivitySettings({
+        ...settings,
+        retention_days: settings.retention_days ? Number(settings.retention_days) : null,
+      });
+      toast.success('Settings saved');
+      load();
+    } catch (e) { toast.error(e.message); }
+    finally { setSaving(false); }
+  }
+
+  async function purge() {
+    const ok = await confirm(
+      `Permanently delete ${retention.eligible_count} service activit${retention.eligible_count === 1 ? 'y' : 'ies'} older than ${retention.cutoff}? This cannot be undone.`,
+      { title: 'Purge Old Activities' }
+    );
+    if (!ok) return;
+    try { const r = await api.purgeOldActivities(); toast.success(`Deleted ${r.deleted} activities`); load(); }
+    catch (e) { toast.error(e.message); }
+  }
+
+  if (!settings) return null;
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="section-title">General Settings</div>
+      <div className="form-group">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
+          <input type="checkbox" checked={settings.allow_attachments} style={{ width: 'auto' }}
+            onChange={e => setSettings(s => ({ ...s, allow_attachments: e.target.checked }))} />
+          Allow Attachments
+        </label>
+      </div>
+      <div className="form-group">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
+          <input type="checkbox" checked={settings.allow_follow_up_task_creation} style={{ width: 'auto' }}
+            onChange={e => setSettings(s => ({ ...s, allow_follow_up_task_creation: e.target.checked }))} />
+          Allow Follow-Up Task Creation
+        </label>
+      </div>
+      <div className="form-group" style={{ maxWidth: 260 }}>
+        <label>Retention Period (days)</label>
+        <input type="number" min="1" value={settings.retention_days || ''} placeholder="No limit"
+          onChange={e => setSettings(s => ({ ...s, retention_days: e.target.value || null }))} />
+      </div>
+      <button className="btn btn-primary btn-sm" onClick={save} disabled={saving} style={{ marginBottom: 12 }}>
+        {saving ? 'Saving…' : 'Save Settings'}
+      </button>
+
+      {retention?.retention_days && (
+        <div style={{ paddingTop: 10, borderTop: '1px solid var(--gray-100)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span className="text-sm text-muted">
+            {retention.eligible_count} activit{retention.eligible_count === 1 ? 'y is' : 'ies are'} older than {retention.retention_days} days (before {retention.cutoff})
+          </span>
+          <button className="btn btn-sm btn-danger" onClick={purge} disabled={!retention.eligible_count}>Purge Old Activities</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ServiceActivityAdminTab() {
   const toast = useToast();
   const confirm = useConfirm();
@@ -2898,6 +2972,7 @@ function ServiceActivityAdminTab() {
 
   return (
     <div>
+      <ServiceActivityGeneralSettings />
       <TeamsAdminSection />
 
       <LookupTable
@@ -2909,6 +2984,13 @@ function ServiceActivityAdminTab() {
           const ok = await confirm(`Delete category "${item.name}"?`, { title: 'Delete Category' });
           if (!ok) return;
           try { await api.deleteActivityCategory(item.id); load(); } catch (e) { toast.error(e.message); }
+        }}
+        extraColumn={{
+          label: 'Require Attachment',
+          render: item => (
+            <input type="checkbox" checked={!!item.require_attachment} style={{ width: 'auto' }}
+              onChange={async () => { await api.updateActivityCategory(item.id, { require_attachment: !item.require_attachment }); load(); }} />
+          ),
         }}
       />
 

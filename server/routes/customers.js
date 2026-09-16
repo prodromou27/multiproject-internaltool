@@ -367,6 +367,31 @@ router.get('/:id/service-activities', requireManagerOrPlanner, async (req, res) 
   res.json({ rows, total, page: Number(page), page_size: limit });
 });
 
+/* ── Contract hour tracking (optional — only meaningful when included_hours is set) ── */
+router.get('/:id/contract-hours', requireManagerOrPlanner, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  const customer = await db.prepare('SELECT included_hours, contract_hour_period FROM customers WHERE id = ?').get(id);
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  if (!customer.included_hours || !customer.contract_hour_period) {
+    return res.json({ enabled: false });
+  }
+  const now = new Date();
+  const periodStart = customer.contract_hour_period === 'annual'
+    ? `${now.getFullYear()}-01-01`
+    : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const { minutes } = await db.prepare(`
+    SELECT COALESCE(SUM(duration_minutes), 0) AS minutes FROM service_activities
+    WHERE customer_id = ? AND billable_classification = 'included_in_contract' AND activity_date >= ?
+  `).get(id, periodStart);
+  const consumed = Math.round((minutes / 60) * 10) / 10;
+  const remaining = Math.round((customer.included_hours - consumed) * 10) / 10;
+  res.json({
+    enabled: true, period: customer.contract_hour_period, period_start: periodStart,
+    included_hours: customer.included_hours, consumed_hours: consumed, remaining_hours: remaining,
+  });
+});
+
 router.get('/:id/service-summary', requireManagerOrPlanner, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });

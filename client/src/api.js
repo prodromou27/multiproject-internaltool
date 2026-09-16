@@ -347,6 +347,13 @@ export const api = {
   setCustomerEngineers: (id, user_ids) => req('PUT', `/customers/${id}/engineers`, { user_ids }),
   customerServiceActivities: (id, params = {}) => req('GET', `/customers/${id}/service-activities?` + new URLSearchParams(params).toString()),
   customerServiceSummary: (id, params = {}) => req('GET', `/customers/${id}/service-summary?` + new URLSearchParams(params).toString()),
+  customerContractHours: (id) => req('GET', `/customers/${id}/contract-hours`),
+
+  // service activity settings (admin) — retention, attachments/follow-up toggles
+  getServiceActivitySettings: () => req('GET', '/service-activity-settings'),
+  saveServiceActivitySettings: (data) => req('PUT', '/service-activity-settings', data),
+  serviceActivityRetentionStatus: () => req('GET', '/service-activity-settings/retention-status'),
+  purgeOldActivities: () => req('POST', '/service-activity-settings/purge', {}),
 
   // service activity reports (management)
   serviceActivityOverview: (params = {}) => req('GET', '/reports/service-activity/overview?' + new URLSearchParams(params).toString()),

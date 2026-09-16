@@ -19,21 +19,21 @@ router.get('/', requireAuth, async (req, res) => {
 router.use(requireManager);
 
 router.post('/', async (req, res) => {
-  const { name, sort_order } = req.body;
+  const { name, sort_order, require_attachment } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
   const existing = await db.prepare('SELECT 1 FROM activity_categories WHERE LOWER(name) = LOWER(?)').get(name.trim());
   if (existing) return res.status(409).json({ error: 'Category already exists' });
-  const result = await db.prepare('INSERT INTO activity_categories (name, sort_order) VALUES (?, ?)')
-    .run(name.trim(), sort_order || 0);
+  const result = await db.prepare('INSERT INTO activity_categories (name, sort_order, require_attachment) VALUES (?, ?, ?)')
+    .run(name.trim(), sort_order || 0, require_attachment ? 1 : 0);
   res.json({ id: result.lastInsertRowid });
 });
 
 router.put('/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
-  const { name, active, sort_order } = req.body;
-  await db.prepare(`UPDATE activity_categories SET name=COALESCE(?,name), active=COALESCE(?,active), sort_order=COALESCE(?,sort_order) WHERE id=?`)
-    .run(name?.trim() || null, active != null ? (active ? 1 : 0) : null, sort_order ?? null, id);
+  const { name, active, sort_order, require_attachment } = req.body;
+  await db.prepare(`UPDATE activity_categories SET name=COALESCE(?,name), active=COALESCE(?,active), sort_order=COALESCE(?,sort_order), require_attachment=COALESCE(?,require_attachment) WHERE id=?`)
+    .run(name?.trim() || null, active != null ? (active ? 1 : 0) : null, sort_order ?? null, require_attachment != null ? (require_attachment ? 1 : 0) : null, id);
   res.json({ ok: true });
 });
 

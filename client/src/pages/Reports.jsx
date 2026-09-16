@@ -164,9 +164,18 @@ function ServiceActivityReportTab() {
   const [entityId, setEntityId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const isMonthly = reportType === 'monthly_msp';
+
+  function monthBounds(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    const start = `${ym}-01`;
+    const end = new Date(y, m, 0).toISOString().slice(0, 10);
+    return [start, end];
+  }
 
   useEffect(() => {
     Promise.all([api.customers(), api.users(), api.teams()]).then(([c, u, t]) => {
@@ -177,12 +186,13 @@ function ServiceActivityReportTab() {
   async function runReport() {
     if (!entityId) return;
     setLoading(true); setError('');
-    const params = { from: from || undefined, to: to || undefined };
-    if (reportType === 'customer') params.customer_id = entityId;
+    const [rangeFrom, rangeTo] = isMonthly ? monthBounds(month) : [from || undefined, to || undefined];
+    const params = { from: rangeFrom, to: rangeTo };
+    if (reportType === 'customer' || isMonthly) params.customer_id = entityId;
     if (reportType === 'engineer') params.engineer_id = entityId;
     if (reportType === 'team') params.team_id = entityId;
     try {
-      const fn = reportType === 'customer' ? api.serviceActivityCustomerReport
+      const fn = (reportType === 'customer' || isMonthly) ? api.serviceActivityCustomerReport
         : reportType === 'engineer' ? api.serviceActivityEngineerReport
         : api.serviceActivityTeamReport;
       const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined));
@@ -194,8 +204,9 @@ function ServiceActivityReportTab() {
   async function exportReport() {
     try {
       const { token } = await api.downloadToken();
-      const params = new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}), token });
-      if (reportType === 'customer') params.set('customer_id', entityId);
+      const [rangeFrom, rangeTo] = isMonthly ? monthBounds(month) : [from, to];
+      const params = new URLSearchParams({ ...(rangeFrom ? { from: rangeFrom } : {}), ...(rangeTo ? { to: rangeTo } : {}), token });
+      if (reportType === 'customer' || isMonthly) params.set('customer_id', entityId);
       if (reportType === 'engineer') params.set('engineer_id', entityId);
       if (reportType === 'team') params.set('team_id', entityId);
       const a = document.createElement('a');
@@ -205,7 +216,7 @@ function ServiceActivityReportTab() {
     } catch (e) { setError(e.message); }
   }
 
-  const entityOptions = reportType === 'customer' ? customers : reportType === 'engineer' ? engineers : teams;
+  const entityOptions = (reportType === 'customer' || isMonthly) ? customers : reportType === 'engineer' ? engineers : teams;
 
   return (
     <div>
@@ -216,20 +227,27 @@ function ServiceActivityReportTab() {
               <option value="customer">Customer Activity Report</option>
               <option value="engineer">Engineer Activity Report</option>
               <option value="team">Team Activity Report</option>
+              <option value="monthly_msp">Monthly MSP Service Report</option>
             </select>
           </div>
           <div className="form-group">
-            <label>{reportType === 'customer' ? 'Customer' : reportType === 'engineer' ? 'Engineer' : 'Team'}</label>
+            <label>{isMonthly ? 'Customer' : reportType === 'customer' ? 'Customer' : reportType === 'engineer' ? 'Engineer' : 'Team'}</label>
             <select value={entityId} onChange={e => setEntityId(e.target.value)}>
               <option value="">Select…</option>
               {entityOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           </div>
         </div>
-        <div className="form-row">
-          <div className="form-group"><label>From</label><input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
-          <div className="form-group"><label>To</label><input type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
-        </div>
+        {isMonthly ? (
+          <div className="form-group" style={{ maxWidth: 220 }}><label>Month</label>
+            <input type="month" value={month} onChange={e => setMonth(e.target.value)} />
+          </div>
+        ) : (
+          <div className="form-row">
+            <div className="form-group"><label>From</label><input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
+            <div className="form-group"><label>To</label><input type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary" onClick={runReport} disabled={!entityId || loading}>{loading ? 'Running…' : 'Run Report'}</button>
           {result && <button className="btn btn-ghost" onClick={exportReport}>Export to Excel</button>}
@@ -237,6 +255,13 @@ function ServiceActivityReportTab() {
       </div>
 
       {error && <div className="alert alert-warning">{error}</div>}
+
+      {result && isMonthly && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{customers.find(c => String(c.id) === String(entityId))?.name}</div>
+          <div className="text-sm text-muted">Monthly MSP Service Report — {new Date(month + '-02').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div>
+        </div>
+      )}
 
       {result && (
         <>
