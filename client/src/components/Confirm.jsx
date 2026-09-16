@@ -34,9 +34,8 @@ export function ConfirmProvider({ children }) {
             </p>
           </div>
           <div className="modal-footer" style={{ padding: 0, border: 'none' }}>
-            <button className="btn btn-ghost" onClick={() => done(false)}>Cancel</button>
+            <button autoFocus className="btn btn-ghost" onClick={() => done(false)}>Cancel</button>
             <button
-              autoFocus
               className={req.danger === false ? 'btn btn-primary' : 'btn btn-danger'}
               onClick={() => done(true)}
             >

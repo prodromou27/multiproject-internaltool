@@ -103,7 +103,7 @@ function EngineerCard({ eng }) {
                         )}
                       </div>
                       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                        <StatusBadge s={t.status} />
+                        <StatusBadge entityType="task" s={t.status} />
                         <PriorityBadge p={t.priority} />
                       </div>
                     </li>
@@ -132,7 +132,7 @@ function EngineerCard({ eng }) {
                           </span>
                         </div>
                       </div>
-                      <StatusBadge s={v.status} />
+                      <StatusBadge entityType="visit" s={v.status} />
                     </li>
                   ))}
                 </ul>

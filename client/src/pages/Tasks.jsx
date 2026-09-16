@@ -565,7 +565,7 @@ export default function Tasks() {
                     ) : null}
                   </td>
                   {visibleColumns.has('project') && <td>{projects.find(p => p.id === t.project_id)?.title || <span className="text-muted">—</span>}</td>}
-                  {visibleColumns.has('status') && <td><StatusBadge s={t.status} /></td>}
+                  {visibleColumns.has('status') && <td><StatusBadge entityType="task" s={t.status} /></td>}
                   {visibleColumns.has('priority') && <td><PriorityBadge p={t.priority} /></td>}
                   {visibleColumns.has('assignee') && <td>{t.assigned_to_name || '—'}</td>}
                   {visibleColumns.has('deadline') && <td className={isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status) ? 'overdue' : ''}>{fmtDate(t.deadline)}</td>}

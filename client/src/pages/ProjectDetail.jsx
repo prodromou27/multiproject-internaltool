@@ -373,7 +373,7 @@ function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, o
         </div>
         {task.description && <p style={{ color: 'var(--gray-600)', fontSize: 13, marginBottom: 8 }}>{task.description}</p>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: 13, marginBottom: 8 }}>
-          <div><span style={{ color: 'var(--gray-400)' }}>Status:</span> <StatusBadge s={task.status} /></div>
+          <div><span style={{ color: 'var(--gray-400)' }}>Status:</span> <StatusBadge entityType="task" s={task.status} /></div>
           <div><span style={{ color: 'var(--gray-400)' }}>Priority:</span> <PriorityBadge p={task.priority} /></div>
           <div><span style={{ color: 'var(--gray-400)' }}>Assigned:</span> {task.assigned_to_name || '—'}</div>
           <div><span style={{ color: 'var(--gray-400)' }}>Deadline:</span> <span className={isOverdue(task.deadline) && !['completed','closed','cancelled'].includes(task.status) ? 'overdue' : ''}>{fmtDate(task.deadline) || '—'}</span></div>
@@ -493,7 +493,7 @@ function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, o
 
         {deps.map(d => (
           <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--gray-50)' }}>
-            <StatusBadge s={d.status} />
+            <StatusBadge entityType="task" s={d.status} />
             <span style={{ flex: 1, fontSize: 12 }}>{d.title}</span>
             {!['completed','closed','cancelled'].includes(d.status) && <span style={{ fontSize: 10, color: '#6366f1', fontWeight: 700 }}>BLOCKING</span>}
             {canManageTask && (
@@ -656,7 +656,7 @@ function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowClick, o
             </div>
           )}
         </td>
-        <td><StatusBadge s={task.status} /></td>
+        <td><StatusBadge entityType="task" s={task.status} /></td>
         <td><PriorityBadge p={task.priority} /></td>
         <td>{task.assigned_to_name || '—'}</td>
         <td className={isOverdue(task.deadline) && !['completed','closed','cancelled'].includes(task.status) ? 'overdue' : ''}>{fmtDate(task.deadline)}</td>
@@ -1969,7 +1969,7 @@ export default function ProjectDetail() {
           </p>
           <h1 className="page-title">{project.title}</h1>
           <div className="flex-center gap-8 mt-4" style={{ flexWrap: 'wrap' }}>
-            <StatusBadge s={project.status} />
+            <StatusBadge entityType="project" s={project.status} />
             <PriorityBadge p={project.priority} />
             {project.rag_status && <RagBadge rag={project.rag_status} />}
             {project.deadline && <span className={'text-sm ' + (isOverdue(project.deadline) && !['closed','cancelled'].includes(project.status) ? 'overdue' : 'text-muted')}>Due: {fmtDate(project.deadline)}</span>}

@@ -511,6 +511,11 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
 - **No PDF export anywhere in the app** (Excel/`exceljs` only) — intentional (no PDF
   library is present), but worth a deliberate decision if PDF reports become a
   requirement rather than leaving it unaddressed.
+- **Shared UI:** dialogs trap keyboard focus, restore the triggering control on
+  close, lock background scrolling, and let Escape dismiss only the top dialog.
+  Confirmation dialogs initially focus Cancel. Status badges select configured
+  labels/colors by entity type, so overlapping task/project/visit/activity values
+  use the correct configuration.
 - **UI**: no component library (hand-rolled CSS + `lucide-react` icons + heavy inline
   `style={{}}` objects throughout). Consistent, but a design-system pass (shared
   form components, consistent spacing tokens, etc.) could reduce duplication —

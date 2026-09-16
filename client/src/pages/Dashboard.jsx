@@ -455,7 +455,7 @@ export default function Dashboard() {
                     <li key={p.id} style={{ padding:'8px 0', borderBottom:'1px solid var(--gray-100)', display:'flex', alignItems:'center', gap:8 }}>
                       <span style={{ width:8, height:8, borderRadius:'50%', background:p.rag_status==='red'?'#ef4444':'#f59e0b', flexShrink:0 }} />
                       <Link to={`/projects/${p.id}`} style={{ flex:1, fontWeight:600, color:'var(--gray-900)', fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', minWidth:0 }}>{p.title}</Link>
-                      <StatusBadge s={p.status} />
+                      <StatusBadge entityType="project" s={p.status} />
                       {p.deadline && <span className={'text-sm '+(isOverdue(p.deadline)?'overdue':'text-muted')} style={{ flexShrink:0 }}>{fmtDate(p.deadline)}</span>}
                     </li>
                   ))}
@@ -575,7 +575,7 @@ export default function Dashboard() {
                           {od && <span style={{ marginLeft:6, fontSize:11, color:'var(--danger)', fontWeight:600 }}>Overdue</span>}
                         </td>
                         <td style={{ color:'var(--gray-600)', fontSize:12 }}>{v.engineer_names || <span className="text-muted">Unassigned</span>}</td>
-                        <td><StatusBadge s={v.status} /></td>
+                        <td><StatusBadge entityType="visit" s={v.status} /></td>
                       </tr>
                     );
                   })}
@@ -675,7 +675,7 @@ export default function Dashboard() {
                     <li key={p.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)',
                       display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                       <Link to={`/projects/${p.id}`} style={{ flex:1, fontWeight:600, minWidth:120, color:'var(--gray-900)' }}>{p.title}</Link>
-                      <StatusBadge s={p.status} />
+                      <StatusBadge entityType="project" s={p.status} />
                       {p.deadline && (
                         <span className={'text-sm ' + (isOverdue(p.deadline) && !['closed','cancelled'].includes(p.status) ? 'overdue' : 'text-muted')}>
                           {fmtDate(p.deadline)}
@@ -717,7 +717,7 @@ export default function Dashboard() {
                       display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                       <span style={{ flex:1, minWidth:120, color:'var(--gray-800)' }}>{t.title}</span>
                       {t.is_adhoc ? <span className="badge badge-adhoc">adhoc</span> : null}
-                      <StatusBadge s={t.status} />
+                      <StatusBadge entityType="task" s={t.status} />
                       {t.deadline && (
                         <span className={'text-sm ' + (isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status) ? 'overdue' : 'text-muted')}>
                           {fmtDate(t.deadline)}
@@ -837,7 +837,7 @@ export default function Dashboard() {
                           <td style={{ fontWeight:600 }}>{v.customer_name}</td>
                           <td><Link to="/maintenance-visits" style={{ color:'var(--gray-800)', fontWeight:500 }}>{v.title}</Link></td>
                           <td className={isOverdue(v.scheduled_date) ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
-                          <td><StatusBadge s={v.status} /></td>
+                          <td><StatusBadge entityType="visit" s={v.status} /></td>
                           <td>
                             <button className="btn btn-sm btn-primary"
                               style={{ display:'inline-flex', alignItems:'center', gap:4 }}
@@ -908,7 +908,7 @@ export default function Dashboard() {
                     <li key={p.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)',
                       display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                       <Link to={`/projects/${p.id}`} style={{ flex:1, fontWeight:600, minWidth:120, color:'var(--gray-900)' }}>{p.title}</Link>
-                      <StatusBadge s={p.status} />
+                      <StatusBadge entityType="project" s={p.status} />
                       {p.deadline && (
                         <span className={'text-sm ' + (isOverdue(p.deadline) && !['closed','cancelled'].includes(p.status) ? 'overdue' : 'text-muted')}>
                           {fmtDate(p.deadline)}
@@ -950,7 +950,7 @@ export default function Dashboard() {
                       display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                       <span style={{ flex:1, minWidth:120, color:'var(--gray-800)' }}>{t.title}</span>
                       {t.is_adhoc ? <span className="badge badge-adhoc">adhoc</span> : null}
-                      <StatusBadge s={t.status} />
+                      <StatusBadge entityType="task" s={t.status} />
                       {t.deadline && (
                         <span className={'text-sm ' + (isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status) ? 'overdue' : 'text-muted')}>
                           {fmtDate(t.deadline)}
@@ -1021,7 +1021,7 @@ export default function Dashboard() {
                             <td style={{ fontWeight:600 }}>{v.customer_name}</td>
                             <td>{v.title}</td>
                             <td className={od ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
-                            <td><StatusBadge s={v.status} /></td>
+                            <td><StatusBadge entityType="visit" s={v.status} /></td>
                             <td>
                               {v.status !== 'cancelled' && (
                                 <button
@@ -1069,7 +1069,7 @@ export default function Dashboard() {
                       display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                       <Link to={`/projects/${p.id}`}
                         style={{ flex:1, fontWeight:600, minWidth:120, color:'var(--gray-900)' }}>{p.title}</Link>
-                      <StatusBadge s={p.status} />
+                      <StatusBadge entityType="project" s={p.status} />
                       {p.deadline && (
                         <span className={'text-sm ' + (isOverdue(p.deadline) && !['closed','cancelled'].includes(p.status) ? 'overdue' : 'text-muted')}>
                           {fmtDate(p.deadline)}

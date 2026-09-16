@@ -529,7 +529,7 @@ function ProjectsAdminTab() {
                     <tr key={p.id}>
                       <td style={{ fontWeight: 600, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</td>
                       <td style={{ color: 'var(--gray-600)', fontSize: 12 }}>{p.customer_name || '—'}</td>
-                      <td><StatusBadge s={p.status} /></td>
+                      <td><StatusBadge entityType="project" s={p.status} /></td>
                       <td><PriorityBadge p={p.priority} /></td>
                       <td>
                         <span className={overdue ? 'overdue' : 'text-sm text-muted'}>
@@ -622,7 +622,7 @@ function MaintenanceAdminTab() {
                     <td style={{ fontSize: 12, color: 'var(--gray-600)' }}>{v.customer_name}</td>
                     <td className={isOverdue(v.scheduled_date) && v.status === 'scheduled' ? 'overdue' : 'text-sm text-muted'}>{fmtDate(v.scheduled_date)}</td>
                     <td style={{ fontSize: 12, color: 'var(--gray-600)' }}>{v.engineer_names || <span className="text-muted">—</span>}</td>
-                    <td><StatusBadge s={v.status} /></td>
+                    <td><StatusBadge entityType="visit" s={v.status} /></td>
                     <td>
                       {v.report_sent_to_customer
                         ? <span className="badge badge-done">Sent to Customer</span>

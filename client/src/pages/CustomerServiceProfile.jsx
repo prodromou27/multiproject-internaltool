@@ -150,7 +150,7 @@ export default function CustomerServiceProfile() {
                 <div style={{ fontWeight: 600, fontSize: 13 }}>{t.title}</div>
                 <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>{t.engineer_name} · {t.category_name}{t.duration_minutes ? ` · ${fmtDuration(t.duration_minutes)}` : ''}</div>
               </div>
-              <StatusBadge s={t.status} />
+              <StatusBadge entityType="task" s={t.status} />
             </div>
           ))}
           <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10 }}>

@@ -415,7 +415,7 @@ export default function Reports() {
             <tbody>{projects.map(p => (
               <tr key={p.id}>
                 <td><Link to={`/projects/${p.id}`} style={{ fontWeight: 600 }}>{p.title}</Link></td>
-                <td><StatusBadge s={p.status} /></td>
+                <td><StatusBadge entityType="project" s={p.status} /></td>
                 <td><PriorityBadge p={p.priority} /></td>
                 <td>
                   <span className="text-sm">{p.done_count}/{p.task_count}</span>

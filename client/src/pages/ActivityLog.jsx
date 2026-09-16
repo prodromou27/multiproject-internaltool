@@ -282,7 +282,7 @@ function ActivityDetailModal({ id, allowAttachments, onClose, onChanged }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <strong style={{ fontSize: 16 }}>{activity.title}</strong>
-          <StatusBadge s={activity.status} />
+          <StatusBadge entityType="service_activity" s={activity.status} />
         </div>
         <div className="grid-2" style={{ gap: 8 }}>
           <div><span className="text-muted">Customer</span><div>{activity.customer_name}</div></div>
@@ -583,7 +583,7 @@ export default function ActivityLog() {
                   <td>{r.category_name}</td>
                   <td>{r.title}{r.follow_up_required ? <span title="Follow-up required" style={{ marginLeft: 6 }}>⏳</span> : null}</td>
                   <td>{fmtDuration(r.duration_minutes)}</td>
-                  <td><StatusBadge s={r.status} /></td>
+                  <td><StatusBadge entityType="service_activity" s={r.status} /></td>
                   <td>
                     <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                       <button className="btn btn-ghost btn-sm" title="Edit" onClick={() => setEditActivity(r)}>Edit</button>

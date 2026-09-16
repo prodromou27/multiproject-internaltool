@@ -84,7 +84,7 @@ function InlineStatusSelect({ project, onUpdate }) {
         style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
         title="Click to change status"
       >
-        <StatusBadge s={project.status} />
+        <StatusBadge entityType="project" s={project.status} />
         <span style={{ fontSize: 9, color: 'var(--gray-400)', lineHeight: 1, marginTop: 1 }}>▾</span>
       </div>
       {open && (
@@ -95,7 +95,7 @@ function InlineStatusSelect({ project, onUpdate }) {
               className={`inline-dropdown-item${s.value === project.status ? ' active' : ''}`}
               onClick={e => { e.stopPropagation(); onUpdate(project, s.value); setOpen(false); }}
             >
-              <StatusBadge s={s.value} />
+              <StatusBadge entityType="project" s={s.value} />
               {s.value === project.status && <span className="inline-dropdown-check">✓</span>}
             </div>
           ))}
@@ -525,7 +525,7 @@ export default function Projects() {
                   <td>
                     {canManage
                       ? <InlineStatusSelect project={p} onUpdate={handleStatusUpdate} />
-                      : <StatusBadge s={p.status} />}
+                      : <StatusBadge entityType="project" s={p.status} />}
                   </td>
                   <td>
                     {canManage

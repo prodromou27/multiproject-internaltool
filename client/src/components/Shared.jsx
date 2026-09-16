@@ -1,4 +1,4 @@
-import React, { useContext, useRef, useState, useEffect } from 'react';
+import React, { useContext, useRef, useState, useEffect, useId } from 'react';
 import { X, AtSign } from 'lucide-react';
 import { StatusContext, getStatusDef } from '../hooks/useStatuses';
 
@@ -12,14 +12,14 @@ const STATUS_LABELS = {
   pending_approval: 'Pending Approval', reopened: 'Reopened',
 };
 
-export function StatusBadge({ s }) {
+export function StatusBadge({ s, entityType }) {
   const ctx = useContext(StatusContext);
   const config = ctx?.config;
 
   // Try each entity type in turn
   let def = null;
   if (config) {
-    for (const et of ['project', 'task', 'visit', 'service_activity']) {
+    for (const et of entityType ? [entityType] : ['project', 'task', 'visit', 'service_activity']) {
       def = getStatusDef(config, et, s);
       if (def) break;
     }
@@ -121,20 +121,59 @@ export function fmtRelative(dt) {
   return `${Math.floor(mo / 12)} year${Math.floor(mo / 12) !== 1 ? 's' : ''} ago`;
 }
 
+const modalStack = [];
+let originalBodyOverflow;
+const focusableSelector = 'button, input, select, textarea, a[href], [tabindex]';
+
 export function Modal({ title, onClose, children, footer, wide, width }) {
-  // Close on Escape key
+  const dialogRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const titleId = useId();
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    const dialog = dialogRef.current;
+    const previousFocus = document.activeElement;
+    if (!modalStack.length) {
+      originalBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+    }
+    modalStack.push(dialog);
+    const isTop = () => modalStack.at(-1) === dialog;
+    const focusable = () => [...dialog.querySelectorAll(focusableSelector)]
+      .filter(node => node.tabIndex >= 0 && !node.disabled && !node.closest('[hidden], [inert]') && node.getClientRects().length);
+    const focusFirst = () => (focusable()[0] || dialog).focus();
+    if (!dialog.contains(document.activeElement)) focusFirst();
+    const handler = e => {
+      if (!isTop()) return;
+      if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); onCloseRef.current(); }
+      if (e.key === 'Tab') {
+        const elements = focusable();
+        const first = elements[0], last = elements.at(-1);
+        if (!first) { e.preventDefault(); dialog.focus(); }
+        else if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+          e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    const containFocus = e => { if (isTop() && !dialog.contains(e.target)) focusFirst(); };
     document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+    document.addEventListener('focusin', containFocus);
+    return () => {
+      const wasTop = isTop();
+      modalStack.splice(modalStack.indexOf(dialog), 1);
+      document.removeEventListener('keydown', handler);
+      document.removeEventListener('focusin', containFocus);
+      if (!modalStack.length) document.body.style.overflow = originalBodyOverflow;
+      if (wasTop && previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, []);
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={width ? { maxWidth: width } : wide ? { maxWidth: 700 } : {}}>
+      <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} style={width ? { maxWidth: width } : wide ? { maxWidth: 700 } : {}}>
         <div className="modal-header">
-          <span className="modal-title">{title}</span>
-          <button className="modal-close" onClick={onClose} aria-label="Close">
+          <span id={titleId} className="modal-title">{title}</span>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
             <X size={14} />
           </button>
         </div>
