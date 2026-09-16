@@ -273,6 +273,9 @@ Engineers self-assign and are confined to their own tasks and member projects.
 
 ### Customers
 CRM-lite with encrypted PII, now extended with service-contract fields (see §3) and
+validated text, finite non-negative included hours, and valid contract date ranges.
+Partial edits preserve omitted contract values and allow explicitly clearing
+optional contract fields.
 team/engineer assignment. Excel import (≤5,000 rows, duplicate detection by normalized
 name, downloadable template). Engineers see only customers linked to their work
 (project/visit assignment for the legacy modules; team/engineer assignment for Service

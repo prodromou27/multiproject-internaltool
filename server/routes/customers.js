@@ -103,7 +103,34 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 const VALID_CONTRACT_HOUR_PERIODS = new Set(['monthly', 'annual']);
 
+function validateCustomerInput(body, existing = {}) {
+  if (!existing.id || body.name !== undefined) {
+    if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 300)
+      return 'Name must contain 1 to 300 characters';
+  }
+  for (const field of ['contact_name', 'contact_email', 'contact_phone', 'address', 'notes',
+    'customer_code', 'primary_contact', 'location', 'contract_type', 'reporting_frequency', 'service_notes']) {
+    if (body[field] != null && (typeof body[field] !== 'string' || body[field].length > 10000))
+      return `${field} must be text of at most 10000 characters`;
+  }
+  if (body.included_hours != null && body.included_hours !== ''
+    && (!['number', 'string'].includes(typeof body.included_hours) || !Number.isFinite(Number(body.included_hours)) || Number(body.included_hours) < 0))
+    return 'Included hours must be a finite non-negative number';
+  const merged = { ...existing, ...body };
+  for (const field of ['contract_start_date', 'contract_end_date']) {
+    const value = merged[field];
+    if (value != null && value !== '' && (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)
+      || Number.isNaN(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value))
+      return `${field} must be a valid YYYY-MM-DD date`;
+  }
+  if (merged.contract_start_date && merged.contract_end_date && merged.contract_end_date < merged.contract_start_date)
+    return 'Contract end date cannot precede its start date';
+  return null;
+}
+
 router.post('/', requireManagerOrPlanner, async (req, res) => {
+  const inputError = validateCustomerInput(req.body);
+  if (inputError) return res.status(400).json({ error: inputError });
   const {
     name, contact_name, contact_email, contact_phone, address, notes,
     customer_code, active, service_activity_enabled, primary_contact, location,
@@ -214,6 +241,8 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
   const existing = (await db.prepare('SELECT * FROM customers WHERE id = ?').get(id));
   if (!existing) return res.status(404).json({ error: 'Not found' });
+  const inputError = validateCustomerInput(req.body, existing);
+  if (inputError) return res.status(400).json({ error: inputError });
   const {
     name, contact_name, contact_email, contact_phone, address, notes,
     customer_code, active, service_activity_enabled, primary_contact, location,
@@ -246,28 +275,28 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
   });
   (await db.prepare(`UPDATE customers SET
       name=COALESCE(?,name), contact_name=?, contact_email=?, contact_phone=?, address=?, notes=?,
-      customer_code=COALESCE(?,customer_code), active=COALESCE(?,active),
+      customer_code=?, active=COALESCE(?,active),
       service_activity_enabled=COALESCE(?,service_activity_enabled),
       primary_contact=?, location=?,
-      contract_type=COALESCE(?,contract_type), contract_start_date=COALESCE(?,contract_start_date),
-      contract_end_date=COALESCE(?,contract_end_date), reporting_frequency=COALESCE(?,reporting_frequency),
-      included_hours=COALESCE(?,included_hours), contract_hour_period=COALESCE(?,contract_hour_period),
+      contract_type=?, contract_start_date=?,
+      contract_end_date=?, reporting_frequency=?,
+      included_hours=?, contract_hour_period=?,
       service_notes=?,
       require_duration=COALESCE(?,require_duration), require_ticket_reference=COALESCE(?,require_ticket_reference),
       require_technology=COALESCE(?,require_technology), require_category=COALESCE(?,require_category),
       require_notes=COALESCE(?,require_notes), require_billable_classification=COALESCE(?,require_billable_classification)
     WHERE id=?`)
     .run(enc.name || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes,
-      customer_code !== undefined ? (customer_code || null) : null,
+      customer_code !== undefined ? (customer_code || null) : existing.customer_code,
       active != null ? (active ? 1 : 0) : null,
       service_activity_enabled != null ? (service_activity_enabled ? 1 : 0) : null,
       enc.primary_contact, enc.location,
-      contract_type !== undefined ? (contract_type || null) : null,
-      contract_start_date !== undefined ? (contract_start_date || null) : null,
-      contract_end_date !== undefined ? (contract_end_date || null) : null,
-      reporting_frequency !== undefined ? (reporting_frequency || null) : null,
-      included_hours !== undefined ? (included_hours !== '' && included_hours != null ? Number(included_hours) : null) : null,
-      contract_hour_period !== undefined ? (contract_hour_period || null) : null,
+      contract_type !== undefined ? (contract_type || null) : existing.contract_type,
+      contract_start_date !== undefined ? (contract_start_date || null) : existing.contract_start_date,
+      contract_end_date !== undefined ? (contract_end_date || null) : existing.contract_end_date,
+      reporting_frequency !== undefined ? (reporting_frequency || null) : existing.reporting_frequency,
+      included_hours !== undefined ? (included_hours !== '' && included_hours != null ? Number(included_hours) : null) : existing.included_hours,
+      contract_hour_period !== undefined ? (contract_hour_period || null) : existing.contract_hour_period,
       enc.service_notes,
       require_duration != null ? (require_duration ? 1 : 0) : null,
       require_ticket_reference != null ? (require_ticket_reference ? 1 : 0) : null,

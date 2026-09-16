@@ -643,3 +643,25 @@ test('time log input validation rejects malformed targets, hours and dates', asy
     assert.equal((await api(path, { token: ids.tokenManager })).status, 400, path);
   }
 });
+
+test('customer contracts validate merged dates and allow clearing optional fields', async () => {
+  const created = await api('/api/customers', { method: 'POST', token: ids.tokenManager, body: {
+    name: 'Contract edit customer', customer_code: 'EDIT', contract_type: 'MSP',
+    contract_start_date: '2026-01-01', contract_end_date: '2026-12-31', included_hours: 20,
+  } });
+  assert.equal(created.status, 200);
+  const endpoint = `/api/customers/${created.data.id}`;
+  for (const body of [{ name: {} }, { included_hours: -1 }, { included_hours: 'Infinity' },
+    { included_hours: [] }, { contract_start_date: '2026-02-30' }, { contract_end_date: '2025-12-31' }, { notes: {} }]) {
+    assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenManager, body })).status, 400, JSON.stringify(body));
+  }
+  assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenManager, body: { notes: 'Updated notes' } })).status, 200);
+  let stored = await db.prepare('SELECT contract_start_date, included_hours FROM customers WHERE id=?').get(created.data.id);
+  assert.equal(stored.contract_start_date, '2026-01-01');
+  assert.equal(Number(stored.included_hours), 20);
+  assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenManager,
+    body: { customer_code: '', contract_type: null, contract_start_date: '', contract_end_date: null, included_hours: '' } })).status, 200);
+  stored = await db.prepare('SELECT customer_code, contract_type, contract_start_date, contract_end_date, included_hours FROM customers WHERE id=?').get(created.data.id);
+  assert.ok(Object.values(stored).every(value => value === null));
+  assert.equal((await api('/api/customers', { method: 'POST', token: ids.tokenManager, body: { name: [] } })).status, 400);
+});
