@@ -224,8 +224,9 @@ deactivation) instead of a raw FK error.
   maintaining a second prefix list).
 - **SQL injection** — fully parameterized; the only string interpolation into SQL is
   generated `?` placeholder lists and static fragments.
-- **Global error handler** — keeps stack traces out of responses (generic message in
-  production).
+- **Global error handler** — Express 4 async handlers are wrapped by
+  `express-async-errors`, so rejected promises reach the error handler instead of
+  terminating the process. Production responses contain a generic message.
 
 ## 7. Feature modules
 
@@ -448,8 +449,10 @@ query param).
   (`pg-mem`) rather than pure functions, since this behavior only exists at the route
   handler level. `server/index.js` isn't booted directly for tests (its TLS/rate-limit/
   scheduler bootstrap isn't structured for import) — a minimal Express app mounts the
-  real route modules instead. This is the **only** module with route-level test
-  coverage; every other module relies solely on manual QA (see §11).
+  real route modules instead. The harness also checks task custom-field ownership,
+  project relationships and typed validation. CI repeats the route tests against
+  PostgreSQL 16 in a fresh disposable database (`TEST_DATABASE_URL`). Other modules
+  still need broader route coverage.
 - CI (`.github/workflows/ci.yml`) runs `npm test` + `npm audit` for both server and
   client, and validates `docker compose config`, on push to `DEV-2`/`DEV-3`/`dev`/`main` and on
   any pull request.
@@ -477,11 +480,9 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
   owner columns (`project_id`, `service_activity_id`) instead of a generic
   `entity_type`/`entity_id` pair. Works for two owners; a third would make this
   layout genuinely awkward.
-- **No real Postgres verification in this dev pass.** The Service Activity Tracking
-  schema and integration tests were validated against `pg-mem` (in-memory emulator),
-  not a live PostgreSQL instance — high confidence but not certainty; recommend running
-  the full test suite + a manual QA pass against a real `docker compose up` environment
-  before production use.
+- **Database and browser coverage.** CI checks the schema and route integration tests
+  on PostgreSQL 16 as well as `pg-mem`. Most older modules still need integration
+  tests, and a manual browser QA pass remains necessary before production use.
 - **Service Activity retention is manual, not automatic.** By design (see §7) — an
   automatic background purge was deliberately not added without being asked, but if
   that's wanted, the fields/status endpoint already exist to build on.

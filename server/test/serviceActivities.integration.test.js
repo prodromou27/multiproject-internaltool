@@ -16,7 +16,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 process.env.JWT_SECRET = 'x'.repeat(32);
-process.env.DATABASE_URL = 'postgres://fake:fake@localhost/fake';
+// TEST_DATABASE_URL must point to a fresh, disposable database (CI supplies one).
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || 'postgres://fake:fake@localhost/fake';
 
 const { newDb } = require('pg-mem');
 const memDb = newDb();
@@ -58,13 +59,14 @@ class Pool extends RealPool {
 const Module = require('module');
 const originalRequire = Module.prototype.require;
 Module.prototype.require = function (id) {
-  if (id === 'pg') {
+  if (id === 'pg' && !process.env.TEST_DATABASE_URL) {
     const real = originalRequire.apply(this, arguments);
     return { ...real, Pool };
   }
   return originalRequire.apply(this, arguments);
 };
 
+require('express-async-errors');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
@@ -95,6 +97,8 @@ test.before(async () => {
   app.use('/api/teams', require('../routes/teams'));
   app.use('/api/customers', require('../routes/customers'));
   app.use('/api/service-activities', require('../routes/serviceActivities'));
+  app.use('/api/projects/:projectId/custom-fields', require('../routes/customFields'));
+  app.use(require('../middleware/errors').errorHandler);
   await new Promise(resolve => { server = app.listen(0, resolve); });
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 
@@ -127,7 +131,8 @@ test.before(async () => {
 });
 
 test.after(async () => {
-  await new Promise(resolve => server.close(resolve));
+  if (server) await new Promise(resolve => server.close(resolve));
+  await db.pool.end();
   Module.prototype.require = originalRequire;
 });
 
@@ -335,4 +340,54 @@ test('revoked customer access prevents editing an existing owned activity', asyn
   } finally {
     await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(ids.customer, ids.teamEnabled);
   }
+});
+
+test('task custom fields enforce task ownership and project relationships', async () => {
+  const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Custom fields project', ids.manager)).lastInsertRowid;
+  const otherProject = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Other project', ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?)').run(project, ids.engineerEnabled);
+  const mkTask = async assignedTo => (await db.prepare('INSERT INTO tasks (project_id, title, assigned_to, created_by) VALUES (?, ?, ?, ?)')
+    .run(project, 'Scoped task', assignedTo, ids.manager)).lastInsertRowid;
+  const ownTask = await mkTask(ids.engineerEnabled);
+  const otherTask = await mkTask(ids.manager);
+  const field = (await db.prepare('INSERT INTO project_custom_fields (project_id, name, field_type) VALUES (?, ?, ?)')
+    .run(project, 'Number field', 'number')).lastInsertRowid;
+  const otherField = (await db.prepare('INSERT INTO project_custom_fields (project_id, name, field_type) VALUES (?, ?, ?)')
+    .run(otherProject, 'Private field', 'text')).lastInsertRowid;
+  const endpoint = task => `/api/projects/${project}/custom-fields/values/${task}`;
+  assert.equal((await api(endpoint(otherTask), { token: ids.tokenEnabled })).status, 403);
+  assert.equal((await api(endpoint(otherTask), { method: 'PUT', token: ids.tokenEnabled, body: { values: { [field]: '42' } } })).status, 403);
+  assert.equal((await api(endpoint(ownTask), { method: 'PUT', token: ids.tokenEnabled, body: { values: { [field]: '42' } } })).status, 200);
+  assert.equal((await api(endpoint(ownTask), { token: ids.tokenEnabled })).data[field], '42');
+  const invalid = [{ [otherField]: 'Cross-project write' }, { [field]: 'NaN' }, null, [], { [field]: {} }];
+  for (const values of invalid) {
+    const result = await api(endpoint(ownTask), { method: 'PUT', token: ids.tokenEnabled, body: { values } });
+    assert.equal(result.status, 400, JSON.stringify(values));
+  }
+  const stored = await db.prepare('SELECT field_id, value FROM task_custom_values WHERE task_id=?').all(ownTask);
+  assert.deepEqual(stored, [{ field_id: field, value: '42' }]);
+  for (const role of ['planner', 'pm']) {
+    const user = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+      .run(`Custom ${role}`, `${role}@custom.test`, bcrypt.hashSync('pw', 4), role)).lastInsertRowid;
+    await db.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?)').run(project, user);
+    assert.equal((await api(endpoint(ownTask), { token: signJwt({ id: user }) })).status, 403);
+  }
+});
+
+test('custom field definitions and typed values reject invalid input', async () => {
+  const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Typed fields project', ids.manager)).lastInsertRowid;
+  const task = (await db.prepare('INSERT INTO tasks (project_id, title, created_by) VALUES (?, ?, ?)').run(project, 'Typed task', ids.manager)).lastInsertRowid;
+  const base = `/api/projects/${project}/custom-fields`;
+  for (const body of [{ name: 123 }, { name: 'Bad type', field_type: 'script' }, { name: 'Bad options', options: {} }]) {
+    assert.equal((await api(base, { method: 'POST', token: ids.tokenManager, body })).status, 400);
+  }
+  const select = await api(base, { method: 'POST', token: ids.tokenManager, body: { name: 'Environment', field_type: 'select', options: ['Production', 'Test'], required: true } });
+  assert.equal(select.status, 200);
+  const date = await api(base, { method: 'POST', token: ids.tokenManager, body: { name: 'Renewal', field_type: 'date' } });
+  assert.equal(date.status, 200);
+  assert.equal((await api(`${base}/${date.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { field_type: 'script' } })).status, 400);
+  for (const values of [{ [select.data.id]: 'Unknown' }, { [select.data.id]: '' }, { [date.data.id]: '2026-02-30' }]) {
+    assert.equal((await api(`${base}/values/${task}`, { method: 'PUT', token: ids.tokenManager, body: { values } })).status, 400);
+  }
+  assert.equal((await api(`${base}/values/${task}`, { method: 'PUT', token: ids.tokenManager, body: { values: { [select.data.id]: 'Production', [date.data.id]: '2026-02-28' } } })).status, 200);
 });

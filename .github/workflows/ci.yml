@@ -13,6 +13,20 @@ jobs:
   server:
     name: Server tests and audit
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: solutionshub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d solutionshub_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
 
@@ -29,6 +43,12 @@ jobs:
       - name: Run server tests
         working-directory: server
         run: npm test
+
+      - name: Run route integration tests on PostgreSQL
+        working-directory: server
+        env:
+          TEST_DATABASE_URL: postgres://app:test_password@localhost:5432/solutionshub_test
+        run: node --test test/serviceActivities.integration.test.js
 
       - name: Audit server production dependencies
         working-directory: server

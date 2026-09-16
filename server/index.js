@@ -8,6 +8,7 @@ if (fs0.existsSync(envPath)) {
   });
 }
 
+require('express-async-errors');
 const express    = require('express');
 const https      = require('https');
 const http       = require('http');
@@ -184,15 +185,7 @@ app.use('/uploads', (req, res) => {
 // ── Global error handler — catches unhandled errors from any route ────────────
 // Keeps stack traces out of API responses in all environments.
 // eslint-disable-next-line no-unused-vars
-app.use((err, req, res, next) => {
-  console.error('[unhandled error]', err);
-  if (res.headersSent) return;
-  // Only expose the message in development; production gets a generic message.
-  const message = process.env.NODE_ENV === 'production'
-    ? 'An internal error occurred'
-    : (err.message || 'An internal error occurred');
-  res.status(err.status || 500).json({ error: message });
-});
+app.use(require('./middleware/errors').errorHandler);
 
 // Serve React build in production
 const clientBuild = path.join(__dirname, '../client/dist');
