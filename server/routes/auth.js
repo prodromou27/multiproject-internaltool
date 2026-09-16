@@ -13,6 +13,14 @@ const { sendEmail } = require('../email');
 
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('not-the-real-password', 12);
 
+function passwordError(password) {
+  if (typeof password !== 'string' || password.length < 12)
+    return 'Password must be at least 12 characters';
+  if (Buffer.byteLength(password, 'utf8') > 72)
+    return 'Password must be at most 72 UTF-8 bytes';
+  return null;
+}
+
 async function upsertSetting(key, value) {
   await db.prepare(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value'
@@ -182,7 +190,7 @@ router.post('/login', async (req, res) => {
   // Use a constant-time compare even on "not found" to avoid timing oracle.
   // Guard against a missing/non-string password (bcrypt throws on undefined).
   const candidateHash = user?.password || DUMMY_PASSWORD_HASH;
-  const passwordOk = typeof password === 'string' && bcrypt.compareSync(password, candidateHash) && !!user;
+  const passwordOk = typeof password === 'string' && await bcrypt.compare(password, candidateHash) && !!user;
   if (!passwordOk) {
     await recordFailedLogin(req, normEmail, 'invalid_credentials');
     return res.status(401).json({ error: 'Invalid email or password' });
@@ -297,7 +305,7 @@ router.delete('/2fa', requireAuth, async (req, res) => {
   const { password } = req.body;
   if (!password) return res.status(400).json({ error: 'Current password is required to disable 2FA' });
   const u = (await db.prepare('SELECT password FROM users WHERE id = ?').get(req.user.id));
-  if (!bcrypt.compareSync(password, u.password))
+  if (typeof password !== 'string' || !await bcrypt.compare(password, u.password))
     return res.status(400).json({ error: 'Incorrect password' });
   (await db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL WHERE id = ?').run(req.user.id));
   res.json({ ok: true });
@@ -353,13 +361,15 @@ router.put('/profile', requireAuth, async (req, res) => {
 // POST /api/auth/change-password
 router.post('/change-password', requireAuth, async (req, res) => {
   const { current_password, new_password } = req.body;
-  if (!new_password || new_password.length < 12)
-    return res.status(400).json({ error: 'New password must be at least 12 characters' });
+  const error = passwordError(new_password);
+  if (error) return res.status(400).json({ error });
   const u = (await db.prepare('SELECT password FROM users WHERE id = ?').get(req.user.id));
-  if (!bcrypt.compareSync(current_password || '', u.password))
+  if (typeof current_password !== 'string' || !await bcrypt.compare(current_password, u.password))
     return res.status(400).json({ error: 'Current password is incorrect' });
-  (await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ?")
-    .run(bcrypt.hashSync(new_password, 12), req.user.id));
+  const hash = await bcrypt.hash(new_password, 12);
+  const changed = await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ? AND token_version = ?")
+    .run(hash, req.user.id, req.user.token_version);
+  if (!changed.changes) return res.status(409).json({ error: 'Session changed. Please sign in again.' });
   const updated = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
   res.json({ ok: true, token: issueSession(req, res, updated) });
 });
@@ -369,14 +379,16 @@ router.post('/change-password', requireAuth, async (req, res) => {
 // No current_password needed — user just authenticated successfully.
 router.post('/change-password-first', requireAuth, async (req, res) => {
   const { new_password } = req.body;
-  if (!new_password || new_password.length < 12)
-    return res.status(400).json({ error: 'Password must be at least 12 characters' });
+  const error = passwordError(new_password);
+  if (error) return res.status(400).json({ error });
   const u = (await db.prepare('SELECT must_change_password FROM users WHERE id = ?').get(req.user.id));
   if (!u) return res.status(404).json({ error: 'User not found' });
   if (!u.must_change_password)
     return res.status(403).json({ error: 'Use /change-password to update your password' });
-  (await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ?")
-    .run(bcrypt.hashSync(new_password, 12), req.user.id));
+  const hash = await bcrypt.hash(new_password, 12);
+  const changed = await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ? AND must_change_password = 1 AND token_version = ?")
+    .run(hash, req.user.id, req.user.token_version);
+  if (!changed.changes) return res.status(409).json({ error: 'Password setup has already completed. Please sign in again.' });
   const updated = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
   res.json({ ok: true, token: issueSession(req, res, updated) });
 });
@@ -394,7 +406,7 @@ function escHtml(str) {
 /* ── Forgot password — request a reset link ──────────────── */
 router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'Email required' });
+  if (typeof email !== 'string' || !email.trim()) return res.status(400).json({ error: 'Email required' });
 
   // Always respond identically regardless of whether the email exists (prevent enumeration)
   const user = (await db.prepare('SELECT id, name, active FROM users WHERE email = ?').get(email.trim().toLowerCase()));
@@ -443,10 +455,10 @@ router.post('/forgot-password', async (req, res) => {
 /* ── Reset password — consume the token ─────────────────── */
 router.post('/reset-password', async (req, res) => {
   const { token, new_password } = req.body;
-  if (!token || !new_password)
+  if (typeof token !== 'string' || !token || token.length > 128)
     return res.status(400).json({ error: 'token and new_password are required' });
-  if (new_password.length < 12)
-    return res.status(400).json({ error: 'Password must be at least 12 characters' });
+  const error = passwordError(new_password);
+  if (error) return res.status(400).json({ error });
 
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const row = (await db.prepare(`
@@ -460,12 +472,18 @@ router.post('/reset-password', async (req, res) => {
   if (new Date(row.expires_at) < new Date())
     return res.status(400).json({ error: 'Reset link has expired. Please request a new one.' });
 
-  // Mark token used and update password
-  await db.transaction(async (tx) => {
-    await tx.prepare('UPDATE password_reset_tokens SET used = 1 WHERE id = ?').run(row.id);
+  const hash = await bcrypt.hash(new_password, 12);
+  // The conditional update consumes the token exactly once, including concurrent requests.
+  const consumed = await db.transaction(async (tx) => {
+    const token = await tx.prepare('UPDATE password_reset_tokens SET used = 1 WHERE id = ? AND used = 0 AND expires_at > ? RETURNING user_id')
+      .get(row.id, new Date().toISOString());
+    if (!token) return false;
     await tx.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ?")
-      .run(bcrypt.hashSync(new_password, 12), row.user_id);
+      .run(hash, token.user_id);
+    return true;
   });
+
+  if (!consumed) return res.status(400).json({ error: 'Invalid, expired or already-used reset link' });
 
   res.json({ ok: true });
 });

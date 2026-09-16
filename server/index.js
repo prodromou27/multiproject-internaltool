@@ -104,7 +104,14 @@ app.use('/api/auth/2fa/verify',            authLimiter);
 app.use('/api/auth/2fa/enable',            authLimiter); // brute-force 6-digit TOTP
 app.use('/api/auth/change-password',       authLimiter);
 app.use('/api/auth/change-password-first', authLimiter);
-app.use('/api/auth/forgot-password',       authLimiter);
+// Forgot-password always returns 200, so its limit must also count successful responses.
+app.use('/api/auth/forgot-password', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many reset requests. Please try again in 15 minutes.' },
+}));
 app.use('/api/auth/reset-password',        authLimiter);
 
 // ── Rate limiting on bulk-import endpoints ───────────────────────────────────

@@ -522,3 +522,51 @@ test('2FA partial tokens do not grant cookie-based access', async () => {
   assert.equal(result.status, 401);
   assert.match(result.data.error, /scope/);
 });
+
+test('password endpoints reject malformed and bcrypt-truncated passwords', async () => {
+  for (const new_password of [null, {}, [], 'short', 'x'.repeat(73), 'é'.repeat(37)]) {
+    for (const path of ['/change-password', '/change-password-first', '/reset-password']) {
+      const result = await api(`/api/auth${path}`, { method: 'POST', token: ids.tokenManager,
+        body: { new_password, current_password: 'pw', token: 'reset-token' } });
+      assert.equal(result.status, 400, `${path}: ${JSON.stringify(new_password)}`);
+    }
+  }
+  assert.equal((await api('/api/auth/forgot-password', { method: 'POST', body: { email: {} } })).status, 400);
+  assert.equal((await api('/api/auth/reset-password', { method: 'POST', body: { token: {}, new_password: 'valid-password-123' } })).status, 400);
+});
+
+test('reset tokens are single-use and revoke previous sessions', async () => {
+  const crypto = require('crypto');
+  const user = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+    .run('Reset user', 'reset@test.local', bcrypt.hashSync('old-password-123', 4), 'engineer')).lastInsertRowid;
+  const token = crypto.randomBytes(32).toString('hex');
+  const hash = crypto.createHash('sha256').update(token).digest('hex');
+  await db.prepare('INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)')
+    .run(user, hash, new Date(Date.now() + 3600000).toISOString());
+  const session = signJwt({ id: user, token_version: 0 });
+  const body = { token, new_password: 'new-reset-password-123' };
+  const first = await api('/api/auth/reset-password', { method: 'POST', body });
+  assert.equal(first.status, 200);
+  assert.equal((await api('/api/auth/reset-password', { method: 'POST', body })).status, 400);
+  assert.equal((await api('/api/auth/me', { token: session })).status, 401);
+  const stored = await db.prepare('SELECT password, token_version FROM users WHERE id = ?').get(user);
+  assert.equal(await bcrypt.compare(body.new_password, stored.password), true);
+  assert.equal(stored.token_version, 1);
+});
+
+test('concurrent reset requests consume a token only once on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const crypto = require('crypto');
+  const user = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+    .run('Concurrent reset user', 'concurrent-reset@test.local', bcrypt.hashSync('old-password-123', 4), 'engineer')).lastInsertRowid;
+  const token = crypto.randomBytes(32).toString('hex');
+  await db.prepare('INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)')
+    .run(user, crypto.createHash('sha256').update(token).digest('hex'), new Date(Date.now() + 3600000).toISOString());
+  const results = await Promise.all([0, 1].map(i => api('/api/auth/reset-password', {
+    method: 'POST', body: { token, new_password: `concurrent-password-${i}` },
+  })));
+  assert.deepEqual(results.map(r => r.status).sort(), [200, 400]);
+  const winner = results.findIndex(r => r.status === 200);
+  const stored = await db.prepare('SELECT password, token_version FROM users WHERE id = ?').get(user);
+  assert.equal(await bcrypt.compare(`concurrent-password-${winner}`, stored.password), true);
+  assert.equal(stored.token_version, 1);
+});

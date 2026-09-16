@@ -111,7 +111,7 @@ manager account with a forced password change on first login.
 
 **Login** (`POST /api/auth/login`):
 - Email is normalized (`trim().toLowerCase()`) to match stored form; password compared
-  with `bcrypt.compareSync` (constant-time even on "user not found" to avoid a timing
+  with asynchronous `bcrypt.compare` (constant-time even on "user not found" to avoid a timing
   oracle).
 - Deactivated accounts are rejected (403); `last_login` is stamped.
 - Password expiry is checked (configurable, default 90 days) — sets
@@ -151,7 +151,11 @@ including downloads, and resume after a browser reload.
   (for forced changes — no current password needed since the user just authenticated),
   and a **forgot/reset** flow using a SHA-256-hashed, 1-hour, single-use token emailed
   as a reset link. Forgot-password always returns identical responses to prevent
-  **account enumeration**.
+  **account enumeration**, and counts successful responses toward its rate limit.
+  New passwords must contain at least 12 characters and at most 72 UTF-8 bytes
+  (bcrypt's input limit). Password hashing is asynchronous, password changes reject
+  stale sessions, and reset tokens are consumed atomically so concurrent requests
+  cannot reuse a link.
 
 **Download tokens:** file-download links that must put a token in a URL use a dedicated
 60-second scoped token (`download: true` claim) so the 24h session JWT never lands in
