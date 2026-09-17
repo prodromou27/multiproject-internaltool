@@ -1068,6 +1068,13 @@ test('management activity report export rejects non-managers including scoped do
 });
 
 
+test('project detail and timeline reject malformed IDs before querying', async () => {
+  for (const id of ['invalid', '0', '-1', '1.2', '9007199254740992']) {
+    for (const suffix of ['', '/activity']) assert.equal((await api(`/api/projects/${id}${suffix}`, { token: ids.tokenManager })).status, 400);
+  }
+  assert.equal((await api('/api/projects/99999999', { token: ids.tokenManager })).status, 404);
+});
+
 test('task relationships protect dependency details, mentions and comment deletion after reassignment', async () => {
   const task = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by) VALUES (?,?,?)').run('Task relationship privacy fixture', ids.engineerEnabled, ids.manager)).lastInsertRowid;
   const hidden = (await db.prepare('INSERT INTO tasks (title,assigned_to,deadline,created_by) VALUES (?,?,?,?)').run('Confidential other task', ids.engineerDisabled, '2036-06-17', ids.manager)).lastInsertRowid;

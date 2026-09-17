@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { CheckSquare, Download, Trash2, UserCheck, Clock, Search, X, Pencil, LockKeyhole, Columns3, ArrowUpDown } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PageHeader } from '../components/PageLayout';
+import { useLatestRequest } from '../hooks/useLatestRequest';
 import { useCreateIntent } from '../hooks/useCreateIntent';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -203,15 +204,28 @@ export default function Tasks() {
   const [bulkStatus, setBulkStatus] = useState('');
   const [bulkBusy, setBulkBusy]   = useState(false);
 
-  useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !loading, onCreate: () => { setShowCreate(true); } });
+  const [loadError, setLoadError] = useState('');
+  useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !loading && !loadError, onCreate: () => { setShowCreate(true); } });
 
-  const load = () => Promise.all([
-    api.tasks({}),
-    api.projects(),
-    isManager ? api.users() : Promise.resolve([])
-  ]).then(([t, p, u]) => { setTasks(t); setProjects(p); setAllUsers(u); setLoading(false); setSelected(new Set()); });
+  const { begin, isCurrent } = useLatestRequest();
+  const load = useCallback(() => {
+    const request = begin();
+    if (request.signal.aborted) return Promise.resolve();
+    setLoading(true); setLoadError(''); setSelected(new Set());
+    const options = { signal: request.signal };
+    return Promise.all([
+      api.tasks({}, options),
+      api.projects(options),
+      isManager ? api.users(options) : Promise.resolve([]),
+    ]).then(([t, p, u]) => {
+      if (!isCurrent(request)) return;
+      setTasks(t); setProjects(p); setAllUsers(u);
+    }).catch(error => {
+      if (isCurrent(request)) setLoadError(error.message || 'Could not load this page');
+    }).finally(() => { if (isCurrent(request)) setLoading(false); });
+  }, [isManager, begin, isCurrent]);
 
-  useEffect(() => { load(); }, [isManager]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [load]);
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const engineers = allUsers.filter(u => u.role === 'engineer');
@@ -401,7 +415,7 @@ export default function Tasks() {
               {TASK_COLUMNS.map(([id, label]) => <label key={id}><input type="checkbox" checked={visibleColumns.has(id)} onChange={() => toggleColumn(id)} /> {label}</label>)}
             </div>
           </details>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Task</button>
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)} disabled={loading || !!loadError}>+ New Task</button>
         </div>
       </>} />
 
@@ -523,7 +537,10 @@ export default function Tasks() {
         </>
       )}
 
-      {loading ? <div className="skeleton-table" aria-label="Loading tasks"><span /><span /><span /><span /><span /></div> : filtered.length === 0 ? (
+      {loadError && <div className="error-msg" role="alert" style={{ marginBottom: 16 }}>
+        {loadError} <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
+      </div>}
+      {loadError && !loading ? <p role="status">This view is unavailable until it reloads successfully.</p> : loading ? <div className="skeleton-table" aria-label="Loading tasks"><span /><span /><span /><span /><span /></div> : filtered.length === 0 ? (
         <div className="empty">
           <div className="empty-icon"><CheckSquare size={40} strokeWidth={1.2} /></div>
           <p>{search.trim() ? `No tasks matching "${search}"` : myTasksOnly ? 'No tasks assigned to you in this view' : 'No tasks found'}</p>

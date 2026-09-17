@@ -67,7 +67,7 @@ export const api = {
   setup2fa: () => req('GET', '/auth/2fa/setup'),
   enable2fa: (code) => req('POST', '/auth/2fa/enable', { code }),
   disable2fa: (password) => req('DELETE', '/auth/2fa', { password }),
-  users: () => req('GET', '/auth/users'),
+  users: (options) => req('GET', '/auth/users', undefined, options),
   me: (options) => req('GET', '/auth/me', undefined, options),
   updateProfile: (data) => req('PUT', '/auth/profile', data),
   changePassword: (data) => req('POST', '/auth/change-password', data),
@@ -86,8 +86,8 @@ export const api = {
   removeAvatar: () => req('DELETE', '/auth/avatar'),
 
   // projects
-  projects: () => req('GET', '/projects'),
-  project: (id) => req('GET', `/projects/${id}`),
+  projects: (options) => req('GET', '/projects', undefined, options),
+  project: (id, options) => req('GET', `/projects/${id}`, undefined, options),
   createProject: (data) => req('POST', '/projects', data),
   updateProject: (id, data) => req('PUT', `/projects/${id}`, data),
   requestClosure: (id) => req('POST', `/projects/${id}/request-closure`, {}),
@@ -101,7 +101,7 @@ export const api = {
   unpinProject: (id) => req('DELETE', `/projects/${id}/pin`),
 
   // tasks
-  tasks: (params = {}) => req('GET', '/tasks?' + new URLSearchParams(params).toString()),
+  tasks: (params = {}, options) => req('GET', '/tasks?' + new URLSearchParams(params).toString(), undefined, options),
   createTask: (data) => req('POST', '/tasks', data),
   updateTask: (id, data) => req('PUT', `/tasks/${id}`, data),
   deleteTask: (id) => req('DELETE', `/tasks/${id}`),
@@ -159,7 +159,7 @@ export const api = {
   adminActivity: (limit = 60) => req('GET', `/admin/activity?limit=${limit}`),
 
   // customers
-  customers: () => req('GET', '/customers'),
+  customers: (options) => req('GET', '/customers', undefined, options),
   customer: (id) => req('GET', `/customers/${id}`),
   createCustomer: (data) => req('POST', '/customers', data),
   updateCustomer: (id, data) => req('PUT', `/customers/${id}`, data),
@@ -186,7 +186,7 @@ export const api = {
   },
 
   // milestones
-  milestones:        (project_id) => req('GET', `/milestones?project_id=${project_id}`),
+  milestones:        (project_id, options) => req('GET', `/milestones?project_id=${project_id}`, undefined, options),
   createMilestone:   (data)       => req('POST', '/milestones', data),
   updateMilestone:   (id, data)   => req('PUT', `/milestones/${id}`, data),
   completeMilestone: (id)         => req('POST', `/milestones/${id}/complete`, {}),
@@ -225,7 +225,7 @@ export const api = {
   deleteTaskComment: (taskId, cid) => req('DELETE', `/tasks/${taskId}/comments/${cid}`),
 
   // project activity
-  projectActivity: (projectId) => req('GET', `/projects/${projectId}/activity`),
+  projectActivity: (projectId, options) => req('GET', `/projects/${projectId}/activity`, undefined, options),
 
   // workload
   workload: () => req('GET', '/workload'),

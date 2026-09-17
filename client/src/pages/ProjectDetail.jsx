@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Building2, ChevronLeft, MessageSquare, ClipboardList,
@@ -8,6 +8,9 @@ import {
   AlertTriangle, BarChart2, Link as LinkIcon, Unlink, Clock, Upload,
   Copy, LayoutGrid, List as ListIcon, SlidersHorizontal, GripVertical, Printer,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { PageState } from '../components/PageLayout';
+import { useLatestRequest } from '../hooks/useLatestRequest';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, RagBadge, fmtDate, fmtRelative, isOverdue, Modal, ProgressBar, MentionInput, renderMentions } from '../components/Shared';
@@ -1828,16 +1831,23 @@ export default function ProjectDetail() {
   const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', is_adhoc: false });
   const [editForm, setEditForm] = useState({});
 
-  const loadMilestones = () => api.milestones(id).then(setMilestones).catch(() => {});
-
-  const load = () => Promise.all([
-    api.project(id),
-    isPM ? Promise.resolve([]) : api.tasks({ project_id: id }),
-    isManager ? api.users()     : Promise.resolve([]),
-    isManager ? api.customers() : Promise.resolve([]),
-    api.projectActivity(id),
-  ]).then(([p, t, u, c, act]) => {
-    setProject(p);
+  const { begin, isCurrent } = useLatestRequest();
+  const [loadError, setLoadError] = useState(null);
+  const load = useCallback(() => {
+    const request = begin();
+    if (request.signal.aborted) return Promise.resolve();
+    setLoadError(null);
+    const options = { signal: request.signal };
+    return Promise.all([
+      api.project(id, options),
+      isPM ? Promise.resolve([]) : api.tasks({ project_id: id }, options),
+      isManager ? api.users(options) : Promise.resolve([]),
+      isManager ? api.customers(options) : Promise.resolve([]),
+      api.projectActivity(id, options),
+      api.milestones(id, options),
+    ]).then(([p, t, u, c, act, ms]) => {
+      if (!isCurrent(request)) return;
+      setProject(p);
     if (isEngineer) {
       try {
         const recent = JSON.parse(localStorage.getItem(`hub_recent_projects_${user.id}`) || '[]');
@@ -1847,15 +1857,31 @@ export default function ProjectDetail() {
         ].slice(0, 6)));
       } catch {}
     }
-    setTasks(t);
-    setAllUsers(u);
-    setCustomers(c);
-    setActivity(act ?? []);
-    loadMilestones();
-  });
-  useEffect(() => { load(); }, [id, isManager]); // eslint-disable-line react-hooks/exhaustive-deps
+      setTasks(t); setAllUsers(u); setCustomers(c); setActivity(act ?? []); setMilestones(ms);
+    }).catch(error => {
+      if (!isCurrent(request)) return;
+      setLoadError({ message: error.message || 'Could not load project', status: error.status, projectId: id });
+      if ([401, 403, 404].includes(error.status)) {
+        setProject(null); setTasks([]); setActivity([]); setMilestones([]);
+      }
+    });
+  }, [id, isManager, isPM, isEngineer, user.id, begin, isCurrent]);
+  const loadMilestones = load;
+  useEffect(() => {
+    setProject(null); setTasks([]); setMilestones([]); setActivity([]);
+    setSelectedTask(null); setShowEdit(false); setShowAddTask(false); setShowRejectDialog(false); setShowImportExcel(false);
+    setStatusMsg(''); setTaskSearch('');
+    load();
+  }, [load]);
 
-  if (!project) return <div className="page"><p className="text-muted">Loading…</p></div>;
+  const currentError = loadError?.projectId === id ? loadError : null;
+  if (!project || project.id !== Number(id)) {
+    if (currentError) return <PageState title={currentError.status === 403 ? 'Project access denied' : currentError.status === 404 ? 'Project not found' : 'Project unavailable'} description={currentError.message}>
+      <button className="btn btn-primary" onClick={load}>Retry</button>
+      <Link className="btn btn-ghost" to="/projects">Back to projects</Link>
+    </PageState>;
+    return <div className="page"><p className="text-muted" role="status">Loading project...</p></div>;
+  }
 
   const setT = k => e => setTaskForm(f => ({ ...f, [k]: e.target.value }));
   const setE = k => e => setEditForm(f => ({ ...f, [k]: e.target.value }));
@@ -1954,6 +1980,9 @@ export default function ProjectDetail() {
 
   return (
     <div className="page">
+      {currentError && <div className="error-msg" role="alert">
+        Could not refresh this project: {currentError.message} <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
+      </div>}
       {/* Print-only view — hidden on screen, shown when printing */}
       <ProjectPrintView project={project} tasks={tasks} milestones={milestones} members={project.members} />
 
@@ -1961,7 +1990,7 @@ export default function ProjectDetail() {
       <div className="page-header">
         <div>
           <p className="text-sm text-muted" style={{ marginBottom: 4 }}>
-            <a href="/projects" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><ChevronLeft size={14} /> Projects</a>
+            <Link to="/projects" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><ChevronLeft size={14} /> Projects</Link>
           </p>
           <h1 className="page-title">{project.title}</h1>
           <div className="flex-center gap-8 mt-4" style={{ flexWrap: 'wrap' }}>

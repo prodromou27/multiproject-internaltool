@@ -179,7 +179,14 @@ router.get('/approvals', requireManager, async (req, res) => {
   res.json({ rows: rows.map(row => ({ ...row, customer_name: decrypt(row.customer_name) })), total: Number(total), page, page_size: pageSize });
 });
 
-router.get('/:id', requireAuth, async (req, res) => {
+function requireProjectId(req, res, next) {
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(Number(req.params.id))) {
+    return res.status(400).json({ error: 'Invalid project ID' });
+  }
+  next();
+}
+
+router.get('/:id', requireAuth, requireProjectId, async (req, res) => {
   const p = (await db.prepare(`
     SELECT p.*, u.name as created_by_name, cu.name as customer_name, cu.contact_name as customer_contact, cu.contact_email as customer_email,
       requester.name AS closure_requested_by_name, reviewer.name AS closure_reviewed_by_name
@@ -207,7 +214,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 });
 
 /* ── Activity feed ─────────────────────────────────────────── */
-router.get('/:id/activity', requireAuth, async (req, res) => {
+router.get('/:id/activity', requireAuth, requireProjectId, async (req, res) => {
   const p = (await db.prepare('SELECT id FROM projects WHERE id = ?').get(req.params.id));
   if (!p) return res.status(404).json({ error: 'Not found' });
   if (req.user.role !== 'manager' && req.user.role !== 'pm') {

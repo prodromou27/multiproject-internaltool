@@ -263,6 +263,14 @@ Aggregated health: active projects, open/overdue tasks, this-week visits, KPI ba
 recent `project_activity`. Engineers see only their own scope.
 
 ### Projects
+Project/task lists show retryable loading failures and cancel superseded reads.
+Project detail applies only the latest request, clears forms and child data on
+project navigation, and prevents rendering the previous project under a new URL.
+Missing/forbidden projects have explicit states; refresh failures remain visible.
+Detail and timeline reads validate positive safe-integer project IDs before SQL.
+Milestones load in the guarded detail batch, so failures cannot silently appear as
+an empty timeline. No migration, configuration or background job is required.
+
 Full lifecycle with config-driven statuses (`not_started → in_progress →
 waiting_customer/vendor → on_hold → pending_approval → closed/cancelled`, plus
 delayed/reopened). Features: priority, deadline, **computed RAG status** (deadline

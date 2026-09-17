@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Building2, FolderOpen, X, Bell, Pin, Search } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
+import { useLatestRequest } from '../hooks/useLatestRequest';
 import { useCreateIntent } from '../hooks/useCreateIntent';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -329,16 +330,27 @@ export default function Projects() {
   const [loading,    setLoading]    = useState(true);
   const [waitingDialog, setWaitingDialog] = useState(null);
 
-  const loadCustomers = () => api.customers().then(setCustomers);
-  useCreateIntent({ allowed: isManager, ready: !loading, onCreate: () => { setShowCreate(true); } });
+  const loadCustomers = () => load();
+  const [loadError, setLoadError] = useState('');
+  useCreateIntent({ allowed: isManager, ready: !loading && !loadError, onCreate: () => { setShowCreate(true); } });
 
-  const load = () => Promise.all([
-    api.projects(),
-    canManage ? api.users()      : Promise.resolve([]),
-    canManage ? api.customers()  : Promise.resolve([]),
-  ]).then(([p, u, c]) => {
-    setProjects(p); setUsers(u); setCustomers(c); setLoading(false);
-  });
+  const { begin, isCurrent } = useLatestRequest();
+  const load = useCallback(() => {
+    const request = begin();
+    if (request.signal.aborted) return Promise.resolve();
+    setLoading(true); setLoadError('');
+    const options = { signal: request.signal };
+    return Promise.all([
+      api.projects(options),
+      canManage ? api.users(options) : Promise.resolve([]),
+      canManage ? api.customers(options) : Promise.resolve([]),
+    ]).then(([p, u, c]) => {
+      if (!isCurrent(request)) return;
+      setProjects(p); setUsers(u); setCustomers(c);
+    }).catch(error => {
+      if (isCurrent(request)) setLoadError(error.message || 'Could not load this page');
+    }).finally(() => { if (isCurrent(request)) setLoading(false); });
+  }, [canManage, begin, isCurrent]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -346,7 +358,7 @@ export default function Projects() {
     if (urlFilter) setFilter(urlFilter);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { load(); }, [canManage]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [load]);
 
   /* ── Inline update handlers ─────────────────────────────────── */
   function handleStatusUpdate(project, newStatus) {
@@ -396,7 +408,7 @@ export default function Projects() {
   return (
     <div className="page">
       <PageHeader eyebrow="Operations" title="Projects" description="Customer delivery, project ownership and upcoming commitments." actions={<>
-{isManager && <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Project</button>}
+{isManager && <button className="btn btn-primary" onClick={() => setShowCreate(true)} disabled={loading || !!loadError}>+ New Project</button>}
       </>} />
 
       <div className="card" style={{ marginBottom: 16 }}>
@@ -470,7 +482,10 @@ export default function Projects() {
         </div>
       </div>
 
-      {loading ? <p className="text-muted">Loading…</p> : filtered.length === 0 ? (
+      {loadError && <div className="error-msg" role="alert" style={{ marginBottom: 16 }}>
+        {loadError} <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
+      </div>}
+      {loadError && !loading ? <p role="status">This view is unavailable until it reloads successfully.</p> : loading ? <p className="text-muted">Loading…</p> : filtered.length === 0 ? (
         <div className="empty">
           <div className="empty-icon"><FolderOpen size={40} strokeWidth={1.2} /></div>
           <p>{search.trim() ? `No projects matching "${search}"` : 'No projects found'}</p>
