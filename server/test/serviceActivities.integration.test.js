@@ -1109,8 +1109,45 @@ test('task list and workbook export match filters and preserve ownership on Post
 
 });
 
+test('task pages retain full totals, stable ordering, enrichment and unpaged exports on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const project = (await db.prepare('INSERT INTO projects (title,created_by) VALUES (?,?)').run('Paged task fixture', ids.manager)).lastInsertRowid;
+  const rows = [];
+  for (let i = 0; i < 62; i++) rows.push((await db.prepare('INSERT INTO tasks (title,project_id,deadline,assigned_to,created_by) VALUES (?,?,?,?,?)').run(`Paged item ${i}`, project, '2042-03-01', i === 61 ? ids.engineerDisabled : ids.engineerEnabled, ids.manager)).lastInsertRowid);
+  await db.prepare('INSERT INTO task_dependencies (task_id,depends_on_id) VALUES (?,?)').run(rows[0], rows[60]);
+  for (const hours of [0.35, 0.4]) await db.prepare('INSERT INTO time_logs (task_id,user_id,hours,logged_at) VALUES (?,?,?,?)').run(rows[25], ids.engineerEnabled, hours, '2042-03-01');
+  const base = `project_id=${project}&sort=deadline&filter=open`;
+  const found = [];
+  for (let page = 1; page <= 3; page++) {
+    const response = await api(`/api/tasks?${base}&page=${page}&page_size=25`, { token: ids.tokenEnabled });
+    assert.equal(response.status, 200);
+    assert.equal(response.data.total, 61);
+    assert.equal(response.data.counts.all, 61);
+    assert.equal(response.data.counts.open, 61);
+    assert.equal(response.data.rows.length, page === 3 ? 11 : 25);
+    if (page === 1) assert.equal(response.data.rows[0].is_blocked, true);
+    if (page === 2) assert.equal(response.data.rows[0].logged_hours, 0.8);
+    found.push(...response.data.rows.map(row => row.id));
+  }
+  assert.deepEqual(found, rows.slice(0, 61));
+  const legacy = await api(`/api/tasks?${base}`, { token: ids.tokenEnabled });
+  assert.ok(Array.isArray(legacy.data));
+  assert.equal(legacy.data.length, 61);
+  const outside = await api(`/api/tasks?${base}&page=999`, { token: ids.tokenEnabled });
+  assert.deepEqual(outside.data.rows, []);
+  assert.equal(outside.data.total, 61);
+  const narrowed = await api(`/api/tasks?${base}&page=1&search=Paged%20item%2060`, { token: ids.tokenEnabled });
+  assert.equal(narrowed.data.total, 1);
+  assert.equal(narrowed.data.counts.all, 1);
+  const download = signJwt({ id: ids.engineerEnabled, download: true });
+  const response = await fetch(`${baseUrl}/api/tasks/export?${base}&page=2&page_size=25&token=${download}`);
+  assert.equal(response.status, 200);
+  const workbook = new (require('exceljs').Workbook)();
+  await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
+  assert.equal(workbook.worksheets[0].rowCount, 62, 'header plus every matching task, independent of page');
+});
+
 test('task list and export consistently reject malformed filters', async () => {
-  for (const query of ['filter=unknown', 'filter=', 'filter=open&filter=done', 'project_id=abc', 'assigned_to=0', 'priority=urgent', 'search[x]=bad', 'as_of=2035-02-29', 'as_of=', 'adhoc=true', 'sort=__proto__', 'direction=DROP', `search=${'a'.repeat(501)}`]) {
+  for (const query of ['filter=unknown', 'filter=', 'filter=open&filter=done', 'project_id=abc', 'assigned_to=0', 'priority=urgent', 'search[x]=bad', 'as_of=2035-02-29', 'as_of=', 'adhoc=true', 'sort=__proto__', 'direction=DROP', 'page=0', 'page=-1', 'page=1.5', 'page=1&page=2', 'page_size=101', 'page_size=', 'page=9007199254740991&page_size=100', `search=${'a'.repeat(501)}`]) {
     for (const route of ['tasks', 'tasks/export']) assert.equal((await api(`/api/${route}?${query}`, { token: ids.tokenManager })).status, 400);
   }
 });

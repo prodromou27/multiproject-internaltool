@@ -1,7 +1,7 @@
 const router  = require('express').Router();
 const db      = require('../db');
 const ExcelJS = require('exceljs');
-const { taskFilters } = require('../taskFilters');
+const { taskFilters, taskPagination } = require('../taskFilters');
 const { requireAuth, requireManager, requireDownloadAuth } = require('../middleware/auth');
 const { notify } = require('../notifications');
 
@@ -25,12 +25,35 @@ async function attachTaskHours(rows) {
 router.get('/', requireAuth, async (req, res) => {
   const filters = taskFilters(req.query, req.user);
   if (filters.error) return res.status(400).json({ error: filters.error });
-  if (!['manager', 'engineer'].includes(req.user.role)) return res.json([]);
-  const q = `SELECT t.*, u.name as assigned_to_name, c.name as created_by_name, p.title as project_title FROM tasks t
+  const pagination = taskPagination(req.query);
+  if (pagination?.error) return res.status(400).json({ error: pagination.error });
+  if (!['manager', 'engineer'].includes(req.user.role)) return res.json(pagination ? { rows: [], total: 0, counts: {}, page: pagination.page, page_size: pagination.page_size } : []);
+  let q = `SELECT t.*, u.name as assigned_to_name, c.name as created_by_name, p.title as project_title FROM tasks t
     LEFT JOIN users u ON t.assigned_to=u.id JOIN users c ON t.created_by=c.id
     LEFT JOIN projects p ON p.id=t.project_id
     WHERE ${filters.where} ORDER BY ${filters.order}`;
-  const params = filters.params;
+  const params = [...filters.params];
+  let counts;
+  if (pagination) {
+    const base = taskFilters({ ...req.query, filter: 'all' }, req.user);
+    const asOf = filters.as_of;
+    const end = new Date(`${asOf}T00:00:00Z`);
+    end.setUTCDate(end.getUTCDate() + 6);
+    const raw = await db.prepare(`SELECT COUNT(*) AS "all",
+      SUM(CASE WHEN t.status IN ('open','in_progress','waiting_customer','waiting_vendor') THEN 1 ELSE 0 END) AS open,
+      SUM(CASE WHEN t.status IN ('completed','closed') THEN 1 ELSE 0 END) AS done,
+      SUM(CASE WHEN t.is_adhoc=1 THEN 1 ELSE 0 END) AS adhoc,
+      SUM(CASE WHEN t.status IN ('waiting_customer','waiting_vendor') THEN 1 ELSE 0 END) AS waiting_customer,
+      SUM(CASE WHEN t.status='pending_approval' THEN 1 ELSE 0 END) AS pending_approval,
+      SUM(CASE WHEN t.status NOT IN ('completed','closed','cancelled') AND t.deadline<? THEN 1 ELSE 0 END) AS overdue,
+      SUM(CASE WHEN t.status NOT IN ('completed','closed','cancelled') AND t.deadline=? THEN 1 ELSE 0 END) AS due_today,
+      SUM(CASE WHEN t.status NOT IN ('completed','closed','cancelled') AND t.deadline BETWEEN ? AND ? THEN 1 ELSE 0 END) AS due_week
+      FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to LEFT JOIN projects p ON p.id=t.project_id
+      WHERE ${base.where}`).get(asOf, asOf, asOf, end.toISOString().slice(0, 10), ...base.params);
+    counts = Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, Number(value || 0)]));
+    q += ' LIMIT ? OFFSET ?';
+    params.push(pagination.page_size, pagination.offset);
+  }
 
   let rows = await attachTaskHours(await db.prepare(q).all(...params));
 
@@ -56,7 +79,7 @@ router.get('/', requireAuth, async (req, res) => {
     }));
   }
 
-  res.json(rows);
+  res.json(pagination ? { rows, total: counts[req.query.filter || 'all'], counts, page: pagination.page, page_size: pagination.page_size } : rows);
 });
 
 const VALID_TASK_STATUSES = new Set(['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','cancelled','closed']);
@@ -296,6 +319,8 @@ router.get('/export', requireDownloadAuth, async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   const filters = taskFilters(req.query, req.user);
   if (filters.error) return res.status(400).json({ error: filters.error });
+  const pagination = taskPagination(req.query);
+  if (pagination?.error) return res.status(400).json({ error: pagination.error });
   const rows = await attachTaskHours(await db.prepare(`SELECT t.id, t.title, t.status, t.priority, t.deadline, t.is_adhoc,
     u.name as assigned_to, c.name as created_by, p.title as project
     FROM tasks t LEFT JOIN users u ON t.assigned_to=u.id JOIN users c ON t.created_by=c.id

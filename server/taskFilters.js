@@ -48,7 +48,18 @@ function taskFilters(query, user) {
     const pattern = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
     add("(LOWER(COALESCE(t.title,'')) LIKE ? OR LOWER(COALESCE(u.name,'')) LIKE ? OR LOWER(COALESCE(p.title,'')) LIKE ?)", pattern, pattern, pattern);
   }
-  return { where: clauses.join(' AND '), params, order: `${SORTS[sort]} ${direction.toUpperCase()} NULLS LAST, t.id ASC` };
+  return { where: clauses.join(' AND '), params, as_of: asOf, order: `${SORTS[sort]} ${direction.toUpperCase()} NULLS LAST, t.id ASC` };
 }
 
-module.exports = { taskFilters };
+function taskPagination(query) {
+  if (query.page === undefined && query.page_size === undefined) return null;
+  for (const key of ['page', 'page_size']) {
+    if (query[key] !== undefined && (typeof query[key] !== 'string' || !/^[1-9]\d*$/.test(query[key]) || !Number.isSafeInteger(Number(query[key])))) return { error: `${key} must be a positive integer` };
+  }
+  const page = Number(query.page || 1);
+  const pageSize = Number(query.page_size || 25);
+  if (pageSize > 100 || !Number.isSafeInteger((page - 1) * pageSize)) return { error: 'page_size must be at most 100 and the page offset must be safe' };
+  return { page, page_size: pageSize, offset: (page - 1) * pageSize };
+}
+
+module.exports = { taskFilters, taskPagination };

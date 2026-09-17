@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckSquare, Download, Trash2, UserCheck, Clock, Search, X, Pencil, LockKeyhole, Columns3, ArrowUpDown } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PageHeader } from '../components/PageLayout';
@@ -8,7 +8,7 @@ import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
 import { localDateISO } from '../utils/dates';
-import { TASK_FILTERS, OPEN_STATUSES, DONE_STATUSES, taskMatchesFilter } from '../utils/taskFilters';
+import { TASK_FILTERS } from '../utils/taskFilters';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
@@ -207,26 +207,50 @@ export default function Tasks() {
   const [bulkBusy, setBulkBusy]   = useState(false);
 
   const [loadError, setLoadError] = useState('');
-  useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !loading && !loadError, onCreate: () => { setShowCreate(true); } });
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [paging, setPaging] = useState({ key: '', page: 1 });
+  const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState({});
+  const [loadedQuery, setLoadedQuery] = useState(null);
+  const pageSize = 25;
+  const today = localDateISO(new Date());
+  const activeFilter = TASK_FILTERS.includes(filter) ? filter : 'all';
+  const baseParams = new URLSearchParams({ filter: activeFilter, priority: priorityFilter, as_of: today, sort: sort.key, direction: sort.direction });
+  if (debouncedSearch) baseParams.set('search', debouncedSearch);
+  if (myTasksOnly) baseParams.set('assigned_to', String(user.id));
+  const queryKey = baseParams.toString();
+  const page = paging.key === queryKey ? paging.page : 1;
+  const query = `${queryKey}&page=${page}&page_size=${pageSize}`;
+  const busy = loading || loadedQuery !== query;
+  const references = useRef(null);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+  useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !busy && !loadError, onCreate: () => { setShowCreate(true); } });
 
-  const { begin, isCurrent } = useLatestRequest(user.role);
+  const { begin, isCurrent } = useLatestRequest(`${user.id}:${user.role}:${query}`);
   const load = useCallback(() => {
     const request = begin();
     if (request.signal.aborted) return Promise.resolve();
     setLoading(true); setLoadError(''); setSelected(new Set());
     const options = { signal: request.signal };
-    return Promise.all([
-      api.tasks({}, options),
-      api.projects(options),
-      isManager ? api.users(options) : Promise.resolve([]),
-    ]).then(([t, p, u]) => {
-      if (!isCurrent(request)) return;
-      setTasks(t); setProjects(p); setAllUsers(u);
-    }).catch(error => {
-      if (isCurrent(request)) setLoadError(error.message || 'Could not load this page');
-    }).finally(() => { if (isCurrent(request)) setLoading(false); });
-  }, [isManager, begin, isCurrent]);
-
+    const referenceKey = `${user.id}:${user.role}`;
+    const referenceData = references.current?.key === referenceKey
+      ? Promise.resolve(references.current.data)
+      : Promise.all([api.projects(options), isManager ? api.users(options) : Promise.resolve([])]);
+    return Promise.all([api.tasks(Object.fromEntries(new URLSearchParams(query)), options), referenceData])
+      .then(([result, data]) => {
+        if (!isCurrent(request)) return;
+        references.current = { key: referenceKey, data };
+        setTasks(result.rows); setTotal(result.total); setCounts(result.counts); setLoadedQuery(query);
+        setProjects(data[0]); setAllUsers(data[1]);
+        const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+        if (page > lastPage) setPaging({ key: queryKey, page: lastPage });
+      }).catch(error => {
+        if (isCurrent(request)) setLoadError(error.message || 'Could not load this page');
+      }).finally(() => { if (isCurrent(request)) setLoading(false); });
+  }, [query, queryKey, page, isManager, user.id, user.role, begin, isCurrent]);
   useEffect(() => { load(); }, [load]);
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -286,13 +310,11 @@ export default function Tasks() {
     if (newStatus === 'waiting_customer' || newStatus === 'waiting_vendor') {
       setWaitingDialog({ id: task.id, newStatus, current: task.pending_from_customer || '' });
     } else {
-      const previousStatus = task.status;
-      setTasks(current => current.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
       try {
         await api.updateTask(task.id, { status: newStatus });
         toast.success('Task status updated');
+        load();
       } catch (error) {
-        setTasks(current => current.map(t => t.id === task.id ? { ...t, status: previousStatus } : t));
         toast.error(error.message || 'Could not update task');
       }
     }
@@ -348,7 +370,7 @@ export default function Tasks() {
   async function exportTasks() {
     try {
       const qs = new URLSearchParams({ filter: activeFilter, priority: priorityFilter, as_of: today, sort: sort.key, direction: sort.direction });
-      if (search.trim()) qs.set('search', search.trim());
+      if (debouncedSearch) qs.set('search', debouncedSearch);
       if (myTasksOnly) qs.set('assigned_to', String(user.id));
       const { token } = await api.downloadToken();
       qs.set('token', token);
@@ -359,34 +381,8 @@ export default function Tasks() {
     } catch (e) { toast.error('Export failed: ' + e.message); }
   }
 
-  const today = localDateISO(new Date());
-  const activeFilter = TASK_FILTERS.includes(filter) ? filter : 'all';
-  const filtered = tasks.filter(t => {
-    if (!taskMatchesFilter(t, activeFilter, today)) return false;
-    // Priority filter
-    if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
-    // My tasks filter
-    if (myTasksOnly && t.assigned_to !== user.id) return false;
-    // Text search
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      const projectTitle = projects.find(p => p.id === t.project_id)?.title || '';
-      if (!(t.title || '').toLowerCase().includes(q) &&
-          !(t.assigned_to_name || '').toLowerCase().includes(q) &&
-          !projectTitle.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
-  const sortedFiltered = [...filtered].sort((a, b) => {
-    const project = task => projects.find(p => p.id === task.project_id)?.title || '';
-    const values = {
-      task: task => task.title || '', project, status: task => task.status || '',
-      priority: task => task.priority || '', assignee: task => task.assigned_to_name || '',
-      deadline: task => task.deadline || '9999-12-31',
-    };
-    const getter = values[sort.key] || values.task;
-    return getter(a).localeCompare(getter(b), undefined, { numeric: true }) * (sort.direction === 'asc' ? 1 : -1);
-  });
+  const filtered = tasks;
+  const sortedFiltered = tasks;
 
   const managerStatuses  = MANAGER_STATUSES;
   const engineerStatuses = ENGINEER_STATUSES;
@@ -396,16 +392,17 @@ export default function Tasks() {
     <div className="page">
       <PageHeader eyebrow="Operations" title="Tasks" description="Prioritize assigned work, track progress and manage deadlines." actions={<>
 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn btn-ghost btn-sm" onClick={exportTasks} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <Download size={13} /> Export
+          <button className="btn btn-ghost btn-sm" onClick={exportTasks} disabled={busy || !!loadError || search.trim() !== debouncedSearch} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <Download size={13} /> Export all matching
           </button>
+          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { references.current = null; load(); }}>Refresh</button>
           <details className="column-picker">
             <summary className="btn btn-ghost btn-sm"><Columns3 size={13} /> Columns</summary>
             <div className="column-picker-menu">
               {TASK_COLUMNS.map(([id, label]) => <label key={id}><input type="checkbox" checked={visibleColumns.has(id)} onChange={() => toggleColumn(id)} /> {label}</label>)}
             </div>
           </details>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)} disabled={loading || !!loadError}>+ New Task</button>
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)} disabled={busy || !!loadError}>+ New Task</button>
         </div>
       </>} />
 
@@ -465,25 +462,19 @@ export default function Tasks() {
         </div>
         <div className="filter-bar">
           {[
-            ['all',             'All',                         tasks.length],
-            ['open',            'Open / In Progress',          tasks.filter(t => OPEN_STATUSES.includes(t.status)).length],
-            ['waiting_customer','Waiting on Customer/Vendor',  tasks.filter(t => t.status === 'waiting_customer' || t.status === 'waiting_vendor').length],
-            ['due_today',       'Due Today',                   tasks.filter(t => taskMatchesFilter(t, 'due_today', today)).length],
-            ['due_week',        'Due Next 7 Days',             tasks.filter(t => taskMatchesFilter(t, 'due_week', today)).length],
-            ['pending_approval','Pending Approval',            tasks.filter(t => t.status === 'pending_approval').length],
-            ['done',            'Completed',                   tasks.filter(t => DONE_STATUSES.includes(t.status)).length],
-            ['overdue',         'Overdue',                     tasks.filter(t => taskMatchesFilter(t, 'overdue', today)).length],
-            ['adhoc',           'Ad-hoc',                      tasks.filter(t => t.is_adhoc).length],
-          ].map(([k, l, count]) => (
-            <button key={k} className={'filter-pill' + (activeFilter === k ? ' active' : '') + (k === 'overdue' && count > 0 ? ' overdue-pill' : '')} onClick={() => setFilter(k)}>
-              {l} <span style={{ opacity: .65 }}>({count})</span>
-            </button>
-          ))}
+            ['all', 'All'], ['open', 'Open / In Progress'],
+            ['waiting_customer', 'Waiting on Customer/Vendor'],
+            ['due_today', 'Due Today'], ['due_week', 'Due Next 7 Days'],
+            ['pending_approval', 'Pending Approval'], ['done', 'Completed'],
+            ['overdue', 'Overdue'], ['adhoc', 'Ad-hoc'],
+          ].map(([key, label]) => <button key={key} className={'filter-pill' + (activeFilter === key ? ' active' : '') + (key === 'overdue' && counts[key] > 0 ? ' overdue-pill' : '')} onClick={() => setFilter(key)}>
+            {label} <span style={{ opacity: .65 }}>({busy ? '...' : counts[key] || 0})</span>
+          </button>)}
         </div>
       </div>
 
       {/* Bulk action bar */}
-      {selected.size > 0 && (
+      {selected.size > 0 && !busy && !loadError && (
         <>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
@@ -532,7 +523,7 @@ export default function Tasks() {
       {loadError && <div className="error-msg" role="alert" style={{ marginBottom: 16 }}>
         {loadError} <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
       </div>}
-      {loadError && !loading ? <p role="status">This view is unavailable until it reloads successfully.</p> : loading ? <div className="skeleton-table" aria-label="Loading tasks"><span /><span /><span /><span /><span /></div> : filtered.length === 0 ? (
+      {loadError && !loading ? <p role="status">This view is unavailable until it reloads successfully.</p> : busy ? <div className="skeleton-table" aria-label="Loading tasks"><span /><span /><span /><span /><span /></div> : filtered.length === 0 ? (
         <div className="empty">
           <div className="empty-icon"><CheckSquare size={40} strokeWidth={1.2} /></div>
           <p>{search.trim() ? `No tasks matching "${search}"` : myTasksOnly ? 'No tasks assigned to you in this view' : 'No tasks found'}</p>
@@ -544,11 +535,12 @@ export default function Tasks() {
         </div>
       ) : (
         <div className="card table-wrap">
-          <table>
+          <table aria-busy={busy}>
+            <caption className="sr-only">Tasks on the current page. Bulk selection applies to this page.</caption>
             <thead>
               <tr>
                 <th style={{ width: 32 }}>
-                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                  <input type="checkbox" aria-label="Select all tasks on this page" checked={allSelected} onChange={toggleAll}
                     style={{ width: 15, height: 15, cursor: 'pointer' }} />
                 </th>
                 <th><button className="table-sort" onClick={() => changeSort('task')}>Task <ArrowUpDown size={11} /></button></th>
@@ -564,7 +556,7 @@ export default function Tasks() {
               {sortedFiltered.map(t => (
                 <tr key={t.id} style={{ background: selected.has(t.id) ? 'var(--primary-light)' : '' }}>
                   <td>
-                    <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggleSelect(t.id)}
+                    <input type="checkbox" aria-label={`Select ${t.title}`} checked={selected.has(t.id)} onChange={() => toggleSelect(t.id)}
                       style={{ width: 15, height: 15, cursor: 'pointer' }} />
                   </td>
                   <td>
@@ -576,7 +568,7 @@ export default function Tasks() {
                       </span>
                     ) : null}
                   </td>
-                  {visibleColumns.has('project') && <td>{projects.find(p => p.id === t.project_id)?.title || <span className="text-muted">—</span>}</td>}
+                  {visibleColumns.has('project') && <td>{t.project_title || projects.find(p => p.id === t.project_id)?.title || <span className="text-muted">—</span>}</td>}
                   {visibleColumns.has('status') && <td><StatusBadge entityType="task" s={t.status} /></td>}
                   {visibleColumns.has('priority') && <td><PriorityBadge p={t.priority} /></td>}
                   {visibleColumns.has('assignee') && <td>{t.assigned_to_name || '—'}</td>}
@@ -618,6 +610,14 @@ export default function Tasks() {
         </div>
       )}
 
+      {!loadError && <nav aria-label="Task pages" className="flex gap-8" style={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 16 }}>
+        <p role="status">{busy ? 'Loading tasks...' : total ? `${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, total)} of ${total} matching tasks` : '0 matching tasks'} - Bulk selection applies to this page.</p>
+        <div className="flex gap-8">
+          <button className="btn btn-ghost btn-sm" disabled={busy || page <= 1 || bulkBusy} onClick={() => setPaging({ key: queryKey, page: page - 1 })}>Previous</button>
+          <span>Page {page} of {Math.max(1, Math.ceil(total / pageSize))}</span>
+          <button className="btn btn-ghost btn-sm" disabled={busy || page * pageSize >= total || bulkBusy} onClick={() => setPaging({ key: queryKey, page: page + 1 })}>Next</button>
+        </div>
+      </nav>}
       {/* Waiting for Customer dialog (single task) */}
       {waitingDialog && (
         <WaitingDialog

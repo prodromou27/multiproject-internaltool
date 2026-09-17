@@ -314,6 +314,18 @@ An index on `(status, closure_requested_at, id)` supports the backlog. No new
 environment variables or background jobs are required.
 
 ### Tasks
+The Tasks screen uses 25-row server pages with stable global sorting and debounced
+search. Tab counts cover the full owner/search/priority scope, rather than just the
+current page. Filters and sorting reset the page; deleting the last page's contents
+returns to a valid page. Bulk selection applies to this page and clears on reload.
+Excel export includes every matching task, independent of pagination, in server
+sort order. Logged-hour/dependency enrichment is limited to returned rows. Reference
+lists are cached per account/role and refreshed by Refresh. Providing `page` or
+`page_size` to GET `/api/tasks` returns `{rows,total,counts,page,page_size}`; page
+size is 1–100. Omitting pagination preserves the array API used by project details
+and My Work. Both reads and export reject malformed pagination; export ignores
+valid page limits. No migration, configuration or background job is required.
+
 Task list and Excel export share parameterized filter validation for status views,
 priority, literal title/assignee/project search, project and assignment IDs, local
 as-of dates and whitelisted sorts. Engineer ownership is always enforced, including
