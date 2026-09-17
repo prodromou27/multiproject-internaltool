@@ -103,6 +103,7 @@ test.before(async () => {
   app.use('/api/auth', require('../routes/auth'));
   app.use('/api/admin', require('../routes/admin'));
   app.use('/api/notes', require('../routes/notes'));
+  app.use('/api/search', require('../routes/search'));
   app.use('/api/tasks', require('../routes/tasks'));
   app.use('/api/projects', require('../routes/projects'));
   app.use('/api/maintenance-visits', require('../routes/maintenance-visits'));
@@ -815,4 +816,29 @@ test('personal notes and todos reject malformed values and isolate users', async
   assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenDisabled, body: { done: true } })).status, 404);
   assert.equal((await api(endpoint, { method: 'DELETE', token: ids.tokenDisabled })).status, 200);
   assert.equal((await api('/api/notes/todos', { token: ids.tokenEnabled })).data.length, 1);
+});
+
+// pg-mem does not implement the correlated customer-count subqueries used by search.
+test('quick and smart search enforce task roles and PM project visibility', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Search review project', ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO tasks (title, created_by, assigned_to) VALUES (?, ?, ?)').run('Search review private task', ids.manager, ids.engineerEnabled);
+  for (const role of ['planner', 'pm']) {
+    const user = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+      .run(`Search ${role}`, `search-${role}@test.local`, bcrypt.hashSync('pw', 4), role)).lastInsertRowid;
+    const token = signJwt({ id: user });
+    const quick = await api('/api/search?q=Search%20review', { token });
+    assert.equal(quick.status, 200);
+    assert.deepEqual(quick.data.tasks, []);
+    const smart = await api('/api/search/smart?entity=tasks&q=Search%20review', { token });
+    assert.equal(smart.status, 200);
+    assert.deepEqual(smart.data.tasks, []);
+    const projects = await api('/api/search/smart?entity=projects&q=Search%20review', { token });
+    assert.equal(projects.status, 200);
+    assert.equal(projects.data.projects.some(p => p.id === project), role === 'pm');
+    assert.equal(quick.data.projects.some(p => p.id === project), role === 'pm');
+  }
+  assert.equal((await api('/api/search?q=Search%20review', { token: ids.tokenEnabled })).data.tasks.length, 1);
+  assert.equal((await api('/api/search?q=Search%20review', { token: ids.tokenDisabled })).data.tasks.length, 0);
+  for (const path of ['/api/search?q[a]=test', '/api/search/smart?q[a]=test', '/api/search/smart?entity=unknown'])
+    assert.equal((await api(path, { token: ids.tokenManager })).status, 400);
 });

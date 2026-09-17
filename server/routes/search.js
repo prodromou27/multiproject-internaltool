@@ -63,13 +63,15 @@ async function matchingCustomerIds(term) {
 
 // ── Quick search (top bar dropdown) ──────────────────────────────────────────
 router.get('/', requireAuth, async (req, res) => {
+  if (req.query.q !== undefined && (typeof req.query.q !== 'string' || req.query.q.length > 200))
+    return res.status(400).json({ error: 'Search must be text of at most 200 characters' });
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ projects: [], tasks: [], customers: [] });
 
   const like = `%${q}%`;
 
   let projects;
-  if (req.user.role === 'manager') {
+  if (req.user.role === 'manager' || req.user.role === 'pm') {
     projects = (await db.prepare(`
       SELECT p.id, p.title, p.status, p.priority, p.deadline, cu.name as customer_name
       FROM projects p
@@ -99,6 +101,8 @@ router.get('/', requireAuth, async (req, res) => {
       WHERE t.title LIKE ? OR t.description LIKE ?
       ORDER BY t.updated_at DESC LIMIT 8
     `).all(like, like));
+  } else if (req.user.role === 'planner' || req.user.role === 'pm') {
+    tasks = [];
   } else {
     tasks = (await db.prepare(`
       SELECT t.id, t.title, t.status, t.priority, t.deadline, t.project_id,
@@ -122,6 +126,10 @@ router.get('/', requireAuth, async (req, res) => {
 
 // ── Smart structured search ──────────────────────────────────────────────────
 router.get('/smart', requireAuth, async (req, res) => {
+  if (Object.values(req.query).some(value => typeof value !== 'string') || (req.query.q || '').length > 200)
+    return res.status(400).json({ error: 'Search filters must be text; search is limited to 200 characters' });
+  if (req.query.entity && !['all', 'projects', 'tasks', 'mv', 'customers'].includes(req.query.entity))
+    return res.status(400).json({ error: 'Invalid search entity' });
   const {
     q = '',
     entity = 'all',     // all | projects | tasks | mv | customers
@@ -146,7 +154,7 @@ router.get('/smart', requireAuth, async (req, res) => {
   if (entity === 'all' || entity === 'projects') {
     const c = [], p = [];
 
-    if (!isMgr) {
+    if (!isMgr && req.user.role !== 'pm') {
       c.push('EXISTS (SELECT 1 FROM project_assignments WHERE project_id = p.id AND user_id = ?)');
       p.push(req.user.id);
     }
@@ -193,14 +201,7 @@ router.get('/smart', requireAuth, async (req, res) => {
       c.push('t.assigned_to = ?');
       p.push(req.user.id);
     } else if (req.user.role === 'planner' || req.user.role === 'pm') {
-      // Scope to projects this user is assigned to (plus unlinked tasks)
-      c.push('(t.project_id IS NULL OR t.project_id IN (SELECT project_id FROM project_assignments WHERE user_id = ?))');
-      p.push(req.user.id);
-      if (my_tasks === '1') {
-        c.push('t.assigned_to = ?'); p.push(req.user.id);
-      } else if (engineer_id) {
-        c.push('t.assigned_to = ?'); p.push(engineer_id);
-      }
+      c.push('1=0');
     } else {
       // Manager — unrestricted; allow optional filters
       if (my_tasks === '1') {
