@@ -427,6 +427,18 @@ customers, for engineer/customer/team-level history and MSP reporting.
   `logAudit()` helper, same convention as every other module.
 
 ### Calendar
+Month and agenda views include unresolved service follow-ups on their follow-up
+dates. Managers see all; enabled engineers/PMs see their own; planners and disabled
+teams receive none. Cancelled activities and follow-ups linked to terminal tasks
+are excluded, while completed activities can still have pending follow-ups.
+Task/project events honor configured terminal statuses. Activity links open the
+existing authorized detail modal through a consumed `?activity=<id>` URL intent.
+Pending completed/in-progress visit reports appear on the visit date, explicitly
+labelled as such because there is no report deadline field. Report/follow-up entries
+cannot be dragged to reschedule. Agenda lists every filtered event in the month,
+including events beyond the grid's three-per-day preview. This extends the browser
+month feed only; the existing iCal feed is unchanged.
+
 The month feed validates real months (1900–9998) and uses the existing module
 visibility rules: engineers see their assignments, planners see visits, and PMs
 read projects and visits without tasks. The browser cancels superseded loads,

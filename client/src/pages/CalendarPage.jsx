@@ -1,17 +1,20 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckSquare, FolderOpen, Wrench, ChevronLeft, ChevronRight, Check, X, Plus, Link2, Copy } from 'lucide-react';
+import { CheckSquare, FolderOpen, Wrench, ChevronLeft, ChevronRight, Check, X, Plus, Link2, Copy, ClipboardList, FileText } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { fmtDate, Modal } from '../components/Shared';
 import { useToast } from '../components/Toast';
 import { localDateISO } from '../utils/dates';
+import { PageHeader } from '../components/PageLayout';
 
 const DAYS   = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
                 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const TYPE_STYLE = {
+  follow_up:   { bg: '#dcfce7', color: '#166534', Icon: ClipboardList, label: 'Service Follow-up' },
+  report:      { bg: '#ffe4e6', color: '#be123c', Icon: FileText, label: 'Pending Visit Report' },
   task:        { bg: '#dbeafe', color: '#1d4ed8', Icon: CheckSquare, label: 'Task' },
   project:     { bg: '#ede9fe', color: '#6d28d9', Icon: FolderOpen,  label: 'Project Deadline' },
   maintenance: { bg: '#fef3c7', color: '#b45309', Icon: Wrench,      label: 'Maintenance Visit' },
@@ -265,8 +268,14 @@ function EventPopover({ event, onClose, onReportSent }) {
         </div>
 
         <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div><span style={{ color: '#6b7280' }}>Date:</span> <strong>{fmtDate(event.date)}</strong></div>
+          <div><span style={{ color: '#6b7280' }}>{event.type === 'report' ? 'Visit date:' : 'Date:'}</span> <strong>{fmtDate(event.date)}</strong></div>
 
+          {event.type === 'follow_up' && <>
+            <div>Activity: <strong>{event.reference}</strong></div>
+            <p>This follow-up is still pending. Completing the activity does not complete its follow-up.</p>
+            <Link to={`/activity-log?activity=${event.id}`}>Open service activity</Link>
+          </>}
+          {event.type === 'report' && <p>The report is pending for this visit. This entry uses the visit date; no report deadline has been set.</p>}
           {event.type === 'task' && <>
             <div><span style={{ color: '#6b7280' }}>Status:</span> {event.status}</div>
             <div><span style={{ color: '#6b7280' }}>Assigned to:</span> {event.assigned_to_name || '—'}</div>
@@ -282,7 +291,7 @@ function EventPopover({ event, onClose, onReportSent }) {
             </div>
           </>}
 
-          {event.type === 'maintenance' && <>
+          {['maintenance', 'report'].includes(event.type) && <>
             <div><span style={{ color: '#6b7280' }}>Customer:</span> <strong>{event.customer_name}</strong></div>
             <div><span style={{ color: '#6b7280' }}>Engineer{event.engineer_names?.includes(',') ? 's' : ''}:</span> {event.engineer_names || '—'}</div>
             <div><span style={{ color: '#6b7280' }}>Status:</span> {event.status.replace('_', ' ')}</div>
@@ -435,7 +444,8 @@ export default function CalendarPage() {
   const [month,   setMonth]   = useState(now.getMonth()); // 0-indexed
   const [data,    setData]    = useState({ tasks: [], projects: [], visits: [] });
   const [selected, setSelected] = useState(null);
-  const [filters, setFilters] = useState({ task: true, project: true, maintenance: true });
+  const [filters, setFilters] = useState({ task: true, project: true, maintenance: true, report: true, follow_up: true });
+  const [view, setView] = useState('month');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [refresh, setRefresh] = useState(0);
@@ -488,6 +498,8 @@ export default function CalendarPage() {
     ...(filters.task        ? data.tasks   : []),
     ...(filters.project     ? data.projects : []),
     ...(filters.maintenance ? data.visits   : []),
+    ...(filters.report ? (data.reports || []) : []),
+    ...(filters.follow_up ? (data.followUps || []) : []),
   ];
   const byDay = {};
   allEvents.forEach(e => {
@@ -521,7 +533,7 @@ export default function CalendarPage() {
   }
 
   function canReschedule(event) {
-    if (rescheduling || loading) return false;
+    if (rescheduling || loading || !['task', 'project', 'maintenance'].includes(event.type)) return false;
     if (event.type === 'project') return user.role === 'manager';
     if (event.type === 'maintenance') return user.role === 'manager' || user.role === 'planner';
     return user.role === 'manager' || (user.role === 'engineer' && event.assigned_to === user.id);
@@ -548,8 +560,7 @@ export default function CalendarPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Calendar & Planner</h1>
+      <PageHeader title="Calendar & Planner" description="Plan deadlines, visits, pending reports and service follow-ups." actions={<>
         <div className="flex gap-8" style={{ alignItems: 'center' }}>
           {isManagerOrPlanner && (
             <button
@@ -565,11 +576,15 @@ export default function CalendarPage() {
           <span style={{ fontWeight: 700, minWidth: 160, textAlign: 'center', fontSize: 15 }}>{MONTHS[month]} {year}</span>
           <button className="btn btn-ghost btn-sm" onClick={nextMonth} aria-label="Next month" disabled={rescheduling || year === 9998 && month === 11} style={{ display: 'inline-flex', alignItems: 'center' }}><ChevronRight size={16} /></button>
         </div>
-      </div>
+      </>} />
 
       {/* Legend / filters */}
       <div className="card" style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        {Object.entries(TYPE_STYLE).map(([type, s]) => (
+        <div className="flex gap-8" aria-label="Calendar view">
+          <button className="btn btn-ghost btn-sm" aria-pressed={view === 'month'} onClick={() => setView('month')}>Month</button>
+          <button className="btn btn-ghost btn-sm" aria-pressed={view === 'agenda'} onClick={() => setView('agenda')}>Agenda</button>
+        </div>
+        {Object.entries(TYPE_STYLE).filter(([type]) => type !== 'follow_up' || data.service_enabled).map(([type, s]) => (
           <label key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
             <input type="checkbox" checked={filters[type]}
               onChange={() => setFilters(f => ({ ...f, [type]: !f[type] }))}
@@ -598,8 +613,21 @@ export default function CalendarPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 280px', gap: 16, alignItems: 'start' }}
            className="calendar-layout">
 
-        {/* Calendar grid */}
-        <div className="card" style={{ padding: 0, overflow: 'hidden', minWidth: 0 }}>
+        {view === 'agenda' ? <section className="card" aria-label="Month agenda">
+          <h2 className="section-title">{MONTHS[month]} agenda</h2>
+          {loading ? <p role="status">Loading agenda...</p> : loadError ? <p>Agenda unavailable. Retry loading this month.</p> : allEvents.length === 0 ? <p>No events match the selected filters.</p> :
+            <ul className="calendar-agenda">
+              {[...allEvents].sort((a, b) => a.date.localeCompare(b.date) || a.type.localeCompare(b.type) || a.id - b.id).map(event => {
+                const style = TYPE_STYLE[event.type];
+                return <li key={`${event.type}:${event.id}`}>
+                  <button type="button" onClick={() => setSelected(event)}>
+                    <style.Icon size={18} color={style.color} />
+                    <span><strong>{event.title}</strong><small>{style.label}{event.type === 'report' ? ' - Visit date' : ''}: {fmtDate(event.date)}</small></span>
+                  </button>
+                </li>;
+              })}
+            </ul>}
+        </section> : <div className="card" style={{ padding: 0, overflow: 'hidden', minWidth: 0 }}>
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <div style={{ minWidth: 420 }}>
 
@@ -693,9 +721,9 @@ export default function CalendarPage() {
                               }} />
                           ))}
                           {events.length > 3 && (
-                            <div style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, paddingLeft: 4 }}>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setView('agenda')} style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, paddingLeft: 4 }}>
                               +{events.length - 3} more
-                            </div>
+                            </button>
                           )}
                         </>
                       )}
@@ -706,7 +734,7 @@ export default function CalendarPage() {
 
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* Sidebar */}
         <div>
@@ -718,7 +746,7 @@ export default function CalendarPage() {
                   {upcoming.map((e, i) => {
                     const s = TYPE_STYLE[e.type];
                     return (
-                      <li key={i} onClick={() => setSelected(e)} style={{
+                      <li key={i} role="button" tabIndex={0} onKeyDown={key => { if (key.key === 'Enter' || key.key === ' ') { key.preventDefault(); setSelected(e); } }} onClick={() => setSelected(e)} style={{
                         display: 'flex', gap: 10, padding: '9px 0',
                         borderBottom: i < upcoming.length - 1 ? '1px solid var(--gray-100)' : 'none',
                         cursor: 'pointer', alignItems: 'flex-start',
@@ -741,7 +769,7 @@ export default function CalendarPage() {
                             color: e.report_sent ? '#166534' : '#92400e',
                             flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3,
                           }}>
-                            {e.report_sent ? <><Check size={9} /> Sent</> : 'Report due'}
+                            {e.report_sent ? <><Check size={9} /> Sent</> : 'Report pending'}
                           </span>
                         )}
                       </li>
@@ -769,10 +797,10 @@ export default function CalendarPage() {
                 <span>MV Reports Pending</span>
                 <span style={{
                   fontWeight: 700,
-                  color: data.visits.filter(v => !v.report_sent && v.status !== 'cancelled').length > 0
+                  color: (data.reports || []).length > 0
                     ? 'var(--warning)' : 'var(--success)',
                 }}>
-                  {data.visits.filter(v => !v.report_sent && v.status !== 'cancelled').length}
+                  {(data.reports || []).length}
                 </span>
               </div>
             </div>

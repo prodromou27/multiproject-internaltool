@@ -1193,3 +1193,9 @@ tr:hover td { background: var(--gray-50); transition: background .1s; }
   .engineer-kanban { grid-template-columns: repeat(4, 240px); }
   .active-timer { top: calc(var(--topbar-h) + 8px); }
 }
+
+.calendar-agenda { list-style: none; padding: 0; margin: 0; }
+.calendar-agenda li + li { border-top: 1px solid var(--gray-100); }
+.calendar-agenda button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 4px; background: transparent; border: 0; color: var(--gray-800); text-align: left; cursor: pointer; }
+.calendar-agenda button:hover { background: var(--gray-50); }
+.calendar-agenda small { display: block; margin-top: 4px; color: var(--gray-600); }

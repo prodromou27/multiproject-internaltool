@@ -1106,6 +1106,53 @@ test('calendar validates real month boundaries and matches module role visibilit
   }
 });
 
+test('calendar follow-ups honor ownership, feature enablement and linked task completion', async () => {
+  const resolved = (await db.prepare("INSERT INTO tasks (title,status,created_by) VALUES (?,'completed',?)").run('Calendar resolved follow-up', ids.manager)).lastInsertRowid;
+  const rows = [];
+  for (const [label, owner, status, task, date] of [
+    ['Pending completed activity', ids.engineerEnabled, 'completed', null, '2040-02-29'],
+    ['Resolved linked task', ids.engineerEnabled, 'completed', resolved, '2040-02-29'],
+    ['Cancelled activity', ids.engineerEnabled, 'cancelled', null, '2040-02-29'],
+    ['Other owner', ids.engineerDisabled, 'completed', null, '2040-02-29'],
+    ['Next month', ids.engineerEnabled, 'completed', null, '2040-03-01'],
+  ]) {
+    rows.push((await db.prepare(`INSERT INTO service_activities
+      (activity_reference,customer_id,team_id,engineer_id,activity_date,category_id,title,status,follow_up_required,follow_up_date,follow_up_task_id,created_by)
+      VALUES (?,?,?,?,?,?,?, ?,1,?,?,?)`).run(`ACT-2040-${900000 + rows.length}`, ids.customer, ids.teamEnabled, owner, '2039-01-01', ids.category, label, status, date, task, owner)).lastInsertRowid);
+  }
+  const path = `/api/calendar?month=2040-02&engineer_id=${ids.engineerDisabled}`;
+  const own = await api(path, { token: ids.tokenEnabled });
+  assert.equal(own.status, 200);
+  assert.equal(own.data.service_enabled, true);
+  assert.deepEqual(own.data.followUps.map(row => row.id), [rows[0]]);
+  assert.equal(own.data.followUps[0].date, '2040-02-29');
+  assert.equal(own.data.followUps[0].reference, 'ACT-2040-900000');
+  const disabled = await api(path, { token: ids.tokenDisabled });
+  assert.equal(disabled.data.service_enabled, false);
+  assert.deepEqual(disabled.data.followUps, []);
+  const management = await api(path, { token: ids.tokenManager });
+  assert.deepEqual(management.data.followUps.map(row => row.id), [rows[0], rows[3]]);
+  const pm = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Follow-up PM', 'follow-up-pm@test.local', 'not-used', 'pm')).lastInsertRowid;
+  await db.prepare('INSERT INTO team_members (team_id,user_id) VALUES (?,?)').run(ids.teamEnabled, pm);
+  await db.prepare('UPDATE service_activities SET engineer_id=? WHERE id=?').run(pm, rows[3]);
+  const pmData = await api(path, { token: signJwt({ id: pm }) });
+  assert.equal(pmData.data.service_enabled, true);
+  assert.deepEqual(pmData.data.followUps.map(row => row.id), [rows[3]]);
+});
+
+test('calendar pending reports use scoped visit dates and exclude scheduled or sent reports', async () => {
+  const pending = [];
+  for (const [status, report, owner] of [['completed', 0, ids.engineerEnabled], ['in_progress', 0, ids.engineerEnabled], ['scheduled', 0, ids.engineerEnabled], ['completed', 1, ids.engineerEnabled], ['cancelled', 0, ids.engineerEnabled], ['completed', 0, ids.engineerDisabled]]) {
+    const visit = (await db.prepare('INSERT INTO maintenance_visits (customer_id,title,scheduled_date,status,report_sent,created_by) VALUES (?,?,?,?,?,?)').run(ids.customer, 'Calendar report fixture', '2041-03-02', status, report, ids.manager)).lastInsertRowid;
+    await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id,user_id) VALUES (?,?)').run(visit, owner);
+    if (owner === ids.engineerEnabled && !report && ['completed', 'in_progress'].includes(status)) pending.push(visit);
+  }
+  const response = await api('/api/calendar?month=2041-03', { token: ids.tokenEnabled });
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.data.reports.map(row => row.id), pending);
+  assert.ok(response.data.reports.every(row => row.type === 'report' && row.date === '2041-03-02' && row.engineer_names === 'Engineer Enabled'));
+});
+
 test('ordinary project edits cannot bypass closure requests or reviews', async () => {
   const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Protected closure', ids.manager)).lastInsertRowid;
   const path = `/api/projects/${project}`;
@@ -1352,5 +1399,8 @@ test('operational priorities honor configured terminal task statuses', async () 
     assert.equal(after.data.tasks.open, before.data.tasks.open);
     assert.equal(after.data.tasks.overdue, before.data.tasks.overdue);
     assert.ok(after.data.tasks.attention.every(item => item.id !== task));
+    const calendar = await api('/api/calendar?month=2026-09', { token: ids.tokenDisabled });
+    assert.equal(calendar.status, 200);
+    assert.ok(calendar.data.tasks.every(item => item.id !== task), 'calendar excludes configured terminal tasks');
   } finally { await db.prepare("UPDATE settings SET value=? WHERE key='status_config'").run(setting.value); }
 });

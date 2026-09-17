@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ClipboardList, Search, Copy, CheckCircle2, ListPlus, Paperclip, Upload, Trash2 } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
+import { useSearchParams } from 'react-router-dom';
 import { useCreateIntent } from '../hooks/useCreateIntent';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -422,6 +423,15 @@ export default function ActivityLog() {
   const [editLoadingId, setEditLoadingId] = useState(null);
   const editRequest = useRef(null);
   const [viewId, setViewId] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const activity = searchParams.get('activity');
+    if (!meta || activity === null) return;
+    if (/^[1-9]\d*$/.test(activity) && Number.isSafeInteger(Number(activity))) setViewId(Number(activity));
+    const next = new URLSearchParams(searchParams);
+    next.delete('activity');
+    setSearchParams(next, { replace: true });
+  }, [meta, searchParams, setSearchParams]);
 
   useCreateIntent({ allowed: isManager || (saAccess.enabled && ['engineer', 'pm'].includes(user.role)), ready: !!meta, onCreate: () => { setShowForm(true); } });
 
