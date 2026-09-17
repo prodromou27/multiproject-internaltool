@@ -76,7 +76,12 @@ const { signJwt } = require('../middleware/auth');
 
 let server, baseUrl;
 
-async function api(path, { method = 'GET', token, body, cookie, origin, csrf = true } = {}) {
+async function api(path, { method = 'GET', token, body, cookie, origin, csrf = true, useCurrentVersion = true } = {}) {
+  // Business-rule tests use fresh snapshots; conflict tests supply explicit versions.
+  if (useCurrentVersion && method === 'PUT' && /^\/api\/service-activities\/\d+$/.test(path) && body && body.version === undefined) {
+    const current = await db.prepare('SELECT version FROM service_activities WHERE id = ?').get(Number(path.split('/').pop()));
+    if (current) body = { ...body, version: current.version };
+  }
   const res = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
@@ -954,4 +959,87 @@ test('attachment upload failures clean files and attachment reads enforce activi
   } finally {
     await fs.promises.unlink(storedPath).catch(error => { if (error.code !== 'ENOENT') throw error; });
   }
+});
+
+
+test('activity edits reject stale versions without changing fields or technologies', async () => {
+  const technology = (await db.prepare('INSERT INTO technologies (name) VALUES (?)').run('Concurrent edit technology')).lastInsertRowid;
+  const created = await createActivity({ title: 'Concurrent editing', description: 'Original', technology_ids: [technology] });
+  const path = `/api/service-activities/${created.data.id}`;
+  const snapshot = await api(path, { token: ids.tokenManager });
+  const options = { method: 'PUT', token: ids.tokenManager };
+  const first = await api(path, { ...options, body: { version: snapshot.data.version, description: 'Winning edit' } });
+  assert.equal(first.status, 200);
+  const stale = await api(path, { ...options, body: { version: snapshot.data.version, description: 'Lost edit', technology_ids: [] } });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.data.code, 'ACTIVITY_CONFLICT');
+  const saved = await api(path, { token: ids.tokenManager });
+  assert.equal(saved.data.description, 'Winning edit');
+  assert.deepEqual(saved.data.technologies.map(item => item.id), [technology]);
+  assert.equal(saved.data.version, snapshot.data.version + 1);
+  assert.equal((await api(path, { ...options, useCurrentVersion: false, body: { title: 'Missing version' } })).status, 428);
+  assert.equal((await api(path, { ...options, body: { version: '1' } })).status, 400);
+  assert.equal((await api(path, { ...options, body: { version: saved.data.version, description: 'Fresh edit' } })).status, 200);
+});
+
+test('list and export reject the same malformed filters', async () => {
+  for (const query of ['customer_id=1x', 'category_id=-1', 'technology_id=0', 'from=2026-02-30', 'to=bad', 'from=2026-09-17&to=2026-09-01', 'page=1.5', 'page_size=201', 'page=9007199254740991', 'search=a&search=b', 'status[x]=planned']) {
+    for (const route of ['/api/service-activities', '/api/service-activities/export']) {
+      const result = await api(`${route}?${query}`, { token: ids.tokenManager });
+      assert.equal(result.status, 400, `${route}?${query}`);
+    }
+  }
+});
+
+// pg-mem cannot execute the correlated technology predicate over these joins.
+test('Excel export matches all list filters and exports the entire matching set', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const technology = (await db.prepare('INSERT INTO technologies (name) VALUES (?)').run('Export consistency technology')).lastInsertRowid;
+  for (let i = 0; i < 2; i++) await createActivity({ title: `Export consistency ${i}`, technology_ids: [technology], billable_classification: 'billable' });
+  await createActivity({ title: 'Export consistency excluded', billable_classification: 'non_billable' });
+  const query = new URLSearchParams({ customer_id: ids.customer, category_id: ids.category, technology_id: technology, status: 'planned', billable_classification: 'billable', search: 'Export consistency', from: '2026-01-01', to: '2026-01-31', page_size: 1 });
+  const list = await api(`/api/service-activities?${query}`, { token: ids.tokenManager });
+  assert.equal(list.status, 200);
+  assert.equal(Number(list.data.total), 2);
+  assert.equal(list.data.rows.length, 1);
+  const response = await fetch(`${baseUrl}/api/service-activities/export?${query}`, { headers: { Authorization: `Bearer ${ids.tokenManager}` } });
+  assert.equal(response.status, 200);
+  const workbook = new (require('exceljs').Workbook)();
+  await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
+  const rows = workbook.getWorksheet('Service Activities').getSheetValues().slice(2);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0][1], list.data.rows[0].activity_reference);
+  assert.ok(rows.every(row => row[5].startsWith('Export consistency') && row[8] === 'billable'));
+});
+
+
+test('simultaneous edits allow exactly one write on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const created = await createActivity({ title: 'Simultaneous edits' });
+  const path = `/api/service-activities/${created.data.id}`;
+  const snapshot = await api(path, { token: ids.tokenEnabled });
+  const results = await Promise.all(['First writer', 'Second writer'].map(description => api(path, {
+    method: 'PUT', token: ids.tokenEnabled, body: { version: snapshot.data.version, description },
+  })));
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+  const saved = await api(path, { token: ids.tokenEnabled });
+  assert.equal(saved.data.version, snapshot.data.version + 1);
+  assert.ok(['First writer', 'Second writer'].includes(saved.data.description));
+});
+
+test('completion and follow-up creation invalidate older editing snapshots', async () => {
+  const created = await createActivity({ title: 'Other mutations invalidate edits' });
+  const path = `/api/service-activities/${created.data.id}`;
+  const token = ids.tokenEnabled;
+  const before = (await api(path, { token })).data;
+  assert.equal((await api(`${path}/complete`, { method: 'POST', token, body: {} })).status, 200);
+  const completed = (await api(path, { token })).data;
+  assert.equal(completed.version, before.version + 1);
+  assert.equal((await api(path, { method: 'PUT', token, body: { version: before.version, title: 'Stale' } })).status, 409);
+  assert.equal((await api(`${path}/complete`, { method: 'POST', token, body: {} })).status, 200);
+  assert.equal((await api(path, { token })).data.version, completed.version);
+  assert.equal((await api(`${path}/follow-up-task`, { method: 'POST', token, body: {} })).status, 200);
+  const linked = (await api(path, { token })).data;
+  assert.equal(linked.version, completed.version + 1);
+  assert.equal((await api(path, { method: 'PUT', token, body: { version: completed.version, title: 'Stale' } })).status, 409);
+  assert.equal((await api(`${path}/follow-up-task`, { method: 'POST', token, body: {} })).status, 200);
+  assert.equal((await api(path, { token })).data.version, linked.version);
 });

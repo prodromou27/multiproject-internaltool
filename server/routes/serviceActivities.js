@@ -242,18 +242,32 @@ router.get('/meta', requireAuth, requireServiceActivityAccess, async (req, res) 
 });
 
 /* ── List (server-side pagination + filters) ─────────────────────────── */
-router.get('/', requireAuth, requireServiceActivityAccess, async (req, res) => {
-  const {
-    from, to, customer_id, category_id, status, technology_id, billable_classification,
-    search, page = 1, page_size = 25,
-  } = req.query;
-  const limit = Math.min(Math.max(parseInt(page_size, 10) || 25, 1), 200);
-  const offset = (Math.max(parseInt(page, 10) || 1, 1) - 1) * limit;
-
+function activityFilters(query, user) {
+  const integer = (key, fallback, max = Number.MAX_SAFE_INTEGER) => {
+    const value = query[key];
+    if (value === undefined) return fallback;
+    if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > max) throw new Error(`Invalid ${key}`);
+    return Number(value);
+  };
+  for (const key of ['from', 'to', 'status', 'billable_classification', 'search']) {
+    if (query[key] !== undefined && (typeof query[key] !== 'string' || !query[key].trim() || query[key].length > (key === 'search' ? 300 : 100))) throw new Error(`Invalid ${key}`);
+  }
+  const { from, to, status, billable_classification, search } = query;
+  for (const [key, value] of [['from', from], ['to', to]]) {
+    if (value !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) throw new Error(`Invalid ${key}`);
+  }
+  if (from && to && from > to) throw new Error('From date cannot be after To date');
+  const customer_id = integer('customer_id');
+  const category_id = integer('category_id');
+  const technology_id = integer('technology_id');
+  const page = integer('page', 1);
+  const limit = integer('page_size', 25, 200);
+  const offset = (page - 1) * limit;
+  if (!Number.isSafeInteger(offset)) throw new Error('Invalid page');
   let where = 'WHERE 1=1';
   const params = [];
-  if (req.user.role !== 'manager') {
-    where += ' AND sa.engineer_id = ?'; params.push(req.user.id);
+  if (user.role !== 'manager') {
+    where += ' AND sa.engineer_id = ?'; params.push(user.id);
   }
   if (from)         { where += ' AND sa.activity_date >= ?'; params.push(from); }
   if (to)           { where += ' AND sa.activity_date <= ?'; params.push(to); }
@@ -271,8 +285,16 @@ router.get('/', requireAuth, requireServiceActivityAccess, async (req, res) => {
     params.push(q, q, q, q);
   }
 
+  return { where, params, page, limit, offset };
+}
+
+router.get('/', requireAuth, requireServiceActivityAccess, async (req, res) => {
+  let filters;
+  try { filters = activityFilters(req.query, req.user); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  const { where, params, page, limit, offset } = filters;
   const rows = await db.prepare(`
-    SELECT sa.id, sa.activity_reference, sa.activity_date, sa.title, sa.status, sa.duration_minutes,
+    SELECT sa.id, sa.version, sa.activity_reference, sa.activity_date, sa.title, sa.status, sa.duration_minutes,
       sa.billable_classification, sa.follow_up_required, sa.follow_up_date, sa.ticket_reference,
       c.name AS customer_name, cat.name AS category_name, u.name AS engineer_name
     FROM service_activities sa
@@ -402,6 +424,9 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
   const id = existing.id;
 
   const body = req.body || {};
+  if (body.version === undefined) return res.status(428).json({ error: 'Reload the activity before editing: version is required' });
+  if (!Number.isSafeInteger(body.version) || body.version < 1) return res.status(400).json({ error: 'Invalid activity version' });
+  if (body.version !== existing.version) return res.status(409).json({ error: 'Activity changed. Your draft is preserved; reload the latest activity before saving.', code: 'ACTIVITY_CONFLICT' });
   const customerId = body.customer_id || existing.customer_id;
 
   // Re-check access even if the customer is unchanged: assignments can be revoked.
@@ -441,8 +466,8 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
     ? (existing.completed_at || (body.activity_date || existing.activity_date) + ' 00:00:00')
     : (newStatus === existing.status ? existing.completed_at : null);
 
-  await db.transaction(async (tx) => {
-    await tx.prepare(`UPDATE service_activities SET
+  const updated = await db.transaction(async (tx) => {
+    const result = await tx.prepare(`UPDATE service_activities SET
         customer_id=?, team_id=?, activity_date=COALESCE(?,activity_date), start_time=?, end_time=?,
         duration_minutes=?, category_id=COALESCE(?,category_id), subcategory_id=?,
         title=COALESCE(?,title), description=?, status=COALESCE(?,status), priority=?,
@@ -451,8 +476,8 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
         related_project_id=?, related_task_id=?, related_visit_id=?,
         change_type=?, change_reason=?, previous_state=?, new_state=?, change_risk=?, rollback_available=?,
         customer_approval_reference=?, verified_by=?, verification_notes=?,
-        updated_by=?, updated_at=datetime('now'), completed_at=?
-      WHERE id=?`)
+        updated_by=?, updated_at=datetime('now'), completed_at=?, version=version+1
+      WHERE id=? AND version=?`)
       .run(
         customerId, teamId, body.activity_date || null, body.start_time !== undefined ? (body.start_time || null) : existing.start_time,
         body.end_time !== undefined ? (body.end_time || null) : existing.end_time,
@@ -480,15 +505,18 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
         body.customer_approval_reference !== undefined ? (body.customer_approval_reference || null) : existing.customer_approval_reference,
         body.verified_by !== undefined ? (body.verified_by || null) : existing.verified_by,
         body.verification_notes !== undefined ? (body.verification_notes || null) : existing.verification_notes,
-        req.user.id, completedAt, id
+        req.user.id, completedAt, id, body.version
       );
 
+    if (!result.changes) return false;
     if (Array.isArray(body.technology_ids)) {
       await tx.prepare('DELETE FROM service_activity_technologies WHERE service_activity_id = ?').run(id);
       const insTech = tx.prepare('INSERT INTO service_activity_technologies (service_activity_id, technology_id) VALUES (?, ?)');
       for (const techId of body.technology_ids) await insTech.run(id, techId);
     }
+    return true;
   });
+  if (!updated) return res.status(409).json({ error: 'Activity changed. Your draft is preserved; reload the latest activity before saving.', code: 'ACTIVITY_CONFLICT' });
 
   if (body.status && body.status !== existing.status) {
     await logAudit(db, req, 'service_activity', id, body.title?.trim() || existing.title, 'activity_status_changed', `status ${existing.status}->${body.status}`);
@@ -501,7 +529,7 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
   }
   await logAudit(db, req, 'service_activity', id, body.title?.trim() || existing.title, 'activity_updated', null);
 
-  res.json({ ok: true });
+  res.json({ ok: true, version: body.version + 1 });
 });
 
 /* ── Complete ─────────────────────────────────────────────────────────── */
@@ -519,8 +547,9 @@ router.post('/:id/complete', requireAuth, requireServiceActivityAccess, requireO
   const attachmentError = await assertAttachmentRuleSatisfied(id, activity.category_id);
   if (attachmentError) return res.status(400).json({ error: attachmentError });
 
-  await db.prepare(`UPDATE service_activities SET status=?, completed_at=datetime('now'), updated_by=?, updated_at=datetime('now') WHERE id=?`)
-    .run(completedValue, req.user.id, id);
+  const updated = await db.prepare(`UPDATE service_activities SET status=?, completed_at=datetime('now'), updated_by=?, updated_at=datetime('now'), version=version+1 WHERE id=? AND version=?`)
+    .run(completedValue, req.user.id, id, activity.version);
+  if (!updated.changes) return res.status(409).json({ error: 'Activity changed; reload before completing', code: 'ACTIVITY_CONFLICT' });
   await logAudit(db, req, 'service_activity', id, activity.title, 'activity_completed', null);
   res.json({ ok: true });
 });
@@ -588,7 +617,7 @@ router.post('/:id/follow-up-task', requireAuth, requireServiceActivityAccess, re
       'medium', activity.follow_up_date || null, activity.engineer_id, req.user.id
     );
     const taskId = inserted.lastInsertRowid;
-    await tx.prepare('UPDATE service_activities SET follow_up_task_id = ?, updated_by = ?, updated_at=datetime(\'now\') WHERE id = ?')
+    await tx.prepare('UPDATE service_activities SET follow_up_task_id = ?, version=version+1, updated_by = ?, updated_at=datetime(\'now\') WHERE id = ?')
       .run(taskId, req.user.id, id);
     return { id: taskId, created: true };
   });
@@ -598,14 +627,10 @@ router.post('/:id/follow-up-task', requireAuth, requireServiceActivityAccess, re
 
 /* ── Export to Excel ──────────────────────────────────────────────────── */
 router.get('/export', requireDownloadAuth, requireServiceActivityAccess, async (req, res) => {
-  const { from, to, customer_id } = req.query;
-  let where = 'WHERE 1=1';
-  const params = [];
-  if (req.user.role !== 'manager') { where += ' AND sa.engineer_id = ?'; params.push(req.user.id); }
-  if (from) { where += ' AND sa.activity_date >= ?'; params.push(from); }
-  if (to)   { where += ' AND sa.activity_date <= ?'; params.push(to); }
-  if (customer_id) { where += ' AND sa.customer_id = ?'; params.push(customer_id); }
-
+  let filters;
+  try { filters = activityFilters(req.query, req.user); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  const { where, params } = filters;
   const rows = await db.prepare(`
     SELECT sa.activity_reference, sa.activity_date, c.name AS customer, cat.name AS category,
       sa.title, sa.duration_minutes, sa.status, sa.billable_classification, sa.ticket_reference, u.name AS engineer
@@ -613,7 +638,7 @@ router.get('/export', requireDownloadAuth, requireServiceActivityAccess, async (
     JOIN customers c ON c.id = sa.customer_id
     JOIN activity_categories cat ON cat.id = sa.category_id
     JOIN users u ON u.id = sa.engineer_id
-    ${where} ORDER BY sa.activity_date DESC
+    ${where} ORDER BY sa.activity_date DESC, sa.id DESC
   `).all(...params);
 
   const workbook = new ExcelJS.Workbook();

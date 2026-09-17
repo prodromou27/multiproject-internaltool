@@ -565,7 +565,8 @@ async function init() {
       created_at                  TEXT DEFAULT ${NOW},
       updated_by                  INTEGER REFERENCES users(id),
       updated_at                  TEXT DEFAULT ${NOW},
-      completed_at                TEXT
+      completed_at                TEXT,
+      version                     INTEGER NOT NULL DEFAULT 1
     );
 
     CREATE TABLE IF NOT EXISTS service_activity_technologies (
@@ -702,6 +703,8 @@ async function applyCompatibilityMigrations() {
       );
     `],
   ];
+
+  migrations.push(['20260917_activity_version', 'ALTER TABLE service_activities ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1']);
 
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);

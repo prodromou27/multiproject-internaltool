@@ -334,6 +334,20 @@ export const api = {
   deleteTechnology: (id) => req('DELETE', `/technologies/${id}`),
 
   // service activities (Activity Log / MSP Operations Log)
+  exportServiceActivities: async (params = {}) => {
+    const response = await fetch(`${BASE}/service-activities/export?${new URLSearchParams(params)}`, { credentials: 'same-origin', headers: { 'X-SolutionsHub-Request': '1' } });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      handleUnauthorized(response.status, data, true);
+      throw new Error(data.error || 'Failed to export activities');
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'service_activities.xlsx';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
   serviceActivityMeta: () => req('GET', '/service-activities/meta'),
   serviceActivities: (params = {}, options) => req('GET', '/service-activities?' + new URLSearchParams(params).toString(), undefined, options),
   serviceActivity: (id, options) => req('GET', `/service-activities/${id}`, undefined, options),

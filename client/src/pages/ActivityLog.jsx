@@ -34,7 +34,7 @@ const BILLABLE_LABELS = {
 const WORK_LOCATION_LABELS = { remote: 'Remote', onsite: 'On-site', internal: 'Internal', hybrid: 'Hybrid' };
 
 /* ── Quick Log / Edit Activity form ──────────────────────────────────── */
-function ActivityForm({ meta, initial, onSave, onClose }) {
+function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
   const [form, setForm] = useState(() => ({
     customer_id: initial?.customer_id || '',
     activity_date: initial?.activity_date?.slice(0, 10) || iso(new Date()),
@@ -65,6 +65,7 @@ function ActivityForm({ meta, initial, onSave, onClose }) {
   const [showMore, setShowMore] = useState(false);
   const [showChangeDetails, setShowChangeDetails] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [conflict, setConflict] = useState(false);
   const [err, setErr] = useState('');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -104,13 +105,14 @@ function ActivityForm({ meta, initial, onSave, onClose }) {
         duration_minutes: form.duration_minutes !== '' ? Number(form.duration_minutes) : null,
       };
       await onSave(payload);
-    } catch (ex) { setErr(ex.message || 'Failed to save activity'); }
+    } catch (ex) { setConflict(ex.code === 'ACTIVITY_CONFLICT'); setErr(ex.message || 'Failed to save activity'); }
     finally { setSaving(false); }
   }
 
   return (
     <form onSubmit={submit}>
       {err && <div className="error-msg">{err}</div>}
+      {conflict && <button type="button" className="btn btn-ghost" onClick={onReload}>Reload latest activity</button>}
       <div className="form-group">
         <label>Customer *</label>
         <select value={form.customer_id} onChange={set('customer_id')} required>
@@ -398,6 +400,8 @@ export default function ActivityLog() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const listRequest = useRef(null);
+  const exportFilters = useRef({});
+  const [exporting, setExporting] = useState(false);
   const [metaError, setMetaError] = useState('');
 
   const [datePreset, setDatePreset] = useSavedFilter('activity_log_date_preset', 'this_week');
@@ -465,6 +469,9 @@ export default function ActivityLog() {
     if (technologyFilter) params.technology_id = technologyFilter;
     if (billableFilter) params.billable_classification = billableFilter;
     if (debouncedSearch) params.search = debouncedSearch;
+    exportFilters.current = { ...params };
+    delete exportFilters.current.page;
+    delete exportFilters.current.page_size;
     return api.serviceActivities(params, { signal: controller.signal }).then(d => {
       if (controller.signal.aborted) return;
       const lastPage = Math.max(1, Math.ceil(d.total / pageSize));
@@ -495,7 +502,7 @@ export default function ActivityLog() {
   }
 
   async function handleUpdate(payload) {
-    await api.updateServiceActivity(editActivity.id, payload);
+    await api.updateServiceActivity(editActivity.id, { ...payload, version: editActivity.version });
     setEditActivity(null);
     toast.success('Activity updated');
     load();
@@ -539,6 +546,12 @@ export default function ActivityLog() {
     <div className="page">
       <div className="page-header">
         <h1 className="page-title">Activity Log</h1>
+        <button className="btn btn-ghost" disabled={loading || !!loadError || exporting || !meta} onClick={async () => {
+          setExporting(true);
+          try { await api.exportServiceActivities(exportFilters.current); }
+          catch (error) { toast.error(error.message); }
+          finally { setExporting(false); }
+        }}>{exporting ? 'Exporting?' : 'Export Excel'}</button>
         <button className="btn btn-primary" onClick={() => setShowForm(true)} disabled={!meta}>+ Log Activity</button>
       </div>
 
@@ -657,7 +670,9 @@ export default function ActivityLog() {
 
       {editActivity && meta && (
         <Modal title={`Edit ${editActivity.activity_reference || ''}`} onClose={() => setEditActivity(null)}>
-          <ActivityForm meta={meta} initial={editActivity} onSave={handleUpdate} onClose={() => setEditActivity(null)} />
+          <ActivityForm key={`${editActivity.id}-${editActivity.version}`} meta={meta} initial={editActivity} onReload={async () => {
+            if (await confirm('Reloading replaces your unsaved draft with the latest activity.', { title: 'Reload Activity', label: 'Reload', danger: false })) await handleEdit(editActivity);
+          }} onSave={handleUpdate} onClose={() => setEditActivity(null)} />
         </Modal>
       )}
 
