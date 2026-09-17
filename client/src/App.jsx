@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import Login from './pages/Login';
 import { api } from './api';
+import { PAGES, visiblePages, pageForPath, canAccessPage } from './navigation';
+import { PageState } from './components/PageLayout';
 import { StatusProvider } from './hooks/useStatuses';
 import { ToastProvider, useToast } from './components/Toast';
 import { ConfirmProvider } from './components/Confirm';
@@ -450,7 +452,7 @@ function GlobalSearch() {
 /* ── Hamburger icon ──────────────────────────────────────── */
 function Hamburger({ open, onClick }) {
   return (
-    <button className="hamburger" onClick={onClick} aria-label="Toggle menu" aria-expanded={open}>
+    <button className="hamburger" onClick={onClick} aria-label="Toggle menu" aria-expanded={open} aria-controls="primary-navigation">
       <span style={{ transform: open ? 'translateY(7px) rotate(45deg)' : 'none' }} />
       <span style={{ opacity: open ? 0 : 1 }} />
       <span style={{ transform: open ? 'translateY(-7px) rotate(-45deg)' : 'none' }} />
@@ -459,16 +461,9 @@ function Hamburger({ open, onClick }) {
 }
 
 /* ── Sidebar content ─────────────────────────────────────── */
-const NAV_MANAGER_EXTRA = [
-  { to: '/customers',          label: 'Customers',          icon: Building2 },
-  { to: '/workload',           label: 'Workload',           icon: UsersIcon },
-  { to: '/templates',          label: 'Templates',          icon: LayoutDashboard },
-  { to: '/scorecards',         label: 'Scorecards',         icon: Award },
-  { to: '/reports',            label: 'Reports',            icon: BarChart2 },
-  { to: '/service-operations', label: 'Service Operations', icon: Activity },
-  { to: '/sla',                label: 'SLA',                icon: ShieldCheck },
-  { to: '/users',              label: 'Team',               icon: UsersIcon },
-];
+const PAGE_ICONS = { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2,
+  Award, BarChart2, UsersIcon, Settings, Search, ClipboardList, FileText, StickyNote,
+  UserCircle, MessageSquare, ShieldCheck, Zap, Activity };
 
 function OverdueDot({ count }) {
   if (!count) return null;
@@ -485,9 +480,6 @@ function OverdueDot({ count }) {
 function SidebarContent({ user, logout, onNav }) {
   const toast = useToast();
   const { dark, toggleDark, saAccess } = useAuth();
-  const isManager = user.role === 'manager';
-  const isPlanner = user.role === 'planner';
-  const isPM      = user.role === 'pm';
   const initials = user.name?.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
   const [overdue, setOverdue] = useState({ tasks: 0, visits: 0 });
@@ -501,37 +493,8 @@ function SidebarContent({ user, logout, onNav }) {
     return () => { mounted = false; clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, []);
 
-  const activityLogItem = { to: '/activity-log', label: 'Activity Log', icon: ClipboardList };
-
-  const NAV_ENGINEER = [
-    { to: '/',                   label: 'Dashboard',  icon: LayoutDashboard, end: true },
-    { to: '/my-day',             label: 'My Day',     icon: Zap },
-    { to: '/calendar',           label: 'Calendar',   icon: CalendarDays },
-    { to: '/projects',           label: 'Projects',   icon: FolderOpen },
-    { to: '/tasks',              label: 'Tasks',      icon: CheckSquare,   badge: overdue.tasks },
-    { to: '/maintenance-visits', label: 'Maintenance',icon: Wrench,        badge: overdue.visits },
-    ...(saAccess.enabled ? [activityLogItem] : []),
-  ];
-  const NAV_PLANNER = [
-    { to: '/',                   label: 'Dashboard',  icon: LayoutDashboard, end: true },
-    { to: '/maintenance-visits', label: 'Maintenance',icon: Wrench,        badge: overdue.visits },
-  ];
-  const NAV_PM = [
-    { to: '/',                   label: 'Dashboard',  icon: LayoutDashboard, end: true },
-    { to: '/projects',           label: 'Projects',   icon: FolderOpen },
-    { to: '/maintenance-visits', label: 'Maintenance',icon: Wrench,        badge: overdue.visits },
-    ...(saAccess.enabled ? [activityLogItem] : []),
-  ];
-  const NAV_MANAGER = [
-    { to: '/',                   label: 'Dashboard',  icon: LayoutDashboard, end: true },
-    { to: '/calendar',           label: 'Calendar',   icon: CalendarDays },
-    { to: '/projects',           label: 'Projects',   icon: FolderOpen },
-    { to: '/tasks',              label: 'Tasks',      icon: CheckSquare,   badge: overdue.tasks },
-    { to: '/maintenance-visits', label: 'Maintenance',icon: Wrench,        badge: overdue.visits },
-    { to: '/activity-log',       label: 'Activity Log', icon: ClipboardList },
-  ];
-
-  const mainNav = isManager ? NAV_MANAGER : isPlanner ? NAV_PLANNER : isPM ? NAV_PM : NAV_ENGINEER;
+  const pages = visiblePages(user.role, saAccess.enabled).filter(page => !page.hidden);
+  const sections = [...new Set(pages.map(page => page.section))];
 
   return (
     <>
@@ -560,45 +523,16 @@ function SidebarContent({ user, logout, onNav }) {
 
       {/* Main nav */}
       <nav style={{ flex: 1, padding: '8px 10px' }}>
-        <div className="sidebar-section-label">Navigation</div>
-        {mainNav.map(({ to, label, icon: Icon, end, badge }) => (
-          <NavLink key={to} to={to} end={end} onClick={onNav}>
-            <Icon size={16} />
-            {label}
-            <OverdueDot count={badge} />
-          </NavLink>
-        ))}
-
-        {isManager && (
-          <>
-            <div className="sidebar-section-label" style={{ marginTop: 8 }}>Management</div>
-            {NAV_MANAGER_EXTRA.map(({ to, label, icon: Icon }) => (
-              <NavLink key={to} to={to} onClick={onNav}>
-                <Icon size={16} />
-                {label}
-              </NavLink>
-            ))}
-            <NavLink
-              to="/settings"
-              onClick={onNav}
-              className={({ isActive }) => 'admin-link' + (isActive ? ' active' : '')}
-            >
-              <Settings size={16} />
-              Settings
-            </NavLink>
-          </>
-        )}
-
-        {/* Personal — visible to all roles */}
-        <div className="sidebar-section-label" style={{ marginTop: 8 }}>Personal</div>
-        <NavLink to="/profile" onClick={onNav}>
-          <UserCircle size={16} />
-          My Profile
-        </NavLink>
-        <NavLink to="/notes" onClick={onNav}>
-          <StickyNote size={16} />
-          My Notes
-        </NavLink>
+        {sections.map(section => <React.Fragment key={section}>
+          <div className="sidebar-section-label">{section}</div>
+          {pages.filter(page => page.section === section).map(page => {
+            const Icon = PAGE_ICONS[page.icon];
+            return <NavLink key={page.id} to={page.path} end={page.path === '/'} onClick={onNav}>
+              <Icon size={17} aria-hidden="true" /> <span>{page.label}</span>
+              <OverdueDot count={overdue[page.badge]} />
+            </NavLink>;
+          })}
+        </React.Fragment>)}
 
         {/* Useful Links — visible to all roles */}
         <div className="sidebar-section-label" style={{ marginTop: 8 }}>Useful Links</div>
@@ -613,10 +547,6 @@ function SidebarContent({ user, logout, onNav }) {
           Odyssey Ticketing
           <ExternalLink size={11} style={{ marginLeft: 'auto', opacity: .5 }} />
         </a>
-        <NavLink to="/customer-responses" onClick={onNav}>
-          <MessageSquare size={16} />
-          Customer Responses
-        </NavLink>
         <a
           href="https://9605283.app.netsuite.com"
           target="_blank"
@@ -646,22 +576,8 @@ function SidebarContent({ user, logout, onNav }) {
 }
 
 const COMMANDS = [
-  { label: 'Search everything', action: 'search', icon: Search, roles: ['manager','engineer','planner','pm'] },
-  { label: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['manager','engineer','planner','pm'] },
-  { label: 'My Day', path: '/my-day', icon: Zap, roles: ['engineer'] },
-  { label: 'Calendar', path: '/calendar', icon: CalendarDays, roles: ['manager','engineer'] },
-  { label: 'Projects', path: '/projects', icon: FolderOpen, roles: ['manager','engineer','pm'] },
-  { label: 'Tasks', path: '/tasks', icon: CheckSquare, roles: ['manager','engineer'] },
-  { label: 'Maintenance visits', path: '/maintenance-visits', icon: Wrench, roles: ['manager','engineer','planner','pm'] },
-  { label: 'Customers', path: '/customers', icon: Building2, roles: ['manager'] },
-  { label: 'Activity Log', path: '/activity-log', icon: ClipboardList, roles: ['manager','engineer','pm'], requiresServiceActivity: true },
-  { label: 'Service Operations', path: '/service-operations', icon: Activity, roles: ['manager'] },
-  { label: 'Reports', path: '/reports', icon: BarChart2, roles: ['manager'] },
-  { label: 'SLA dashboard', path: '/sla', icon: ShieldCheck, roles: ['manager'] },
-  { label: 'Team workload', path: '/workload', icon: UsersIcon, roles: ['manager'] },
-  { label: 'My notes', path: '/notes', icon: StickyNote, roles: ['manager','engineer','planner','pm'] },
-  { label: 'My profile', path: '/profile', icon: UserCircle, roles: ['manager','engineer','planner','pm'] },
-  { label: 'Settings', path: '/settings', icon: Settings, roles: ['manager'] },
+  { label: 'Global search', action: 'search', icon: Search, roles: ['manager', 'engineer', 'planner', 'pm'] },
+  ...PAGES.map(page => ({ ...page, label: page.label, path: page.path, icon: PAGE_ICONS[page.icon], requiresServiceActivity: !!page.feature })),
 ];
 
 function CommandPalette({ open, onClose }) {
@@ -736,12 +652,43 @@ function CommandPalette({ open, onClose }) {
 
 /* ── Layout ──────────────────────────────────────────────── */
 function Layout({ children }) {
-  const { user, logout } = useAuth();
+  const { user, logout, saAccess } = useAuth();
   const [open, setOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 900px)').matches);
+  const drawerRef = useRef(null);
   const location = useLocation();
+  const currentPage = pageForPath(location.pathname);
+  const currentTeams = saAccess.teams.map(team => team.name).join(', ');
 
   useEffect(() => { setOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 900px)');
+    const change = () => { setMobile(media.matches); if (!media.matches) setOpen(false); };
+    media.addEventListener('change', change);
+    return () => media.removeEventListener('change', change);
+  }, []);
+  useEffect(() => {
+    if (!open || !mobile) return;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const controls = () => [...drawerRef.current.querySelectorAll('a[href], button:not([disabled])')];
+    controls()[0]?.focus();
+    const trap = event => {
+      if (event.key !== 'Tab') return;
+      const elements = controls();
+      const first = elements[0], last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', trap);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', trap);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [open, mobile]);
   useEffect(() => {
     const handler = e => {
       if (e.key === 'Escape') { setOpen(false); setPaletteOpen(false); return; }
@@ -757,10 +704,14 @@ function Layout({ children }) {
   const initials = user.name?.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
   return (
-    <div className="layout">
+    <div className="layout operations-shell">
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       {/* Desktop sidebar */}
-      <aside className={`sidebar${open ? ' open' : ''}`} aria-label="Primary navigation">
+      <aside ref={drawerRef} id="primary-navigation" className={`sidebar${open ? ' open' : ''}`} aria-label="Primary navigation"
+        role={mobile && open ? 'dialog' : undefined} aria-modal={mobile && open ? true : undefined}
+        aria-hidden={mobile && !open ? true : undefined} inert={mobile && !open ? '' : undefined}>
+        {mobile && open && <button className="drawer-close" type="button" onClick={() => setOpen(false)}><X size={18} /> Close navigation</button>}
         <SidebarContent user={user} logout={logout} onNav={() => setOpen(false)} />
       </aside>
 
@@ -768,7 +719,7 @@ function Layout({ children }) {
       <div className={`sidebar-overlay${open ? ' open' : ''}`} onClick={() => setOpen(false)} aria-hidden="true" />
 
       {/* Mobile topbar */}
-      <header className="topbar">
+      <header className="topbar" inert={mobile && open ? '' : undefined}>
         <Hamburger open={open} onClick={() => setOpen(o => !o)} />
         <div className="topbar-logo">Solutions<span>Hub</span></div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -781,10 +732,17 @@ function Layout({ children }) {
         </div>
       </header>
 
-      <div className="main">
+      <div className="main" inert={mobile && open ? '' : undefined}>
         {/* Desktop-only top bar */}
         <div className="desktop-topbar">
-          <div style={{ flex: 1 }} />
+          <div className="workspace-context">
+            <span className="workspace-section">{currentPage?.section || 'Workspace'}</span>
+            <span className="workspace-page">{currentPage?.label || 'SolutionsHub'}</span>
+          </div>
+          {currentTeams && <span className="workspace-team" title={currentTeams}>{currentTeams}</span>}
+          <button type="button" className="workspace-command" onClick={() => setPaletteOpen(true)} aria-label="Open page navigation">
+            <Search size={15} aria-hidden="true" /> Go to a page <kbd>Ctrl K</kbd>
+          </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
             <GlobalSearch />
             <NotificationBell />
@@ -801,7 +759,7 @@ function Layout({ children }) {
             </NavLink>
           </div>
         </div>
-        {children}
+        <main id="main-content" tabIndex={-1}>{children}</main>
       </div>
     </div>
   );
@@ -817,12 +775,14 @@ function PageLoader() {
   );
 }
 
-function PrivateRoute({ children, allowedRoles }) {
-  const { user } = useAuth();
+function PrivateRoute({ children, allowedRoles, page }) {
+  const { user, saAccess } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
-    const fallback = user.role === 'planner' || user.role === 'pm' ? '/maintenance-visits' : '/';
-    return <Navigate to={fallback} replace />;
+  const definition = page ? PAGES.find(item => item.id === page) : null;
+  if (definition?.feature && user.role !== 'manager' && !saAccess.loaded) return <Layout><PageLoader /></Layout>;
+  if ((definition && !canAccessPage(definition, user.role, saAccess.enabled)) ||
+      (allowedRoles && !allowedRoles.includes(user.role))) {
+    return <Layout><PageState title="Access unavailable" description="Your role or team settings do not allow access to this page. Contact your administrator if you need access." /></Layout>;
   }
   return <Layout><Suspense fallback={<PageLoader />}>{children}</Suspense></Layout>;
 }
@@ -890,32 +850,32 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
-          <Route path="/"                    element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-          <Route path="/calendar"            element={<PrivateRoute><CalendarPage /></PrivateRoute>} />
-          <Route path="/projects"            element={<PrivateRoute allowedRoles={['manager','engineer','pm']}><Projects /></PrivateRoute>} />
-          <Route path="/projects/:id"        element={<PrivateRoute allowedRoles={['manager','engineer','pm']}><ProjectDetail /></PrivateRoute>} />
-          <Route path="/tasks"               element={<PrivateRoute allowedRoles={['manager','engineer']}><Tasks /></PrivateRoute>} />
-          <Route path="/maintenance-visits"  element={<PrivateRoute><MaintenanceVisits /></PrivateRoute>} />
-          <Route path="/customers"           element={<PrivateRoute allowedRoles={['manager']}><Customers /></PrivateRoute>} />
-          <Route path="/scorecards"          element={<PrivateRoute allowedRoles={['manager']}><Scorecards /></PrivateRoute>} />
-          <Route path="/reports"             element={<PrivateRoute allowedRoles={['manager']}><Reports /></PrivateRoute>} />
-          <Route path="/users"               element={<PrivateRoute allowedRoles={['manager']}><UsersPage /></PrivateRoute>} />
-          <Route path="/settings"            element={<PrivateRoute allowedRoles={['manager']}><AdminPanel /></PrivateRoute>} />
-          <Route path="/settings/:section"   element={<PrivateRoute allowedRoles={['manager']}><AdminPanel /></PrivateRoute>} />
+          <Route path="/"                    element={<PrivateRoute page="dashboard"><Dashboard /></PrivateRoute>} />
+          <Route path="/calendar"            element={<PrivateRoute page="calendar"><CalendarPage /></PrivateRoute>} />
+          <Route path="/projects"            element={<PrivateRoute page="projects"><Projects /></PrivateRoute>} />
+          <Route path="/projects/:id"        element={<PrivateRoute page="projects"><ProjectDetail /></PrivateRoute>} />
+          <Route path="/tasks"               element={<PrivateRoute page="tasks"><Tasks /></PrivateRoute>} />
+          <Route path="/maintenance-visits"  element={<PrivateRoute page="visits"><MaintenanceVisits /></PrivateRoute>} />
+          <Route path="/customers"           element={<PrivateRoute page="customers"><Customers /></PrivateRoute>} />
+          <Route path="/scorecards"          element={<PrivateRoute page="scorecards"><Scorecards /></PrivateRoute>} />
+          <Route path="/reports"             element={<PrivateRoute page="reports"><Reports /></PrivateRoute>} />
+          <Route path="/users"               element={<PrivateRoute page="users"><UsersPage /></PrivateRoute>} />
+          <Route path="/settings"            element={<PrivateRoute page="settings"><AdminPanel /></PrivateRoute>} />
+          <Route path="/settings/:section"   element={<PrivateRoute page="settings"><AdminPanel /></PrivateRoute>} />
           <Route path="/admin"               element={<LegacySettingsRedirect />} />
           <Route path="/admin/:section"      element={<LegacySettingsRedirect />} />
-          <Route path="/templates"           element={<PrivateRoute allowedRoles={['manager']}><Templates /></PrivateRoute>} />
-          <Route path="/workload"            element={<PrivateRoute allowedRoles={['manager']}><Workload /></PrivateRoute>} />
-          <Route path="/sla"               element={<PrivateRoute allowedRoles={['manager']}><SLAPage /></PrivateRoute>} />
-          <Route path="/notes"               element={<PrivateRoute><Notes /></PrivateRoute>} />
-          <Route path="/search"             element={<PrivateRoute><SearchPage /></PrivateRoute>} />
-          <Route path="/my-day"             element={<PrivateRoute allowedRoles={['engineer']}><EngineerHub /></PrivateRoute>} />
-          <Route path="/profile"             element={<PrivateRoute><Profile /></PrivateRoute>} />
-          <Route path="/customer-responses"  element={<PrivateRoute><CustomerResponses /></PrivateRoute>} />
-          <Route path="/activity-log"        element={<PrivateRoute allowedRoles={['manager','engineer','pm']}><ActivityLog /></PrivateRoute>} />
-          <Route path="/service-operations"  element={<PrivateRoute allowedRoles={['manager']}><ServiceOperations /></PrivateRoute>} />
-          <Route path="/customers/:id/service-profile" element={<PrivateRoute allowedRoles={['manager']}><CustomerServiceProfile /></PrivateRoute>} />
-          <Route path="*"                    element={<Navigate to="/" replace />} />
+          <Route path="/templates"           element={<PrivateRoute page="templates"><Templates /></PrivateRoute>} />
+          <Route path="/workload"            element={<PrivateRoute page="workload"><Workload /></PrivateRoute>} />
+          <Route path="/sla"               element={<PrivateRoute page="sla"><SLAPage /></PrivateRoute>} />
+          <Route path="/notes"               element={<PrivateRoute page="notes"><Notes /></PrivateRoute>} />
+          <Route path="/search"             element={<PrivateRoute page="search"><SearchPage /></PrivateRoute>} />
+          <Route path="/my-day"             element={<PrivateRoute page="myWork"><EngineerHub /></PrivateRoute>} />
+          <Route path="/profile"             element={<PrivateRoute page="profile"><Profile /></PrivateRoute>} />
+          <Route path="/customer-responses"  element={<PrivateRoute page="responses"><CustomerResponses /></PrivateRoute>} />
+          <Route path="/activity-log"        element={<PrivateRoute page="activities"><ActivityLog /></PrivateRoute>} />
+          <Route path="/service-operations"  element={<PrivateRoute page="serviceOperations"><ServiceOperations /></PrivateRoute>} />
+          <Route path="/customers/:id/service-profile" element={<PrivateRoute page="customers"><CustomerServiceProfile /></PrivateRoute>} />
+          <Route path="*" element={<PrivateRoute><PageState title="Page not found" description="This page may have moved, or the link may be incorrect." /></PrivateRoute>} />
         </Routes>
       </BrowserRouter>
       </StatusProvider>

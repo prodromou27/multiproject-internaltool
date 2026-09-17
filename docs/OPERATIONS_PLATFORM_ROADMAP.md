@@ -91,7 +91,7 @@ part of the foundation work.
 | --- | --- | --- | --- |
 | 1 | Discovery, module inventory and dependency map | Code-grounded architecture, gap list and ordered plan recorded | Complete |
 | 2 | Management report export permission correction | Unauthorized roles and download tokens rejected; manager export remains functional | Complete |
-| 3 | Shared page registry, grouped navigation and responsive shell | Existing pages remain reachable; role/feature filtering consistent; keyboard navigation and mobile menu work | Planned |
+| 3 | Shared page registry, grouped navigation and responsive shell | Shared role/feature registry, grouped navigation, access states and mobile focus handling implemented; browser QA pending | Complete |
 | 4 | Global Quick Create | Authorized actions launch the existing forms; direct-link creation remains guarded; no duplicate forms | Planned |
 | 5 | Operational dashboards and approval flow | Personal due-work view; management exceptions; closure rejection/reopen with history and scoped tests | Planned |
 | 6 | Core detail/list and calendar improvements | Shared detail/timeline patterns; report/follow-up events; server pagination where justified | Planned |
