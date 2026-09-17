@@ -842,3 +842,68 @@ test('quick and smart search enforce task roles and PM project visibility', { sk
   for (const path of ['/api/search?q[a]=test', '/api/search/smart?q[a]=test', '/api/search/smart?entity=unknown'])
     assert.equal((await api(path, { token: ids.tokenManager })).status, 400);
 });
+
+test('service activities validate follow-up dates, times, IDs, text and boolean inputs', async () => {
+  const base = { customer_id: ids.customer, activity_date: new Date().toISOString().slice(0, 10), category_id: ids.category, title: 'Validation review' };
+  for (const invalid of [{ follow_up_date: '2026-02-30' }, { follow_up_date: {} }, { start_time: '25:00' },
+    { end_time: '12:99' }, { category_id: {} }, { related_project_id: [] }, { change_reason: {} },
+    { follow_up_required: 'false' }, { rollback_available: 'false' }]) {
+    assert.equal((await api('/api/service-activities', { method: 'POST', token: ids.tokenEnabled, body: { ...base, ...invalid } })).status, 400, JSON.stringify(invalid));
+  }
+  const created = await api('/api/service-activities', { method: 'POST', token: ids.tokenEnabled,
+    body: { ...base, start_time: '09:00', end_time: '10:00', follow_up_required: true, follow_up_date: '2026-12-01' } });
+  assert.equal(created.status, 200);
+  assert.equal((await api(`/api/service-activities/${created.data.id}`, { method: 'PUT', token: ids.tokenEnabled,
+    body: { follow_up_date: 'not-a-date' } })).status, 400);
+});
+
+test('tracking blocks planners even in enabled teams and keeps PM activity access separate from task creation', async () => {
+  for (const role of ['planner', 'pm']) {
+    const user = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+      .run(`Tracking ${role}`, `tracking-${role}@test.local`, bcrypt.hashSync('pw', 4), role)).lastInsertRowid;
+    await db.prepare('INSERT INTO team_members (team_id, user_id) VALUES (?, ?)').run(ids.teamEnabled, user);
+    const token = signJwt({ id: user });
+    const body = { customer_id: ids.customer, activity_date: new Date().toISOString().slice(0, 10), category_id: ids.category, title: `Tracking ${role}` };
+    assert.equal((await api('/api/service-activities/meta', { token })).status, role === 'planner' ? 403 : 200);
+    const created = await api('/api/service-activities', { method: 'POST', token, body });
+    assert.equal(created.status, role === 'planner' ? 403 : 200);
+    if (role === 'pm') {
+      assert.equal((await api(`/api/service-activities/${created.data.id}`, { token })).status, 200);
+      assert.equal((await api(`/api/service-activities/${created.data.id}/follow-up-task`, { method: 'POST', token })).status, 403);
+      const other = await db.prepare('SELECT id FROM service_activities WHERE engineer_id=? LIMIT 1').get(ids.engineerEnabled);
+      assert.equal((await api(`/api/service-activities/${other.id}`, { token })).status, 403);
+    }
+  }
+});
+
+test('tracking metadata exposes customer requirements only for authorized customers', async () => {
+  await db.prepare('UPDATE customers SET require_ticket_reference=1 WHERE id=?').run(ids.customer);
+  try {
+    const meta = await api('/api/service-activities/meta', { token: ids.tokenEnabled });
+    assert.equal(meta.status, 200);
+    assert.equal(meta.data.customers.find(c => c.id === ids.customer).require_ticket_reference, 1);
+    assert.ok(!meta.data.customers.some(c => c.id === ids.customerUnassigned));
+  } finally { await db.prepare('UPDATE customers SET require_ticket_reference=0 WHERE id=?').run(ids.customer); }
+});
+
+test('the activity detail used for editing preserves notes, category and technologies', async () => {
+  const technology = (await db.prepare('INSERT INTO technologies (name) VALUES (?)').run('Edit detail technology')).lastInsertRowid;
+  const created = await api('/api/service-activities', { method: 'POST', token: ids.tokenEnabled, body: {
+    customer_id: ids.customer, category_id: ids.category, activity_date: new Date().toISOString().slice(0, 10),
+    title: 'Full edit detail', description: 'Preserve these notes', technology_ids: [technology], ticket_reference: 'CASE-123',
+  } });
+  assert.equal(created.status, 200);
+  const detail = await api(`/api/service-activities/${created.data.id}`, { token: ids.tokenEnabled });
+  assert.equal(detail.status, 200);
+  assert.equal(detail.data.customer_id, ids.customer);
+  assert.equal(detail.data.category_id, ids.category);
+  assert.equal(detail.data.description, 'Preserve these notes');
+  assert.deepEqual(detail.data.technologies.map(t => t.id), [technology]);
+  const edited = await api(`/api/service-activities/${created.data.id}`, { method: 'PUT', token: ids.tokenEnabled,
+    body: { ...detail.data, title: 'Edited title', technology_ids: detail.data.technologies.map(t => t.id) } });
+  assert.equal(edited.status, 200);
+  const saved = await api(`/api/service-activities/${created.data.id}`, { token: ids.tokenEnabled });
+  assert.equal(saved.data.description, 'Preserve these notes');
+  assert.equal(saved.data.ticket_reference, 'CASE-123');
+  assert.deepEqual(saved.data.technologies.map(t => t.id), [technology]);
+});

@@ -69,6 +69,8 @@ function ActivityForm({ meta, initial, onSave, onClose }) {
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const category = meta.categories.find(c => String(c.id) === String(form.category_id));
+  const customer = meta.customers.find(c => String(c.id) === String(form.customer_id));
+  const requiredDetails = !!(customer?.require_ticket_reference || customer?.require_technology || customer?.require_billable_classification);
   const subcategories = category?.subcategories || [];
   const isChangeCategory = /change/i.test(category?.name || '');
 
@@ -80,6 +82,11 @@ function ActivityForm({ meta, initial, onSave, onClose }) {
     if (form.duration_minutes !== '' && Number(form.duration_minutes) <= 0) return 'Duration must be greater than zero';
     if (form.start_time && form.end_time && form.end_time < form.start_time) return 'End time cannot be before start time';
     if (form.follow_up_required && !form.follow_up_date) return 'Follow-up date is required when follow-up is required';
+    if (customer?.require_duration && form.duration_minutes === '') return 'Duration is required for this customer';
+    if (customer?.require_ticket_reference && !form.ticket_reference.trim()) return 'Ticket reference is required for this customer';
+    if (customer?.require_technology && !form.technology_ids.length) return 'At least one technology is required for this customer';
+    if (customer?.require_notes && !form.description.trim()) return 'Notes are required for this customer';
+    if (customer?.require_billable_classification && !form.billable_classification) return 'Billable classification is required for this customer';
     return '';
   }
 
@@ -115,8 +122,8 @@ function ActivityForm({ meta, initial, onSave, onClose }) {
         <div className="form-group"><label>Activity Date *</label>
           <input type="date" value={form.activity_date} onChange={set('activity_date')} max={iso(new Date())} required />
         </div>
-        <div className="form-group"><label>Duration (minutes)</label>
-          <input type="number" min="1" value={form.duration_minutes} onChange={set('duration_minutes')} placeholder="e.g. 90" />
+        <div className="form-group"><label>Duration (minutes){customer?.require_duration ? ' *' : ''}</label>
+          <input type="number" min="1" max="1440" step="1" required={!!customer?.require_duration} value={form.duration_minutes} onChange={set('duration_minutes')} placeholder="e.g. 90" />
         </div>
       </div>
       <div className="form-row">
@@ -135,11 +142,11 @@ function ActivityForm({ meta, initial, onSave, onClose }) {
       <div className="form-group"><label>Title *</label>
         <input value={form.title} onChange={set('title')} maxLength={300} required placeholder="Short summary of the work performed" />
       </div>
-      <div className="form-group"><label>Notes</label>
-        <textarea value={form.description} onChange={set('description')} rows={3} placeholder="Details, actions taken, outcome…" />
+      <div className="form-group"><label>Notes{customer?.require_notes ? ' *' : ''}</label>
+        <textarea required={!!customer?.require_notes} maxLength={10000} value={form.description} onChange={set('description')} rows={3} placeholder="Details, actions taken, outcome…" />
       </div>
 
-      <details className="column-picker" open={showMore} onToggle={e => setShowMore(e.target.open)} style={{ marginTop: 4 }}>
+      <details className="column-picker" open={showMore || requiredDetails} onToggle={e => setShowMore(e.target.open)} style={{ marginTop: 4 }}>
         <summary className="btn btn-ghost btn-sm" style={{ display: 'inline-block' }}>
           {showMore ? 'Hide' : 'Show'} More Details
         </summary>
@@ -152,7 +159,7 @@ function ActivityForm({ meta, initial, onSave, onClose }) {
               </select>
             </div>
           )}
-          <div className="form-group"><label>Technology</label>
+          <div className="form-group"><label>Technology{customer?.require_technology ? ' *' : ''}</label>
             <select multiple value={form.technology_ids.map(String)}
               onChange={e => setForm(f => ({ ...f, technology_ids: [...e.target.selectedOptions].map(o => Number(o.value)) }))}
               style={{ minHeight: 80 }}>
@@ -170,15 +177,15 @@ function ActivityForm({ meta, initial, onSave, onClose }) {
                 {Object.entries(WORK_LOCATION_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
-            <div className="form-group"><label>Billable Classification</label>
-              <select value={form.billable_classification} onChange={set('billable_classification')}>
+            <div className="form-group"><label>Billable Classification{customer?.require_billable_classification ? ' *' : ''}</label>
+              <select required={!!customer?.require_billable_classification} value={form.billable_classification} onChange={set('billable_classification')}>
                 <option value="">Not specified</option>
                 {Object.entries(BILLABLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
           </div>
           <div className="form-row">
-            <div className="form-group"><label>Ticket Reference</label><input value={form.ticket_reference} onChange={set('ticket_reference')} /></div>
+            <div className="form-group"><label>Ticket Reference{customer?.require_ticket_reference ? ' *' : ''}</label><input value={form.ticket_reference} onChange={set('ticket_reference')} /></div>
             <div className="form-group"><label>Customer Impact</label><input value={form.customer_impact} onChange={set('customer_impact')} /></div>
           </div>
           <div className="form-group">
@@ -394,7 +401,26 @@ export default function ActivityLog() {
 
   const [showForm, setShowForm] = useState(false);
   const [editActivity, setEditActivity] = useState(null);
+  const [editLoadingId, setEditLoadingId] = useState(null);
+  const editRequest = useRef(null);
   const [viewId, setViewId] = useState(null);
+
+  useEffect(() => () => editRequest.current?.abort(), []);
+
+  async function handleEdit(row) {
+    editRequest.current?.abort();
+    const controller = new AbortController();
+    editRequest.current = controller;
+    setEditLoadingId(row.id);
+    try {
+      const detail = await api.serviceActivity(row.id, { signal: controller.signal });
+      if (!controller.signal.aborted) setEditActivity(detail);
+    } catch (error) {
+      if (!controller.signal.aborted) toast.error(error.message || 'Could not load the activity for editing');
+    } finally {
+      if (!controller.signal.aborted) setEditLoadingId(null);
+    }
+  }
 
   useEffect(() => {
     api.serviceActivityMeta().then(setMeta).catch(e => setMetaError(e.message || 'Failed to load form data'));
@@ -586,12 +612,12 @@ export default function ActivityLog() {
                   <td><StatusBadge entityType="service_activity" s={r.status} /></td>
                   <td>
                     <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                      <button className="btn btn-ghost btn-sm" title="Edit" onClick={() => setEditActivity(r)}>Edit</button>
+                      <button className="btn btn-ghost btn-sm" title="Edit" disabled={!meta || editLoadingId === r.id} onClick={() => handleEdit(r)}>{editLoadingId === r.id ? 'Loading…' : 'Edit'}</button>
                       <button className="btn btn-ghost btn-sm" title="Duplicate" onClick={() => handleDuplicate(r)}><Copy size={12} /></button>
-                      {r.status !== 'completed' && (
+                      {r.status !== (meta?.statuses?.find(s => s.is_terminal && /complet/i.test(s.value))?.value || 'completed') && (
                         <button className="btn btn-ghost btn-sm" title="Mark Complete" onClick={() => handleComplete(r)}><CheckCircle2 size={12} /></button>
                       )}
-                      {meta?.settings?.allow_follow_up_task_creation !== false && (
+                      {['manager', 'engineer'].includes(user.role) && meta?.settings?.allow_follow_up_task_creation !== false && (
                         <button className="btn btn-ghost btn-sm" title="Create Follow-Up Task" onClick={() => handleFollowUp(r)}><ListPlus size={12} /></button>
                       )}
                     </div>

@@ -310,6 +310,15 @@ Excel import/export, time logging, **automated next-day email reminders** (fired
 visit/user/day), and a per-engineer **iCal subscription feed**.
 
 ### Service Activity Tracking (MSP Operations Log)
+Managers have module-wide access. Engineers and PMs require an enabled team and
+may read only their own activities; customer authorization is rechecked on writes.
+Planners have no tracking access, even through an enabled team. Follow-up task
+creation is limited to manager/engineer roles, matching Tasks permissions.
+Quick Log exposes customer-required fields and expands required details before
+saving. Edit fetches the complete activity so summary rows cannot erase its notes,
+category or technology selections. Payload validation includes follow-up dates,
+24-hour time values, reference IDs, boolean flags and bounded text fields.
+
 Lets engineers on enabled teams log day-to-day operational work (support, maintenance,
 upgrades, config changes, monitoring, customer meetings, etc.) against authorized
 customers, for engineer/customer/team-level history and MSP reporting.

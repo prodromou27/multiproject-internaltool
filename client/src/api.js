@@ -336,7 +336,7 @@ export const api = {
   // service activities (Activity Log / MSP Operations Log)
   serviceActivityMeta: () => req('GET', '/service-activities/meta'),
   serviceActivities: (params = {}, options) => req('GET', '/service-activities?' + new URLSearchParams(params).toString(), undefined, options),
-  serviceActivity: (id) => req('GET', `/service-activities/${id}`),
+  serviceActivity: (id, options) => req('GET', `/service-activities/${id}`, undefined, options),
   createServiceActivity: (data) => req('POST', '/service-activities', data),
   updateServiceActivity: (id, data) => req('PUT', `/service-activities/${id}`, data),
   deleteServiceActivity: (id) => req('DELETE', `/service-activities/${id}`),

@@ -22,6 +22,7 @@ const TERMINAL_COMPLETED_FALLBACK = 'completed';
  * Managers always pass (they administer/oversee all enabled teams). */
 async function requireServiceActivityAccess(req, res, next) {
   if (req.user.role === 'manager') { req.enabledTeamIds = null; return next(); }
+  if (!['engineer', 'pm'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
   const enabled = await getEnabledTeamIdsForUser(req.user.id);
   if (!enabled.size) return res.status(403).json({ error: 'Service Activity Tracking is not enabled for your team' });
   req.enabledTeamIds = enabled;
@@ -88,8 +89,28 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
   if (isCreate && (!customer.active || !customer.service_activity_enabled)) return { error: 'Service Activity Tracking is not enabled for this customer' };
 
   if (body.title != null && typeof body.title !== 'string') return { error: 'Title must be text' };
-  for (const field of ['ticket_reference', 'description']) {
-    if (body[field] != null && typeof body[field] !== 'string') return { error: `${field} must be text` };
+  for (const field of ['ticket_reference', 'description', 'customer_impact', 'external_case_reference',
+    'change_type', 'change_reason', 'previous_state', 'new_state', 'change_risk', 'customer_approval_reference', 'verification_notes']) {
+    if (body[field] != null && (typeof body[field] !== 'string' || body[field].length > 10000))
+      return { error: `${field} must be text of at most 10000 characters` };
+  }
+  for (const field of ['customer_id', 'category_id', 'subcategory_id', 'related_project_id', 'related_task_id', 'related_visit_id', 'verified_by']) {
+    const value = body[field];
+    if (value != null && value !== '' && (!['number', 'string'].includes(typeof value)
+      || !/^\d+$/.test(String(value)) || !Number.isSafeInteger(Number(value)) || Number(value) < 1))
+      return { error: `${field} must be a positive integer` };
+  }
+  for (const field of ['follow_up_required', 'rollback_available']) {
+    if (body[field] != null && ![true, false, 0, 1].includes(body[field])) return { error: `${field} must be a boolean` };
+  }
+  for (const field of ['start_time', 'end_time']) {
+    if (body[field] != null && body[field] !== '' && (typeof body[field] !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(body[field])))
+      return { error: `${field} must use HH:MM in 24-hour format` };
+  }
+  if (body.follow_up_date != null && body.follow_up_date !== '') {
+    const date = body.follow_up_date;
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))
+      || new Date(date).toISOString().slice(0, 10) !== date) return { error: 'Follow-up date must be a valid YYYY-MM-DD date' };
   }
   const title = body.title?.trim();
   if (isCreate || body.title !== undefined) {
@@ -194,14 +215,16 @@ router.get('/meta', requireAuth, requireServiceActivityAccess, async (req, res) 
   let customers;
   if (req.user.role === 'manager') {
     const rows = await db.prepare(`
-      SELECT id, name FROM customers WHERE active = 1 AND service_activity_enabled = 1
+      SELECT id, name, require_duration, require_ticket_reference, require_technology,
+        require_notes, require_billable_classification FROM customers WHERE active = 1 AND service_activity_enabled = 1
     `).all();
     customers = rows.map(c => ({ ...c, name: decryptField(c.name) })).sort((a, b) => a.name.localeCompare(b.name));
   } else {
     const teamIds = [...req.enabledTeamIds];
     const placeholders = teamIds.map(() => '?').join(',');
     const rows = await db.prepare(`
-      SELECT DISTINCT c.id, c.name FROM customers c
+      SELECT DISTINCT c.id, c.name, c.require_duration, c.require_ticket_reference, c.require_technology,
+        c.require_notes, c.require_billable_classification FROM customers c
       JOIN customer_teams ct ON ct.customer_id = c.id
       WHERE c.active = 1 AND c.service_activity_enabled = 1 AND ct.team_id IN (${placeholders})
     `).all(...teamIds);
@@ -537,6 +560,7 @@ router.post('/:id/duplicate', requireAuth, requireServiceActivityAccess, require
 
 /* ── Create Follow-Up Task ────────────────────────────────────────────── */
 router.post('/:id/follow-up-task', requireAuth, requireServiceActivityAccess, requireOwnedActivity, requireAuthorizedActivityCustomer, async (req, res) => {
+  if (!['manager', 'engineer'].includes(req.user.role)) return res.status(403).json({ error: 'Your role cannot create tasks' });
   const activity = req.activity;
   const id = activity.id;
 
