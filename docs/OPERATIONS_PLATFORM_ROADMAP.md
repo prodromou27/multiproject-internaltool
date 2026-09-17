@@ -101,7 +101,7 @@ part of the foundation work.
 | 6a | Calendar reliability and access | Valid month boundaries, module-aligned scopes, cancellable loads, visible failures and shared accessible event dialog | Complete; browser QA pending |
 | 6b | Follow-up/report calendar and agenda | Owner/feature-scoped pending service follow-ups; reports shown on visit dates; agenda exposes all monthly events and activity detail links | Complete; browser QA pending |
 | 6c | Task relationship privacy | Dependency details respect task ownership; mentions require task visibility; comment deletion checks current assignment; relationship IDs validated | Complete |
-| 6d | Core list/detail loading | Latest-request cancellation, visible retry states, project access/not-found states and cleared forms on project navigation | Complete; browser QA pending |
+| 6d | Core list/detail loading | Latest-request cancellation and scope guards for delayed refreshes, visible retry states, project access/not-found states and cleared forms on navigation | Complete; browser QA pending |
 | 7 | Customer 360 and recommendations | Scoped customer history; persisted findings and follow-up workflow; safe additive migrations | Planned |
 | 8 | Workload model | Estimates/availability and configurable weighting; capacity and pressure shown separately | Planned |
 | 9 | Custom report engine | Approved source metadata, parameterized filters/grouping/aggregations, bounded preview, permission tests | Planned |

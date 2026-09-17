@@ -1831,7 +1831,7 @@ export default function ProjectDetail() {
   const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', is_adhoc: false });
   const [editForm, setEditForm] = useState({});
 
-  const { begin, isCurrent } = useLatestRequest();
+  const { begin, isCurrent } = useLatestRequest(`${id}:${user.role}`);
   const [loadError, setLoadError] = useState(null);
   const load = useCallback(() => {
     const request = begin();

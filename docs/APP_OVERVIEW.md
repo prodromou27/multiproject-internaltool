@@ -267,6 +267,8 @@ Project/task lists show retryable loading failures and cancel superseded reads.
 Project detail applies only the latest request, clears forms and child data on
 project navigation, and prevents rendering the previous project under a new URL.
 Missing/forbidden projects have explicit states; refresh failures remain visible.
+Refresh callbacks captured before a project or role change are ignored before
+they can cancel a new load or start an old one.
 Detail and timeline reads validate positive safe-integer project IDs before SQL.
 Milestones load in the guarded detail batch, so failures cannot silently appear as
 an empty timeline. No migration, configuration or background job is required.

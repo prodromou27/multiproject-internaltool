@@ -334,7 +334,7 @@ export default function Projects() {
   const [loadError, setLoadError] = useState('');
   useCreateIntent({ allowed: isManager, ready: !loading && !loadError, onCreate: () => { setShowCreate(true); } });
 
-  const { begin, isCurrent } = useLatestRequest();
+  const { begin, isCurrent } = useLatestRequest(user.role);
   const load = useCallback(() => {
     const request = begin();
     if (request.signal.aborted) return Promise.resolve();

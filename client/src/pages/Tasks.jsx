@@ -207,7 +207,7 @@ export default function Tasks() {
   const [loadError, setLoadError] = useState('');
   useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !loading && !loadError, onCreate: () => { setShowCreate(true); } });
 
-  const { begin, isCurrent } = useLatestRequest();
+  const { begin, isCurrent } = useLatestRequest(user.role);
   const load = useCallback(() => {
     const request = begin();
     if (request.signal.aborted) return Promise.resolve();
