@@ -1068,6 +1068,52 @@ test('management activity report export rejects non-managers including scoped do
 });
 
 
+test('task relationships protect dependency details, mentions and comment deletion after reassignment', async () => {
+  const task = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by) VALUES (?,?,?)').run('Task relationship privacy fixture', ids.engineerEnabled, ids.manager)).lastInsertRowid;
+  const hidden = (await db.prepare('INSERT INTO tasks (title,assigned_to,deadline,created_by) VALUES (?,?,?,?)').run('Confidential other task', ids.engineerDisabled, '2036-06-17', ids.manager)).lastInsertRowid;
+  const path = `/api/tasks/${task}`;
+  assert.equal((await api(`${path}/dependencies`, { method: 'POST', token: ids.tokenManager, body: { depends_on_id: hidden } })).status, 200);
+  const deps = await api(`${path}/dependencies`, { token: ids.tokenEnabled });
+  assert.equal(deps.status, 200);
+  assert.deepEqual(deps.data, [{ id: hidden, title: 'Restricted task', restricted: true, is_blocking: true }]);
+  const management = await api(`${path}/dependencies`, { token: ids.tokenManager });
+  assert.equal(management.data[0].title, 'Confidential other task');
+  assert.equal(management.data[0].deadline, '2036-06-17');
+  await db.prepare("UPDATE tasks SET status='completed' WHERE id=?").run(hidden);
+  assert.equal((await api(`${path}/dependencies`, { token: ids.tokenEnabled })).data[0].is_blocking, false);
+  assert.equal((await api(`/api/tasks/${hidden}/dependencies`, { token: ids.tokenEnabled })).status, 403);
+  const tokens = [];
+  for (const [role, name] of [['planner', 'GuardPlanner'], ['pm', 'GuardPM']]) {
+    const id = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run(name, `${name}@test.local`, 'not-used', role)).lastInsertRowid;
+    tokens.push(signJwt({ id }));
+  }
+  const comment = await api(`${path}/comments`, { method: 'POST', token: ids.tokenManager, body: { message: '@EngineerEnabled @EngineerDisabled @GuardPlanner @GuardPM confidential handover' } });
+  assert.equal(comment.status, 200);
+  const recipients = await db.prepare("SELECT user_id,link FROM notifications WHERE type='mention' AND body LIKE ?").all('%Task relationship privacy fixture%');
+  assert.deepEqual(recipients, [{ user_id: ids.engineerEnabled, link: '/tasks' }]);
+  assert.equal((await api(`${path}/comments/${comment.data.id}`, { method: 'DELETE', token: ids.tokenEnabled })).status, 403);
+  const ownComment = await api(`${path}/comments`, { method: 'POST', token: ids.tokenEnabled, body: { message: 'My comment before reassignment' } });
+  assert.equal(ownComment.status, 200);
+  await db.prepare('UPDATE tasks SET assigned_to=? WHERE id=?').run(ids.engineerDisabled, task);
+  assert.equal((await api(`${path}/comments/${ownComment.data.id}`, { method: 'DELETE', token: ids.tokenEnabled })).status, 403);
+  assert.ok(await db.prepare('SELECT id FROM task_comments WHERE id=?').get(ownComment.data.id));
+  assert.equal((await api(`${path}/comments/${ownComment.data.id}`, { method: 'DELETE', token: ids.tokenManager })).status, 200);
+  for (const token of tokens) {
+    for (const route of ['comments', 'dependencies']) assert.equal((await api(`${path}/${route}`, { token })).status, 403);
+    assert.equal((await api(`${path}/comments/${comment.data.id}`, { method: 'DELETE', token })).status, 403);
+  }
+  for (const id of ['invalid', '0', '-1', '1.2', '9007199254740992']) {
+    assert.equal((await api(`/api/tasks/${id}/comments`, { token: ids.tokenManager })).status, 400);
+    assert.equal((await api(`/api/tasks/${id}/dependencies`, { token: ids.tokenManager })).status, 400);
+    assert.equal((await api(`${path}/dependencies`, { method: 'POST', token: ids.tokenManager, body: { depends_on_id: id } })).status, 400);
+  }
+  assert.equal((await api(`${path}/comments/invalid`, { method: 'DELETE', token: ids.tokenManager })).status, 400);
+  assert.equal((await api(`${path}/dependencies/invalid`, { method: 'DELETE', token: ids.tokenManager })).status, 400);
+  assert.equal((await api(`${path}/dependencies`, { method: 'POST', token: ids.tokenManager, body: { depends_on_id: 99999999 } })).status, 404);
+  assert.equal((await api(`/api/tasks/99999999/dependencies`, { method: 'POST', token: ids.tokenManager, body: { depends_on_id: task } })).status, 404);
+  assert.equal((await api(`/api/tasks/${hidden}/dependencies`, { method: 'POST', token: ids.tokenManager, body: { depends_on_id: task } })).status, 400, 'cycle guard remains effective');
+});
+
 test('calendar validates real month boundaries and matches module role visibility', async () => {
   const mkUser = async role => (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run(`Calendar ${role}`, `calendar-${role}@test.local`, 'not-used', role)).lastInsertRowid;
   const planner = await mkUser('planner');

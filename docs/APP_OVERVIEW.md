@@ -304,6 +304,15 @@ An index on `(status, closure_requested_at, id)` supports the backlog. No new
 environment variables or background jobs are required.
 
 ### Tasks
+Task comments and dependencies enforce current task visibility for every read or
+mutation, including comment deletion after reassignment. Engineers receive a
+restricted dependency placeholder and blocking indicator for another owner's task,
+without its title, deadline, priority or detailed status. Managers retain full
+dependency details. Mention notifications are limited to active managers and the
+task's current engineer assignee, and link to Tasks. Relationship IDs are validated;
+missing dependency targets return 404 and database failures use safe server errors.
+No schema, configuration or background-job changes are required.
+
 Per-project or ad-hoc. Statuses validated against an enum; priorities
 low/medium/high/critical. Supports comments with **@mention notifications**,
 dependencies with a **transitive cycle check** (BFS) and `is_blocked` computation,

@@ -492,9 +492,9 @@ function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, o
 
         {deps.map(d => (
           <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--gray-50)' }}>
-            <StatusBadge entityType="task" s={d.status} />
+            {!d.restricted && <StatusBadge entityType="task" s={d.status} />}
             <span style={{ flex: 1, fontSize: 12 }}>{d.title}</span>
-            {!['completed','closed','cancelled'].includes(d.status) && <span style={{ fontSize: 10, color: '#6366f1', fontWeight: 700 }}>BLOCKING</span>}
+            {(d.restricted ? d.is_blocking : !['completed','closed','cancelled'].includes(d.status)) && <span style={{ fontSize: 10, color: '#6366f1', fontWeight: 700 }}>BLOCKING</span>}
             {canManageTask && (
               <button onClick={() => removeDep(d.id)} title="Remove dependency"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-300)', display: 'flex', alignItems: 'center', padding: '1px 3px' }}

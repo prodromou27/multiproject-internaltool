@@ -392,14 +392,22 @@ router.delete('/:id', requireManager, async (req, res) => {
 });
 
 /* ── Task Comments ────────────────────────────────────────── */
-router.get('/:id/comments', requireAuth, async (req, res) => {
-  if (req.user.role === 'planner' || req.user.role === 'pm')
-    return res.status(403).json({ error: 'Forbidden' });
-  const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
+function positiveId(value) {
+  return typeof value === 'number' ? Number.isSafeInteger(value) && value > 0
+    : typeof value === 'string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
+}
+
+async function requireVisibleTask(req, res, next) {
+  if (!['manager', 'engineer'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+  if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid task ID' });
+  const task = await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!task) return res.status(404).json({ error: 'Not found' });
-  // Engineers can only access their own tasks
-  if (req.user.role === 'engineer' && task.assigned_to !== req.user.id)
-    return res.status(403).json({ error: 'Forbidden' });
+  if (req.user.role === 'engineer' && task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+  req.task = task;
+  next();
+}
+
+router.get('/:id/comments', requireAuth, requireVisibleTask, async (req, res) => {
   const rows = (await db.prepare(`
     SELECT tc.*, u.name as user_name, u.role as user_role
     FROM task_comments tc
@@ -410,13 +418,8 @@ router.get('/:id/comments', requireAuth, async (req, res) => {
   res.json(rows);
 });
 
-router.post('/:id/comments', requireAuth, async (req, res) => {
-  if (req.user.role === 'planner' || req.user.role === 'pm')
-    return res.status(403).json({ error: 'Forbidden' });
-  const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
-  if (!task) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role === 'engineer' && task.assigned_to !== req.user.id)
-    return res.status(403).json({ error: 'Forbidden' });
+router.post('/:id/comments', requireAuth, requireVisibleTask, async (req, res) => {
+  const task = req.task;
   const { message } = req.body;
   if (typeof message !== 'string' || !message.trim()) return res.status(400).json({ error: 'Message required' });
   if (message.length > 10000) return res.status(400).json({ error: 'Message cannot exceed 10000 characters' });
@@ -425,7 +428,7 @@ router.post('/:id/comments', requireAuth, async (req, res) => {
   logActivity(task.project_id, req.user.id, 'task_comment', `"${task.title}"`);
 
   // Detect @mentions and notify each unique mentioned user
-  const allUsers = (await db.prepare('SELECT id, name FROM users WHERE active = 1').all());
+  const allUsers = await db.prepare("SELECT id, name FROM users WHERE active = 1 AND (role='manager' OR (role='engineer' AND id=?))").all(task.assigned_to);
   const lower = message.toLowerCase();
   const notified = new Set();
   for (const u of allUsers) {
@@ -438,7 +441,7 @@ router.post('/:id/comments', requireAuth, async (req, res) => {
         try {
           await db.prepare(`INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)`)
             .run(u.id, 'mention', `${req.user.name} mentioned you`, `In task "${task.title}": ${message.trim().slice(0, 80)}`,
-              task.project_id ? `/projects/${task.project_id}` : null);
+              '/tasks');
         } catch (_) {}
       }
     }
@@ -447,7 +450,8 @@ router.post('/:id/comments', requireAuth, async (req, res) => {
   res.json({ id: result.lastInsertRowid });
 });
 
-router.delete('/:id/comments/:cid', requireAuth, async (req, res) => {
+router.delete('/:id/comments/:cid', requireAuth, requireVisibleTask, async (req, res) => {
+  if (!positiveId(req.params.cid)) return res.status(400).json({ error: 'Invalid comment ID' });
   const comment = (await db.prepare('SELECT * FROM task_comments WHERE id = ? AND task_id = ?').get(req.params.cid, req.params.id));
   if (!comment) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'manager') {
@@ -462,23 +466,17 @@ router.delete('/:id/comments/:cid', requireAuth, async (req, res) => {
 
 /* ── Task Dependencies ────────────────────────────────────── */
 // GET tasks this task depends on
-router.get('/:id/dependencies', requireAuth, async (req, res) => {
-  if (req.user.role === 'planner' || req.user.role === 'pm')
-    return res.status(403).json({ error: 'Forbidden' });
-  // Verify the caller has visibility of the parent task before exposing its deps
-  const task = (await db.prepare('SELECT assigned_to, project_id FROM tasks WHERE id = ?').get(req.params.id));
-  if (!task) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role === 'engineer') {
-    if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-  }
+router.get('/:id/dependencies', requireAuth, requireVisibleTask, async (req, res) => {
   const rows = (await db.prepare(`
-    SELECT t.id, t.title, t.status, t.priority, t.deadline
+    SELECT t.id, t.title, t.status, t.priority, t.deadline, t.assigned_to
     FROM task_dependencies td
     JOIN tasks t ON td.depends_on_id = t.id
     WHERE td.task_id = ?
     ORDER BY t.created_at ASC
   `).all(req.params.id));
-  res.json(rows);
+  res.json(rows.map(({ assigned_to, ...row }) => req.user.role === 'engineer' && assigned_to !== req.user.id
+    ? { id: row.id, title: 'Restricted task', restricted: true, is_blocking: !['completed', 'closed', 'cancelled'].includes(row.status) }
+    : row));
 });
 
 // BFS reachability: returns true if startId can reach targetId via existing dependencies
@@ -498,22 +496,22 @@ async function canReach(startId, targetId) {
 }
 
 // Add a dependency
-router.post('/:id/dependencies', requireManager, async (req, res) => {
+router.post('/:id/dependencies', requireManager, requireVisibleTask, async (req, res) => {
   const { depends_on_id } = req.body;
-  if (!depends_on_id) return res.status(400).json({ error: 'depends_on_id required' });
+  if (!positiveId(depends_on_id)) return res.status(400).json({ error: 'depends_on_id must be a positive integer' });
+  if (!await db.prepare('SELECT id FROM tasks WHERE id = ?').get(depends_on_id)) return res.status(404).json({ error: 'Dependency task not found' });
   if (Number(depends_on_id) === Number(req.params.id))
     return res.status(400).json({ error: 'A task cannot depend on itself' });
   // Full transitive cycle check: would depends_on_id eventually reach this task?
   if (await canReach(depends_on_id, req.params.id))
     return res.status(400).json({ error: 'Circular dependency detected' });
-  try {
-    (await db.prepare('INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?)').run(req.params.id, depends_on_id));
-    res.json({ ok: true });
-  } catch (e) { res.status(400).json({ error: e.message }); }
+  await db.prepare('INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?)').run(req.params.id, depends_on_id);
+  res.json({ ok: true });
 });
 
 // Remove a dependency
-router.delete('/:id/dependencies/:depId', requireManager, async (req, res) => {
+router.delete('/:id/dependencies/:depId', requireManager, requireVisibleTask, async (req, res) => {
+  if (!positiveId(req.params.depId)) return res.status(400).json({ error: 'Invalid dependency ID' });
   (await db.prepare('DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?').run(req.params.id, req.params.depId));
   res.json({ ok: true });
 });
