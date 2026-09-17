@@ -275,11 +275,11 @@ router.post('/bulk', requireAuth, async (req, res) => {
   if (req.user.role !== 'manager' && req.user.role !== 'engineer') return res.status(403).json({ error: 'Forbidden' });
   if (req.user.role === 'planner' || req.user.role === 'pm')
     return res.status(403).json({ error: 'Forbidden' });
-  const { ids, action, status } = req.body;
+  const { ids, action, status, pending_from_customer } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'No task IDs provided' });
   if (ids.length > 500) return res.status(400).json({ error: 'Maximum 500 IDs per bulk operation' });
   // Validate all IDs are positive integers
-  if (!ids.every(id => Number.isInteger(id) && id > 0)) return res.status(400).json({ error: 'All IDs must be positive integers' });
+  if (!ids.every(id => Number.isSafeInteger(id) && id > 0)) return res.status(400).json({ error: 'All IDs must be positive integers' });
 
   if (action === 'delete') {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
@@ -293,21 +293,17 @@ router.post('/bulk', requireAuth, async (req, res) => {
   if (action === 'status') {
     if (!status) return res.status(400).json({ error: 'Status required' });
     if (!VALID_TASK_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status value' });
-    // engineers can only update their own tasks
-    const tasks = (await db.prepare(`SELECT id, assigned_to, project_id FROM tasks WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids));
-    let allowed_ids;
-    if (req.user.role === 'manager') {
-      allowed_ids = tasks.map(t => t.id);
-    } else if (req.user.role === 'engineer') {
-      allowed_ids = tasks.filter(t => t.assigned_to === req.user.id).map(t => t.id);
+    const waiting = ['waiting_customer', 'waiting_vendor'].includes(status);
+    if (pending_from_customer !== undefined && (typeof pending_from_customer !== 'string' || pending_from_customer.length > 10000 || waiting && !pending_from_customer.trim())) {
+      return res.status(400).json({ error: 'pending_from_customer must be non-empty text of at most 10000 characters for waiting statuses' });
     }
-    await db.transaction(async (tx) => {
-      const upd = tx.prepare(`UPDATE tasks SET status=?,
-        pending_from_customer=CASE WHEN ? IN ('waiting_customer','waiting_vendor') THEN pending_from_customer ELSE NULL END,
-        updated_at=datetime('now') WHERE id=?`);
-      for (const id of allowed_ids) await upd.run(status, status, id);
-    });
-    return res.json({ ok: true, affected: allowed_ids.length });
+    const uniqueIds = [...new Set(ids)];
+    const owned = req.user.role === 'engineer' ? ' AND assigned_to=?' : '';
+    const result = await db.prepare(`UPDATE tasks SET status=?,
+      pending_from_customer=CASE WHEN ? IN ('waiting_customer','waiting_vendor') THEN COALESCE(?,pending_from_customer) ELSE NULL END,
+      updated_at=datetime('now') WHERE id IN (${uniqueIds.map(() => '?').join(',')})${owned}`)
+      .run(status, status, pending_from_customer === undefined ? null : pending_from_customer.trim(), ...uniqueIds, ...(owned ? [req.user.id] : []));
+    return res.json({ ok: true, affected: result.changes });
   }
 
   res.status(400).json({ error: 'Unknown action' });

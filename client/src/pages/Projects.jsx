@@ -4,45 +4,13 @@ import { Building2, FolderOpen, X, Bell, Pin, Search } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { useCreateIntent } from '../hooks/useCreateIntent';
+import WaitingReasonDialog from '../components/WaitingReasonDialog';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, RagBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useStatuses } from '../hooks/useStatuses';
 import { useToast } from '../components/Toast';
-
-/* ── Waiting for Customer/Vendor reason dialog ─────────────────── */
-function WaitingDialog({ title = 'Waiting for Customer', initial = '', onConfirm, onCancel }) {
-  const [reason, setReason] = useState(initial);
-  return (
-    <Modal title={title} onClose={onCancel}>
-      <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 14 }}>
-        Describe what is needed before work can continue.
-      </p>
-      <div className="form-group">
-        <label>Reason <span style={{ color: 'var(--danger)' }}>*</span></label>
-        <textarea
-          value={reason}
-          onChange={e => setReason(e.target.value)}
-          placeholder="e.g. Awaiting signed approval document…"
-          rows={3}
-          autoFocus
-        />
-      </div>
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
-        <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={!reason.trim()}
-          onClick={() => onConfirm(reason.trim())}
-        >
-          Set Status
-        </button>
-      </div>
-    </Modal>
-  );
-}
 
 /* ── Inline status dropdown ────────────────────────────────────── */
 function InlineStatusSelect({ project, onUpdate }) {
@@ -604,15 +572,16 @@ export default function Projects() {
 
       {/* Waiting dialog for inline status change */}
       {waitingDialog && (
-        <WaitingDialog
+        <WaitingReasonDialog
           title={waitingDialog.newStatus === 'waiting_vendor' ? 'Waiting for Vendor' : 'Waiting for Customer'}
           initial={waitingDialog.current}
-          onConfirm={reason => {
-            api.updateProject(waitingDialog.project.id, {
+          onConfirm={async reason => {
+            await api.updateProject(waitingDialog.project.id, {
               status: waitingDialog.newStatus,
               pending_from_customer: reason,
-            }).then(load).catch(e => toast.error(e.message));
-            setWaitingDialog(null);
+            });
+            toast.success('Project status updated');
+            load();
           }}
           onCancel={() => setWaitingDialog(null)}
         />

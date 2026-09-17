@@ -349,6 +349,12 @@ low/medium/high/critical. Supports comments with **@mention notifications**,
 dependencies with a **transitive cycle check** (BFS) and `is_blocked` computation,
 duplication, bulk status/delete (≤500 IDs, role-scoped), time logging, and Excel
 export. Bulk edits enforce the same manager/engineer boundary as individual edits.
+Bulk status changes use one atomic update, check engineer ownership at write time,
+and return the actual number of unique matching tasks. Waiting reasons can be
+submitted for the entire batch; legacy requests that omit a reason retain existing
+notes. Leaving a waiting status clears its note. Task and project waiting dialogs
+retain drafts and display errors on failed saves, and prevent duplicate submissions
+or dismissal while saving.
 Managers can clear an assignee or deadline; task inputs validate text, dates and
 references, and new assignments require an active engineer.
 Task time logs follow task visibility (manager or assigned engineer); maintenance

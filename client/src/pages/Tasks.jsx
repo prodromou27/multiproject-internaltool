@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { PageHeader } from '../components/PageLayout';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { useCreateIntent } from '../hooks/useCreateIntent';
+import WaitingReasonDialog from '../components/WaitingReasonDialog';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
@@ -129,39 +130,6 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
           </button>
         </div>
       </form>
-    </Modal>
-  );
-}
-
-/* ── "Waiting for Customer" reason dialog ─────────────────── */
-function WaitingDialog({ onConfirm, onCancel, initial = '', title = 'Waiting for Customer' }) {
-  const [reason, setReason] = useState(initial);
-  return (
-    <Modal title={title} onClose={onCancel}>
-      <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 14 }}>
-        Describe what is needed from the customer before work can continue.
-      </p>
-      <div className="form-group">
-        <label>Pending From Customer <span style={{ color: 'var(--danger)' }}>*</span></label>
-        <textarea
-          value={reason}
-          onChange={e => setReason(e.target.value)}
-          placeholder="e.g. Awaiting signed approval document, credentials for system access…"
-          rows={3}
-          autoFocus
-        />
-      </div>
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
-        <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={!reason.trim()}
-          onClick={() => onConfirm(reason.trim())}
-        >
-          Set Status
-        </button>
-      </div>
     </Modal>
   );
 }
@@ -332,7 +300,7 @@ export default function Tasks() {
     if (!selected.size) return;
     // waiting statuses require a reason — show dialog first
     if (action === 'waiting_customer' || action === 'waiting_vendor') {
-      setBulkWaitingDialog({ newStatus: action });
+      setBulkWaitingDialog({ newStatus: action, ids: [...selected] });
       return;
     }
     if (action === 'delete') {
@@ -354,16 +322,12 @@ export default function Tasks() {
   }
 
   async function applyBulkWaiting(reason) {
-    const status = bulkWaitingDialog?.newStatus || 'waiting_customer';
-    setBulkWaitingDialog(null); setBulkErr('');
     setBulkBusy(true);
     try {
-      await Promise.all([...selected].map(id =>
-        api.updateTask(id, { status, pending_from_customer: reason })
-      ));
+      const response = await api.bulkUpdateTasks({ ids: bulkWaitingDialog.ids, action: 'status', status: bulkWaitingDialog.newStatus, pending_from_customer: reason });
+      toast.success(`${response.affected} task(s) updated`);
       load();
-    } catch (e) { setBulkErr(e.message || 'Bulk action failed'); }
-    finally { setBulkBusy(false); }
+    } finally { setBulkBusy(false); }
   }
 
   /* ── Export ───────────────────────────────────────────── */
@@ -620,12 +584,13 @@ export default function Tasks() {
       </nav>}
       {/* Waiting for Customer dialog (single task) */}
       {waitingDialog && (
-        <WaitingDialog
+        <WaitingReasonDialog
           title={waitingDialog.newStatus === 'waiting_vendor' ? 'Waiting for Vendor' : 'Waiting for Customer'}
           initial={waitingDialog.current}
-          onConfirm={reason => {
-            api.updateTask(waitingDialog.id, { status: waitingDialog.newStatus, pending_from_customer: reason }).then(load);
-            setWaitingDialog(null);
+          onConfirm={async reason => {
+            await api.updateTask(waitingDialog.id, { status: waitingDialog.newStatus, pending_from_customer: reason });
+            toast.success('Task status updated');
+            load();
           }}
           onCancel={() => setWaitingDialog(null)}
         />
@@ -633,7 +598,7 @@ export default function Tasks() {
 
       {/* Waiting for Customer dialog (bulk) */}
       {bulkWaitingDialog && (
-        <WaitingDialog
+        <WaitingReasonDialog
           title={bulkWaitingDialog.newStatus === 'waiting_vendor' ? 'Waiting for Vendor (bulk)' : 'Waiting for Customer (bulk)'}
           onConfirm={applyBulkWaiting}
           onCancel={() => setBulkWaitingDialog(null)}

@@ -623,6 +623,86 @@ test('bulk task edits respect role boundaries and clear waiting notes', async ()
   assert.equal(stored.pending_from_customer, null);
 });
 
+test('bulk waiting updates validate reasons, count unique owned tasks and preserve legacy notes', async () => {
+  const taskIds = [];
+  for (const owner of [ids.engineerEnabled, ids.engineerEnabled, ids.engineerDisabled]) {
+    taskIds.push((await db.prepare('INSERT INTO tasks (title, assigned_to, created_by, pending_from_customer) VALUES (?, ?, ?, ?)')
+      .run('Bulk waiting validation', owner, ids.manager, 'Existing note')).lastInsertRowid);
+  }
+  const body = { ids: [...taskIds, taskIds[0]], action: 'status', status: 'waiting_vendor', pending_from_customer: '  Awaiting credentials  ' };
+  for (const reason of [null, 123, '', '   ', 'x'.repeat(10001)]) {
+    assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenEnabled, body: { ...body, pending_from_customer: reason } })).status, 400);
+  }
+  assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenEnabled, body: { ...body, ids: [Number.MAX_SAFE_INTEGER + 1] } })).status, 400);
+  const response = await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenEnabled, body });
+  assert.equal(response.status, 200);
+  assert.equal(response.data.affected, 2);
+  for (const task of taskIds.slice(0, 2)) {
+    assert.deepEqual(await db.prepare('SELECT status, pending_from_customer FROM tasks WHERE id=?').get(task),
+      { status: 'waiting_vendor', pending_from_customer: 'Awaiting credentials' });
+  }
+  assert.deepEqual(await db.prepare('SELECT status, pending_from_customer FROM tasks WHERE id=?').get(taskIds[2]),
+    { status: 'open', pending_from_customer: 'Existing note' });
+  const legacy = { ids: taskIds.slice(0, 2), action: 'status', status: 'waiting_customer' };
+  assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenEnabled, body: legacy })).data.affected, 2);
+  assert.equal((await db.prepare('SELECT pending_from_customer FROM tasks WHERE id=?').get(taskIds[0])).pending_from_customer, 'Awaiting credentials');
+  await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenEnabled, body: { ...legacy, status: 'in_progress' } });
+  assert.equal((await db.prepare('SELECT pending_from_customer FROM tasks WHERE id=?').get(taskIds[0])).pending_from_customer, null);
+});
+
+test('bulk edits recheck engineer ownership when the update executes', async () => {
+  const task = (await db.prepare('INSERT INTO tasks (title, assigned_to, created_by) VALUES (?, ?, ?)')
+    .run('Reassigned during bulk save', ids.engineerEnabled, ids.manager)).lastInsertRowid;
+  const originalPrepare = db.prepare;
+  let signalReached, release;
+  const reached = new Promise(resolve => { signalReached = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  let request;
+  try {
+    db.prepare = function (sql) {
+      const statement = originalPrepare.call(db, sql);
+      if (/^UPDATE tasks SET status=\?/.test(sql)) return { ...statement, async run(...params) {
+        signalReached();
+        await gate;
+        return statement.run(...params);
+      } };
+      return statement;
+    };
+    request = api('/api/tasks/bulk', { method: 'POST', token: ids.tokenEnabled,
+      body: { ids: [task], action: 'status', status: 'waiting_vendor', pending_from_customer: 'Private reason' } });
+    await reached;
+    await originalPrepare.call(db, 'UPDATE tasks SET assigned_to=? WHERE id=?').run(ids.engineerDisabled, task);
+    release();
+    const response = await request;
+    assert.equal(response.status, 200);
+    assert.equal(response.data.affected, 0);
+    assert.deepEqual(await originalPrepare.call(db, 'SELECT status, pending_from_customer FROM tasks WHERE id=?').get(task),
+      { status: 'open', pending_from_customer: null });
+  } finally {
+    release();
+    if (request) await request;
+    db.prepare = originalPrepare;
+  }
+});
+
+test('bulk task updates roll back every row if PostgreSQL rejects a row', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const taskIds = [];
+  for (let i = 0; i < 2; i++) taskIds.push((await db.prepare('INSERT INTO tasks (title, assigned_to, created_by) VALUES (?, ?, ?)')
+    .run('Atomic bulk failure', ids.engineerEnabled, ids.manager)).lastInsertRowid);
+  try {
+    await db.exec(`CREATE FUNCTION test_reject_bulk_task() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.id = ${taskIds[1]} THEN RAISE EXCEPTION 'Simulated row failure'; END IF; RETURN NEW; END; $$;
+      CREATE TRIGGER test_reject_bulk_task BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION test_reject_bulk_task();`);
+    const response = await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenEnabled,
+      body: { ids: taskIds, action: 'status', status: 'waiting_vendor', pending_from_customer: 'Must save together' } });
+    assert.equal(response.status, 500);
+    for (const task of taskIds) assert.deepEqual(await db.prepare('SELECT status, pending_from_customer FROM tasks WHERE id=?').get(task),
+      { status: 'open', pending_from_customer: null });
+  } finally {
+    await db.exec('DROP TRIGGER IF EXISTS test_reject_bulk_task ON tasks; DROP FUNCTION IF EXISTS test_reject_bulk_task();');
+  }
+});
+
 test('time logs enforce task visibility, ownership and private summaries', async () => {
   const task = (await db.prepare('INSERT INTO tasks (title, assigned_to, created_by) VALUES (?, ?, ?)')
     .run('Time log task', ids.engineerEnabled, ids.manager)).lastInsertRowid;
