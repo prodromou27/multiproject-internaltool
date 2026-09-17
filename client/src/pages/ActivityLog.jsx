@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ClipboardList, Search, Copy, CheckCircle2, ListPlus, Paperclip, Upload, Trash2 } from 'lucide-react';
+import { PageHeader } from '../components/PageLayout';
+import { useCreateIntent } from '../hooks/useCreateIntent';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, fmtDate, fmtDateTime, Modal } from '../components/Shared';
@@ -421,6 +423,8 @@ export default function ActivityLog() {
   const editRequest = useRef(null);
   const [viewId, setViewId] = useState(null);
 
+  useCreateIntent({ allowed: isManager || (saAccess.enabled && ['engineer', 'pm'].includes(user.role)), ready: !!meta, onCreate: () => { setShowForm(true); } });
+
   useEffect(() => () => editRequest.current?.abort(), []);
 
   async function handleEdit(row) {
@@ -544,16 +548,15 @@ export default function ActivityLog() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Activity Log</h1>
-        <button className="btn btn-ghost" disabled={loading || !!loadError || exporting || !meta} onClick={async () => {
+      <PageHeader eyebrow="Operations" title="Activity Log" description="Record customer service work, supporting evidence and operational follow-ups." actions={<>
+<button className="btn btn-ghost" disabled={loading || !!loadError || exporting || !meta} onClick={async () => {
           setExporting(true);
           try { await api.exportServiceActivities(exportFilters.current); }
           catch (error) { toast.error(error.message); }
           finally { setExporting(false); }
-        }}>{exporting ? 'Exporting?' : 'Export Excel'}</button>
+        }}>{exporting ? 'Exporting...' : 'Export Excel'}</button>
         <button className="btn btn-primary" onClick={() => setShowForm(true)} disabled={!meta}>+ Log Activity</button>
-      </div>
+      </>} />
 
       {metaError && <div className="error-msg" style={{ marginBottom: 12 }}>{metaError}</div>}
 

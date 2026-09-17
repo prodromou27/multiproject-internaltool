@@ -11,6 +11,16 @@
 .operations-shell .sidebar nav a { min-height: 42px; margin-bottom: 3px; border-radius: 8px; gap: 11px; }
 .operations-shell .sidebar nav a.active { background: #263d60; color: #fff; box-shadow: inset 3px 0 0 #8db8ff; }
 .operations-shell .sidebar nav a.active svg { color: #a8caff; }
+.quick-create { position: relative; }
+.quick-create summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.quick-create summary::-webkit-details-marker { display: none; }
+.quick-create-panel { position: absolute; top: calc(100% + 10px); right: 0; width: min(285px, calc(100vw - 24px)); background: var(--surface); border: 1px solid var(--gray-200); border-radius: 12px; padding: 8px; box-shadow: 0 14px 40px rgba(0,0,0,.16); z-index: 2100; }
+.quick-create-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--gray-500); padding: 8px 10px; }
+.quick-create-panel a { display: flex; gap: 12px; align-items: center; padding: 12px 10px; border-radius: 8px; color: var(--gray-800); text-decoration: none; }
+.quick-create-panel a:hover { background: var(--gray-100); text-decoration: none; }
+.quick-create-panel a svg { color: var(--primary); flex-shrink: 0; }
+.quick-create-panel strong { display: block; font-size: 13px; }
+.quick-create-panel small { display: block; font-size: 11px; color: var(--gray-500); margin-top: 4px; }
 .drawer-close { display: flex; align-items: center; gap: 8px; margin: 12px; padding: 10px; color: #fff; background: transparent; border: 1px solid #64748b; border-radius: 8px; cursor: pointer; }
 .operations-shell .desktop-topbar { min-height: 72px; background: var(--surface); gap: 20px; border-bottom: 1px solid var(--gray-200); box-shadow: none; }
 .workspace-context { display: flex; flex-direction: column; gap: 3px; margin-right: auto; min-width: 0; }

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { CheckSquare, Download, Trash2, UserCheck, Clock, Search, X, Pencil, LockKeyhole, Columns3, ArrowUpDown } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { PageHeader } from '../components/PageLayout';
+import { useCreateIntent } from '../hooks/useCreateIntent';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
@@ -201,6 +203,8 @@ export default function Tasks() {
   const [bulkStatus, setBulkStatus] = useState('');
   const [bulkBusy, setBulkBusy]   = useState(false);
 
+  useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !loading, onCreate: () => { setShowCreate(true); } });
+
   const load = () => Promise.all([
     api.tasks({}),
     api.projects(),
@@ -386,9 +390,8 @@ export default function Tasks() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Tasks</h1>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <PageHeader eyebrow="Operations" title="Tasks" description="Prioritize assigned work, track progress and manage deadlines." actions={<>
+<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn btn-ghost btn-sm" onClick={exportTasks} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <Download size={13} /> Export
           </button>
@@ -400,7 +403,7 @@ export default function Tasks() {
           </details>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Task</button>
         </div>
-      </div>
+      </>} />
 
       {/* Filters */}
       <div className="card" style={{ marginBottom: 16 }}>
@@ -652,9 +655,9 @@ export default function Tasks() {
               </div>
               <div className="form-group"><label>Deadline</label><input type="date" value={form.deadline} onChange={set('deadline')} /></div>
             </div>
-            <div className="form-group"><label>Project (optional)</label>
-              <select value={form.project_id} onChange={set('project_id')}>
-                <option value="">No project (standalone)</option>
+            <div className="form-group"><label>{isManager ? 'Project (optional)' : 'Assigned Project *'}</label>
+              <select value={form.project_id} onChange={set('project_id')} required={!isManager}>
+                <option value="">{isManager ? 'No project (standalone)' : 'Select an assigned project'}</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
               </select>
             </div>

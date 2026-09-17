@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Building2, FolderOpen, X, Bell, Pin, Search } from 'lucide-react';
+import { PageHeader } from '../components/PageLayout';
+import { useCreateIntent } from '../hooks/useCreateIntent';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, RagBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
@@ -328,6 +330,8 @@ export default function Projects() {
   const [waitingDialog, setWaitingDialog] = useState(null);
 
   const loadCustomers = () => api.customers().then(setCustomers);
+  useCreateIntent({ allowed: isManager, ready: !loading, onCreate: () => { setShowCreate(true); } });
+
   const load = () => Promise.all([
     api.projects(),
     canManage ? api.users()      : Promise.resolve([]),
@@ -391,10 +395,9 @@ export default function Projects() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Projects</h1>
-        {isManager && <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Project</button>}
-      </div>
+      <PageHeader eyebrow="Operations" title="Projects" description="Customer delivery, project ownership and upcoming commitments." actions={<>
+{isManager && <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Project</button>}
+      </>} />
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ position: 'relative', marginBottom: 10, maxWidth: 340 }}>

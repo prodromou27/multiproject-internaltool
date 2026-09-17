@@ -11,6 +11,7 @@ import Login from './pages/Login';
 import { api } from './api';
 import { PAGES, visiblePages, pageForPath, canAccessPage } from './navigation';
 import { PageState } from './components/PageLayout';
+import QuickCreate from './components/QuickCreate';
 import { StatusProvider } from './hooks/useStatuses';
 import { ToastProvider, useToast } from './components/Toast';
 import { ConfirmProvider } from './components/Confirm';
@@ -723,6 +724,7 @@ function Layout({ children }) {
         <Hamburger open={open} onClick={() => setOpen(o => !o)} />
         <div className="topbar-logo">Solutions<span>Hub</span></div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
+          <QuickCreate role={user.role} serviceActivityEnabled={saAccess.enabled} />
           <GlobalSearch />
           <NotificationBell />
           <div className="topbar-user">
@@ -744,6 +746,7 @@ function Layout({ children }) {
             <Search size={15} aria-hidden="true" /> Go to a page <kbd>Ctrl K</kbd>
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <QuickCreate role={user.role} serviceActivityEnabled={saAccess.enabled} />
             <GlobalSearch />
             <NotificationBell />
             <NavLink to="/profile" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', marginLeft: 6 }}>

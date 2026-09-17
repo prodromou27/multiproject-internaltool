@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Upload, X, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle, Search } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { useSavedFilter } from '../hooks/useSavedFilter';
+import { PageHeader } from '../components/PageLayout';
+import { useCreateIntent } from '../hooks/useCreateIntent';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { fmtDate, isOverdue, Modal } from '../components/Shared';
@@ -399,6 +401,8 @@ export default function MaintenanceVisits() {
     if (urlFilter) setFilter(urlFilter);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useCreateIntent({ allowed: canManage, ready: !loading, onCreate: () => { setEditing(null); setShowForm(true); } });
+
   const load = () => {
     const params = {};
     if (monthFilter) params.month = monthFilter;
@@ -458,9 +462,8 @@ export default function MaintenanceVisits() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Maintenance Visits</h1>
-        {canManage && (
+      <PageHeader eyebrow="Operations" title="Maintenance Visits" description="Plan customer visits and track completion through report delivery." actions={<>
+{canManage && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn btn-ghost btn-sm" onClick={async () => {
               try {
@@ -478,7 +481,7 @@ export default function MaintenanceVisits() {
             <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>+ Schedule Visit</button>
           </div>
         )}
-      </div>
+      </>} />
 
       {/* Quick stats */}
       <div className="grid-4" style={{ marginBottom: 20 }}>
