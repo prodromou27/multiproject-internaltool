@@ -1067,6 +1067,66 @@ test('management activity report export rejects non-managers including scoped do
 });
 
 
+test('ordinary project edits cannot bypass closure requests or reviews', async () => {
+  const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Protected closure', ids.manager)).lastInsertRowid;
+  const path = `/api/projects/${project}`;
+  const edit = body => api(path, { method: 'PUT', token: ids.tokenManager, body });
+  assert.equal((await edit({ status: 'pending_approval' })).data.code, 'CLOSURE_REVIEW_REQUIRED');
+  assert.equal((await api(`${path}/request-closure`, { method: 'POST', token: ids.tokenManager })).status, 200);
+  for (const status of ['closed', 'reopened', 'in_progress', 'cancelled']) {
+    const result = await edit({ status });
+    assert.equal(result.status, 400);
+    assert.equal(result.data.code, 'CLOSURE_REVIEW_REQUIRED');
+  }
+  assert.equal((await edit({ title: 'Metadata remains editable', status: 'pending_approval' })).status, 200);
+  const stored = await db.prepare('SELECT * FROM projects WHERE id=?').get(project);
+  assert.equal(stored.status, 'pending_approval');
+  assert.equal(stored.title, 'Metadata remains editable');
+  assert.equal(stored.closure_decision, null);
+  assert.equal(stored.closure_requested_by, ids.manager);
+});
+
+test('an edit started before a closure request cannot overwrite its state', async () => {
+  const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Concurrent metadata edit', ids.manager)).lastInsertRowid;
+  const path = `/api/projects/${project}`;
+  const originalPrepare = db.prepare;
+  let release, read;
+  const gate = new Promise(resolve => { release = resolve; });
+  const snapshotRead = new Promise(resolve => { read = resolve; });
+  let held = false;
+  db.prepare = function (sql) {
+    const statement = originalPrepare.call(this, sql);
+    if (sql !== 'SELECT * FROM projects WHERE id = ?') return statement;
+    return { ...statement, get: async (...args) => {
+      const snapshot = await statement.get(...args);
+      if (!held && Number(args[0]) === project) {
+        held = true;
+        read();
+        await gate;
+      }
+      return snapshot;
+    } };
+  };
+  let pending;
+  try {
+    pending = api(path, { method: 'PUT', token: ids.tokenManager, body: { title: 'Stale edit', status: 'in_progress' } });
+    await snapshotRead;
+    assert.equal((await api(`${path}/request-closure`, { method: 'POST', token: ids.tokenManager })).status, 200);
+    release();
+    const response = await pending;
+    assert.equal(response.status, 409);
+    assert.equal(response.data.code, 'PROJECT_CONFLICT');
+  } finally {
+    release();
+    if (pending) await pending;
+    db.prepare = originalPrepare;
+  }
+  const stored = await db.prepare('SELECT * FROM projects WHERE id=?').get(project);
+  assert.equal(stored.status, 'pending_approval');
+  assert.equal(stored.title, 'Concurrent metadata edit');
+  assert.equal(stored.closure_request_version, 1);
+});
+
 test('project closure rejection records a complete decision and protects newer requests', async () => {
   const project = (await db.prepare('INSERT INTO projects (title, customer_id, created_by) VALUES (?, ?, ?)').run('Closure revision flow', ids.customer, ids.manager)).lastInsertRowid;
   await db.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?)').run(project, ids.engineerEnabled);

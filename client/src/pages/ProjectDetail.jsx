@@ -2362,7 +2362,7 @@ export default function ProjectDetail() {
                 </select>
               </div>
               <div className="form-group"><label>Status</label>
-                <select value={editForm.status} onChange={setE('status')}>
+                <select value={editForm.status} onChange={setE('status')} disabled={project.status === 'pending_approval'}>
                   {[
                     { value: 'not_started',        label: 'Not Started' },
                     { value: 'in_progress',        label: 'In Progress' },
@@ -2374,10 +2374,11 @@ export default function ProjectDetail() {
                     { value: 'pending_approval',   label: 'Pending Management Approval' },
                     { value: 'reopened',           label: 'Reopened' },
                     { value: 'cancelled',          label: 'Cancelled' },
-                  ].map(({ value, label }) => (
+                  ].filter(s => s.value !== 'pending_approval' || project.status === 'pending_approval').map(({ value, label }) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
                 </select>
+                {project.status === 'pending_approval' && <small>Use the closure review controls to approve or return this project.</small>}
               </div>
             </div>
             {/* Completion percentage override */}

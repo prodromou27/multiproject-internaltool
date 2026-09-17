@@ -96,6 +96,7 @@ part of the foundation work.
 | 5 | Operational dashboards and approval flow | Personal due-work view; management exceptions; closure rejection/reopen with history and scoped tests | Complete |
 | 5a | Project closure reviews and backlog | Atomic approval/rejection with required revision comments, actors, request versions, audit history and notifications; manager-only paginated backlog | Complete |
 | 5b | Action-focused dashboards | Bounded scoped summaries, accurate service follow-up totals and operational exception cards implemented; browser QA pending | Complete |
+| 5c | Closure workflow integrity | Ordinary status edits cannot bypass closure requests or reviews; concurrent edits cannot overwrite closure transitions | Complete |
 | 6 | Core detail/list and calendar improvements | Shared detail/timeline patterns; report/follow-up events; server pagination where justified | Planned |
 | 7 | Customer 360 and recommendations | Scoped customer history; persisted findings and follow-up workflow; safe additive migrations | Planned |
 | 8 | Workload model | Estimates/availability and configurable weighting; capacity and pressure shown separately | Planned |

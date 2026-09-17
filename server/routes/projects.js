@@ -288,6 +288,9 @@ router.put('/:id', requireManager, async (req, res) => {
   if (description && description.length > 10000) return res.status(400).json({ error: 'Description cannot exceed 10000 characters' });
   if (priority && !VALID_PROJECT_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
   if (status && !VALID_PROJECT_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status value' });
+  if (status && status !== p.status && (p.status === 'pending_approval' || status === 'pending_approval')) {
+    return res.status(400).json({ error: 'Use the closure request and review controls to change approval status', code: 'CLOSURE_REVIEW_REQUIRED' });
+  }
   if (deadline && !isIsoDate(deadline)) return res.status(400).json({ error: 'deadline must be YYYY-MM-DD' });
   const normalizedCustomer = normalizeOptionalId(customer_id, 'customer_id');
   if (normalizedCustomer.error) return res.status(400).json({ error: normalizedCustomer.error });
@@ -317,13 +320,14 @@ router.put('/:id', requireManager, async (req, res) => {
     ? (rag_override === '' ? null : rag_override)
     : p.rag_override;
 
-  (await db.prepare(`UPDATE projects SET title=COALESCE(?,title), description=COALESCE(?,description),
+  const changed = await db.prepare(`UPDATE projects SET title=COALESCE(?,title), description=COALESCE(?,description),
     priority=COALESCE(?,priority), deadline=?, customer_id=?,
     status=COALESCE(?,status), pending_from_customer=?,
     completion_pct=COALESCE(?,completion_pct), rag_override=?,
-    updated_at=datetime('now') WHERE id=?`)
+    updated_at=datetime('now') WHERE id=? AND status=? AND closure_request_version=?`)
     .run(title?.trim() || null, description, priority, deadline === undefined ? p.deadline : (deadline || null), normalizedCustomer.value !== undefined ? normalizedCustomer.value : p.customer_id, status, newPfc,
-         completion_pct !== undefined ? completion_pct : null, newRagOverride, p.id));
+         completion_pct !== undefined ? completion_pct : null, newRagOverride, p.id, p.status, p.closure_request_version);
+  if (!changed.changes) return res.status(409).json({ error: 'Project changed. Reload before saving.', code: 'PROJECT_CONFLICT' });
   if (status && status !== p.status) {
     logActivity(p.id, req.user.id, 'status_changed', `${p.status} → ${status}`);
     if (status === 'closed' || status === 'completed') {

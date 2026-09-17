@@ -284,6 +284,11 @@ Admin user inputs validate types and bcrypt's 72-byte password limit; hashes are
 computed asynchronously, duplicate emails return 409, and optional emails can be cleared.
 
 ### Closure approvals
+Ordinary project edits cannot enter or leave pending approval: use the closure
+request and review controls. Metadata remains editable while awaiting review.
+Updates guard the current status and closure request version, returning HTTP 409
+if a closure transition occurred while an edit was being saved.
+
 Project closure reviews now have a dedicated manager-only `/approvals` page and
 paginated `GET /api/projects/approvals` API. Rejection uses
 `POST /api/projects/:id/reject-closure` with a required `comment` (at most 2,000

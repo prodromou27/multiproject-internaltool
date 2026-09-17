@@ -50,7 +50,7 @@ function InlineStatusSelect({ project, onUpdate }) {
   const ref = useRef(null);
   const dropdownRef = useRef(null);
   const statusCtx = useStatuses();
-  const statuses = statusCtx?.config?.project || [];
+  const statuses = (statusCtx?.config?.project || []).filter(s => s.value !== 'pending_approval');
 
   useEffect(() => {
     if (!open) return;
@@ -526,7 +526,9 @@ export default function Projects() {
                       : <span className="text-muted">—</span>}
                   </td>
                   <td>
-                    {canManage
+                    {canManage && p.status === 'pending_approval'
+                      ? <Link to="/approvals">Review closure</Link>
+                      : canManage
                       ? <InlineStatusSelect project={p} onUpdate={handleStatusUpdate} />
                       : <StatusBadge entityType="project" s={p.status} />}
                   </td>
