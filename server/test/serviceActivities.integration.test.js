@@ -112,6 +112,7 @@ test.before(async () => {
   app.use('/api/reports', require('../routes/reports'));
   app.use('/api/tasks', require('../routes/tasks'));
   app.use('/api/projects', require('../routes/projects'));
+  app.use('/api/operations', require('../routes/operations'));
   app.use('/api/maintenance-visits', require('../routes/maintenance-visits'));
   app.use('/api/time-logs', require('../routes/time-logs'));
   app.use('/api/teams', require('../routes/teams'));
@@ -1161,4 +1162,96 @@ test('closure review rolls back when its history cannot be recorded on PostgreSQ
   assert.equal(stored.status, 'pending_approval');
   assert.equal(stored.closure_decision, null);
   assert.equal(stored.closure_reviewed_by, null);
+});
+
+
+test('operational overview scopes work and aggregates more than one activity page', async () => {
+  const engineer = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run('Overview Engineer', 'overview-engineer@test.local', bcrypt.hashSync('pw', 4), 'engineer')).lastInsertRowid;
+  await db.prepare('INSERT INTO team_members (team_id, user_id) VALUES (?, ?)').run(ids.teamEnabled, engineer);
+  const token = signJwt({ id: engineer });
+  const ownProject = (await db.prepare('INSERT INTO projects (title, deadline, updated_at, created_by) VALUES (?, ?, ?, ?)').run('Overview own project', '2026-09-18', '2026-09-01 00:00:00', ids.manager)).lastInsertRowid;
+  const privateProject = (await db.prepare('INSERT INTO projects (title, deadline, created_by) VALUES (?, ?, ?)').run('Overview private project', '2026-09-15', ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?)').run(ownProject, engineer);
+  for (const [title, assigned, deadline] of [['Own overdue', engineer, '2026-09-16'], ['Own today', engineer, '2026-09-17'], ['Private overdue', ids.engineerEnabled, '2026-09-01']]) {
+    await db.prepare('INSERT INTO tasks (title, assigned_to, deadline, created_by) VALUES (?, ?, ?, ?)').run(title, assigned, deadline, ids.manager);
+  }
+  const resolved = (await db.prepare("INSERT INTO tasks (title, status, assigned_to, created_by) VALUES (?, 'completed', ?, ?)").run('Resolved follow-up', engineer, ids.manager)).lastInsertRowid;
+  for (const [title, assigned, status, date] of [['Own report', engineer, 'completed', '2026-09-16'], ['Own upcoming', engineer, 'scheduled', '2026-09-20'], ['Private report', ids.engineerEnabled, 'completed', '2026-09-15']]) {
+    const visit = (await db.prepare('INSERT INTO maintenance_visits (title, customer_id, status, scheduled_date, created_by) VALUES (?, ?, ?, ?, ?)').run(title, ids.customer, status, date, ids.manager)).lastInsertRowid;
+    await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?)').run(visit, assigned);
+  }
+  await db.transaction(async tx => {
+    for (let i = 0; i < 102; i++) await tx.prepare(`INSERT INTO service_activities
+      (activity_reference, customer_id, team_id, engineer_id, activity_date, category_id, title, duration_minutes,
+       status, follow_up_required, follow_up_date, follow_up_task_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(`ACT-2026-${800000 + i}`, ids.customer, ids.teamEnabled, engineer, i === 101 ? '2026-08-01' : '2026-09-17', ids.category,
+        `Overview activity ${i}`, 60, i === 3 ? 'cancelled' : 'completed', i < 4 || i === 101 ? 1 : 0,
+        i === 2 ? '2026-09-18' : '2026-09-16', i === 1 ? resolved : null, engineer);
+  });
+  const result = await api(`/api/operations/overview?as_of=2026-09-17&engineer_id=${ids.engineerEnabled}&team_id=${ids.teamDisabled}`, { token });
+  assert.equal(result.status, 200);
+  const overview = result.data;
+  assert.equal(overview.scope, 'personal');
+  assert.equal(overview.tasks.open, 2);
+  assert.equal(overview.tasks.overdue, 1);
+  assert.equal(overview.tasks.due_today, 1);
+  assert.ok(overview.tasks.attention.every(task => !task.title.includes('Private')));
+  assert.equal(overview.projects.active, 1);
+  assert.equal(overview.projects.stale, 1);
+  assert.ok(overview.projects.commitments.every(project => project.id === ownProject));
+  assert.equal(overview.visits.reports_pending, 1);
+  assert.equal(overview.visits.upcoming, 1);
+  assert.deepEqual(overview.visits.reports.map(visit => visit.title), ['Own report']);
+  assert.equal(overview.service.enabled, true);
+  assert.equal(overview.service.today, 101);
+  assert.equal(overview.service.week, 101);
+  assert.equal(overview.service.hours, 101);
+  assert.equal(overview.service.customers, 1);
+  assert.equal(overview.service.pending, 3, 'completed activities may still need follow-up; completed tasks and cancelled activities do not');
+  assert.equal(overview.service.due, 2, 'include due follow-ups from outside the current week');
+  assert.equal(overview.service.follow_ups.length, 2);
+  assert.equal(overview.service.recent.length, 5);
+  assert.equal(overview.week_from, '2026-09-14');
+  assert.equal(overview.week_to, '2026-09-20');
+  for (const section of [overview.tasks.attention, overview.projects.commitments, overview.visits.reports, overview.visits.upcoming_items, overview.service.follow_ups]) assert.ok(section.length <= 5);
+  const management = await api('/api/operations/overview?as_of=2026-09-17', { token: ids.tokenManager });
+  assert.equal(management.status, 200);
+  assert.equal(management.data.scope, 'management');
+  assert.ok(management.data.projects.active > overview.projects.active);
+  assert.ok(management.data.tasks.overdue > overview.tasks.overdue);
+});
+
+test('operational overview validates dates, honors disabled teams and rejects unauthorized roles', async () => {
+  assert.equal((await api('/api/operations/overview')).status, 401);
+  for (const asOf of ['bad', '2026-02-30', '2026-13-01', '1800-01-01', '9999-01-01', '2026-09-17&as_of=2026-09-18']) {
+    assert.equal((await api(`/api/operations/overview?as_of=${asOf}`, { token: ids.tokenManager })).status, 400);
+  }
+  const disabled = await api('/api/operations/overview?as_of=2026-09-17', { token: ids.tokenDisabled });
+  assert.equal(disabled.status, 200);
+  assert.deepEqual(disabled.data.service, { enabled: false });
+  for (const role of ['planner', 'pm']) {
+    const user = await db.prepare('SELECT id FROM users WHERE email=?').get(`approval-${role}@test.local`);
+    assert.equal((await api('/api/operations/overview', { token: signJwt({ id: user.id }) })).status, 403);
+  }
+  const boundary = await api('/api/operations/overview?as_of=2027-01-01', { token: ids.tokenDisabled });
+  assert.equal(boundary.status, 200);
+  assert.equal(boundary.data.week_from, '2026-12-28');
+  assert.equal(boundary.data.week_to, '2027-01-03');
+});
+
+
+test('operational priorities honor configured terminal task statuses', async () => {
+  const before = await api('/api/operations/overview?as_of=2026-09-17', { token: ids.tokenDisabled });
+  const setting = await db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
+  const config = JSON.parse(setting.value);
+  config.task.push({ value: 'overview_archived', label: 'Archived', is_terminal: true });
+  const task = (await db.prepare('INSERT INTO tasks (title, status, assigned_to, deadline, created_by) VALUES (?, ?, ?, ?, ?)').run('Archived operational work', 'overview_archived', ids.engineerDisabled, '2026-09-01', ids.manager)).lastInsertRowid;
+  try {
+    await db.prepare("UPDATE settings SET value=? WHERE key='status_config'").run(JSON.stringify(config));
+    const after = await api('/api/operations/overview?as_of=2026-09-17', { token: ids.tokenDisabled });
+    assert.equal(after.status, 200);
+    assert.equal(after.data.tasks.open, before.data.tasks.open);
+    assert.equal(after.data.tasks.overdue, before.data.tasks.overdue);
+    assert.ok(after.data.tasks.attention.every(item => item.id !== task));
+  } finally { await db.prepare("UPDATE settings SET value=? WHERE key='status_config'").run(setting.value); }
 });

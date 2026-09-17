@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarDays, CheckCircle2, Clock, ClipboardList, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
+import { PageHeader } from '../components/PageLayout';
+import OperationalFocus from '../components/OperationalFocus';
+import { localDateISO } from '../utils/dates';
+import { useStatuses } from '../hooks/useStatuses';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { fmtDate, isOverdue, PriorityBadge, StatusBadge } from '../components/Shared';
@@ -12,7 +16,7 @@ const KANBAN = [
   ['waiting_customer', 'Waiting'], ['completed', 'Completed'],
 ];
 const QUICK_NOTES = ['Started work', 'Progress update', 'Blocked — needs assistance', 'Ready for review'];
-const iso = d => d.toISOString().slice(0, 10);
+const iso = localDateISO;
 
 function weekRange() {
   const now = new Date();
@@ -29,26 +33,8 @@ function formatElapsed(seconds) {
   return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
 }
 
-function ServiceActivityCard() {
-  const [stats, setStats] = useState(null);
-  const [from, to] = useMemo(weekRange, []);
-  useEffect(() => {
-    const today = iso(new Date());
-    Promise.all([
-      api.serviceActivities({ from: today, to: today, page_size: 1 }),
-      api.serviceActivities({ from, to, page_size: 100 }),
-    ]).then(([todayRes, weekRes]) => {
-      const customers = new Set(weekRes.rows.map(r => r.customer_name));
-      const hours = weekRes.rows.reduce((s, r) => s + (r.duration_minutes || 0), 0) / 60;
-      const followUps = weekRes.rows.filter(r => r.follow_up_required).length;
-      setStats({
-        today: todayRes.total, week: weekRes.total, hours: Math.round(hours * 10) / 10,
-        customers: customers.size, followUps, recent: weekRes.rows.slice(0, 5),
-      });
-    }).catch(() => {});
-  }, [from, to]);
-
-  if (!stats) return null;
+function ServiceActivityCard({ stats }) {
+  if (!stats?.enabled) return null;
 
   return (
     <section className="card" style={{ marginTop: 16 }}>
@@ -57,10 +43,10 @@ function ServiceActivityCard() {
         <div className="stat-card"><strong>{stats.today}</strong><span>Today</span></div>
         <div className="stat-card"><strong>{stats.week}</strong><span>This week</span></div>
         <div className="stat-card"><strong>{stats.hours}h</strong><span>Hours logged</span></div>
-        <div className="stat-card"><strong className={stats.followUps ? 'overdue' : ''}>{stats.followUps}</strong><span>Follow-ups pending</span></div>
+        <div className="stat-card"><strong className={stats.pending ? 'overdue' : ''}>{stats.pending}</strong><span>Follow-ups pending</span></div>
       </div>
       {stats.recent.length > 0 && stats.recent.map(r => (
-        <div className="my-day-row" key={r.id}><ClipboardList size={14} /><span>{r.title}</span><small>{r.customer_name}</small></div>
+        <div className="my-day-row" key={r.id}><ClipboardList size={14} /><span>{r.title}</span><small>{fmtDate(r.activity_date)}</small></div>
       ))}
     </section>
   );
@@ -68,6 +54,7 @@ function ServiceActivityCard() {
 
 export default function EngineerHub() {
   const { user, saAccess } = useAuth();
+  const { config } = useStatuses();
   const toast = useToast();
   const confirm = useConfirm();
   const timerKey = `hub_engineer_timer_${user.id}`;
@@ -101,19 +88,33 @@ export default function EngineerHub() {
   });
 
   const [from, to] = useMemo(weekRange, []);
-  const load = () => Promise.all([api.tasks(), api.calendar(month), api.projects(), api.myTimeLogs(from, to)])
-    .then(([taskRows, calendarRows, projectRows, logRows]) => {
-      setTasks(taskRows); setCalendar(calendarRows); setProjects(projectRows); setLogs(logRows); setLoading(false);
-    }).catch(error => { toast.error(error.message || 'Could not load My Day'); setLoading(false); });
+  const [overview, setOverview] = useState(null);
+  const [overviewError, setOverviewError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const loadRequest = useRef(0);
+  const load = () => {
+    const request = ++loadRequest.current;
+    setLoading(true); setLoadError('');
+    return Promise.allSettled([api.tasks(), api.calendar(month), api.projects(), api.myTimeLogs(from, to), api.operationsOverview({ as_of: today })])
+      .then(results => {
+        if (request !== loadRequest.current) return;
+        const setters = [setTasks, setCalendar, setProjects, setLogs, setOverview];
+        results.forEach((result, index) => { if (result.status === 'fulfilled') setters[index](result.value); });
+        setOverviewError(results[4].status === 'rejected' ? results[4].reason?.message || 'Unable to load work overview' : '');
+        const failures = results.filter(result => result.status === 'rejected').map(result => result.reason?.message || 'Request failed');
+        if (failures.length) setLoadError(`Some work could not be loaded: ${failures.join('; ')}`);
+      }).finally(() => { if (request === loadRequest.current) setLoading(false); });
+  };
 
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); return () => { loadRequest.current++; }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!timer) return undefined;
     const id = setInterval(() => setTick(Date.now()), 1000);
     return () => clearInterval(id);
   }, [timer]);
 
-  const openTasks = tasks.filter(t => !['completed', 'closed', 'cancelled'].includes(t.status));
+  const terminalTasks = new Set(['completed', 'closed', 'cancelled', ...(config?.task || []).filter(status => status.is_terminal).map(status => status.value)]);
+  const openTasks = tasks.filter(t => !terminalTasks.has(t.status));
   const todayTasks = openTasks.filter(t => t.deadline?.slice(0, 10) === today);
   const overdue = openTasks.filter(t => isOverdue(t.deadline));
   const todayVisits = (calendar.visits || []).filter(v => v.date?.slice(0, 10) === today);
@@ -206,11 +207,12 @@ export default function EngineerHub() {
 
   return (
     <div className="page engineer-hub">
-      <div className="page-header"><div><h1 className="page-title">My Day</h1><p className="page-subtitle">{new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</p></div></div>
+      <PageHeader eyebrow="Workspace" title="My Work" description="Your daily priorities, upcoming commitments and personal work tools."
+        actions={<button className="btn btn-ghost" onClick={load}><RotateCw size={15} /> Refresh</button>} />
+      {loadError && <p className="error-msg" role="alert">{loadError}</p>}
+      <OperationalFocus data={overview} error={overviewError} onRefresh={load} />
 
-      <div className="grid-4" style={{ marginBottom: 16 }}>
-        <div className="stat-card"><strong>{todayTasks.length}</strong><span>Due today</span></div>
-        <div className="stat-card"><strong className={overdue.length ? 'overdue' : ''}>{overdue.length}</strong><span>Overdue</span></div>
+      <div className="grid-2" style={{ marginBottom: 16 }}>
         <div className="stat-card"><strong>{todayVisits.length}</strong><span>Visits today</span></div>
         <div className="stat-card"><strong>{todayTotal.toFixed(1)}h</strong><span>Logged today</span></div>
       </div>
@@ -228,7 +230,7 @@ export default function EngineerHub() {
 
       <section className="card" style={{ marginTop: 16 }}><div className="section-header"><h2 className="section-title">Personal Kanban</h2><Link to="/tasks">All tasks →</Link></div><div className="engineer-kanban">{KANBAN.map(([status, label]) => <div className="kanban-column" key={status} onDragOver={e => e.preventDefault()} onDrop={() => moveTask(dragged, status)}><h3>{label}<span>{tasks.filter(t => t.status === status).length}</span></h3>{tasks.filter(t => t.status === status).map(task => { const list = checklists[task.id] || []; const done = list.filter(i => i.done).length; return <article key={task.id} draggable onDragStart={() => setDragged(task)} className="kanban-card"><div className="kanban-card-title">{task.title}</div><div className="kanban-card-meta"><PriorityBadge p={task.priority} />{task.deadline && <span>{fmtDate(task.deadline)}</span>}</div>{list.map(item => <label className="checklist-item" key={item.id}><input type="checkbox" checked={item.done} onChange={() => toggleChecklist(task.id, item.id)} />{item.title}</label>)}{list.length > 0 && <div className="checklist-progress"><span style={{ width: `${done / list.length * 100}%` }} /></div>}<div className="kanban-actions"><button onClick={() => addChecklistItem(task)} title="Add checklist item"><Plus size={11} /></button>{!timer && <button onClick={() => startTimer(task)} title="Start timer"><TimerReset size={11} /></button>}<select defaultValue="" onChange={e => { if (e.target.value) quickNote(task, e.target.value); e.target.value = ''; }}><option value="">Quick update…</option>{QUICK_NOTES.map(note => <option key={note}>{note}</option>)}</select></div></article>; })}</div>)}</div></section>
 
-      {saAccess?.enabled && <ServiceActivityCard />}
+      {saAccess?.enabled && <ServiceActivityCard stats={overview?.service} />}
 
       <div className="grid-2" style={{ marginTop: 16 }}><section className="card"><div className="section-header"><h2 className="section-title">Recurring reminders</h2><button className="btn btn-ghost btn-sm" onClick={addReminder}><Plus size={12} /> Add</button></div>{reminders.map(reminder => <div className="reminder-row" key={reminder.id}><RotateCw size={13} /><span>{reminder.title}<small>{reminder.cadence} · next {fmtDate(reminder.next)}</small></span><button className="btn btn-success btn-sm" onClick={() => completeReminder(reminder)}><CheckCircle2 size={11} /></button></div>)}{!reminders.length && <p className="text-muted">No recurring reminders.</p>}</section><section className="card"><div className="section-header"><h2 className="section-title">Projects</h2><FolderOpen size={16} /></div><h3 className="hub-subheading">Bookmarked</h3>{pinned.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}{!pinned.length && <p className="text-muted">Pin projects from the Projects page.</p>}<h3 className="hub-subheading">Recently viewed</h3>{recentProjects.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}</section></div>
     </div>

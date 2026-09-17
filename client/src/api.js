@@ -133,6 +133,7 @@ export const api = {
 
   // reports
   reportSummary: () => req('GET', '/reports/summary'),
+  operationsOverview: (params = {}, options) => req('GET', '/operations/overview?' + new URLSearchParams(params), undefined, options),
   reportProjects: () => req('GET', '/reports/projects'),
   reportMonthly: () => req('GET', '/reports/monthly'),
 

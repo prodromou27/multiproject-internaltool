@@ -244,6 +244,21 @@ deactivation) instead of a raw FK error.
 ## 7. Feature modules
 
 ### Dashboard
+The dashboard now starts with a role-scoped operational focus panel: overdue work,
+due tasks, closure requests, pending visit reports, due service follow-ups and
+upcoming commitments. Manager totals span the organization; engineer totals and
+sample items use their assignments/ownership. Planner and PM dashboards retain
+their existing views. Existing customizable widgets remain available below it.
+`GET /api/operations/overview` is manager/engineer-only, accepts a validated optional
+`as_of=YYYY-MM-DD`, and caps each attention/commitment list at five rows. Counts
+use server aggregates rather than the sample rows. Weekly service counts, hours
+and distinct customers include all matching records, not just a list page.
+Follow-ups include earlier activities, exclude cancellations and completed linked
+tasks, and remain pending after activity completion until resolved. Disabled
+engineer teams receive no service-activity totals. My Work reuses this overview
+and retains its timer, timesheet, Kanban, notes, reminders and bookmarked projects.
+Partial load errors stay visible; stale refreshes cannot overwrite newer results.
+
 Aggregated health: active projects, open/overdue tasks, this-week visits, KPI bars,
 recent `project_activity`. Engineers see only their own scope.
 

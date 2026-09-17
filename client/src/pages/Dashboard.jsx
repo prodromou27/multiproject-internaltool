@@ -1,10 +1,13 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   RefreshCw, CheckCircle2, AlertTriangle, Clock, Wrench,
   FolderOpen, ListTodo, Send, ClipboardCheck, CalendarX, X,
   Settings2, GripVertical,
 } from 'lucide-react';
+import { PageHeader } from '../components/PageLayout';
+import OperationalFocus from '../components/OperationalFocus';
+import { localDateISO } from '../utils/dates';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../components/Shared';
@@ -270,7 +273,12 @@ export default function Dashboard() {
 
   const { prefs, defs, isVisible, toggle, reorder, reset } = useWidgetPrefs(user.id, user.role);
 
+  const [overview, setOverview] = useState(null);
+  const [overviewError, setOverviewError] = useState('');
+  const overviewRequest = useRef(0);
+
   const load = useCallback(async () => {
+    const request = ++overviewRequest.current;
     setLoading(true); setError('');
     try {
       const calls = [
@@ -281,8 +289,12 @@ export default function Dashboard() {
         isManager ? api.maintenanceVisits({ review_pending:1 }) : Promise.resolve([]),
         (isManager || isPM) ? api.maintenanceVisits({ not_completed:1 }) : Promise.resolve([]),
         isEngineer ? api.maintenanceVisits({ pending_report:1 }) : Promise.resolve([]),
+        (isManager || isEngineer) ? api.operationsOverview({ as_of: localDateISO() }) : Promise.resolve(null),
       ];
-      const [pR, tR, sR, vR, rR, iR, prR] = await Promise.allSettled(calls);
+      const [pR, tR, sR, vR, rR, iR, prR, oR] = await Promise.allSettled(calls);
+      if (request !== overviewRequest.current) return;
+      if (oR.status === 'fulfilled') { setOverview(oR.value); setOverviewError(''); }
+      else setOverviewError(oR.reason?.message || 'Unable to load the work overview');
       if (pR.status  === 'fulfilled') setProjects(pR.value ?? []);
       if (tR.status  === 'fulfilled') setTasks(tR.value ?? []);
       if (sR.status  === 'fulfilled') setSummary(sR.value);
@@ -290,15 +302,15 @@ export default function Dashboard() {
       if (rR.status  === 'fulfilled') setReviewVisits(rR.value ?? []);
       if (iR.status  === 'fulfilled') setIncompleteVisits(iR.value ?? []);
       if (prR.status === 'fulfilled') setPendingReports(prR.value ?? []);
-      const failed = [pR, tR, sR, vR, rR, iR, prR]
+      const failed = [pR, tR, sR, vR, rR, iR, prR, oR]
         .filter(r => r.status === 'rejected').map(r => r.reason?.message || 'Unknown');
       if (failed.length) setError(`Some data could not be loaded: ${failed.join(' · ')}`);
     } catch (err) {
       setError(err.message || 'Failed to load dashboard');
-    } finally { setLoading(false); }
+    } finally { if (request === overviewRequest.current) setLoading(false); }
   }, [isManager, isPlanner, isEngineer, isPM]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); return () => { overviewRequest.current++; }; }, [load]);
 
   if (loading) return (
     <div className="page">
@@ -408,7 +420,7 @@ export default function Dashboard() {
               to="/search?q=overdue+projects" />
             <StatCard icon={Clock}         iconBg="#fffbeb" iconColor="#f59e0b"
               value={summary.pendingClosure?.length ?? 0} label="Pending Closure"
-              valueColor="var(--warning)" to="/projects?filter=pending_approval" />
+              valueColor="var(--warning)" to="/approvals" />
           </div>
         ) : null;
 
@@ -1092,14 +1104,12 @@ export default function Dashboard() {
   return (
     <div className="page">
       {/* Page header */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Welcome back, {user.name.split(' ')[0]} 👋</h1>
-          <div className="page-subtitle">
-            {isPlanner ? 'Maintenance planning overview' : isPM ? 'Project & maintenance visit overview' : "Here's what's happening across your projects"}
-          </div>
-        </div>
-        <div style={{ display:'flex', gap:8 }}>
+      <PageHeader eyebrow="Workspace" title={isManager ? 'Operations overview' : isEngineer ? 'My work overview' : isPlanner ? 'Maintenance planning' : 'Project overview'}
+        description={isManager ? 'Review exceptions, outstanding decisions and upcoming commitments.' : isEngineer ? 'Start with due work, report obligations and customer follow-ups.' : 'Plan and review the work available to your role.'}
+        actions={<>
+          {isManager && <Link to="/approvals" className="btn btn-primary">Review approvals</Link>}
+          {isEngineer && <Link to="/my-day" className="btn btn-primary">Open My Work</Link>}
+          <div style={{ display:'flex', gap:8 }}>
           <button
             className="btn btn-ghost btn-sm"
             onClick={() => setShowCustomizer(true)}
@@ -1112,13 +1122,15 @@ export default function Dashboard() {
             <RefreshCw size={13} /> Refresh
           </button>
         </div>
-      </div>
+        </>} />
 
       {error && (
         <div className="alert alert-warning" style={{ marginBottom:20 }}>
           <AlertTriangle size={14} style={{ flexShrink:0 }} /> {error}
         </div>
       )}
+
+      {(isManager || isEngineer) && <OperationalFocus data={overview} error={overviewError} onRefresh={load} />}
 
       <OverdueBanner overdueProjects={overdueProjects} overdueTasks={overdueTasks} />
 
