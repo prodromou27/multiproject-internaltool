@@ -18,10 +18,10 @@ export default function OperationalFocus({ data, error, onRefresh }) {
   </section>;
   const manager = data.scope === 'management';
   const attention = [
-    ...data.tasks.attention.map(item => ({ ...item, kind: item.deadline < data.as_of ? 'Overdue task' : 'Task due today', date: item.deadline, icon: CheckSquare, link: item.deadline < data.as_of ? '/tasks?filter=overdue' : '/tasks' })),
+    ...data.tasks.attention.map(item => ({ ...item, kind: item.deadline < data.as_of ? 'Overdue task' : 'Task due today', date: item.deadline, icon: CheckSquare, link: item.deadline < data.as_of ? '/tasks?filter=overdue' : '/tasks?filter=due_today' })),
     ...data.projects.commitments.filter(item => item.deadline < data.as_of).map(item => ({ ...item, kind: 'Overdue project', date: item.deadline, icon: FolderOpen, link: `/projects/${item.id}` })),
     ...data.visits.reports.map(item => ({ ...item, kind: 'Visit report pending', date: item.scheduled_date, icon: Send, link: '/maintenance-visits?filter=report_pending' })),
-    ...(data.service.follow_ups || []).map(item => ({ ...item, kind: 'Service follow-up due', date: item.follow_up_date, icon: ClipboardList, link: '/activity-log' })),
+    ...(data.service.follow_ups || []).map(item => ({ ...item, kind: 'Service follow-up due', date: item.follow_up_date, icon: ClipboardList, link: `/activity-log?activity=${item.id}` })),
   ].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8);
   const upcoming = [
     ...data.projects.commitments.filter(item => item.deadline >= data.as_of).map(item => ({ ...item, kind: 'Project deadline', date: item.deadline, icon: FolderOpen, link: `/projects/${item.id}` })),
@@ -29,7 +29,7 @@ export default function OperationalFocus({ data, error, onRefresh }) {
   ].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
   const metrics = [
     { value: data.tasks.overdue, label: 'Overdue tasks', link: '/tasks?filter=overdue', urgent: true },
-    { value: data.tasks.due_today, label: 'Tasks due today', link: '/tasks' },
+    { value: data.tasks.due_today, label: 'Tasks due today', link: '/tasks?filter=due_today' },
     { value: data.projects.overdue, label: 'Overdue projects', link: '/projects?filter=overdue', urgent: true },
     { value: data.projects.awaiting_approval, label: manager ? 'Closure requests' : 'Awaiting closure review', link: manager ? '/approvals' : '/projects?filter=pending_approval' },
     { value: data.visits.reports_pending, label: 'Visit reports pending', link: '/maintenance-visits?filter=report_pending', urgent: true },

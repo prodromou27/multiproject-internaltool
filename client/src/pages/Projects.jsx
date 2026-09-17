@@ -356,7 +356,7 @@ export default function Projects() {
     const params = new URLSearchParams(location.search);
     const urlFilter = params.get('filter');
     if (urlFilter) setFilter(urlFilter);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.search, setFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -386,11 +386,13 @@ export default function Projects() {
   }
 
   const TERMINAL = ['closed', 'cancelled'];
-  const VALID_FILTERS = ['open','all','in_progress','not_started','on_hold','waiting_customer','waiting_vendor','delayed','pending_approval','closed','cancelled','reopened'];
+  const VALID_FILTERS = ['open','all','in_progress','not_started','on_hold','waiting_customer','waiting_vendor','delayed','pending_approval','overdue','closed','cancelled','reopened'];
   const openProjects = projects.filter(p => !TERMINAL.includes(p.status));
   // Treat unknown saved filter values as 'open' so stale localStorage doesn't blank the list
   const activeFilter = VALID_FILTERS.includes(filter) ? filter : 'open';
+  const overdueProjects = openProjects.filter(p => p.status !== 'pending_approval' && isOverdue(p.deadline));
   const statusFiltered = activeFilter === 'all'  ? projects
+                       : activeFilter === 'overdue' ? overdueProjects
                        : activeFilter === 'open' ? openProjects
                        : projects.filter(p => p.status === activeFilter);
   const searchFiltered = search.trim()
@@ -430,6 +432,7 @@ export default function Projects() {
           {[
             ['open',              'Open'],
             ['all',               'All'],
+            ['overdue',           'Overdue'],
             ['in_progress',       'In Progress'],
             ['not_started',       'Not Started'],
             ['on_hold',           'On Hold'],
@@ -445,6 +448,7 @@ export default function Projects() {
               {l} <span style={{ opacity: .65 }}>({
                 s === 'all'  ? projects.length :
                 s === 'open' ? openProjects.length :
+                s === 'overdue' ? overdueProjects.length :
                 projects.filter(p => p.status === s).length
               })</span>
             </button>

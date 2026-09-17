@@ -1,6 +1,7 @@
 const router  = require('express').Router();
 const db      = require('../db');
 const ExcelJS = require('exceljs');
+const { taskFilters } = require('../taskFilters');
 const { requireAuth, requireManager, requireDownloadAuth } = require('../middleware/auth');
 const { notify } = require('../notifications');
 
@@ -13,29 +14,25 @@ async function logActivity(project_id, user_id, action, detail) {
   } catch (_) { /* non-fatal */ }
 }
 
+async function attachTaskHours(rows) {
+  if (!rows.length) return rows;
+  const totals = await db.prepare(`SELECT task_id,SUM(hours) AS hours FROM time_logs
+    WHERE task_id IN (${rows.map(() => '?').join(',')}) GROUP BY task_id`).all(...rows.map(row => row.id));
+  const hours = new Map(totals.map(row => [row.task_id, Math.round(Number(row.hours) * 10) / 10]));
+  return rows.map(row => ({ ...row, logged_hours: hours.get(row.id) || 0 }));
+}
+
 router.get('/', requireAuth, async (req, res) => {
-  const { project_id, assigned_to, adhoc } = req.query;
-  let q = `SELECT t.*, u.name as assigned_to_name, c.name as created_by_name,
-    COALESCE((SELECT ROUND(SUM(hours),1) FROM time_logs WHERE task_id = t.id),0) as logged_hours
-    FROM tasks t
-    LEFT JOIN users u ON t.assigned_to = u.id
-    JOIN users c ON t.created_by = c.id WHERE 1=1`;
-  const params = [];
+  const filters = taskFilters(req.query, req.user);
+  if (filters.error) return res.status(400).json({ error: filters.error });
+  if (!['manager', 'engineer'].includes(req.user.role)) return res.json([]);
+  const q = `SELECT t.*, u.name as assigned_to_name, c.name as created_by_name, p.title as project_title FROM tasks t
+    LEFT JOIN users u ON t.assigned_to=u.id JOIN users c ON t.created_by=c.id
+    LEFT JOIN projects p ON p.id=t.project_id
+    WHERE ${filters.where} ORDER BY ${filters.order}`;
+  const params = filters.params;
 
-  if (req.user.role === 'planner' || req.user.role === 'pm') {
-    // Planners and PMs have no task visibility — return empty list
-    return res.json([]);
-  } else if (req.user.role === 'engineer') {
-    q += ' AND t.assigned_to = ?'; params.push(req.user.id);
-  } else {
-    // manager — unrestricted
-    if (assigned_to) { q += ' AND t.assigned_to = ?'; params.push(assigned_to); }
-  }
-  if (project_id) { q += ' AND t.project_id = ?'; params.push(project_id); }
-  if (adhoc === '1') { q += ' AND t.is_adhoc = 1'; }
-  q += ' ORDER BY t.created_at DESC';
-
-  let rows = (await db.prepare(q).all(...params));
+  let rows = await attachTaskHours(await db.prepare(q).all(...params));
 
   // Augment with is_blocked (has unfinished dependencies)
   if (rows.length) {
@@ -297,34 +294,16 @@ router.post('/bulk', requireAuth, async (req, res) => {
 router.get('/export', requireDownloadAuth, async (req, res) => {
   if (req.user.role === 'planner' || req.user.role === 'pm')
     return res.status(403).json({ error: 'Forbidden' });
-  const { filter } = req.query;
-  let q = `SELECT t.title, t.status, t.priority, t.deadline, t.is_adhoc,
-    u.name as assigned_to, c.name as created_by,
-    p.title as project,
-    COALESCE((SELECT ROUND(SUM(hours),1) FROM time_logs WHERE task_id = t.id),0) as logged_hours
-    FROM tasks t
-    LEFT JOIN users u ON t.assigned_to = u.id
-    JOIN users c ON t.created_by = c.id
-    LEFT JOIN projects p ON t.project_id = p.id
-    WHERE 1=1`;
-  const exportParams = [];
-  if (req.user.role === 'engineer') {
-    q += ' AND t.assigned_to = ?';
-    exportParams.push(req.user.id);
-  } else if (req.user.role === 'planner' || req.user.role === 'pm') {
-    // Scope to projects this user is assigned to (mirrors the main GET / filter)
-    q += ' AND (t.project_id IS NULL OR t.project_id IN (SELECT project_id FROM project_assignments WHERE user_id = ?))';
-    exportParams.push(req.user.id);
-  }
-  if (filter === 'open')  q += ` AND t.status IN ('open','in_progress','waiting_customer','waiting_vendor')`;
-  if (filter === 'done')  q += ` AND t.status IN ('completed','closed')`;
-  if (filter === 'adhoc') q += ` AND t.is_adhoc = 1`;
-  q += ' ORDER BY t.created_at DESC';
-
-  const rows = (await db.prepare(q).all(...exportParams));
+  const filters = taskFilters(req.query, req.user);
+  if (filters.error) return res.status(400).json({ error: filters.error });
+  const rows = await attachTaskHours(await db.prepare(`SELECT t.id, t.title, t.status, t.priority, t.deadline, t.is_adhoc,
+    u.name as assigned_to, c.name as created_by, p.title as project
+    FROM tasks t LEFT JOIN users u ON t.assigned_to=u.id JOIN users c ON t.created_by=c.id
+    LEFT JOIN projects p ON p.id=t.project_id
+    WHERE ${filters.where} ORDER BY ${filters.order}`).all(...filters.params));
   const wsData = [
     ['Title','Status','Priority','Deadline','Project','Assigned To','Created By','Hours Logged','Ad-hoc'],
-    ...rows.map(r => [r.title, r.status, r.priority, r.deadline || '', r.project || '', r.assigned_to || '', r.created_by, r.logged_hours, r.is_adhoc ? 'Yes' : 'No']),
+    ...rows.map(r => [r.title, r.status, r.priority, r.deadline || '', r.project || '', r.assigned_to || '', r.created_by, Math.round(Number(r.logged_hours) * 10) / 10, r.is_adhoc ? 'Yes' : 'No']),
   ];
 
   const workbook  = new ExcelJS.Workbook();

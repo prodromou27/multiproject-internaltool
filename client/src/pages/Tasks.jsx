@@ -7,6 +7,8 @@ import { useCreateIntent } from '../hooks/useCreateIntent';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
+import { localDateISO } from '../utils/dates';
+import { TASK_FILTERS, OPEN_STATUSES, DONE_STATUSES, taskMatchesFilter } from '../utils/taskFilters';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
@@ -180,8 +182,8 @@ export default function Tasks() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const urlFilter = params.get('filter');
-    if (urlFilter) setFilter(urlFilter);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (TASK_FILTERS.includes(urlFilter)) setFilter(urlFilter);
+  }, [location.search, setFilter]);
   const [search, setSearch]     = useState('');
   const [myTasksOnly, setMyTasksOnly] = useState(false);
   const [presets, setPresets] = useState(() => {
@@ -345,41 +347,29 @@ export default function Tasks() {
   /* ── Export ───────────────────────────────────────────── */
   async function exportTasks() {
     try {
+      const qs = new URLSearchParams({ filter: activeFilter, priority: priorityFilter, as_of: today, sort: sort.key, direction: sort.direction });
+      if (search.trim()) qs.set('search', search.trim());
+      if (myTasksOnly) qs.set('assigned_to', String(user.id));
       const { token } = await api.downloadToken();
-      const qs = filter !== 'all' ? `?filter=${filter}&token=${token}` : `?token=${token}`;
+      qs.set('token', token);
       const a = document.createElement('a');
-      a.href = '/api/tasks/export' + qs;
+      a.href = '/api/tasks/export?' + qs;
       a.download = 'tasks.xlsx';
       a.click();
     } catch (e) { toast.error('Export failed: ' + e.message); }
   }
 
-  const OPEN_STATUSES = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor'];
-  const DONE_STATUSES = ['completed', 'closed'];
-
-  const _dueWeekNow = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
-  const _dueWeekEnd = new Date(_dueWeekNow.getTime() + 7 * 86400000);
-
+  const today = localDateISO(new Date());
+  const activeFilter = TASK_FILTERS.includes(filter) ? filter : 'all';
   const filtered = tasks.filter(t => {
-    // Status tab filter
-    if (filter === 'open')             { if (!OPEN_STATUSES.includes(t.status)) return false; }
-    else if (filter === 'done')        { if (!DONE_STATUSES.includes(t.status)) return false; }
-    else if (filter === 'adhoc')       { if (!t.is_adhoc) return false; }
-    else if (filter === 'waiting_customer') { if (t.status !== 'waiting_customer' && t.status !== 'waiting_vendor') return false; }
-    else if (filter === 'overdue')     { if (!isOverdue(t.deadline) || ['completed','closed','cancelled'].includes(t.status)) return false; }
-    else if (filter === 'due_week')    {
-      if (!t.deadline) return false;
-      if (['completed','closed','cancelled'].includes(t.status)) return false;
-      const dl = new Date(t.deadline + 'T00:00:00');
-      if (dl < _dueWeekNow || dl > _dueWeekEnd) return false;
-    }
+    if (!taskMatchesFilter(t, activeFilter, today)) return false;
     // Priority filter
     if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
     // My tasks filter
     if (myTasksOnly && t.assigned_to !== user.id) return false;
     // Text search
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const q = search.trim().toLowerCase();
       const projectTitle = projects.find(p => p.id === t.project_id)?.title || '';
       if (!(t.title || '').toLowerCase().includes(q) &&
           !(t.assigned_to_name || '').toLowerCase().includes(q) &&
@@ -478,12 +468,14 @@ export default function Tasks() {
             ['all',             'All',                         tasks.length],
             ['open',            'Open / In Progress',          tasks.filter(t => OPEN_STATUSES.includes(t.status)).length],
             ['waiting_customer','Waiting on Customer/Vendor',  tasks.filter(t => t.status === 'waiting_customer' || t.status === 'waiting_vendor').length],
-            ['due_week',        'Due This Week',               tasks.filter(t => { const dl = t.deadline ? new Date(t.deadline+'T00:00:00') : null; return dl && dl >= _dueWeekNow && dl <= _dueWeekEnd && !['completed','closed','cancelled'].includes(t.status); }).length],
+            ['due_today',       'Due Today',                   tasks.filter(t => taskMatchesFilter(t, 'due_today', today)).length],
+            ['due_week',        'Due Next 7 Days',             tasks.filter(t => taskMatchesFilter(t, 'due_week', today)).length],
+            ['pending_approval','Pending Approval',            tasks.filter(t => t.status === 'pending_approval').length],
             ['done',            'Completed',                   tasks.filter(t => DONE_STATUSES.includes(t.status)).length],
-            ['overdue',         'Overdue',                     tasks.filter(t => isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status)).length],
+            ['overdue',         'Overdue',                     tasks.filter(t => taskMatchesFilter(t, 'overdue', today)).length],
             ['adhoc',           'Ad-hoc',                      tasks.filter(t => t.is_adhoc).length],
           ].map(([k, l, count]) => (
-            <button key={k} className={'filter-pill' + (filter === k ? ' active' : '') + (k === 'overdue' && count > 0 ? ' overdue-pill' : '')} onClick={() => setFilter(k)}>
+            <button key={k} className={'filter-pill' + (activeFilter === k ? ' active' : '') + (k === 'overdue' && count > 0 ? ' overdue-pill' : '')} onClick={() => setFilter(k)}>
               {l} <span style={{ opacity: .65 }}>({count})</span>
             </button>
           ))}

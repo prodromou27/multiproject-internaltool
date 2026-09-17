@@ -314,6 +314,15 @@ An index on `(status, closure_requested_at, id)` supports the backlog. No new
 environment variables or background jobs are required.
 
 ### Tasks
+Task list and Excel export share parameterized filter validation for status views,
+priority, literal title/assignee/project search, project and assignment IDs, local
+as-of dates and whitelisted sorts. Engineer ownership is always enforced, including
+when another assignee ID is supplied. The UI exports its current filters. Due Today
+and Pending Approval are explicit views; Due Next 7 Days includes today through
+today plus six calendar dates. Dashboard links and changed filter URLs select the
+correct views; overdue projects excludes pending closure review. Logged hours load
+in one scoped batch. No migration, configuration or background job is required.
+
 Task comments and dependencies enforce current task visibility for every read or
 mutation, including comment deletion after reassignment. Engineers receive a
 restricted dependency placeholder and blocking indicator for another owner's task,

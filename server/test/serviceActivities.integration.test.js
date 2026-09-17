@@ -1068,6 +1068,53 @@ test('management activity report export rejects non-managers including scoped do
 });
 
 
+test('task list and workbook export match filters and preserve ownership on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const project = (await db.prepare('INSERT INTO projects (title,created_by) VALUES (?,?)').run('Dispatch project', ids.manager)).lastInsertRowid;
+  const rows = [];
+  for (const [title, status, priority, deadline, owner] of [
+    ['Dispatch 100%_special', 'pending_approval', 'high', '2035-12-31', ids.engineerEnabled],
+    ['Dispatch today', 'open', 'high', '2035-12-31', ids.engineerEnabled],
+    ['Dispatch waiting', 'waiting_vendor', 'low', '2035-12-30', ids.engineerEnabled],
+    ['Dispatch completed', 'completed', 'high', '2035-12-31', ids.engineerEnabled],
+    ['Dispatch last day', 'open', 'high', '2036-01-06', ids.engineerEnabled],
+    ['Dispatch outside', 'open', 'high', '2036-01-07', ids.engineerEnabled],
+    ['Dispatch private', 'open', 'high', '2035-12-31', ids.engineerDisabled],
+  ]) rows.push((await db.prepare('INSERT INTO tasks (title,status,priority,deadline,assigned_to,project_id,created_by) VALUES (?,?,?,?,?,?,?)').run(title, status, priority, deadline, owner, project, ids.manager)).lastInsertRowid);
+  const cases = [
+    [{ filter: 'pending_approval' }, [rows[0]]],
+    [{ filter: 'due_today' }, [rows[0], rows[1]]],
+    [{ filter: 'overdue' }, [rows[2]]],
+    [{ filter: 'waiting_customer' }, [rows[2]]],
+    [{ filter: 'due_week' }, [rows[0], rows[1], rows[4]]],
+    [{ priority: 'low', search: '  dispatch  ' }, [rows[2]]],
+    [{ search: '100%_special' }, [rows[0]]],
+  ];
+  for (const [extra, expected] of cases) {
+    const query = new URLSearchParams({ project_id: String(project), as_of: '2035-12-31', sort: 'deadline', ...extra });
+    const list = await api(`/api/tasks?${query}`, { token: ids.tokenEnabled });
+    assert.equal(list.status, 200);
+    assert.deepEqual(list.data.map(row => row.id), expected);
+    const response = await fetch(`${baseUrl}/api/tasks/export?${query}`, { headers: { Authorization: `Bearer ${ids.tokenEnabled}` } });
+    assert.equal(response.status, 200);
+    const workbook = new (require('exceljs').Workbook)();
+    await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
+    const titles = [];
+    workbook.worksheets[0].eachRow((row, number) => { if (number > 1) titles.push(row.getCell(1).value); });
+    assert.deepEqual(titles, list.data.map(row => row.title));
+  }
+  const spoof = await api(`/api/tasks?project_id=${project}&assigned_to=${ids.engineerDisabled}`, { token: ids.tokenEnabled });
+  assert.ok(spoof.data.every(row => row.assigned_to === ids.engineerEnabled));
+  const own = await api(`/api/tasks?project_id=${project}&assigned_to=${ids.engineerEnabled}`, { token: ids.tokenManager });
+  assert.equal(own.data.length, 6);
+
+});
+
+test('task list and export consistently reject malformed filters', async () => {
+  for (const query of ['filter=unknown', 'filter=', 'filter=open&filter=done', 'project_id=abc', 'assigned_to=0', 'priority=urgent', 'search[x]=bad', 'as_of=2035-02-29', 'as_of=', 'adhoc=true', 'sort=__proto__', 'direction=DROP', `search=${'a'.repeat(501)}`]) {
+    for (const route of ['tasks', 'tasks/export']) assert.equal((await api(`/api/${route}?${query}`, { token: ids.tokenManager })).status, 400);
+  }
+});
+
 test('project detail and timeline reject malformed IDs before querying', async () => {
   for (const id of ['invalid', '0', '-1', '1.2', '9007199254740992']) {
     for (const suffix of ['', '/activity']) assert.equal((await api(`/api/projects/${id}${suffix}`, { token: ids.tokenManager })).status, 400);
