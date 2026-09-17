@@ -907,3 +907,51 @@ test('the activity detail used for editing preserves notes, category and technol
   assert.equal(saved.data.ticket_reference, 'CASE-123');
   assert.deepEqual(saved.data.technologies.map(t => t.id), [technology]);
 });
+
+test('attachment upload failures clean files and attachment reads enforce activity ownership', async t => {
+  const fs = require('fs');
+  const path = require('path');
+  const { uploadDir } = require('../uploadUtils');
+  const activity = (await api('/api/service-activities', { method: 'POST', token: ids.tokenEnabled, body: {
+    customer_id: ids.customer, category_id: ids.category, activity_date: new Date().toISOString().slice(0, 10), title: 'Attachment regression',
+  } })).data.id;
+  const endpoint = `/api/service-activities/${activity}/attachments`;
+  const uploadPdf = async () => {
+    const form = new FormData();
+    form.append('file', new Blob(['%PDF-1.4\nTest document'], { type: 'application/pdf' }), 'test.pdf');
+    const response = await fetch(`${baseUrl}${endpoint}`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenEnabled}` }, body: form });
+    return { status: response.status, data: await response.json() };
+  };
+  const before = (await fs.promises.readdir(uploadDir)).sort();
+  const originalPrepare = db.prepare;
+  const failure = t.mock.method(db, 'prepare', function(sql) {
+    if (/INSERT INTO attachments/i.test(sql)) return { run: async () => { throw new Error('Simulated attachment database failure'); } };
+    return originalPrepare.call(this, sql);
+  });
+  try {
+    assert.equal((await uploadPdf()).status, 500);
+    assert.deepEqual((await fs.promises.readdir(uploadDir)).sort(), before);
+  } finally { failure.mock.restore(); }
+  const uploaded = await uploadPdf();
+  assert.equal(uploaded.status, 200);
+  const attachment = await db.prepare('SELECT stored_name FROM attachments WHERE id=?').get(uploaded.data.id);
+  const storedPath = path.join(uploadDir, attachment.stored_name);
+  try {
+    assert.equal((await api(endpoint, { token: ids.tokenDisabled })).status, 403);
+    const download = await fetch(`${baseUrl}${endpoint}/${uploaded.data.id}/download`, { headers: { Authorization: `Bearer ${ids.tokenDisabled}` } });
+    assert.equal(download.status, 403);
+    const original = db.prepare;
+    const deletionFailure = t.mock.method(db, 'prepare', function(sql) {
+      if (/DELETE FROM attachments WHERE id/i.test(sql)) return { run: async () => { throw new Error('Simulated delete failure'); } };
+      return original.call(this, sql);
+    });
+    try {
+      assert.equal((await api(`${endpoint}/${uploaded.data.id}`, { method: 'DELETE', token: ids.tokenEnabled })).status, 500);
+      assert.equal(fs.existsSync(storedPath), true);
+    } finally { deletionFailure.mock.restore(); }
+    assert.equal((await api(`${endpoint}/${uploaded.data.id}`, { method: 'DELETE', token: ids.tokenEnabled })).status, 200);
+    assert.equal(fs.existsSync(storedPath), false);
+  } finally {
+    await fs.promises.unlink(storedPath).catch(error => { if (error.code !== 'ENOENT') throw error; });
+  }
+});

@@ -256,10 +256,19 @@ function ActivityDetailModal({ id, allowAttachments, onClose, onChanged }) {
   const [activity, setActivity] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const detailRequest = useRef(null);
 
-  const load = () => Promise.all([api.serviceActivity(id), api.serviceActivityAttachments(id)])
-    .then(([a, atts]) => { setActivity(a); setAttachments(atts); });
-  useEffect(() => { load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => {
+    detailRequest.current?.abort();
+    const controller = new AbortController();
+    detailRequest.current = controller;
+    setLoadError('');
+    return Promise.all([api.serviceActivity(id, { signal: controller.signal }), api.serviceActivityAttachments(id, { signal: controller.signal })])
+      .then(([a, atts]) => { if (!controller.signal.aborted) { setActivity(a); setAttachments(atts); } })
+      .catch(error => { if (!controller.signal.aborted) setLoadError(error.message || 'Could not load the activity'); });
+  }, [id]);
+  useEffect(() => { setActivity(null); load(); return () => detailRequest.current?.abort(); }, [load]);
 
   async function handleUpload(e) {
     const file = e.target.files[0];
@@ -282,10 +291,13 @@ function ActivityDetailModal({ id, allowAttachments, onClose, onChanged }) {
     catch (ex) { toast.error(ex.message); }
   }
 
-  if (!activity) return <Modal title="Activity" onClose={onClose}><p className="text-muted">Loading…</p></Modal>;
+  if (!activity) return <Modal title="Activity" onClose={onClose}>{loadError
+    ? <div className="error-msg" role="alert">{loadError}<button className="btn btn-ghost btn-sm" onClick={load}>Retry</button></div>
+    : <p className="text-muted">Loading…</p>}</Modal>;
 
   return (
     <Modal title={activity.activity_reference} onClose={onClose} wide>
+      {loadError && <div className="error-msg" role="alert">{loadError}<button className="btn btn-ghost btn-sm" onClick={load}>Retry</button></div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <strong style={{ fontSize: 16 }}>{activity.title}</strong>

@@ -310,6 +310,12 @@ Excel import/export, time logging, **automated next-day email reminders** (fired
 visit/user/day), and a per-engineer **iCal subscription feed**.
 
 ### Service Activity Tracking (MSP Operations Log)
+Attachment uploads propagate asynchronous failures to the central error handler and
+remove uploaded files when encryption or database storage fails. Attachment deletion
+removes its database row before deleting the file, preserving downloads if the
+database operation fails. Activity detail loads support cancellation and visible Retry
+actions instead of an endless loading state.
+
 Managers have module-wide access. Engineers and PMs require an enabled team and
 may read only their own activities; customer authorization is rechecked on writes.
 Planners have no tracking access, even through an enabled team. Follow-up task

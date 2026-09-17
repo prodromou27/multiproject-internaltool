@@ -653,31 +653,33 @@ router.post('/:id/attachments', requireAuth, requireServiceActivityAccess, requi
   const settings = await getServiceActivitySettings();
   if (!settings.allow_attachments) return res.status(403).json({ error: 'Attachments are disabled by an administrator' });
 
-  upload.single('file')(req, res, async (uploadErr) => {
-    if (uploadErr) return res.status(400).json({ error: uploadErr.message });
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    await new Promise((resolve, reject) => upload.single('file')(req, res, error => error ? reject(error) : resolve()));
+  } catch (error) { return res.status(400).json({ error: error.message }); }
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
     if (!hasAllowedMagic(req.file.path, req.file.mimetype)) {
       fs.unlink(req.file.path, () => {});
       return res.status(400).json({ error: 'Uploaded file content does not match the declared file type' });
     }
     let encIv = null, encTag = null;
     if (cipher.isConfigured()) {
-      try {
-        const raw = await fs.promises.readFile(req.file.path);
-        const { data, iv, tag } = cipher.encrypt(raw);
-        await fs.promises.writeFile(req.file.path, data);
-        encIv = iv; encTag = tag;
-      } catch (e) {
-        fs.unlink(req.file.path, () => {});
-        return res.status(500).json({ error: 'Encryption failed: ' + e.message });
-      }
+      const raw = await fs.promises.readFile(req.file.path);
+      const { data, iv, tag } = cipher.encrypt(raw);
+      await fs.promises.writeFile(req.file.path, data);
+      encIv = iv; encTag = tag;
     }
     const result = await db.prepare(
       'INSERT INTO attachments (service_activity_id, original_name, stored_name, mime_type, size, uploaded_by, enc_iv, enc_tag) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).run(id, safeDownloadName(req.file.originalname), req.file.filename, req.file.mimetype, req.file.size, req.user.id, encIv, encTag);
     await logAudit(db, req, 'attachment', result.lastInsertRowid, safeDownloadName(req.file.originalname), 'attachment_uploaded', `service_activity_id=${id}`);
     res.json({ id: result.lastInsertRowid, original_name: safeDownloadName(req.file.originalname), encrypted: !!encIv });
-  });
+  } catch (error) {
+    await fs.promises.unlink(req.file.path).catch(cleanupError => {
+      if (cleanupError.code !== 'ENOENT') console.error('[service-activities] upload cleanup failed:', cleanupError);
+    });
+    throw error;
+  }
 });
 
 router.get('/:id/attachments/:attId/download', requireDownloadAuth, requireServiceActivityAccess, async (req, res) => {
@@ -712,8 +714,10 @@ router.delete('/:id/attachments/:attId', requireAuth, requireServiceActivityAcce
   if (!att) return res.status(404).json({ error: 'Not found' });
   if (req.user.role !== 'manager' && att.uploaded_by !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
   const safeName = safeStoredName(att.stored_name);
-  if (safeName) fs.unlink(path.join(uploadDir, safeName), () => {});
   await db.prepare('DELETE FROM attachments WHERE id = ?').run(att.id);
+  if (safeName) await fs.promises.unlink(path.join(uploadDir, safeName)).catch(error => {
+    if (error.code !== 'ENOENT') console.error('[service-activities] attachment cleanup failed:', error);
+  });
   await logAudit(db, req, 'attachment', att.id, att.original_name, 'attachment_deleted', `service_activity_id=${id}`);
   res.json({ ok: true });
 });
