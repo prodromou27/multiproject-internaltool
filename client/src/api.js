@@ -170,7 +170,7 @@ export const api = {
   },
 
   // maintenance visits
-  maintenanceVisits: (params = {}) => req('GET', '/maintenance-visits?' + new URLSearchParams(params).toString()),
+  maintenanceVisits: (params = {}, options = {}) => req('GET', '/maintenance-visits?' + new URLSearchParams(params).toString(), undefined, options),
   maintenanceVisit: (id) => req('GET', `/maintenance-visits/${id}`),
   createVisit: (data) => req('POST', '/maintenance-visits', data),
   updateVisit: (id, data) => req('PUT', `/maintenance-visits/${id}`, data),

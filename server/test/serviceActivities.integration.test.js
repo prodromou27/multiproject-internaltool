@@ -816,9 +816,18 @@ test('maintenance report transitions preserve original attribution and clear dow
     .run(ids.customer, 'Report transitions', '2026-11-01', 'in_progress', ids.manager)).lastInsertRowid;
   await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?)').run(visit, ids.engineerEnabled);
   const endpoint = `/api/maintenance-visits/${visit}`;
+  const planner = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+    .run('Report planner', 'report-planner@test.local', bcrypt.hashSync('pw', 4), 'planner')).lastInsertRowid;
+  const plannerToken = signJwt({ id: planner });
   assert.equal((await api(`${endpoint}/report-sent`, { method: 'POST', token: ids.tokenEnabled })).status, 200);
   assert.equal((await api(`${endpoint}/report-sent`, { method: 'POST', token: ids.tokenManager })).status, 200);
   assert.equal((await db.prepare('SELECT report_sent_by FROM maintenance_visits WHERE id=?').get(visit)).report_sent_by, ids.engineerEnabled);
+  for (const token of [plannerToken, ids.tokenEnabled, ids.tokenDisabled]) {
+    assert.equal((await api(`${endpoint}/report-unsent`, { method: 'POST', token })).status, 403);
+  }
+  assert.equal((await db.prepare('SELECT report_sent FROM maintenance_visits WHERE id=?').get(visit)).report_sent, 1);
+  assert.equal((await api(`${endpoint}/report-customer-sent`, { method: 'POST', token: plannerToken })).status, 200);
+  assert.equal((await api(`${endpoint}/report-customer-unsent`, { method: 'POST', token: plannerToken })).status, 200);
   assert.equal((await api(`${endpoint}/report-customer-sent`, { method: 'POST', token: ids.tokenManager })).status, 200);
   assert.equal((await api(`${endpoint}/report-unsent`, { method: 'POST', token: ids.tokenManager })).status, 200);
   let stored = await db.prepare('SELECT status, report_sent, report_sent_to_customer, report_sent_to_customer_by FROM maintenance_visits WHERE id=?').get(visit);

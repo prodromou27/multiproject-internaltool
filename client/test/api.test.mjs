@@ -36,11 +36,11 @@ test('core page reads propagate cancellation without logging out the user', asyn
     return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true }));
   });
   const options = { signal: controller.signal };
-  const requests = [api.tasks({ project_id: 12 }, options), api.projects(options), api.project(12, options), api.users(options), api.customers(options), api.projectActivity(12, options), api.milestones(12, options)];
+  const requests = [api.tasks({ project_id: 12 }, options), api.projects(options), api.project(12, options), api.users(options), api.customers(options), api.projectActivity(12, options), api.milestones(12, options), api.maintenanceVisits({ month: '2026-09' }, options)];
   const results = Promise.allSettled(requests);
   controller.abort();
   assert.ok((await results).every(result => result.status === 'rejected' && result.reason.name === 'AbortError'));
-  assert.deepEqual(paths, ['/api/tasks?project_id=12', '/api/projects', '/api/projects/12', '/api/auth/users', '/api/customers', '/api/projects/12/activity', '/api/milestones?project_id=12']);
+  assert.deepEqual(paths, ['/api/tasks?project_id=12', '/api/projects', '/api/projects/12', '/api/auth/users', '/api/customers', '/api/projects/12/activity', '/api/milestones?project_id=12', '/api/maintenance-visits?month=2026-09']);
   assert.equal(window.location.href, '/current-page');
 });
 

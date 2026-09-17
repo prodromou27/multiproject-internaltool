@@ -387,6 +387,13 @@ real calendar dates; visit creation and reassignment
 save the visit and engineer set atomically. Report submission preserves its first
 actor/timestamp, undoing the internal report clears downstream forwarding metadata,
 and cancelled visits cannot be reported, forwarded or completed.
+Month loads cancel superseded requests and guard account/role scope; failed loads
+show Retry and hide stale rows and counts. Workflow actions catch errors and prevent
+duplicate submissions; notes remain editable after a failed save. Internal report
+submission undo is manager-only, while managers and planners may undo forwarding.
+Visit titles provide keyboard-accessible detail buttons. Upcoming/past views use
+the browser's local date; dashboard filter links update an already open list.
+The current Excel action explicitly exports all visits rather than the visible view.
 Excel import/export, time logging, **automated next-day email reminders** (fired daily at 08:00, deduplicated per
 visit/user/day), and a per-engineer **iCal subscription feed**.
 
