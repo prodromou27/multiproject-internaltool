@@ -211,32 +211,31 @@ function KpiSection({ projectId }) {
 /* ── Reject closure dialog ───────────────────────────────── */
 function RejectDialog({ onConfirm, onCancel }) {
   const [note, setNote] = useState('');
-  return (
-    <Modal title="Send Back for Revision" onClose={onCancel}>
-      <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 14 }}>
-        The project will be moved back to "Reopened" and the team will be notified.
-      </p>
-      <div className="form-group">
-        <label>Rejection Note (optional)</label>
-        <textarea
-          value={note}
-          onChange={e => setNote(e.target.value)}
-          placeholder="e.g. Some tasks are still incomplete…"
-          rows={3}
-          autoFocus
-        />
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  async function submit(event) {
+    event.preventDefault();
+    if (saving || !note.trim()) return;
+    setSaving(true); setError('');
+    try { await onConfirm(note); }
+    catch (failure) { setError(failure.message || 'Unable to return this project for revision'); }
+    finally { setSaving(false); }
+  }
+  return <Modal title="Send Back for Revision" onClose={saving ? () => {} : onCancel}>
+    <form onSubmit={submit}>
+      <p className="text-muted text-sm">The project will be reopened, and the assigned team will receive your revision instructions.</p>
+      {error && <p className="error-msg" role="alert">{error}</p>}
+      <div className="form-group"><label htmlFor="rejection-note">Revision instructions *</label>
+        <textarea id="rejection-note" value={note} onChange={event => setNote(event.target.value)} maxLength={2000} rows={4} required autoFocus disabled={saving} />
       </div>
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
-        <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button type="button" className="btn btn-warning" onClick={() => onConfirm(note)}>
-          ↩ Send Back for Revision
-        </button>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={saving}>Cancel</button>
+        <button type="submit" className="btn btn-warning" disabled={saving || !note.trim()}>{saving ? 'Saving...' : 'Send Back for Revision'}</button>
       </div>
-    </Modal>
-  );
+    </form>
+  </Modal>;
 }
 
-/* ── Shared "Waiting for Customer" dialog ────────────────── */
 function WaitingDialog({ initial, onConfirm, onCancel }) {
   const [reason, setReason] = useState(initial || '');
   return (
@@ -1881,15 +1880,12 @@ export default function ProjectDetail() {
   async function approveClosure() {
     const ok = await confirm('Approve closure for this project? This will mark it as closed.', { title: 'Approve Closure', label: 'Approve', danger: false });
     if (!ok) return;
-    try { await api.approveClosure(id); toast.success('Project closed successfully'); load(); } catch (e) { toast.error(e.message); }
+    try { await api.approveClosure(id, { request_version: project.closure_request_version }); toast.success('Project closed successfully'); load(); } catch (e) { toast.error(e.message); }
   }
 
   async function rejectClosure(note) {
-    await api.updateProject(id, { status: 'reopened' });
-    const msg = note?.trim()
-      ? `Closure rejected by ${user.name}: ${note.trim()}`
-      : `Closure rejected by ${user.name}. Project reopened for further work.`;
-    await api.addStatusUpdate(id, msg);
+    await api.rejectClosure(id, { comment: note, request_version: project.closure_request_version });
+    toast.success('Project returned for revision');
     setShowRejectDialog(false); load();
   }
 

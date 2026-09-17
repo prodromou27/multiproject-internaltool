@@ -215,6 +215,12 @@ async function init() {
       created_at            TEXT DEFAULT ${NOW},
       updated_at            TEXT DEFAULT ${NOW},
       closure_requested_at  TEXT,
+      closure_requested_by  INTEGER REFERENCES users(id),
+      closure_request_version INTEGER NOT NULL DEFAULT 0,
+      closure_reviewed_by   INTEGER REFERENCES users(id),
+      closure_reviewed_at   TEXT,
+      closure_review_comment TEXT,
+      closure_decision      TEXT,
       pending_from_customer TEXT,
       completion_pct        INTEGER,
       rag_override          TEXT
@@ -585,6 +591,7 @@ async function init() {
 
   // Indexes (mirror the SQLite set)
   await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_projects_approval_backlog ON projects(status, closure_requested_at, id);
     CREATE INDEX IF NOT EXISTS idx_tasks_project_id        ON tasks(project_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to       ON tasks(assigned_to);
     CREATE INDEX IF NOT EXISTS idx_tasks_status            ON tasks(status);
@@ -705,6 +712,15 @@ async function applyCompatibilityMigrations() {
   ];
 
   migrations.push(['20260917_activity_version', 'ALTER TABLE service_activities ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1']);
+
+  migrations.push(['20260917_project_closure_review', `
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_request_version INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_reviewed_by INTEGER REFERENCES users(id);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_reviewed_at TEXT;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_review_comment TEXT;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_decision TEXT;
+  `]);
 
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);

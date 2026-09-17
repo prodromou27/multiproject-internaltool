@@ -5,7 +5,7 @@ import { PAGES, canAccessPage, visiblePages, quickCreateActions, pageForPath } f
 test('navigation and create actions respect existing role and feature boundaries', () => {
   const ids = role => visiblePages(role).map(page => page.id);
   for (const role of ['engineer', 'planner', 'pm']) {
-    for (const id of ['customers', 'reports', 'workload', 'users', 'settings', 'scorecards']) {
+    for (const id of ['customers', 'reports', 'workload', 'users', 'settings', 'scorecards', 'approvals']) {
       assert.ok(!ids(role).includes(id), `${role} cannot discover ${id}`);
     }
     assert.ok(ids(role).includes('calendar'), `${role} can reach the existing calendar`);

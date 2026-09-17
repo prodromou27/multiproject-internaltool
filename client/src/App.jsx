@@ -19,6 +19,7 @@ import { ConfirmProvider } from './components/Confirm';
 // Route-level code splitting: each page loads on first visit instead of in the
 // initial bundle. Login stays eager so the unauthenticated first paint is instant.
 const Dashboard         = lazy(() => import('./pages/Dashboard'));
+const Approvals         = lazy(() => import('./pages/Approvals'));
 const Projects          = lazy(() => import('./pages/Projects'));
 const ProjectDetail     = lazy(() => import('./pages/ProjectDetail'));
 const Tasks             = lazy(() => import('./pages/Tasks'));
@@ -464,7 +465,7 @@ function Hamburger({ open, onClick }) {
 /* ── Sidebar content ─────────────────────────────────────── */
 const PAGE_ICONS = { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2,
   Award, BarChart2, UsersIcon, Settings, Search, ClipboardList, FileText, StickyNote,
-  UserCircle, MessageSquare, ShieldCheck, Zap, Activity };
+  UserCircle, MessageSquare, ShieldCheck, Zap, Activity, CheckCheck };
 
 function OverdueDot({ count }) {
   if (!count) return null;
@@ -862,6 +863,7 @@ export default function App() {
           <Route path="/customers"           element={<PrivateRoute page="customers"><Customers /></PrivateRoute>} />
           <Route path="/scorecards"          element={<PrivateRoute page="scorecards"><Scorecards /></PrivateRoute>} />
           <Route path="/reports"             element={<PrivateRoute page="reports"><Reports /></PrivateRoute>} />
+          <Route path="/approvals"           element={<PrivateRoute page="approvals"><Approvals /></PrivateRoute>} />
           <Route path="/users"               element={<PrivateRoute page="users"><UsersPage /></PrivateRoute>} />
           <Route path="/settings"            element={<PrivateRoute page="settings"><AdminPanel /></PrivateRoute>} />
           <Route path="/settings/:section"   element={<PrivateRoute page="settings"><AdminPanel /></PrivateRoute>} />

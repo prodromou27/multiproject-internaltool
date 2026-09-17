@@ -93,7 +93,9 @@ part of the foundation work.
 | 2 | Management report export permission correction | Unauthorized roles and download tokens rejected; manager export remains functional | Complete |
 | 3 | Shared page registry, grouped navigation and responsive shell | Shared role/feature registry, grouped navigation, access states and mobile focus handling implemented; browser QA pending | Complete |
 | 4 | Global Quick Create | Authorized actions launch existing forms through consumed URL intents; shared operational headers; browser QA pending | Complete |
-| 5 | Operational dashboards and approval flow | Personal due-work view; management exceptions; closure rejection/reopen with history and scoped tests | Planned |
+| 5 | Operational dashboards and approval flow | Personal due-work view; management exceptions; closure rejection/reopen with history and scoped tests | In progress |
+| 5a | Project closure reviews and backlog | Atomic approval/rejection with required revision comments, actors, request versions, audit history and notifications; manager-only paginated backlog | Complete |
+| 5b | Action-focused dashboards | Bounded scoped summaries, accurate service follow-up totals and operational exception cards | Planned |
 | 6 | Core detail/list and calendar improvements | Shared detail/timeline patterns; report/follow-up events; server pagination where justified | Planned |
 | 7 | Customer 360 and recommendations | Scoped customer history; persisted findings and follow-up workflow; safe additive migrations | Planned |
 | 8 | Workload model | Estimates/availability and configurable weighting; capacity and pressure shown separately | Planned |

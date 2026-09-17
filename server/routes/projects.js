@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, requireManager } = require('../middleware/auth');
 const { notify } = require('../notifications');
 const { decrypt } = require('../fieldCipher');
+const { logAudit } = require('../auditLog');
 
 /* ── RAG computation ───────────────────────────────────────── */
 function computeRag(row) {
@@ -163,12 +164,30 @@ router.delete('/:id/pin', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+router.get('/approvals', requireManager, async (req, res) => {
+  const positive = (value, fallback, max = Number.MAX_SAFE_INTEGER) => value === undefined ? fallback
+    : typeof value === 'string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) <= max ? Number(value) : null;
+  const page = positive(req.query.page, 1);
+  const pageSize = positive(req.query.page_size, 25, 100);
+  if (!page || !pageSize || !Number.isSafeInteger((page - 1) * pageSize)) return res.status(400).json({ error: 'Invalid pagination' });
+  const rows = await db.prepare(`SELECT p.id, p.title, p.priority, p.deadline, p.customer_id,
+      p.closure_requested_at, p.closure_request_version, requester.name AS requested_by_name, c.name AS customer_name
+    FROM projects p LEFT JOIN users requester ON requester.id=p.closure_requested_by
+    LEFT JOIN customers c ON c.id=p.customer_id WHERE p.status='pending_approval'
+    ORDER BY p.closure_requested_at ASC NULLS LAST, p.id ASC LIMIT ? OFFSET ?`).all(pageSize, (page - 1) * pageSize);
+  const { total } = await db.prepare("SELECT COUNT(*) AS total FROM projects WHERE status='pending_approval'").get();
+  res.json({ rows: rows.map(row => ({ ...row, customer_name: decrypt(row.customer_name) })), total: Number(total), page, page_size: pageSize });
+});
+
 router.get('/:id', requireAuth, async (req, res) => {
   const p = (await db.prepare(`
-    SELECT p.*, u.name as created_by_name, cu.name as customer_name, cu.contact_name as customer_contact, cu.contact_email as customer_email
+    SELECT p.*, u.name as created_by_name, cu.name as customer_name, cu.contact_name as customer_contact, cu.contact_email as customer_email,
+      requester.name AS closure_requested_by_name, reviewer.name AS closure_reviewed_by_name
     FROM projects p
     JOIN users u ON p.created_by = u.id
     LEFT JOIN customers cu ON p.customer_id = cu.id
+    LEFT JOIN users requester ON requester.id=p.closure_requested_by
+    LEFT JOIN users reviewer ON reviewer.id=p.closure_reviewed_by
     WHERE p.id = ?`).get(req.params.id));
   if (!p) return res.status(404).json({ error: 'Not found' });
   if (req.user.role !== 'manager' && req.user.role !== 'pm') {
@@ -315,47 +334,78 @@ router.put('/:id', requireManager, async (req, res) => {
 });
 
 // Engineer/planner requests closure — must be assigned to the project; PM is read-only
+async function recordClosureEvent(tx, req, project, action, message, version) {
+  await tx.prepare('INSERT INTO project_status_updates (project_id, user_id, message) VALUES (?, ?, ?)').run(project.id, req.user.id, message);
+  await tx.prepare('INSERT INTO project_activity (project_id, user_id, action, detail) VALUES (?, ?, ?, ?)')
+    .run(project.id, req.user.id, action, JSON.stringify({ request_version: version, message }));
+}
+
+async function notifyClosure(tx, req, project, type, title, message, managers = false) {
+  const recipients = managers
+    ? await tx.prepare("SELECT id FROM users WHERE role='manager' AND active=1 AND id != ?").all(req.user.id)
+    : await tx.prepare('SELECT u.id FROM project_assignments pa JOIN users u ON u.id=pa.user_id WHERE pa.project_id=? AND u.active=1 AND u.id != ?').all(project.id, req.user.id);
+  for (const user of recipients) await tx.prepare('INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)')
+    .run(user.id, type, title, message, `/projects/${project.id}`);
+}
+
 router.post('/:id/request-closure', requireAuth, async (req, res) => {
-  if (req.user.role === 'pm') return res.status(403).json({ error: 'Forbidden — PMs have read-only access to projects' });
-  const p = (await db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id));
-  if (!p) return res.status(404).json({ error: 'Not found' });
-  // Verify the requesting user is assigned to this project (managers are always allowed)
-  if (req.user.role !== 'manager') {
-    const assigned = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(p.id, req.user.id));
-    if (!assigned) return res.status(403).json({ error: 'Forbidden — you are not assigned to this project' });
-  }
-  if (['closed', 'cancelled', 'pending_approval'].includes(p.status)) return res.status(400).json({ error: 'Cannot request closure in current status' });
+  if (req.user.role === 'pm') return res.status(403).json({ error: 'PMs have read-only access to projects' });
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid project ID' });
+  const project = await db.prepare('SELECT * FROM projects WHERE id=?').get(id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+  if (req.user.role !== 'manager' && !await db.prepare('SELECT 1 FROM project_assignments WHERE project_id=? AND user_id=?').get(id, req.user.id)) return res.status(403).json({ error: 'You are not assigned to this project' });
+  if (['closed', 'cancelled', 'pending_approval'].includes(project.status)) return res.status(400).json({ error: 'Cannot request closure in current status' });
   const changed = await db.transaction(async tx => {
-    const result = await tx.prepare(`UPDATE projects SET status='pending_approval', closure_requested_at=datetime('now'), updated_at=datetime('now')
-      WHERE id=? AND status NOT IN ('closed','cancelled','pending_approval')`).run(p.id);
+    const result = await tx.prepare(`UPDATE projects SET status='pending_approval', closure_requested_at=datetime('now'),
+        closure_requested_by=?, closure_request_version=closure_request_version+1,
+        closure_reviewed_by=NULL, closure_reviewed_at=NULL, closure_review_comment=NULL, closure_decision=NULL, updated_at=datetime('now')
+      WHERE id=? AND status NOT IN ('closed','cancelled','pending_approval') AND closure_request_version=?`).run(req.user.id, id, project.closure_request_version);
     if (!result.changes) return false;
-    await tx.prepare('INSERT INTO project_status_updates (project_id, user_id, message) VALUES (?, ?, ?)')
-      .run(p.id, req.user.id, 'Closure requested by ' + req.user.name);
+    const message = `Closure requested by ${req.user.name}`;
+    await recordClosureEvent(tx, req, project, 'closure_requested', message, project.closure_request_version + 1);
+    await notifyClosure(tx, req, project, 'project.closure_requested', `Closure review: ${project.title}`, message, true);
     return true;
   });
-  if (!changed) return res.status(409).json({ error: 'Project status changed. Refresh before requesting closure.' });
-  logActivity(p.id, req.user.id, 'closure_requested', null);
-  res.json({ ok: true });
+  if (!changed) return res.status(409).json({ error: 'Project changed; reload before requesting closure' });
+  await logAudit(db, req, 'project', id, project.title, 'closure_requested', null);
+  res.json({ ok: true, request_version: project.closure_request_version + 1 });
 });
 
-// Manager approves closure
-router.post('/:id/approve-closure', requireManager, async (req, res) => {
-  const p = (await db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id));
-  if (!p) return res.status(404).json({ error: 'Not found' });
-  if (p.status !== 'pending_approval') return res.status(400).json({ error: 'Project is not pending approval' });
+async function reviewClosure(req, res, decision) {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid project ID' });
+  const body = req.body || {};
+  if (body.comment !== undefined && (typeof body.comment !== 'string' || body.comment.length > 2000)) return res.status(400).json({ error: 'Review comment must be text of at most 2000 characters' });
+  const comment = body.comment?.trim() || null;
+  if (decision === 'rejected' && !comment) return res.status(400).json({ error: 'Explain what needs revision before rejecting closure' });
+  if (body.request_version !== undefined && (!Number.isSafeInteger(body.request_version) || body.request_version < 0)) return res.status(400).json({ error: 'Invalid closure request version' });
+  const project = await db.prepare('SELECT * FROM projects WHERE id=?').get(id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+  if (body.request_version !== undefined && body.request_version !== project.closure_request_version) return res.status(409).json({ error: 'This closure request has changed. Reload before reviewing.', code: 'CLOSURE_CONFLICT' });
+  if (project.status !== 'pending_approval') return res.status(409).json({ error: 'This project is no longer awaiting closure review', code: 'CLOSURE_CONFLICT' });
+  const approved = decision === 'approved';
+  const message = approved ? `Project closed and approved by ${req.user.name}${comment ? ': ' + comment : ''}` : `Closure rejected by ${req.user.name}: ${comment}`;
   const changed = await db.transaction(async tx => {
-    const result = await tx.prepare(`UPDATE projects SET status='closed', closed_by=?, closed_at=datetime('now'), updated_at=datetime('now')
-      WHERE id=? AND status='pending_approval'`).run(req.user.id, p.id);
+    const result = await tx.prepare(`UPDATE projects SET status=?, closed_by=?, closed_at=CASE WHEN ?=1 THEN datetime('now') ELSE NULL END,
+      closure_reviewed_by=?, closure_reviewed_at=datetime('now'), closure_review_comment=?, closure_decision=?, updated_at=datetime('now')
+      WHERE id=? AND status='pending_approval' AND closure_request_version=?`)
+      .run(approved ? 'closed' : 'reopened', approved ? req.user.id : null,
+        approved ? 1 : 0,
+        req.user.id, comment, decision, id, project.closure_request_version);
     if (!result.changes) return false;
-    await tx.prepare('INSERT INTO project_status_updates (project_id, user_id, message) VALUES (?, ?, ?)')
-      .run(p.id, req.user.id, 'Project closed and approved by ' + req.user.name);
+    await recordClosureEvent(tx, req, project, approved ? 'project_closed' : 'closure_rejected', message, project.closure_request_version);
+    await notifyClosure(tx, req, project, `project.closure_${decision}`, `${approved ? 'Closure approved' : 'Revision requested'}: ${project.title}`, message);
     return true;
   });
-  if (!changed) return res.status(409).json({ error: 'Project is no longer pending approval' });
-  logActivity(p.id, req.user.id, 'project_closed', null);
-  notifyPendingScores(p.id, p.title);
+  if (!changed) return res.status(409).json({ error: 'This closure request has changed. Reload before reviewing.', code: 'CLOSURE_CONFLICT' });
+  await logAudit(db, req, 'project', id, project.title, `closure_${decision}`, comment);
+  if (approved) await notifyPendingScores(id, project.title);
   res.json({ ok: true });
-});
+}
+
+router.post('/:id/approve-closure', requireManager, (req, res) => reviewClosure(req, res, 'approved'));
+router.post('/:id/reject-closure', requireManager, (req, res) => reviewClosure(req, res, 'rejected'));
 
 router.post('/:id/status-update', requireAuth, async (req, res) => {
   if (req.user.role === 'pm') return res.status(403).json({ error: 'Forbidden — PMs have read-only access to projects' });

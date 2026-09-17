@@ -268,6 +268,21 @@ and re-check the acting manager's session before enforcing the last-manager guar
 Admin user inputs validate types and bcrypt's 72-byte password limit; hashes are
 computed asynchronously, duplicate emails return 409, and optional emails can be cleared.
 
+### Closure approvals
+Project closure reviews now have a dedicated manager-only `/approvals` page and
+paginated `GET /api/projects/approvals` API. Rejection uses
+`POST /api/projects/:id/reject-closure` with a required `comment` (at most 2,000
+characters), saving reopening, reviewer metadata, status history and assigned-user
+notifications in one transaction. Requests record their actor and increment
+`closure_request_version`; both review endpoints accept `request_version` to reject
+stale reviews. The browser sends this version. The approval endpoint still accepts
+older clients that omit it. Review actors and comments are available through the
+existing scoped project detail API; prior decision cycles remain in project history.
+Migration `20260917_project_closure_review` adds six nullable/defaulted fields and
+preserves existing projects. Legacy request actors remain unknown rather than guessed.
+An index on `(status, closure_requested_at, id)` supports the backlog. No new
+environment variables or background jobs are required.
+
 ### Tasks
 Per-project or ad-hoc. Statuses validated against an enum; priorities
 low/medium/high/critical. Supports comments with **@mention notifications**,

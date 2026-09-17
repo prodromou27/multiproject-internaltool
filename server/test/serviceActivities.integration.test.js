@@ -1064,3 +1064,101 @@ test('management activity report export rejects non-managers including scoped do
     await response.arrayBuffer();
   }
 });
+
+
+test('project closure rejection records a complete decision and protects newer requests', async () => {
+  const project = (await db.prepare('INSERT INTO projects (title, customer_id, created_by) VALUES (?, ?, ?)').run('Closure revision flow', ids.customer, ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?)').run(project, ids.engineerEnabled);
+  const path = `/api/projects/${project}`;
+  const request = await api(`${path}/request-closure`, { method: 'POST', token: ids.tokenEnabled });
+  assert.equal(request.status, 200);
+  const stored = await db.prepare('SELECT * FROM projects WHERE id=?').get(project);
+  assert.equal(stored.closure_requested_by, ids.engineerEnabled);
+  assert.equal(stored.closure_request_version, request.data.request_version);
+  for (const comment of ['', '   ', {}, 'x'.repeat(2001)]) {
+    assert.equal((await api(`${path}/reject-closure`, { method: 'POST', token: ids.tokenManager, body: { comment } })).status, 400);
+  }
+  assert.equal((await api(`${path}/reject-closure`, { method: 'POST', token: ids.tokenEnabled, body: { comment: 'Unauthorized' } })).status, 403);
+  const rejection = await api(`${path}/reject-closure`, { method: 'POST', token: ids.tokenManager, body: { comment: 'Finish the handover documents', request_version: stored.closure_request_version } });
+  assert.equal(rejection.status, 200);
+  const rejected = await db.prepare('SELECT * FROM projects WHERE id=?').get(project);
+  assert.equal(rejected.status, 'reopened');
+  assert.equal(rejected.closure_reviewed_by, ids.manager);
+  assert.equal(rejected.closure_decision, 'rejected');
+  assert.equal(rejected.closure_review_comment, 'Finish the handover documents');
+  assert.ok(rejected.closure_reviewed_at);
+  assert.equal(rejected.closed_at, null);
+  assert.equal(Number((await db.prepare("SELECT COUNT(*) AS n FROM project_activity WHERE project_id=? AND action='closure_rejected'").get(project)).n), 1);
+  assert.equal(Number((await db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE entity_id=? AND entity_type='project' AND action='closure_rejected'").get(project)).n), 1);
+  assert.equal((await api(`${path}/reject-closure`, { method: 'POST', token: ids.tokenManager, body: { comment: 'Repeat' } })).status, 409);
+  const notification = await db.prepare("SELECT body FROM notifications WHERE user_id=? AND type='project.closure_rejected' AND link=?").get(ids.engineerEnabled, path.replace('/api', ''));
+  assert.match(notification.body, /handover documents/);
+  const second = await api(`${path}/request-closure`, { method: 'POST', token: ids.tokenEnabled });
+  assert.equal(second.data.request_version, stored.closure_request_version + 1);
+  assert.equal((await api(`${path}/approve-closure`, { method: 'POST', token: ids.tokenManager, body: { request_version: stored.closure_request_version } })).status, 409);
+  const approved = await api(`${path}/approve-closure`, { method: 'POST', token: ids.tokenManager, body: { request_version: second.data.request_version, comment: 'Handover reviewed' } });
+  assert.equal(approved.status, 200);
+  const detail = await api(path, { token: ids.tokenEnabled });
+  assert.equal(detail.data.closure_requested_by_name, 'Engineer Enabled');
+  assert.equal(detail.data.closure_reviewed_by_name, 'Manager One');
+  assert.equal(detail.data.status, 'closed');
+  assert.equal(detail.data.closure_decision, 'approved');
+  assert.equal(detail.data.closure_review_comment, 'Handover reviewed');
+  assert.equal(detail.data.updates.length, 4);
+});
+
+test('approval backlog and review endpoints are management-only with validated inputs', async () => {
+  for (const token of [ids.tokenEnabled, ids.tokenDisabled]) {
+    assert.equal((await api('/api/projects/approvals', { token })).status, 403);
+  }
+  for (const role of ['planner', 'pm']) {
+    const user = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run(`Approval ${role}`, `approval-${role}@test.local`, bcrypt.hashSync('pw', 4), role)).lastInsertRowid;
+    const token = signJwt({ id: user });
+    assert.equal((await api('/api/projects/approvals', { token })).status, 403);
+    assert.equal((await api(`/api/projects/1/reject-closure`, { method: 'POST', token, body: { comment: 'Denied' } })).status, 403);
+  }
+  for (const query of ['page=0', 'page=1x', 'page_size=101', 'page=9007199254740991', 'page=1&page=2']) {
+    assert.equal((await api(`/api/projects/approvals?${query}`, { token: ids.tokenManager })).status, 400);
+  }
+  const project = (await db.prepare("INSERT INTO projects (title, status, created_by) VALUES (?, 'pending_approval', ?)").run('Legacy approval request', ids.manager)).lastInsertRowid;
+  const backlog = await api('/api/projects/approvals?page_size=1', { token: ids.tokenManager });
+  assert.equal(backlog.status, 200);
+  assert.ok(backlog.data.total >= 1);
+  assert.equal(backlog.data.rows.length, 1);
+  for (const review of [{ request_version: '0' }, { comment: {} }]) {
+    assert.equal((await api(`/api/projects/${project}/approve-closure`, { method: 'POST', token: ids.tokenManager, body: review })).status, 400);
+  }
+  assert.equal((await api(`/api/projects/${project}/approve-closure`, { method: 'POST', token: ids.tokenManager })).status, 200, 'existing clients may still approve without a version');
+});
+
+test('concurrent approval and rejection write exactly one decision on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Opposing closure decisions', ids.manager)).lastInsertRowid;
+  const path = `/api/projects/${project}`;
+  const request = await api(`${path}/request-closure`, { method: 'POST', token: ids.tokenManager });
+  const body = { request_version: request.data.request_version, comment: 'Review decision' };
+  const results = await Promise.all(['approve-closure', 'reject-closure'].map(action => api(`${path}/${action}`, { method: 'POST', token: ids.tokenManager, body })));
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+  assert.equal(Number((await db.prepare('SELECT COUNT(*) AS n FROM project_status_updates WHERE project_id=?').get(project)).n), 2);
+  const stored = await db.prepare('SELECT status, closure_decision FROM projects WHERE id=?').get(project);
+  assert.ok((stored.status === 'closed' && stored.closure_decision === 'approved') || (stored.status === 'reopened' && stored.closure_decision === 'rejected'));
+});
+
+
+test('closure review rolls back when its history cannot be recorded on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Closure history rollback', ids.manager)).lastInsertRowid;
+  const path = `/api/projects/${project}`;
+  const request = await api(`${path}/request-closure`, { method: 'POST', token: ids.tokenManager });
+  const originalTransaction = db.transaction;
+  try {
+    db.transaction = callback => originalTransaction(tx => callback({ ...tx, prepare(sql) {
+      if (sql.startsWith('INSERT INTO project_status_updates')) throw new Error('Simulated review history failure');
+      return tx.prepare(sql);
+    } }));
+    const response = await api(`${path}/reject-closure`, { method: 'POST', token: ids.tokenManager, body: { comment: 'Review must persist', request_version: request.data.request_version } });
+    assert.equal(response.status, 500);
+  } finally { db.transaction = originalTransaction; }
+  const stored = await db.prepare('SELECT status, closure_decision, closure_reviewed_by FROM projects WHERE id=?').get(project);
+  assert.equal(stored.status, 'pending_approval');
+  assert.equal(stored.closure_decision, null);
+  assert.equal(stored.closure_reviewed_by, null);
+});

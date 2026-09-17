@@ -11,6 +11,7 @@ export const PAGES = [
   { id: 'customers', path: '/customers', label: 'Customers', section: 'Management', icon: 'Building2', roles: ['manager'], description: 'Customer profiles, service contracts and team access' },
   { id: 'workload', path: '/workload', label: 'Workload', section: 'Management', icon: 'UsersIcon', roles: ['manager'], description: 'Engineer commitments and upcoming demand' },
   { id: 'reports', path: '/reports', label: 'Reports', section: 'Management', icon: 'BarChart2', roles: ['manager'], description: 'Operational summaries, delivery trends and reporting' },
+  { id: 'approvals', path: '/approvals', label: 'Approvals', section: 'Management', icon: 'CheckCheck', roles: ['manager'], description: 'Review closure requests and explain decisions to the project team' },
   { id: 'scorecards', path: '/scorecards', label: 'Scorecards', section: 'Management', icon: 'Award', roles: ['manager'], description: 'Project delivery evaluations and engineer performance' },
   { id: 'serviceOperations', path: '/service-operations', label: 'Service Operations', section: 'Management', icon: 'Activity', roles: ['manager'], description: 'Customer service activity and management reporting' },
   { id: 'sla', path: '/sla', label: 'SLA', section: 'Management', icon: 'ShieldCheck', roles: ['manager'], description: 'Service commitments and exceptions requiring attention' },
