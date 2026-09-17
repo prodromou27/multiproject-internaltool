@@ -270,7 +270,7 @@ export const api = {
   slaOverview: () => req('GET', '/sla/overview'),
 
   // calendar
-  calendar: (month) => req('GET', `/calendar?month=${month}`),
+  calendar: (month, options) => req('GET', `/calendar?${new URLSearchParams({ month })}`, undefined, options),
 
   // settings / integrations
   getIntegrations: () => req('GET', '/settings/integrations'),

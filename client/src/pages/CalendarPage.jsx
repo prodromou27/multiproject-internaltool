@@ -5,6 +5,7 @@ import { api } from '../api';
 import { useAuth } from '../App';
 import { fmtDate, Modal } from '../components/Shared';
 import { useToast } from '../components/Toast';
+import { localDateISO } from '../utils/dates';
 
 const DAYS   = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -209,7 +210,7 @@ function ContextMenu({ x, y, date, onNewVisit, onClose }) {
 function EventChip({ event, onClick, draggable, onDragStart }) {
   const s = TYPE_STYLE[event.type];
   return (
-    <div
+    <button type="button"
       onClick={e => { e.stopPropagation(); onClick(event); }}
       draggable={draggable}
       onDragStart={e => { e.stopPropagation(); onDragStart?.(event, e); }}
@@ -218,12 +219,12 @@ function EventChip({ event, onClick, draggable, onDragStart }) {
         fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
         overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 2,
         borderLeft: `3px solid ${s.color}`, lineHeight: '18px',
-        display: 'flex', alignItems: 'center', gap: 3, cursor: draggable ? 'grab' : 'pointer',
+        display: 'flex', width: '100%', borderTop: 0, borderRight: 0, borderBottom: 0, textAlign: 'left', alignItems: 'center', gap: 3, cursor: draggable ? 'grab' : 'pointer',
       }}
       title={event.title || event.customer_name}
     >
       <s.Icon size={10} /> {event.title || event.customer_name}
-    </div>
+    </button>
   );
 }
 
@@ -231,22 +232,25 @@ function EventChip({ event, onClick, draggable, onDragStart }) {
 function EventPopover({ event, onClose, onReportSent }) {
   const s = TYPE_STYLE[event.type];
   const { user } = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   async function markSent() {
-    await api.markReportSent(event.id);
-    onReportSent();
-    onClose();
+    if (saving) return;
+    setSaving(true); setError('');
+    try {
+      await api.markReportSent(event.id);
+      onReportSent();
+      onClose();
+    } catch (e) {
+      setError(e.message || 'Could not mark the report sent');
+      setSaving(false);
+    }
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 500,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-    }} onClick={onClose}>
-      <div style={{
-        background: '#fff', borderRadius: 10, boxShadow: '0 8px 30px rgba(0,0,0,.15)',
-        width: '100%', maxWidth: 380, padding: 20,
-      }} onClick={e => e.stopPropagation()}>
+    <Modal title="Calendar event" onClose={onClose}>
+      {error && <div className="error-msg" role="alert">{error}</div>}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ width: 36, height: 36, borderRadius: 8, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -285,17 +289,16 @@ function EventPopover({ event, onClose, onReportSent }) {
             <div><span style={{ color: '#6b7280' }}>Report:</span> {event.report_sent
               ? <span style={{ color: 'var(--success)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><Check size={12} /> Sent</span>
               : <span style={{ color: 'var(--warning)', fontWeight: 700 }}>Pending</span>}</div>
-            {!event.report_sent && event.status !== 'cancelled' && (
+            {!event.report_sent && event.status !== 'cancelled' && ['manager', 'planner', 'engineer'].includes(user.role) && (
               <button className="btn btn-success btn-sm"
                 style={{ marginTop: 8, alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 5 }}
-                onClick={markSent}>
+                disabled={saving} onClick={markSent}>
                 <Check size={13} /> Mark Report Sent
               </button>
             )}
           </>}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -434,6 +437,9 @@ export default function CalendarPage() {
   const [selected, setSelected] = useState(null);
   const [filters, setFilters] = useState({ task: true, project: true, maintenance: true });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [refresh, setRefresh] = useState(0);
+  const [rescheduling, setRescheduling] = useState(false);
   const [draggedEvent, setDraggedEvent] = useState(null);
   const [dragOverDate, setDragOverDate] = useState(null);
 
@@ -445,12 +451,19 @@ export default function CalendarPage() {
 
   const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
 
-  const load = useCallback(() => {
-    setLoading(true);
-    api.calendar(monthStr).then(d => { setData(d ?? { tasks: [], projects: [], visits: [] }); setLoading(false); });
-  }, [monthStr]);
+  const load = useCallback(() => setRefresh(value => value + 1), []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    setLoading(true); setLoadError(''); setSelected(null);
+    setData({ tasks: [], projects: [], visits: [] });
+    api.calendar(monthStr, { signal: controller.signal })
+      .then(result => { if (active) setData(result); })
+      .catch(error => { if (active && error.name !== 'AbortError') setLoadError(error.message || 'Could not load calendar'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; controller.abort(); };
+  }, [monthStr, refresh]);
 
   // Close context menu on scroll
   useEffect(() => {
@@ -483,7 +496,7 @@ export default function CalendarPage() {
     byDay[d].push(e);
   });
 
-  const todayStr = now.toISOString().slice(0, 10);
+  const todayStr = localDateISO(now);
 
   const upcoming = allEvents
     .filter(e => (e.date || '') >= todayStr)
@@ -508,6 +521,7 @@ export default function CalendarPage() {
   }
 
   function canReschedule(event) {
+    if (rescheduling || loading) return false;
     if (event.type === 'project') return user.role === 'manager';
     if (event.type === 'maintenance') return user.role === 'manager' || user.role === 'planner';
     return user.role === 'manager' || (user.role === 'engineer' && event.assigned_to === user.id);
@@ -516,7 +530,7 @@ export default function CalendarPage() {
   async function reschedule(event, date) {
     setDraggedEvent(null); setDragOverDate(null);
     if (!event || !date || event.date?.slice(0, 10) === date || !canReschedule(event)) return;
-    const previous = data;
+    setRescheduling(true);
     const bucket = event.type === 'task' ? 'tasks' : event.type === 'project' ? 'projects' : 'visits';
     setData(current => ({ ...current, [bucket]: current[bucket].map(item => item.id === event.id ? { ...item, date } : item) }));
     try {
@@ -525,8 +539,10 @@ export default function CalendarPage() {
       else await api.updateVisit(event.id, { scheduled_date: date });
       toast.success(`Rescheduled to ${fmtDate(date)}`);
     } catch (error) {
-      setData(previous);
+      load();
       toast.error(error.message || 'Could not reschedule event');
+    } finally {
+      setRescheduling(false);
     }
   }
 
@@ -544,10 +560,10 @@ export default function CalendarPage() {
               <Plus size={14} /> New Visit
             </button>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={goToday}>Today</button>
-          <button className="btn btn-ghost btn-sm" onClick={prevMonth} style={{ display: 'inline-flex', alignItems: 'center' }}><ChevronLeft size={16} /></button>
+          <button className="btn btn-ghost btn-sm" onClick={goToday} disabled={rescheduling}>Today</button>
+          <button className="btn btn-ghost btn-sm" onClick={prevMonth} aria-label="Previous month" disabled={rescheduling || year === 1900 && month === 0} style={{ display: 'inline-flex', alignItems: 'center' }}><ChevronLeft size={16} /></button>
           <span style={{ fontWeight: 700, minWidth: 160, textAlign: 'center', fontSize: 15 }}>{MONTHS[month]} {year}</span>
-          <button className="btn btn-ghost btn-sm" onClick={nextMonth} style={{ display: 'inline-flex', alignItems: 'center' }}><ChevronRight size={16} /></button>
+          <button className="btn btn-ghost btn-sm" onClick={nextMonth} aria-label="Next month" disabled={rescheduling || year === 9998 && month === 11} style={{ display: 'inline-flex', alignItems: 'center' }}><ChevronRight size={16} /></button>
         </div>
       </div>
 
@@ -574,6 +590,10 @@ export default function CalendarPage() {
         </span>
       </div>
 
+      {loadError && <div className="error-msg" role="alert" style={{ marginBottom: 16 }}>
+        {loadError} <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
+      </div>}
+      {rescheduling && <p role="status">Saving schedule change...</p>}
       {/* Grid + sidebar */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 280px', gap: 16, alignItems: 'start' }}
            className="calendar-layout">

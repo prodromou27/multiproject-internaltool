@@ -113,6 +113,7 @@ test.before(async () => {
   app.use('/api/tasks', require('../routes/tasks'));
   app.use('/api/projects', require('../routes/projects'));
   app.use('/api/operations', require('../routes/operations'));
+  app.use('/api/calendar', require('../routes/calendar'));
   app.use('/api/maintenance-visits', require('../routes/maintenance-visits'));
   app.use('/api/time-logs', require('../routes/time-logs'));
   app.use('/api/teams', require('../routes/teams'));
@@ -1066,6 +1067,44 @@ test('management activity report export rejects non-managers including scoped do
   }
 });
 
+
+test('calendar validates real month boundaries and matches module role visibility', async () => {
+  const mkUser = async role => (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run(`Calendar ${role}`, `calendar-${role}@test.local`, 'not-used', role)).lastInsertRowid;
+  const planner = await mkUser('planner');
+  const pm = await mkUser('pm');
+  const project = (await db.prepare('INSERT INTO projects (title, deadline, created_by) VALUES (?,?,?)').run('Calendar unassigned project', '2038-12-31', ids.manager)).lastInsertRowid;
+  const task = (await db.prepare('INSERT INTO tasks (title, deadline, assigned_to, created_by) VALUES (?,?,?,?)').run('Calendar own task', '2038-12-31', ids.engineerEnabled, ids.manager)).lastInsertRowid;
+  const hiddenTask = (await db.prepare('INSERT INTO tasks (title, deadline, assigned_to, created_by) VALUES (?,?,?,?)').run('Calendar legacy PM task', '2038-12-30', pm, ids.manager)).lastInsertRowid;
+  const visit = (await db.prepare('INSERT INTO maintenance_visits (customer_id,title,scheduled_date,created_by) VALUES (?,?,?,?)').run(ids.customer, 'Calendar visit', '2038-12-31', ids.manager)).lastInsertRowid;
+  const next = (await db.prepare('INSERT INTO projects (title,deadline,created_by) VALUES (?,?,?)').run('Next year boundary', '2039-01-01', ids.manager)).lastInsertRowid;
+  const get = token => api('/api/calendar?month=2038-12', { token });
+  const own = await get(ids.tokenEnabled);
+  assert.equal(own.status, 200);
+  assert.ok(own.data.tasks.some(row => row.id === task));
+  assert.ok(!own.data.tasks.some(row => row.id === hiddenTask));
+  assert.ok(!own.data.projects.some(row => row.id === project));
+  assert.ok(!own.data.visits.some(row => row.id === visit));
+  const planning = await get(signJwt({ id: planner }));
+  assert.deepEqual(planning.data.tasks, []);
+  assert.deepEqual(planning.data.projects, []);
+  assert.ok(planning.data.visits.some(row => row.id === visit));
+  const readOnly = await get(signJwt({ id: pm }));
+  assert.deepEqual(readOnly.data.tasks, []);
+  assert.ok(readOnly.data.projects.some(row => row.id === project));
+  assert.ok(readOnly.data.visits.some(row => row.id === visit));
+  assert.equal((await api(`/api/maintenance-visits/${visit}/report-sent`, { method: 'POST', token: signJwt({ id: pm }) })).status, 403);
+  const management = await get(ids.tokenManager);
+  assert.ok(management.data.projects.some(row => row.id === project));
+  assert.ok(!management.data.projects.some(row => row.id === next));
+  await db.prepare('INSERT INTO project_assignments (project_id,user_id) VALUES (?,?)').run(project, ids.engineerEnabled);
+  await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id,user_id) VALUES (?,?)').run(visit, ids.engineerEnabled);
+  const assigned = await get(ids.tokenEnabled);
+  assert.ok(assigned.data.projects.some(row => row.id === project));
+  assert.ok(assigned.data.visits.some(row => row.id === visit));
+  for (const query of ['', 'month=2038-00', 'month=2038-13', 'month=1899-12', 'month=9999-01', 'month=2038-1', 'month=2038-12&month=2039-01', 'month[x]=2038-12']) {
+    assert.equal((await api(`/api/calendar?${query}`, { token: ids.tokenManager })).status, 400);
+  }
+});
 
 test('ordinary project edits cannot bypass closure requests or reviews', async () => {
   const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Protected closure', ids.manager)).lastInsertRowid;

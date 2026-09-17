@@ -427,6 +427,14 @@ customers, for engineer/customer/team-level history and MSP reporting.
   `logAudit()` helper, same convention as every other module.
 
 ### Calendar
+The month feed validates real months (1900–9998) and uses the existing module
+visibility rules: engineers see their assignments, planners see visits, and PMs
+read projects and visits without tasks. The browser cancels superseded loads,
+shows retryable failures, and uses local dates for Today. Events open in the shared
+accessible modal; PMs have no report submission action. Schedule changes are
+serialized in the UI and failures reload the current month instead of restoring
+a stale snapshot. No migration, environment setting or background job is required.
+
 Month view (`?month=YYYY-MM`) unifying task deadlines, project deadlines, and visits —
 each role-scoped (engineers see only their own; planners/PMs see visits within their
 projects).
