@@ -107,4 +107,11 @@ function requireDownloadManagerOrPlanner(req, res, next) {
   });
 }
 
-module.exports = { requireAuth, requireDownloadAuth, requireManager, requireManagerOrPlanner, requireDownloadManagerOrPlanner, signJwt, verifyJwt };
+function requireDownloadManager(req, res, next) {
+  return requireDownloadAuth(req, res, () => {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
+    next();
+  });
+}
+
+module.exports = { requireAuth, requireDownloadAuth, requireManager, requireManagerOrPlanner, requireDownloadManager, requireDownloadManagerOrPlanner, signJwt, verifyJwt };

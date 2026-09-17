@@ -109,6 +109,7 @@ test.before(async () => {
   app.use('/api/admin', require('../routes/admin'));
   app.use('/api/notes', require('../routes/notes'));
   app.use('/api/search', require('../routes/search'));
+  app.use('/api/reports', require('../routes/reports'));
   app.use('/api/tasks', require('../routes/tasks'));
   app.use('/api/projects', require('../routes/projects'));
   app.use('/api/maintenance-visits', require('../routes/maintenance-visits'));
@@ -1042,4 +1043,24 @@ test('completion and follow-up creation invalidate older editing snapshots', asy
   assert.equal((await api(path, { method: 'PUT', token, body: { version: completed.version, title: 'Stale' } })).status, 409);
   assert.equal((await api(`${path}/follow-up-task`, { method: 'POST', token, body: {} })).status, 200);
   assert.equal((await api(path, { token })).data.version, linked.version);
+});
+
+
+test('management activity report export rejects non-managers including scoped download tokens', async () => {
+  for (const role of ['planner', 'pm', 'engineer']) {
+    const user = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+      .run(`Report guard ${role}`, `report-guard-${role}@test.local`, bcrypt.hashSync('pw', 4), role)).lastInsertRowid;
+    const token = signJwt({ id: user });
+    assert.equal((await api('/api/reports/service-activity/export', { token })).status, 403);
+    const downloadToken = signJwt({ id: user, download: true });
+    assert.equal((await api(`/api/reports/service-activity/export?token=${downloadToken}`)).status, 403);
+  }
+  for (const suffix of ['', `?token=${signJwt({ id: ids.manager, download: true })}`]) {
+    const response = await fetch(`${baseUrl}/api/reports/service-activity/export${suffix}`, {
+      headers: suffix ? {} : { Authorization: `Bearer ${ids.tokenManager}` },
+    });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /spreadsheetml/);
+    await response.arrayBuffer();
+  }
 });

@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const ExcelJS = require('exceljs');
 const db = require('../db');
-const { requireManager, requireDownloadManagerOrPlanner } = require('../middleware/auth');
+const { requireManager, requireDownloadManager } = require('../middleware/auth');
 const { decrypt: decryptField } = require('../fieldCipher');
 
 router.get('/summary', requireManager, async (req, res) => {
@@ -221,7 +221,7 @@ router.get('/service-activity/team', requireManager, async (req, res) => {
   res.json({ rows, summary });
 });
 
-router.get('/service-activity/export', requireDownloadManagerOrPlanner, async (req, res) => {
+router.get('/service-activity/export', requireDownloadManager, async (req, res) => {
   const rows = await activityReportRows(req.query);
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Service Activity Report');
