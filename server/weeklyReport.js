@@ -297,7 +297,7 @@ function buildReportHtml(data) {
           <td style="${tdStyle};font-weight:600">${escapeHtml(d.title)}</td>
           <td style="${tdStyle};${isOverdue(d.deadline) ? 'color:#dc2626;font-weight:700' : 'color:#0f172a'}">${fmtDate(d.deadline)}${isOverdue(d.deadline) ? ' ⚠️' : ''}</td>
           <td style="${tdStyle}">${priorityPill(d.priority)}</td>
-          <td style="${tdStyle};color:#64748b">${d.assigned_to || d.customer_name || '—'}</td>
+          <td style="${tdStyle};color:#64748b">${escapeHtml(d.assigned_to || d.customer_name || '—')}</td>
         </tr>`).join('')}</tbody>
       </table>`;
   const sec2 = sectionWrapper('📅', 'Upcoming Deadlines (Next 14 Days)', upcomingDeadlines.length, s2Body, '#8b5cf6');
