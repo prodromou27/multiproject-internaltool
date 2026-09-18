@@ -2,6 +2,19 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { metadata,compileReport,csvCell } = require('../customReports');
 const base = { source: 'tasks',fields: ['id','title'] };
+test('report templates compile with explicit UTC dates and configured terminal states', () => {
+  const { reportTemplates } = require('../reportTemplates');
+  const templates = reportTemplates(new Date('2024-02-29T23:59:59Z'),{ project: [{ value: 'archived',is_terminal: true }] });
+  assert.equal(templates.month_start,'2024-02-01');
+  assert.equal(templates.month_end,'2024-02-29');
+  assert.equal(templates.rows.length,11);
+  for (const template of templates.rows) assert.doesNotThrow(() => compileReport(template.definition,100));
+  const overdue = compileReport(templates.rows.find(row => row.key==='overdue_projects').definition,100);
+  assert.match(overdue.sql,/r.status NOT IN \(\?,\?,\?\)/);
+  assert.deepEqual(overdue.params.slice(0,4),['2024-02-29','closed','cancelled','archived']);
+  assert.equal(reportTemplates(new Date('2026-12-31T12:00:00Z')).month_end,'2026-12-31');
+  assert.throws(() => compileReport({ ...base,filters: [{ field: 'id',operator: 'not_in',value: ['1'] }] },100),error => error.status===400);
+});
 test('CSV cells escape delimiters and protect spreadsheet formula strings', () => {
   assert.equal(csvCell('a,"b"\nc'),'"a,""b""\nc"');
   assert.equal(csvCell(' =SUM(A1:A2)'),`"' =SUM(A1:A2)"`);

@@ -583,7 +583,12 @@ CSV escapes cells and protects against spreadsheet formula interpretation.
 Migration `20260918_saved_custom_reports` stores versioned private or management-shared
 definitions. Only their owner can modify/delete them; managers recheck visibility
 on every saved run, and stale edits return HTTP 409 `REPORT_CONFLICT`.
-Scheduling and templates remain subsequent delivery stages.
+Eleven report templates load editable definitions through the same engine for monthly
+activity, engineer/team/customer summaries, service time, projects, overdue projects,
+visits, pending reports, recommendations and approval backlog. Dates are explicit
+UTC snapshots; saved copies retain their date filters. Overdue projects exclude
+configured terminal states. Capacity reporting links to the dedicated workload
+model. Saved-report scheduling remains a subsequent delivery stage.
 Summary stats, by-status breakdown, engineer load, KPI health (sorted worst-first),
 6-month trend charts (tasks created/completed/on-time, visits scheduled/completed/
 reported, hours logged — built with batched range queries), pending-closure list, a

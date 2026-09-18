@@ -1290,6 +1290,11 @@ test('custom reports preview, aggregate and export bounded matching rows on Post
   const grouped = await api('/api/reports/custom/preview',{ method: 'POST',token: ids.tokenManager,body: { ...definition,fields: ['status'],group_by: ['status'],aggregations: [{ field: '*',operation: 'count' }] } });
   assert.equal(grouped.status,200);
   assert.deepEqual(grouped.data.rows,[{ status: 'completed',metric_0: 2 },{ status: 'open',metric_0: 100 }]);
+  const excluded = await api('/api/reports/custom/preview',{ method: 'POST',token: ids.tokenManager,body: { ...definition,filters: [...definition.filters,{ field: 'status',operator: 'not_in',value: ['completed'] }] } });
+  assert.equal(excluded.status,200);
+  assert.equal(excluded.data.rows.length,100);
+  assert.equal(excluded.data.truncated,false);
+  assert.ok(excluded.data.rows.every(row => row.status==='open'));
   const response = await fetch(`${baseUrl}/api/reports/custom/export`,{ method: 'POST',headers: { 'Content-Type': 'application/json','X-SolutionsHub-Request': '1',Authorization: `Bearer ${ids.tokenManager}` },body: JSON.stringify(definition) });
   assert.equal(response.status,200);
   const workbook = new (require('exceljs').Workbook)();

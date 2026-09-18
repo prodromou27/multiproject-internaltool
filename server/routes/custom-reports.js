@@ -4,8 +4,14 @@ const ExcelJS = require('exceljs');
 const { requireManager } = require('../middleware/auth');
 const { metadata,compileReport,csvCell } = require('../customReports');
 const { logAudit } = require('../auditLog');
+const { reportTemplates } = require('../reportTemplates');
 router.use(requireManager);
-router.get('/sources',(req,res) => res.json({ sources: metadata(),preview_limit: 100,export_limit: 5000 }));
+router.get('/sources',async (req,res) => {
+  const row = await db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
+  let config = {};
+  try { config = JSON.parse(row?.value || '{}'); } catch { /* use default states */ }
+  res.json({ sources: metadata(),templates: reportTemplates(new Date(),config || {}),preview_limit: 100,export_limit: 5000 });
+});
 const id = value => typeof value==='string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
 const conflict = res => res.status(409).json({ error: 'Saved report changed. Reload before modifying it.',code: 'REPORT_CONFLICT' });
 function savedInput(body) {

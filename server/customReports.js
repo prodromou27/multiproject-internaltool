@@ -8,7 +8,7 @@ const SOURCES = {
   activities: { label: 'Service activities',grain: 'One row per service activity',from: 'service_activities r',fields: { ...common,reference: field('r.activity_reference','text','Reference'),customer_id: field('r.customer_id','id','Customer ID'),engineer_id: field('r.engineer_id','id','Engineer ID'),team_id: field('r.team_id','id','Team ID'),activity_date: field('r.activity_date','date','Activity date'),duration_minutes: field('r.duration_minutes','number','Duration minutes'),classification: field('r.billable_classification','text','Billable classification') } },
   recommendations: { label: 'Customer recommendations',grain: 'One row per recommendation',from: 'customer_recommendations r',fields: { id: common.id,status: common.status,created_at: common.created_at,created_date: common.created_date,customer_id: field('r.customer_id','id','Customer ID'),owner_id: field('r.owner_id','id','Owner ID'),risk_level: field('r.risk_level','text','Risk level'),due_date: field('r.due_date','date','Due date'),project_id: field('r.related_project_id','id','Converted project ID') } },
 };
-const OPERATORS = { text: ['eq','neq','contains','in','is_null','is_not_null'],id: ['eq','neq','in','is_null','is_not_null'],date: ['eq','neq','lt','lte','gt','gte','in','is_null','is_not_null'],number: ['eq','neq','lt','lte','gt','gte','in','is_null','is_not_null'] };
+const OPERATORS = { text: ['eq','neq','contains','in','not_in','is_null','is_not_null'],id: ['eq','neq','in','not_in','is_null','is_not_null'],date: ['eq','neq','lt','lte','gt','gte','in','not_in','is_null','is_not_null'],number: ['eq','neq','lt','lte','gt','gte','in','not_in','is_null','is_not_null'] };
 const fail = message => { throw Object.assign(new Error(message),{ status: 400 }); };
 const object = value => value && typeof value==='object' && !Array.isArray(value);
 function shape(value,keys,label) {
@@ -61,11 +61,11 @@ function compileReport(definition,limit) {
     if (['is_null','is_not_null'].includes(filter.operator)) {
       if (filter.value!==undefined) fail('Null operators do not accept values');
       clauses.push(`${value.sql} IS ${filter.operator==='is_not_null' ? 'NOT ' : ''}NULL`);
-    } else if (filter.operator==='in') {
+    } else if (['in','not_in'].includes(filter.operator)) {
       const entries = array(filter.value,50,'IN values');
       if (!entries.length) fail('IN requires values');
       entries.forEach(entry => params.push(scalar(entry,value.type)));
-      clauses.push(`${value.sql} IN (${entries.map(() => '?').join(',')})`);
+      clauses.push(`${value.sql} ${filter.operator==='not_in' ? 'NOT IN' : 'IN'} (${entries.map(() => '?').join(',')})`);
     } else {
       const entry = scalar(filter.value,value.type);
       if (filter.operator==='contains') {

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../App';
+import { Link } from 'react-router-dom';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { Modal } from './Shared';
 import { useToast } from './Toast';
@@ -52,7 +53,7 @@ export default function ReportBuilder() {
   const [save,setSave] = useState(null);
   const scope = `${user.id}:${page}`;
   const signature = `${user.id}:${JSON.stringify(definition)}`;
-  const reads = useLatestRequest(scope),runs = useLatestRequest(signature),opens = useLatestRequest(`${user.id}:open`);
+  const reads = useLatestRequest(scope),runs = useLatestRequest(signature),opens = useLatestRequest(`${signature}:open`);
   const load = useCallback(() => {
     const request = reads.begin();
     if (request.signal.aborted) return;
@@ -84,7 +85,7 @@ export default function ReportBuilder() {
         }
         return value;
       };
-      return { ...filter,value: filter.operator==='in' ? String(filter.value).split(',').map(value => parse(value.trim())) : parse(filter.value) };
+      return { ...filter,value: ['in','not_in'].includes(filter.operator) ? String(filter.value).split(',').map(value => parse(value.trim())) : parse(filter.value) };
     }) };
   }
   async function run(event) {
@@ -132,6 +133,17 @@ export default function ReportBuilder() {
   return <section>
     {error && <div className="error-msg" role="alert">{error}</div>}
     <section className="card" style={{ marginBottom: 20 }}>
+      <h2 style={{ fontSize: 18 }}>Report templates</h2>
+      <p className="text-muted text-sm">Dates resolved as of {references.templates.as_of} UTC. Monthly templates cover {references.templates.month_start} to {references.templates.month_end}. Saved copies retain their selected dates.</p>
+      <div style={{ display: 'grid',gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',gap: 12 }}>
+        {references.templates.rows.map(template => <div key={template.key}>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={() => { opens.begin(); setSelected(null); setDefinition({ ...initial(),...template.definition }); setError(''); }}>{template.label}</button>
+          <p className="text-muted text-sm">{template.description}</p>
+        </div>)}
+        <div><Link className="btn btn-ghost btn-sm" to="/workload">Workload and capacity</Link><p className="text-muted text-sm">Review recorded effort, missing estimates and weekly availability in the workload model.</p></div>
+      </div>
+    </section>
+    <section className="card" style={{ marginBottom: 20 }}>
       <h2 style={{ fontSize: 18 }}>Saved reports</h2>
       <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>{references.saved.rows.map(row => <button className="btn btn-ghost btn-sm" key={row.id} onClick={() => openReport(row.id)}>{row.name} · {row.visibility}</button>)}</div>
       <div className="flex gap-8" style={{ marginTop: 12 }}><button className="btn btn-ghost btn-sm" disabled={page<=1} onClick={() => setPage(value => value-1)}>Previous</button><span>Page {page} · {references.saved.total} definitions</span><button className="btn btn-ghost btn-sm" disabled={page*25>=references.saved.total} onClick={() => setPage(value => value+1)}>Next</button><button className="btn btn-ghost btn-sm" onClick={load}>Refresh</button></div>
@@ -153,7 +165,7 @@ export default function ReportBuilder() {
         return <div className="form-row" key={index}>
           <select aria-label={`Filter field ${index+1}`} value={entry.field} onChange={event => change('filters',index,{ field: event.target.value,operator: 'eq',value: '' })}>{source.fields.map(row => <option key={row.key} value={row.key}>{row.label}</option>)}</select>
           <select aria-label={`Filter operator ${index+1}`} value={entry.operator} onChange={event => change('filters',index,{ operator: event.target.value })}>{field.operators.map(value => <option key={value} value={value}>{value.replaceAll('_',' ')}</option>)}</select>
-          {!['is_null','is_not_null'].includes(entry.operator) && <input aria-label={`Filter value ${index+1}`} value={Array.isArray(entry.value) ? entry.value.join(',') : entry.value} onChange={event => change('filters',index,{ value: event.target.value })} type={entry.operator==='in' ? 'text' : field.type==='date' ? 'date' : ['id','number'].includes(field.type) ? 'number' : 'text'} step={field.type==='id' ? 1 : 'any'} min={field.type==='id' ? 1 : undefined} placeholder={entry.operator==='in' ? 'Comma-separated values' : 'Value'} maxLength={5000} />}
+          {!['is_null','is_not_null'].includes(entry.operator) && <input aria-label={`Filter value ${index+1}`} value={Array.isArray(entry.value) ? entry.value.join(',') : entry.value} onChange={event => change('filters',index,{ value: event.target.value })} type={['in','not_in'].includes(entry.operator) ? 'text' : field.type==='date' ? 'date' : ['id','number'].includes(field.type) ? 'number' : 'text'} step={field.type==='id' ? 1 : 'any'} min={field.type==='id' ? 1 : undefined} placeholder={['in','not_in'].includes(entry.operator) ? 'Comma-separated values' : 'Value'} maxLength={5000} />}
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => set('filters',definition.filters.filter((_,i) => i!==index))}>Remove</button>
         </div>;
       })}<button className="btn btn-ghost btn-sm" type="button" disabled={definition.filters.length>=12} onClick={() => set('filters',[...definition.filters,{ field: source.fields[0].key,operator: 'eq',value: '' }])}>Add filter</button></fieldset>
