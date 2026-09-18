@@ -1273,9 +1273,10 @@ test('workload input creation and updates detect simultaneous changes on Postgre
 
 test('workload planning calculates known coverage, per-engineer visits and recorded availability on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
   const engineer = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Capacity fixture','capacity@test.local',bcrypt.hashSync('pw',4),'engineer')).lastInsertRowid;
+  const peer = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Capacity peer','capacity-peer@test.local',bcrypt.hashSync('pw',4),'engineer')).lastInsertRowid;
   const task = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by,deadline) VALUES (?,?,?,?)').run('Capacity task',engineer,ids.manager,'2045-01-03')).lastInsertRowid;
   const visit = (await db.prepare('INSERT INTO maintenance_visits (title,customer_id,scheduled_date,created_by) VALUES (?,?,?,?)').run('Capacity visit',ids.customer,'2045-01-03',ids.manager)).lastInsertRowid;
-  for (const user of [engineer,ids.engineerEnabled]) await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id,user_id) VALUES (?,?)').run(visit,user);
+  for (const user of [engineer,peer]) await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id,user_id) VALUES (?,?)').run(visit,user);
   const save = (endpoint,body) => api(`/api/workload/planning/${endpoint}`, { method: 'PUT',token: ids.tokenManager,body });
   await save('estimate',{ kind: 'task',id: task,version: 0,remaining_hours: 15 });
   await save('estimate',{ kind: 'visit',id: visit,version: 0,remaining_hours: 5 });
@@ -1287,7 +1288,7 @@ test('workload planning calculates known coverage, per-engineer visits and recor
   assert.equal(week.capacity_percent,200);
   assert.equal(week.unknown_estimates,0);
   assert.equal(week.items.length,2);
-  assert.equal(response.data.engineers.find(row => row.id === ids.engineerEnabled).weeks[0].items.find(row => row.kind === 'visit' && row.id === visit).remaining_hours,5);
+  assert.equal(response.data.engineers.find(row => row.id === peer).weeks[0].items.find(row => row.kind === 'visit' && row.id === visit).remaining_hours,5);
   const missing = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by,deadline) VALUES (?,?,?,?)').run('Unknown capacity task',engineer,ids.manager,'2045-01-03')).lastInsertRowid;
   const partial = await api('/api/workload/planning?as_of=2045-01-03', { token: ids.tokenManager });
   assert.equal(partial.data.engineers.find(row => row.id === engineer).weeks[0].capacity_percent,null);
