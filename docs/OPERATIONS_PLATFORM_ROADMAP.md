@@ -110,7 +110,8 @@ part of the foundation work.
 | 7 | Customer 360 and recommendations | Scoped customer history; persisted findings and follow-up workflow; safe additive migrations | In progress |
 | 7a | Customer 360 overview | Manager-scoped bounded related sections, full counts and paginated recorded timeline; existing service profile preserved | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 7b | Persisted management recommendations | Finding/risk/owner/due/status/notes, visit-source intent, version conflicts, atomic project conversion and mandatory history; cross-customer links constrained | Complete; PostgreSQL CI and browser QA tracked per commit |
-| 8 | Workload model | Estimates/availability and configurable weighting; capacity and pressure shown separately | Planned |
+| 8 | Workload model | Estimates/availability and configurable weighting; capacity and pressure shown separately | In progress |
+| 8a | Recorded effort and availability | Manager-edited versioned remaining estimates and net weekly hours; four-week task/visit capacity with explicit missing/excluded coverage | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 9 | Custom report engine | Approved source metadata, parameterized filters/grouping/aggregations, bounded preview, permission tests | Planned |
 | 10 | Report Builder UI and saved reports | Field selection, typed filters, grouping, sorts, preview, definitions with private/management visibility and Excel/CSV | Planned |
 | 11 | Report templates and scheduling | Templates use engine; recipient validation; scheduling extends existing jobs after engine is stable | Planned |

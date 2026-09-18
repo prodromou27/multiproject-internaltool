@@ -235,6 +235,9 @@ export const api = {
   // workload
   workload: () => req('GET', '/workload'),
   workloadForecast: () => req('GET', '/workload/forecast'),
+  workloadPlanning: (params = {}, options) => req('GET', '/workload/planning?' + new URLSearchParams(params).toString(), undefined, options),
+  workloadEstimate: (body) => req('PUT', '/workload/planning/estimate', body),
+  workloadAvailability: (body) => req('PUT', '/workload/planning/availability', body),
 
   // time logs
   timeLogs: (params) => req('GET', '/time-logs?' + new URLSearchParams(params).toString()),

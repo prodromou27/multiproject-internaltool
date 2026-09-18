@@ -533,8 +533,19 @@ each role-scoped (engineers see only their own; planners/PMs see visits within t
 projects).
 
 ### Workload (manager)
+The Effort and Availability section records remaining task/visit estimates and net
+weekly engineer capacity with version checks and audited edits. Migration
+`20260918_workload_planning_inputs` adds estimate/availability tables. The four-week
+view uses UTC Monday buckets based on an explicit local planning date; overdue
+outstanding work goes into the first week. Visit estimates are per engineer,
+including multi-engineer visits. No default hours or unknown effort are fabricated.
+Missing effort/availability or zero capacity yields an unavailable percentage.
+Counts include every selected item even when the per-week detail list is capped
+at 50. Dataset budgets reject oversize reads instead of returning partial totals.
+This initial capacity view excludes reports, service follow-ups and undated/future
+work explicitly; broader coverage and configurable weighting remain pending.
 Per-engineer snapshot (open tasks, upcoming visits, tasks done this month, hours logged
-this month) plus a **4-week capacity forecast** grid. Both are heavily batch-queried (4
+this month) plus a **4-week scheduled-item forecast** grid. Both are heavily batch-queried (4
 and 2 queries respectively) to avoid N+1.
 
 ### Scorecards (manager)

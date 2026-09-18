@@ -118,6 +118,7 @@ test.before(async () => {
   app.use('/api/time-logs', require('../routes/time-logs'));
   app.use('/api/teams', require('../routes/teams'));
   app.use('/api/customers', require('../routes/customers'));
+  app.use('/api/workload', require('../routes/workload'));
   app.use('/api/service-activities', require('../routes/serviceActivities'));
   app.use('/api/projects/:projectId/custom-fields', require('../routes/customFields'));
   app.use(require('../middleware/errors').errorHandler);
@@ -1233,6 +1234,65 @@ test('task pages retain full totals, stable ordering, enrichment and unpaged exp
   const workbook = new (require('exceljs').Workbook)();
   await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
   assert.equal(workbook.worksheets[0].rowCount, 62, 'header plus every matching task, independent of page');
+});
+
+test('workload planning validates inputs, scopes roles and rejects conflicting input saves', async () => {
+  const task = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by,deadline) VALUES (?,?,?,?)').run('Estimated task',ids.engineerEnabled,ids.manager,'2026-09-18')).lastInsertRowid;
+  for (const token of [ids.tokenEnabled,ids.tokenDisabled]) {
+    assert.equal((await api('/api/workload/planning', { token })).status,403);
+    assert.equal((await api('/api/workload/planning/estimate', { method: 'PUT',token,body: { kind: 'task',id: task,version: 0,remaining_hours: 2 } })).status,403);
+  }
+  for (const query of ['as_of=2026-02-29','as_of=','as_of=2026-09-18&as_of=2026-09-19']) assert.equal((await api(`/api/workload/planning?${query}`, { token: ids.tokenManager })).status,400);
+  const estimate = { kind: 'task',id: task,version: 0,remaining_hours: 2 };
+  for (const extra of [{ kind: 'users' },{ id: true },{ version: -1 },{ remaining_hours: '2' },{ remaining_hours: -1 },{ remaining_hours: 10001 }]) assert.equal((await api('/api/workload/planning/estimate', { method: 'PUT',token: ids.tokenManager,body: { ...estimate,...extra } })).status,400);
+  assert.equal((await api('/api/workload/planning/estimate', { method: 'PUT',token: ids.tokenManager,body: estimate })).status,200);
+  // pg-mem incorrectly returns an existing row for DO NOTHING RETURNING.
+  if (process.env.TEST_DATABASE_URL) assert.equal((await api('/api/workload/planning/estimate', { method: 'PUT',token: ids.tokenManager,body: estimate })).status,409);
+  assert.equal((await api('/api/workload/planning/estimate', { method: 'PUT',token: ids.tokenManager,body: { ...estimate,version: 1,remaining_hours: 3 } })).data.version,2);
+  assert.equal((await api('/api/workload/planning/estimate', { method: 'PUT',token: ids.tokenManager,body: { ...estimate,version: 1,remaining_hours: 99 } })).status,409);
+  const availability = { user_id: ids.engineerEnabled,week_start: '2026-09-14',version: 0,available_hours: 30 };
+  for (const extra of [{ week_start: '2026-09-15' },{ user_id: ids.manager },{ available_hours: '30' },{ available_hours: 169 },{ version: null }]) assert.equal((await api('/api/workload/planning/availability', { method: 'PUT',token: ids.tokenManager,body: { ...availability,...extra } })).status,400);
+  assert.equal((await api('/api/workload/planning/availability', { method: 'PUT',token: ids.tokenManager,body: availability })).status,200);
+  if (process.env.TEST_DATABASE_URL) assert.equal((await api('/api/workload/planning/availability', { method: 'PUT',token: ids.tokenManager,body: availability })).status,409);
+  assert.equal((await api('/api/workload/planning/availability', { method: 'PUT',token: ids.tokenManager,body: { ...availability,version: 1,available_hours: 0 } })).data.version,2);
+  assert.equal((await api('/api/workload/planning/availability', { method: 'PUT',token: ids.tokenManager,body: { ...availability,version: 1,available_hours: 99 } })).status,409);
+});
+
+test('workload input creation and updates detect simultaneous changes on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const task = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by) VALUES (?,?,?)').run('Concurrent effort input',ids.engineerEnabled,ids.manager)).lastInsertRowid;
+  const inputs = [
+    ['estimate',{ kind: 'task',id: task,version: 0,remaining_hours: 1 }],
+    ['availability',{ user_id: ids.engineerEnabled,week_start: '2050-01-03',version: 0,available_hours: 20 }],
+  ];
+  for (const [endpoint,body] of inputs) {
+    const save = version => api(`/api/workload/planning/${endpoint}`, { method: 'PUT',token: ids.tokenManager,body: { ...body,version } });
+    assert.deepEqual((await Promise.all([save(0),save(0)])).map(row => row.status).sort(),[200,409]);
+    assert.deepEqual((await Promise.all([save(1),save(1)])).map(row => row.status).sort(),[200,409]);
+  }
+});
+
+test('workload planning calculates known coverage, per-engineer visits and recorded availability on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const engineer = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Capacity fixture','capacity@test.local',bcrypt.hashSync('pw',4),'engineer')).lastInsertRowid;
+  const task = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by,deadline) VALUES (?,?,?,?)').run('Capacity task',engineer,ids.manager,'2045-01-03')).lastInsertRowid;
+  const visit = (await db.prepare('INSERT INTO maintenance_visits (title,customer_id,scheduled_date,created_by) VALUES (?,?,?,?)').run('Capacity visit',ids.customer,'2045-01-03',ids.manager)).lastInsertRowid;
+  for (const user of [engineer,ids.engineerEnabled]) await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id,user_id) VALUES (?,?)').run(visit,user);
+  const save = (endpoint,body) => api(`/api/workload/planning/${endpoint}`, { method: 'PUT',token: ids.tokenManager,body });
+  await save('estimate',{ kind: 'task',id: task,version: 0,remaining_hours: 15 });
+  await save('estimate',{ kind: 'visit',id: visit,version: 0,remaining_hours: 5 });
+  await save('availability',{ user_id: engineer,week_start: '2045-01-02',version: 0,available_hours: 10 });
+  const response = await api('/api/workload/planning?as_of=2045-01-03', { token: ids.tokenManager });
+  assert.equal(response.status,200);
+  const week = response.data.engineers.find(row => row.id === engineer).weeks[0];
+  assert.equal(week.estimated_hours,20);
+  assert.equal(week.capacity_percent,200);
+  assert.equal(week.unknown_estimates,0);
+  assert.equal(week.items.length,2);
+  assert.equal(response.data.engineers.find(row => row.id === ids.engineerEnabled).weeks[0].items.find(row => row.kind === 'visit' && row.id === visit).remaining_hours,5);
+  const missing = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by,deadline) VALUES (?,?,?,?)').run('Unknown capacity task',engineer,ids.manager,'2045-01-03')).lastInsertRowid;
+  const partial = await api('/api/workload/planning?as_of=2045-01-03', { token: ids.tokenManager });
+  assert.equal(partial.data.engineers.find(row => row.id === engineer).weeks[0].capacity_percent,null);
+  assert.equal(partial.data.engineers.find(row => row.id === engineer).weeks[0].unknown_estimates,1);
+  await db.prepare("UPDATE tasks SET status='completed' WHERE id=?").run(missing);
 });
 
 test('customer recommendations validate references, preserve history and reject stale edits', async () => {

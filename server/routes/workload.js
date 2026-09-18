@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
+router.use('/planning', require('./workload-planning'));
 
 // GET /api/workload — full engineer workload snapshot
 // Replaces 4N individual queries with 4 batched queries (was: 80 queries for 20 engineers)
@@ -71,7 +72,7 @@ router.get('/', requireManager, async (req, res) => {
   res.json(result);
 });
 
-// GET /api/workload/forecast — 4-week capacity grid
+// GET /api/workload/forecast — 4-week scheduled-item grid
 // Replaces 8N queries with 8 batched queries (was: 160 queries for 20 engineers)
 router.get('/forecast', requireManager, async (req, res) => {
   const engineers = (await db.prepare(

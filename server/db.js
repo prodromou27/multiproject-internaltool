@@ -747,6 +747,28 @@ async function applyCompatibilityMigrations() {
 
   migrations.push(['20260917_activity_version', 'ALTER TABLE service_activities ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1']);
   migrations.push(['20260918_customer_recommendations', RECOMMENDATIONS_SCHEMA]);
+  migrations.push(['20260918_workload_planning_inputs', `
+    CREATE TABLE IF NOT EXISTS workload_estimates (
+      id SERIAL PRIMARY KEY,
+      task_id INTEGER UNIQUE REFERENCES tasks(id) ON DELETE CASCADE,
+      visit_id INTEGER UNIQUE REFERENCES maintenance_visits(id) ON DELETE CASCADE,
+      remaining_hours REAL NOT NULL CHECK(remaining_hours>=0 AND remaining_hours<=10000),
+      version INTEGER NOT NULL DEFAULT 1,
+      updated_by INTEGER REFERENCES users(id),
+      updated_at TEXT DEFAULT ${NOW},
+      CHECK((task_id IS NOT NULL AND visit_id IS NULL) OR (task_id IS NULL AND visit_id IS NOT NULL))
+    );
+    CREATE TABLE IF NOT EXISTS workload_availability (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      week_start TEXT NOT NULL,
+      available_hours REAL NOT NULL CHECK(available_hours>=0 AND available_hours<=168),
+      version INTEGER NOT NULL DEFAULT 1,
+      updated_by INTEGER REFERENCES users(id),
+      updated_at TEXT DEFAULT ${NOW},
+      UNIQUE(user_id,week_start)
+    );
+  `]);
 
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);

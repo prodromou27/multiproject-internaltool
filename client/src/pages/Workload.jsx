@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../components/Shared';
+import WorkloadPlanning from '../components/WorkloadPlanning';
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -24,10 +25,10 @@ function workloadBg(count) {
 }
 
 function workloadLabel(count) {
-  if (count === 0) return 'Free';
-  if (count <= 3)  return 'Light';
-  if (count <= 6)  return 'Moderate';
-  return 'Heavy';
+  if (count === 0) return 'No scheduled items';
+  if (count <= 3)  return 'Low item count';
+  if (count <= 6)  return 'Medium item count';
+  return 'High item count';
 }
 
 /* ── Snapshot: Engineer Card ──────────────────────────────── */
@@ -240,9 +241,10 @@ function ForecastGrid({ forecast, loading }) {
   return (
     <div>
       {/* Legend */}
+      <p className="text-muted text-sm" style={{ marginBottom: 12 }}>This forecast shows scheduled item counts. Use Effort and Availability for estimated task/visit capacity.</p>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 14, fontSize: 11 }}>
         {[
-          { label: 'Free (0)', color: 'var(--success)', bg: '#f0fdf4' },
+          { label: 'No items (0)', color: 'var(--success)', bg: '#f0fdf4' },
           { label: 'Light (1-3)', color: 'var(--primary)', bg: '#eff6ff' },
           { label: 'Moderate (4-6)', color: 'var(--warning)', bg: '#fffbeb' },
           { label: 'Heavy (7+)', color: 'var(--danger)', bg: '#fef2f2' },
@@ -371,7 +373,7 @@ export default function Workload() {
         <button
           className="btn btn-ghost btn-sm"
           onClick={() => tab === 'snapshot' ? loadSnapshot() : loadForecast()}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+          style={{ display: tab === 'planning' ? 'none' : 'inline-flex', alignItems: 'center', gap: 5 }}
         >
           <RefreshCw size={13} /> Refresh
         </button>
@@ -380,7 +382,7 @@ export default function Workload() {
       {error && <div className="alert alert-warning" style={{ marginBottom: 16 }}>{error}</div>}
 
       {/* Summary bar */}
-      {!loading && (
+      {!loading && tab === 'snapshot' && !error && (
         <div className="grid-4" style={{ marginBottom: 20 }}>
           <div className="card stat">
             <div className="stat-value" style={{ color: 'var(--primary)' }}>{engineers.length}</div>
@@ -405,6 +407,7 @@ export default function Workload() {
 
       {/* Tabs */}
       <div className="tabs" style={{ marginBottom: 16 }}>
+        <button className={'tab' + (tab === 'planning' ? ' active' : '')} onClick={() => setTab('planning')}>Effort and availability</button>
         <button className={'tab' + (tab === 'snapshot' ? ' active' : '')} onClick={() => setTab('snapshot')}>
           <Users size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />Current Snapshot
         </button>
@@ -414,6 +417,7 @@ export default function Workload() {
       </div>
 
       {/* Snapshot tab */}
+      {tab === 'planning' && <WorkloadPlanning />}
       {tab === 'snapshot' && (
         loading ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--gray-400)', padding: '24px 0' }}>
