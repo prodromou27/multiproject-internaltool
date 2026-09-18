@@ -779,3 +779,7 @@ Settings with synthetic APIs at desktop/tablet/mobile widths, keyboard dialog
 behavior, retries and role guards. See docs/PLATFORM_VALIDATION.md for the actual
 coverage and remaining manual staging QA; backend integration tests remain the
 authority for database permissions and mutations.
+
+Password-policy writes reject non-integer or out-of-range expiry values rather than
+coercing malformed input into disabled expiry. Explicit numeric 0 disables expiry;
+valid values are 0-3650. The policy and authentication lookup key update atomically.

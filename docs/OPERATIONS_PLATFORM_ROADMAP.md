@@ -121,6 +121,7 @@ part of the foundation work.
 | 11c | Existing digest reliability | Await SMTP/report reads, preserve masked credentials, escape stored HTML values and enforce current manager recipient eligibility | Complete; PostgreSQL CI tracked per commit |
 | 12 | Admin organization and feature settings | Business/technical sections; capability-based visibility; secrets remain protected | In progress |
 | 12a | Administration navigation and credentials | Business/technical areas, shared-capability business links, preserved deep links, keyboard switches and write-only integration credentials with explicit removal | Complete; browser QA pending |
+| 12b | Password policy integrity | Malformed values cannot disable expiry; explicit numeric 0 supported; policy and authentication settings persist in one transaction | Complete; CI tracked per commit |
 | 13 | Cross-module quality review | Targeted security/performance tests, responsive and accessibility QA, deployment instructions and final change summary | In progress |
 | 13a | Focused browser and release validation | Real-browser production bundle smoke matrix with synthetic APIs, shared-modal focus fix, validation/remaining-work record and corrected deployment requirements | Complete; full staging QA pending |
 

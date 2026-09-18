@@ -1268,6 +1268,18 @@ test('saved custom reports protect private definitions, ownership and edit versi
   assert.equal((await api(path,{ token: ids.tokenManager })).status,404);
 });
 
+test('malformed password expiry values cannot silently disable the policy', async () => {
+  const save = value => api('/api/settings/security',{ method: 'PUT',token: ids.tokenManager,body: { password_expiry_days: value } });
+  assert.equal((await save(90)).status,200);
+  for (const value of ['', '0', '90days',false,null,-1,1.5,3651,{},[]]) assert.equal((await save(value)).status,400);
+  assert.equal((await api('/api/settings/security',{ token: ids.tokenManager })).data.password_expiry_days,90);
+  assert.equal((await db.prepare("SELECT value FROM settings WHERE key='password_expiry_days'").get()).value,'90');
+  assert.equal((await api('/api/settings/security',{ method: 'PUT',token: ids.tokenEnabled,body: { password_expiry_days: 0 } })).status,403);
+  assert.equal((await save(0)).status,200,'explicit numeric zero remains supported');
+  assert.equal((await api('/api/settings/security',{ token: ids.tokenManager })).data.password_expiry_days,0);
+  assert.equal((await save(90)).status,200);
+});
+
 test('integration settings redact stored tokens and webhooks, preserve edits and validate requests', async () => {
   await db.prepare("INSERT INTO settings (key,value) VALUES ('integrations',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ teams: { enabled: false,webhook_url: 'https://secret.example/webhook' },webex: { enabled: true,bot_token: 'retained-webex-token',mode: 'both' } }));
   const read = await api('/api/settings/integrations',{ token: ids.tokenManager });

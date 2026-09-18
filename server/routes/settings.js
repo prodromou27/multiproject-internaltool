@@ -547,11 +547,14 @@ router.get('/security', requireManager, async (req, res) => {
 });
 
 router.put('/security', requireManager, async (req, res) => {
-  const { password_expiry_days } = req.body;
-  const days = Math.min(3650, Math.max(0, parseInt(password_expiry_days, 10) || 0));
+  const days = req.body?.password_expiry_days;
+  if (!Number.isInteger(days) || days<0 || days>3650)
+    return res.status(400).json({ error: 'Password expiry must be an integer from 0 to 3650 days; use 0 explicitly to disable expiry' });
   // Also update the standalone key used by auth.js for fast lookup
-  (await db.prepare("INSERT INTO settings (key,value) VALUES ('password_expiry_days',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(String(days)));
-  (await db.prepare("INSERT INTO settings (key,value) VALUES ('security_policy',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify({ password_expiry_days: days })));
+  await db.transaction(async tx => {
+    await tx.prepare("INSERT INTO settings (key,value) VALUES ('password_expiry_days',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(String(days));
+    await tx.prepare("INSERT INTO settings (key,value) VALUES ('security_policy',?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify({ password_expiry_days: days }));
+  });
   await logSettingsChange(req, 'security_policy_updated', `password_expiry_days=${days}`);
   res.json({ ok: true, password_expiry_days: days });
 });

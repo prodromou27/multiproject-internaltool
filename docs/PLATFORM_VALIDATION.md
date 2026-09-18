@@ -6,7 +6,7 @@ screen or item in the redesign brief has been completed.
 
 ## Automated evidence
 
-- Server suite: 102 passed locally; 21 PostgreSQL-specific checks skipped locally.
+- Server suite: 103 passed locally; 21 PostgreSQL-specific checks skipped locally.
   CI runs those checks against PostgreSQL 16 as well as the in-memory backend.
 - Client suite: 11 passed; production Vite build passed.
 - Customer checks cover manager permissions, cross-customer links, source visits,
@@ -22,6 +22,8 @@ screen or item in the redesign brief has been completed.
 - Administration checks cover credential redaction, retaining/replacing/removing
   tokens, preserving SMTP passwords, rejecting malformed configuration and blocking
   loopback webhook URLs. HTML digest tests exercise stored-markup injection.
+  Password-policy tests verify malformed values cannot disable expiry and explicit
+  numeric zero remains supported.
 
 ## Reproducible browser smoke checks
 
