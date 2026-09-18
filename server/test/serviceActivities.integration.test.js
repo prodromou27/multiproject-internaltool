@@ -119,6 +119,8 @@ test.before(async () => {
   app.use('/api/teams', require('../routes/teams'));
   app.use('/api/customers', require('../routes/customers'));
   app.use('/api/workload', require('../routes/workload'));
+  app.use('/api/report-settings', require('../routes/report-settings'));
+  app.use('/api/settings', require('../routes/settings'));
   app.use('/api/service-activities', require('../routes/serviceActivities'));
   app.use('/api/projects/:projectId/custom-fields', require('../routes/customFields'));
   app.use(require('../middleware/errors').errorHandler);
@@ -1264,6 +1266,35 @@ test('saved custom reports protect private definitions, ownership and edit versi
   assert.equal((await api(path,{ method: 'DELETE',token: ids.tokenManager,body: { version: 2 } })).status,409);
   assert.equal((await api(path,{ method: 'DELETE',token: ids.tokenManager,body: { version: 3 } })).status,200);
   assert.equal((await api(path,{ token: ids.tokenManager })).status,404);
+});
+
+test('SMTP settings await reads, redact and retain passwords on ordinary edits', async () => {
+  await db.prepare("INSERT INTO settings (key,value) VALUES ('email_smtp',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ host: 'smtp.test.local',port: 587,user: 'report-user',password: 'retained-secret' }));
+  const before = await api('/api/report-settings/smtp',{ token: ids.tokenManager });
+  assert.equal(before.status,200);
+  assert.equal(before.data.host,'smtp.test.local');
+  assert.equal(before.data.password_set,true);
+  assert.equal(before.data.password,undefined);
+  assert.equal((await api('/api/report-settings/smtp',{ token: ids.tokenEnabled })).status,403);
+  assert.equal((await api('/api/report-settings/smtp',{ method: 'PUT',token: ids.tokenManager,body: { from_name: 'Updated sender' } })).status,200);
+  let stored = JSON.parse((await db.prepare("SELECT value FROM settings WHERE key='email_smtp'").get()).value);
+  assert.equal(stored.password,'retained-secret');
+  assert.equal(stored.host,'smtp.test.local');
+  assert.equal(stored.from_name,'Updated sender');
+  await api('/api/report-settings/smtp',{ method: 'PUT',token: ids.tokenManager,body: { password: '\u2022'.repeat(8) } });
+  stored = JSON.parse((await db.prepare("SELECT value FROM settings WHERE key='email_smtp'").get()).value);
+  assert.equal(stored.password,'retained-secret');
+  for (const body of [{ enabled: true,day: 7,hour: 9,minute: 0,recipients: [ids.manager] },{ enabled: true,day: 1,hour: 9,minute: 0,recipients: [ids.engineerEnabled] }]) assert.equal((await api('/api/report-settings/schedule',{ method: 'PUT',token: ids.tokenManager,body })).status,400);
+});
+
+test('weekly report previews await actual report data on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const preview = await api('/api/report-settings/preview-data',{ token: ids.tokenManager });
+  assert.equal(preview.status,200);
+  assert.equal(typeof preview.data.stats.activeProjects,'number');
+  assert.equal(typeof preview.data.subject,'string');
+  const html = await fetch(`${baseUrl}/api/report-settings/preview`,{ headers: { Authorization: `Bearer ${ids.tokenManager}` } });
+  assert.equal(html.status,200);
+  assert.match(await html.text(),/<!DOCTYPE html>/);
 });
 
 test('report schedules enforce ownership, recipient eligibility, versions and rechecked delivery', async () => {

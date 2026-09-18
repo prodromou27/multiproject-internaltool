@@ -185,10 +185,11 @@ async function gatherReportData() {
 }
 
 // ── HTML helpers ─────────────────────────────────────────────────────────────
+const escapeHtml = value => String(value ?? '').replace(/[&<>\"']/g,char => ({ '&': '&amp;','<': '&lt;','>': '&gt;','\"': '&quot;',"'": '&#39;' }[char]));
 const priorityPill = p => {
   const map = { high: '#fee2e2:#dc2626', medium: '#fef9c3:#b45309', low: '#f0fdf4:#16a34a' };
   const [bg, color] = (map[p] || map.medium).split(':');
-  return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${bg};color:${color}">${p}</span>`;
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${bg};color:${color}">${escapeHtml(p)}</span>`;
 };
 const statusPill = s => {
   const map = {
@@ -199,7 +200,7 @@ const statusPill = s => {
   };
   const [bg, color] = (map[s] || '#f1f5f9:#64748b').split(':');
   const label = s?.replace(/_/g, ' ') || '—';
-  return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${bg};color:${color}">${label}</span>`;
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${bg};color:${color}">${escapeHtml(label)}</span>`;
 };
 
 const tableHead = (...cols) =>
@@ -277,8 +278,8 @@ function buildReportHtml(data) {
     : `<table style="width:100%;border-collapse:collapse">
         ${tableHead('Project', 'Customer', 'Priority', 'Deadline', 'Status')}
         <tbody>${projectsOpened.map(p => `<tr>
-          <td style="${tdStyle};font-weight:600">${p.title}</td>
-          <td style="${tdStyle}">${p.customer_name || '—'}</td>
+          <td style="${tdStyle};font-weight:600">${escapeHtml(p.title)}</td>
+          <td style="${tdStyle}">${escapeHtml(p.customer_name || '—')}</td>
           <td style="${tdStyle}">${priorityPill(p.priority)}</td>
           <td style="${tdStyle};${isOverdue(p.deadline) ? 'color:#dc2626;font-weight:600' : ''}">${fmtDate(p.deadline)}</td>
           <td style="${tdStyle}">${statusPill(p.status)}</td>
@@ -293,7 +294,7 @@ function buildReportHtml(data) {
         ${tableHead('Type', 'Name', 'Deadline', 'Priority', 'Assigned To / Customer')}
         <tbody>${upcomingDeadlines.map(d => `<tr>
           <td style="${tdStyle}"><span style="font-size:11px;font-weight:600;padding:2px 6px;border-radius:6px;background:${d.type==='project'?'#dbeafe':'#ede9fe'};color:${d.type==='project'?'#1d4ed8':'#6d28d9'}">${d.type}</span></td>
-          <td style="${tdStyle};font-weight:600">${d.title}</td>
+          <td style="${tdStyle};font-weight:600">${escapeHtml(d.title)}</td>
           <td style="${tdStyle};${isOverdue(d.deadline) ? 'color:#dc2626;font-weight:700' : 'color:#0f172a'}">${fmtDate(d.deadline)}${isOverdue(d.deadline) ? ' ⚠️' : ''}</td>
           <td style="${tdStyle}">${priorityPill(d.priority)}</td>
           <td style="${tdStyle};color:#64748b">${d.assigned_to || d.customer_name || '—'}</td>
@@ -307,9 +308,9 @@ function buildReportHtml(data) {
     : `<table style="width:100%;border-collapse:collapse">
         ${tableHead('Task', 'Project', 'Assigned To', 'Status', 'Deadline')}
         <tbody>${highPriorityTasks.map(t => `<tr>
-          <td style="${tdStyle};font-weight:600">${t.title}</td>
-          <td style="${tdStyle};color:#64748b;font-size:12px">${t.project_title || '—'}</td>
-          <td style="${tdStyle}">${t.assigned_to_name || '<span style="color:#dc2626">Unassigned</span>'}</td>
+          <td style="${tdStyle};font-weight:600">${escapeHtml(t.title)}</td>
+          <td style="${tdStyle};color:#64748b;font-size:12px">${escapeHtml(t.project_title || '—')}</td>
+          <td style="${tdStyle}">${escapeHtml(t.assigned_to_name) || '<span style="color:#dc2626">Unassigned</span>'}</td>
           <td style="${tdStyle}">${statusPill(t.status)}</td>
           <td style="${tdStyle};${isOverdue(t.deadline) ? 'color:#dc2626;font-weight:700' : ''}">${fmtDate(t.deadline)}${isOverdue(t.deadline) ? ' ⚠️' : ''}</td>
         </tr>`).join('')}</tbody>
@@ -328,10 +329,10 @@ function buildReportHtml(data) {
               ? '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#dbeafe;color:#1d4ed8">Report Complete</span>'
               : '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#fef9c3;color:#b45309">Pending</span>';
           return `<tr>
-            <td style="${tdStyle};font-weight:600">${v.title}</td>
-            <td style="${tdStyle}">${v.customer_name}</td>
+            <td style="${tdStyle};font-weight:600">${escapeHtml(v.title)}</td>
+            <td style="${tdStyle}">${escapeHtml(v.customer_name)}</td>
             <td style="${tdStyle};${isOverdue(v.scheduled_date) && v.status==='scheduled' ? 'color:#dc2626;font-weight:700' : ''}">${fmtDate(v.scheduled_date)}</td>
-            <td style="${tdStyle};color:#64748b;font-size:12px">${v.engineer_names || '—'}</td>
+            <td style="${tdStyle};color:#64748b;font-size:12px">${escapeHtml(v.engineer_names || '—')}</td>
             <td style="${tdStyle}">${reportLabel} ${statusPill(v.status)}</td>
           </tr>`;
         }).join('')}</tbody>
@@ -346,10 +347,10 @@ function buildReportHtml(data) {
         <tbody>${reportsPending.map(r => {
           const days = daysDiff(r.scheduled_date);
           return `<tr>
-            <td style="${tdStyle};font-weight:600">${r.title}</td>
-            <td style="${tdStyle}">${r.customer_name}</td>
+            <td style="${tdStyle};font-weight:600">${escapeHtml(r.title)}</td>
+            <td style="${tdStyle}">${escapeHtml(r.customer_name)}</td>
             <td style="${tdStyle};color:#dc2626;font-weight:600">${fmtDate(r.scheduled_date)}</td>
-            <td style="${tdStyle};color:#64748b;font-size:12px">${r.engineer_names || '—'}</td>
+            <td style="${tdStyle};color:#64748b;font-size:12px">${escapeHtml(r.engineer_names || '—')}</td>
             <td style="${tdStyle};color:#dc2626;font-weight:700">${days != null ? days + ' days' : '—'}</td>
           </tr>`;
         }).join('')}</tbody>
@@ -367,8 +368,8 @@ function buildReportHtml(data) {
           return `<tr>
             <td style="${tdStyle};font-weight:600">
               <div style="display:flex;align-items:center;gap:8px">
-                <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:inline-flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0">${(e.name||'?').charAt(0).toUpperCase()}</div>
-                ${e.name}
+                <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:inline-flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0">${escapeHtml((e.name||'?').charAt(0).toUpperCase())}</div>
+                ${escapeHtml(e.name)}
               </div>
             </td>
             <td style="${tdStyle}">
@@ -396,8 +397,8 @@ function buildReportHtml(data) {
         <tbody>${closurePending.map(p => {
           const days = p.closure_requested_at ? daysDiff(p.closure_requested_at.slice(0,10)) : null;
           return `<tr>
-            <td style="${tdStyle};font-weight:600">${p.title}</td>
-            <td style="${tdStyle}">${p.customer_name || '—'}</td>
+            <td style="${tdStyle};font-weight:600">${escapeHtml(p.title)}</td>
+            <td style="${tdStyle}">${escapeHtml(p.customer_name || '—')}</td>
             <td style="${tdStyle}">${priorityPill(p.priority)}</td>
             <td style="${tdStyle};${isOverdue(p.deadline)?'color:#dc2626;font-weight:600':''}">${fmtDate(p.deadline)}</td>
             <td style="${tdStyle};color:#64748b">${fmtDate(p.closure_requested_at?.slice(0,10))}</td>
@@ -432,9 +433,9 @@ function buildReportHtml(data) {
       <table style="width:100%;border-collapse:collapse">
         ${tableHead('Name', 'Contact', 'Email')}
         <tbody>${newCustomers.map(c => `<tr>
-          <td style="${tdStyle};font-weight:600">${c.name}</td>
-          <td style="${tdStyle}">${c.contact_name || '—'}</td>
-          <td style="${tdStyle};color:#3b82f6">${c.contact_email || '—'}</td>
+          <td style="${tdStyle};font-weight:600">${escapeHtml(c.name)}</td>
+          <td style="${tdStyle}">${escapeHtml(c.contact_name || '—')}</td>
+          <td style="${tdStyle};color:#3b82f6">${escapeHtml(c.contact_email || '—')}</td>
         </tr>`).join('')}</tbody>
       </table>`, '#0891b2')
     : '';
@@ -490,12 +491,12 @@ async function getRecipients() {
   if (!row) return [];
   try {
     const cfg = JSON.parse(row.value);
-    if (!cfg.recipients?.length) return [];
+    if (!Array.isArray(cfg.recipients) || !cfg.recipients.length || cfg.recipients.length>20 || cfg.recipients.some(id => !Number.isSafeInteger(id) || id<1)) return [];
     // Fetch emails for recipient user IDs
     const users = await db.prepare(
-      `SELECT email FROM users WHERE id IN (${cfg.recipients.map(() => '?').join(',')}) AND active = 1`
+      `SELECT email FROM users WHERE id IN (${cfg.recipients.map(() => '?').join(',')}) AND active = 1 AND role = 'manager' AND must_change_password = 0`
     ).all(...cfg.recipients);
-    return users.map(u => u.email);
+    return users.filter(u => typeof u.email==='string' && /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(u.email)).map(u => u.email);
   } catch { return []; }
 }
 
@@ -529,7 +530,7 @@ async function sendWeeklyReport() {
     return { ok: true, recipients, subject };
   } catch (e) {
     console.error('[weekly-report] Error:', e.message);
-    return { ok: false, error: e.message };
+    return { ok: false, error: 'Weekly report generation or delivery failed. Check SMTP configuration and server logs.' };
   }
 }
 

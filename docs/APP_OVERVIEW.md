@@ -759,3 +759,8 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
 Service activity detail and list responses include an integer `version`. Update requests must send the version fetched with the editing snapshot. Missing versions return HTTP 428; invalid versions return HTTP 400. The server atomically checks and increments the version when saving, returning HTTP 409 with code `ACTIVITY_CONFLICT` if another change intervened. Completion and follow-up linking also increment the version. The edit form preserves drafts on conflicts and offers an explicit reload that replaces the draft after confirmation.
 
 The Activity Log Excel export uses the same customer, category, status, technology, billing, date and search filters and ownership rules as the list, in the same sort order. It exports all matching rows regardless of pagination. Both endpoints reject malformed or repeated filter values, impossible calendar dates, reversed date ranges, non-positive IDs and invalid pagination with HTTP 400. Page size must be between 1 and 200.
+
+Weekly digest settings await database reads and preserve stored SMTP passwords when
+unchanged; reads expose only `password_set`. Preview HTML escapes stored user/record
+text. Weekly recipient configuration is bounded to 20 eligible managers, and
+current manager access is checked again when resolving delivery addresses.
