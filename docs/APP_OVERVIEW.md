@@ -371,6 +371,14 @@ A confirmed Discard action clears a timer without recording time. Legacy shared
 timers are not resumed because their owner cannot be determined safely.
 
 ### Customers
+The Customer 360 action extends the existing service profile. Its manager-only
+overview API returns capped project, project-linked task, visit and document
+sections with full counts, plus a 25-event paginated customer timeline. Events use
+recorded creation, project history, document upload and current report timestamps;
+completion dates are not inferred from general update timestamps. Ad-hoc tasks
+are excluded because they have no customer relationship. Document storage names,
+encryption metadata and private notes are not exposed. Existing service activities,
+charts and contract-hour views remain available through a separate section.
 CRM-lite with encrypted PII, service-contract fields (see §3), and team/engineer
 assignment. Validates text, finite non-negative included hours, and contract date ranges.
 Partial edits preserve omitted contract values and allow explicitly clearing

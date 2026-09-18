@@ -160,7 +160,8 @@ export const api = {
 
   // customers
   customers: (options) => req('GET', '/customers', undefined, options),
-  customer: (id) => req('GET', `/customers/${id}`),
+  customer: (id, options) => req('GET', `/customers/${id}`, undefined, options),
+  customerOverview: (id, params = {}, options) => req('GET', `/customers/${id}/overview?` + new URLSearchParams(params).toString(), undefined, options),
   createCustomer: (data) => req('POST', '/customers', data),
   updateCustomer: (id, data) => req('PUT', `/customers/${id}`, data),
   deleteCustomer: (id) => req('DELETE', `/customers/${id}`),
@@ -322,7 +323,7 @@ export const api = {
   setTeamMembers: (id, user_ids) => req('PUT', `/teams/${id}/members`, { user_ids }),
 
   // activity categories / subcategories
-  activityCategories: () => req('GET', '/activity-categories'),
+  activityCategories: (options) => req('GET', '/activity-categories', undefined, options),
   createActivityCategory: (data) => req('POST', '/activity-categories', data),
   updateActivityCategory: (id, data) => req('PUT', `/activity-categories/${id}`, data),
   deleteActivityCategory: (id) => req('DELETE', `/activity-categories/${id}`),
@@ -371,9 +372,9 @@ export const api = {
   setCustomerTeams: (id, team_ids) => req('PUT', `/customers/${id}/teams`, { team_ids }),
   customerEngineers: (id) => req('GET', `/customers/${id}/engineers`),
   setCustomerEngineers: (id, user_ids) => req('PUT', `/customers/${id}/engineers`, { user_ids }),
-  customerServiceActivities: (id, params = {}) => req('GET', `/customers/${id}/service-activities?` + new URLSearchParams(params).toString()),
-  customerServiceSummary: (id, params = {}) => req('GET', `/customers/${id}/service-summary?` + new URLSearchParams(params).toString()),
-  customerContractHours: (id) => req('GET', `/customers/${id}/contract-hours`),
+  customerServiceActivities: (id, params = {}, options) => req('GET', `/customers/${id}/service-activities?` + new URLSearchParams(params).toString(), undefined, options),
+  customerServiceSummary: (id, params = {}, options) => req('GET', `/customers/${id}/service-summary?` + new URLSearchParams(params).toString(), undefined, options),
+  customerContractHours: (id, options) => req('GET', `/customers/${id}/contract-hours`, undefined, options),
 
   // service activity settings (admin) — retention, attachments/follow-up toggles
   getServiceActivitySettings: () => req('GET', '/service-activity-settings'),

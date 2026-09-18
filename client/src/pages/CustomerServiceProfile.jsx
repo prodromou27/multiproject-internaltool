@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { api } from '../api';
 import { StatusBadge, fmtDate } from '../components/Shared';
+import CustomerOverview from '../components/CustomerOverview';
 
 function fmtDuration(minutes) {
   if (minutes == null) return '—';
@@ -24,6 +25,10 @@ export default function CustomerServiceProfile() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [tab, setTab] = useState('overview');
 
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -32,25 +37,35 @@ export default function CustomerServiceProfile() {
   const [statusFilter, setStatusFilter] = useState('');
 
   useEffect(() => {
-    Promise.all([api.customer(id), api.users(), api.activityCategories(), api.customerContractHours(id)]).then(([c, u, cats, hours]) => {
+    const controller = new AbortController();
+    const options = { signal: controller.signal };
+    setCustomer(null); setProfileError('');
+    Promise.all([api.customer(id, options), api.users(options), api.activityCategories(options), api.customerContractHours(id, options)]).then(([c, u, cats, hours]) => {
+      if (controller.signal.aborted) return;
       setCustomer(c); setEngineers(u.filter(x => x.role === 'engineer')); setCategories(cats); setContractHours(hours);
-    });
-  }, [id]);
+    }).catch(failure => { if (!controller.signal.aborted) setProfileError(failure.message); });
+    return () => controller.abort();
+  }, [id, retry]);
 
   useEffect(() => {
+    const controller = new AbortController();
     const params = { page, page_size: 25 };
     if (from) params.from = from;
     if (to) params.to = to;
     if (engineerFilter) params.engineer_id = engineerFilter;
     if (categoryFilter) params.category_id = categoryFilter;
     if (statusFilter) params.status = statusFilter;
-    setLoading(true);
-    Promise.all([api.customerServiceActivities(id, params), api.customerServiceSummary(id, { from, to })])
-      .then(([t, s]) => { setTimeline(t.rows); setTotal(t.total); setSummary(s); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [id, page, from, to, engineerFilter, categoryFilter, statusFilter]);
+    setLoading(true); setError(''); setSummary(null);
+    const options = { signal: controller.signal };
+    Promise.all([api.customerServiceActivities(id, params, options), api.customerServiceSummary(id, { from, to }, options)])
+      .then(([t, s]) => { if (!controller.signal.aborted) { setTimeline(t.rows); setTotal(t.total); setSummary(s); } })
+      .catch(failure => { if (!controller.signal.aborted) setError(failure.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [id, page, from, to, engineerFilter, categoryFilter, statusFilter, retry]);
 
-  if (!customer) return <div className="page"><p className="text-muted">Loading…</p></div>;
+  if (profileError) return <div className="page"><div className="error-msg" role="alert">{profileError} <button className="btn btn-ghost" onClick={() => setRetry(value => value + 1)}>Retry</button></div></div>;
+  if (!customer || customer.id !== Number(id)) return <div className="page"><p className="text-muted">Loading…</p></div>;
 
   return (
     <div className="page">
@@ -59,9 +74,14 @@ export default function CustomerServiceProfile() {
           <Link to="/customers" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--gray-400)', marginBottom: 6 }}>
             <ArrowLeft size={12} /> Back to Customers
           </Link>
-          <h1 className="page-title">{customer.name} — Service Activities</h1>
+          <h1 className="page-title">{customer.name} — Customer 360</h1>
         </div>
       </div>
+      <div className="filter-bar" style={{ marginBottom: 20 }}>
+        <button className={`filter-pill${tab === 'overview' ? ' active' : ''}`} aria-pressed={tab === 'overview'} onClick={() => setTab('overview')}>Overview and history</button>
+        <button className={`filter-pill${tab === 'activities' ? ' active' : ''}`} aria-pressed={tab === 'activities'} onClick={() => setTab('activities')}>Service activities and hours</button>
+      </div>
+      {tab === 'overview' ? <CustomerOverview key={customer.id} customer={customer} /> : <>
 
       {summary && (
         <div className="grid-4" style={{ marginBottom: 20 }}>
@@ -139,7 +159,7 @@ export default function CustomerServiceProfile() {
         </div>
       </div>
 
-      {loading ? <p className="text-muted">Loading…</p> : timeline.length === 0 ? (
+      {error ? <div className="error-msg" role="alert">{error} <button className="btn btn-ghost" onClick={() => setRetry(value => value + 1)}>Retry</button></div> : loading ? <p className="text-muted">Loading…</p> : timeline.length === 0 ? (
         <div className="empty"><div className="empty-icon"><ClipboardList size={40} strokeWidth={1.2} /></div><p>No activities in this range</p></div>
       ) : (
         <div className="card">
@@ -162,6 +182,7 @@ export default function CustomerServiceProfile() {
           </div>
         </div>
       )}
+      </>}
     </div>
   );
 }

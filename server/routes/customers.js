@@ -6,6 +6,7 @@ const { requireAuth, requireManager, requireManagerOrPlanner } = require('../mid
 const { encryptCustomer, decryptCustomer } = require('../fieldCipher');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+router.use('/:id/overview', require('./customer-overview'));
 
 function cellToString(v) {
   if (v === null || v === undefined) return '';

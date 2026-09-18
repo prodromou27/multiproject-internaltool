@@ -1235,6 +1235,42 @@ test('task pages retain full totals, stable ordering, enrichment and unpaged exp
   assert.equal(workbook.worksheets[0].rowCount, 62, 'header plus every matching task, independent of page');
 });
 
+test('customer overview rejects unauthorized roles and malformed inputs', async () => {
+  for (const user of [ids.engineerEnabled, ids.engineerDisabled]) assert.equal((await api(`/api/customers/${ids.customer}/overview`, { token: signJwt({ id: user }) })).status, 403);
+  for (const role of ['planner', 'pm']) {
+    const user = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run(`Overview ${role}`, `customer-overview-${role}@test.local`, bcrypt.hashSync('pw', 4), role)).lastInsertRowid;
+    assert.equal((await api(`/api/customers/${ids.customer}/overview`, { token: signJwt({ id: user }) })).status, 403);
+  }
+  for (const id of ['0', '-1', '1abc', '9007199254740992']) assert.equal((await api(`/api/customers/${id}/overview`, { token: ids.tokenManager })).status, 400);
+  for (const query of ['page=0', 'page=1.5', 'page=1&page=2', 'page[x]=1', 'page=9007199254740991']) assert.equal((await api(`/api/customers/${ids.customer}/overview?${query}`, { token: ids.tokenManager })).status, 400);
+  assert.equal((await api('/api/customers/99999999/overview', { token: ids.tokenManager })).status, 404);
+});
+
+test('customer overview bounds sections, isolates customers and pages recorded events on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const customer = (await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Customer 360 fixture')).lastInsertRowid;
+  const projectIds = [];
+  for (let i = 0; i < 27; i++) projectIds.push((await db.prepare('INSERT INTO projects (title,customer_id,created_by) VALUES (?,?,?)').run(`Customer project ${i}`, customer, ids.manager)).lastInsertRowid);
+  const foreign = (await db.prepare('INSERT INTO projects (title,customer_id,created_by) VALUES (?,?,?)').run('Foreign customer project', ids.customer, ids.manager)).lastInsertRowid;
+  for (const project of [projectIds[0], foreign]) await db.prepare('INSERT INTO tasks (title,project_id,created_by) VALUES (?,?,?)').run(`Customer task ${project}`, project, ids.manager);
+  await db.prepare('INSERT INTO attachments (project_id,original_name,stored_name,uploaded_by) VALUES (?,?,?,?)').run(projectIds[0], 'Customer document.pdf', 'private-storage-name', ids.manager);
+  const visit = (await db.prepare('INSERT INTO maintenance_visits (title,customer_id,scheduled_date,created_by,report_sent,report_sent_at) VALUES (?,?,?,?,?,?)').run('Customer visit', customer, '2026-09-18', ids.manager, 1, '2026-09-18 10:00:00')).lastInsertRowid;
+  await db.prepare('INSERT INTO project_activity (project_id,user_id,action,detail) VALUES (?,?,?,?)').run(projectIds[0], ids.manager, 'closure_requested', 'Recorded review');
+  const response = await api(`/api/customers/${customer}/overview`, { token: ids.tokenManager });
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.data.counts, { projects: 27, tasks: 1, visits: 1, documents: 1 });
+  assert.equal(response.data.projects.length, 25);
+  assert.equal(response.data.projects.some(row => row.id === foreign), false);
+  assert.equal(response.data.documents[0].stored_name, undefined);
+  assert.equal(JSON.stringify(response.data).includes('private-storage-name'), false);
+  assert.equal(response.data.total, 32);
+  const second = await api(`/api/customers/${customer}/overview?page=2`, { token: ids.tokenManager });
+  const events = [...response.data.timeline, ...second.data.timeline];
+  assert.equal(events.length, 32);
+  assert.equal(new Set(events.map(row => `${row.kind}:${row.entity_id}`)).size, 32);
+  assert.ok(events.some(row => row.kind === 'visit_report' && row.entity_id === visit && row.event_at === '2026-09-18 10:00:00'));
+  assert.ok(events.some(row => row.kind === 'project_event' && row.action === 'closure_requested'));
+});
+
 test('maintenance list and export reject malformed filters consistently', async () => {
   for (const query of ['month=', 'month=2026-13', 'month=1899-12', 'month=2026-01&month=2026-02', 'engineer_id=0', 'engineer_id=1.5', 'customer_id=9007199254740992', 'customer_id[x]=1', 'pending_report=true', 'review_pending=', 'not_completed=2', 'overview=1&overview=0', 'filter=unknown', 'filter=all&filter=past', 'as_of=2026-02-29', 'search[x]=bad', `search=${'x'.repeat(501)}`]) {
     for (const route of ['maintenance-visits', 'maintenance-visits/export']) {
