@@ -16,6 +16,26 @@ function setup(t, responder) {
   return stored;
 }
 
+test('custom report exports use protected cookie requests and preserve visible errors', async t => {
+  const definition = { source: 'tasks', fields: ['id'] };
+  setup(t, async (path, options) => {
+    assert.equal(path, '/api/reports/custom/export-csv');
+    assert.equal(options.method, 'POST');
+    assert.equal(options.credentials, 'same-origin');
+    assert.equal(options.headers['X-SolutionsHub-Request'], '1');
+    assert.equal(options.headers.Authorization, undefined);
+    assert.deepEqual(JSON.parse(options.body), definition);
+    return new Response('"ID"\r\n"1"', { headers: { 'Content-Type': 'text/csv' } });
+  });
+  assert.equal(await (await api.customReportExport(definition, 'csv')).text(), '"ID"\r\n"1"');
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ error: 'Narrow the filters' }, { status: 413 }));
+  await assert.rejects(api.customReportExport(definition), /Narrow the filters/);
+  assert.equal(window.location.href, '/current-page');
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ error: 'Session expired' }, { status: 401 }));
+  await assert.rejects(api.customReportExport(definition), /Session expired/);
+  assert.equal(window.location.href, '/login');
+});
+
 test('requests use cookies and protection headers without exposing legacy stored tokens', async t => {
   setup(t, async (path, options) => {
     assert.equal(path, '/api/auth/login');

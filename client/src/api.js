@@ -132,9 +132,9 @@ export const api = {
   deleteKpi: (project_id, id) => req('DELETE', `/kpis/${project_id}/${id}`),
 
   // reports
-  reportSummary: () => req('GET', '/reports/summary'),
+  reportSummary: (options) => req('GET', '/reports/summary', undefined, options),
   operationsOverview: (params = {}, options) => req('GET', '/operations/overview?' + new URLSearchParams(params), undefined, options),
-  reportProjects: () => req('GET', '/reports/projects'),
+  reportProjects: (options) => req('GET', '/reports/projects', undefined, options),
   reportMonthly: () => req('GET', '/reports/monthly'),
 
   // scorecards
@@ -238,6 +238,22 @@ export const api = {
   workloadPlanning: (params = {}, options) => req('GET', '/workload/planning?' + new URLSearchParams(params).toString(), undefined, options),
   workloadEstimate: (body) => req('PUT', '/workload/planning/estimate', body),
   workloadAvailability: (body) => req('PUT', '/workload/planning/availability', body),
+  customReportSources: (options) => req('GET', '/reports/custom/sources',undefined,options),
+  customReportPreview: (definition,options) => req('POST','/reports/custom/preview',definition,options),
+  savedReports: (params = {},options) => req('GET','/reports/custom/saved?' + new URLSearchParams(params).toString(),undefined,options),
+  savedReport: (id,options) => req('GET',`/reports/custom/saved/${id}`,undefined,options),
+  createSavedReport: (body) => req('POST','/reports/custom/saved',body),
+  updateSavedReport: (id,body) => req('PUT',`/reports/custom/saved/${id}`,body),
+  deleteSavedReport: (id,version) => req('DELETE',`/reports/custom/saved/${id}`,{ version }),
+  customReportExport: async (definition,format = 'xlsx') => {
+    const response = await fetch('/api/reports/custom/' + (format==='csv' ? 'export-csv' : 'export'),{ method: 'POST',credentials: 'same-origin',headers: { 'Content-Type': 'application/json','X-SolutionsHub-Request': '1' },body: JSON.stringify(definition) });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      handleUnauthorized(response.status,data,true);
+      throw new Error(data.error || 'Report export failed');
+    }
+    return response.blob();
+  },
 
   // time logs
   timeLogs: (params) => req('GET', '/time-logs?' + new URLSearchParams(params).toString()),

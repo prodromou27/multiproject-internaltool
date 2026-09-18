@@ -1236,16 +1236,46 @@ test('task pages retain full totals, stable ordering, enrichment and unpaged exp
   assert.equal(workbook.worksheets[0].rowCount, 62, 'header plus every matching task, independent of page');
 });
 
+test('saved custom reports protect private definitions, ownership and edit versions', async () => {
+  const user = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Report peer manager','report-peer-manager@test.local',bcrypt.hashSync('pw',4),'manager')).lastInsertRowid;
+  const token = signJwt({ id: user });
+  const body = { name: 'Private delivery report',visibility: 'private',definition: { source: 'tasks',fields: ['id','title'] } };
+  const created = await api('/api/reports/custom/saved',{ method: 'POST',token: ids.tokenManager,body });
+  assert.equal(created.status,201);
+  const path = `/api/reports/custom/saved/${created.data.id}`;
+  assert.equal((await api(path,{ token })).status,404);
+  assert.equal((await api(`${path}/preview`,{ method: 'POST',token })).status,404);
+  assert.equal((await api('/api/reports/custom/saved',{ token })).data.total,0);
+  for (const roleToken of [ids.tokenEnabled,ids.tokenDisabled]) {
+    assert.equal((await api(path,{ token: roleToken })).status,403);
+    assert.equal((await api('/api/reports/custom/saved',{ method: 'POST',token: roleToken,body })).status,403);
+  }
+  const shared = { ...body,visibility: 'management',version: 1 };
+  assert.equal((await api(path,{ method: 'PUT',token: ids.tokenManager,body: shared })).data.version,2);
+  const other = await api(path,{ token });
+  assert.equal(other.status,200);
+  assert.equal(other.data.can_edit,false);
+  assert.deepEqual(other.data.definition,body.definition);
+  assert.equal((await api(path,{ method: 'PUT',token,body: { ...shared,version: 2 } })).status,403);
+  assert.equal((await api(path,{ method: 'DELETE',token,body: { version: 2 } })).status,403);
+  assert.equal((await api(path,{ method: 'PUT',token: ids.tokenManager,body: shared })).status,409);
+  assert.equal((await api(path,{ method: 'PUT',token: ids.tokenManager,body: { ...body,version: 2 } })).data.version,3);
+  assert.equal((await api(`${path}/preview`,{ method: 'POST',token })).status,404,'visibility is checked again on each run');
+  assert.equal((await api(path,{ method: 'DELETE',token: ids.tokenManager,body: { version: 2 } })).status,409);
+  assert.equal((await api(path,{ method: 'DELETE',token: ids.tokenManager,body: { version: 3 } })).status,200);
+  assert.equal((await api(path,{ token: ids.tokenManager })).status,404);
+});
+
 test('custom report metadata and execution enforce manager access and validate structure', async () => {
   for (const token of [ids.tokenEnabled,ids.tokenDisabled]) {
     assert.equal((await api('/api/reports/custom/sources',{ token })).status,403);
-    for (const route of ['preview','export']) assert.equal((await api(`/api/reports/custom/${route}`,{ method: 'POST',token,body: { source: 'tasks',fields: ['id'] } })).status,403);
+    for (const route of ['preview','export','export-csv']) assert.equal((await api(`/api/reports/custom/${route}`,{ method: 'POST',token,body: { source: 'tasks',fields: ['id'] } })).status,403);
   }
   const sources = await api('/api/reports/custom/sources',{ token: ids.tokenManager });
   assert.equal(sources.status,200);
   assert.equal(sources.data.preview_limit,100);
   for (const body of [null,[],{ source: 'users',fields: ['password'] },{ source: 'tasks',fields: ['secret'] },{ source: 'tasks',fields: ['id'],filters: [{ field: 'id',operator: 'eq',value: '1' }] }]) {
-    for (const route of ['preview','export']) assert.equal((await api(`/api/reports/custom/${route}`,{ method: 'POST',token: ids.tokenManager,body })).status,400);
+    for (const route of ['preview','export','export-csv']) assert.equal((await api(`/api/reports/custom/${route}`,{ method: 'POST',token: ids.tokenManager,body })).status,400);
   }
 });
 
@@ -1266,10 +1296,17 @@ test('custom reports preview, aggregate and export bounded matching rows on Post
   await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
   assert.equal(workbook.worksheets[0].rowCount,103);
   assert.deepEqual(workbook.worksheets[0].getRow(2).values.slice(1),Object.values(preview.data.rows[0]));
+  const csv = await fetch(`${baseUrl}/api/reports/custom/export-csv`,{ method: 'POST',headers: { 'Content-Type': 'application/json','X-SolutionsHub-Request': '1',Authorization: `Bearer ${ids.tokenManager}` },body: JSON.stringify(definition) });
+  assert.equal(csv.status,200);
+  assert.match(csv.headers.get('content-type'),/text\/csv/);
+  const lines = (await csv.text()).trim().split('\r\n');
+  assert.equal(lines.length,103);
+  assert.equal(lines[1],Object.values(preview.data.rows[0]).map(require('../customReports').csvCell).join(','));
   await db.exec(`INSERT INTO tasks (title,project_id,created_by) SELECT 'Report budget fixture',${project},${ids.manager} FROM generate_series(1,5001);`);
   const oversized = await api('/api/reports/custom/export',{ method: 'POST',token: ids.tokenManager,body: definition });
   assert.equal(oversized.status,413);
   assert.match(oversized.data.error,/5000 rows/);
+  assert.equal((await api('/api/reports/custom/export-csv',{ method: 'POST',token: ids.tokenManager,body: definition })).status,413);
 });
 
 test('workload planning validates inputs, scopes roles and rejects conflicting input saves', async () => {

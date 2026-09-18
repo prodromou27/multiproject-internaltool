@@ -1,12 +1,12 @@
 const { validDate } = require('./workloadModel');
 const field = (sql,type,label) => ({ sql,type,label });
-const common = { id: field('r.id','id','ID'),title: field('r.title','text','Title'),status: field('r.status','text','Status'),created_at: field('r.created_at','text','Created at') };
+const common = { id: field('r.id','id','ID'),title: field('r.title','text','Title'),status: field('r.status','text','Status'),created_at: field('r.created_at','text','Created at'),created_date: field('substr(r.created_at,1,10)','date','Created date (UTC)') };
 const SOURCES = {
   projects: { label: 'Projects',grain: 'One row per project',from: 'projects r',fields: { ...common,customer_id: field('r.customer_id','id','Customer ID'),deadline: field('r.deadline','date','Deadline') } },
   tasks: { label: 'Tasks',grain: 'One row per task; customer comes from its project',from: 'tasks r LEFT JOIN projects p ON p.id=r.project_id',fields: { ...common,project_id: field('r.project_id','id','Project ID'),customer_id: field('p.customer_id','id','Customer ID'),engineer_id: field('r.assigned_to','id','Assigned engineer ID'),priority: field('r.priority','text','Priority'),deadline: field('r.deadline','date','Deadline'),is_adhoc: field('r.is_adhoc','number','Ad-hoc flag') } },
   visits: { label: 'Maintenance visits',grain: 'One row per visit, including multi-engineer visits once',from: 'maintenance_visits r',fields: { ...common,customer_id: field('r.customer_id','id','Customer ID'),scheduled_date: field('r.scheduled_date','date','Scheduled date'),report_sent: field('r.report_sent','number','Report submitted'),report_forwarded: field('r.report_sent_to_customer','number','Report forwarded') } },
   activities: { label: 'Service activities',grain: 'One row per service activity',from: 'service_activities r',fields: { ...common,reference: field('r.activity_reference','text','Reference'),customer_id: field('r.customer_id','id','Customer ID'),engineer_id: field('r.engineer_id','id','Engineer ID'),team_id: field('r.team_id','id','Team ID'),activity_date: field('r.activity_date','date','Activity date'),duration_minutes: field('r.duration_minutes','number','Duration minutes'),classification: field('r.billable_classification','text','Billable classification') } },
-  recommendations: { label: 'Customer recommendations',grain: 'One row per recommendation',from: 'customer_recommendations r',fields: { id: common.id,status: common.status,created_at: common.created_at,customer_id: field('r.customer_id','id','Customer ID'),owner_id: field('r.owner_id','id','Owner ID'),risk_level: field('r.risk_level','text','Risk level'),due_date: field('r.due_date','date','Due date'),project_id: field('r.related_project_id','id','Converted project ID') } },
+  recommendations: { label: 'Customer recommendations',grain: 'One row per recommendation',from: 'customer_recommendations r',fields: { id: common.id,status: common.status,created_at: common.created_at,created_date: common.created_date,customer_id: field('r.customer_id','id','Customer ID'),owner_id: field('r.owner_id','id','Owner ID'),risk_level: field('r.risk_level','text','Risk level'),due_date: field('r.due_date','date','Due date'),project_id: field('r.related_project_id','id','Converted project ID') } },
 };
 const OPERATORS = { text: ['eq','neq','contains','in','is_null','is_not_null'],id: ['eq','neq','in','is_null','is_not_null'],date: ['eq','neq','lt','lte','gt','gte','in','is_null','is_not_null'],number: ['eq','neq','lt','lte','gt','gte','in','is_null','is_not_null'] };
 const fail = message => { throw Object.assign(new Error(message),{ status: 400 }); };
@@ -91,4 +91,10 @@ function compileReport(definition,limit) {
   const sql = `SELECT ${columns.map(column => `${column.sql} AS "${column.key}"`).join(',')} FROM ${source.from}${clauses.length ? ` WHERE ${clauses.join(' AND ')}` : ''}${groups.length ? ` GROUP BY ${groups.map(key => get(key).sql).join(',')}` : ''}${order.length ? ` ORDER BY ${order.join(',')}` : ''} LIMIT ?`;
   return { sql,params: [...params,limit+1],columns: columns.map(({ key,label }) => ({ key,label })) };
 }
-module.exports = { metadata,compileReport };
+function csvCell(value) {
+  if (value==null) return '""';
+  let text = String(value);
+  if (typeof value==='string' && (/^\s*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text))) text = `'${text}`;
+  return `"${text.replace(/"/g,'""')}"`;
+}
+module.exports = { metadata,compileReport,csvCell };

@@ -1,7 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { metadata,compileReport } = require('../customReports');
+const { metadata,compileReport,csvCell } = require('../customReports');
 const base = { source: 'tasks',fields: ['id','title'] };
+test('CSV cells escape delimiters and protect spreadsheet formula strings', () => {
+  assert.equal(csvCell('a,"b"\nc'),'"a,""b""\nc"');
+  assert.equal(csvCell(' =SUM(A1:A2)'),`"' =SUM(A1:A2)"`);
+  assert.equal(csvCell('@formula'),`"'@formula"`);
+  assert.equal(csvCell(-2),'"-2"');
+  assert.equal(csvCell(null),'""');
+});
 test('report compilation parameterizes values and restricts structural identifiers', () => {
   const value = "x' OR 1=1 -- %_\\";
   const report = compileReport({ ...base,filters: [{ field: 'title',operator: 'contains',value }] },100);

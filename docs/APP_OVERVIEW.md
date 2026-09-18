@@ -576,8 +576,14 @@ numeric aggregations and stable sorts are validated before execution. Metadata
 excludes credentials, private notes, customer contact PII and integration secrets.
 Previews return at most 100 rows with an explicit truncation flag. Excel exports
 reject results exceeding 5000 rows; execution runs read-only with a five-second
-statement timeout. Report Builder UI, persisted definitions and scheduling are
-subsequent stages; existing fixed reports are preserved.
+statement timeout. The Reports page includes a Report Builder with approved field
+selection, typed filters, grouping, aggregation, stable sorts and a bounded preview.
+Excel and UTF-8 CSV exports apply the same definition and reject over 5000 rows;
+CSV escapes cells and protects against spreadsheet formula interpretation.
+Migration `20260918_saved_custom_reports` stores versioned private or management-shared
+definitions. Only their owner can modify/delete them; managers recheck visibility
+on every saved run, and stale edits return HTTP 409 `REPORT_CONFLICT`.
+Scheduling and templates remain subsequent delivery stages.
 Summary stats, by-status breakdown, engineer load, KPI health (sorted worst-first),
 6-month trend charts (tasks created/completed/on-time, visits scheduled/completed/
 reported, hours logged — built with batched range queries), pending-closure list, a

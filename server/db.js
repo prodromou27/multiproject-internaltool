@@ -769,6 +769,20 @@ async function applyCompatibilityMigrations() {
       UNIQUE(user_id,week_start)
     );
   `]);
+  migrations.push(['20260918_saved_custom_reports', `
+    CREATE TABLE IF NOT EXISTS saved_custom_reports (
+      id SERIAL PRIMARY KEY,
+      owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      visibility TEXT NOT NULL DEFAULT 'private' CHECK(visibility IN ('private','management')),
+      definition TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT ${NOW},
+      updated_at TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_saved_report_owner ON saved_custom_reports(owner_id,updated_at,id);
+    CREATE INDEX IF NOT EXISTS idx_saved_report_visibility ON saved_custom_reports(visibility,updated_at,id);
+  `]);
 
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);

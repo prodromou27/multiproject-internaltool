@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { api } from '../api';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../components/Shared';
+import ReportBuilder from '../components/ReportBuilder';
 
 function KpiHealthRow({ k }) {
   const color = k.pct >= 100 ? 'var(--success)' : k.pct >= 70 ? 'var(--primary)' : k.pct >= 40 ? 'var(--warning)' : 'var(--danger)';
@@ -327,12 +328,19 @@ export default function Reports() {
   const [projects, setProjects] = useState([]);
   const [tab, setTab] = useState('overview');
   const [loading, setLoading] = useState(true);
+  const [loadError,setLoadError] = useState('');
+  const [retry,setRetry] = useState(0);
 
   useEffect(() => {
-    Promise.all([api.reportSummary(), api.reportProjects()]).then(([s, p]) => { setSummary(s); setProjects(p); setLoading(false); });
-  }, []);
+    const controller = new AbortController(),options = { signal: controller.signal };
+    setLoading(true); setLoadError('');
+    Promise.all([api.reportSummary(options), api.reportProjects(options)]).then(([s, p]) => { if (!controller.signal.aborted) { setSummary(s); setProjects(p); } })
+      .catch(error => { if (!controller.signal.aborted) setLoadError(error.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [retry]);
 
-  if (loading || !summary) return <div className="page"><p className="text-muted">Loading…</p></div>;
+  if (loading || !summary) return <div className="page"><h1>Reports</h1>{tab==='builder' ? <ReportBuilder /> : loading ? <p role="status">Loading reports...</p> : <div className="error-msg" role="alert">{loadError || 'Report summaries unavailable'} <button className="btn btn-ghost" onClick={() => setRetry(value => value+1)}>Retry summaries</button><button className="btn btn-primary" onClick={() => setTab('builder')}>Open Report Builder</button></div>}</div>;
 
   const byStatus = Object.fromEntries(summary.byStatus.map(s => [s.status, s.count]));
   // "Active" = everything that isn't closed or cancelled
@@ -348,7 +356,7 @@ export default function Reports() {
       </div>
 
       <div className="tabs">
-        {[['overview','Overview'],['projects','Projects'],['kpis','KPIs'],['trends','Trends'],['service_activity','Service Activity']].map(([k, l]) => (
+        {[['overview','Overview'],['builder','Report Builder'],['projects','Projects'],['kpis','KPIs'],['trends','Trends'],['service_activity','Service Activity']].map(([k, l]) => (
           <button key={k} className={'tab' + (tab === k ? ' active' : '')} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
@@ -443,6 +451,7 @@ export default function Reports() {
       )}
 
       {tab === 'trends' && <TrendsTab />}
+      {tab === 'builder' && <ReportBuilder />}
       {tab === 'service_activity' && <ServiceActivityReportTab />}
     </div>
   );

@@ -114,7 +114,7 @@ part of the foundation work.
 | 8a | Recorded effort and availability | Manager-edited versioned remaining estimates and net weekly hours; four-week task/visit capacity with explicit missing/excluded coverage | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 9 | Custom report engine | Approved source metadata, parameterized filters/grouping/aggregations, bounded preview, permission tests | In progress |
 | 9a | Approved-source engine | Manager-only metadata, typed parameterized filters, grouping/numeric aggregations, stable sorts, 100-row previews, 5000-row export cap and 5s read-only execution | Complete; PostgreSQL CI tracked per commit |
-| 10 | Report Builder UI and saved reports | Field selection, typed filters, grouping, sorts, preview, definitions with private/management visibility and Excel/CSV | Planned |
+| 10 | Report Builder UI and saved reports | Field selection, typed filters, grouping, sorts, preview, definitions with private/management visibility and Excel/CSV | Complete; browser QA pending |
 | 11 | Report templates and scheduling | Templates use engine; recipient validation; scheduling extends existing jobs after engine is stable | Planned |
 | 12 | Admin organization and feature settings | Business/technical sections; capability-based visibility; secrets remain protected | Planned |
 | 13 | Cross-module quality review | Targeted security/performance tests, responsive and accessibility QA, deployment instructions and final change summary | Planned |
