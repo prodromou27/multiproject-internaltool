@@ -453,4 +453,9 @@ router.delete('/:id', requireManagerOrPlanner, async (req, res) => {
   res.json({ ok: true });
 });
 
+router.use((error, req, res, next) => {
+  if (error.code === '23503') return res.status(409).json({ error: 'This visit is linked to a customer recommendation. Preserve its customer relationship and close the recommendation instead of deleting its source.' });
+  next(error);
+});
+
 module.exports = router;

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, ClipboardList } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -7,6 +7,7 @@ import {
 import { api } from '../api';
 import { StatusBadge, fmtDate } from '../components/Shared';
 import CustomerOverview from '../components/CustomerOverview';
+import CustomerRecommendations from '../components/CustomerRecommendations';
 
 function fmtDuration(minutes) {
   if (minutes == null) return '—';
@@ -16,6 +17,11 @@ function fmtDuration(minutes) {
 
 export default function CustomerServiceProfile() {
   const { id } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const query = new URLSearchParams(location.search);
+  const source = query.get('source_visit');
+  const sourceVisitId = source && /^[1-9]\d*$/.test(source) && Number.isSafeInteger(Number(source)) ? Number(source) : null;
   const [customer, setCustomer] = useState(null);
   const [engineers, setEngineers] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -29,6 +35,10 @@ export default function CustomerServiceProfile() {
   const [profileError, setProfileError] = useState('');
   const [retry, setRetry] = useState(0);
   const [tab, setTab] = useState('overview');
+  useEffect(() => {
+    const section = new URLSearchParams(location.search).get('section');
+    if (['overview','activities','recommendations'].includes(section)) setTab(section);
+  }, [location.search]);
 
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -80,8 +90,12 @@ export default function CustomerServiceProfile() {
       <div className="filter-bar" style={{ marginBottom: 20 }}>
         <button className={`filter-pill${tab === 'overview' ? ' active' : ''}`} aria-pressed={tab === 'overview'} onClick={() => setTab('overview')}>Overview and history</button>
         <button className={`filter-pill${tab === 'activities' ? ' active' : ''}`} aria-pressed={tab === 'activities'} onClick={() => setTab('activities')}>Service activities and hours</button>
+        <button className={`filter-pill${tab === 'recommendations' ? ' active' : ''}`} aria-pressed={tab === 'recommendations'} onClick={() => setTab('recommendations')}>Recommendations</button>
       </div>
-      {tab === 'overview' ? <CustomerOverview key={customer.id} customer={customer} /> : <>
+      {tab === 'overview' ? <CustomerOverview key={customer.id} customer={customer} /> : tab === 'recommendations' ? <CustomerRecommendations key={customer.id} customerId={customer.id} sourceVisitId={sourceVisitId} onSourceConsumed={() => {
+        const params = new URLSearchParams(location.search); params.delete('source_visit');
+        navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+      }} /> : <>
 
       {summary && (
         <div className="grid-4" style={{ marginBottom: 20 }}>

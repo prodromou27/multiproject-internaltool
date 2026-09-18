@@ -7,6 +7,7 @@ const { encryptCustomer, decryptCustomer } = require('../fieldCipher');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 router.use('/:id/overview', require('./customer-overview'));
+router.use('/:id/recommendations', require('./customer-recommendations'));
 
 function cellToString(v) {
   if (v === null || v === undefined) return '';
@@ -474,7 +475,7 @@ router.delete('/:id', requireManagerOrPlanner, async (req, res) => {
     // service_activities.customer_id is ON DELETE RESTRICT (Postgres error code 23503)
     // so a customer with logged service activity history cannot be silently deleted.
     if (e.code === '23503') {
-      return res.status(409).json({ error: 'Cannot delete this customer: it has service activity records. Deactivate it instead.' });
+      return res.status(409).json({ error: 'Cannot delete this customer: it has retained service activity or recommendation records. Deactivate it instead.' });
     }
     throw e;
   }

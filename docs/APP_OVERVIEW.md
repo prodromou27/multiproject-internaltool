@@ -389,6 +389,20 @@ name, downloadable template). Engineers see only customers linked to their work
 Activity Tracking).
 
 ### Maintenance Visits
+Customer recommendations are persisted separately from report text. Managers can
+record findings from visit details or Customer 360, set risk, owner, due date,
+status and follow-up notes, and convert a recommendation into a customer-linked
+project. Conversion carries the finding, recommendation, due date and active
+engineer owner assignment. Version checks reject stale edits; conversion, project
+creation and mandatory recommendation history save in one transaction. Customer
+timeline includes recommendation history. Lists use 25-row pages and bounded
+reference choices. Existing inactive owners can be retained on edits.
+Migration `20260918_customer_recommendations` adds recommendation/history tables
+and indexes without changing existing records. Composite foreign keys prevent
+source visits and converted projects from moving to another customer or being
+deleted while referenced. Customer deletion preserves recommendations; close
+records rather than deleting history. The initial recommendation workflow is
+manager-only; engineer/planner capture and task conversion are subsequent work.
 Multi-engineer scheduled visits with **dual report tracking** (internal `report_sent` +
 `report_sent_to_customer`), each with timestamp and actor. Inputs validate text and
 real calendar dates; visit creation and reassignment

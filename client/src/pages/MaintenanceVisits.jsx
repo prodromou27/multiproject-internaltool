@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, X, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle, Search } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { PageHeader } from '../components/PageLayout';
 import { useCreateIntent } from '../hooks/useCreateIntent';
@@ -343,6 +343,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
         )}
       </div>
       <div className="modal-footer" style={{ flexWrap: 'wrap', gap: 8 }}>
+        {isManager && !saving && <Link className="btn btn-ghost btn-sm" to={`/customers/${visit.customer_id}/service-profile?section=recommendations&source_visit=${visit.id}`}>Record finding</Link>}
         {/* PM: mark complete */}
         {isPM && visit.status !== 'completed' && visit.status !== 'cancelled' && (
           <button className="btn btn-success" onClick={markComplete} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>

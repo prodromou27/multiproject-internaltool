@@ -19,8 +19,9 @@ router.get('/', requireManager, async (req, res) => {
     UNION ALL SELECT 'visit_forwarded', mv.id, mv.title, mv.report_sent_to_customer_at, 'Report forwarded' FROM maintenance_visits mv WHERE mv.customer_id=? AND mv.report_sent_to_customer=1 AND mv.report_sent_to_customer_at IS NOT NULL
     UNION ALL SELECT 'activity', sa.id, sa.title, sa.created_at, 'Service activity logged' FROM service_activities sa WHERE sa.customer_id=?
     UNION ALL SELECT 'project_event', pa.id, p.title, pa.created_at, pa.action FROM project_activity pa JOIN projects p ON p.id=pa.project_id WHERE p.customer_id=?
-    UNION ALL SELECT 'document', a.id, a.original_name, a.created_at, 'Document uploaded' FROM attachments a JOIN projects p ON p.id=a.project_id WHERE p.customer_id=?`;
-  const eventParams = Array(8).fill(id);
+    UNION ALL SELECT 'document', a.id, a.original_name, a.created_at, 'Document uploaded' FROM attachments a JOIN projects p ON p.id=a.project_id WHERE p.customer_id=?
+    UNION ALL SELECT 'recommendation', h.id, substr(r.finding,1,300), h.created_at, h.action FROM recommendation_history h JOIN customer_recommendations r ON r.id=h.recommendation_id WHERE r.customer_id=?`;
+  const eventParams = Array(9).fill(id);
   const [projects, tasks, visits, documents, timeline, totals, counts] = await Promise.all([
     db.prepare('SELECT id,title,status,deadline FROM projects WHERE customer_id=? ORDER BY created_at DESC,id DESC LIMIT 25').all(id),
     db.prepare('SELECT t.id,t.title,t.status,t.deadline,t.project_id,u.name AS assignee FROM tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to WHERE p.customer_id=? ORDER BY t.created_at DESC,t.id DESC LIMIT 25').all(id),

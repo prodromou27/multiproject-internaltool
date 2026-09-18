@@ -44,6 +44,27 @@ test('core page reads propagate cancellation without logging out the user', asyn
   assert.equal(window.location.href, '/current-page');
 });
 
+test('customer profile reads support cancellation across overview and recommendation sections', async t => {
+  const controller = new AbortController();
+  const options = { signal: controller.signal };
+  const paths = [];
+  setup(t, (path, request) => {
+    paths.push(path);
+    assert.equal(request.signal, controller.signal);
+    return new Promise((resolve, reject) => request.signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true }));
+  });
+  const pending = Promise.allSettled([
+    api.customer(12,options), api.customerOverview(12,{ page: 2 },options),
+    api.customerRecommendations(12,{ status: 'open' },options),
+    api.customerServiceActivities(12,{},options), api.customerServiceSummary(12,{},options),
+    api.customerContractHours(12,options), api.activityCategories(options),
+  ]);
+  controller.abort();
+  assert.ok((await pending).every(result => result.status === 'rejected' && result.reason.name === 'AbortError'));
+  assert.equal(paths.length, 7);
+  assert.equal(window.location.href, '/current-page');
+});
+
 test('incorrect login and 2FA codes reject visibly without redirecting the login page', async t => {
   const stored = setup(t, async () => Response.json({ error: 'Invalid credentials' }, { status: 401 }));
   await assert.rejects(api.login('wrong', 'wrong'), /Invalid credentials/);

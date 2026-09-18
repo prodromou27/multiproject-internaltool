@@ -1235,6 +1235,91 @@ test('task pages retain full totals, stable ordering, enrichment and unpaged exp
   assert.equal(workbook.worksheets[0].rowCount, 62, 'header plus every matching task, independent of page');
 });
 
+test('customer recommendations validate references, preserve history and reject stale edits', async () => {
+  const customer = (await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Recommendation customer')).lastInsertRowid;
+  const visit = (await db.prepare('INSERT INTO maintenance_visits (title,customer_id,scheduled_date,created_by) VALUES (?,?,?,?)').run('Recommendation source', customer, '2026-09-18', ids.manager)).lastInsertRowid;
+  const foreign = (await db.prepare('INSERT INTO maintenance_visits (title,customer_id,scheduled_date,created_by) VALUES (?,?,?,?)').run('Foreign source', ids.customer, '2026-09-18', ids.manager)).lastInsertRowid;
+  const path = `/api/customers/${customer}/recommendations`;
+  const body = { finding: 'Obsolete equipment', recommendation: 'Replace equipment', source_visit_id: visit, owner_id: ids.engineerEnabled, risk_level: 'high', due_date: '2026-10-01' };
+  for (const token of [ids.tokenEnabled, ids.tokenDisabled]) {
+    assert.equal((await api(path, { token })).status, 403);
+    assert.equal((await api(path, { method: 'POST', token, body })).status, 403);
+  }
+  for (const role of ['planner','pm']) {
+    const user = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run(`Recommendation ${role}`, `recommendation-${role}@test.local`, bcrypt.hashSync('pw', 4), role)).lastInsertRowid;
+    const token = signJwt({ id: user });
+    assert.equal((await api(path, { token })).status, 403);
+    assert.equal((await api(path, { method: 'POST', token, body })).status, 403);
+    assert.equal((await api(`${path}/999/convert-to-project`, { method: 'POST', token, body: { version: 1, title: 'Denied conversion' } })).status, 403);
+  }
+  for (const query of ['page=0','page=1&page=2','page[x]=1','status=unknown','status=open&status=closed']) assert.equal((await api(`${path}?${query}`, { token: ids.tokenManager })).status, 400);
+  for (const extra of [{ finding: '' }, { recommendation: 1 }, { finding: 'x'.repeat(10001) }, { due_date: '2026-02-29' }, { owner_id: true }, { source_visit_id: foreign }, { owner_id: 99999999 }, { status: 'converted_to_project' }, { risk_level: 'invalid' }]) assert.equal((await api(path, { method: 'POST', token: ids.tokenManager, body: { ...body, ...extra } })).status, 400);
+  const created = await api(path, { method: 'POST', token: ids.tokenManager, body });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.version, 1);
+  assert.equal(created.data.status, 'open');
+  const id = created.data.id;
+  const updated = await api(`${path}/${id}`, { method: 'PUT', token: ids.tokenManager, body: { version: 1, status: 'accepted', follow_up_notes: 'Customer accepted the proposal' } });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.data.version, 2);
+  assert.equal(updated.data.finding, body.finding);
+  const stale = await api(`${path}/${id}`, { method: 'PUT', token: ids.tokenManager, body: { version: 1, status: 'rejected' } });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.data.code, 'RECOMMENDATION_CONFLICT');
+  assert.equal((await api(`/api/customers/${ids.customer}/recommendations/${id}`, { method: 'PUT', token: ids.tokenManager, body: { version: 2, status: 'closed' } })).status, 404);
+  assert.deepEqual((await db.prepare('SELECT action,status,version FROM recommendation_history WHERE recommendation_id=? ORDER BY id').all(id)), [{ action: 'created', status: 'open', version: 1 }, { action: 'updated', status: 'accepted', version: 2 }]);
+  const converted = await api(`${path}/${id}/convert-to-project`, { method: 'POST', token: ids.tokenManager, body: { version: 2, title: 'Equipment replacement' } });
+  assert.equal(converted.status, 201);
+  assert.equal(converted.data.status, 'converted_to_project');
+  const project = await db.prepare('SELECT customer_id,deadline,description FROM projects WHERE id=?').get(converted.data.related_project_id);
+  assert.equal(project.customer_id, customer);
+  assert.equal(project.deadline, body.due_date);
+  assert.ok(project.description.includes(body.finding) && project.description.includes(body.recommendation));
+  assert.ok(await db.prepare('SELECT user_id FROM project_assignments WHERE project_id=? AND user_id=?').get(converted.data.related_project_id, ids.engineerEnabled));
+  assert.equal((await api(`${path}/${id}/convert-to-project`, { method: 'POST', token: ids.tokenManager, body: { version: 3, title: 'Duplicate conversion' } })).status, 409);
+  assert.equal(Number((await db.prepare('SELECT COUNT(*) AS total FROM projects WHERE customer_id=?').get(customer)).total), 1);
+});
+
+test('recommendation conversion rolls back its project and version if history fails on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const created = await api(`/api/customers/${ids.customer}/recommendations`, { method: 'POST', token: ids.tokenManager, body: { finding: 'Atomic conversion fixture', recommendation: 'History must persist' } });
+  assert.equal(created.status, 201);
+  const originalTransaction = db.transaction;
+  try {
+    db.transaction = callback => originalTransaction(tx => callback({ ...tx, prepare(sql) {
+      if (sql.startsWith('INSERT INTO recommendation_history')) throw new Error('Simulated recommendation history failure');
+      return tx.prepare(sql);
+    } }));
+    const response = await api(`/api/customers/${ids.customer}/recommendations/${created.data.id}/convert-to-project`, { method: 'POST', token: ids.tokenManager, body: { version: 1, title: 'Atomic conversion should roll back' } });
+    assert.equal(response.status, 500);
+  } finally { db.transaction = originalTransaction; }
+  const stored = await db.prepare('SELECT version,status,related_project_id FROM customer_recommendations WHERE id=?').get(created.data.id);
+  assert.deepEqual(stored, { version: 1, status: 'open', related_project_id: null });
+  assert.equal(Number((await db.prepare('SELECT COUNT(*) AS total FROM projects WHERE title=?').get('Atomic conversion should roll back')).total), 0);
+});
+
+test('recommendations enforce customer links and concurrent conversions on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const customer = (await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Concurrent recommendation customer')).lastInsertRowid;
+  const visit = (await db.prepare('INSERT INTO maintenance_visits (title,customer_id,scheduled_date,created_by) VALUES (?,?,?,?)').run('Retained recommendation source', customer, '2026-09-18', ids.manager)).lastInsertRowid;
+  const path = `/api/customers/${customer}/recommendations`;
+  const created = await api(path, { method: 'POST', token: ids.tokenManager, body: { finding: 'Concurrent finding', recommendation: 'One project', source_visit_id: visit } });
+  assert.equal(created.status, 201);
+  const responses = await Promise.all([1,2].map(i => api(`${path}/${created.data.id}/convert-to-project`, { method: 'POST', token: ids.tokenManager, body: { version: 1, title: `Concurrent conversion ${i}` } })));
+  assert.deepEqual(responses.map(row => row.status).sort(), [201,409]);
+  assert.equal(Number((await db.prepare('SELECT COUNT(*) AS total FROM projects WHERE customer_id=?').get(customer)).total), 1);
+  assert.equal((await api(`/api/maintenance-visits/${visit}`, { method: 'PUT', token: ids.tokenManager, body: { customer_id: ids.customer } })).status, 409);
+  assert.equal((await api(`/api/maintenance-visits/${visit}`, { method: 'DELETE', token: ids.tokenManager })).status, 409);
+  const converted = responses.find(row => row.status === 201).data;
+  assert.equal((await api(`/api/projects/${converted.related_project_id}`, { method: 'PUT', token: ids.tokenManager, body: { customer_id: ids.customer } })).status, 409);
+  assert.equal((await api(`/api/customers/${customer}`, { method: 'DELETE', token: ids.tokenManager })).status, 409);
+  const list = await api(`${path}?status=converted_to_project`, { token: ids.tokenManager });
+  assert.equal(list.status, 200);
+  assert.equal(list.data.total, 1);
+  assert.equal(list.data.rows[0].source_visit_title, 'Retained recommendation source');
+  assert.equal((await api(`${path}?page=0`, { token: ids.tokenManager })).status, 400);
+  const overview = await api(`/api/customers/${customer}/overview`, { token: ids.tokenManager });
+  assert.equal(overview.data.timeline.filter(row => row.kind === 'recommendation').length, 2);
+});
+
 test('customer overview rejects unauthorized roles and malformed inputs', async () => {
   for (const user of [ids.engineerEnabled, ids.engineerDisabled]) assert.equal((await api(`/api/customers/${ids.customer}/overview`, { token: signJwt({ id: user }) })).status, 403);
   for (const role of ['planner', 'pm']) {

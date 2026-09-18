@@ -141,6 +141,40 @@ async function transaction(work) {
 
 // ── Schema (final state) + seed ──────────────────────────────────────────────
 const NOW = "to_char((now() AT TIME ZONE 'UTC'),'YYYY-MM-DD HH24:MI:SS')";
+const RECOMMENDATIONS_SCHEMA = `
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_customer_pair ON maintenance_visits(customer_id,id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_project_customer_pair ON projects(customer_id,id);
+  CREATE TABLE IF NOT EXISTS customer_recommendations (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+    source_visit_id INTEGER,
+    finding TEXT NOT NULL,
+    recommendation TEXT NOT NULL,
+    risk_level TEXT NOT NULL DEFAULT 'medium' CHECK(risk_level IN ('low','medium','high','critical')),
+    owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    due_date TEXT,
+    status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','accepted','rejected','in_progress','implemented','deferred','converted_to_project','closed')),
+    follow_up_notes TEXT,
+    related_project_id INTEGER,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT DEFAULT ${NOW},
+    updated_at TEXT DEFAULT ${NOW},
+    FOREIGN KEY(customer_id,source_visit_id) REFERENCES maintenance_visits(customer_id,id) ON DELETE RESTRICT,
+    FOREIGN KEY(customer_id,related_project_id) REFERENCES projects(customer_id,id) ON DELETE RESTRICT
+  );
+  CREATE INDEX IF NOT EXISTS idx_recommendation_customer ON customer_recommendations(customer_id,created_at,id);
+  CREATE TABLE IF NOT EXISTS recommendation_history (
+    id SERIAL PRIMARY KEY,
+    recommendation_id INTEGER NOT NULL REFERENCES customer_recommendations(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
+    status TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    created_at TEXT DEFAULT ${NOW}
+  );
+  CREATE INDEX IF NOT EXISTS idx_recommendation_history ON recommendation_history(recommendation_id,id);
+`;
 
 async function init() {
   // Add the round(double precision, int) overload Postgres lacks, so existing
@@ -712,6 +746,7 @@ async function applyCompatibilityMigrations() {
   ];
 
   migrations.push(['20260917_activity_version', 'ALTER TABLE service_activities ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1']);
+  migrations.push(['20260918_customer_recommendations', RECOMMENDATIONS_SCHEMA]);
 
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);

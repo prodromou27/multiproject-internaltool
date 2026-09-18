@@ -476,4 +476,9 @@ router.delete('/:id/members/:uid', requireManager, async (req, res) => {
   res.json({ ok: true });
 });
 
+router.use((error, req, res, next) => {
+  if (error.code === '23503') return res.status(409).json({ error: 'A linked record prevents this change. Projects converted from recommendations must keep their customer relationship.' });
+  next(error);
+});
+
 module.exports = router;
