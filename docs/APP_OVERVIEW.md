@@ -568,6 +568,16 @@ Hours logged against a task or visit (positive, ≤24/entry), with strict owners
 on read/write and manager-only deletion of others' logs. Monthly summaries per user.
 
 ### Reports (manager)
+The custom report engine at `/api/reports/custom` exposes approved source/field
+metadata and manager-only preview/Excel execution for projects, tasks, visits,
+service activities and recommendations. Definitions use registry keys rather than
+SQL identifiers. Typed parameterized filters, explicit source grain, grouping,
+numeric aggregations and stable sorts are validated before execution. Metadata
+excludes credentials, private notes, customer contact PII and integration secrets.
+Previews return at most 100 rows with an explicit truncation flag. Excel exports
+reject results exceeding 5000 rows; execution runs read-only with a five-second
+statement timeout. Report Builder UI, persisted definitions and scheduling are
+subsequent stages; existing fixed reports are preserved.
 Summary stats, by-status breakdown, engineer load, KPI health (sorted worst-first),
 6-month trend charts (tasks created/completed/on-time, visits scheduled/completed/
 reported, hours logged — built with batched range queries), pending-closure list, a

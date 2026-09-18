@@ -1236,6 +1236,42 @@ test('task pages retain full totals, stable ordering, enrichment and unpaged exp
   assert.equal(workbook.worksheets[0].rowCount, 62, 'header plus every matching task, independent of page');
 });
 
+test('custom report metadata and execution enforce manager access and validate structure', async () => {
+  for (const token of [ids.tokenEnabled,ids.tokenDisabled]) {
+    assert.equal((await api('/api/reports/custom/sources',{ token })).status,403);
+    for (const route of ['preview','export']) assert.equal((await api(`/api/reports/custom/${route}`,{ method: 'POST',token,body: { source: 'tasks',fields: ['id'] } })).status,403);
+  }
+  const sources = await api('/api/reports/custom/sources',{ token: ids.tokenManager });
+  assert.equal(sources.status,200);
+  assert.equal(sources.data.preview_limit,100);
+  for (const body of [null,[],{ source: 'users',fields: ['password'] },{ source: 'tasks',fields: ['secret'] },{ source: 'tasks',fields: ['id'],filters: [{ field: 'id',operator: 'eq',value: '1' }] }]) {
+    for (const route of ['preview','export']) assert.equal((await api(`/api/reports/custom/${route}`,{ method: 'POST',token: ids.tokenManager,body })).status,400);
+  }
+});
+
+test('custom reports preview, aggregate and export bounded matching rows on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const project = (await db.prepare('INSERT INTO projects (title,created_by) VALUES (?,?)').run('Custom report fixture',ids.manager)).lastInsertRowid;
+  for (let i=0;i<102;i++) await db.prepare('INSERT INTO tasks (title,project_id,created_by,status) VALUES (?,?,?,?)').run(`Custom report task ${i}`,project,ids.manager,i<100 ? 'open' : 'completed');
+  const definition = { source: 'tasks',fields: ['id','title','status'],filters: [{ field: 'project_id',operator: 'eq',value: project }] };
+  const preview = await api('/api/reports/custom/preview',{ method: 'POST',token: ids.tokenManager,body: definition });
+  assert.equal(preview.status,200);
+  assert.equal(preview.data.rows.length,100);
+  assert.equal(preview.data.truncated,true);
+  const grouped = await api('/api/reports/custom/preview',{ method: 'POST',token: ids.tokenManager,body: { ...definition,fields: ['status'],group_by: ['status'],aggregations: [{ field: '*',operation: 'count' }] } });
+  assert.equal(grouped.status,200);
+  assert.deepEqual(grouped.data.rows,[{ status: 'completed',metric_0: 2 },{ status: 'open',metric_0: 100 }]);
+  const response = await fetch(`${baseUrl}/api/reports/custom/export`,{ method: 'POST',headers: { 'Content-Type': 'application/json','X-SolutionsHub-Request': '1',Authorization: `Bearer ${ids.tokenManager}` },body: JSON.stringify(definition) });
+  assert.equal(response.status,200);
+  const workbook = new (require('exceljs').Workbook)();
+  await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
+  assert.equal(workbook.worksheets[0].rowCount,103);
+  assert.deepEqual(workbook.worksheets[0].getRow(2).values.slice(1),Object.values(preview.data.rows[0]));
+  await db.exec(`INSERT INTO tasks (title,project_id,created_by) SELECT 'Report budget fixture',${project},${ids.manager} FROM generate_series(1,5001);`);
+  const oversized = await api('/api/reports/custom/export',{ method: 'POST',token: ids.tokenManager,body: definition });
+  assert.equal(oversized.status,413);
+  assert.match(oversized.data.error,/5000 rows/);
+});
+
 test('workload planning validates inputs, scopes roles and rejects conflicting input saves', async () => {
   const task = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by,deadline) VALUES (?,?,?,?)').run('Estimated task',ids.engineerEnabled,ids.manager,'2026-09-18')).lastInsertRowid;
   for (const token of [ids.tokenEnabled,ids.tokenDisabled]) {

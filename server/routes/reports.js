@@ -3,6 +3,7 @@ const ExcelJS = require('exceljs');
 const db = require('../db');
 const { requireManager, requireDownloadManager } = require('../middleware/auth');
 const { decrypt: decryptField } = require('../fieldCipher');
+router.use('/custom', require('./custom-reports'));
 
 router.get('/summary', requireManager, async (req, res) => {
   const total = (await db.prepare('SELECT COUNT(*) as c FROM projects').get()).c;
