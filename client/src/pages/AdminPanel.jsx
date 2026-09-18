@@ -9,8 +9,9 @@ import {
   AtSign, ExternalLink, Tag, Plus, GripVertical, ChevronUp, ChevronDown,
 } from 'lucide-react';
 import { api } from '../api';
+import { visiblePages } from '../navigation';
 import { useAuth } from '../App';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { fmtDate, Modal, StatusBadge, PriorityBadge, isOverdue } from '../components/Shared';
 import { useStatuses } from '../hooks/useStatuses';
 import { useToast } from '../components/Toast';
@@ -854,9 +855,9 @@ const DEFAULT_SETTINGS = {
 function Toggle({ checked, onChange, label }) {
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
-      <div onClick={() => onChange(!checked)} style={{ width: 40, height: 22, borderRadius: 11, position: 'relative', flexShrink: 0, transition: 'background 0.2s', background: checked ? 'var(--primary)' : 'var(--gray-300)' }}>
+      <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)} style={{ border: 0,padding: 0,width: 40, height: 22, borderRadius: 11, position: 'relative', flexShrink: 0, transition: 'background 0.2s', background: checked ? 'var(--primary)' : 'var(--gray-300)' }}>
         <div style={{ position: 'absolute', top: 3, left: checked ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,.3)' }} />
-      </div>
+      </button>
       <span style={{ fontSize: 13 }}>{label}</span>
     </label>
   );
@@ -870,8 +871,12 @@ function IntegrationsTab() {
   const [err,    setErr]    = useState('');
   const [loaded, setLoaded] = useState(false);
 
+  const [loadRetry,setLoadRetry] = useState(0);
   useEffect(() => {
-    api.getIntegrations().then(d => {
+    const controller = new AbortController();
+    setErr(''); setLoaded(false);
+    api.getIntegrations({ signal: controller.signal }).then(d => {
+      if (controller.signal.aborted) return;
       if (d && Object.keys(d).length) {
         setCfg(prev => ({
           teams:     { ...DEFAULT_SETTINGS.teams,     ...d.teams },
@@ -880,16 +885,17 @@ function IntegrationsTab() {
         }));
       }
       setLoaded(true);
-    }).catch(() => setLoaded(true));
-  }, []);
+    }).catch(failure => { if (!controller.signal.aborted) setErr(failure.message); });
+    return () => controller.abort();
+  }, [loadRetry]);
 
-  const setTeams  = (k, v) => setCfg(c => ({ ...c, teams:     { ...c.teams,     [k]: v } }));
-  const setWebex  = (k, v) => setCfg(c => ({ ...c, webex:     { ...c.webex,     [k]: v } }));
+  const setTeams  = (k, v) => setCfg(c => ({ ...c, teams: { ...c.teams,[k]: v,...(k==='webhook_url' ? { clear_webhook_url: false } : {}) } }));
+  const setWebex  = (k, v) => setCfg(c => ({ ...c, webex: { ...c.webex,[k]: v,...(k==='bot_token' ? { clear_bot_token: false } : {}) } }));
   const setNotify = (k, v) => setCfg(c => ({ ...c, notify_on: { ...c.notify_on, [k]: v } }));
 
   async function save() {
     setSaving(true); setMsg(''); setErr('');
-    try { await api.saveIntegrations(cfg); setMsg('Settings saved successfully.'); }
+    try { await api.saveIntegrations(cfg); const updated = await api.getIntegrations(); setCfg({ teams: { ...DEFAULT_SETTINGS.teams,...updated.teams },webex: { ...DEFAULT_SETTINGS.webex,...updated.webex },notify_on: { ...DEFAULT_SETTINGS.notify_on,...updated.notify_on } }); setMsg('Settings saved successfully.'); }
     catch (e) { setErr(e.message); }
     finally { setSaving(false); }
   }
@@ -901,13 +907,14 @@ function IntegrationsTab() {
     finally { setTesting(t => ({ ...t, [platform]: false })); }
   }
 
+  if (!loaded && err) return <div className="error-msg" role="alert">{err} <button className="btn btn-ghost" onClick={() => setLoadRetry(value => value+1)}>Retry</button></div>;
   if (!loaded) return <p className="text-muted">Loading…</p>;
 
   const sectionStyle = { background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 };
   const labelStyle   = { fontSize: 12, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6, display: 'block' };
 
   return (
-    <div style={{ maxWidth: 680 }}>
+    <fieldset disabled={saving || Object.values(testing).some(Boolean)} style={{ maxWidth: 680,border: 0,padding: 0 }}>
       {msg && <div className="alert alert-success" style={{ marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={14} /> {msg}</div>}
       {err && <div className="alert alert-danger"  style={{ marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} /> {err}</div>}
 
@@ -926,10 +933,11 @@ function IntegrationsTab() {
           <>
             <div className="form-group" style={{ marginBottom: 12 }}>
               <label style={labelStyle}>Incoming Webhook URL</label>
-              <input type="url" value={cfg.teams.webhook_url} onChange={e => setTeams('webhook_url', e.target.value)} placeholder="https://outlook.office.com/webhook/..." />
+              <input type="password" autoComplete="new-password" value={cfg.teams.webhook_url} onChange={e => setTeams('webhook_url', e.target.value)} placeholder="https://outlook.office.com/webhook/..." />
+              {cfg.teams.webhook_url_set && <p className="text-muted text-sm">{cfg.teams.clear_webhook_url ? 'Stored webhook will be removed when saved.' : 'Webhook configured. Leave blank to retain it.'} <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCfg(c => ({ ...c,teams: { ...c.teams,webhook_url: '',clear_webhook_url: !c.teams.clear_webhook_url } }))}>{cfg.teams.clear_webhook_url ? 'Keep stored webhook' : 'Remove stored webhook'}</button></p>}
               <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>In Teams: channel → ··· → Connectors → Incoming Webhook → Configure</div>
             </div>
-            <button className="btn btn-ghost btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} disabled={!cfg.teams.webhook_url || testing.teams} onClick={() => test('teams')}>
+            <button className="btn btn-ghost btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} disabled={(!cfg.teams.webhook_url && (!cfg.teams.webhook_url_set || cfg.teams.clear_webhook_url)) || testing.teams} onClick={() => test('teams')}>
               {testing.teams ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Bell size={13} /> Send Test</>}
             </button>
           </>
@@ -951,7 +959,8 @@ function IntegrationsTab() {
           <>
             <div className="form-group" style={{ marginBottom: 12 }}>
               <label style={labelStyle}>Bot Access Token</label>
-              <input type="password" value={cfg.webex.bot_token} onChange={e => setWebex('bot_token', e.target.value)} placeholder="Your Webex Bot access token" />
+              <input type="password" autoComplete="new-password" value={cfg.webex.bot_token} onChange={e => setWebex('bot_token', e.target.value)} placeholder="Your Webex Bot access token" />
+              {cfg.webex.bot_token_set && <p className="text-muted text-sm">{cfg.webex.clear_bot_token ? 'Stored token will be removed when saved.' : 'Token configured. Leave blank to retain it.'} <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCfg(c => ({ ...c,webex: { ...c.webex,bot_token: '',clear_bot_token: !c.webex.clear_bot_token } }))}>{cfg.webex.clear_bot_token ? 'Keep stored token' : 'Remove stored token'}</button></p>}
               <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>Create a bot at <strong>developer.webex.com</strong> and paste its Access Token here.</div>
             </div>
             <div className="form-group" style={{ marginBottom: 12 }}>
@@ -996,7 +1005,7 @@ function IntegrationsTab() {
       <button className="btn btn-primary" onClick={save} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
         {saving ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving…</> : <><Save size={14} /> Save Integration Settings</>}
       </button>
-    </div>
+    </fieldset>
   );
 }
 
@@ -3023,31 +3032,32 @@ function ServiceActivityAdminTab() {
 /* ══════════════════════════════════════════════════════════ */
 const TABS = [
   { key: 'overview',       label: 'Overview',           Icon: LayoutDashboard, group: 'overview',      desc: 'Health, activity, and manager attention items' },
-  { key: 'users',          label: 'Users & Access',     Icon: UsersIcon,       group: 'people',        desc: 'Accounts, roles, activation, passwords, and 2FA exceptions' },
-  { key: 'projects',       label: 'Projects',           Icon: FolderOpen,      group: 'people',        desc: 'Project administration and status visibility' },
-  { key: 'maintenance',    label: 'Maintenance Visits', Icon: Wrench,          group: 'people',        desc: 'Visit administration and report status' },
-  { key: 'statuses',       label: 'Status Workflow',    Icon: Tag,             group: 'configuration', desc: 'Project status labels, colors, and workflow rules' },
-  { key: 'service_activity_tracking', label: 'Service Activity Tracking', Icon: ClipboardList, group: 'configuration', desc: 'Teams, activity categories, technologies, and MSP operations log settings' },
-  { key: 'integrations',   label: 'Integrations',       Icon: Globe,           group: 'configuration', desc: 'External service and SMTP configuration' },
-  { key: 'weekly_report',  label: 'Weekly Report',      Icon: ScrollText,      group: 'configuration', desc: 'Report schedule, recipients, and preview' },
-  { key: 'localization',   label: 'Localization',       Icon: Globe,           group: 'configuration', desc: 'Language and regional settings' },
-  { key: 'security',       label: 'Security Policy',    Icon: Shield,          group: 'security',      desc: 'Password expiry and reset policy' },
-  { key: 'audit_log',      label: 'Audit Log',          Icon: ClipboardList,   group: 'security',      desc: 'Traceable record of system changes' },
-  { key: 'logging',        label: 'Logging',            Icon: Database,        group: 'security',      desc: 'Application logging and retention settings' },
-  { key: 'admin_alerts',   label: 'System Alerts',      Icon: ShieldAlert,     group: 'security',      desc: 'Manager alert preferences for operational issues' },
-  { key: 'stats',          label: 'System Stats',       Icon: BarChart3,       group: 'operations',    desc: 'Database, storage, and usage metrics' },
-  { key: 'activity',       label: 'Activity Feed',      Icon: Activity,        group: 'operations',    desc: 'Recent application activity' },
-  { key: 'deployment',     label: 'Deployment Health',  Icon: HardDrive,       group: 'operations',    desc: 'Runtime configuration and deploy status checks' },
-  { key: 'export',         label: 'Data Export',        Icon: FileSpreadsheet, group: 'operations',    desc: 'Download operational data' },
-  { key: 'system_update',  label: 'System Update',      Icon: Download,        group: 'operations',    desc: 'Controlled application update workflow' },
+  { key: 'users',          label: 'Users & Access',     Icon: UsersIcon,       group: 'business_people',        desc: 'Accounts, roles, activation, passwords, and 2FA exceptions' },
+  { key: 'projects',       label: 'Projects',           Icon: FolderOpen,      group: 'business_people',        desc: 'Project administration and status visibility' },
+  { key: 'maintenance',    label: 'Maintenance Visits', Icon: Wrench,          group: 'business_people',        desc: 'Visit administration and report status' },
+  { key: 'statuses',       label: 'Status Workflow',    Icon: Tag,             group: 'business_rules', desc: 'Project status labels, colors, and workflow rules' },
+  { key: 'service_activity_tracking', label: 'Service Activity Tracking', Icon: ClipboardList, group: 'business_rules', desc: 'Teams, activity categories, technologies, and MSP operations log settings' },
+  { key: 'integrations',   label: 'Integrations',       Icon: Globe,           group: 'technical_configuration', desc: 'External service and SMTP configuration' },
+  { key: 'weekly_report',  label: 'Weekly Report',      Icon: ScrollText,      group: 'technical_configuration', desc: 'Report schedule, recipients, and preview' },
+  { key: 'localization',   label: 'Localization',       Icon: Globe,           group: 'technical_configuration', desc: 'Language and regional settings' },
+  { key: 'security',       label: 'Security Policy',    Icon: Shield,          group: 'technical_security',      desc: 'Password expiry and reset policy' },
+  { key: 'audit_log',      label: 'Audit Log',          Icon: ClipboardList,   group: 'technical_security',      desc: 'Traceable record of system changes' },
+  { key: 'logging',        label: 'Logging',            Icon: Database,        group: 'technical_security',      desc: 'Application logging and retention settings' },
+  { key: 'admin_alerts',   label: 'System Alerts',      Icon: ShieldAlert,     group: 'technical_security',      desc: 'Manager alert preferences for operational issues' },
+  { key: 'stats',          label: 'System Stats',       Icon: BarChart3,       group: 'technical_operations',    desc: 'Database, storage, and usage metrics' },
+  { key: 'activity',       label: 'Activity Feed',      Icon: Activity,        group: 'technical_operations',    desc: 'Recent application activity' },
+  { key: 'deployment',     label: 'Deployment Health',  Icon: HardDrive,       group: 'technical_operations',    desc: 'Runtime configuration and deploy status checks' },
+  { key: 'export',         label: 'Data Export',        Icon: FileSpreadsheet, group: 'technical_operations',    desc: 'Download operational data' },
+  { key: 'system_update',  label: 'System Update',      Icon: Download,        group: 'technical_operations',    desc: 'Controlled application update workflow' },
 ];
 
 const TAB_GROUPS = [
-  { key: 'overview',      label: 'Overview' },
-  { key: 'people',        label: 'People & Work' },
-  { key: 'configuration', label: 'Configuration' },
-  { key: 'security',      label: 'Security & Audit' },
-  { key: 'operations',    label: 'Operations' },
+  { key: 'overview',label: 'Overview',area: 'overview' },
+  { key: 'business_people',label: 'Business / People & Work',area: 'business' },
+  { key: 'business_rules',label: 'Business / Workflow & Service Rules',area: 'business' },
+  { key: 'technical_configuration',label: 'Technical / Application & Delivery',area: 'technical' },
+  { key: 'technical_security',label: 'Technical / Security & Audit',area: 'technical' },
+  { key: 'technical_operations',label: 'Technical / System Operations',area: 'technical' },
 ];
 
 const TAB_KEYS = new Set(TABS.map(t => t.key));
@@ -3081,7 +3091,7 @@ export default function AdminPanel() {
   const [sectionStatus, setSectionStatus] = useState({});
 
   useEffect(() => {
-    if (!section) return;
+    if (!section) { setTab('overview'); return; }
     if (TAB_KEYS.has(section)) setTab(section);
     else navigate('/settings', { replace: true });
   }, [section, navigate]);
@@ -3114,6 +3124,8 @@ export default function AdminPanel() {
 
   const activeTab = TABS.find(t => t.key === tab) || TABS[0];
   const activeGroup = TAB_GROUPS.find(g => g.key === activeTab.group);
+  const activeArea = activeGroup?.area || 'overview';
+  const businessLinks = visiblePages(user.role).filter(page => ['customers','templates','workload','approvals','reports'].includes(page.id));
   const q = tabSearch.trim().toLowerCase();
   const filteredTabs = TABS.filter(t => !q || t.label.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q));
   const ActiveIcon = activeTab.Icon;
@@ -3134,6 +3146,9 @@ export default function AdminPanel() {
 
       <div className="settings-shell">
         <aside className="settings-nav" aria-label="Settings sections">
+          <div aria-label="Administration areas" style={{ display: 'flex',flexWrap: 'wrap',gap: 6,marginBottom: 12 }}>
+            {[['overview','Overview','overview'],['business','Business','users'],['technical','Technical','integrations']].map(([area,label,first]) => <button key={area} type="button" className={'btn btn-sm '+(area===activeArea ? 'btn-primary' : 'btn-ghost')} aria-pressed={area===activeArea} onClick={() => { setTabSearch(''); selectTab(first); }}>{label}</button>)}
+          </div>
           <div className="settings-search">
             <input
               value={tabSearch}
@@ -3144,6 +3159,7 @@ export default function AdminPanel() {
           </div>
 
           {TAB_GROUPS.map(group => {
+            if (!q && group.area!==activeArea) return null;
             const groupTabs = filteredTabs.filter(t => t.group === group.key);
             if (!groupTabs.length) return null;
             return (
@@ -3154,6 +3170,7 @@ export default function AdminPanel() {
                     key={key}
                     type="button"
                     onClick={() => selectTab(key)}
+                    aria-current={tab===key ? 'page' : undefined}
                     className={'settings-nav-item' + (tab === key ? ' active' : '')}
                   >
                     <Icon size={16} />
@@ -3165,6 +3182,7 @@ export default function AdminPanel() {
             );
           })}
 
+          {activeArea==='business' && !q && <div className="settings-nav-group"><div className="settings-nav-heading">Business modules</div>{businessLinks.map(page => <Link className="settings-nav-item" key={page.id} to={page.path} style={{ display: 'block' }}>{page.label}</Link>)}</div>}
           {filteredTabs.length === 0 && (
             <p className="text-sm text-muted" style={{ padding: '8px 10px' }}>No settings matched.</p>
           )}

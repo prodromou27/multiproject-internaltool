@@ -299,7 +299,7 @@ export const api = {
   calendar: (month, options) => req('GET', `/calendar?${new URLSearchParams({ month })}`, undefined, options),
 
   // settings / integrations
-  getIntegrations: () => req('GET', '/settings/integrations'),
+  getIntegrations: (options) => req('GET', '/settings/integrations',undefined,options),
   saveIntegrations: (data) => req('POST', '/settings/integrations', data),
   testIntegration: (platform, settings) => req('POST', '/settings/integrations/test', { platform, settings }),
 

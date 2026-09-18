@@ -119,7 +119,8 @@ part of the foundation work.
 | 11a | Approved report templates | Eleven editable definitions use the engine with explicit UTC date snapshots and configured project terminal states; workload links to its dedicated model | Complete; browser QA pending |
 | 11b | Saved report delivery | Owner-managed versioned daily/weekly/monthly UTC schedules; active manager recipients and current visibility rechecked; bounded CSV queries, atomic claims and visible outcomes | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 11c | Existing digest reliability | Await SMTP/report reads, preserve masked credentials, escape stored HTML values and enforce current manager recipient eligibility | Complete; PostgreSQL CI tracked per commit |
-| 12 | Admin organization and feature settings | Business/technical sections; capability-based visibility; secrets remain protected | Planned |
+| 12 | Admin organization and feature settings | Business/technical sections; capability-based visibility; secrets remain protected | In progress |
+| 12a | Administration navigation and credentials | Business/technical areas, shared-capability business links, preserved deep links, keyboard switches and write-only integration credentials with explicit removal | Complete; browser QA pending |
 | 13 | Cross-module quality review | Targeted security/performance tests, responsive and accessibility QA, deployment instructions and final change summary | Planned |
 
 ## Reporting design constraints

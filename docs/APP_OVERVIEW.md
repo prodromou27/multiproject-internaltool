@@ -764,3 +764,12 @@ Weekly digest settings await database reads and preserve stored SMTP passwords w
 unchanged; reads expose only `password_set`. Preview HTML escapes stored user/record
 text. Weekly recipient configuration is bounded to 20 eligible managers, and
 current manager access is checked again when resolving delivery addresses.
+
+Settings separates Overview, Business and Technical areas while preserving section
+URLs and existing manager permissions. Search spans all areas. Business links reuse
+the page capability registry for Customers, Templates, Workload, Approvals and Reports.
+Integration reads expose configuration flags instead of stored Webex tokens or Teams
+webhook URLs; blank edits retain them, explicit removal flags clear them, and tests
+resolve credentials server-side. New webhook URLs retain outbound SSRF validation.
+Failed integration loads offer Retry and do not expose writable default settings;
+settings switches support native keyboard activation and announce their state.

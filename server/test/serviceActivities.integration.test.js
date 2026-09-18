@@ -1268,6 +1268,27 @@ test('saved custom reports protect private definitions, ownership and edit versi
   assert.equal((await api(path,{ token: ids.tokenManager })).status,404);
 });
 
+test('integration settings redact stored tokens and webhooks, preserve edits and validate requests', async () => {
+  await db.prepare("INSERT INTO settings (key,value) VALUES ('integrations',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ teams: { enabled: false,webhook_url: 'https://secret.example/webhook' },webex: { enabled: true,bot_token: 'retained-webex-token',mode: 'both' } }));
+  const read = await api('/api/settings/integrations',{ token: ids.tokenManager });
+  assert.equal(read.status,200);
+  assert.equal(read.data.teams.webhook_url,'');
+  assert.equal(read.data.teams.webhook_url_set,true);
+  assert.equal(read.data.webex.bot_token,'');
+  assert.equal(read.data.webex.bot_token_set,true);
+  assert.equal(JSON.stringify(read.data).includes('retained-webex-token'),false);
+  assert.equal((await api('/api/settings/integrations',{ token: ids.tokenEnabled })).status,403);
+  assert.equal((await api('/api/settings/integrations',{ method: 'POST',token: ids.tokenManager,body: { teams: { clear_webhook_url: true },webex: { mode: 'space',bot_token: '' } } })).status,200);
+  let stored = JSON.parse((await db.prepare("SELECT value FROM settings WHERE key='integrations'").get()).value);
+  assert.equal(stored.webex.bot_token,'retained-webex-token');
+  assert.equal(stored.webex.mode,'space');
+  assert.equal(stored.teams.webhook_url,'');
+  assert.equal((await api('/api/settings/integrations',{ method: 'POST',token: ids.tokenManager,body: { webex: { clear_bot_token: true } } })).status,200);
+  stored = JSON.parse((await db.prepare("SELECT value FROM settings WHERE key='integrations'").get()).value);
+  assert.equal(stored.webex.bot_token,'');
+  for (const body of [[],{ teams: { enabled: 'false' } },{ teams: { webhook_url: 'https://127.0.0.1/private' } }]) assert.equal((await api('/api/settings/integrations',{ method: 'POST',token: ids.tokenManager,body })).status,400);
+});
+
 test('SMTP settings await reads, redact and retain passwords on ordinary edits', async () => {
   await db.prepare("INSERT INTO settings (key,value) VALUES ('email_smtp',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ host: 'smtp.test.local',port: 587,user: 'report-user',password: 'retained-secret' }));
   const before = await api('/api/report-settings/smtp',{ token: ids.tokenManager });

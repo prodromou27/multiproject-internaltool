@@ -10,6 +10,12 @@ const { getRuntimeConfigIssues } = require('../config');
 const { isEncrypted, keyStatus } = require('../fieldCipher');
 const { logAudit } = require('../auditLog');
 const pkg = require('../package.json');
+const { safeSettings,mergeSettings } = require('../integrationSettings');
+async function integrations() {
+  const row = await db.prepare("SELECT value FROM settings WHERE key='integrations'").get();
+  try { return JSON.parse(row?.value || '{}') || {}; } catch { return {}; }
+}
+
 
 function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
@@ -75,9 +81,7 @@ async function customerEncryptionReport() {
 
 // GET /api/settings/integrations
 router.get('/integrations', requireManager, async (req, res) => {
-  const row = (await db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get());
-  if (!row) return res.json({});
-  try { res.json(JSON.parse(row.value)); } catch { res.json({}); }
+  res.json(safeSettings(await integrations()));
 });
 // Validate webhook URLs before storing them. This resolves DNS and rejects
 // loopback/private/link-local destinations to prevent SSRF.
@@ -92,7 +96,8 @@ async function validateWebhookUrl(url) {
 // POST /api/settings/integrations
 router.post('/integrations', requireManager, async (req, res) => {
   // Validate all webhook_url fields before storing
-  const body = req.body;
+  let body;
+  try { body = mergeSettings(await integrations(),req.body); } catch (error) { return res.status(400).json({ error: error.message }); }
   for (const [platform, cfg] of Object.entries(body || {})) {
     if (cfg && typeof cfg === 'object' && cfg.webhook_url) {
       const err = await validateWebhookUrl(cfg.webhook_url);
@@ -110,7 +115,7 @@ router.post('/integrations/test', requireManager, async (req, res) => {
   const { platform, settings } = req.body;
   if (!platform || !settings) return res.status(400).json({ error: 'platform and settings required' });
   try {
-    await sendTest(platform, settings);
+    await sendTest(platform, mergeSettings(await integrations(),settings));
     res.json({ ok: true, message: `Test notification sent via ${platform}` });
   } catch (e) {
     res.status(400).json({ error: e.message });
