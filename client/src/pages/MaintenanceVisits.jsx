@@ -508,17 +508,19 @@ export default function MaintenanceVisits() {
       <PageHeader eyebrow="Operations" title="Maintenance Visits" description="Plan customer visits and track completion through report delivery." actions={<>
 {canManage && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn btn-ghost btn-sm" onClick={async () => {
+            <button className="btn btn-ghost btn-sm" disabled={unavailable} onClick={async () => {
               try {
                 // Use a short-lived (60 s) scoped download token — never expose
                 // the full session JWT in a URL (would be captured in server logs)
                 const { token } = await api.downloadToken();
                 const a = document.createElement('a');
-                a.href = '/api/maintenance-visits/export?token=' + token;
+                const params = new URLSearchParams({ token, filter, search: search.trim(), as_of: today });
+                if (monthFilter) params.set('month', monthFilter);
+                a.href = '/api/maintenance-visits/export?' + params.toString();
                 a.download = 'maintenance-visits.xlsx'; a.click();
               } catch { toast.error('Export failed. Please try again.'); }
             }} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <Download size={13} /> Export All Visits
+              <Download size={13} /> Export Matching Visits
             </button>
             <button className="btn btn-ghost" disabled={unavailable} onClick={() => setShowImport(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Upload size={14} /> Import</button>
             <button className="btn btn-primary" disabled={unavailable} onClick={() => { setEditing(null); setShowForm(true); }}>+ Schedule Visit</button>
@@ -553,6 +555,7 @@ export default function MaintenanceVisits() {
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
           <input
             value={search}
+            maxLength={500}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search by customer, visit title, or engineer…"
             style={{ paddingLeft: 32, width: '100%', maxWidth: 420 }}

@@ -5,6 +5,7 @@ const db = require('../db');
 const { requireAuth, requireManager, requireManagerOrPlanner, requireDownloadManagerOrPlanner } = require('../middleware/auth');
 const { notify } = require('../notifications');
 const { decrypt } = require('../fieldCipher');
+const { maintenanceVisitFilters, searchMaintenanceVisits } = require('../maintenanceVisitFilters');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -127,58 +128,28 @@ function sheetToJson(worksheet) {
 
 // ── List ─────────────────────────────────────────────────────────────────────
 router.get('/', requireAuth, async (req, res) => {
-  const { month, engineer_id, customer_id, review_pending, not_completed, overview, pending_report } = req.query;
-  let q = BASE_SELECT + ' WHERE 1=1';
-  const params = [];
-
-  if (pending_report) {
-    // Engineer's own visits where report has not been sent yet
-    if (req.user.role === 'engineer') {
-      q += ' AND EXISTS (SELECT 1 FROM maintenance_visit_engineers WHERE visit_id = mv.id AND user_id = ?)';
-      params.push(req.user.id);
-    }
-    q += " AND mv.report_sent = 0 AND mv.status NOT IN ('cancelled', 'scheduled')";
-  } else if (req.user.role === 'engineer') {
-    // Engineers always see only their own assigned visits — no bypass
-    q += ' AND EXISTS (SELECT 1 FROM maintenance_visit_engineers WHERE visit_id = mv.id AND user_id = ?)';
-    params.push(req.user.id);
-  } else if (engineer_id) {
-    q += ' AND EXISTS (SELECT 1 FROM maintenance_visit_engineers WHERE visit_id = mv.id AND user_id = ?)';
-    params.push(engineer_id);
-  }
-  if (customer_id) { q += ' AND mv.customer_id = ?'; params.push(customer_id); }
-  if (month) { q += ` AND strftime('%Y-%m', mv.scheduled_date) = ?`; params.push(month); }
-  if (review_pending) { q += ' AND mv.report_sent = 1 AND mv.report_sent_to_customer = 0'; }
-  if (not_completed)  { q += " AND mv.status NOT IN ('completed', 'cancelled')"; }
-  q += ' ORDER BY mv.scheduled_date ASC';
-  res.json((await db.prepare(q).all(...params)).map(parseEngIds));
+  const filters = maintenanceVisitFilters(req.query, req.user);
+  if (filters.error) return res.status(400).json({ error: filters.error });
+  res.json(await filteredVisits(filters));
 });
 
-// ── Export to Excel (MUST be before /:id) ───────────────────────────────────
-router.get('/export', requireDownloadManagerOrPlanner, async (req, res) => {
-  const rows = (await db.prepare(`
-    SELECT mv.title, mv.scheduled_date, mv.status,
-      c.name as customer,
-      GROUP_CONCAT(u.name, ', ') as engineers,
-      mv.notes,
-      CASE WHEN mv.report_sent_to_customer=1 THEN 'Sent to PM'
-           WHEN mv.report_sent=1 THEN 'Report Complete'
-           ELSE 'Pending' END as report_status
-    FROM maintenance_visits mv
-    LEFT JOIN customers c ON mv.customer_id = c.id
-    LEFT JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
-    LEFT JOIN users u ON u.id = mve.user_id
-    GROUP BY mv.id, c.name
-    ORDER BY mv.scheduled_date DESC
-  `).all());
+async function filteredVisits(filters) {
+  const rows = (await db.prepare(BASE_SELECT + ` WHERE ${filters.where} ORDER BY mv.scheduled_date ASC, mv.id ASC`).all(...filters.params)).map(parseEngIds);
+  return searchMaintenanceVisits(rows, filters.search);
+}
 
-  const wsData = [
-    ['Title','Customer','Scheduled Date','Status','Engineers','Report Status','Notes'],
-    ...rows.map(r => [r.title, decrypt(r.customer) || '', r.scheduled_date || '', r.status, r.engineers || '', r.report_status, r.notes || '']),
-  ];
-  const workbook  = new ExcelJS.Workbook();
+// Export uses the same authorized selection and stable order as the list.
+router.get('/export', requireDownloadManagerOrPlanner, async (req, res) => {
+  const filters = maintenanceVisitFilters(req.query, req.user);
+  if (filters.error) return res.status(400).json({ error: filters.error });
+  const rows = await filteredVisits(filters);
+  const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Visits');
-  wsData.forEach(row => worksheet.addRow(row));
+  worksheet.addRow(['Title','Customer','Scheduled Date','Status','Engineers','Report Status','Notes']);
+  for (const row of rows) worksheet.addRow([
+    row.title, row.customer_name || '', row.scheduled_date || '', row.status,
+    row.engineer_names || '', row.report_sent_to_customer ? 'Sent to PM' : row.report_sent ? 'Report Complete' : 'Pending', row.notes || '',
+  ]);
   const buf = await workbook.xlsx.writeBuffer();
   res.setHeader('Content-Disposition', 'attachment; filename="maintenance-visits.xlsx"');
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

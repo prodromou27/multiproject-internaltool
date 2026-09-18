@@ -1235,6 +1235,71 @@ test('task pages retain full totals, stable ordering, enrichment and unpaged exp
   assert.equal(workbook.worksheets[0].rowCount, 62, 'header plus every matching task, independent of page');
 });
 
+test('maintenance list and export reject malformed filters consistently', async () => {
+  for (const query of ['month=', 'month=2026-13', 'month=1899-12', 'month=2026-01&month=2026-02', 'engineer_id=0', 'engineer_id=1.5', 'customer_id=9007199254740992', 'customer_id[x]=1', 'pending_report=true', 'review_pending=', 'not_completed=2', 'overview=1&overview=0', 'filter=unknown', 'filter=all&filter=past', 'as_of=2026-02-29', 'search[x]=bad', `search=${'x'.repeat(501)}`]) {
+    for (const route of ['maintenance-visits', 'maintenance-visits/export']) {
+      assert.equal((await api(`/api/${route}?${query}`, { token: ids.tokenManager })).status, 400, `${route}: ${query}`);
+    }
+  }
+  for (const token of [ids.tokenEnabled, ids.tokenDisabled]) {
+    assert.equal((await api('/api/maintenance-visits/export', { token })).status, 403);
+    assert.equal((await api(`/api/maintenance-visits/export?token=${signJwt({ id: token === ids.tokenEnabled ? ids.engineerEnabled : ids.engineerDisabled, download: true })}`)).status, 403);
+  }
+});
+
+test('maintenance workbook and list share filters, literal decrypted search and assignment scope on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async t => {
+  const previousKey = process.env.CUSTOMER_FIELD_KEY;
+  process.env.CUSTOMER_FIELD_KEY = 'a'.repeat(64);
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.CUSTOMER_FIELD_KEY;
+    else process.env.CUSTOMER_FIELD_KEY = previousKey;
+  });
+  const { encrypt, isEncrypted } = require('../fieldCipher');
+  const encryptedName = encrypt('Filter customer %_\\');
+  assert.equal(isEncrypted(encryptedName), true);
+  const customer = (await db.prepare('INSERT INTO customers (name) VALUES (?)').run(encryptedName)).lastInsertRowid;
+  const fixture = [];
+  for (const [status, date, sent, forwarded, owner] of [
+    ['scheduled', '2043-12-31', 0, 0, ids.engineerEnabled],
+    ['scheduled', '2043-12-30', 0, 0, ids.engineerEnabled],
+    ['completed', '2043-12-31', 0, 0, ids.engineerEnabled],
+    ['in_progress', '2043-12-31', 1, 0, ids.engineerEnabled],
+    ['completed', '2043-12-31', 1, 1, ids.engineerEnabled],
+    ['cancelled', '2043-12-31', 0, 0, ids.engineerEnabled],
+    ['completed', '2044-01-01', 0, 0, ids.engineerDisabled],
+  ]) {
+    const title = `Visit export fixture ${fixture.length}`;
+    const id = (await db.prepare('INSERT INTO maintenance_visits (title,customer_id,status,scheduled_date,report_sent,report_sent_to_customer,created_by) VALUES (?,?,?,?,?,?,?)')
+      .run(title, customer, status, date, sent, forwarded, ids.manager)).lastInsertRowid;
+    await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id,user_id) VALUES (?,?)').run(id, owner);
+    fixture.push({ id, title });
+  }
+  const planner = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)')
+    .run('Export planner', 'export-planner@test.local', bcrypt.hashSync('pw', 4), 'planner')).lastInsertRowid;
+  for (const extra of ['filter=all', 'filter=upcoming', 'filter=past', 'filter=report_pending', 'filter=awaiting_review', 'filter=cancelled', 'month=2043-12', 'month=2044-01', 'pending_report=0', 'pending_report=1', 'review_pending=1', 'not_completed=1', `engineer_id=${ids.engineerDisabled}&pending_report=1`, 'search=%25_', 'search=no-match', 'search=Visit%20export%20fixture%202']) {
+    const query = `customer_id=${customer}&as_of=2043-12-31&${extra}`;
+    for (const user of [ids.manager, planner]) {
+      const list = await api(`/api/maintenance-visits?${query}`, { token: signJwt({ id: user }) });
+      assert.equal(list.status, 200);
+      const response = await fetch(`${baseUrl}/api/maintenance-visits/export?${query}&token=${signJwt({ id: user, download: true })}`);
+      assert.equal(response.status, 200);
+      const workbook = new (require('exceljs').Workbook)();
+      await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
+      const titles = [];
+      workbook.worksheets[0].eachRow((row, index) => { if (index > 1) { titles.push(row.getCell(1).value); assert.equal(row.getCell(2).value, 'Filter customer %_\\'); } });
+      assert.deepEqual(titles, list.data.map(row => row.title), extra);
+    }
+  }
+  const read = async extra => (await api(`/api/maintenance-visits?customer_id=${customer}&as_of=2043-12-31&${extra}`, { token: ids.tokenManager })).data.map(row => row.id);
+  assert.deepEqual(await read('filter=upcoming'), [fixture[0].id]);
+  assert.deepEqual(await read('filter=report_pending'), [fixture[2].id, fixture[6].id]);
+  assert.deepEqual(await read('filter=awaiting_review'), [fixture[3].id]);
+  assert.equal((await read('pending_report=0&review_pending=0&not_completed=0&overview=0')).length, 7);
+  assert.equal((await read('search=%25_')).length, 7, 'encrypted customer search treats wildcards literally');
+  const own = await api(`/api/maintenance-visits?customer_id=${customer}&engineer_id=${ids.engineerDisabled}&pending_report=1`, { token: ids.tokenEnabled });
+  assert.deepEqual(own.data.map(row => row.id), [fixture[2].id], 'engineer filter cannot replace ownership');
+});
+
 test('task list and export consistently reject malformed filters', async () => {
   for (const query of ['filter=unknown', 'filter=', 'filter=open&filter=done', 'project_id=abc', 'assigned_to=0', 'priority=urgent', 'search[x]=bad', 'as_of=2035-02-29', 'as_of=', 'adhoc=true', 'sort=__proto__', 'direction=DROP', 'page=0', 'page=-1', 'page=1.5', 'page=1&page=2', 'page_size=101', 'page_size=', 'page=9007199254740991&page_size=100', `search=${'a'.repeat(501)}`]) {
     for (const route of ['tasks', 'tasks/export']) assert.equal((await api(`/api/${route}?${query}`, { token: ids.tokenManager })).status, 400);

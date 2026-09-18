@@ -106,6 +106,7 @@ part of the foundation work.
 | 6f | Server-paged Tasks | 25-row UI pages, server filters/sorts and full scoped counts; bounded row enrichment; current-page bulk actions; full matching exports; legacy arrays preserved | Complete; browser QA pending |
 | 6g | Reliable waiting-status saves | Shared dialogs retain failed drafts; atomic bulk updates validate reasons and check current ownership; duplicate IDs count once | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 6h | Maintenance visit reliability | Scoped cancellable month loads, visible retry and unavailable counts; safe action submissions; manager-only submission undo; keyboard detail access | Complete; browser QA pending |
+| 6i | Maintenance filter/export consistency | Shared validated scopes and filters; matching Excel selection/order; literal decrypted customer search; inactive zero flags and month date ranges | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 7 | Customer 360 and recommendations | Scoped customer history; persisted findings and follow-up workflow; safe additive migrations | Planned |
 | 8 | Workload model | Estimates/availability and configurable weighting; capacity and pressure shown separately | Planned |
 | 9 | Custom report engine | Approved source metadata, parameterized filters/grouping/aggregations, bounded preview, permission tests | Planned |

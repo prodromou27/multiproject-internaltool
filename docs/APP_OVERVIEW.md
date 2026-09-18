@@ -393,7 +393,13 @@ duplicate submissions; notes remain editable after a failed save. Internal repor
 submission undo is manager-only, while managers and planners may undo forwarding.
 Visit titles provide keyboard-accessible detail buttons. Upcoming/past views use
 the browser's local date; dashboard filter links update an already open list.
-The current Excel action explicitly exports all visits rather than the visible view.
+Excel export uses the same month, status view, literal customer/title/engineer
+search and local as-of date as the list, with stable date/ID ordering. Both endpoints
+validate single-valued filters, safe positive IDs, real dates/months and 0/1 flags;
+zero-valued flags do not activate filters. Month selection uses a date range.
+Existing calls without filters still return all authorized visits; manager/planner
+export permissions remain unchanged. Customer-name search follows authorization
+and decryption because customer names are encrypted at rest.
 Excel import/export, time logging, **automated next-day email reminders** (fired daily at 08:00, deduplicated per
 visit/user/day), and a per-engineer **iCal subscription feed**.
 
