@@ -127,12 +127,14 @@ const focusableSelector = 'button, input, select, textarea, a[href], [tabindex]'
 
 export function Modal({ title, onClose, children, footer, wide, width }) {
   const dialogRef = useRef(null);
+  // Capture the trigger before child autoFocus runs during the DOM commit.
+  const previousFocusRef = useRef(typeof document==='undefined' ? null : document.activeElement);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const titleId = useId();
   useEffect(() => {
     const dialog = dialogRef.current;
-    const previousFocus = document.activeElement;
+    const previousFocus = previousFocusRef.current;
     if (!modalStack.length) {
       originalBodyOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';

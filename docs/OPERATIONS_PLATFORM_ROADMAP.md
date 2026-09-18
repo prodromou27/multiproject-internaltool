@@ -121,7 +121,8 @@ part of the foundation work.
 | 11c | Existing digest reliability | Await SMTP/report reads, preserve masked credentials, escape stored HTML values and enforce current manager recipient eligibility | Complete; PostgreSQL CI tracked per commit |
 | 12 | Admin organization and feature settings | Business/technical sections; capability-based visibility; secrets remain protected | In progress |
 | 12a | Administration navigation and credentials | Business/technical areas, shared-capability business links, preserved deep links, keyboard switches and write-only integration credentials with explicit removal | Complete; browser QA pending |
-| 13 | Cross-module quality review | Targeted security/performance tests, responsive and accessibility QA, deployment instructions and final change summary | Planned |
+| 13 | Cross-module quality review | Targeted security/performance tests, responsive and accessibility QA, deployment instructions and final change summary | In progress |
+| 13a | Focused browser and release validation | Real-browser production bundle smoke matrix with synthetic APIs, shared-modal focus fix, validation/remaining-work record and corrected deployment requirements | Complete; full staging QA pending |
 
 ## Reporting design constraints
 
@@ -148,3 +149,7 @@ pg-mem. Preserve the existing Docker/Node versions, environment validation and
 PostgreSQL migration conventions. Record new migrations, configuration and jobs
 alongside the stage that introduces them. Do manual responsive/keyboard QA before
 production deployment; report only checks actually performed.
+
+Focused Report Builder/Settings browser smoke checks and the remaining acceptance
+items are recorded in [PLATFORM_VALIDATION.md](PLATFORM_VALIDATION.md). They do not
+replace manual staging QA of the entire app.

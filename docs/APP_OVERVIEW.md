@@ -736,7 +736,7 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
 - **Service Activity retention is manual, not automatic.** By design (see §7) — an
   automatic background purge was deliberately not added without being asked, but if
   that's wanted, the fields/status endpoint already exist to build on.
-- **No PDF export anywhere in the app** (Excel/`exceljs` only) — intentional (no PDF
+- **No PDF export anywhere in the app** (Excel/`exceljs` and custom-report CSV) — intentional (no PDF
   library is present), but worth a deliberate decision if PDF reports become a
   requirement rather than leaving it unaddressed.
 - **Shared UI:** dialogs trap keyboard focus, restore the triggering control on
@@ -748,9 +748,9 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
   `style={{}}` objects throughout). Consistent, but a design-system pass (shared
   form components, consistent spacing tokens, etc.) could reduce duplication —
   `AdminPanel.jsx` alone is 3000+ lines.
-- **List pagination is inconsistent across the app.** Service Activity Tracking uses
-  real server-side `LIMIT`/`OFFSET` pagination; most older modules (Tasks, Projects,
-  Customers) fetch the full table and filter/paginate client-side. Fine at current
+- **List pagination is inconsistent across the app.** Service Activity Tracking and Tasks use
+  real server-side `LIMIT`/`OFFSET` pagination; older modules (Projects, Customers)
+  fetch the full table and filter/paginate client-side. Fine at current
   data volumes; a scaling risk if any of those tables grow large.
 
 
@@ -773,3 +773,9 @@ webhook URLs; blank edits retain them, explicit removal flags clear them, and te
 resolve credentials server-side. New webhook URLs retain outbound SSRF validation.
 Failed integration loads offer Retry and do not expose writable default settings;
 settings switches support native keyboard activation and announce their state.
+
+A reproducible headless Chrome smoke runner now checks the Report Builder and
+Settings with synthetic APIs at desktop/tablet/mobile widths, keyboard dialog
+behavior, retries and role guards. See docs/PLATFORM_VALIDATION.md for the actual
+coverage and remaining manual staging QA; backend integration tests remain the
+authority for database permissions and mutations.
