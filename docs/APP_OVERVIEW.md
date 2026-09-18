@@ -588,7 +588,18 @@ activity, engineer/team/customer summaries, service time, projects, overdue proj
 visits, pending reports, recommendations and approval backlog. Dates are explicit
 UTC snapshots; saved copies retain their date filters. Overdue projects exclude
 configured terminal states. Capacity reporting links to the dedicated workload
-model. Saved-report scheduling remains a subsequent delivery stage.
+model. Saved-report delivery extends `reportScheduler.js` with a minute poll and additive
+migration `20260918_custom_report_schedules`. Owners configure daily, weekly or
+monthly UTC times (monthly days 1-28) and up to 20 active manager recipients.
+Private reports may reach only their owner. Before querying and again before
+sending, jobs check the owner's current access, recipients, visibility and definition.
+CSV generation retains the five-second read-only query and 5000-row export limits.
+Atomic database claims advance the next run before delivery so replicas/restarts
+cannot automatically resend a slot. Failed or interrupted slots are not retried;
+partial SMTP delivery is possible and the schedule displays its latest outcome.
+Access/definition changes block and disable delivery until reviewed and enabled.
+SMTP configuration is reused, with bounded connection and socket timeouts. New
+schedules default to disabled and no additional environment variables are required.
 Summary stats, by-status breakdown, engineer load, KPI health (sorted worst-first),
 6-month trend charts (tasks created/completed/on-time, visits scheduled/completed/
 reported, hours logged — built with batched range queries), pending-closure list, a

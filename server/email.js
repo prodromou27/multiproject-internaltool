@@ -18,13 +18,16 @@ function createTransport(smtp) {
     host:   smtp.host,
     port:   Number(smtp.port)  || 587,
     secure: smtp.secure === true || smtp.secure === 'true',
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 30_000,
     auth:   smtp.user ? { user: smtp.user, pass: smtp.password } : undefined,
     tls:    { rejectUnauthorized: smtp.allow_self_signed !== true },  // only skip TLS validation when explicitly configured
   });
 }
 
 // ── Send an email ─────────────────────────────────────────────────────────────
-async function sendEmail({ to, subject, html, text }) {
+async function sendEmail({ to, subject, html, text, attachments }) {
   const smtp = await getSmtpSettings();
   if (!smtp?.host) throw new Error('Email SMTP is not configured. Please set it up in Admin → Weekly Report.');
 
@@ -39,6 +42,7 @@ async function sendEmail({ to, subject, html, text }) {
     subject,
     html,
     text: text || undefined,
+    attachments,
   });
 }
 

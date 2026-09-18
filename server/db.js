@@ -784,6 +784,24 @@ async function applyCompatibilityMigrations() {
     CREATE INDEX IF NOT EXISTS idx_saved_report_visibility ON saved_custom_reports(visibility,updated_at,id);
   `]);
 
+  migrations.push(['20260918_custom_report_schedules', `
+    CREATE TABLE IF NOT EXISTS custom_report_schedules (
+      report_id INTEGER PRIMARY KEY REFERENCES saved_custom_reports(id) ON DELETE CASCADE,
+      frequency TEXT NOT NULL CHECK(frequency IN ('daily','weekly','monthly')),
+      day INTEGER NOT NULL,
+      hour INTEGER NOT NULL CHECK(hour>=0 AND hour<=23),
+      minute INTEGER NOT NULL CHECK(minute>=0 AND minute<=59),
+      recipient_ids TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      version INTEGER NOT NULL DEFAULT 1,
+      next_run TEXT,
+      last_run TEXT,
+      last_status TEXT,
+      last_error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_custom_report_schedule_due ON custom_report_schedules(enabled,next_run);
+  `]);
+
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_request_version INTEGER NOT NULL DEFAULT 0;

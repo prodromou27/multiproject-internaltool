@@ -1266,6 +1266,78 @@ test('saved custom reports protect private definitions, ownership and edit versi
   assert.equal((await api(path,{ token: ids.tokenManager })).status,404);
 });
 
+test('report schedules enforce ownership, recipient eligibility, versions and rechecked delivery', async () => {
+  const owner = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Scheduled owner','scheduled-owner@test.local',bcrypt.hashSync('pw',4),'manager')).lastInsertRowid;
+  const peer = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Scheduled peer','scheduled-peer@test.local',bcrypt.hashSync('pw',4),'manager')).lastInsertRowid;
+  const token = signJwt({ id: owner }),peerToken = signJwt({ id: peer });
+  const body = { name: 'Scheduled fixture',visibility: 'management',definition: { source: 'tasks',fields: ['id'] } };
+  const report = (await api('/api/reports/custom/saved',{ method: 'POST',token,body })).data;
+  const path = `/api/reports/custom/saved/${report.id}/schedule`;
+  assert.equal((await api(path,{ token: peerToken })).status,403);
+  assert.equal((await api(path,{ token: ids.tokenEnabled })).status,403);
+  const schedule = { frequency: 'weekly',day: 1,hour: 9,minute: 0,enabled: true,recipient_ids: [peer],version: 0 };
+  for (const change of [{ recipient_ids: [ids.engineerEnabled] },{ day: 7 },{ hour: true },{ recipient_ids: [peer,peer] }]) assert.equal((await api(path,{ method: 'PUT',token,body: { ...schedule,...change } })).status,400);
+  assert.equal((await api(path,{ method: 'PUT',token: peerToken,body: schedule })).status,403);
+  assert.equal((await api(path,{ method: 'PUT',token,body: schedule })).data.version,1);
+  if (process.env.TEST_DATABASE_URL) assert.equal((await api(path,{ method: 'PUT',token,body: schedule })).status,409);
+  assert.equal((await api(path,{ method: 'PUT',token,body: { ...schedule,version: 1 } })).data.version,2);
+  assert.equal((await api(path,{ method: 'PUT',token,body: { ...schedule,version: 1 } })).status,409);
+  assert.equal((await api(path,{ token })).data.schedule.enabled,true);
+  const { tick } = require('../customReportScheduler');
+  const now = new Date('2040-01-02T10:00:00Z'),sent = [];
+  const run = async () => ({ columns: [{ key: 'id',label: 'ID' }],rows: [{ id: 1 }],truncated: false });
+  const due = () => db.prepare('UPDATE custom_report_schedules SET next_run=? WHERE report_id=?').run('2000-01-01T00:00:00.000Z',report.id);
+  await due();
+  await tick({ now,run,send: async mail => sent.push(mail) });
+  assert.equal(sent.length,1);
+  assert.equal(sent[0].to,'scheduled-peer@test.local');
+  assert.match(sent[0].attachments[0].content.toString(),/"ID"/);
+  await tick({ now,run,send: async mail => sent.push(mail) });
+  assert.equal(sent.length,1,'already claimed slots are not resent');
+  await db.prepare("UPDATE users SET role='engineer' WHERE id=?").run(peer);
+  await due();
+  await tick({ now,run,send: async mail => sent.push(mail) });
+  assert.equal(sent.length,1,'demoted recipients receive no report');
+  let current = (await api(path,{ token })).data.schedule;
+  assert.equal(current.last_status,'blocked');
+  assert.equal(current.enabled,false);
+  await db.prepare("UPDATE users SET role='manager' WHERE id=?").run(peer);
+  assert.equal((await api(path,{ method: 'PUT',token,body: { ...schedule,version: current.version } })).status,200);
+  await due();
+  await tick({ now,run: async () => ({ ...(await run()),truncated: true }),send: async mail => sent.push(mail) });
+  current = (await api(path,{ token })).data.schedule;
+  assert.equal(current.last_status,'failed');
+  assert.match(current.last_error,/5000 rows/);
+  assert.equal(sent.length,1);
+  await due();
+  await tick({ now,run: async () => {
+    await db.prepare('UPDATE users SET active=0 WHERE id=?').run(peer);
+    return run();
+  },send: async mail => sent.push(mail) });
+  current = (await api(path,{ token })).data.schedule;
+  assert.equal(current.last_status,'blocked');
+  assert.equal(sent.length,1,'access is checked again after the query and before delivery');
+  await db.prepare('UPDATE users SET active=1 WHERE id=?').run(peer);
+  assert.equal((await api(path,{ method: 'PUT',token,body: { ...schedule,version: current.version } })).status,200);
+  await db.prepare("UPDATE saved_custom_reports SET visibility='private' WHERE id=?").run(report.id);
+  await due();
+  await tick({ now,run,send: async mail => sent.push(mail) });
+  current = (await api(path,{ token })).data.schedule;
+  assert.equal(current.last_status,'blocked');
+  assert.equal(sent.length,1,'unshared reports no longer reach other managers');
+  assert.equal((await api(path,{ method: 'PUT',token,body: { ...schedule,version: current.version,enabled: false,recipient_ids: [] } })).status,200);
+  assert.equal((await api(`/api/reports/custom/saved/${report.id}`,{ method: 'DELETE',token,body: { version: 1 } })).status,200);
+  assert.equal(await db.prepare('SELECT * FROM custom_report_schedules WHERE report_id=?').get(report.id),undefined);
+});
+
+test('concurrent schedule creation and edits conflict on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const report = (await api('/api/reports/custom/saved',{ method: 'POST',token: ids.tokenManager,body: { name: 'Concurrent schedule',visibility: 'private',definition: { source: 'tasks',fields: ['id'] } } })).data;
+  const path = `/api/reports/custom/saved/${report.id}/schedule`;
+  const save = version => api(path,{ method: 'PUT',token: ids.tokenManager,body: { frequency: 'daily',day: 0,hour: 9,minute: 0,enabled: false,recipient_ids: [],version } });
+  assert.deepEqual((await Promise.all([save(0),save(0)])).map(row => row.status).sort(),[200,409]);
+  assert.deepEqual((await Promise.all([save(1),save(1)])).map(row => row.status).sort(),[200,409]);
+});
+
 test('custom report metadata and execution enforce manager access and validate structure', async () => {
   for (const token of [ids.tokenEnabled,ids.tokenDisabled]) {
     assert.equal((await api('/api/reports/custom/sources',{ token })).status,403);

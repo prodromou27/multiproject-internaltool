@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { Link } from 'react-router-dom';
+import ReportScheduleDialog from './ReportScheduleDialog';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { Modal } from './Shared';
 import { useToast } from './Toast';
@@ -51,6 +52,7 @@ export default function ReportBuilder() {
   const [running,setRunning] = useState(false);
   const [exporting,setExporting] = useState(false);
   const [save,setSave] = useState(null);
+  const [schedule,setSchedule] = useState(null);
   const scope = `${user.id}:${page}`;
   const signature = `${user.id}:${JSON.stringify(definition)}`;
   const reads = useLatestRequest(scope),runs = useLatestRequest(signature),opens = useLatestRequest(`${signature}:open`);
@@ -69,7 +71,7 @@ export default function ReportBuilder() {
   }, [page,scope,reads.begin,reads.isCurrent]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPreview(null); setRunning(false); }, [signature]);
-  useEffect(() => { setSelected(null); setDefinition(initial()); setSave(null); }, [user.id]);
+  useEffect(() => { setSelected(null); setDefinition(initial()); setSave(null); setSchedule(null); }, [user.id]);
   const source = references?.sources.find(row => row.key===definition.source);
   const grouped = !!(definition.group_by.length || definition.aggregations.length);
   const set = (key,value) => setDefinition(old => ({ ...old,[key]: value }));
@@ -170,9 +172,10 @@ export default function ReportBuilder() {
         </div>;
       })}<button className="btn btn-ghost btn-sm" type="button" disabled={definition.filters.length>=12} onClick={() => set('filters',[...definition.filters,{ field: source.fields[0].key,operator: 'eq',value: '' }])}>Add filter</button></fieldset>
       <fieldset style={{ margin: '16px 0' }}><legend>Sorts</legend>{definition.sort.map((entry,index) => <div className="form-row" key={index}><select aria-label={`Sort field ${index+1}`} value={entry.field} onChange={event => change('sort',index,{ field: event.target.value })}>{output.map(row => <option key={row.key} value={row.key}>{row.label}</option>)}</select><select aria-label={`Sort direction ${index+1}`} value={entry.direction} onChange={event => change('sort',index,{ direction: event.target.value })}><option value="asc">Ascending</option><option value="desc">Descending</option></select><button className="btn btn-ghost btn-sm" type="button" onClick={() => set('sort',definition.sort.filter((_,i) => i!==index))}>Remove</button></div>)}<button className="btn btn-ghost btn-sm" type="button" disabled={definition.sort.length>=3 || !output.length} onClick={() => set('sort',[...definition.sort,{ field: output[0].key,direction: 'asc' }])}>Add sort</button></fieldset>
-      <div className="flex gap-8" style={{ flexWrap: 'wrap' }}><button className="btn btn-primary" type="submit" disabled={running}>{running ? 'Running...' : 'Preview'}</button><button className="btn btn-ghost" type="button" disabled={exporting} onClick={() => exportReport('xlsx')}>Export Excel</button><button className="btn btn-ghost" type="button" disabled={exporting} onClick={() => exportReport('csv')}>Export CSV</button><button className="btn btn-ghost" type="button" onClick={() => saveReport(false)}>Save as new</button>{selected?.can_edit && <><button className="btn btn-ghost" type="button" onClick={() => saveReport(true)}>Update saved report</button><button className="btn btn-danger" type="button" onClick={deleteReport}>Delete definition</button></>}</div>
+      <div className="flex gap-8" style={{ flexWrap: 'wrap' }}><button className="btn btn-primary" type="submit" disabled={running}>{running ? 'Running...' : 'Preview'}</button><button className="btn btn-ghost" type="button" disabled={exporting} onClick={() => exportReport('xlsx')}>Export Excel</button><button className="btn btn-ghost" type="button" disabled={exporting} onClick={() => exportReport('csv')}>Export CSV</button><button className="btn btn-ghost" type="button" onClick={() => saveReport(false)}>Save as new</button>{selected?.can_edit && <><button className="btn btn-ghost" type="button" onClick={() => setSchedule(selected)}>Delivery schedule</button><button className="btn btn-ghost" type="button" onClick={() => saveReport(true)}>Update saved report</button><button className="btn btn-danger" type="button" onClick={deleteReport}>Delete definition</button></>}</div>
     </form>
     {preview?.signature===signature && <section className="card table-wrap" style={{ marginTop: 20 }}><p>{preview.rows.length} preview rows{preview.truncated ? ' · More matching rows exist; preview is truncated.' : ''}</p><table><thead><tr>{preview.columns.map(column => <th key={column.key}>{column.label}</th>)}</tr></thead><tbody>{preview.rows.map((row,index) => <tr key={index}>{preview.columns.map(column => <td key={column.key}>{row[column.key] ?? '—'}</td>)}</tr>)}</tbody></table>{!preview.rows.length && <p>No matching records.</p>}</section>}
-    {save && <SaveDialog selected={save.selected} definition={save.definition} onClose={() => setSave(null)} onSaved={row => { setSelected(row); toast.success('Report definition saved'); load(); }} />}
+    {schedule && <ReportScheduleDialog report={schedule} onClose={() => setSchedule(null)} />}
+    {save && <SaveDialog selected={save.selected} definition={save.definition} onClose={() => setSave(null)} onSaved={row => { setSelected({ ...row,owner_id: user.id }); toast.success('Report definition saved'); load(); }} />}
   </section>;
 }

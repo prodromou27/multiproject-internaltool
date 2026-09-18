@@ -2,9 +2,11 @@ const router = require('express').Router();
 const db = require('../db');
 const ExcelJS = require('exceljs');
 const { requireManager } = require('../middleware/auth');
-const { metadata,compileReport,csvCell } = require('../customReports');
+const { metadata,compileReport } = require('../customReports');
 const { logAudit } = require('../auditLog');
 const { reportTemplates } = require('../reportTemplates');
+const { run,csv } = require('../reportExecution');
+const { validateSchedule,nextRun,eligibleRecipients } = require('../reportSchedule');
 router.use(requireManager);
 router.get('/sources',async (req,res) => {
   const row = await db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
@@ -68,23 +70,41 @@ router.post('/saved/:reportId/preview',async (req,res) => {
   const row = await visible(req,res);
   if (row) res.json(await run(JSON.parse(row.definition),100));
 });
+router.get('/saved/:reportId/schedule',async (req,res) => {
+  const report = await visible(req,res);
+  if (!report) return;
+  if (report.owner_id!==req.user.id) return res.status(403).json({ error: 'Only the report owner can manage delivery' });
+  const [schedule,recipients] = await Promise.all([
+    db.prepare('SELECT * FROM custom_report_schedules WHERE report_id=?').get(report.id),
+    db.prepare("SELECT id,name FROM users WHERE role='manager' AND active=1 AND must_change_password=0 AND email IS NOT NULL AND email<>'' ORDER BY name,id LIMIT 501").all(),
+  ]);
+  if (recipients.length>500) return res.status(413).json({ error: 'Recipient directory exceeds 500 managers' });
+  res.json({ schedule: schedule ? { ...schedule,enabled: !!schedule.enabled,recipient_ids: JSON.parse(schedule.recipient_ids) } : null,recipients,visibility: report.visibility });
+});
+router.put('/saved/:reportId/schedule',async (req,res) => {
+  const report = await visible(req,res);
+  if (!report) return;
+  if (report.owner_id!==req.user.id) return res.status(403).json({ error: 'Only the report owner can manage delivery' });
+  validateSchedule(req.body);
+  if (req.body.enabled) await eligibleRecipients(db,report,req.body.recipient_ids);
+  const { frequency,day,hour,minute,recipient_ids,enabled,version } = req.body;
+  const next = enabled ? nextRun(req.body) : null;
+  const values = [frequency,day,hour,minute,JSON.stringify(recipient_ids),enabled ? 1 : 0,next];
+  const changed = version===0
+    ? await db.prepare('INSERT INTO custom_report_schedules (report_id,frequency,day,hour,minute,recipient_ids,enabled,next_run) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT (report_id) DO NOTHING RETURNING version').get(report.id,...values)
+    : await db.prepare('UPDATE custom_report_schedules SET frequency=?,day=?,hour=?,minute=?,recipient_ids=?,enabled=?,next_run=?,version=version+1 WHERE report_id=? AND version=? RETURNING version').get(...values,report.id,version);
+  if (!changed) return res.status(409).json({ error: 'Schedule changed. Reload before saving.',code: 'REPORT_SCHEDULE_CONFLICT' });
+  await logAudit(db,req,'custom_report',report.id,report.name,'schedule_updated',enabled ? frequency : 'disabled');
+  res.json({ version: changed.version,next_run: next });
+});
 
-async function run(definition,limit) {
-  const compiled = compileReport(definition,limit);
-  const rows = await db.transaction(async tx => {
-    await tx.exec("SET LOCAL statement_timeout = '5s'; SET LOCAL TRANSACTION READ ONLY;");
-    return tx.prepare(compiled.sql).all(...compiled.params);
-  });
-  return { columns: compiled.columns,rows: rows.slice(0,limit),truncated: rows.length>limit,limit };
-}
 router.post('/preview',async (req,res) => res.json(await run(req.body,100)));
 router.post('/export-csv',async (req,res) => {
   const result = await run(req.body,5000);
   if (result.truncated) return res.status(413).json({ error: 'Report exceeds 5000 rows. Narrow the filters before exporting.' });
-  const lines = [result.columns.map(column => csvCell(column.label)).join(','),...result.rows.map(row => result.columns.map(column => csvCell(row[column.key])).join(','))];
   res.setHeader('Content-Type','text/csv; charset=utf-8');
   res.setHeader('Content-Disposition','attachment; filename="custom-report.csv"');
-  res.send('\uFEFF'+lines.join('\r\n'));
+  res.send(csv(result));
 });
 router.post('/export',async (req,res) => {
   const result = await run(req.body,5000);

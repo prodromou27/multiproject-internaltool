@@ -245,6 +245,8 @@ export const api = {
   createSavedReport: (body) => req('POST','/reports/custom/saved',body),
   updateSavedReport: (id,body) => req('PUT',`/reports/custom/saved/${id}`,body),
   deleteSavedReport: (id,version) => req('DELETE',`/reports/custom/saved/${id}`,{ version }),
+  savedReportSchedule: (id,options) => req('GET',`/reports/custom/saved/${id}/schedule`,undefined,options),
+  updateSavedReportSchedule: (id,body) => req('PUT',`/reports/custom/saved/${id}/schedule`,body),
   customReportExport: async (definition,format = 'xlsx') => {
     const response = await fetch('/api/reports/custom/' + (format==='csv' ? 'export-csv' : 'export'),{ method: 'POST',credentials: 'same-origin',headers: { 'Content-Type': 'application/json','X-SolutionsHub-Request': '1' },body: JSON.stringify(definition) });
     if (!response.ok) {
