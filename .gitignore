@@ -45,3 +45,8 @@ check_migration.js
 
 # Stray local DB file at repo root
 /firewall_cleanup.db
+
+# Browser test output
+client/.e2e-dist/
+client/test-results/
+client/playwright-report/

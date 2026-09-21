@@ -7,7 +7,10 @@
     "build": "vite build",
     "test": "node --test",
     "preview": "vite preview",
-    "audit:prod": "npm audit --omit=dev"
+    "audit:prod": "npm audit --omit=dev",
+    "build:e2e": "vite build --outDir .e2e-dist --emptyOutDir",
+    "preview:e2e": "vite preview --outDir .e2e-dist --port 4173 --strictPort",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "lucide-react": "^1.16.0",
@@ -17,6 +20,7 @@
     "recharts": "^3.8.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@vitejs/plugin-react": "^4.2.1",
     "vite": "^5.2.0"
   }
