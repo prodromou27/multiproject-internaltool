@@ -50,6 +50,12 @@ jobs:
           TEST_DATABASE_URL: postgres://app:test_password@localhost:5432/solutionshub_test
         run: node --test test/serviceActivities.integration.test.js
 
+      - name: Check schema and every SQL statement against PostgreSQL
+        working-directory: server
+        env:
+          TEST_DATABASE_URL: postgres://app:test_password@localhost:5432/solutionshub_test
+        run: node --test test/postgres.schema.test.js
+
       - name: Audit server production dependencies
         working-directory: server
         run: npm audit --omit=dev
