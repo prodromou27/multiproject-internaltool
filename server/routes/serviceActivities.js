@@ -17,6 +17,7 @@ const VALID_WORK_LOCATIONS = new Set(['remote', 'onsite', 'internal', 'hybrid'])
 const VALID_BILLABLE = new Set(['included_in_contract', 'billable', 'non_billable', 'internal', 'not_applicable']);
 const VALID_PRIORITIES = new Set(['low', 'medium', 'high', 'critical']);
 const TERMINAL_COMPLETED_FALLBACK = 'completed';
+const positiveRouteId = value => typeof value === 'string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
 
 /** Middleware: engineer must belong to at least one team with tracking enabled.
  * Managers always pass (they administer/oversee all enabled teams). */
@@ -708,7 +709,7 @@ router.get('/:id/attachments', requireAuth, requireServiceActivityAccess, async 
   const activity = await db.prepare('SELECT engineer_id FROM service_activities WHERE id = ?').get(id);
   if (!activity) return res.status(404).json({ error: 'Not found' });
   if (req.user.role !== 'manager' && activity.engineer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-  const rows = await db.prepare('SELECT a.*, u.name AS uploaded_by_name FROM attachments a JOIN users u ON a.uploaded_by = u.id WHERE a.service_activity_id = ? ORDER BY a.created_at DESC').all(id);
+  const rows = await db.prepare('SELECT a.id,a.original_name,a.mime_type,a.size,a.uploaded_by,a.created_at,u.name AS uploaded_by_name FROM attachments a JOIN users u ON a.uploaded_by = u.id WHERE a.service_activity_id = ? ORDER BY a.created_at DESC,a.id DESC').all(id);
   res.json(rows);
 });
 
@@ -750,7 +751,8 @@ router.post('/:id/attachments', requireAuth, requireServiceActivityAccess, requi
 
 router.get('/:id/attachments/:attId/download', requireDownloadAuth, requireServiceActivityAccess, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const att = await db.prepare('SELECT * FROM attachments WHERE id = ? AND service_activity_id = ?').get(req.params.attId, id);
+  if (!positiveRouteId(req.params.attId)) return res.status(400).json({ error: 'Invalid attachment ID' });
+  const att = await db.prepare('SELECT * FROM attachments WHERE id = ? AND service_activity_id = ?').get(Number(req.params.attId), id);
   if (!att) return res.status(404).json({ error: 'Not found' });
   const activity = await db.prepare('SELECT engineer_id FROM service_activities WHERE id = ?').get(id);
   if (req.user.role !== 'manager' && activity.engineer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
@@ -758,6 +760,8 @@ router.get('/:id/attachments/:attId/download', requireDownloadAuth, requireServi
   if (!safeName) return res.status(400).json({ error: 'Invalid file reference' });
   const filePath = path.join(uploadDir, safeName);
   const downloadName = safeDownloadName(att.original_name);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   if (att.enc_iv && att.enc_tag) {
     try {
       const raw = await fs.promises.readFile(filePath);
@@ -776,7 +780,8 @@ router.get('/:id/attachments/:attId/download', requireDownloadAuth, requireServi
 
 router.delete('/:id/attachments/:attId', requireAuth, requireServiceActivityAccess, requireOwnedActivity, requireAuthorizedActivityCustomer, async (req, res) => {
   const id = req.activity.id;
-  const att = await db.prepare('SELECT * FROM attachments WHERE id = ? AND service_activity_id = ?').get(req.params.attId, id);
+  if (!positiveRouteId(req.params.attId)) return res.status(400).json({ error: 'Invalid attachment ID' });
+  const att = await db.prepare('SELECT * FROM attachments WHERE id = ? AND service_activity_id = ?').get(Number(req.params.attId), id);
   if (!att) return res.status(404).json({ error: 'Not found' });
   if (req.user.role !== 'manager' && att.uploaded_by !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
   const safeName = safeStoredName(att.stored_name);

@@ -215,7 +215,7 @@ router.get('/:assetId/attachments/:attachmentId/download',async (req,res) => {
   if (!attachment) return res.status(404).json({ error:'Attachment not found' });
   const storedName=safeStoredName(attachment.stored_name);if (!storedName) return res.status(400).json({ error:'Invalid file reference' });
   const filePath=path.join(uploadDir,storedName),downloadName=safeDownloadName(attachment.original_name);
-  res.setHeader('Content-Disposition',`attachment; filename="${downloadName}"`);res.setHeader('Content-Type',attachment.mime_type || 'application/octet-stream');res.setHeader('X-Content-Type-Options','nosniff');
+  res.setHeader('Content-Disposition',`attachment; filename="${downloadName}"`);res.setHeader('Content-Type',attachment.mime_type || 'application/octet-stream');res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');
   if (attachment.enc_iv && attachment.enc_tag) {
     try { const plaintext=fileCipher.decrypt(await fs.promises.readFile(filePath),attachment.enc_iv,attachment.enc_tag);res.setHeader('Content-Length',plaintext.length);return res.send(plaintext); }
     catch(error) { console.error('[customer-assets] attachment decrypt failed:',error.message);return res.status(500).json({ error:'Failed to decrypt file' }); }

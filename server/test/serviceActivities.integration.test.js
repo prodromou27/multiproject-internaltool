@@ -275,7 +275,7 @@ test('customer asset files enforce ownership, file signatures, encryption and cl
     assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets/${created.data.id}/attachments`,{ token:ids.tokenManager })).status,404);
     assert.equal((await api(`${filesPath}/${result.id}/download`,{ token:ids.tokenEnabled })).status,403);
     const download=await fetch(`${baseUrl}${filesPath}/${result.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenManager}` } });
-    assert.equal(download.status,200);assert.equal(await download.text(),'%PDF-1.4\nasset documentation');assert.equal(download.headers.get('x-content-type-options'),'nosniff');
+    assert.equal(download.status,200);assert.equal(await download.text(),'%PDF-1.4\nasset documentation');assert.equal(download.headers.get('cache-control'),'private, no-store');assert.equal(download.headers.get('x-content-type-options'),'nosniff');
     assert.equal((await api(`${filesPath}/${result.id}`,{ method:'DELETE',token:ids.tokenManager,body:{} })).status,200);
     assert.equal((await api(filesPath,{ token:ids.tokenManager })).data.length,0);
   } finally { delete process.env.ATTACHMENT_KEY; }
@@ -1218,8 +1218,13 @@ test('attachment upload failures clean files and attachment reads enforce activi
   const storedPath = path.join(uploadDir, attachment.stored_name);
   try {
     assert.equal((await api(endpoint, { token: ids.tokenDisabled })).status, 403);
+    const ownerList=await api(endpoint,{ token:ids.tokenEnabled });
+    assert.equal(ownerList.status,200);assert.equal(ownerList.data[0].stored_name,undefined);assert.equal(ownerList.data[0].enc_iv,undefined);assert.equal(ownerList.data[0].enc_tag,undefined);
+    assert.equal((await api(`${endpoint}/not-an-id/download`,{ token:ids.tokenEnabled })).status,400);
     const download = await fetch(`${baseUrl}${endpoint}/${uploaded.data.id}/download`, { headers: { Authorization: `Bearer ${ids.tokenDisabled}` } });
     assert.equal(download.status, 403);
+    const ownerDownload=await fetch(`${baseUrl}${endpoint}/${uploaded.data.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenEnabled}` } });
+    assert.equal(ownerDownload.status,200);assert.equal(ownerDownload.headers.get('cache-control'),'private, no-store');assert.equal(ownerDownload.headers.get('x-content-type-options'),'nosniff');
     const original = db.prepare;
     const deletionFailure = t.mock.method(db, 'prepare', function(sql) {
       if (/DELETE FROM attachments WHERE id/i.test(sql)) return { run: async () => { throw new Error('Simulated delete failure'); } };
