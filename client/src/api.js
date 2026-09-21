@@ -170,6 +170,13 @@ export const api = {
   createCustomerAsset: (id, body) => req('POST', `/customers/${id}/assets`, body),
   updateCustomerAsset: (id, assetId, body) => req('PUT', `/customers/${id}/assets/${assetId}`, body),
   deleteCustomerAsset: (id, assetId, version) => req('DELETE', `/customers/${id}/assets/${assetId}`, { version }),
+  customerAssetTemplateUrl: id => `${BASE}/customers/${id}/assets/template`,
+  importCustomerAssets: (id,file) => upload(`/customers/${id}/assets/import`,'file',file),
+  exportCustomerAssets: async (id,params = {}) => {
+    const response=await fetch(`${BASE}/customers/${id}/assets/export?${new URLSearchParams(params)}`,{ credentials:'same-origin' });
+    if (!response.ok) { const data=await response.json().catch(() => ({}));handleUnauthorized(response.status,data,true);throw new Error(data.error || 'Asset export failed'); }
+    return response.blob();
+  },
   createCustomer: (data) => req('POST', '/customers', data),
   updateCustomer: (id, data) => req('PUT', `/customers/${id}`, data),
   deleteCustomer: (id) => req('DELETE', `/customers/${id}`),
