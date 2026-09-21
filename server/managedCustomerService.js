@@ -55,6 +55,7 @@ async function listTickets(customerId,filters,store=db) {
   if (!managed) return null;
   let where='WHERE customer_id=?';const params=[customerId];
   if (filters.status) { where+=' AND normalized_status=?';params.push(filters.status); }
+  if (filters.group) { where+=' AND status_group=?';params.push(filters.group); }
   if (filters.priority) { where+=' AND normalized_priority=?';params.push(filters.priority); }
   if (filters.owner) { where+=' AND owner_name=?';params.push(filters.owner); }
   if (filters.from) { where+=' AND created_at_external>=?';params.push(`${filters.from}T00:00:00.000Z`); }

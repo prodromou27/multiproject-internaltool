@@ -1,6 +1,7 @@
 const router=require('express').Router();
 const { requireManager }=require('../middleware/auth');
 const service=require('../managedCustomerService');
+const reporting=require('../managedCustomerReportingService');
 
 router.use(requireManager);
 const validCalendarDay=value => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value;
@@ -72,6 +73,16 @@ router.get('/:id/timeline',async (req,res) => {
   if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
   const result=await service.getTimeline(id,from,to,{ page,pageSize,offset:(page-1)*pageSize });if (!result) return res.status(404).json({ error:'Managed customer not found' });
   res.json(result);
+});
+router.post('/:id/report-preview',async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  const { from,to,sections,narratives }=req.body || {};
+  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
+  try {
+    const result=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives });
+    if (!result) return res.status(404).json({ error:'Managed customer not found' });
+    res.json(result);
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not prepare the managed customer report' }); }
 });
 
 module.exports=router;

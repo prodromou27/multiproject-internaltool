@@ -1681,6 +1681,21 @@ test('managed customer timeline combines source events with stable pagination',a
   assert.deepEqual([...result.data.rows].sort((a,b) => b.occurred_at.localeCompare(a.occurred_at)),result.data.rows);
 });
 
+test('managed customer report preview reuses dashboard metrics and protects customer-facing input',async () => {
+  const path=`/api/managed-customers/${ids.customer}/report-preview`,body={ from:'2026-09-01',to:'2026-09-30',sections:['executive_summary','ticket_summary','service_activities'],narratives:{ executive_summary:'  Customer-facing summary  ',risks_concerns:'No material risks.' } };
+  assert.equal((await api(path,{ method:'POST',token:ids.tokenEnabled,body })).status,403);
+  assert.equal((await api('/api/managed-customers/not-an-id/report-preview',{ method:'POST',token:ids.tokenManager,body })).status,400);
+  assert.equal((await api(path,{ method:'POST',token:ids.tokenManager,body:{ ...body,from:'2026-02-31' } })).status,400);
+  assert.equal((await api(path,{ method:'POST',token:ids.tokenManager,body:{ ...body,sections:['not_a_section'] } })).status,400);
+  assert.equal((await api(path,{ method:'POST',token:ids.tokenManager,body:{ ...body,narratives:{ internal_notes:'must not leak' } } })).status,400);
+  const [preview,overview]=await Promise.all([api(path,{ method:'POST',token:ids.tokenManager,body }),api(`/api/managed-customers/${ids.customer}/overview?from=${body.from}&to=${body.to}`,{ token:ids.tokenManager })]);
+  assert.equal(preview.status,200);assert.equal(preview.data.schema_version,1);assert.deepEqual(preview.data.sections,body.sections);
+  assert.equal(preview.data.narratives.executive_summary,'Customer-facing summary');assert.equal(JSON.stringify(preview.data).includes('internal_notes'),false);
+  assert.deepEqual(Object.keys(preview.data.customer).sort(),['id','name','reporting_frequency','responsible_team','service_manager']);
+  assert.deepEqual(preview.data.overview.tickets,overview.data.tickets);assert.deepEqual(preview.data.overview.activities,overview.data.activities);
+  assert.equal(preview.data.tickets.open.rows.every(ticket => ticket.status_group==='open'),true);
+});
+
 test('ticket mapping administration is manager-only and reclassifies stored tickets',async () => {
   assert.equal((await api('/api/ticketing/mappings',{ token:ids.tokenEnabled })).status,403);
   const current=await api('/api/ticketing/mappings',{ token:ids.tokenManager });
