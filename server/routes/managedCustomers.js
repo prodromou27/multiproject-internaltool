@@ -3,6 +3,7 @@ const { requireManager }=require('../middleware/auth');
 const service=require('../managedCustomerService');
 const reporting=require('../managedCustomerReportingService');
 const { renderWord }=require('../managedCustomerWordRenderer');
+const { renderExcel }=require('../managedCustomerExcelRenderer');
 const db=require('../db');
 const { logAudit }=require('../auditLog');
 
@@ -100,6 +101,20 @@ router.post('/:id/report.docx',async (req,res) => {
     res.setHeader('Content-Disposition',`attachment; filename="${safeName}_${from}_${to}.docx"`);
     res.send(buffer);
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the Word report' }); }
+});
+router.post('/:id/report.xlsx',async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  const { from,to,sections,narratives }=req.body || {};
+  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
+  try {
+    const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives });
+    if (!model) return res.status(404).json({ error:'Managed customer not found' });
+    const buffer=await renderExcel(model),safeName=model.customer.name.replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,80) || `customer_${id}`;
+    await logAudit(db,req,'customer',id,model.customer.name,'managed_customer_excel_report_generated',`period=${from}:${to}; sections=${model.sections.join(',')}`);
+    res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition',`attachment; filename="${safeName}_${from}_${to}.xlsx"`);
+    res.send(buffer);
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the Excel report' }); }
 });
 
 module.exports=router;

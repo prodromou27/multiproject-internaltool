@@ -59,6 +59,12 @@ async function upload(path, field, file) {
   return data;
 }
 
+async function download(path,body) {
+  const response=await fetch(BASE+path,{ method:body===undefined?'GET':'POST',credentials:'same-origin',headers:{ ...(body===undefined?{}:{ 'Content-Type':'application/json' }),'X-SolutionsHub-Request':'1' },body:body===undefined?undefined:JSON.stringify(body) });
+  if (!response.ok) { const error=await response.json().catch(() => ({}));handleUnauthorized(response.status,error,true);throw new Error(error.error || 'Download failed'); }
+  return response.blob();
+}
+
 export const api = {
   // auth
   login: (email, password) => req('POST', '/auth/login', { email, password }, { redirectOnUnauthorized: false }),
@@ -347,11 +353,8 @@ export const api = {
   managedCustomerServiceReview: (id,params={},options) => req('GET',`/managed-customers/${id}/service-review?` + new URLSearchParams(params).toString(),undefined,options),
   managedCustomerTimeline: (id,params={},options) => req('GET',`/managed-customers/${id}/timeline?` + new URLSearchParams(params).toString(),undefined,options),
   managedCustomerReportPreview: (id,data,options) => req('POST',`/managed-customers/${id}/report-preview`,data,options),
-  managedCustomerWordReport: async (id,data) => {
-    const response=await fetch(`${BASE}/managed-customers/${id}/report.docx`,{ method:'POST',credentials:'same-origin',headers:{ 'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(data) });
-    if (!response.ok) { const error=await response.json().catch(() => ({}));handleUnauthorized(response.status,error,true);throw new Error(error.error || 'Word report generation failed'); }
-    return response.blob();
-  },
+  managedCustomerWordReport: (id,data) => download(`/managed-customers/${id}/report.docx`,data),
+  managedCustomerExcelReport: (id,data) => download(`/managed-customers/${id}/report.xlsx`,data),
 
   // system update
   systemUpdateStatus:  () => req('GET',  '/settings/system-update/status'),
