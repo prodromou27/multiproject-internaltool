@@ -35,5 +35,12 @@ router.get('/:id/tickets',async (req,res) => {
   if (!result) return res.status(404).json({ error:'Managed customer not found' });
   res.json(result);
 });
+router.get('/:id/ticket-analytics',async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  const now=new Date(),from=req.query.from || `${now.toISOString().slice(0,7)}-01`,to=req.query.to || now.toISOString().slice(0,10);
+  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
+  const result=await service.getTicketAnalytics(id,from,to);if (!result) return res.status(404).json({ error:'Managed customer not found' });
+  res.json(result);
+});
 
 module.exports=router;

@@ -79,4 +79,36 @@ async function listTickets(customerId,filters,store=db) {
   return { rows,total:Number(count.total),page:filters.page,page_size:filters.pageSize,facets:{ statuses:statuses.map(row => row.value),priorities:priorities.map(row => row.value),owners:owners.map(row => row.value) } };
 }
 
-module.exports={ listManagedCustomers,getOverview,listTickets };
+async function getTicketAnalytics(customerId,from,to,store=db,now=new Date()) {
+  const managed=await store.prepare(`SELECT 1 FROM managed_customer_configurations mc
+    JOIN customers c ON c.id=mc.customer_id WHERE mc.customer_id=? AND mc.managed_services_enabled=1 AND c.active=1`).get(customerId);
+  if (!managed) return null;
+  const start=`${from}T00:00:00.000Z`,endDate=new Date(`${to}T00:00:00.000Z`);endDate.setUTCDate(endDate.getUTCDate()+1);const end=endDate.toISOString();
+  const [periodRows,statuses,priorities,owners,agingRows]=await Promise.all([
+    store.prepare(`SELECT normalized_status,created_at_external,resolved_at_external,closed_at_external,updated_at_external,sla_breached
+      FROM external_tickets WHERE customer_id=? AND (created_at_external BETWEEN ? AND ? OR resolved_at_external BETWEEN ? AND ?
+      OR closed_at_external BETWEEN ? AND ? OR (normalized_status IN ('Closed','Rejected') AND updated_at_external BETWEEN ? AND ?))`).all(customerId,start,end,start,end,start,end,start,end),
+    store.prepare("SELECT normalized_status AS name,COUNT(*) AS count FROM external_tickets WHERE customer_id=? AND status_group='open' GROUP BY normalized_status ORDER BY count DESC,normalized_status").all(customerId),
+    store.prepare("SELECT COALESCE(normalized_priority,'Unspecified') AS name,COUNT(*) AS count FROM external_tickets WHERE customer_id=? AND status_group='open' GROUP BY normalized_priority ORDER BY count DESC,name").all(customerId),
+    store.prepare("SELECT owner_name AS name,COUNT(*) AS count FROM external_tickets WHERE customer_id=? AND status_group='open' GROUP BY owner_name ORDER BY count DESC,owner_name").all(customerId),
+    store.prepare("SELECT created_at_external FROM external_tickets WHERE customer_id=? AND status_group='open' AND created_at_external IS NOT NULL").all(customerId),
+  ]);
+  const inPeriod=value => !!value && value>=start && value<end;
+  const period={ created:0,resolved:0,closed:0,rejected:0,sla_breaches:0 };
+  for (const ticket of periodRows) {
+    if (inPeriod(ticket.created_at_external)) { period.created++;if (ticket.sla_breached) period.sla_breaches++; }
+    if (inPeriod(ticket.resolved_at_external)) period.resolved++;
+    const terminal=ticket.closed_at_external || ticket.resolved_at_external || ticket.updated_at_external;
+    if (ticket.normalized_status==='Closed' && inPeriod(terminal)) period.closed++;
+    if (ticket.normalized_status==='Rejected' && inPeriod(ticket.resolved_at_external || ticket.updated_at_external)) period.rejected++;
+  }
+  const aging=[{ name:'0–2 days',count:0 },{ name:'3–7 days',count:0 },{ name:'8–14 days',count:0 },{ name:'15–30 days',count:0 },{ name:'30+ days',count:0 }];
+  for (const ticket of agingRows) {
+    const days=Math.max(0,Math.floor((now-new Date(ticket.created_at_external))/86400000));
+    aging[days<=2?0:days<=7?1:days<=14?2:days<=30?3:4].count++;
+  }
+  const rows=(values,fallback) => [...values.reduce((result,row) => { const name=row.name || fallback;result.set(name,(result.get(name) || 0)+Number(row.count));return result; },new Map())].map(([name,count]) => ({ name,count })).sort((a,b) => b.count-a.count || a.name.localeCompare(b.name));
+  return { period:{ from,to,...period },current:{ total_open:rows(statuses).reduce((sum,row) => sum+row.count,0),statuses:rows(statuses),priorities:rows(priorities),owners:rows(owners,'Unassigned'),aging } };
+}
+
+module.exports={ listManagedCustomers,getOverview,listTickets,getTicketAnalytics };

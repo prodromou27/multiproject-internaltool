@@ -1607,6 +1607,19 @@ test('managed customer tickets enforce access, validate filters and paginate loc
   assert.equal(literalWildcard.status,200);assert.equal(literalWildcard.data.total,0);
 });
 
+test('managed customer ticket analytics separate current backlog from period throughput',async () => {
+  const path=`/api/managed-customers/${ids.customer}/ticket-analytics`;
+  assert.equal((await api(path,{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api(`${path}?from=bad&to=2026-09-21`,{ token:ids.tokenManager })).status,400);
+  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/ticket-analytics`,{ token:ids.tokenManager })).status,404);
+  const result=await api(`${path}?from=2026-09-01&to=2026-09-30`,{ token:ids.tokenManager });
+  assert.equal(result.status,200);assert.equal(result.data.current.total_open,1);
+  assert.deepEqual(result.data.current.statuses,[{ name:'Open',count:1 }]);
+  assert.deepEqual(result.data.current.priorities,[{ name:'Critical',count:1 }]);
+  assert.equal(result.data.period.created,2);assert.equal(result.data.period.resolved,1);
+  assert.equal(result.data.current.aging.reduce((sum,row) => sum+row.count,0),1);
+});
+
 test('ticket mapping administration is manager-only and reclassifies stored tickets',async () => {
   assert.equal((await api('/api/ticketing/mappings',{ token:ids.tokenEnabled })).status,403);
   const current=await api('/api/ticketing/mappings',{ token:ids.tokenManager });

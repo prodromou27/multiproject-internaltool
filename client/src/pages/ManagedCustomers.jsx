@@ -7,7 +7,12 @@ const iso=date => date.toISOString().slice(0,10);
 const formatDate=value => value ? new Date(value).toLocaleString() : '—';
 function period(preset,from,to) {
   const now=new Date();
+  if (preset==='today') return { from:iso(now),to:iso(now) };
+  if (preset==='week') { const start=new Date(now);start.setUTCDate(start.getUTCDate()-((start.getUTCDay()+6)%7));return { from:iso(start),to:iso(now) }; }
   if (preset==='last_month') return { from:iso(new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-1,1))),to:iso(new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),0))) };
+  if (preset==='quarter') { const month=Math.floor(now.getUTCMonth()/3)*3;return { from:iso(new Date(Date.UTC(now.getUTCFullYear(),month,1))),to:iso(now) }; }
+  if (preset==='previous_quarter') { const month=Math.floor(now.getUTCMonth()/3)*3;return { from:iso(new Date(Date.UTC(now.getUTCFullYear(),month-3,1))),to:iso(new Date(Date.UTC(now.getUTCFullYear(),month,0))) }; }
+  if (preset==='year') return { from:`${now.getUTCFullYear()}-01-01`,to:iso(now) };
   if (preset==='custom') return { from,to };
   return { from:`${iso(now).slice(0,7)}-01`,to:iso(now) };
 }
@@ -41,7 +46,29 @@ function TicketFilters({ filters,setFilters,facets }) {
   </div>;
 }
 
-function Tickets({ id }) {
+function Distribution({ title,rows }) {
+  const max=Math.max(...rows.map(row => row.count),1);
+  return <section className="card" style={{ padding:18 }}><h3 style={{ fontSize:14,marginBottom:14 }}>{title}</h3>{rows.some(row => row.count) ? <div style={{ display:'grid',gap:10 }}>{rows.filter(row => row.count).map(row => <div key={row.name}><div className="text-sm" style={{ display:'flex',justifyContent:'space-between',gap:12 }}><span>{row.name}</span><strong>{row.count}</strong></div><div className="progress-bar" style={{ height:6,marginTop:5 }}><div className="progress-bar-fill" style={{ width:`${row.count/max*100}%` }} /></div></div>)}</div> : <p className="text-muted text-sm">No matching tickets.</p>}</section>;
+}
+
+function TicketAnalytics({ id,range,refresh }) {
+  const [data,setData]=useState(null),[error,setError]=useState('');
+  useEffect(() => {
+    if (!range.from || !range.to) { setData(null);return; }
+    const controller=new AbortController();setError('');
+    api.managedCustomerTicketAnalytics(id,range,{ signal:controller.signal }).then(setData).catch(failure => { if (!controller.signal.aborted) setError(failure.message); });
+    return () => controller.abort();
+  },[id,range,refresh]);
+  if (!range.from || !range.to) return <div className="card empty"><p>Select both custom dates to load ticket analytics.</p></div>;
+  if (error) return <div className="error-msg" role="alert">{error}</div>;
+  if (!data) return <div className="skeleton-table"><span /><span /></div>;
+  return <div style={{ marginBottom:22 }}><h2 style={{ fontSize:15,marginBottom:10 }}>Current ticket backlog</h2><div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:18 }}><Metric label="Total open" value={data.current.total_open} /><Metric label="High / critical" value={data.current.priorities.filter(row => ['High','Critical'].includes(row.name)).reduce((sum,row) => sum+row.count,0)} /></div>
+    <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:12,marginBottom:22 }}><Distribution title="Open by status" rows={data.current.statuses} /><Distribution title="Open by priority" rows={data.current.priorities} /><Distribution title="Open ticket aging" rows={data.current.aging} /><Distribution title="Open by owner" rows={data.current.owners} /></div>
+    <h2 style={{ fontSize:15,marginBottom:10 }}>Selected period · {data.period.from} to {data.period.to}</h2><div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:20 }}><Metric label="Created" value={data.period.created} /><Metric label="Resolved" value={data.period.resolved} /><Metric label="Closed" value={data.period.closed} /><Metric label="Rejected" value={data.period.rejected} /><Metric label="SLA breaches" value={data.period.sla_breaches} /></div>
+  </div>;
+}
+
+function Tickets({ id,range,refresh }) {
   const [filters,setFilters]=useState({ search:'',status:'',priority:'',owner:'',from:'',to:'',page:1 });
   const [data,setData]=useState({ rows:[],total:0,page:1,page_size:25,facets:{ statuses:[],priorities:[],owners:[] } });
   const [loading,setLoading]=useState(true),[error,setError]=useState('');
@@ -52,9 +79,10 @@ function Tickets({ id }) {
       api.managedCustomerTickets(id,params,{ signal:controller.signal }).then(setData).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     },250);
     return () => { clearTimeout(timer);controller.abort(); };
-  },[id,filters]);
+  },[id,filters,refresh]);
   const pages=Math.max(1,Math.ceil(data.total/data.page_size));
   return <>
+    <TicketAnalytics id={id} range={range} refresh={refresh} />
     <TicketFilters filters={filters} setFilters={setFilters} facets={data.facets} />
     {error ? <div className="error-msg" role="alert">{error}</div> : loading && !data.rows.length ? <div className="skeleton-table"><span /><span /><span /></div> : !data.rows.length ? <div className="card empty"><p>No tickets match these filters.</p></div> : <div className="card table-wrap"><table>
       <thead><tr><th>Ticket</th><th>Subject</th><th>Status</th><th>Priority</th><th>Owner</th><th>Created</th><th>Updated</th><th>Age</th><th>Source</th></tr></thead>
@@ -70,7 +98,8 @@ function Dashboard({ id }) {
   useEffect(() => { if (!range.from || !range.to) return;const controller=new AbortController();setLoading(true);setError('');api.managedCustomerOverview(id,range,{ signal:controller.signal }).then(setData).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });return () => controller.abort(); },[id,range,retry]);
   return <div className="page"><div className="page-header"><div><Link to="/managed-customers" className="text-muted text-sm" style={{ display:'inline-flex',gap:4,alignItems:'center',marginBottom:6 }}><ArrowLeft size={13} /> Managed Customers</Link><h1 className="page-title">{data?.customer?.name || 'Managed customer'}</h1><p className="text-muted text-sm mt-4">{data?.customer?.responsible_team || 'No responsible team'} · {data?.customer?.service_manager || 'No service manager'} · Last ticket sync: {data?.customer?.last_successful_sync_at || 'Never'}</p></div></div>
     <div className="tabs" role="tablist" aria-label="Managed customer sections"><button className={`tab${tab==='overview'?' active':''}`} role="tab" aria-selected={tab==='overview'} onClick={() => setTab('overview')}>Overview</button><button className={`tab${tab==='tickets'?' active':''}`} role="tab" aria-selected={tab==='tickets'} onClick={() => setTab('tickets')}>Tickets</button></div>
-    {tab==='tickets' ? <Tickets id={id} /> : <><div className="filter-bar" style={{ marginBottom:18 }}>{[['month','This month'],['last_month','Last month'],['custom','Custom']].map(([key,label]) => <button key={key} className={`filter-pill${preset===key?' active':''}`} onClick={() => setPreset(key)}>{label}</button>)}{preset==='custom' && <><input type="date" value={from} onChange={event => setFrom(event.target.value)} /><input type="date" value={to} onChange={event => setTo(event.target.value)} /></>}<button className="btn btn-ghost btn-sm" onClick={() => setRetry(value => value+1)}><RefreshCw size={13} /> Refresh</button></div>
+    <div className="filter-bar" style={{ marginBottom:18 }}>{[['today','Today'],['week','This week'],['month','This month'],['last_month','Last month'],['quarter','Current quarter'],['previous_quarter','Previous quarter'],['year','Current year'],['custom','Custom']].map(([key,label]) => <button key={key} className={`filter-pill${preset===key?' active':''}`} onClick={() => setPreset(key)}>{label}</button>)}{preset==='custom' && <><input type="date" value={from} onChange={event => setFrom(event.target.value)} /><input type="date" value={to} onChange={event => setTo(event.target.value)} /></>}<button className="btn btn-ghost btn-sm" onClick={() => setRetry(value => value+1)}><RefreshCw size={13} /> Refresh</button></div>
+    {tab==='tickets' ? <Tickets id={id} range={range} refresh={retry} /> : <>
       {error ? <div className="error-msg" role="alert">{error}</div> : loading && !data ? <div className="skeleton-table"><span /><span /><span /></div> : data && <><h2 style={{ fontSize:15,marginBottom:10 }}>Current state</h2><div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:22 }}><Metric label="Open tickets now" value={data.tickets.open_now} /><Metric label="Pending tickets now" value={data.tickets.pending_now} /><Metric label="High / critical open" value={data.tickets.high_priority_open} /><Metric label="Open tasks now" value={data.tasks.open_now} /><Metric label="Active projects now" value={data.projects.active_now} /><Metric label="Open recommendations now" value={data.recommendations.open_now} /><Metric label="Overdue tasks now" value={data.tasks.overdue_now} /><Metric label="Open SLA breaches" value={data.tickets.sla_breached_open} /></div><h2 style={{ fontSize:15,marginBottom:10 }}>Selected period · {data.period.from} to {data.period.to}</h2><div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12 }}><Metric label="Tickets created" value={data.tickets.created_period} /><Metric label="Tickets resolved" value={data.tickets.resolved_period} /><Metric label="Service activities" value={data.activities.activities} /><Metric label="Service hours" value={data.activities.hours} /><Metric label="Maintenance visits" value={data.visits.visits_period} /></div></>}
     </>}
   </div>;
