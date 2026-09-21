@@ -1,6 +1,7 @@
 /**
- * Notification dispatcher — Teams (Incoming Webhook) and Cisco Webex (Bot API).
- * All sends are fire-and-forget so they never block request handlers.
+ * Notification dispatcher — Teams (Workflows / legacy connector webhook) and
+ * Cisco Webex (Bot API). All sends are fire-and-forget so they never block
+ * request handlers.
  */
 const https = require('https');
 const http  = require('http');
@@ -16,10 +17,9 @@ async function getSettings() {
 
 // Generic HTTP/S POST (no external deps). Outbound URLs are DNS-resolved and
 // blocked if they target private, loopback, link-local, or metadata addresses.
-async function postJSON(url, body, extraHeaders = {}) {
-  const u = await assertPublicHttpUrl(url, { label: 'Outbound notification URL' });
+// Non-2xx responses reject; 429/5xx are retried once after a short back-off.
+function rawPost(u, data, extraHeaders) {
   return new Promise((resolve, reject) => {
-    const data = JSON.stringify(body);
     const options = {
       hostname: u.hostname,
       port:     u.port || (u.protocol === 'https:' ? 443 : 80),
@@ -33,9 +33,9 @@ async function postJSON(url, body, extraHeaders = {}) {
     };
     const mod = u.protocol === 'https:' ? https : http;
     const req = mod.request(options, (res) => {
-      let body = '';
-      res.on('data', d => body += d);
-      res.on('end', () => resolve({ status: res.statusCode, body }));
+      let text = '';
+      res.on('data', d => { if (text.length < 2000) text += d; });
+      res.on('end', () => resolve({ status: res.statusCode, body: text, headers: res.headers }));
     });
     req.on('error', reject);
     req.setTimeout(8000, () => { req.destroy(); reject(new Error('Timeout')); });
@@ -44,11 +44,38 @@ async function postJSON(url, body, extraHeaders = {}) {
   });
 }
 
-// ── Teams (O365 Connector MessageCard) ──────────────────────────────────────
-async function sendTeams(cfg, msg) {
-  if (!cfg?.enabled || !cfg?.webhook_url) return;
-  try {
-    await postJSON(cfg.webhook_url, {
+let transport = rawPost;
+/** Test hook: replace the network layer. Call with no argument to restore it. */
+function _setTransport(fn) { transport = fn || rawPost; }
+
+async function postJSON(url, body, extraHeaders = {}) {
+  const u = await assertPublicHttpUrl(url, { label: 'Outbound notification URL' });
+  const data = JSON.stringify(body);
+  let res = await transport(u, data, extraHeaders);
+  if (res.status === 429 || res.status >= 500) {
+    const wait = Math.min(Math.max(Number(res.headers?.['retry-after']) || 1, 1), 5) * 1000;
+    await new Promise(r => setTimeout(r, wait));
+    res = await transport(u, data, extraHeaders);
+  }
+  if (res.status < 200 || res.status >= 300) {
+    const detail = String(res.body || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    throw new Error(`HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+  }
+  return res;
+}
+
+// ── Teams ────────────────────────────────────────────────────────────────────
+// Legacy Office 365 connector URLs (*.webhook.office.com) take a MessageCard;
+// Workflows / Power Automate URLs ("Post to a channel when a webhook request is
+// received") take an Adaptive Card wrapped in a message envelope.
+function isLegacyTeamsUrl(url) {
+  try { return /(^|\.)webhook\.office(365)?\.com$/i.test(new URL(url).hostname); } catch { return false; }
+}
+
+function teamsPayload(url, msg) {
+  const facts = (msg.facts || []).map(f => ({ name: String(f.name), value: String(f.value ?? '') }));
+  if (isLegacyTeamsUrl(url)) {
+    return {
       '@type':    'MessageCard',
       '@context': 'http://schema.org/extensions',
       themeColor: '0078D4',
@@ -57,41 +84,64 @@ async function sendTeams(cfg, msg) {
         activityTitle:    msg.title,
         activitySubtitle: msg.subtitle || '',
         activityText:     msg.body,
-        facts: (msg.facts || []).map(f => ({ name: f.name, value: f.value })),
+        facts,
         markdown: true,
       }],
-    });
-  } catch (e) {
-    console.error('[Teams notify]', e.message);
+    };
   }
+  return {
+    type: 'message',
+    attachments: [{
+      contentType: 'application/vnd.microsoft.card.adaptive',
+      contentUrl:  null,
+      content: {
+        $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+        type:    'AdaptiveCard',
+        version: '1.4',
+        body: [
+          { type: 'TextBlock', text: msg.title, weight: 'Bolder', size: 'Medium', wrap: true },
+          ...(msg.subtitle ? [{ type: 'TextBlock', text: msg.subtitle, isSubtle: true, spacing: 'None', wrap: true }] : []),
+          { type: 'TextBlock', text: msg.body, wrap: true },
+          ...(facts.length ? [{ type: 'FactSet', facts: facts.map(f => ({ title: f.name, value: f.value })) }] : []),
+        ],
+      },
+    }],
+  };
+}
+
+async function sendTeams(cfg, msg) {
+  if (!cfg?.enabled || !cfg?.webhook_url) return;
+  await postJSON(cfg.webhook_url, teamsPayload(cfg.webhook_url, msg));
 }
 
 // ── Webex Bot API ────────────────────────────────────────────────────────────
+function webexMarkdown(msg) {
+  return `## ${msg.title}\n${msg.body}${msg.facts?.length
+    ? '\n\n' + msg.facts.map(f => `**${f.name}:** ${f.value}`).join('  \n')
+    : ''}`;
+}
+
 async function sendWebex(cfg, msg, engineerEmail) {
   if (!cfg?.enabled || !cfg?.bot_token) return;
 
   const headers = { Authorization: `Bearer ${cfg.bot_token}` };
-  const markdown = `## ${msg.title}\n${msg.body}${msg.facts?.length
-    ? '\n\n' + msg.facts.map(f => `**${f.name}:** ${f.value}`).join('  \n')
-    : ''}`;
-
+  const markdown = webexMarkdown(msg);
+  const url = 'https://webexapis.com/v1/messages';
   const sends = [];
 
   // Direct message to engineer
   if ((cfg.mode === 'direct' || cfg.mode === 'both') && engineerEmail) {
-    sends.push(postJSON('https://webexapis.com/v1/messages', { toPersonEmail: engineerEmail, markdown }, headers));
+    sends.push(postJSON(url, { toPersonEmail: engineerEmail, markdown }, headers));
   }
 
   // Team Space / Room
   if ((cfg.mode === 'space' || cfg.mode === 'both') && cfg.space_id) {
-    sends.push(postJSON('https://webexapis.com/v1/messages', { roomId: cfg.space_id, markdown }, headers));
+    sends.push(postJSON(url, { roomId: cfg.space_id, markdown }, headers));
   }
 
-  try {
-    await Promise.all(sends);
-  } catch (e) {
-    console.error('[Webex notify]', e.message);
-  }
+  const results = await Promise.allSettled(sends);
+  const failed = results.find(r => r.status === 'rejected');
+  if (failed) throw failed.reason;
 }
 
 // ── Persist notification to DB for a specific user ──────────────────────────
@@ -208,7 +258,7 @@ function notify(event, data) {
       } else if (event === 'visit.reminder' && data.engineer_id) {
         // Dedup: only create one reminder per visit per user per day
         const dedupLink = `/maintenance-visits?reminder=${data.visit_id}`;
-        const today = new Date().toISOString().slice(0, 10);
+        const today = (await db.prepare('SELECT app_today() AS d').get()).d;
         try {
           const exists = await db.prepare(
             `SELECT 1 FROM notifications WHERE user_id = ? AND link = ? AND substr(created_at,1,10) = ?`
@@ -242,17 +292,22 @@ function notify(event, data) {
       // visit.reminder defaults to enabled unless explicitly disabled
       if (notifyOn[eventKey] === false) return;
 
-      await Promise.all([
+      // A submitted report goes to managers, so never DM the submitting engineer.
+      const dmEmail = event === 'report.submitted' ? null : data.engineer_email;
+      const results = await Promise.allSettled([
         sendTeams(settings.teams, msg),
-        sendWebex(settings.webex, msg, data.engineer_email),
+        sendWebex(settings.webex, msg, dmEmail),
       ]);
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') console.error(`[${i ? 'Webex' : 'Teams'} notify]`, r.reason?.message);
+      });
     } catch (e) {
       console.error('[notify]', e.message);
     }
   });
 }
 
-/** sendTest — used by the Admin "Test" button */
+/** sendTest — used by the Admin "Test" button; rejects with the real delivery error. */
 async function sendTest(platform, settings) {
   const msg = {
     title:    '🔔 Test Notification',
@@ -265,14 +320,19 @@ async function sendTest(platform, settings) {
   };
 
   if (platform === 'teams') {
-    await sendTeams(settings.teams, msg);
+    if (!settings.teams?.webhook_url) throw new Error('Enter the Teams webhook URL first');
+    await sendTeams({ ...settings.teams, enabled: true }, msg);
     return { ok: true };
   } else if (platform === 'webex') {
-    // For test: if direct mode pick first engineer's email, or use the test_email from body
-    await sendWebex(settings.webex, msg, settings.webex?.test_email || null);
+    const w = settings.webex || {};
+    if (!w.bot_token) throw new Error('Enter the Webex bot token first');
+    const dm = (w.mode === 'direct' || w.mode === 'both') && w.test_email;
+    const space = (w.mode === 'space' || w.mode === 'both') && w.space_id;
+    if (!dm && !space) throw new Error('Set a test email (direct) or a space ID (space) to send the test to');
+    await sendWebex({ ...w, enabled: true }, msg, w.test_email || null);
     return { ok: true };
   }
   throw new Error('Unknown platform');
 }
 
-module.exports = { notify, sendTest };
+module.exports = { notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, postJSON, _setTransport };

@@ -10,7 +10,7 @@ import RequestTrackerIntegration from './RequestTrackerIntegration';
 export const DEFAULT_SETTINGS = {
   teams:  { enabled: false, webhook_url: '' },
   webex:  { enabled: false, bot_token: '', mode: 'both', space_id: '', test_email: '' },
-  notify_on: { task_assigned: true, project_assigned: true, visit_assigned: true },
+  notify_on: { task_assigned: true, project_assigned: true, visit_assigned: true, report_submitted: true, visit_reminder: true },
 };
 
 export function IntegrationsTab() {
@@ -77,7 +77,7 @@ export function IntegrationsTab() {
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 15 }}>Microsoft Teams</div>
-            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Send notifications via an Incoming Webhook</div>
+            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Post to a channel via a Workflows (or legacy Incoming) webhook</div>
           </div>
           <Toggle checked={cfg.teams.enabled} onChange={v => setTeams('enabled', v)} label={cfg.teams.enabled ? 'Enabled' : 'Disabled'} />
         </div>
@@ -85,9 +85,9 @@ export function IntegrationsTab() {
           <>
             <div className="form-group" style={{ marginBottom: 12 }}>
               <label style={labelStyle}>Incoming Webhook URL</label>
-              <input type="password" autoComplete="new-password" value={cfg.teams.webhook_url} onChange={e => setTeams('webhook_url', e.target.value)} placeholder="https://outlook.office.com/webhook/..." />
+              <input type="password" autoComplete="new-password" value={cfg.teams.webhook_url} onChange={e => setTeams('webhook_url', e.target.value)} placeholder="https://prod-00.westeurope.logic.azure.com/workflows/..." />
               {cfg.teams.webhook_url_set && <p className="text-muted text-sm">{cfg.teams.clear_webhook_url ? 'Stored webhook will be removed when saved.' : 'Webhook configured. Leave blank to retain it.'} <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCfg(c => ({ ...c,teams: { ...c.teams,webhook_url: '',clear_webhook_url: !c.teams.clear_webhook_url } }))}>{cfg.teams.clear_webhook_url ? 'Keep stored webhook' : 'Remove stored webhook'}</button></p>}
-              <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>In Teams: channel → ··· → Connectors → Incoming Webhook → Configure</div>
+              <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>In Teams: channel → ··· → Workflows → "Post to a channel when a webhook request is received". Legacy *.webhook.office.com connector URLs also work.</div>
             </div>
             <button className="btn btn-ghost btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} disabled={(!cfg.teams.webhook_url && (!cfg.teams.webhook_url_set || cfg.teams.clear_webhook_url)) || testing.teams} onClick={() => test('teams')}>
               {testing.teams ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Bell size={13} /> Send Test</>}
@@ -150,6 +150,8 @@ export function IntegrationsTab() {
             <Toggle checked={cfg.notify_on.task_assigned}    onChange={v => setNotify('task_assigned', v)}    label="Task assigned to an engineer" />
             <Toggle checked={cfg.notify_on.project_assigned} onChange={v => setNotify('project_assigned', v)} label="Engineer added to a project" />
             <Toggle checked={cfg.notify_on.visit_assigned}   onChange={v => setNotify('visit_assigned', v)}   label="Maintenance visit assigned to an engineer" />
+            <Toggle checked={cfg.notify_on.report_submitted} onChange={v => setNotify('report_submitted', v)} label="Visit report submitted (to the space / channel)" />
+            <Toggle checked={cfg.notify_on.visit_reminder}   onChange={v => setNotify('visit_reminder', v)}   label="Reminder the day before a maintenance visit" />
           </div>
         </div>
       )}

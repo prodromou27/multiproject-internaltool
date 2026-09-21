@@ -1,11 +1,12 @@
 const object = value => value && typeof value==='object' && !Array.isArray(value);
 const fail = message => { throw Object.assign(new Error(message),{ status: 400 }); };
+const NOTIFY_EVENTS = ['task_assigned','project_assigned','visit_assigned','report_submitted','visit_reminder'];
 function safeSettings(settings = {}) {
   const teams = settings.teams || {},webex = settings.webex || {};
   return {
     teams: { enabled: !!teams.enabled,webhook_url: '',webhook_url_set: !!teams.webhook_url },
     webex: { enabled: !!webex.enabled,bot_token: '',bot_token_set: !!webex.bot_token,mode: webex.mode || 'both',space_id: webex.space_id || '',test_email: webex.test_email || '' },
-    notify_on: Object.fromEntries(['task_assigned','project_assigned','visit_assigned'].map(key => [key,settings.notify_on?.[key]!==false])),
+    notify_on: Object.fromEntries(NOTIFY_EVENTS.map(key => [key,settings.notify_on?.[key]!==false])),
   };
 }
 function mergeSettings(current,body) {
@@ -28,7 +29,7 @@ function mergeSettings(current,body) {
     result[platform]=merged;
   }
   if (body.notify_on!==undefined) {
-    if (!object(body.notify_on) || Object.values(body.notify_on).some(value => typeof value!=='boolean')) fail('Invalid notification rules');
+    if (!object(body.notify_on) || Object.keys(body.notify_on).some(key => !NOTIFY_EVENTS.includes(key)) || Object.values(body.notify_on).some(value => typeof value!=='boolean')) fail('Invalid notification rules');
     result.notify_on={ ...current.notify_on,...body.notify_on };
   }
   return result;
