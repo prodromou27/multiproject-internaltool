@@ -9,9 +9,10 @@ function parseNumber(value, label, { min = 0 } = {}) {
   return { value: n };
 }
 
-// Engineers can view KPIs for projects they're assigned to; managers see all
+// Managers and PMs see every project's KPIs; everyone else (engineers, planners)
+// only for projects they're assigned to — the same rule as milestones and search.
 router.get('/:project_id', requireAuth, async (req, res) => {
-  if (req.user.role === 'engineer') {
+  if (!['manager', 'pm'].includes(req.user.role)) {
     const assigned = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(req.params.project_id, req.user.id));
     if (!assigned) return res.status(403).json({ error: 'Forbidden' });
   }
