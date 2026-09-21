@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ClipboardList, Search, Copy, CheckCircle2, ListPlus, Paperclip, Upload, Trash2, Pencil, Flag, SlidersHorizontal, X } from 'lucide-react';
-import './ActivityLog.css';
+import '../components/billingMix.css';
+import { fmtDuration, MIX, mixOf, groupByDay, LedgerDay } from '../components/activityLedger';
 import { PageHeader } from '../components/PageLayout';
 import { useSearchParams } from 'react-router-dom';
 import { useCreateIntent } from '../hooks/useCreateIntent';
@@ -25,88 +26,14 @@ function monthRange() {
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   return [iso(start), iso(end)];
 }
-function fmtDuration(minutes) {
-  if (minutes == null) return '—';
-  const h = Math.floor(minutes / 60), m = minutes % 60;
-  return h > 0 ? `${h}h ${m ? m + 'm' : ''}`.trim() : `${m}m`;
-}
+
+const RANGE_LABEL = { today: 'today', this_week: 'this week', this_month: 'this month', custom: 'in this range' };
 
 const BILLABLE_LABELS = {
   included_in_contract: 'Included in Contract', billable: 'Billable', non_billable: 'Non-Billable',
   internal: 'Internal', not_applicable: 'Not Applicable',
 };
 const WORK_LOCATION_LABELS = { remote: 'Remote', onsite: 'On-site', internal: 'Internal', hybrid: 'Hybrid' };
-
-/* ── Ledger helpers ───────────────────────────────────────────────────── */
-const MIX = {
-  included_in_contract: { label: 'Included in contract', color: 'var(--al-included)' },
-  billable:             { label: 'Billable',             color: 'var(--al-billable)' },
-  internal:             { label: 'Internal',             color: 'var(--al-internal)' },
-  non_billable:         { label: 'Non-billable',         color: 'var(--al-other)' },
-  not_applicable:       { label: 'Not applicable',       color: 'var(--al-other)' },
-};
-const mixOf = cls => MIX[cls] || { label: 'Billing not set', color: 'var(--al-other)' };
-const WORKDAY_MINUTES = 480;
-const RANGE_LABEL = { today: 'today', this_week: 'this week', this_month: 'this month', custom: 'in this range' };
-
-function parseDay(value) {
-  const [y, m, d] = String(value).slice(0, 10).split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-
-function dayLabels(value) {
-  const date = parseDay(value);
-  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-  const diff = Math.round((startOfToday - date) / 86400000);
-  return {
-    when: diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : date.toLocaleDateString(undefined, { weekday: 'long' }),
-    day: date.getDate(),
-    month: date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }),
-  };
-}
-
-/* Rows arrive newest-first, so a day's rows are contiguous. Pagination can cut
-   the first or last day on a page; those totals would be wrong, so they're
-   flagged `partial` and shown without a total or bar. */
-function groupByDay(rows, page, totalPages) {
-  const groups = [];
-  for (const row of rows) {
-    const date = String(row.activity_date).slice(0, 10);
-    const last = groups[groups.length - 1];
-    if (last && last.date === date) last.rows.push(row);
-    else groups.push({ date, rows: [row] });
-  }
-  groups.forEach((group, index) => {
-    group.partial = (index === 0 && page > 1) || (index === groups.length - 1 && page < totalPages);
-    group.minutes = group.rows.reduce((sum, row) => sum + (row.duration_minutes || 0), 0);
-  });
-  return groups;
-}
-
-function DayBar({ rows, minutes }) {
-  const scale = Math.max(WORKDAY_MINUTES, minutes);
-  const chronological = [...rows].reverse().filter(row => row.duration_minutes > 0);
-  const byMix = new Map();
-  chronological.forEach(row => {
-    const label = mixOf(row.billable_classification).label;
-    byMix.set(label, (byMix.get(label) || 0) + row.duration_minutes);
-  });
-  const summary = [...byMix].map(([label, mins]) => `${fmtDuration(mins)} ${label.toLowerCase()}`).join(', ');
-  return (
-    <>
-      <div className="al-bar" role="img" aria-label={`${fmtDuration(minutes)} logged. ${summary}`}>
-        {chronological.map(row => (
-          <span key={row.id} style={{ width: `${(row.duration_minutes / scale) * 100}%`, background: mixOf(row.billable_classification).color }} />
-        ))}
-      </div>
-      <div className="al-bar-caption" aria-hidden="true">
-        {minutes === WORKDAY_MINUTES ? 'A full 8h day'
-          : minutes > WORKDAY_MINUTES ? `${fmtDuration(minutes - WORKDAY_MINUTES)} over 8h`
-          : `${fmtDuration(WORKDAY_MINUTES - minutes)} left to 8h`}
-      </div>
-    </>
-  );
-}
 
 /* ── Quick Log / Edit Activity form ──────────────────────────────────── */
 function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
@@ -771,22 +698,9 @@ export default function ActivityLog() {
             </ul>
           )}
           <div className="card al-ledger">
-            {groups.map(group => {
-              const labels = dayLabels(group.date);
-              return (
-                <section className="al-day" key={group.date} aria-label={`${labels.when}, ${group.date}`}>
-                  <div className="al-rail">
-                    <span className="al-rail-when">{labels.when}</span>
-                    <span className="al-rail-day">{labels.day}</span>
-                    <span className="al-rail-month">{labels.month}</span>
-                    {group.partial
-                      ? <span className="al-rail-note">Day continues on another page</span>
-                      : group.minutes > 0 && <span className="al-rail-total">{fmtDuration(group.minutes)}</span>}
-                  </div>
-                  <div>
-                    {!group.partial && group.minutes > 0 && <DayBar rows={group.rows} minutes={group.minutes} />}
-                    <ul className="al-entries">
-                      {group.rows.map(r => {
+            {groups.map(group => (
+              <LedgerDay key={group.date} group={group}>
+                {group.rows.map(r => {
                         const mix = mixOf(r.billable_classification);
                         return (
                           <li className="al-entry" key={r.id}>
@@ -821,11 +735,8 @@ export default function ActivityLog() {
                           </li>
                         );
                       })}
-                    </ul>
-                  </div>
-                </section>
-              );
-            })}
+              </LedgerDay>
+            ))}
             <div className="al-pager">
               <span>{total} {total === 1 ? 'activity' : 'activities'}</span>
               <div className="al-pager-nav">

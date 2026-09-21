@@ -1,0 +1,39 @@
+/* Service activities tab of the Customer 360 page. Scoped under .cs-activities.
+   The hero, rankings and ledger come from shared components; this file only adds
+   what's specific to a single customer: the contract meter and the filter row. */
+
+.cs-activities { display: flex; flex-direction: column; gap: 16px; }
+/* The app adds a top margin between sibling .cards; layout gaps do that job here. */
+.cs-activities .card { margin: 0; }
+.cs-activities .al-ledger { margin: 0; }
+
+.cs-activities .cs-rankings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px; align-items: start; }
+
+/* ── Contract meter ──────────────────────────────────────── */
+.cs-activities .cs-meter { padding: 20px 24px; --cs-meter: var(--success); }
+.cs-activities .cs-meter.is-low  { --cs-meter: var(--warning); }
+.cs-activities .cs-meter.is-over { --cs-meter: var(--danger); }
+.cs-activities .cs-meter-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+.cs-activities .cs-meter-head h2 { font-size: 14px; font-weight: 650; color: var(--gray-800); }
+.cs-activities .cs-meter-state { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 650; color: var(--gray-900); font-variant-numeric: tabular-nums; }
+.cs-activities .is-low .cs-meter-state, .cs-activities .is-over .cs-meter-state { color: var(--cs-meter); }
+.cs-activities .cs-meter-track { height: 10px; border-radius: 5px; background: var(--gray-100); overflow: hidden; }
+.cs-activities .cs-meter-track > span { display: block; height: 100%; background: var(--cs-meter); border-radius: 0 5px 5px 0; min-width: 2px; }
+.cs-activities .cs-meter-figures { margin-top: 10px; font-size: 13px; color: var(--gray-600); }
+.cs-activities .cs-meter-figures strong { color: var(--gray-900); font-variant-numeric: tabular-nums; }
+
+/* ── Filters ─────────────────────────────────────────────── */
+.cs-activities .cs-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; }
+.cs-activities .cs-toolbar label { display: block; font-size: 12px; font-weight: 600; color: var(--gray-600); margin-bottom: 5px; }
+.cs-activities .cs-toolbar input, .cs-activities .cs-toolbar select { min-width: 160px; }
+.cs-activities .cs-clear { border: 0; background: transparent; color: var(--gray-600); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; padding: 8px 4px; }
+
+.cs-activities .cs-empty { padding: 40px 24px; text-align: center; }
+.cs-activities .cs-empty h2 { font-size: 16px; margin-bottom: 6px; }
+.cs-activities .cs-empty p { color: var(--gray-600); font-size: 13px; line-height: 1.6; max-width: 46ch; margin: 0 auto; }
+
+@media (max-width: 800px) {
+  .cs-activities .cs-meter { padding: 16px; }
+  .cs-activities .cs-toolbar input, .cs-activities .cs-toolbar select { min-width: 0; width: 100%; }
+  .cs-activities .cs-toolbar > div { flex: 1 1 140px; }
+}

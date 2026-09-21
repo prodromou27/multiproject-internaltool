@@ -1,13 +1,13 @@
 /* Activity log — day-by-day ledger.
    Scoped under .activity-log so nothing here can leak into other pages.
    Colours come from the app's existing tokens, so dark mode follows for free;
-   the four billing-mix colours are the only additions. */
+   billing-mix colours come from components/billingMix.css. */
 
 .activity-log {
-  --al-included: var(--primary);
-  --al-billable: var(--success);
-  --al-internal: #8b5cf6;
-  --al-other: var(--gray-400);
+  --al-included: var(--mix-included);
+  --al-billable: var(--mix-billable);
+  --al-internal: var(--mix-internal);
+  --al-other: var(--mix-other);
   --al-rail: 132px;
 }
 
@@ -119,3 +119,9 @@
   .activity-log .al-side { grid-column: 2; justify-content: space-between; flex-wrap: wrap; }
   .activity-log .al-actions button { width: 40px; height: 40px; }
 }
+
+/* Titles are buttons on the Activity Log, links or plain text on a customer's timeline. */
+.activity-log a.al-title { color: var(--gray-900); text-decoration: none; }
+.activity-log a.al-title:hover { color: var(--primary); text-decoration: underline; }
+.activity-log .al-title.is-static { cursor: default; }
+.activity-log .al-title.is-static:hover { color: var(--gray-900); text-decoration: none; }
