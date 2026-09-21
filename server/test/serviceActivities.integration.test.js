@@ -1645,6 +1645,18 @@ test('managed customer work reuses task and project relationships with configure
   assert.equal(result.data.projects.rows.every(row => Number.isInteger(row.completion_pct)),true);
 });
 
+test('managed customer service review combines visits, report delivery and recommendations',async () => {
+  const path=`/api/managed-customers/${ids.customer}/service-review`;
+  assert.equal((await api(`${path}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api(`${path}?from=bad&to=2026-12-31`,{ token:ids.tokenManager })).status,400);
+  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/service-review?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager })).status,404);
+  const result=await api(`${path}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager });
+  assert.equal(result.status,200);assert.equal(result.data.visits.enabled,true);assert.equal(result.data.recommendations.enabled,true);
+  assert.equal(result.data.visits.summary.visits_period>=result.data.visits.rows.length,true);
+  assert.equal(result.data.visits.rows.every(row => Number.isInteger(row.recommendation_count)),true);
+  assert.equal(typeof result.data.recommendations.summary.open_now,'number');assert.equal(Array.isArray(result.data.recommendations.statuses),true);
+});
+
 test('ticket mapping administration is manager-only and reclassifies stored tickets',async () => {
   assert.equal((await api('/api/ticketing/mappings',{ token:ids.tokenEnabled })).status,403);
   const current=await api('/api/ticketing/mappings',{ token:ids.tokenManager });

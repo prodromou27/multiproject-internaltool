@@ -181,4 +181,47 @@ async function getWork(customerId,from,to,store=db) {
   return { period:{ from,to },tasks,projects };
 }
 
-module.exports={ listManagedCustomers,getOverview,listTickets,getTicketAnalytics,getActivities,getWork };
+async function getServiceReview(customerId,from,to,store=db) {
+  const config=await store.prepare(`SELECT mc.maintenance_visit_reporting_enabled,mc.recommendation_tracking_enabled FROM managed_customer_configurations mc
+    JOIN customers c ON c.id=mc.customer_id WHERE mc.customer_id=? AND mc.managed_services_enabled=1 AND c.active=1`).get(customerId);
+  if (!config) return null;
+  const start=`${from}T00:00:00.000Z`,endDate=new Date(`${to}T00:00:00.000Z`);endDate.setUTCDate(endDate.getUTCDate()+1);const end=endDate.toISOString();
+  const visits={ enabled:!!config.maintenance_visit_reporting_enabled,summary:{},rows:[] },recommendations={ enabled:!!config.recommendation_tracking_enabled,summary:{},statuses:[],rows:[] };
+  if (visits.enabled) {
+    const [summary,last,next,rows]=await Promise.all([
+      store.prepare(`SELECT
+        SUM(CASE WHEN scheduled_date BETWEEN ? AND ? AND status!='cancelled' THEN 1 ELSE 0 END) AS visits_period,
+        SUM(CASE WHEN report_sent_at>=? AND report_sent_at<? THEN 1 ELSE 0 END) AS reports_prepared_period,
+        SUM(CASE WHEN report_sent_to_customer_at>=? AND report_sent_to_customer_at<? THEN 1 ELSE 0 END) AS reports_sent_period,
+        SUM(CASE WHEN status='completed' AND report_sent_to_customer=0 THEN 1 ELSE 0 END) AS reports_pending,
+        SUM(CASE WHEN status NOT IN ('completed','cancelled') AND scheduled_date<app_today() THEN 1 ELSE 0 END) AS overdue_visits
+        FROM maintenance_visits WHERE customer_id=?`).get(from,to,start,end,start,end,customerId),
+      store.prepare("SELECT scheduled_date FROM maintenance_visits WHERE customer_id=? AND status='completed' AND scheduled_date<=app_today() ORDER BY scheduled_date DESC,id DESC LIMIT 1").get(customerId),
+      store.prepare("SELECT scheduled_date FROM maintenance_visits WHERE customer_id=? AND status NOT IN ('completed','cancelled') AND scheduled_date>=app_today() ORDER BY scheduled_date,id LIMIT 1").get(customerId),
+      store.prepare(`SELECT mv.id,mv.title,mv.scheduled_date,mv.status,mv.report_sent,mv.report_sent_at,mv.report_sent_to_customer,mv.report_sent_to_customer_at,
+        u.name AS engineer_name,COUNT(r.id) AS recommendation_count FROM maintenance_visits mv LEFT JOIN users u ON u.id=mv.engineer_id
+        LEFT JOIN customer_recommendations r ON r.source_visit_id=mv.id WHERE mv.customer_id=? AND mv.status!='cancelled' AND mv.scheduled_date BETWEEN ? AND ?
+        GROUP BY mv.id,mv.title,mv.scheduled_date,mv.status,mv.report_sent,mv.report_sent_at,mv.report_sent_to_customer,mv.report_sent_to_customer_at,u.name
+        ORDER BY mv.scheduled_date DESC,mv.id DESC LIMIT 100`).all(customerId,from,to),
+    ]);
+    visits.summary={ ...numbers(summary),last_visit:last?.scheduled_date || null,next_visit:next?.scheduled_date || null };visits.rows=rows.map(row => ({ ...row,recommendation_count:Number(row.recommendation_count) }));
+  }
+  if (recommendations.enabled) {
+    const [summary,statuses,rows]=await Promise.all([
+      store.prepare(`SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status NOT IN ('implemented','converted_to_project','closed','rejected') THEN 1 ELSE 0 END) AS open_now,
+        SUM(CASE WHEN created_at>=? AND created_at<? THEN 1 ELSE 0 END) AS created_period,
+        SUM(CASE WHEN status IN ('implemented','converted_to_project','closed') AND updated_at>=? AND updated_at<? THEN 1 ELSE 0 END) AS completed_period,
+        SUM(CASE WHEN status NOT IN ('implemented','converted_to_project','closed','rejected') AND due_date<app_today() THEN 1 ELSE 0 END) AS overdue_now
+        FROM customer_recommendations WHERE customer_id=?`).get(start,end,start,end,customerId),
+      store.prepare('SELECT status AS name,COUNT(*) AS count FROM customer_recommendations WHERE customer_id=? GROUP BY status ORDER BY count DESC,status').all(customerId),
+      store.prepare(`SELECT r.id,r.finding,r.recommendation,r.risk_level,r.status,r.due_date,r.created_at,r.updated_at,u.name AS owner_name,
+        mv.title AS source_visit_title,r.related_project_id,r.related_task_id FROM customer_recommendations r LEFT JOIN users u ON u.id=r.owner_id
+        LEFT JOIN maintenance_visits mv ON mv.id=r.source_visit_id WHERE r.customer_id=? ORDER BY CASE WHEN r.status NOT IN ('implemented','converted_to_project','closed','rejected') THEN 0 ELSE 1 END,r.due_date ASC NULLS LAST,r.id DESC LIMIT 100`).all(customerId),
+    ]);
+    recommendations.summary=numbers(summary);recommendations.statuses=statuses.map(row => ({ name:row.name,count:Number(row.count) }));recommendations.rows=rows;
+  }
+  return { period:{ from,to },visits,recommendations };
+}
+
+module.exports={ listManagedCustomers,getOverview,listTickets,getTicketAnalytics,getActivities,getWork,getServiceReview };
