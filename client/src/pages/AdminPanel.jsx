@@ -14,6 +14,7 @@ import { LocalizationTab } from './admin/LocalizationTab';
 import { AdminAlertsTab, LoggingTab } from './admin/AlertsLoggingTab';
 import { DeploymentHealthTab, SystemUpdateTab, AuditLogTab, SecurityTab } from './admin/SystemTabs';
 import { ServiceActivityAdminTab } from './admin/ServiceActivityAdmin';
+import { ManagedReportTemplatesTab } from './admin/ManagedReportTemplatesTab';
 
 /* ── MAIN PAGE ───────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
@@ -24,6 +25,7 @@ const TABS = [
   { key: 'maintenance',    label: 'Maintenance Visits', Icon: Wrench,          group: 'business_people',        desc: 'Visit administration and report status' },
   { key: 'statuses',       label: 'Status Workflow',    Icon: Tag,             group: 'business_rules', desc: 'Project status labels, colors, and workflow rules' },
   { key: 'service_activity_tracking', label: 'Service Activity Tracking', Icon: ClipboardList, group: 'business_rules', desc: 'Teams, activity categories, technologies, and MSP operations log settings' },
+  { key: 'managed_report_templates', label: 'Managed Report Templates', Icon: FileSpreadsheet, group: 'business_rules', desc: 'Reusable sections and default narrative for customer reports' },
   { key: 'integrations',   label: 'Integrations',       Icon: Globe,           group: 'technical_configuration', desc: 'External service and SMTP configuration' },
   { key: 'weekly_report',  label: 'Weekly Report',      Icon: ScrollText,      group: 'technical_configuration', desc: 'Report schedule, recipients, and preview' },
   { key: 'localization',   label: 'Localization',       Icon: Globe,           group: 'technical_configuration', desc: 'Language and regional settings' },
@@ -193,6 +195,7 @@ export default function AdminPanel() {
           {tab === 'maintenance'  && <MaintenanceAdminTab />}
           {tab === 'statuses'     && <StatusManagementTab />}
           {tab === 'service_activity_tracking' && <ServiceActivityAdminTab />}
+          {tab === 'managed_report_templates' && <ManagedReportTemplatesTab />}
           {tab === 'stats'        && <StatsTab />}
           {tab === 'activity'     && <ActivityTab />}
           {tab === 'export'       && <DataExportTab />}

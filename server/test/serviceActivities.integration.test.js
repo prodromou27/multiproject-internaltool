@@ -126,6 +126,7 @@ test.before(async () => {
   app.use('/api/settings', require('../routes/settings'));
   app.use('/api/ticketing', require('../routes/ticketing'));
   app.use('/api/managed-customers', require('../routes/managedCustomers'));
+  app.use('/api/managed-report-templates', require('../routes/managedReportTemplates'));
   app.use('/api/service-activities', require('../routes/serviceActivities'));
   app.use('/api/projects/:projectId/custom-fields', require('../routes/customFields'));
   app.use(require('../middleware/errors').errorHandler);
@@ -1683,7 +1684,7 @@ test('managed customer timeline combines source events with stable pagination',a
 });
 
 test('managed customer report preview reuses dashboard metrics and protects customer-facing input',async () => {
-  const path=`/api/managed-customers/${ids.customer}/report-preview`,body={ from:'2026-09-01',to:'2026-09-30',sections:['executive_summary','ticket_summary','service_activities'],narratives:{ executive_summary:'  Customer-facing summary  ',risks_concerns:'No material risks.' } };
+  const path=`/api/managed-customers/${ids.customer}/report-preview`,body={ from:'2026-09-01',to:'2026-09-30',sections:['service_activities','executive_summary','ticket_summary'],narratives:{ executive_summary:'  Customer-facing summary  ',risks_concerns:'No material risks.' } };
   assert.equal((await api(path,{ method:'POST',token:ids.tokenEnabled,body })).status,403);
   assert.equal((await api('/api/managed-customers/not-an-id/report-preview',{ method:'POST',token:ids.tokenManager,body })).status,400);
   assert.equal((await api(path,{ method:'POST',token:ids.tokenManager,body:{ ...body,from:'2026-02-31' } })).status,400);
@@ -1700,12 +1701,26 @@ test('managed customer report preview reuses dashboard metrics and protects cust
   const documentBuffer=Buffer.from(await documentResponse.arrayBuffer());assert.equal(documentBuffer.subarray(0,2).toString(),'PK');
   const archive=await require('jszip').loadAsync(documentBuffer),documentXml=await archive.file('word/document.xml').async('string');
   assert.match(documentXml,/Managed Services Report/);assert.match(documentXml,/Customer-facing summary/);assert.doesNotMatch(documentXml,/internal_notes/);
+  assert.equal(documentXml.indexOf('Service Activities')<documentXml.indexOf('Executive Summary'),true);assert.equal(documentXml.indexOf('Executive Summary')<documentXml.indexOf('Ticket Summary'),true);
   assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='managed_customer_word_report_generated'").get()).count,1);
   const workbookResponse=await fetch(`${baseUrl}${path.replace('report-preview','report.xlsx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) });
   assert.equal(workbookResponse.status,200);assert.match(workbookResponse.headers.get('content-type'),/spreadsheetml/);
   const workbook=new (require('exceljs').Workbook)();await workbook.xlsx.load(Buffer.from(await workbookResponse.arrayBuffer()));
   assert.deepEqual(workbook.worksheets.map(sheet => sheet.name),['Summary','Activities']);assert.equal(workbook.getWorksheet('Summary').getCell('B2').value,'Acme Corp');
   assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='managed_customer_excel_report_generated'").get()).count,1);
+});
+
+test('managed report templates are manager-only, validated and versioned',async () => {
+  assert.equal((await api('/api/managed-report-templates',{ token:ids.tokenEnabled })).status,403);
+  const seeded=await api('/api/managed-report-templates',{ token:ids.tokenManager });assert.equal(seeded.status,200);assert.equal(seeded.data.rows.length>=3,true);
+  assert.equal((await api('/api/managed-report-templates',{ method:'POST',token:ids.tokenManager,body:{ name:'Bad',description:'',sections:['unknown'],default_narratives:{},active:true } })).status,400);
+  const created=await api('/api/managed-report-templates',{ method:'POST',token:ids.tokenManager,body:{ name:'Customer Security Review',description:'Reusable security review',sections:['executive_summary','ticket_summary','risks'],default_narratives:{ executive_summary:'Security services review.' },active:true } });
+  assert.equal(created.status,201);assert.equal(created.data.version,1);assert.deepEqual(created.data.sections,['executive_summary','ticket_summary','risks']);
+  const editable={ name:'Customer Security Review Updated',description:created.data.description,sections:created.data.sections,default_narratives:created.data.default_narratives,active:true,version:created.data.version };
+  const updated=await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:editable });
+  assert.equal(updated.status,200);assert.equal(updated.data.version,2);
+  assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...editable,name:'Stale' } })).status,409);
+  assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'DELETE',token:ids.tokenManager })).status,200);
 });
 
 test('ticket mapping administration is manager-only and reclassifies stored tickets',async () => {

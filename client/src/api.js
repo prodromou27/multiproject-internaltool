@@ -353,6 +353,10 @@ export const api = {
   managedCustomerServiceReview: (id,params={},options) => req('GET',`/managed-customers/${id}/service-review?` + new URLSearchParams(params).toString(),undefined,options),
   managedCustomerTimeline: (id,params={},options) => req('GET',`/managed-customers/${id}/timeline?` + new URLSearchParams(params).toString(),undefined,options),
   managedCustomerReportPreview: (id,data,options) => req('POST',`/managed-customers/${id}/report-preview`,data,options),
+  managedReportTemplates: options => req('GET','/managed-report-templates',undefined,options),
+  createManagedReportTemplate: data => req('POST','/managed-report-templates',data),
+  updateManagedReportTemplate: (id,data) => req('PUT',`/managed-report-templates/${id}`,data),
+  deleteManagedReportTemplate: id => req('DELETE',`/managed-report-templates/${id}`),
   managedCustomerWordReport: (id,data) => download(`/managed-customers/${id}/report.docx`,data),
   managedCustomerExcelReport: (id,data) => download(`/managed-customers/${id}/report.xlsx`,data),
 

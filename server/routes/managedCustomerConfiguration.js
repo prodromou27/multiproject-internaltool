@@ -68,6 +68,7 @@ router.put('/',async (req,res) => {
     const responsibleTeamId=integerOrNull(req.body.responsible_team_id,'Responsible team');
     const serviceManagerId=integerOrNull(req.body.service_manager_id,'Service manager');
     const defaultTemplateId=integerOrNull(req.body.default_report_template_id,'Default report template');
+    if (defaultTemplateId && !await db.prepare('SELECT 1 FROM managed_report_templates WHERE id=? AND active=1').get(defaultTemplateId)) fail('Default report template must be an active template');
     const frequency=String(req.body.reporting_frequency || '').trim().toLowerCase();
     if (frequency && !FREQUENCIES.has(frequency)) fail('Reporting frequency must be monthly, quarterly, semiannual, annual, or blank');
     const queueId=String(req.body.external_queue_id || '').trim();

@@ -976,6 +976,31 @@ async function applyCompatibilityMigrations() {
     CREATE INDEX IF NOT EXISTS idx_ticket_sync_run_customer ON ticket_sync_runs(customer_id,started_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_sync_one_running ON ticket_sync_runs(customer_id) WHERE status='running';
   `]);
+  migrations.push(['20260922_managed_report_templates', `
+    CREATE TABLE IF NOT EXISTS managed_report_templates (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      sections TEXT NOT NULL,
+      default_narratives TEXT NOT NULL DEFAULT '{}',
+      active INTEGER NOT NULL DEFAULT 1,
+      version INTEGER NOT NULL DEFAULT 1,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT ${NOW},
+      updated_at TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_managed_report_templates_active ON managed_report_templates(active,name);
+    INSERT INTO managed_report_templates (name,description,sections,default_narratives,active)
+      VALUES ('Monthly Managed Services Report','Monthly operational service review','["executive_summary","service_overview","ticket_summary","open_tickets","period_tickets","service_activities","tasks","projects","maintenance_visits","recommendations","upcoming_work"]','{}',1)
+      ON CONFLICT (name) DO NOTHING;
+    INSERT INTO managed_report_templates (name,description,sections,default_narratives,active)
+      VALUES ('Support Services Report','Ticket-focused support performance report','["service_overview","ticket_summary","open_tickets","period_tickets","risks"]','{}',1)
+      ON CONFLICT (name) DO NOTHING;
+    INSERT INTO managed_report_templates (name,description,sections,default_narratives,active)
+      VALUES ('Quarterly Service Review','Quarterly service improvement and delivery review','["executive_summary","service_overview","ticket_summary","service_activities","projects","maintenance_visits","recommendations","risks","upcoming_work"]','{}',1)
+      ON CONFLICT (name) DO NOTHING;
+  `]);
 
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);

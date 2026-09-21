@@ -7,14 +7,14 @@ const DEFAULTS={ managed_services_enabled:false,service_activity_tracking_enable
 const REPORTING=[['task_reporting_enabled','Tasks'],['project_reporting_enabled','Projects'],['maintenance_visit_reporting_enabled','Maintenance visits'],['recommendation_tracking_enabled','Recommendations']];
 
 export default function ManagedCustomerConfiguration({ customerId }) {
-  const [form,setForm]=useState(DEFAULTS),[teams,setTeams]=useState([]),[managers,setManagers]=useState([]),[queues,setQueues]=useState([]);
+  const [form,setForm]=useState(DEFAULTS),[teams,setTeams]=useState([]),[managers,setManagers]=useState([]),[queues,setQueues]=useState([]),[reportTemplates,setReportTemplates]=useState([]);
   const [loading,setLoading]=useState(true),[busy,setBusy]=useState(''),[error,setError]=useState(''),[message,setMessage]=useState(''),[savedMapping,setSavedMapping]=useState({ enabled:false,queueId:'' });
   const set=(key,value) => setForm(current => ({ ...current,[key]:value }));
 
   useEffect(() => {
     const controller=new AbortController();setLoading(true);setError('');
-    Promise.all([api.managedCustomerConfiguration(customerId,{ signal:controller.signal }),api.customerTeams(customerId),api.users({ signal:controller.signal })])
-      .then(([configuration,assignedTeams,users]) => { if (!controller.signal.aborted) { setForm({ ...DEFAULTS,...configuration });setSavedMapping({ enabled:!!configuration.ticket_integration_enabled,queueId:String(configuration.external_queue_id || '') });setTeams(assignedTeams || []);setManagers((users || []).filter(user => user.role==='manager' && user.active!==0)); } })
+    Promise.all([api.managedCustomerConfiguration(customerId,{ signal:controller.signal }),api.customerTeams(customerId),api.users({ signal:controller.signal }),api.managedReportTemplates({ signal:controller.signal })])
+      .then(([configuration,assignedTeams,users,templates]) => { if (!controller.signal.aborted) { setForm({ ...DEFAULTS,...configuration });setSavedMapping({ enabled:!!configuration.ticket_integration_enabled,queueId:String(configuration.external_queue_id || '') });setTeams(assignedTeams || []);setManagers((users || []).filter(user => user.role==='manager' && user.active!==0));setReportTemplates((templates.rows || []).filter(template => template.active)); } })
       .catch(failure => { if (!controller.signal.aborted) setError(failure.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -64,6 +64,7 @@ export default function ManagedCustomerConfiguration({ customerId }) {
         <label>Responsible team<select value={form.responsible_team_id || ''} onChange={event => set('responsible_team_id',event.target.value ? Number(event.target.value) : null)}><option value="">Not assigned</option>{teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}</select><small>Only teams already assigned to this customer are available.</small></label>
         <label>Service manager<select value={form.service_manager_id || ''} onChange={event => set('service_manager_id',event.target.value ? Number(event.target.value) : null)}><option value="">Not assigned</option>{managers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}</option>)}</select></label>
         <label>Reporting frequency<select value={form.reporting_frequency} onChange={event => set('reporting_frequency',event.target.value)}><option value="">Not scheduled</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="semiannual">Twice yearly</option><option value="annual">Annual</option></select></label>
+        <label>Default report template<select value={form.default_report_template_id || ''} onChange={event => set('default_report_template_id',event.target.value?Number(event.target.value):null)}><option value="">No default</option>{reportTemplates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
       </div>
       <div className="managed-config-options">
         <Toggle checked={form.service_activity_tracking_enabled} onChange={value => set('service_activity_tracking_enabled',value)} label="Service activity tracking" />
