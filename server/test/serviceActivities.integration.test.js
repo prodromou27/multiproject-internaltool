@@ -1694,6 +1694,12 @@ test('managed customer report preview reuses dashboard metrics and protects cust
   assert.deepEqual(Object.keys(preview.data.customer).sort(),['id','name','reporting_frequency','responsible_team','service_manager']);
   assert.deepEqual(preview.data.overview.tickets,overview.data.tickets);assert.deepEqual(preview.data.overview.activities,overview.data.activities);
   assert.equal(preview.data.tickets.open.rows.every(ticket => ticket.status_group==='open'),true);
+  const documentResponse=await fetch(`${baseUrl}${path.replace('report-preview','report.docx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) });
+  assert.equal(documentResponse.status,200);assert.match(documentResponse.headers.get('content-type'),/wordprocessingml/);assert.match(documentResponse.headers.get('content-disposition'),/Acme_Corp_2026-09-01_2026-09-30\.docx/);
+  const documentBuffer=Buffer.from(await documentResponse.arrayBuffer());assert.equal(documentBuffer.subarray(0,2).toString(),'PK');
+  const archive=await require('jszip').loadAsync(documentBuffer),documentXml=await archive.file('word/document.xml').async('string');
+  assert.match(documentXml,/Managed Services Report/);assert.match(documentXml,/Customer-facing summary/);assert.doesNotMatch(documentXml,/internal_notes/);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='managed_customer_word_report_generated'").get()).count,1);
 });
 
 test('ticket mapping administration is manager-only and reclassifies stored tickets',async () => {

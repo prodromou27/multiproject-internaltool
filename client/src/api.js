@@ -347,6 +347,11 @@ export const api = {
   managedCustomerServiceReview: (id,params={},options) => req('GET',`/managed-customers/${id}/service-review?` + new URLSearchParams(params).toString(),undefined,options),
   managedCustomerTimeline: (id,params={},options) => req('GET',`/managed-customers/${id}/timeline?` + new URLSearchParams(params).toString(),undefined,options),
   managedCustomerReportPreview: (id,data,options) => req('POST',`/managed-customers/${id}/report-preview`,data,options),
+  managedCustomerWordReport: async (id,data) => {
+    const response=await fetch(`${BASE}/managed-customers/${id}/report.docx`,{ method:'POST',credentials:'same-origin',headers:{ 'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(data) });
+    if (!response.ok) { const error=await response.json().catch(() => ({}));handleUnauthorized(response.status,error,true);throw new Error(error.error || 'Word report generation failed'); }
+    return response.blob();
+  },
 
   // system update
   systemUpdateStatus:  () => req('GET',  '/settings/system-update/status'),

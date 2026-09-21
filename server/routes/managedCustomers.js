@@ -2,6 +2,9 @@ const router=require('express').Router();
 const { requireManager }=require('../middleware/auth');
 const service=require('../managedCustomerService');
 const reporting=require('../managedCustomerReportingService');
+const { renderWord }=require('../managedCustomerWordRenderer');
+const db=require('../db');
+const { logAudit }=require('../auditLog');
 
 router.use(requireManager);
 const validCalendarDay=value => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value;
@@ -83,6 +86,20 @@ router.post('/:id/report-preview',async (req,res) => {
     if (!result) return res.status(404).json({ error:'Managed customer not found' });
     res.json(result);
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not prepare the managed customer report' }); }
+});
+router.post('/:id/report.docx',async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  const { from,to,sections,narratives }=req.body || {};
+  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
+  try {
+    const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives });
+    if (!model) return res.status(404).json({ error:'Managed customer not found' });
+    const buffer=await renderWord(model),safeName=model.customer.name.replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,80) || `customer_${id}`;
+    await logAudit(db,req,'customer',id,model.customer.name,'managed_customer_word_report_generated',`period=${from}:${to}; sections=${model.sections.join(',')}`);
+    res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition',`attachment; filename="${safeName}_${from}_${to}.docx"`);
+    res.send(buffer);
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the Word report' }); }
 });
 
 module.exports=router;
