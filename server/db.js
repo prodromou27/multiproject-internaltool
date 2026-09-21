@@ -1001,6 +1001,37 @@ async function applyCompatibilityMigrations() {
       VALUES ('Quarterly Service Review','Quarterly service improvement and delivery review','["executive_summary","service_overview","ticket_summary","service_activities","projects","maintenance_visits","recommendations","risks","upcoming_work"]','{}',1)
       ON CONFLICT (name) DO NOTHING;
   `]);
+  migrations.push(['20260922_managed_report_history', `
+    CREATE TABLE IF NOT EXISTS managed_report_version_counters (
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      period_start TEXT NOT NULL,
+      period_end TEXT NOT NULL,
+      output_format TEXT NOT NULL CHECK(output_format IN ('docx','xlsx','pdf')),
+      last_version INTEGER NOT NULL,
+      PRIMARY KEY(customer_id,period_start,period_end,output_format)
+    );
+    CREATE TABLE IF NOT EXISTS managed_report_history (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+      template_id INTEGER REFERENCES managed_report_templates(id) ON DELETE SET NULL,
+      period_start TEXT NOT NULL,
+      period_end TEXT NOT NULL,
+      output_format TEXT NOT NULL CHECK(output_format IN ('docx','xlsx','pdf')),
+      report_version INTEGER NOT NULL CHECK(report_version > 0),
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','final')),
+      original_name TEXT NOT NULL,
+      stored_name TEXT NOT NULL UNIQUE,
+      mime_type TEXT NOT NULL,
+      size INTEGER NOT NULL CHECK(size >= 0),
+      sections TEXT NOT NULL,
+      generated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      generated_at TEXT DEFAULT ${NOW},
+      enc_iv TEXT,
+      enc_tag TEXT,
+      UNIQUE(customer_id,period_start,period_end,output_format,report_version)
+    );
+    CREATE INDEX IF NOT EXISTS idx_managed_report_history_customer ON managed_report_history(customer_id,generated_at DESC,id DESC);
+  `]);
 
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);

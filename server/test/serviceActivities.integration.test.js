@@ -1708,6 +1708,21 @@ test('managed customer report preview reuses dashboard metrics and protects cust
   const workbook=new (require('exceljs').Workbook)();await workbook.xlsx.load(Buffer.from(await workbookResponse.arrayBuffer()));
   assert.deepEqual(workbook.worksheets.map(sheet => sheet.name),['Summary','Activities']);assert.equal(workbook.getWorksheet('Summary').getCell('B2').value,'Acme Corp');
   assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='managed_customer_excel_report_generated'").get()).count,1);
+  assert.equal((await api(path.replace('report-preview','report.docx'),{ method:'POST',token:ids.tokenManager,body:{ ...body,status:'published' } })).status,400);
+  assert.equal((await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenEnabled })).status,403);
+  const history=await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager });
+  assert.equal(history.status,200);assert.equal(history.data.rows.length,2);
+  assert.deepEqual(history.data.rows.map(row => row.output_format).sort(),['docx','xlsx']);
+  assert.equal(history.data.rows.every(row => row.report_version===1 && row.status==='draft'),true);
+  assert.equal(history.data.rows.every(row => row.stored_name===undefined && row.enc_iv===undefined && row.enc_tag===undefined),true);
+  const wordHistory=history.data.rows.find(row => row.output_format==='docx');
+  const archived=await fetch(`${baseUrl}/api/managed-customers/${ids.customer}/reports/${wordHistory.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenManager}`,'X-SolutionsHub-Request':'1' } });
+  assert.equal(archived.status,200);assert.match(archived.headers.get('content-disposition'),/Acme_Corp_2026-09-01_2026-09-30\.docx/);
+  assert.equal(Buffer.from(await archived.arrayBuffer()).subarray(0,2).toString(),'PK');
+  const secondDocument=await fetch(`${baseUrl}${path.replace('report-preview','report.docx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ ...body,status:'final' }) });
+  assert.equal(secondDocument.status,200);assert.equal(secondDocument.headers.get('x-report-version'),'2');
+  const updatedHistory=await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager });
+  assert.equal(updatedHistory.data.rows[0].report_version,2);assert.equal(updatedHistory.data.rows[0].status,'final');
 });
 
 test('managed report templates are manager-only, validated and versioned',async () => {

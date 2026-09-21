@@ -4,6 +4,7 @@ const service=require('../managedCustomerService');
 const reporting=require('../managedCustomerReportingService');
 const { renderWord }=require('../managedCustomerWordRenderer');
 const { renderExcel }=require('../managedCustomerExcelRenderer');
+const reportHistory=require('../managedReportHistoryService');
 const db=require('../db');
 const { logAudit }=require('../auditLog');
 
@@ -13,6 +14,15 @@ const positiveInteger=(value,fallback,max) => {
   if (value===undefined) return fallback;
   if (typeof value!=='string' || !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value)>max) return null;
   return Number(value);
+};
+const positiveId=value => Number.isSafeInteger(Number(value)) && Number(value)>0 && /^\d+$/.test(String(value));
+const reportStatus=value => value===undefined ? 'draft' : ['draft','final'].includes(value) ? value : null;
+const reportRequest=async body => {
+  const { from,to,sections,narratives,template_id:templateId }=body || {};
+  const status=reportStatus(body?.status);
+  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) throw Object.assign(new Error('from and to must be valid dates with from on or before to'),{ status:400 });
+  if (!status) throw Object.assign(new Error('Report status must be draft or final'),{ status:400 });
+  return { from,to,sections,narratives,status,templateId:await reportHistory.validateTemplate(templateId) };
 };
 
 router.get('/',async (req,res) => res.json({ rows:await service.listManagedCustomers() }));
@@ -90,31 +100,52 @@ router.post('/:id/report-preview',async (req,res) => {
 });
 router.post('/:id/report.docx',async (req,res) => {
   const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
-  const { from,to,sections,narratives }=req.body || {};
-  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
   try {
+    const { from,to,sections,narratives,status,templateId }=await reportRequest(req.body);
     const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives });
     if (!model) return res.status(404).json({ error:'Managed customer not found' });
-    const buffer=await renderWord(model),safeName=model.customer.name.replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,80) || `customer_${id}`;
-    await logAudit(db,req,'customer',id,model.customer.name,'managed_customer_word_report_generated',`period=${from}:${to}; sections=${model.sections.join(',')}`);
+    const buffer=await renderWord(model),safeName=model.customer.name.replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,80) || `customer_${id}`,filename=`${safeName}_${from}_${to}.docx`;
+    const history=await reportHistory.archive({ customerId:id,templateId,from,to,format:'docx',status,filename,sections:model.sections,userId:req.user.id,buffer });
+    await logAudit(db,req,'managed_report',history.id,filename,'managed_customer_word_report_generated',`customer_id=${id}; period=${from}:${to}; version=${history.report_version}; status=${status}; sections=${model.sections.join(',')}`);
     res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition',`attachment; filename="${safeName}_${from}_${to}.docx"`);
+    res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
+    res.setHeader('X-Report-Id',String(history.id));res.setHeader('X-Report-Version',String(history.report_version));
     res.send(buffer);
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the Word report' }); }
 });
 router.post('/:id/report.xlsx',async (req,res) => {
   const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
-  const { from,to,sections,narratives }=req.body || {};
-  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
   try {
+    const { from,to,sections,narratives,status,templateId }=await reportRequest(req.body);
     const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives });
     if (!model) return res.status(404).json({ error:'Managed customer not found' });
-    const buffer=await renderExcel(model),safeName=model.customer.name.replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,80) || `customer_${id}`;
-    await logAudit(db,req,'customer',id,model.customer.name,'managed_customer_excel_report_generated',`period=${from}:${to}; sections=${model.sections.join(',')}`);
+    const buffer=await renderExcel(model),safeName=model.customer.name.replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,80) || `customer_${id}`,filename=`${safeName}_${from}_${to}.xlsx`;
+    const history=await reportHistory.archive({ customerId:id,templateId,from,to,format:'xlsx',status,filename,sections:model.sections,userId:req.user.id,buffer });
+    await logAudit(db,req,'managed_report',history.id,filename,'managed_customer_excel_report_generated',`customer_id=${id}; period=${from}:${to}; version=${history.report_version}; status=${status}; sections=${model.sections.join(',')}`);
     res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition',`attachment; filename="${safeName}_${from}_${to}.xlsx"`);
+    res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
+    res.setHeader('X-Report-Id',String(history.id));res.setHeader('X-Report-Version',String(history.report_version));
     res.send(buffer);
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the Excel report' }); }
+});
+
+router.get('/:id/reports',async (req,res) => {
+  if (!positiveId(req.params.id)) return res.status(400).json({ error:'Invalid customer ID' });
+  const customer=await db.prepare('SELECT customer_id FROM managed_customer_configurations WHERE customer_id=? AND managed_services_enabled=1').get(Number(req.params.id));
+  if (!customer) return res.status(404).json({ error:'Managed customer not found' });
+  res.json({ rows:await reportHistory.list(Number(req.params.id)) });
+});
+
+router.get('/:id/reports/:reportId/download',async (req,res) => {
+  if (!positiveId(req.params.id) || !positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  const report=await reportHistory.get(Number(req.params.id),Number(req.params.reportId));
+  if (!report) return res.status(404).json({ error:'Report not found' });
+  try {
+    const buffer=await reportHistory.read(report);
+    res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');
+    res.setHeader('Content-Type',report.mime_type);res.setHeader('Content-Disposition',`attachment; filename="${report.original_name}"`);res.setHeader('Content-Length',String(buffer.length));
+    res.send(buffer);
+  } catch(error) { console.error('[managed-reports] download failed:',error.message);res.status(error.status || 500).json({ error:'Could not download the archived report' }); }
 });
 
 module.exports=router;

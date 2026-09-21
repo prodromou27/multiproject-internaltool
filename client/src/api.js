@@ -359,6 +359,8 @@ export const api = {
   deleteManagedReportTemplate: id => req('DELETE',`/managed-report-templates/${id}`),
   managedCustomerWordReport: (id,data) => download(`/managed-customers/${id}/report.docx`,data),
   managedCustomerExcelReport: (id,data) => download(`/managed-customers/${id}/report.xlsx`,data),
+  managedCustomerReportHistory: (id,options) => req('GET',`/managed-customers/${id}/reports`,undefined,options),
+  managedCustomerArchivedReport: (id,reportId) => download(`/managed-customers/${id}/reports/${reportId}/download`),
 
   // system update
   systemUpdateStatus:  () => req('GET',  '/settings/system-update/status'),
