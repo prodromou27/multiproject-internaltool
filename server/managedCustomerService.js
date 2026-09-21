@@ -5,7 +5,7 @@ const numbers=row => Object.fromEntries(Object.entries(row || {}).map(([key,valu
 
 async function listManagedCustomers(store=db) {
   const rows=await store.prepare(`SELECT c.id,c.name,mc.reporting_frequency,mc.responsible_team_id,t.name AS responsible_team,
-    mc.service_manager_id,u.name AS service_manager,tc.last_successful_sync_at,tc.last_sync_status
+    mc.service_manager_id,u.name AS service_manager,tc.enabled AS ticketing_enabled,tc.last_successful_sync_at,tc.last_sync_status
     FROM managed_customer_configurations mc JOIN customers c ON c.id=mc.customer_id
     LEFT JOIN teams t ON t.id=mc.responsible_team_id LEFT JOIN users u ON u.id=mc.service_manager_id
     LEFT JOIN customer_ticketing_configurations tc ON tc.customer_id=c.id AND tc.provider_type='request_tracker'
@@ -19,7 +19,7 @@ async function listManagedCustomers(store=db) {
   ]);
   const map=values => new Map(values.map(value => [Number(value.customer_id),value]));
   const ticketMap=map(tickets),activityMap=map(activities),taskMap=map(tasks),projectMap=map(projects),visitMap=map(visits);
-  return rows.map(row => ({ ...row,name:decrypt(row.name),open_tickets:Number(ticketMap.get(row.id)?.open_tickets || 0),pending_tickets:Number(ticketMap.get(row.id)?.pending_tickets || 0),activities_this_month:Number(activityMap.get(row.id)?.activities_this_month || 0),open_tasks:Number(taskMap.get(row.id)?.open_tasks || 0),active_projects:Number(projectMap.get(row.id)?.active_projects || 0),last_maintenance_visit:visitMap.get(row.id)?.last_maintenance_visit || null })).sort((a,b) => a.name.localeCompare(b.name));
+  return rows.map(row => ({ ...row,name:decrypt(row.name),ticketing_enabled:!!row.ticketing_enabled,service_status:row.last_sync_status==='failed'?'attention':row.ticketing_enabled && !row.last_successful_sync_at?'awaiting_sync':row.ticketing_enabled?'healthy':'activity_only',open_tickets:Number(ticketMap.get(row.id)?.open_tickets || 0),pending_tickets:Number(ticketMap.get(row.id)?.pending_tickets || 0),activities_this_month:Number(activityMap.get(row.id)?.activities_this_month || 0),open_tasks:Number(taskMap.get(row.id)?.open_tasks || 0),active_projects:Number(projectMap.get(row.id)?.active_projects || 0),last_maintenance_visit:visitMap.get(row.id)?.last_maintenance_visit || null })).sort((a,b) => a.name.localeCompare(b.name));
 }
 
 async function getOverview(customerId,from,to,store=db) {

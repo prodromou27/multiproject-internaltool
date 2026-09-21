@@ -1596,6 +1596,7 @@ test('managed customer dashboard separates current state from period metrics',as
   assert.equal((await api('/api/managed-customers',{ token:ids.tokenEnabled })).status,403);
   const list=await api('/api/managed-customers',{ token:ids.tokenManager });
   assert.equal(list.status,200);assert.equal(list.data.rows.some(row => row.id===ids.customer),true);
+  assert.equal(['healthy','attention','awaiting_sync','activity_only'].includes(list.data.rows.find(row => row.id===ids.customer).service_status),true);
   assert.equal((await api(`/api/managed-customers/${ids.customer}/overview?from=bad&to=2026-09-21`,{ token:ids.tokenManager })).status,400);
   const overview=await api(`/api/managed-customers/${ids.customer}/overview?from=2026-09-01&to=2026-09-30`,{ token:ids.tokenManager });
   assert.equal(overview.status,200);assert.equal(overview.data.customer.id,ids.customer);
