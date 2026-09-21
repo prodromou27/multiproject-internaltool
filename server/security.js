@@ -43,7 +43,7 @@ function isLocalHostname(hostname) {
 }
 
 async function assertPublicHttpUrl(rawUrl, options = {}) {
-  const { allowHttp = false, label = 'URL' } = options;
+  const { allowHttp = false, allowPrivate = false, label = 'URL' } = options;
   let url;
   try {
     url = new URL(rawUrl);
@@ -63,7 +63,7 @@ async function assertPublicHttpUrl(rawUrl, options = {}) {
     : await dns.lookup(url.hostname, { all: true, verbatim: true });
 
   if (!addresses.length) throw new Error(`${label} could not be resolved`);
-  if (addresses.some(a => isPrivateIp(a.address))) {
+  if (!allowPrivate && addresses.some(a => isPrivateIp(a.address))) {
     throw new Error(`${label} resolves to a private/internal address`);
   }
 

@@ -124,6 +124,7 @@ test.before(async () => {
   app.use('/api/workload', require('../routes/workload'));
   app.use('/api/report-settings', require('../routes/report-settings'));
   app.use('/api/settings', require('../routes/settings'));
+  app.use('/api/ticketing', require('../routes/ticketing'));
   app.use('/api/service-activities', require('../routes/serviceActivities'));
   app.use('/api/projects/:projectId/custom-fields', require('../routes/customFields'));
   app.use(require('../middleware/errors').errorHandler);
@@ -1497,6 +1498,19 @@ test('integration settings redact stored tokens and webhooks, preserve edits and
   stored = JSON.parse((await db.prepare("SELECT value FROM settings WHERE key='integrations'").get()).value);
   assert.equal(stored.webex.bot_token,'');
   for (const body of [[],{ teams: { enabled: 'false' } },{ teams: { webhook_url: 'https://127.0.0.1/private' } }]) assert.equal((await api('/api/settings/integrations',{ method: 'POST',token: ids.tokenManager,body })).status,400);
+});
+
+test('Request Tracker settings are manager-only and never return or store a plaintext token',async () => {
+  assert.equal((await api('/api/ticketing/settings',{ token:ids.tokenEnabled })).status,403);
+  const previous=process.env.CUSTOMER_FIELD_KEY;process.env.CUSTOMER_FIELD_KEY='ef'.repeat(32);
+  try {
+    const saved=await api('/api/ticketing/settings',{ method:'PUT',token:ids.tokenManager,body:{ enabled:true,base_url:'https://8.8.8.8/rt/',api_token:'integration-secret',sync_interval_minutes:30 } });
+    assert.equal(saved.status,200);assert.equal(saved.data.api_token,'');assert.equal(saved.data.api_token_set,true);assert.equal(saved.data.base_url,'https://8.8.8.8/rt');
+    const stored=JSON.parse((await db.prepare("SELECT value FROM settings WHERE key='ticketing_rt'").get()).value);
+    assert.match(stored.api_token,/^enc:/);assert.equal(JSON.stringify(stored).includes('integration-secret'),false);
+    const read=await api('/api/ticketing/settings',{ token:ids.tokenManager });assert.equal(JSON.stringify(read.data).includes('integration-secret'),false);
+    assert.equal((await api('/api/ticketing/settings',{ method:'PUT',token:ids.tokenManager,body:{ sync_interval_minutes:5 } })).status,400);
+  } finally { if (previous===undefined) delete process.env.CUSTOMER_FIELD_KEY;else process.env.CUSTOMER_FIELD_KEY=previous; }
 });
 
 test('SMTP settings await reads, redact and retain passwords on ordinary edits', async () => {

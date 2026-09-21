@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, AlertTriangle, Send, Bell, Save, Loader2, Settings } from 'lucide-react';
 import { api } from '../../api';
 import { Toggle } from './shared';
+import RequestTrackerIntegration from './RequestTrackerIntegration';
 
 /* ══════════════════════════════════════════════════════════ */
 /* ── INTEGRATIONS TAB ────────────────────────────────────── */
@@ -66,6 +67,8 @@ export function IntegrationsTab() {
     <fieldset disabled={saving || Object.values(testing).some(Boolean)} style={{ maxWidth: 680,border: 0,padding: 0 }}>
       {msg && <div className="alert alert-success" style={{ marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={14} /> {msg}</div>}
       {err && <div className="alert alert-danger"  style={{ marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} /> {err}</div>}
+
+      <RequestTrackerIntegration sectionStyle={sectionStyle} labelStyle={labelStyle} />
 
       <div style={sectionStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>

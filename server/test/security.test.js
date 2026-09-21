@@ -41,3 +41,8 @@ test('rejects private literal outbound URLs without DNS lookup', async () => {
     /private\/internal/
   );
 });
+
+test('private integration destinations require an explicit opt-in while localhost stays blocked',async () => {
+  await assert.doesNotReject(() => assertPublicHttpUrl('https://10.0.0.20/rt',{ label:'RT base URL',allowPrivate:true }));
+  await assert.rejects(() => assertPublicHttpUrl('https://localhost/rt',{ label:'RT base URL',allowPrivate:true }),/local\/internal/);
+});

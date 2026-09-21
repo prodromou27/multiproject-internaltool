@@ -326,6 +326,10 @@ export const api = {
   getIntegrations: (options) => req('GET', '/settings/integrations',undefined,options),
   saveIntegrations: (data) => req('POST', '/settings/integrations', data),
   testIntegration: (platform, settings) => req('POST', '/settings/integrations/test', { platform, settings }),
+  ticketingSettings: (options) => req('GET','/ticketing/settings',undefined,options),
+  saveTicketingSettings: data => req('PUT','/ticketing/settings',data),
+  testTicketingConnection: () => req('POST','/ticketing/test',{}),
+  ticketingQueues: () => req('GET','/ticketing/queues'),
 
   // system update
   systemUpdateStatus:  () => req('GET',  '/settings/system-update/status'),
