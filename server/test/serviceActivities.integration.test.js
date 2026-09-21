@@ -112,6 +112,7 @@ test.before(async () => {
   app.use('/api/reports', require('../routes/reports'));
   app.use('/api/tasks', require('../routes/tasks'));
   app.use('/api/projects', require('../routes/projects'));
+  app.use('/api/attachments', require('../routes/attachments'));
   app.use('/api/operations', require('../routes/operations'));
   app.use('/api/calendar', require('../routes/calendar'));
   app.use('/api/maintenance-visits', require('../routes/maintenance-visits'));
@@ -137,6 +138,8 @@ test.before(async () => {
   ids.manager = await mkUser('Manager One', 'manager');
   ids.engineerEnabled = await mkUser('Engineer Enabled', 'engineer');
   ids.engineerDisabled = await mkUser('Engineer Disabled', 'engineer');
+  ids.planner = await mkUser('Planner One', 'planner');
+  ids.pm = await mkUser('PM One', 'pm');
 
   ids.teamEnabled = (await db.prepare('INSERT INTO teams (name, service_activity_enabled) VALUES (?, 1)').run('Security Team')).lastInsertRowid;
   ids.teamDisabled = (await db.prepare('INSERT INTO teams (name, service_activity_enabled) VALUES (?, 0)').run('Legacy Team')).lastInsertRowid;
@@ -154,6 +157,8 @@ test.before(async () => {
   ids.tokenManager = signJwt({ id: ids.manager });
   ids.tokenEnabled = signJwt({ id: ids.engineerEnabled });
   ids.tokenDisabled = signJwt({ id: ids.engineerDisabled });
+  ids.tokenPlanner = signJwt({ id: ids.planner });
+  ids.tokenPm = signJwt({ id: ids.pm });
 });
 
 test.after(async () => {
@@ -281,6 +286,30 @@ test('customer asset files enforce ownership, file signatures, encryption and cl
   assert.equal((await api(`${base}/${created.data.id}`,{ method:'DELETE',token:ids.tokenManager,body:{ version:created.data.version } })).status,200);
   await assert.rejects(require('fs').promises.access(cleanupPath));
   assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets/${other.data.id}`,{ method:'DELETE',token:ids.tokenManager,body:{ version:other.data.version } })).status,200);
+});
+
+test('project attachments follow project visibility and preserve PM read-only access', async () => {
+  const project=(await db.prepare('INSERT INTO projects (title,created_by) VALUES (?,?)').run('Attachment permissions',ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO project_assignments (project_id,user_id) VALUES (?,?)').run(project,ids.planner);
+  const path=`/api/attachments/${project}`;
+  assert.equal((await api('/api/attachments/not-an-id',{ token:ids.tokenManager })).status,400);
+  assert.equal((await api('/api/attachments/999999999',{ token:ids.tokenManager })).status,404);
+  assert.equal((await api(path,{ token:ids.tokenDisabled })).status,403);
+  assert.equal((await api(path,{ token:ids.tokenPlanner })).status,200);
+  const sendFile=async token => {
+    const form=new FormData();form.append('file',new Blob(['%PDF-1.4\nproject file'],{ type:'application/pdf' }),'project.pdf');
+    return fetch(`${baseUrl}${path}`,{ method:'POST',headers:{ Authorization:`Bearer ${token}`,'X-SolutionsHub-Request':'1' },body:form });
+  };
+  assert.equal((await sendFile(ids.tokenPm)).status,403);
+  const uploaded=await sendFile(ids.tokenManager);assert.equal(uploaded.status,201);const attachment=await uploaded.json();
+  const list=await api(path,{ token:ids.tokenPlanner });
+  assert.equal(list.status,200);assert.equal(list.data.length,1);assert.equal(list.data[0].stored_name,undefined);assert.equal(list.data[0].enc_iv,undefined);
+  assert.equal((await api(`${path}/download/${attachment.id}`,{ token:ids.tokenDisabled })).status,403);
+  const pmDownload=await fetch(`${baseUrl}${path}/download/${attachment.id}`,{ headers:{ Authorization:`Bearer ${ids.tokenPm}` } });
+  assert.equal(pmDownload.status,200);assert.equal(await pmDownload.text(),'%PDF-1.4\nproject file');assert.equal(pmDownload.headers.get('cache-control'),'private, no-store');assert.equal(pmDownload.headers.get('x-content-type-options'),'nosniff');
+  assert.equal((await api(`${path}/${attachment.id}`,{ method:'DELETE',token:ids.tokenPm,body:{} })).status,403);
+  assert.equal((await api(`${path}/${attachment.id}`,{ method:'DELETE',token:ids.tokenPlanner,body:{} })).status,403);
+  assert.equal((await api(`${path}/${attachment.id}`,{ method:'DELETE',token:ids.tokenManager,body:{} })).status,200);
 });
 
 test('engineer from a disabled team cannot access the service-activities module', async () => {
