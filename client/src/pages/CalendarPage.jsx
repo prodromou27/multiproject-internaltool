@@ -167,7 +167,7 @@ function ContextMenu({ x, y, date, onNewVisit, onClose }) {
     top: Math.min(y, window.innerHeight - 100),
     left: Math.min(x, window.innerWidth - 220),
     zIndex: 9000,
-    background: '#fff',
+    background: 'var(--surface)',
     border: '1px solid var(--gray-200)',
     borderRadius: 8,
     boxShadow: '0 4px 20px rgba(0,0,0,.12)',
@@ -632,14 +632,14 @@ export default function CalendarPage() {
             <div style={{ minWidth: 420 }}>
 
               {/* Day headers */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', background: 'var(--gray-50)', borderBottom: '1px solid var(--gray-200)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', background: 'var(--gray-50)', borderBottom: '1px solid var(--gray-200)' }}>
                 {DAYS.map(d => (
                   <div key={d} style={{ textAlign: 'center', padding: '8px 4px', fontSize: 11, fontWeight: 700, color: 'var(--gray-600)', textTransform: 'uppercase' }}>{d}</div>
                 ))}
               </div>
 
               {/* Day cells */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))' }}>
                 {cells.map((day, idx) => {
                   const dateStr  = day ? `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : null;
                   const events   = dateStr ? (byDay[dateStr] || []) : [];
@@ -665,8 +665,8 @@ export default function CalendarPage() {
                           : !day
                           ? 'var(--gray-50)'
                           : isWeekend
-                            ? '#fafafa'
-                            : '#fff',
+                            ? 'var(--gray-50)'
+                            : 'var(--surface)',
                         cursor: canCreate ? 'default' : undefined,
                         transition: 'background 0.1s',
                         position: 'relative',
