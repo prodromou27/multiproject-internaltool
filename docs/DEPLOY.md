@@ -12,7 +12,9 @@ is the production branch.
   **HTTP on `PORT` (default 8080)**. TLS is terminated by an upstream reverse proxy /
   load balancer (no certs in the container).
 - **Database** — PostgreSQL 16. The data layer (`server/db.js`) is an async `pg`
-  facade; schema is created on startup by `db.init()`.
+  wrapper; the SQL in the app is native PostgreSQL. The schema, migrations and two SQL
+  helper functions (`app_now()`, `app_today()`) are created on startup by `db.init()`,
+  which is safe to run on every start (CI checks that it can run twice).
 
 ## Required environment
 
@@ -137,7 +139,12 @@ customer decrypts through the API afterward.
 ## Notes / known items
 
 - pg-mem (used for local data-layer tests) can't parse Postgres `CREATE FUNCTION`
-  bodies, so the authoritative schema + endpoint test is this Docker run.
+  bodies, so the authoritative schema + endpoint test is this Docker run. CI also runs
+  the route integration tests and a schema/SQL check (`test/postgres.schema.test.js`)
+  against a PostgreSQL 16 container on every push.
+- The database user must be allowed to create functions in the `public` schema:
+  startup runs `CREATE OR REPLACE FUNCTION` for `round(double precision, integer)`,
+  `app_now()` and `app_today()`.
 - The weekly-report module (`weeklyReport.js`) still references legacy status values
   (`active`, `done`, `pending_closure`) in a few aggregate queries — a pre-existing
   issue carried over from the SQLite version, not introduced by the migration. The

@@ -32,20 +32,26 @@ database — behind role-based access control, 2FA, and field-level PII encrypti
 compiled React app (SPA catch-all). Unknown `/api/*` paths return a JSON 404 *before*
 the SPA fallback so API misses don't return HTML.
 
-**⚠️ Database dialect — read this before touching `server/db.js` or any route SQL.**
-The app was originally written against `better-sqlite3` (synchronous calls,
-`db.prepare(sql).get/all/run(...params)`) and was later migrated to PostgreSQL without
-rewriting any of the ~25 route files. `server/db.js` now wraps a `pg` `Pool` behind an
-async facade with the *same call shape*, and its `translate()` function rewrites
-SQLite-flavored SQL into real Postgres SQL before every query: `?` → `$1, $2, …`,
-`datetime('now')`/`date('now')` → `to_char(...)` text-timestamp expressions,
-`GROUP_CONCAT` → `string_agg`, `LIKE` → `ILIKE`, `INSERT OR IGNORE` →
-`ON CONFLICT DO NOTHING`, and a plain `INSERT` auto-appends `RETURNING id` (skipped for
-a hardcoded allowlist of id-less junction tables, `NO_ID_TABLE_RE`). **Every route in
-this codebase writes SQL in the SQLite-shaped dialect** — this is the established,
-consistent convention, not a mix of styles. Writing raw Postgres placeholders (`$1`)
-into a new route would be inconsistent with 100% of existing code and should be
-avoided; use `?` and let `translate()` handle it.
+**⚠️ Database access — read this before touching `server/db.js` or any route SQL.**
+The app began on `better-sqlite3` and was later moved to PostgreSQL. `server/db.js`
+keeps the old call shape as an async facade over a `pg` `Pool`
+(`await db.prepare(sql).get/all/run(...params)`, `db.transaction(async tx => …)`), so
+routes use `?` placeholders. **The SQL itself is native PostgreSQL.** The only rewriting
+left is in `translate()`, which converts `?` to `$1, $2, …`; `run()` also appends
+`RETURNING id` to a plain `INSERT` so callers get `lastInsertRowid` (skipped for
+`ON CONFLICT`, an explicit `RETURNING`, and a hardcoded list of id-less junction
+tables, `NO_ID_TABLE_RE` — add a new id-less table there).
+
+Timestamps are `TEXT` (`YYYY-MM-DD HH:MM:SS`, UTC), so "now" and "today" come from two
+SQL functions that `init()` creates: **`app_now()`** and **`app_today()`**. A month or
+day prefix of a stored timestamp is `substr(col, 1, 7)` / `substr(col, 1, 10)`. Use
+`string_agg`, `ILIKE` (case-insensitive search) and `ON CONFLICT DO NOTHING`; do **not**
+write SQLite-only syntax (`datetime('now')`, `strftime`, `date(col)`, `GROUP_CONCAT`,
+`INSERT OR IGNORE`, `LIKE ?`). `server/test/nativeSql.test.js` fails the build if any of
+it comes back, and `server/test/postgres.schema.test.js` prepares every static SQL
+statement against a real PostgreSQL server in CI, so a typo or renamed column fails
+there instead of on the one screen that uses it. Keep using `?` placeholders in new
+code, as all existing routes do.
 
 `db.js` is also **self-migrating**: `init()` runs a full `CREATE TABLE IF NOT EXISTS`
 schema (the "final state," so fresh installs get every column immediately) followed by
@@ -57,6 +63,78 @@ existing migration tuples for the pattern. After schema/migrations, it seeds def
 status configuration, service-activity lookups (categories/technologies), creates
 performance indexes, and — if the `users` table is empty — seeds a first-run `admin`
 manager account with a forced password change on first login.
+
+### Layering and code layout
+
+The app is a conventional **three-tier deployment**: a React SPA in the browser, an
+Express API, and PostgreSQL. The browser talks only to `/api` (through
+`client/src/api.js`); every permission is enforced on the server, and the client's
+role checks only decide what to show.
+
+Inside the API tier the code is **route-centred ("fat routes")**. Handlers in
+`server/routes/*.js` hold input validation, business rules and SQL together; there is
+no separate service or repository layer. Logic that several routes share lives in
+modules at the top of `server/`:
+
+| Module | Holds |
+|--------|-------|
+| `db.js` | pool, schema (`init()`), migrations, `prepare`/`transaction` facade, seeds |
+| `serviceActivities.js` | Service Activity authorization helpers and the reference-number generator |
+| `taskFilters.js`, `maintenanceVisitFilters.js` | shared list/export filter builders (list and Excel export stay identical) |
+| `workloadModel.js`, `workloadPolicy.js`, `workloadPolicyStore.js` | capacity and pressure calculations and their configurable weights |
+| `customReports.js`, `reportExecution.js`, `reportTemplates.js`, `reportAccess.js`, `reportSchedule.js`, `customReportScheduler.js` | the custom report engine, templates, scheduling |
+| `reportScheduler.js`, `weeklyReport.js`, `notifications.js`, `email.js` | weekly digest, reminders, in-app/Teams/Webex/email delivery |
+| `fieldCipher.js`, `cipher.js`, `uploadUtils.js`, `security.js`, `config.js` | PII/attachment encryption, upload validation, SSRF guard, startup config checks |
+| `auditLog.js`, `integrationSettings.js`, `update-manager.js` | audit writes, integration settings, in-app update lifecycle |
+
+Splitting routes into services and repositories would be a sizeable refactor; until
+then, put logic that is reused by a second route into one of these modules.
+
+### Frontend structure and UI system
+
+```
+client/src/
+  App.jsx            auth context, layout, routes, command palette (Ctrl+K), quick create
+  navigation.js      the page registry (path, roles, feature flags) used by the sidebar,
+                     command palette and route guards; the server stays authoritative
+  api.js             every request: cookie session, X-SolutionsHub-Request header,
+                     401 handling, one wrapper per endpoint
+  pages/             one lazy-loaded file per route
+    admin/           Settings sections, one file per group (UsersTab, WeeklyReportTab,
+                     StatusManagementTab, SystemTabs, ServiceActivityAdmin, ...)
+    project/         parts of the Project page (TaskViews list + Kanban, GanttMilestones,
+                     ScorecardTab, CustomFieldsTab, ProjectPrintView, Dialogs, ...)
+  components/        Shared (Modal, badges, dates), PageLayout (PageHeader, PageState),
+                     ErrorBoundary, Toast, Confirm, ServiceCharts, activityLedger,
+                     OperationalFocus, ReportBuilder, ...
+  hooks/             useStatuses, useLatestRequest (cancels superseded loads), ...
+  styles/foundations.css   refinement layer loaded after index.css
+```
+
+- **Styling.** `index.css` defines the design tokens and shared classes; there is no
+  component library (hand-built CSS plus `lucide-react` icons). **Dark mode** is the
+  `[data-theme="dark"]` attribute, switched from the sidebar and remembered in
+  `localStorage` (`hub_theme`). `styles/foundations.css` refines the shared building
+  blocks (sentence-case labels, readable muted text, flat buttons, stat tiles, empty
+  and error states, reduced-motion and touch-size rules); deleting it and its import in
+  `main.jsx` restores the previous look. Feature CSS (`billingMix.css`,
+  `ServiceCharts.css`, `ActivityLedger.css`, `ActivityForm.css`, `ServiceOperations.css`,
+  `ServiceReport.css`) is scoped under its page class.
+- **Colours must be theme tokens.** Status panels use `--danger-light`, `--warning-light`,
+  `--success-light`, `--primary-light`, `--surface`, `--gray-*`, plus `--tone-*` (text
+  on those panels) and `--cal-*` (calendar event types), which flip together in dark
+  mode. Do not hardcode light hex backgrounds: they stay pale in dark mode.
+- **Billing colours** (`--mix-included/billable/internal/other`) are validated for
+  colour-blind separation and used only for the billing split in Service Activity charts.
+- **Errors.** Each page renders inside an `ErrorBoundary` (in `PrivateRoute`): a render
+  error shows a message with *Try again* and *Back to dashboard* inside the layout
+  instead of a blank screen, and clears when the person navigates. A lazy page that
+  fails to download after a deploy offers *Reload*.
+- **Numeric flags.** The database returns `0`/`1` for flags such as `report_sent`,
+  `is_adhoc` and `is_blocked`. In JSX write `!!row.flag && <X />`; `row.flag && <X />`
+  prints a literal `0`.
+
+---
 
 ## 3. Data model (core tables)
 
@@ -299,6 +377,13 @@ derived from task completion), member assignment, status updates, activity log,
 milestones, KPIs, custom fields, task dependencies, attachments, Excel import,
 templates, and a **closure-approval workflow** (request → manager approves/rejects).
 Project detail decrypts the linked customer's contact fields for display.
+
+The project page (`pages/ProjectDetail.jsx`, with its parts in `pages/project/`) offers
+the task list and a **Kanban** board (drag a card to change status), a **Gantt**
+timeline with milestones, manager-only **KPIs** and **Scorecard** tabs, **Custom
+fields**, **Attachments**, task detail modals (comments, dependencies, time
+logs, waiting-on-customer reasons), Excel task import, task duplication, and a
+print-friendly project summary.
 
 Project creation saves memberships in the same transaction. Closure requests and
 approvals save their status and update message atomically, and conditional writes
@@ -566,6 +651,19 @@ Per-engineer snapshot (open tasks, upcoming visits, tasks done this month, hours
 this month) plus a **4-week scheduled-item forecast** grid. Both are heavily batch-queried (4
 and 2 queries respectively) to avoid N+1.
 
+**Operational pressure** (`/api/workload/pressure`, manager-only, the first tab) ranks
+engineers by weighted open work as of a date. Each open item scores *base × status
+weight*, plus a bonus if it is overdue or due within seven days. The base is the task's
+priority weight (low/medium/high/critical), or the pending-report or service-follow-up
+weight; a visit counts 1. Status weights (up to 100 per work type, for example
+`waiting_customer` 0.25) come from the policy. Each engineer's result carries total
+points, a breakdown by task/visit/report/follow-up, and counts of overdue and undated
+items. Pressure is a ranking signal, not capacity: it never substitutes for the hours
+in Effort and Availability. The weights are one versioned row in `workload_policy`
+(`GET/PUT /api/workload/pressure/policy`); saves are audited, validated (unknown keys
+and prototype names rejected) and return HTTP 409 `WORKLOAD_POLICY_CONFLICT` if the
+version moved.
+
 ### Scorecards (manager)
 Post-project engineer evaluation across 5 weighted dimensions — delivery quality (30%),
 communication/ownership (20%), customer feedback (20%), timeline (15%), documentation
@@ -657,10 +755,35 @@ activity** status — the status editor is now shared across four entity types v
 same generic `settings.status_config` JSON blob), the audit log, and the Service
 Activity Tracking admin tab described above.
 
+Settings (`/settings/:section`, manager-only) has 18 sections in two areas plus an
+overview. *Business*: Users & Access, Projects, Maintenance Visits, Status Workflow,
+Service Activity Tracking. *Technical*: Integrations, Weekly Report, Localization,
+Security Policy, Audit Log, Logging, System Alerts, System Stats, Activity Feed,
+Deployment Health, Data Export, System Update. Search covers all sections and old
+`/admin/...` URLs redirect. The code for each section is in `client/src/pages/admin/`.
+
+**System Update** lets a manager check for outdated packages, install them, rebuild the
+client and restart the server (`/api/settings/system-update/*`, backed by
+`update-manager.js`, with a live log). It is disabled when `NODE_ENV=production` unless
+`ALLOW_IN_APP_UPDATES=true`; production deploys go through the Docker/branch pipeline
+instead (see DEPLOY.md).
+
 ### Audit Log (manager)
 Append-only record (user, role, entity type/id/title, action, detail, IP, timestamp)
 with filtered, paginated retrieval (`?entity_type/user_id/action/date_from/date_to`,
 max 500/page).
+
+### Customer Responses
+A library of ready-to-send customer email texts (Closing Ticket, Chargeable Task,
+CRM - Chargeable, Late Response, Notification of Asset Upgrade) with one-click copy, for
+every role, under *Personal* in the sidebar (`/customer-responses`). It is static
+client-side content: no API, no database, no audit. To change a text, edit the
+`TEMPLATES` list in `pages/CustomerResponses.jsx`.
+
+### Users (manager)
+`/users` is a searchable team directory grouped by role (managers, engineers, planners,
+PMs) with join dates. It is read-only; accounts are created and changed in Settings →
+Users & Access.
 
 ### Profile
 Self-service name/email update (with format + uniqueness checks), avatar upload
@@ -672,7 +795,11 @@ each issuing a fresh token when identity fields change.
 - **Daily visit reminders** — runs at startup and re-schedules for 08:00 daily, then
   every 24h.
 - **Weekly report scheduler** — configurable day/hour/recipients via settings.
-- Both started only after the server successfully binds.
+- **Saved custom-report delivery** (`customReportScheduler.js`, started with the weekly
+  scheduler) — polls every minute for due schedules, claims each slot atomically,
+  rechecks the owner's access and recipients, and does not retry a failed slot (see
+  Reports in §7). Stopped on graceful shutdown.
+- All started only after the server successfully binds.
 - Service Activity Tracking has **no** background job — retention purge is a manual,
   manager-triggered admin action, not a scheduled task (see §11).
 
@@ -685,14 +812,14 @@ query param).
 | Prefix | Purpose |
 |--------|---------|
 | `/api/auth` | login, 2FA, password mgmt, profile, avatar, download-token |
-| `/api/projects` | project CRUD, members, activity, Excel import |
+| `/api/projects` | project CRUD, members, activity, Excel import, closure approvals, `/:projectId/custom-fields` |
 | `/api/tasks` | task CRUD, comments, dependencies, bulk ops, export |
-| `/api/customers` | customer CRUD, import, template, team/engineer assignment, service-activity summary, contract-hours |
+| `/api/customers` | customer CRUD, import, template, team/engineer assignment, service-activity summary, contract-hours; `/:id/overview` (Customer 360), `/:id/recommendations`, `/:id/assets` (inventory + attachments) |
 | `/api/maintenance-visits` | visit CRUD, engineer assignment, reports, import/export |
 | `/api/calendar` + `/api/calendar/ical` | month feed, iCal subscription |
-| `/api/reports` | summary, monthly trends, projects, service-activity customer/engineer/team/overview reports + export |
+| `/api/reports` | summary, monthly trends, projects, service-activity customer/engineer/team/overview reports + export; `/custom` (report builder, saved reports, schedules, templates) |
 | `/api/kpis`, `/api/milestones`, `/api/scorecards` | per-project metrics & evaluations |
-| `/api/workload` | engineer load + 4-week forecast |
+| `/api/workload` | engineer load + 4-week forecast; `/planning` (effort/availability inputs), `/pressure` (ranking + policy) |
 | `/api/time-logs` | hour logging + summaries |
 | `/api/sla` | live SLA overview |
 | `/api/attachments` | per-project file upload/download (encrypted) |
@@ -700,30 +827,58 @@ query param).
 | `/api/activity-categories`, `/api/technologies` | Service Activity Tracking lookups (admin CRUD + read for all) |
 | `/api/service-activities` | activity CRUD, complete, duplicate, follow-up-task, attachments, export, `/meta` |
 | `/api/service-activity-settings` | module-wide toggles, retention status/purge |
+| `/api/operations` | role-scoped Dashboard / My Work overview (`GET /overview?as_of=`, manager and engineer) |
 | `/api/notifications`, `/api/notes`, `/api/search` | bell, scratchpad, global search |
-| `/api/settings`, `/api/report-settings`, `/api/statuses` | configuration |
+| `/api/settings`, `/api/report-settings`, `/api/statuses` | configuration; `/settings/system-update/*` (disabled in production by default) |
 | `/api/templates`, `/api/audit`, `/api/admin` | templates, audit log, user admin |
 
 ## 10. Testing
 
-- `server/test/*.test.js` — pure-function unit tests (`node --test`, no external
-  dependencies): SQL dialect translation, field encryption round-trips, SSRF guard
-  range checks, upload magic-byte validation, JWT scope checks, activity-reference
-  formatting.
-- `server/test/serviceActivities.integration.test.js` — route-level integration tests
-  for the Service Activity Tracking module (team-gating, IDOR resistance, customer
-  authorization, manager view-all, historical-completion creation, reference
-  uniqueness, direct-URL bypass rejection), run against an in-memory Postgres
-  (`pg-mem`) rather than pure functions, since this behavior only exists at the route
-  handler level. `server/index.js` isn't booted directly for tests (its TLS/rate-limit/
-  scheduler bootstrap isn't structured for import) — a minimal Express app mounts the
-  real route modules instead. The harness also checks task custom-field ownership,
-  project relationships and typed validation. CI repeats the route tests against
-  PostgreSQL 16 in a fresh disposable database (`TEST_DATABASE_URL`). Other modules
-  still need broader route coverage.
-- CI (`.github/workflows/ci.yml`) runs `npm test` + `npm audit` for both server and
-  client, and validates `docker compose config`, on push to `DEV-2`/`DEV-3`/`dev`/`main` and on
-  any pull request.
+Run everything locally with `cd server && npm test` and `cd client && npm test`
+(unit) and `cd client && npm run test:e2e` (browser). CI runs all of it.
+
+**Server** (`node --test`, `server/test/`):
+- Unit tests: placeholder conversion, field encryption round-trips, SSRF guard, upload
+  magic bytes, JWT scope and session checks, activity-reference formatting, workload
+  model and policy, report schedule and weekly digest, integration-setting redaction.
+- `nativeSql.test.js` fails if SQLite-only SQL is written back into the source.
+- `serviceActivities.integration.test.js` — route-level tests that mount the real route
+  modules on a minimal Express app (`server/index.js` is not booted; its TLS/rate-limit
+  bootstrap is not importable). Without `TEST_DATABASE_URL` it runs on an in-memory
+  Postgres (`pg-mem`, with a few rewrites for what pg-mem lacks, such as `app_now()`);
+  with it, it runs on a real PostgreSQL server and adds the tests that need one
+  (locks, concurrent writes, rollbacks, correlated subqueries). Coverage includes
+  team gating, IDOR resistance, customer authorization, optimistic-lock conflicts,
+  exports matching list filters, workload, reports, recommendations and closure review.
+- `postgres.schema.test.js` (real PostgreSQL only) checks that `init()` can run twice
+  without changing migration records or leaving an invalid index, and that **every
+  static SQL statement in the server source** is accepted by PostgreSQL (prepared, not
+  executed). `test/lib/extractSql.js` finds the statements; about 550 are checked,
+  and statements built with `${}` are not.
+
+**Client** (`client/test/`, `node --test`): API wrapper behaviour, navigation and
+role visibility, task filters, and the error-message helper.
+
+**Browser** (`client/e2e/`, Playwright with the installed Chrome): the production build
+is served with the API mocked at the network level (`e2e/support/mockApi.js`), so the
+tests need no database. They cover sign-in, the signed-out redirect, page rendering, the
+error boundary, the Activity Log form (the browser sends no `engineer_id`/`team_id`;
+team gating), dark-mode calendar chips, equal calendar columns, the stray-`0` badge
+regression, and that **every Settings section and the Project page open without a
+missing reference** (catches names lost when a large module is split, which the build
+cannot see). `npm run test:e2e` builds to `.e2e-dist`, never `client/dist`. Mocked data
+proves the UI, not the API contract; the server tests own that.
+`scripts/browser-smoke.cjs` is a separate, older headless-Chrome smoke runner for
+the Report Builder and Settings (see PLATFORM_VALIDATION.md).
+
+**CI** (`.github/workflows/ci.yml`, on push to `DEV-2`/`DEV-3`/`dev`/`main` and on any
+pull request): server tests and `npm audit`; the route integration tests and the schema
+and SQL check against a PostgreSQL 16 container; client tests, production build,
+Playwright tests (report uploaded on failure) and `npm audit`; and
+`docker compose config` validation.
+
+Not covered: a manual browser and screen-reader pass on real staging data, real-device
+testing, and end-to-end runs of the browser against the real API.
 
 ## 11. Known limitations / improvement targets
 
@@ -748,9 +903,14 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
   owner columns (`project_id`, `service_activity_id`) instead of a generic
   `entity_type`/`entity_id` pair. Works for two owners; a third would make this
   layout genuinely awkward.
-- **Database and browser coverage.** CI checks the schema and route integration tests
-  on PostgreSQL 16 as well as `pg-mem`. Most older modules still need integration
-  tests, and a manual browser QA pass remains necessary before production use.
+- **Test coverage.** CI checks the schema, every static SQL statement and the route
+  integration tests on PostgreSQL 16, plus mocked-API browser tests. Most older
+  modules still lack their own route integration tests, SQL built with `${}` is not
+  statically checked, and a manual browser QA pass on real data remains necessary
+  before production use.
+- **Route-centred backend.** Validation, rules and SQL live together in route handlers
+  (see "Layering and code layout"). This is consistent and simple, but harder to unit
+  test and to reuse; a service/repository split is the natural next refactor.
 - **Service Activity retention is manual, not automatic.** By design (see §7) — an
   automatic background purge was deliberately not added without being asked, but if
   that's wanted, the fields/status endpoint already exist to build on.
@@ -765,7 +925,8 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
 - **UI**: no component library (hand-rolled CSS + `lucide-react` icons + heavy inline
   `style={{}}` objects throughout). Consistent, but a design-system pass (shared
   form components, consistent spacing tokens, etc.) could reduce duplication —
-  `AdminPanel.jsx` alone is 3000+ lines.
+  the largest pages were split into per-section files under `pages/admin/` and
+  `pages/project/`, but many pages still rely on inline `style={{}}` objects.
 - **List pagination is inconsistent across the app.** Service Activity Tracking and Tasks use
   real server-side `LIMIT`/`OFFSET` pagination; older modules (Projects, Customers)
   fetch the full table and filter/paginate client-side. Fine at current

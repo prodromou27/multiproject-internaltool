@@ -9,8 +9,10 @@ application or promise that every listed gap has already been resolved.
 - React 18 SPA, React Router 7, Vite 5, Lucide icons and Recharts; route pages are
   lazy-loaded. Styling uses shared CSS tokens and hand-built components.
 - Node 24 / Express 4 monolith serves `/api` and the compiled frontend. PostgreSQL
-  is accessed through `server/db.js`, an asynchronous `pg` facade translating the
-  established SQLite-shaped SQL syntax and `?` parameters.
+  is accessed through `server/db.js`, an asynchronous `pg` wrapper that keeps the
+  `db.prepare(sql).get/all/run` call shape and `?` parameters. The SQL is native
+  PostgreSQL (`app_now()`/`app_today()`, `substr`, `string_agg`, `ILIKE`); a test
+  rejects SQLite-only syntax.
 - Schema initialization and transactional compatibility migrations run at startup.
   Fresh-install definitions and compatibility changes must remain aligned.
 - Browser authentication uses HttpOnly cookies, session revocation through
@@ -148,9 +150,10 @@ and their eligibility rather than treating a saved definition as permanent autho
 
 ## Verification and deployment
 
-Use `npm test` in server/client and a production client build after meaningful code
-milestones. PostgreSQL CI is authoritative for locking and queries unsupported by
-pg-mem. Preserve the existing Docker/Node versions, environment validation and
+Use `npm test` in server/client, `npm run test:e2e` in client (mocked-API browser
+tests) and a production client build after meaningful code milestones. PostgreSQL CI
+is authoritative for locking, for queries unsupported by pg-mem, and for the schema
+and SQL check that prepares every static statement. Preserve the existing Docker/Node versions, environment validation and
 PostgreSQL migration conventions. Record new migrations, configuration and jobs
 alongside the stage that introduces them. Do manual responsive/keyboard QA before
 production deployment; report only checks actually performed.

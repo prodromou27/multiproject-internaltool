@@ -28,6 +28,35 @@ screen or item in the redesign brief has been completed.
   Password-policy tests verify malformed values cannot disable expiry and explicit
   numeric zero remains supported.
 
+### Update, 2026-09-21 (DEV-3)
+
+Counts are from the CI run for commit `2dce978` (all checks passed).
+
+| Suite | Result |
+| --- | --- |
+| Server, in-memory backend (`npm test`) | 137 tests: 114 passed, 23 skipped (need real PostgreSQL) |
+| Server route integration tests on PostgreSQL 16 | 96 passed, 0 skipped |
+| Schema and SQL check on PostgreSQL 16 | 3 passed: `init()` twice changes nothing and leaves no invalid index; about 550 static SQL statements accepted by PostgreSQL |
+| Client unit tests | 14 passed |
+| Browser tests (Playwright, mocked API) | 32 passed |
+
+What the newer checks add:
+
+- **Native SQL.** The SQLite-to-PostgreSQL rewriting was removed; `translate()` only
+  converts `?`. A guard test fails on SQLite-only syntax, and the real-database
+  statement check covered the rewritten queries.
+- **Browser tests** cover sign-in and the signed-out redirect, task and visit lists, the
+  page error boundary, the Activity Log form and team gating, dark-mode calendar
+  colours, equal calendar columns, and that every Settings section and the Project
+  page open without a missing reference. Two of them were checked to fail against the
+  bugs they guard (a stray `0` printed for a false 0/1 flag; calendar columns
+  stretched by long titles).
+- **What they do not show.** The browser tests mock the API, so they prove the UI but
+  not the API contract; statement checks prepare SQL but do not execute it; statements
+  built with `${}` are not checked. Manual QA on staging data, real devices and screen
+  readers is still pending, and mobile widths were not part of the 2026-09-21 visual
+  review.
+
 ## Reproducible browser smoke checks
 
 The runner uses an installed Chrome/Chromium browser and Node 24's built-in
