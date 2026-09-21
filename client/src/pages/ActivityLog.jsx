@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ClipboardList, Search, Copy, CheckCircle2, ListPlus, Paperclip, Upload, Trash2 } from 'lucide-react';
+import { ClipboardList, Search, Copy, CheckCircle2, ListPlus, Paperclip, Upload, Trash2, Pencil, Flag, SlidersHorizontal, X } from 'lucide-react';
+import './ActivityLog.css';
 import { PageHeader } from '../components/PageLayout';
 import { useSearchParams } from 'react-router-dom';
 import { useCreateIntent } from '../hooks/useCreateIntent';
@@ -35,6 +36,77 @@ const BILLABLE_LABELS = {
   internal: 'Internal', not_applicable: 'Not Applicable',
 };
 const WORK_LOCATION_LABELS = { remote: 'Remote', onsite: 'On-site', internal: 'Internal', hybrid: 'Hybrid' };
+
+/* ── Ledger helpers ───────────────────────────────────────────────────── */
+const MIX = {
+  included_in_contract: { label: 'Included in contract', color: 'var(--al-included)' },
+  billable:             { label: 'Billable',             color: 'var(--al-billable)' },
+  internal:             { label: 'Internal',             color: 'var(--al-internal)' },
+  non_billable:         { label: 'Non-billable',         color: 'var(--al-other)' },
+  not_applicable:       { label: 'Not applicable',       color: 'var(--al-other)' },
+};
+const mixOf = cls => MIX[cls] || { label: 'Billing not set', color: 'var(--al-other)' };
+const WORKDAY_MINUTES = 480;
+const RANGE_LABEL = { today: 'today', this_week: 'this week', this_month: 'this month', custom: 'in this range' };
+
+function parseDay(value) {
+  const [y, m, d] = String(value).slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function dayLabels(value) {
+  const date = parseDay(value);
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+  const diff = Math.round((startOfToday - date) / 86400000);
+  return {
+    when: diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : date.toLocaleDateString(undefined, { weekday: 'long' }),
+    day: date.getDate(),
+    month: date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }),
+  };
+}
+
+/* Rows arrive newest-first, so a day's rows are contiguous. Pagination can cut
+   the first or last day on a page; those totals would be wrong, so they're
+   flagged `partial` and shown without a total or bar. */
+function groupByDay(rows, page, totalPages) {
+  const groups = [];
+  for (const row of rows) {
+    const date = String(row.activity_date).slice(0, 10);
+    const last = groups[groups.length - 1];
+    if (last && last.date === date) last.rows.push(row);
+    else groups.push({ date, rows: [row] });
+  }
+  groups.forEach((group, index) => {
+    group.partial = (index === 0 && page > 1) || (index === groups.length - 1 && page < totalPages);
+    group.minutes = group.rows.reduce((sum, row) => sum + (row.duration_minutes || 0), 0);
+  });
+  return groups;
+}
+
+function DayBar({ rows, minutes }) {
+  const scale = Math.max(WORKDAY_MINUTES, minutes);
+  const chronological = [...rows].reverse().filter(row => row.duration_minutes > 0);
+  const byMix = new Map();
+  chronological.forEach(row => {
+    const label = mixOf(row.billable_classification).label;
+    byMix.set(label, (byMix.get(label) || 0) + row.duration_minutes);
+  });
+  const summary = [...byMix].map(([label, mins]) => `${fmtDuration(mins)} ${label.toLowerCase()}`).join(', ');
+  return (
+    <>
+      <div className="al-bar" role="img" aria-label={`${fmtDuration(minutes)} logged. ${summary}`}>
+        {chronological.map(row => (
+          <span key={row.id} style={{ width: `${(row.duration_minutes / scale) * 100}%`, background: mixOf(row.billable_classification).color }} />
+        ))}
+      </div>
+      <div className="al-bar-caption" aria-hidden="true">
+        {minutes === WORKDAY_MINUTES ? 'A full 8h day'
+          : minutes > WORKDAY_MINUTES ? `${fmtDuration(minutes - WORKDAY_MINUTES)} over 8h`
+          : `${fmtDuration(WORKDAY_MINUTES - minutes)} left to 8h`}
+      </div>
+    </>
+  );
+}
 
 /* ── Quick Log / Edit Activity form ──────────────────────────────────── */
 function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
@@ -582,123 +654,188 @@ export default function ActivityLog() {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
+  const filterDefs = meta ? [
+    { key: 'customer', label: 'Customer', value: customerFilter, set: setCustomerFilter, options: meta.customers.map(c => [c.id, c.name]) },
+    { key: 'category', label: 'Category', value: categoryFilter, set: setCategoryFilter, options: meta.categories.map(c => [c.id, c.name]) },
+    { key: 'status', label: 'Status', value: statusFilter, set: setStatusFilter, options: meta.statuses.map(s => [s.value, s.label]) },
+    { key: 'technology', label: 'Technology', value: technologyFilter, set: setTechnologyFilter, options: meta.technologies.map(t => [t.id, t.name]) },
+    { key: 'billing', label: 'Billing', value: billableFilter, set: setBillableFilter, options: Object.entries(BILLABLE_LABELS) },
+  ] : [];
+  const activeFilters = filterDefs.filter(f => f.value !== '');
+  const hasNarrowing = activeFilters.length > 0 || debouncedSearch !== '';
+  const groups = groupByDay(rows, page, totalPages);
+  const showLegend = rows.some(row => row.duration_minutes > 0);
+
+  function clearFilters() {
+    filterDefs.forEach(f => f.set(''));
+    setSearch('');
+    setDebouncedSearch('');
+    setPage(1);
+  }
+
+  const completedValue = meta?.statuses?.find(s => s.is_terminal && /complet/i.test(s.value))?.value || 'completed';
+  const canFollowUp = ['manager', 'engineer'].includes(user.role) && meta?.settings?.allow_follow_up_task_creation !== false;
+
   return (
-    <div className="page">
-      <PageHeader eyebrow="Operations" title="Activity Log" description="Record customer service work, supporting evidence and operational follow-ups." actions={<>
-<button className="btn btn-ghost" disabled={loading || !!loadError || exporting || !meta} onClick={async () => {
+    <div className="page activity-log">
+      <PageHeader eyebrow="Operations" title="Activity log" description="Record customer service work, supporting evidence and operational follow-ups." actions={<>
+        <button className="btn btn-ghost" disabled={loading || !!loadError || exporting || !meta} onClick={async () => {
           setExporting(true);
           try { await api.exportServiceActivities(exportFilters.current); }
           catch (error) { toast.error(error.message); }
           finally { setExporting(false); }
-        }}>{exporting ? 'Exporting...' : 'Export Excel'}</button>
-        <button className="btn btn-primary" onClick={() => setShowForm(true)} disabled={!meta}>+ Log Activity</button>
+        }}>{exporting ? 'Exporting…' : 'Export Excel'}</button>
+        <button className="btn btn-primary" onClick={() => setShowForm(true)} disabled={!meta}>Log activity</button>
       </>} />
 
       {metaError && <div className="error-msg" style={{ marginBottom: 12 }}>{metaError}</div>}
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="filter-bar" style={{ marginBottom: 10 }}>
-          {[['today', 'Today'], ['this_week', 'This Week'], ['this_month', 'This Month'], ['custom', 'Custom Range']].map(([k, l]) => (
-            <button key={k} className={'filter-pill' + (datePreset === k ? ' active' : '')} onClick={() => { setDatePreset(k); setPage(1); }}>{l}</button>
+      <div className="al-toolbar">
+        <div className="al-segment" role="group" aria-label="Date range">
+          {[['today', 'Today'], ['this_week', 'This week'], ['this_month', 'This month'], ['custom', 'Custom']].map(([k, l]) => (
+            <button key={k} type="button" aria-pressed={datePreset === k} onClick={() => { setDatePreset(k); setPage(1); }}>{l}</button>
           ))}
         </div>
-        {datePreset === 'custom' && (
-          <div className="form-row" style={{ marginBottom: 10 }}>
-            <div className="form-group"><label>From</label><input type="date" value={customFrom} onChange={e => { setCustomFrom(e.target.value); setPage(1); }} /></div>
-            <div className="form-group"><label>To</label><input type="date" value={customTo} onChange={e => { setCustomTo(e.target.value); setPage(1); }} /></div>
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 300 }}>
-            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search title, notes, reference, ticket…" style={{ paddingLeft: 32 }} />
-          </div>
-          {meta && (
-            <>
-              <select value={customerFilter} onChange={e => { setCustomerFilter(e.target.value); setPage(1); }} style={{ width: 'auto' }}>
-                <option value="">All Customers</option>
-                {meta.customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <select value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setPage(1); }} style={{ width: 'auto' }}>
-                <option value="">All Categories</option>
-                {meta.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }} style={{ width: 'auto' }}>
-                <option value="">All Statuses</option>
-                {meta.statuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </select>
-              <select value={technologyFilter} onChange={e => { setTechnologyFilter(e.target.value); setPage(1); }} style={{ width: 'auto' }}>
-                <option value="">All Technologies</option>
-                {meta.technologies.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-              <select value={billableFilter} onChange={e => { setBillableFilter(e.target.value); setPage(1); }} style={{ width: 'auto' }}>
-                <option value="">All Billable Types</option>
-                {Object.entries(BILLABLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </>
-          )}
+        <div className="al-search">
+          <Search size={15} aria-hidden="true" />
+          <input type="search" value={search} onChange={e => setSearch(e.target.value)} aria-label="Search activities" placeholder="Search title, notes, reference or ticket" />
         </div>
+        {meta && (
+          <details className="al-filters">
+            <summary>
+              <SlidersHorizontal size={15} aria-hidden="true" /> Filters
+              {activeFilters.length > 0 && <span className="al-filter-count" aria-label={`${activeFilters.length} active`}>{activeFilters.length}</span>}
+            </summary>
+            <div className="al-filter-panel">
+              {filterDefs.map(f => (
+                <div key={f.key}>
+                  <label htmlFor={`al-filter-${f.key}`}>{f.label}</label>
+                  <select id={`al-filter-${f.key}`} value={f.value} onChange={e => { f.set(e.target.value); setPage(1); }}>
+                    <option value="">All</option>
+                    {f.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
       </div>
 
-      {loading ? <div className="skeleton-table"><span /><span /><span /><span /></div> : loadError ? (
+      {datePreset === 'custom' && (
+        <div className="form-row" style={{ marginBottom: 12, maxWidth: 520 }}>
+          <div className="form-group"><label htmlFor="al-from">From</label><input id="al-from" type="date" value={customFrom} onChange={e => { setCustomFrom(e.target.value); setPage(1); }} /></div>
+          <div className="form-group"><label htmlFor="al-to">To</label><input id="al-to" type="date" value={customTo} onChange={e => { setCustomTo(e.target.value); setPage(1); }} /></div>
+        </div>
+      )}
+
+      {hasNarrowing && (
+        <div className="al-chips">
+          {activeFilters.map(f => (
+            <span className="al-chip" key={f.key}>
+              {f.label}: {f.options.find(([value]) => String(value) === String(f.value))?.[1] ?? f.value}
+              <button type="button" aria-label={`Remove ${f.label} filter`} onClick={() => { f.set(''); setPage(1); }}><X size={12} aria-hidden="true" /></button>
+            </span>
+          ))}
+          {debouncedSearch && (
+            <span className="al-chip">
+              Search: {debouncedSearch}
+              <button type="button" aria-label="Clear search" onClick={() => { setSearch(''); setDebouncedSearch(''); setPage(1); }}><X size={12} aria-hidden="true" /></button>
+            </span>
+          )}
+          <button type="button" className="al-clear" onClick={clearFilters}>Clear all</button>
+        </div>
+      )}
+
+      {loading ? <div className="skeleton-table" aria-label="Loading activities"><span /><span /><span /><span /></div> : loadError ? (
         <div className="error-msg" role="alert">
           <p>{loadError}</p>
           <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
         </div>
       ) : rows.length === 0 ? (
-        <div className="empty">
-          <div className="empty-icon"><ClipboardList size={40} strokeWidth={1.2} /></div>
-          <p>No activities found for this view</p>
+        <div className="card al-empty">
+          <h2>{hasNarrowing ? 'No activities match these filters' : `Nothing logged ${RANGE_LABEL[datePreset] || 'in this range'} yet`}</h2>
+          <p>{hasNarrowing
+            ? 'Try removing a filter or widening the date range.'
+            : 'Log the work you have done for a customer and it will show up here, grouped by day.'}</p>
+          {hasNarrowing
+            ? <button className="btn btn-ghost" onClick={clearFilters}>Clear filters</button>
+            : <button className="btn btn-primary" onClick={() => setShowForm(true)} disabled={!meta}>Log activity</button>}
         </div>
       ) : (
-        <div className="card table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Reference</th><th>Date</th><th>Customer</th><th>Category</th><th>Title</th>
-                <th>Duration</th><th>Status</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => (
-                <tr key={r.id}>
-                  <td>
-                    <button type="button" onClick={() => setViewId(r.id)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontWeight: 600, padding: 0 }}>
-                      {r.activity_reference}
-                    </button>
-                  </td>
-                  <td>{fmtDate(r.activity_date)}</td>
-                  <td>{r.customer_name}</td>
-                  <td>{r.category_name}</td>
-                  <td>{r.title}{r.follow_up_required ? <span title="Follow-up required" style={{ marginLeft: 6 }}>⏳</span> : null}</td>
-                  <td>{fmtDuration(r.duration_minutes)}</td>
-                  <td><StatusBadge entityType="service_activity" s={r.status} /></td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                      <button className="btn btn-ghost btn-sm" title="Edit" disabled={!meta || editLoadingId === r.id} onClick={() => handleEdit(r)}>{editLoadingId === r.id ? 'Loading…' : 'Edit'}</button>
-                      <button className="btn btn-ghost btn-sm" title="Duplicate" onClick={() => handleDuplicate(r)}><Copy size={12} /></button>
-                      {r.status !== (meta?.statuses?.find(s => s.is_terminal && /complet/i.test(s.value))?.value || 'completed') && (
-                        <button className="btn btn-ghost btn-sm" title="Mark Complete" onClick={() => handleComplete(r)}><CheckCircle2 size={12} /></button>
-                      )}
-                      {['manager', 'engineer'].includes(user.role) && meta?.settings?.allow_follow_up_task_creation !== false && (
-                        <button className="btn btn-ghost btn-sm" title="Create Follow-Up Task" onClick={() => handleFollowUp(r)}><ListPlus size={12} /></button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
+        <>
+          {showLegend && (
+            <ul className="al-legend" aria-label="Billing colours">
+              {[['included_in_contract'], ['billable'], ['internal'], ['non_billable']].map(([key]) => (
+                <li key={key}><span className="al-swatch" style={{ background: MIX[key].color }} aria-hidden="true" />{MIX[key].label}</li>
               ))}
-            </tbody>
-          </table>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 4px 0' }}>
-            <span className="text-muted" style={{ fontSize: 12 }}>{total} activities</span>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <button className="btn btn-ghost btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</button>
-              <span style={{ fontSize: 12 }}>Page {page} of {totalPages}</span>
-              <button className="btn btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next</button>
+            </ul>
+          )}
+          <div className="card al-ledger">
+            {groups.map(group => {
+              const labels = dayLabels(group.date);
+              return (
+                <section className="al-day" key={group.date} aria-label={`${labels.when}, ${group.date}`}>
+                  <div className="al-rail">
+                    <span className="al-rail-when">{labels.when}</span>
+                    <span className="al-rail-day">{labels.day}</span>
+                    <span className="al-rail-month">{labels.month}</span>
+                    {group.partial
+                      ? <span className="al-rail-note">Day continues on another page</span>
+                      : group.minutes > 0 && <span className="al-rail-total">{fmtDuration(group.minutes)}</span>}
+                  </div>
+                  <div>
+                    {!group.partial && group.minutes > 0 && <DayBar rows={group.rows} minutes={group.minutes} />}
+                    <ul className="al-entries">
+                      {group.rows.map(r => {
+                        const mix = mixOf(r.billable_classification);
+                        return (
+                          <li className="al-entry" key={r.id}>
+                            <span className={'al-duration' + (r.duration_minutes ? '' : ' is-unset')}>{r.duration_minutes ? fmtDuration(r.duration_minutes) : 'No time'}</span>
+                            <div className="al-main">
+                              <button type="button" className="al-title" onClick={() => setViewId(r.id)}>{r.title}</button>
+                              <div className="al-meta">
+                                <span className="al-customer">{r.customer_name}</span>
+                                <span>{r.category_name}</span>
+                                {r.billable_classification && (
+                                  <span className="al-mix"><span className="al-swatch" style={{ background: mix.color }} aria-hidden="true" />{mix.label}</span>
+                                )}
+                                <span className="al-ref">{r.activity_reference}</span>
+                                {r.follow_up_required ? (
+                                  <span className="al-followup"><Flag size={12} aria-hidden="true" />Follow-up{r.follow_up_date ? ` ${fmtDate(r.follow_up_date)}` : ''}</span>
+                                ) : null}
+                              </div>
+                            </div>
+                            <div className="al-side">
+                              <StatusBadge entityType="service_activity" s={r.status} />
+                              <div className="al-actions">
+                                <button type="button" aria-label={`Edit ${r.title}`} title="Edit" disabled={!meta || editLoadingId === r.id} onClick={() => handleEdit(r)}><Pencil size={15} aria-hidden="true" /></button>
+                                <button type="button" aria-label={`Duplicate ${r.title}`} title="Duplicate" onClick={() => handleDuplicate(r)}><Copy size={15} aria-hidden="true" /></button>
+                                {r.status !== completedValue
+                                  ? <button type="button" aria-label={`Mark ${r.title} complete`} title="Mark complete" onClick={() => handleComplete(r)}><CheckCircle2 size={15} aria-hidden="true" /></button>
+                                  : <span className="al-action-gap" aria-hidden="true" />}
+                                {canFollowUp && (
+                                  <button type="button" aria-label={`Create follow-up task for ${r.title}`} title="Create follow-up task" onClick={() => handleFollowUp(r)}><ListPlus size={15} aria-hidden="true" /></button>
+                                )}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </section>
+              );
+            })}
+            <div className="al-pager">
+              <span>{total} {total === 1 ? 'activity' : 'activities'}</span>
+              <div className="al-pager-nav">
+                <button className="btn btn-ghost btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</button>
+                <span>Page {page} of {totalPages}</span>
+                <button className="btn btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next</button>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {showForm && meta && (

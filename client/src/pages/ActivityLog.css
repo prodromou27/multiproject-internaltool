@@ -1,0 +1,121 @@
+/* Activity log — day-by-day ledger.
+   Scoped under .activity-log so nothing here can leak into other pages.
+   Colours come from the app's existing tokens, so dark mode follows for free;
+   the four billing-mix colours are the only additions. */
+
+.activity-log {
+  --al-included: var(--primary);
+  --al-billable: var(--success);
+  --al-internal: #8b5cf6;
+  --al-other: var(--gray-400);
+  --al-rail: 132px;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────── */
+.activity-log .al-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+.activity-log .al-segment { display: inline-flex; padding: 3px; gap: 2px; background: var(--gray-100); border-radius: 10px; }
+.activity-log .al-segment button {
+  border: 0; background: transparent; color: var(--gray-600); font: inherit; font-size: 13px; font-weight: 550;
+  padding: 7px 14px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.activity-log .al-segment button:hover { color: var(--gray-900); }
+.activity-log .al-segment button[aria-pressed="true"] { background: var(--surface); color: var(--gray-900); box-shadow: var(--shadow-xs); }
+
+.activity-log .al-search { position: relative; flex: 1 1 240px; max-width: 360px; }
+.activity-log .al-search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--gray-500); pointer-events: none; }
+.activity-log .al-search input { width: 100%; padding-left: 34px; }
+
+.activity-log .al-filters { position: relative; }
+.activity-log .al-filters > summary {
+  list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border: 1px solid var(--gray-200); border-radius: 10px; background: var(--surface);
+  color: var(--gray-700); font-size: 13px; font-weight: 550;
+}
+.activity-log .al-filters > summary::-webkit-details-marker { display: none; }
+.activity-log .al-filters[open] > summary { border-color: var(--primary); color: var(--primary); }
+.activity-log .al-filter-count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--primary); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.activity-log .al-filter-panel {
+  margin-top: 10px; padding: 16px; border: 1px solid var(--gray-200); border-radius: 12px; background: var(--surface);
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; width: min(760px, calc(100vw - 48px));
+}
+.activity-log .al-filter-panel label { display: block; font-size: 12px; font-weight: 600; color: var(--gray-600); margin-bottom: 5px; }
+.activity-log .al-filter-panel select, .activity-log .al-filter-panel input { width: 100%; }
+
+.activity-log .al-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.activity-log .al-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border-radius: 999px;
+  background: var(--primary-light); color: var(--primary-dark); font-size: 12px; font-weight: 550; border: 0; font-family: inherit;
+}
+.activity-log .al-chip button { border: 0; background: transparent; color: inherit; display: inline-flex; padding: 2px; border-radius: 50%; cursor: pointer; }
+.activity-log .al-chip button:hover { background: var(--primary-ring); }
+.activity-log .al-clear { border: 0; background: transparent; color: var(--gray-600); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; padding: 4px; }
+
+/* ── Legend ──────────────────────────────────────────────── */
+.activity-log .al-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 10px; color: var(--gray-600); font-size: 12px; list-style: none; }
+.activity-log .al-legend li { display: inline-flex; align-items: center; gap: 7px; }
+.activity-log .al-swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+/* ── Ledger ──────────────────────────────────────────────── */
+.activity-log .al-ledger { padding: 4px 24px; }
+.activity-log .al-day { display: grid; grid-template-columns: var(--al-rail) minmax(0, 1fr); column-gap: 24px; padding: 20px 0; }
+.activity-log .al-day + .al-day { border-top: 1px solid var(--gray-200); }
+
+.activity-log .al-rail { display: flex; flex-direction: column; gap: 2px; }
+.activity-log .al-rail-when { font-size: 12px; font-weight: 600; color: var(--gray-500); }
+.activity-log .al-rail-day { font-size: 30px; line-height: 1.05; font-weight: 700; letter-spacing: -1px; color: var(--gray-900); font-variant-numeric: tabular-nums; }
+.activity-log .al-rail-month { font-size: 12px; color: var(--gray-500); }
+.activity-log .al-rail-total { margin-top: 10px; font-size: 14px; font-weight: 650; color: var(--gray-900); font-variant-numeric: tabular-nums; }
+.activity-log .al-rail-note { font-size: 11px; line-height: 1.4; color: var(--gray-500); }
+
+/* The day bar: one segment per entry, coloured by billing type, on a track
+   that represents an 8-hour day (it stretches if the day runs longer). */
+.activity-log .al-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--gray-100); margin-bottom: 6px; }
+.activity-log .al-bar > span { display: block; height: 100%; min-width: 3px; }
+.activity-log .al-bar-caption { font-size: 11px; color: var(--gray-500); margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+
+.activity-log .al-entries { list-style: none; }
+.activity-log .al-entry {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 4px 16px; align-items: start;
+  padding: 12px 8px; margin: 0 -8px; border-radius: 10px;
+}
+.activity-log .al-entry:hover, .activity-log .al-entry:focus-within { background: var(--gray-50); }
+.activity-log .al-duration { font-size: 14px; font-weight: 650; color: var(--gray-900); font-variant-numeric: tabular-nums; padding-top: 1px; }
+.activity-log .al-duration.is-unset { color: var(--gray-400); font-weight: 500; }
+.activity-log .al-main { min-width: 0; }
+.activity-log .al-title { display: inline; border: 0; background: none; padding: 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--gray-900); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.activity-log .al-title:hover { color: var(--primary); text-decoration: underline; }
+.activity-log .al-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 4px; font-size: 12px; color: var(--gray-500); }
+.activity-log .al-meta .al-customer { color: var(--gray-700); font-weight: 600; }
+.activity-log .al-meta .al-ref { font-variant-numeric: tabular-nums; }
+.activity-log .al-meta .al-mix { display: inline-flex; align-items: center; gap: 6px; }
+.activity-log .al-followup { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); font-weight: 600; }
+
+.activity-log .al-side { display: flex; align-items: center; gap: 10px; }
+.activity-log .al-actions { display: flex; gap: 2px; }
+.activity-log .al-actions button {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--gray-500); cursor: pointer;
+}
+.activity-log .al-actions button:hover:not(:disabled) { background: var(--gray-100); color: var(--gray-900); }
+.activity-log .al-action-gap { width: 32px; height: 32px; flex-shrink: 0; }
+.activity-log .al-actions button:disabled { opacity: .5; cursor: progress; }
+
+.activity-log .al-pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 16px 0 12px; border-top: 1px solid var(--gray-200); font-size: 12px; color: var(--gray-600); }
+.activity-log .al-pager-nav { display: flex; align-items: center; gap: 10px; }
+
+/* ── Empty state ─────────────────────────────────────────── */
+.activity-log .al-empty { padding: 48px 24px; text-align: center; }
+.activity-log .al-empty h2 { font-size: 16px; margin-bottom: 6px; }
+.activity-log .al-empty p { color: var(--gray-600); font-size: 13px; margin: 0 auto 16px; max-width: 46ch; line-height: 1.6; }
+
+/* ── Narrow screens: rail becomes a heading row ──────────── */
+@media (max-width: 720px) {
+  .activity-log .al-ledger { padding: 0 16px; }
+  .activity-log .al-day { grid-template-columns: 1fr; row-gap: 10px; }
+  .activity-log .al-rail { flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+  .activity-log .al-rail-day { font-size: 22px; }
+  .activity-log .al-rail-total { margin: 0 0 0 auto; }
+  .activity-log .al-entry { grid-template-columns: 52px minmax(0, 1fr); }
+  .activity-log .al-side { grid-column: 2; justify-content: space-between; flex-wrap: wrap; }
+  .activity-log .al-actions button { width: 40px; height: 40px; }
+}
