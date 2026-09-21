@@ -41,7 +41,7 @@ function parseEngIds(row) {
 async function replaceEngineers(visitId, engineerIds, tx) {
   if (!tx) return db.transaction(client => replaceEngineers(visitId, engineerIds, client));
   await tx.prepare('DELETE FROM maintenance_visit_engineers WHERE visit_id = ?').run(visitId);
-  const ins = tx.prepare('INSERT OR IGNORE INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?)');
+  const ins = tx.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING');
   for (const uid of engineerIds || []) await ins.run(visitId, uid);
 }
 
@@ -286,7 +286,7 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
   const insertStmt = db.prepare(
     'INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, notes, created_by) VALUES (?,?,?,?,?,?)'
   );
-  const insEng = db.prepare('INSERT OR IGNORE INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?)');
+  const insEng = db.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING');
 
   let imported = 0;
   const errors = [];
@@ -335,7 +335,7 @@ router.put('/:id', requireAuth, async (req, res) => {
   if (req.user.role === 'engineer') {
     if (!await isAssignedEngineer(mv.id, req.user.id)) return res.status(403).json({ error: 'Forbidden' });
     const { notes } = req.body;
-    (await db.prepare(`UPDATE maintenance_visits SET notes=?, updated_at=datetime('now') WHERE id=?`).run(notes ?? mv.notes, mv.id));
+    (await db.prepare(`UPDATE maintenance_visits SET notes=?, updated_at=app_now() WHERE id=?`).run(notes ?? mv.notes, mv.id));
     return res.json({ ok: true });
   }
 
@@ -369,7 +369,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     await tx.prepare(`UPDATE maintenance_visits SET
       customer_id=COALESCE(?,customer_id), title=COALESCE(?,title),
       description=COALESCE(?,description), scheduled_date=COALESCE(?,scheduled_date),
-      status=COALESCE(?,status), notes=COALESCE(?,notes), updated_at=datetime('now') WHERE id=?`)
+      status=COALESCE(?,status), notes=COALESCE(?,notes), updated_at=app_now() WHERE id=?`)
       .run(customerCheck.id, title?.trim() || null, description, scheduled_date, status, notes, mv.id);
     if (engineerCheck.ids !== undefined) {
       oldIds = (await tx.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(mv.id)).map(r => r.user_id);
@@ -408,7 +408,7 @@ router.post('/:id/report-sent', requireAuth, async (req, res) => {
   if (!['manager', 'planner', 'engineer'].includes(req.user.role))
     return res.status(403).json({ error: 'Forbidden' });
   if (mv.status === 'cancelled') return res.status(400).json({ error: 'Cannot submit a report for a cancelled visit' });
-  const changed = (await db.prepare(`UPDATE maintenance_visits SET report_sent=1, report_sent_at=datetime('now'), report_sent_by=?, updated_at=datetime('now')
+  const changed = (await db.prepare(`UPDATE maintenance_visits SET report_sent=1, report_sent_at=app_now(), report_sent_by=?, updated_at=app_now()
     WHERE id=? AND report_sent=0 AND status <> 'cancelled'`)
     .run(req.user.id, mv.id));
   if (!changed.changes) return res.json({ ok: true });
@@ -429,7 +429,7 @@ router.post('/:id/report-unsent', requireManager, async (req, res) => {
     status=CASE WHEN report_sent_to_customer=1 AND status='completed' THEN 'in_progress' ELSE status END,
     report_sent=0, report_sent_at=NULL, report_sent_by=NULL,
     report_sent_to_customer=0, report_sent_to_customer_at=NULL, report_sent_to_customer_by=NULL,
-    updated_at=datetime('now') WHERE id=?`).run(mv.id));
+    updated_at=app_now() WHERE id=?`).run(mv.id));
   res.json({ ok: true });
 });
 
@@ -442,10 +442,10 @@ router.post('/:id/report-customer-sent', requireManagerOrPlanner, async (req, re
   if (mv.report_sent_to_customer) return res.json({ ok: true });
   const changed = (await db.prepare(`UPDATE maintenance_visits SET
       report_sent_to_customer=1,
-      report_sent_to_customer_at=datetime('now'),
+      report_sent_to_customer_at=app_now(),
       report_sent_to_customer_by=?,
       status='completed',
-      updated_at=datetime('now')
+      updated_at=app_now()
     WHERE id=? AND report_sent=1 AND report_sent_to_customer=0 AND status <> 'cancelled'`)
     .run(req.user.id, mv.id));
   if (!changed.changes) return res.status(409).json({ error: 'Visit report changed. Refresh before forwarding.' });
@@ -461,7 +461,7 @@ router.post('/:id/report-customer-unsent', requireManagerOrPlanner, async (req, 
       report_sent_to_customer_at=NULL,
       report_sent_to_customer_by=NULL,
       status=CASE WHEN report_sent_to_customer=1 AND status='completed' THEN 'in_progress' ELSE status END,
-      updated_at=datetime('now')
+      updated_at=app_now()
     WHERE id=?`).run(req.params.id));
   res.json({ ok: true });
 });
@@ -475,7 +475,7 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
   if (!mv) return res.status(404).json({ error: 'Not found' });
   if (mv.status === 'cancelled') return res.status(400).json({ error: 'Cannot complete a cancelled visit' });
   if (mv.status === 'completed') return res.json({ ok: true }); // idempotent
-  const changed = (await db.prepare(`UPDATE maintenance_visits SET status='completed', updated_at=datetime('now')
+  const changed = (await db.prepare(`UPDATE maintenance_visits SET status='completed', updated_at=app_now()
     WHERE id=? AND status <> 'cancelled'`).run(mv.id));
   if (!changed.changes) return res.status(409).json({ error: 'Visit was cancelled before completion' });
   res.json({ ok: true });

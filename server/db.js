@@ -12,14 +12,13 @@
  * Transactions:
  *   await db.transaction(async (tx) => { await tx.prepare('...').run(...); });
  *
- * Dialect differences from SQLite are handled centrally in translate():
- *   - `?` placeholders        → `$1, $2, …`
- *   - datetime('now')/date()  → text timestamps via to_char / substr
- *   - strftime('%Y-%m', x)    → substr(x, 1, 7)  (timestamps stored as ISO text)
- *   - GROUP_CONCAT(...)       → string_agg(...)
- *   - INSERT OR IGNORE        → INSERT ... ON CONFLICT DO NOTHING
- *   - plain INSERT (id table) → auto-appended RETURNING id for lastInsertRowid
- * INSERT OR REPLACE upserts are rewritten by hand at their call sites.
+ * The SQL in the routes is native PostgreSQL. The only rewriting left is in translate():
+ *   - `?` placeholders        -> `$1, $2, ...`
+ *   - plain INSERT (id table) -> auto-appended RETURNING id for lastInsertRowid (in run())
+ * Timestamps are TEXT ('YYYY-MM-DD HH:MM:SS' in UTC), so "now" and "today" come from the
+ * helper functions app_now() and app_today(), which init() creates. Month and day prefixes
+ * of those strings use substr(col, 1, 7) and substr(col, 1, 10).
+ * A test (test/nativeSql.test.js) fails if SQLite-only syntax is written back in.
  */
 const pg = require('pg');
 const { Pool } = pg;
@@ -44,44 +43,16 @@ pool.on('error', (err) => console.error('[pg pool]', err.message));
 // Tables with no `id` column — never append RETURNING id to inserts into these.
 const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|maintenance_visit_assets|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams)\b/i;
 
-// ── SQL translation (SQLite → Postgres), memoized per unique SQL string ──────
+// ── Placeholders: `?` -> `$1, $2, ...`, memoized per unique SQL string ───────
 const _cache = new Map();
 
 function translate(sql) {
   const cached = _cache.get(sql);
   if (cached) return cached;
-
-  let s = sql;
-  const hadOrIgnore = /\bINSERT\s+OR\s+IGNORE\b/i.test(s);
-
-  // Date/time: timestamps are stored as 'YYYY-MM-DD HH:MM:SS' text.
-  s = s.replace(/datetime\(\s*'now'\s*\)/gi,
-    "to_char((now() AT TIME ZONE 'UTC'),'YYYY-MM-DD HH24:MI:SS')");
-  s = s.replace(/date\(\s*'now'\s*\)/gi,
-    "to_char((now() AT TIME ZONE 'UTC'),'YYYY-MM-DD')");
-  s = s.replace(/strftime\(\s*'%Y-%m-%d'\s*,\s*([^()]+?)\s*\)/gi, 'substr($1,1,10)');
-  s = s.replace(/strftime\(\s*'%Y-%m'\s*,\s*([^()]+?)\s*\)/gi, 'substr($1,1,7)');
-  // date(<col-expr>) — not date('now'), which was already replaced above.
-  s = s.replace(/\bdate\(\s*([^'()][^()]*?)\s*\)/gi, 'substr($1,1,10)');
-
-  // GROUP_CONCAT(expr, sep) → string_agg(expr, sep)
-  s = s.replace(/\bGROUP_CONCAT\(/gi, 'string_agg(');
-
-  // SQLite LIKE is case-insensitive for ASCII; Postgres LIKE is case-sensitive.
-  // Use ILIKE so search keeps matching case-insensitively. (\bLIKE\b doesn't
-  // match inside ILIKE, so this is safe and idempotent.)
-  s = s.replace(/\bLIKE\b/g, 'ILIKE');
-
-  // INSERT OR IGNORE → INSERT ... ON CONFLICT DO NOTHING
-  s = s.replace(/\bINSERT\s+OR\s+IGNORE\s+INTO\b/gi, 'INSERT INTO');
-  if (hadOrIgnore && !/on\s+conflict/i.test(s)) s += ' ON CONFLICT DO NOTHING';
-
-  // Positional placeholders ? → $1, $2, … (must run last)
   let n = 0;
-  s = s.replace(/\?/g, () => `$${++n}`);
-
-  _cache.set(sql, s);
-  return s;
+  const converted = sql.replace(/\?/g, () => `$${++n}`);
+  _cache.set(sql, converted);
+  return converted;
 }
 
 // Build the prepare()-style interface bound to a runner (pool or tx client).
@@ -231,6 +202,16 @@ async function init() {
   await pool.query(`
     CREATE OR REPLACE FUNCTION round(double precision, integer)
     RETURNS numeric AS $$ SELECT round($1::numeric, $2) $$ LANGUAGE sql IMMUTABLE;
+  `);
+
+  // "Now" and "today" as the text the app stores (UTC). Used in route SQL.
+  await pool.query(`
+    CREATE OR REPLACE FUNCTION app_now() RETURNS text AS $$
+      SELECT to_char((now() AT TIME ZONE 'UTC'),'YYYY-MM-DD HH24:MI:SS') $$ LANGUAGE sql STABLE;
+  `);
+  await pool.query(`
+    CREATE OR REPLACE FUNCTION app_today() RETURNS text AS $$
+      SELECT to_char((now() AT TIME ZONE 'UTC'),'YYYY-MM-DD') $$ LANGUAGE sql STABLE;
   `);
 
   await pool.query(`

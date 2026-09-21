@@ -32,9 +32,11 @@ const { Pool: RealPool } = memDb.adapters.createPg();
 // business logic under test here, so both are rewritten before reaching
 // pg-mem's parser rather than worked around per call site.
 function pgMemCompatible(sql) {
-  if (/CREATE OR REPLACE FUNCTION round/i.test(sql)) return null; // no-op
+  if (/CREATE OR REPLACE FUNCTION (round|app_now|app_today)/i.test(sql)) return null; // no-op
   const now = new Date().toISOString();
   let out = sql
+    .replace(/\bapp_now\(\)/g, `'${now.slice(0, 19).replace('T', ' ')}'`)
+    .replace(/\bapp_today\(\)/g, `'${now.slice(0, 10)}'`)
     .replace(/to_char\(\(now\(\)\s*AT TIME ZONE 'UTC'\),\s*'YYYY-MM-DD HH24:MI:SS'\)/gi, `'${now.slice(0, 19).replace('T', ' ')}'`)
     .replace(/to_char\(\(now\(\)\s*AT TIME ZONE 'UTC'\),\s*'YYYY-MM-DD'\)/gi, `'${now.slice(0, 10)}'`);
   // pg-mem has a confirmed bug rejecting NULL against CHECK(col IN (...)) constraints

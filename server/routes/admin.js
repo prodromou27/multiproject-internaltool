@@ -56,7 +56,7 @@ router.post('/users', async (req, res) => {
   try {
     const hash = await bcrypt.hash(password, 12);
     const result = (await db.prepare(
-      "INSERT INTO users (name, email, password, role, must_change_password, password_changed_at) VALUES (?, ?, ?, ?, 1, datetime('now'))"
+      "INSERT INTO users (name, email, password, role, must_change_password, password_changed_at) VALUES (?, ?, ?, ?, 1, app_now())"
     ).run(name.trim(), emailVal, hash, role));
     await logAudit(db, req, 'user', result.lastInsertRowid, name.trim(), 'user_created', `role=${role}; email=${emailVal || ''}`);
     res.json({ id: result.lastInsertRowid, name, email: emailVal, role });
@@ -105,7 +105,7 @@ router.post('/users/:id/reset-password', async (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   const hash = await bcrypt.hash(password, 12);
   // Force the user to choose a new password on their next login
-  (await db.prepare("UPDATE users SET password = ?, must_change_password = 1, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ?").run(hash, req.params.id));
+  (await db.prepare("UPDATE users SET password = ?, must_change_password = 1, password_changed_at = app_now(), token_version = token_version + 1 WHERE id = ?").run(hash, req.params.id));
   await logAudit(db, req, 'user', req.params.id, user.name, 'user_password_reset', 'Admin reset user password');
   res.json({ ok: true });
 });
@@ -176,7 +176,7 @@ router.get('/stats', async (req, res) => {
     (SELECT COUNT(*) FROM projects WHERE status NOT IN ('closed','cancelled'))                AS proj_active,
     (SELECT COUNT(*) FROM projects WHERE status = 'closed')                                   AS proj_closed,
     (SELECT COUNT(*) FROM projects WHERE status = 'pending_approval')                         AS proj_pending,
-    (SELECT COUNT(*) FROM projects WHERE deadline < date('now') AND status NOT IN ('closed','cancelled')) AS proj_overdue,
+    (SELECT COUNT(*) FROM projects WHERE deadline < app_today() AND status NOT IN ('closed','cancelled')) AS proj_overdue,
     (SELECT COUNT(*) FROM tasks WHERE status != 'cancelled')                                  AS tasks_total,
     (SELECT COUNT(*) FROM tasks WHERE status IN ('open','in_progress','waiting_customer','waiting_vendor')) AS tasks_open,
     (SELECT COUNT(*) FROM tasks WHERE status IN ('completed','closed'))                       AS tasks_done,

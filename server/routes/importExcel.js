@@ -169,7 +169,7 @@ router.post('/:id/import-excel/confirm', requireAuth, async (req, res) => {
   const created = await db.transaction(async (tx) => {
     const insert = tx.prepare(`
       INSERT INTO tasks (project_id, title, description, status, priority, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, 'open', 'medium', ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, 'open', 'medium', ?, app_now(), app_now())
     `);
     let n = 0;
     for (const t of tasks) {

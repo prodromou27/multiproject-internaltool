@@ -102,7 +102,7 @@ router.post('/:id/apply', requireManager, async (req, res) => {
     const pid = pResult.lastInsertRowid;
 
     // Assign members — only engineers (prevents non-engineers being added as members)
-    const insM = tx.prepare('INSERT OR IGNORE INTO project_assignments (project_id, user_id) VALUES (?, ?)');
+    const insM = tx.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING');
     if (Array.isArray(member_ids) && member_ids.length) {
       const ph2 = member_ids.map(() => '?').join(',');
       const validEngineers = await tx.prepare(`SELECT id FROM users WHERE id IN (${ph2}) AND role = 'engineer' AND active = 1`).all(...member_ids);

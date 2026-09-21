@@ -67,7 +67,7 @@ router.put('/saved/:reportId',async (req,res) => {
   if (!Number.isSafeInteger(req.body.version) || req.body.version<1) return res.status(400).json({ error: 'Expected version is required' });
   const changed = await db.transaction(async tx => {
     const shares=await validateShares(tx,req.body.visibility,req.body.shared_user_ids,req.body.shared_team_ids);
-    const result=await tx.prepare(`UPDATE saved_custom_reports SET name=?,visibility=?,definition=?,version=version+1,updated_at=datetime('now') WHERE id=? AND owner_id=? AND version=?`).run(req.body.name.trim(),req.body.visibility,JSON.stringify(req.body.definition),row.id,req.user.id,req.body.version);
+    const result=await tx.prepare(`UPDATE saved_custom_reports SET name=?,visibility=?,definition=?,version=version+1,updated_at=app_now() WHERE id=? AND owner_id=? AND version=?`).run(req.body.name.trim(),req.body.visibility,JSON.stringify(req.body.definition),row.id,req.user.id,req.body.version);
     if (result.changes) await replaceShares(tx,row.id,shares);
     return result;
   });

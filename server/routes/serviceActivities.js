@@ -302,7 +302,7 @@ function activityFilters(query, user) {
     params.push(technology_id);
   }
   if (search?.trim()) {
-    where += ' AND (sa.title LIKE ? OR sa.description LIKE ? OR sa.activity_reference LIKE ? OR sa.ticket_reference LIKE ?)';
+    where += ' AND (sa.title ILIKE ? OR sa.description ILIKE ? OR sa.activity_reference ILIKE ? OR sa.ticket_reference ILIKE ?)';
     const q = `%${search.trim()}%`;
     params.push(q, q, q, q);
   }
@@ -510,7 +510,7 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
         related_project_id=?, related_task_id=?, related_visit_id=?,
         change_type=?, change_reason=?, previous_state=?, new_state=?, change_risk=?, rollback_available=?,
         customer_approval_reference=?, verified_by=?, verification_notes=?,
-        updated_by=?, updated_at=datetime('now'), completed_at=?, version=version+1
+        updated_by=?, updated_at=app_now(), completed_at=?, version=version+1
       WHERE id=? AND version=?`)
       .run(
         customerId, teamId, body.activity_date || null, body.start_time !== undefined ? (body.start_time || null) : existing.start_time,
@@ -586,7 +586,7 @@ router.post('/:id/complete', requireAuth, requireServiceActivityAccess, requireO
   const attachmentError = await assertAttachmentRuleSatisfied(id, activity.category_id);
   if (attachmentError) return res.status(400).json({ error: attachmentError });
 
-  const updated = await db.prepare(`UPDATE service_activities SET status=?, completed_at=datetime('now'), updated_by=?, updated_at=datetime('now'), version=version+1 WHERE id=? AND version=?`)
+  const updated = await db.prepare(`UPDATE service_activities SET status=?, completed_at=app_now(), updated_by=?, updated_at=app_now(), version=version+1 WHERE id=? AND version=?`)
     .run(completedValue, req.user.id, id, activity.version);
   if (!updated.changes) return res.status(409).json({ error: 'Activity changed; reload before completing', code: 'ACTIVITY_CONFLICT' });
   await logAudit(db, req, 'service_activity', id, activity.title, 'activity_completed', null);
@@ -659,7 +659,7 @@ router.post('/:id/follow-up-task', requireAuth, requireServiceActivityAccess, re
       'medium', activity.follow_up_date || null, activity.engineer_id, req.user.id
     );
     const taskId = inserted.lastInsertRowid;
-    await tx.prepare('UPDATE service_activities SET follow_up_task_id = ?, version=version+1, updated_by = ?, updated_at=datetime(\'now\') WHERE id = ?')
+    await tx.prepare('UPDATE service_activities SET follow_up_task_id = ?, version=version+1, updated_by = ?, updated_at=app_now() WHERE id = ?')
       .run(taskId, req.user.id, id);
     return { id: taskId, created: true };
   });

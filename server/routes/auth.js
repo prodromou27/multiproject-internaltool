@@ -199,7 +199,7 @@ router.post('/login', async (req, res) => {
     await recordFailedLogin(req, normEmail, 'inactive_account', user);
     return res.status(403).json({ error: 'Account is deactivated. Contact your administrator.' });
   }
-  (await db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").run(user.id));
+  (await db.prepare("UPDATE users SET last_login = app_now() WHERE id = ?").run(user.id));
 
   // Check password expiry — sets must_change_password=1 on the user record if expired
   const passwordExpired = await checkPasswordExpiry(user);
@@ -367,7 +367,7 @@ router.post('/change-password', requireAuth, async (req, res) => {
   if (typeof current_password !== 'string' || !await bcrypt.compare(current_password, u.password))
     return res.status(400).json({ error: 'Current password is incorrect' });
   const hash = await bcrypt.hash(new_password, 12);
-  const changed = await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ? AND token_version = ?")
+  const changed = await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = app_now(), token_version = token_version + 1 WHERE id = ? AND token_version = ?")
     .run(hash, req.user.id, req.user.token_version);
   if (!changed.changes) return res.status(409).json({ error: 'Session changed. Please sign in again.' });
   const updated = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
@@ -386,7 +386,7 @@ router.post('/change-password-first', requireAuth, async (req, res) => {
   if (!u.must_change_password)
     return res.status(403).json({ error: 'Use /change-password to update your password' });
   const hash = await bcrypt.hash(new_password, 12);
-  const changed = await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ? AND must_change_password = 1 AND token_version = ?")
+  const changed = await db.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = app_now(), token_version = token_version + 1 WHERE id = ? AND must_change_password = 1 AND token_version = ?")
     .run(hash, req.user.id, req.user.token_version);
   if (!changed.changes) return res.status(409).json({ error: 'Password setup has already completed. Please sign in again.' });
   const updated = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
@@ -478,7 +478,7 @@ router.post('/reset-password', async (req, res) => {
     const token = await tx.prepare('UPDATE password_reset_tokens SET used = 1 WHERE id = ? AND used = 0 AND expires_at > ? RETURNING user_id')
       .get(row.id, new Date().toISOString());
     if (!token) return false;
-    await tx.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = datetime('now'), token_version = token_version + 1 WHERE id = ?")
+    await tx.prepare("UPDATE users SET password = ?, must_change_password = 0, password_changed_at = app_now(), token_version = token_version + 1 WHERE id = ?")
       .run(hash, token.user_id);
     return true;
   });
@@ -521,7 +521,7 @@ router.get('/ical-token', requireAuth, async (req, res) => {
 router.post('/ical-token', requireAuth, async (req, res) => {
   const rawToken  = crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-  (await db.prepare("UPDATE users SET ical_token_hash = ?, ical_token_created_at = datetime('now') WHERE id = ?")
+  (await db.prepare("UPDATE users SET ical_token_hash = ?, ical_token_created_at = app_now() WHERE id = ?")
     .run(tokenHash, req.user.id));
   res.json({ token: rawToken });
 });

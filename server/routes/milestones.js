@@ -62,7 +62,7 @@ router.post('/', requireAuth, async (req, res) => {
 
   const r = (await db.prepare(`
     INSERT INTO project_milestones (project_id, title, description, due_date, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, ?, ?, app_now(), app_now())
   `).run(Number(project_id), title.trim(), description || null, due_date || null, req.user.id));
 
   logAudit(db, req, 'milestone', r.lastInsertRowid, title.trim(), 'created', null);
@@ -82,7 +82,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     SET title       = COALESCE(?, title),
         description = ?,
         due_date    = ?,
-        updated_at  = datetime('now')
+        updated_at  = app_now()
     WHERE id = ?
   `).run(
     title?.trim() || null,
@@ -105,7 +105,7 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
 
   (await db.prepare(`
     UPDATE project_milestones
-    SET completed_at = datetime('now'), completed_by = ?, updated_at = datetime('now')
+    SET completed_at = app_now(), completed_by = ?, updated_at = app_now()
     WHERE id = ?
   `).run(req.user.id, m.id));
 
@@ -122,7 +122,7 @@ router.post('/:id/reopen', requireAuth, async (req, res) => {
 
   (await db.prepare(`
     UPDATE project_milestones
-    SET completed_at = NULL, completed_by = NULL, updated_at = datetime('now')
+    SET completed_at = NULL, completed_by = NULL, updated_at = app_now()
     WHERE id = ?
   `).run(m.id));
 

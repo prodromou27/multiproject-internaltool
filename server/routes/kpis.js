@@ -43,7 +43,7 @@ router.put('/:project_id/:id', requireManager, async (req, res) => {
   if (current.error) return res.status(400).json({ error: current.error });
   const result = (await db.prepare(`UPDATE kpis SET name=COALESCE(?,name), target_value=COALESCE(?,target_value),
     current_value=COALESCE(?,current_value), unit=COALESCE(?,unit),
-    updated_by=?, updated_at=datetime('now') WHERE id=? AND project_id=?`)
+    updated_by=?, updated_at=app_now() WHERE id=? AND project_id=?`)
     .run(name?.trim() || null, target.value, current.value, unit?.trim() || null, req.user.id, req.params.id, req.params.project_id));
   if (!result.changes) return res.status(404).json({ error: 'KPI not found' });
   res.json({ ok: true });

@@ -225,7 +225,7 @@ router.put('/:id', requireManager, async (req, res) => {
       timeline_rating=?, delivery_quality=?, communication_ownership=?,
       documentation_quality=?, customer_feedback=?, difficulty=?,
       base_score=?, adjusted_score=?, notes=?, evaluated_by=?,
-      updated_at=datetime('now')
+      updated_at=app_now()
     WHERE id=?
   `).run(dims.timeline_rating, dims.delivery_quality, dims.communication_ownership,
          dims.documentation_quality, dims.customer_feedback, diff,

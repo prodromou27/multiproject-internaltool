@@ -85,7 +85,7 @@ function compileReport(definition,limit,now = new Date()) {
       const entry = filter.relative===undefined ? scalar(filter.value,value.type) : relativeDate(filter.relative,now);
       if (filter.operator==='contains') {
         params.push(`%${entry.toLowerCase().replace(/[\\%_]/g,'\\$&')}%`);
-        clauses.push(`LOWER(${value.sql}) LIKE ?`);
+        clauses.push(`LOWER(${value.sql}) ILIKE ?`);
       } else {
         params.push(entry);
         const operator = { eq: '=',neq: '<>',lt: '<',lte: '<=',gt: '>',gte: '>=' }[filter.operator];

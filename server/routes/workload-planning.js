@@ -36,7 +36,7 @@ router.put('/estimate', async (req,res) => {
   if (!await db.prepare(`SELECT id FROM ${table} WHERE id=?`).get(body.id)) return res.status(404).json({ error: 'Work item not found' });
   const sql = body.version===0
     ? `INSERT INTO workload_estimates (${column},remaining_hours,updated_by) VALUES (?,?,?) ON CONFLICT (${column}) DO NOTHING RETURNING *`
-    : `UPDATE workload_estimates SET remaining_hours=?,updated_by=?,version=version+1,updated_at=datetime('now') WHERE ${column}=? AND version=? RETURNING *`;
+    : `UPDATE workload_estimates SET remaining_hours=?,updated_by=?,version=version+1,updated_at=app_now() WHERE ${column}=? AND version=? RETURNING *`;
   const params = body.version===0 ? [body.id,body.remaining_hours,req.user.id] : [body.remaining_hours,req.user.id,body.id,body.version];
   const row = (await db.prepare(sql).all(...params))[0];
   if (!row) return res.status(409).json({ error: 'Estimate changed. Refresh before saving.', code: 'WORKLOAD_CONFLICT' });
@@ -50,7 +50,7 @@ router.put('/availability', async (req,res) => {
   if (!await db.prepare("SELECT id FROM users WHERE id=? AND role='engineer' AND active=1").get(body.user_id)) return res.status(400).json({ error: 'Availability requires an active engineer' });
   const sql = body.version===0
     ? 'INSERT INTO workload_availability (user_id,week_start,available_hours,updated_by) VALUES (?,?,?,?) ON CONFLICT (user_id,week_start) DO NOTHING RETURNING *'
-    : `UPDATE workload_availability SET available_hours=?,updated_by=?,version=version+1,updated_at=datetime('now') WHERE user_id=? AND week_start=? AND version=? RETURNING *`;
+    : `UPDATE workload_availability SET available_hours=?,updated_by=?,version=version+1,updated_at=app_now() WHERE user_id=? AND week_start=? AND version=? RETURNING *`;
   const params = body.version===0 ? [body.user_id,body.week_start,body.available_hours,req.user.id] : [body.available_hours,req.user.id,body.user_id,body.week_start,body.version];
   const row = (await db.prepare(sql).all(...params))[0];
   if (!row) return res.status(409).json({ error: 'Availability changed. Refresh before saving.', code: 'WORKLOAD_CONFLICT' });

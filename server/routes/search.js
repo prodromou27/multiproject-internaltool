@@ -76,7 +76,7 @@ router.get('/', requireAuth, async (req, res) => {
       SELECT p.id, p.title, p.status, p.priority, p.deadline, cu.name as customer_name
       FROM projects p
       LEFT JOIN customers cu ON p.customer_id = cu.id
-      WHERE p.title LIKE ? OR p.description LIKE ?
+      WHERE p.title ILIKE ? OR p.description ILIKE ?
       ORDER BY p.updated_at DESC LIMIT 8
     `).all(like, like));
   } else {
@@ -85,7 +85,7 @@ router.get('/', requireAuth, async (req, res) => {
       FROM projects p
       JOIN project_assignments pa ON pa.project_id = p.id AND pa.user_id = ?
       LEFT JOIN customers cu ON p.customer_id = cu.id
-      WHERE p.title LIKE ? OR p.description LIKE ?
+      WHERE p.title ILIKE ? OR p.description ILIKE ?
       ORDER BY p.updated_at DESC LIMIT 8
     `).all(req.user.id, like, like));
   }
@@ -98,7 +98,7 @@ router.get('/', requireAuth, async (req, res) => {
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN users u ON t.assigned_to = u.id
-      WHERE t.title LIKE ? OR t.description LIKE ?
+      WHERE t.title ILIKE ? OR t.description ILIKE ?
       ORDER BY t.updated_at DESC LIMIT 8
     `).all(like, like));
   } else if (req.user.role === 'planner' || req.user.role === 'pm') {
@@ -110,7 +110,7 @@ router.get('/', requireAuth, async (req, res) => {
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN users u ON t.assigned_to = u.id
-      WHERE t.assigned_to = ? AND (t.title LIKE ? OR t.description LIKE ?)
+      WHERE t.assigned_to = ? AND (t.title ILIKE ? OR t.description ILIKE ?)
       ORDER BY t.updated_at DESC LIMIT 8
     `).all(req.user.id, like, like));
   }
@@ -161,10 +161,10 @@ router.get('/smart', requireAuth, async (req, res) => {
     if (like) {
       const customerIds = await matchingCustomerIds(q);
       if (customerIds.length) {
-        c.push(`(p.title LIKE ? OR p.description LIKE ? OR p.customer_id IN (${customerIds.map(() => '?').join(',')}))`);
+        c.push(`(p.title ILIKE ? OR p.description ILIKE ? OR p.customer_id IN (${customerIds.map(() => '?').join(',')}))`);
         p.push(like, like, ...customerIds);
       } else {
-        c.push('(p.title LIKE ? OR p.description LIKE ?)');
+        c.push('(p.title ILIKE ? OR p.description ILIKE ?)');
         p.push(like, like);
       }
     }
@@ -175,8 +175,8 @@ router.get('/smart', requireAuth, async (req, res) => {
       c.push("p.deadline IS NOT NULL AND p.deadline < ? AND p.status NOT IN ('closed','cancelled')");
       p.push(today);
     }
-    if (date_from) { c.push('date(p.created_at) >= ?'); p.push(date_from); }
-    if (date_to)   { c.push('date(p.created_at) <= ?'); p.push(date_to); }
+    if (date_from) { c.push('substr(p.created_at,1,10) >= ?'); p.push(date_from); }
+    if (date_to)   { c.push('substr(p.created_at,1,10) <= ?'); p.push(date_to); }
 
     const where = c.length ? 'WHERE ' + c.join(' AND ') : '';
     results.projects = (await db.prepare(`
@@ -212,7 +212,7 @@ router.get('/smart', requireAuth, async (req, res) => {
     }
 
     if (like) {
-      c.push('(t.title LIKE ? OR t.description LIKE ? OR p.title LIKE ?)');
+      c.push('(t.title ILIKE ? OR t.description ILIKE ? OR p.title ILIKE ?)');
       p.push(like, like, like);
     }
     if (status) {
@@ -229,8 +229,8 @@ router.get('/smart', requireAuth, async (req, res) => {
       c.push("t.deadline IS NOT NULL AND t.deadline < ? AND t.status NOT IN ('completed','closed','cancelled')");
       p.push(today);
     }
-    if (date_from) { c.push('date(t.created_at) >= ?'); p.push(date_from); }
-    if (date_to)   { c.push('date(t.created_at) <= ?'); p.push(date_to); }
+    if (date_from) { c.push('substr(t.created_at,1,10) >= ?'); p.push(date_from); }
+    if (date_to)   { c.push('substr(t.created_at,1,10) <= ?'); p.push(date_to); }
 
     const where = c.length ? 'WHERE ' + c.join(' AND ') : '';
     results.tasks = (await db.prepare(`
@@ -261,10 +261,10 @@ router.get('/smart', requireAuth, async (req, res) => {
     if (like) {
       const customerIds = await matchingCustomerIds(q);
       if (customerIds.length) {
-        c.push(`(mv.title LIKE ? OR mv.description LIKE ? OR mv.customer_id IN (${customerIds.map(() => '?').join(',')}))`);
+        c.push(`(mv.title ILIKE ? OR mv.description ILIKE ? OR mv.customer_id IN (${customerIds.map(() => '?').join(',')}))`);
         p.push(like, like, ...customerIds);
       } else {
-        c.push('(mv.title LIKE ? OR mv.description LIKE ?)');
+        c.push('(mv.title ILIKE ? OR mv.description ILIKE ?)');
         p.push(like, like);
       }
     }
@@ -289,7 +289,7 @@ router.get('/smart', requireAuth, async (req, res) => {
       SELECT mv.id, mv.title, mv.status, mv.scheduled_date,
              mv.report_sent, mv.report_sent_to_customer,
              cu.name AS customer_name,
-             (SELECT GROUP_CONCAT(u2.name, ', ')
+             (SELECT string_agg(u2.name, ', ')
               FROM maintenance_visit_engineers mve2 JOIN users u2 ON mve2.user_id = u2.id
               WHERE mve2.visit_id = mv.id) AS engineer_names
       FROM maintenance_visits mv

@@ -15,8 +15,8 @@ router.put('/note', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Note cannot exceed 50,000 characters' });
   (await db.prepare(`
     INSERT INTO personal_notes (user_id, content, updated_at)
-    VALUES (?, ?, datetime('now'))
-    ON CONFLICT(user_id) DO UPDATE SET content = excluded.content, updated_at = datetime('now')
+    VALUES (?, ?, app_now())
+    ON CONFLICT(user_id) DO UPDATE SET content = excluded.content, updated_at = app_now()
   `).run(req.user.id, content ?? ''));
   res.json({ ok: true });
 });

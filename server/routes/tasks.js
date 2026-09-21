@@ -192,7 +192,7 @@ router.put('/:id', requireAuth, async (req, res) => {
       title=COALESCE(?,title), description=COALESCE(?,description),
       priority=COALESCE(?,priority), deadline=?,
       status=COALESCE(?,status), pending_from_customer=?,
-      updated_at=datetime('now') WHERE id=?`)
+      updated_at=app_now() WHERE id=?`)
       .run(
         title?.trim() || null,
         description !== undefined ? description : null,
@@ -240,7 +240,7 @@ router.put('/:id', requireAuth, async (req, res) => {
   (await db.prepare(`UPDATE tasks SET title=COALESCE(?,title), description=COALESCE(?,description),
     priority=COALESCE(?,priority), deadline=?, assigned_to=?,
     status=COALESCE(?,status), is_adhoc=COALESCE(?,is_adhoc),
-    pending_from_customer=?, updated_at=datetime('now') WHERE id=?`)
+    pending_from_customer=?, updated_at=app_now() WHERE id=?`)
     .run(title?.trim(), description, priority, deadline === undefined ? task.deadline : (deadline || null), nextAssignee, status,
          is_adhoc != null ? (is_adhoc ? 1 : 0) : null, newPfc, task.id));
 
@@ -301,7 +301,7 @@ router.post('/bulk', requireAuth, async (req, res) => {
     const owned = req.user.role === 'engineer' ? ' AND assigned_to=?' : '';
     const result = await db.prepare(`UPDATE tasks SET status=?,
       pending_from_customer=CASE WHEN ? IN ('waiting_customer','waiting_vendor') THEN COALESCE(?,pending_from_customer) ELSE NULL END,
-      updated_at=datetime('now') WHERE id IN (${uniqueIds.map(() => '?').join(',')})${owned}`)
+      updated_at=app_now() WHERE id IN (${uniqueIds.map(() => '?').join(',')})${owned}`)
       .run(status, status, pending_from_customer === undefined ? null : pending_from_customer.trim(), ...uniqueIds, ...(owned ? [req.user.id] : []));
     return res.json({ ok: true, affected: result.changes });
   }
@@ -505,7 +505,7 @@ router.post('/:id/dependencies', requireManager, requireVisibleTask, async (req,
   // Full transitive cycle check: would depends_on_id eventually reach this task?
   if (await canReach(depends_on_id, req.params.id))
     return res.status(400).json({ error: 'Circular dependency detected' });
-  await db.prepare('INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?)').run(req.params.id, depends_on_id);
+  await db.prepare('INSERT INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?) ON CONFLICT DO NOTHING').run(req.params.id, depends_on_id);
   res.json({ ok: true });
 });
 

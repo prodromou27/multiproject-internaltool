@@ -32,7 +32,7 @@ router.get('/', requireManager, async (req, res) => {
   const doneCounts = (await db.prepare(`
     SELECT assigned_to, COUNT(*) AS c FROM tasks
     WHERE assigned_to IN (${ph}) AND status IN ('completed','closed')
-      AND strftime('%Y-%m', updated_at) = ?
+      AND substr(updated_at,1,7) = ?
     GROUP BY assigned_to
   `).all(...engineerIds, month));
 
@@ -50,7 +50,7 @@ router.get('/', requireManager, async (req, res) => {
   // Batch 4: hours logged this month per engineer
   const allHours = (await db.prepare(`
     SELECT user_id, COALESCE(SUM(hours), 0) AS total FROM time_logs
-    WHERE user_id IN (${ph}) AND strftime('%Y-%m', logged_at) = ?
+    WHERE user_id IN (${ph}) AND substr(logged_at,1,7) = ?
     GROUP BY user_id
   `).all(...engineerIds, month));
 

@@ -46,7 +46,7 @@ function taskFilters(query, user) {
   const search = query.search?.trim().toLowerCase();
   if (search) {
     const pattern = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
-    add("(LOWER(COALESCE(t.title,'')) LIKE ? OR LOWER(COALESCE(u.name,'')) LIKE ? OR LOWER(COALESCE(p.title,'')) LIKE ?)", pattern, pattern, pattern);
+    add("(LOWER(COALESCE(t.title,'')) ILIKE ? OR LOWER(COALESCE(u.name,'')) ILIKE ? OR LOWER(COALESCE(p.title,'')) ILIKE ?)", pattern, pattern, pattern);
   }
   return { where: clauses.join(' AND '), params, as_of: asOf, order: `${SORTS[sort]} ${direction.toUpperCase()} NULLS LAST, t.id ASC` };
 }

@@ -95,7 +95,7 @@ router.put('/:recommendationId', async (req, res) => {
   const result = await db.transaction(async tx => {
     const error = await references(value,customer,tx,existing,req.user);
     if (error) return { error };
-    const row = (await tx.prepare(`UPDATE customer_recommendations SET finding=?,recommendation=?,risk_level=?,owner_id=?,source_visit_id=?,due_date=?,status=?,follow_up_notes=?,version=version+1,updated_at=datetime('now') WHERE id=? AND customer_id=? AND version=? RETURNING *`).all(value.finding,value.recommendation,value.risk_level,value.owner_id,value.source_visit_id,value.due_date,value.status,value.follow_up_notes,id,customer,Number(req.body.version)))[0];
+    const row = (await tx.prepare(`UPDATE customer_recommendations SET finding=?,recommendation=?,risk_level=?,owner_id=?,source_visit_id=?,due_date=?,status=?,follow_up_notes=?,version=version+1,updated_at=app_now() WHERE id=? AND customer_id=? AND version=? RETURNING *`).all(value.finding,value.recommendation,value.risk_level,value.owner_id,value.source_visit_id,value.due_date,value.status,value.follow_up_notes,id,customer,Number(req.body.version)))[0];
     if (row) await history(tx,req,row,'updated');
     return { row };
   });
@@ -114,7 +114,7 @@ router.post('/:recommendationId/convert-to-project', async (req, res) => {
     if (!row) return null;
     const project = await tx.prepare('INSERT INTO projects (title,description,customer_id,deadline,created_by) VALUES (?,?,?,?,?)').run(req.body.title.trim(),`${row.finding}\n\nRecommendation: ${row.recommendation}`,customer,row.due_date,req.user.id);
     if (row.owner_id && await tx.prepare("SELECT id FROM users WHERE id=? AND active=1 AND role='engineer'").get(row.owner_id)) await tx.prepare('INSERT INTO project_assignments (project_id,user_id) VALUES (?,?)').run(project.lastInsertRowid,row.owner_id);
-    const converted = (await tx.prepare("UPDATE customer_recommendations SET related_project_id=?,status='converted_to_project',updated_at=datetime('now') WHERE id=? RETURNING *").all(project.lastInsertRowid,id))[0];
+    const converted = (await tx.prepare("UPDATE customer_recommendations SET related_project_id=?,status='converted_to_project',updated_at=app_now() WHERE id=? RETURNING *").all(project.lastInsertRowid,id))[0];
     await history(tx,req,converted,'converted_to_project');
     await tx.prepare('INSERT INTO project_activity (project_id,user_id,action,detail) VALUES (?,?,?,?)').run(project.lastInsertRowid,req.user.id,'created',`Converted from customer recommendation ${id}`);
     return converted;
@@ -142,7 +142,7 @@ router.post('/:recommendationId/convert-to-task',async (req,res) => {
     const row=(await tx.prepare('UPDATE customer_recommendations SET version=version+1 WHERE id=? AND customer_id=? AND version=? AND related_project_id IS NULL AND related_task_id IS NULL RETURNING *').all(id,customer,Number(body.version)))[0];
     if (!row) return null;
     const task=await tx.prepare("INSERT INTO tasks (project_id,title,description,status,priority,assigned_to,deadline,is_adhoc,created_by) VALUES (?,?,?,'open',?,?,?,0,?)").run(project.id,body.title.trim(),`${row.finding}\n\nRecommendation: ${row.recommendation}`,body.priority ?? 'medium',Number(body.assigned_to),body.deadline || row.due_date || null,req.user.id);
-    const converted=(await tx.prepare("UPDATE customer_recommendations SET related_task_id=?,status='implemented',updated_at=datetime('now') WHERE id=? RETURNING *").all(task.lastInsertRowid,id))[0];
+    const converted=(await tx.prepare("UPDATE customer_recommendations SET related_task_id=?,status='implemented',updated_at=app_now() WHERE id=? RETURNING *").all(task.lastInsertRowid,id))[0];
     await history(tx,req,converted,'converted_to_task');
     await tx.prepare('INSERT INTO project_activity (project_id,user_id,action,detail) VALUES (?,?,?,?)').run(project.id,req.user.id,'task_created',`Task ${task.lastInsertRowid} converted from recommendation ${id}`);
     return { recommendation:converted,task_id:task.lastInsertRowid };

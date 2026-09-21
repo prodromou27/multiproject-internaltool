@@ -8,7 +8,7 @@ router.use('/custom', require('./custom-reports'));
 router.get('/summary', requireManager, async (req, res) => {
   const total = (await db.prepare('SELECT COUNT(*) as c FROM projects').get()).c;
   const byStatus = (await db.prepare('SELECT status, COUNT(*) as count FROM projects GROUP BY status').all());
-  const overdue = (await db.prepare(`SELECT COUNT(*) as c FROM projects WHERE deadline < date('now') AND status NOT IN ('closed','cancelled','pending_approval')`).get()).c;
+  const overdue = (await db.prepare(`SELECT COUNT(*) as c FROM projects WHERE deadline < app_today() AND status NOT IN ('closed','cancelled','pending_approval')`).get()).c;
   const taskStats = (await db.prepare(`SELECT
     COUNT(*) as total,
     SUM(CASE WHEN status IN ('completed','closed') THEN 1 ELSE 0 END) as done,
@@ -57,14 +57,14 @@ router.get('/monthly', requireManager, async (req, res) => {
   const rangeEnd   = months[months.length - 1].end;
 
   // 8 batched queries spanning the full 6-month range instead of 48 individual queries
-  const taskCreated     = (await db.prepare(`SELECT strftime('%Y-%m',created_at) as ym, COUNT(*) as c FROM tasks WHERE date(created_at) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
-  const taskDone        = (await db.prepare(`SELECT strftime('%Y-%m',updated_at) as ym, COUNT(*) as c FROM tasks WHERE status IN ('completed','closed') AND date(updated_at) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
-  const taskDoneWithDl  = (await db.prepare(`SELECT strftime('%Y-%m',updated_at) as ym, COUNT(*) as c FROM tasks WHERE status IN ('completed','closed') AND deadline IS NOT NULL AND date(updated_at) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
-  const taskOnTime      = (await db.prepare(`SELECT strftime('%Y-%m',updated_at) as ym, COUNT(*) as c FROM tasks WHERE status IN ('completed','closed') AND deadline IS NOT NULL AND date(updated_at) <= date(deadline) AND date(updated_at) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
-  const mvTotal         = (await db.prepare(`SELECT strftime('%Y-%m',scheduled_date) as ym, COUNT(*) as c FROM maintenance_visits WHERE date(scheduled_date) BETWEEN ? AND ? AND status != 'cancelled' GROUP BY ym`).all(rangeStart, rangeEnd));
-  const mvCompleted     = (await db.prepare(`SELECT strftime('%Y-%m',scheduled_date) as ym, COUNT(*) as c FROM maintenance_visits WHERE status='completed' AND date(scheduled_date) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
-  const mvReported      = (await db.prepare(`SELECT strftime('%Y-%m',report_sent_at) as ym, COUNT(*) as c FROM maintenance_visits WHERE report_sent=1 AND report_sent_at IS NOT NULL AND date(report_sent_at) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
-  const hoursLogged     = (await db.prepare(`SELECT strftime('%Y-%m',logged_at) as ym, COALESCE(ROUND(SUM(hours),1),0) as h FROM time_logs WHERE date(logged_at) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const taskCreated     = (await db.prepare(`SELECT substr(created_at,1,7) as ym, COUNT(*) as c FROM tasks WHERE substr(created_at,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const taskDone        = (await db.prepare(`SELECT substr(updated_at,1,7) as ym, COUNT(*) as c FROM tasks WHERE status IN ('completed','closed') AND substr(updated_at,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const taskDoneWithDl  = (await db.prepare(`SELECT substr(updated_at,1,7) as ym, COUNT(*) as c FROM tasks WHERE status IN ('completed','closed') AND deadline IS NOT NULL AND substr(updated_at,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const taskOnTime      = (await db.prepare(`SELECT substr(updated_at,1,7) as ym, COUNT(*) as c FROM tasks WHERE status IN ('completed','closed') AND deadline IS NOT NULL AND substr(updated_at,1,10) <= substr(deadline,1,10) AND substr(updated_at,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const mvTotal         = (await db.prepare(`SELECT substr(scheduled_date,1,7) as ym, COUNT(*) as c FROM maintenance_visits WHERE substr(scheduled_date,1,10) BETWEEN ? AND ? AND status != 'cancelled' GROUP BY ym`).all(rangeStart, rangeEnd));
+  const mvCompleted     = (await db.prepare(`SELECT substr(scheduled_date,1,7) as ym, COUNT(*) as c FROM maintenance_visits WHERE status='completed' AND substr(scheduled_date,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const mvReported      = (await db.prepare(`SELECT substr(report_sent_at,1,7) as ym, COUNT(*) as c FROM maintenance_visits WHERE report_sent=1 AND report_sent_at IS NOT NULL AND substr(report_sent_at,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const hoursLogged     = (await db.prepare(`SELECT substr(logged_at,1,7) as ym, COALESCE(ROUND(SUM(hours),1),0) as h FROM time_logs WHERE substr(logged_at,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
 
   // Index each result by YYYY-MM
   const idx = arr => Object.fromEntries(arr.map(r => [r.ym, r]));

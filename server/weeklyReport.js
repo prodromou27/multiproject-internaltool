@@ -39,7 +39,7 @@ async function gatherReportData() {
     FROM projects p
     LEFT JOIN customers cu ON p.customer_id = cu.id
     LEFT JOIN users u ON p.created_by = u.id
-    WHERE date(p.created_at) >= ?
+    WHERE substr(p.created_at,1,10) >= ?
     ORDER BY p.created_at DESC
   `).all(past7Str);
 
@@ -88,7 +88,7 @@ async function gatherReportData() {
     SELECT mv.id, mv.title, mv.status, mv.scheduled_date,
            mv.report_sent, mv.report_sent_to_customer,
            cu.name AS customer_name,
-           (SELECT GROUP_CONCAT(u2.name, ', ')
+           (SELECT string_agg(u2.name, ', ')
             FROM maintenance_visit_engineers mve2
             JOIN users u2 ON mve2.user_id = u2.id
             WHERE mve2.visit_id = mv.id) AS engineer_names
@@ -103,7 +103,7 @@ async function gatherReportData() {
   const reportsPending = await db.prepare(`
     SELECT mv.id, mv.title, mv.scheduled_date,
            cu.name AS customer_name,
-           (SELECT GROUP_CONCAT(u2.name, ', ')
+           (SELECT string_agg(u2.name, ', ')
             FROM maintenance_visit_engineers mve2
             JOIN users u2 ON mve2.user_id = u2.id
             WHERE mve2.visit_id = mv.id) AS engineer_names
@@ -119,7 +119,7 @@ async function gatherReportData() {
     SELECT u.id, u.name,
            COUNT(CASE WHEN t.status IN ('open','in_progress') THEN 1 END)              AS open_tasks,
            COUNT(CASE WHEN t.status IN ('open','in_progress') AND t.priority='high' THEN 1 END) AS high_tasks,
-           COUNT(CASE WHEN t.status IN ('completed','closed') AND date(t.updated_at) >= ? THEN 1 END)    AS done_this_week,
+           COUNT(CASE WHEN t.status IN ('completed','closed') AND substr(t.updated_at,1,10) >= ? THEN 1 END)    AS done_this_week,
            COUNT(CASE WHEN t.deadline < ? AND t.status NOT IN ('completed','closed','cancelled') THEN 1 END) AS overdue_tasks,
            COUNT(DISTINCT pa.project_id) AS project_count
     FROM users u
@@ -145,7 +145,7 @@ async function gatherReportData() {
   const newCustomers = await db.prepare(`
     SELECT id, name, contact_name, contact_email
     FROM customers
-    WHERE date(created_at) >= ?
+    WHERE substr(created_at,1,10) >= ?
     ORDER BY created_at DESC
   `).all(past7Str);
 
@@ -154,7 +154,7 @@ async function gatherReportData() {
   const slaSnapshot = {
     mvReportBreaches:   (await db.prepare(`SELECT COUNT(*) AS n FROM maintenance_visits WHERE report_sent=0 AND status!='cancelled' AND scheduled_date < ?`).get(past7Str)).n,
     closureBreaches:    (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status='pending_approval' AND closure_requested_at < ?`).get(past3Str)).n,
-    highTaskBreaches:   (await db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE priority='high' AND status NOT IN ('completed','closed','cancelled') AND date(created_at) < ?`).get(past1Str)).n,
+    highTaskBreaches:   (await db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE priority='high' AND status NOT IN ('completed','closed','cancelled') AND substr(created_at,1,10) < ?`).get(past1Str)).n,
     staleProjects:      (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status IN ('active','on_hold') AND updated_at < ?`).get(past7DateTime)).n,
   };
 

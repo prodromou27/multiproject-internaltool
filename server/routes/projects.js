@@ -111,7 +111,7 @@ router.get('/', requireAuth, async (req, res) => {
     (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status IN ('completed','closed')) as done_count,
     (SELECT COUNT(*) FROM tasks WHERE project_id = p.id
        AND status NOT IN ('completed','closed','cancelled')
-       AND deadline IS NOT NULL AND deadline < date('now')) as overdue_task_count,
+       AND deadline IS NOT NULL AND deadline < app_today()) as overdue_task_count,
     (EXISTS (SELECT 1 FROM user_project_pins WHERE project_id = p.id AND user_id = ?)) as is_pinned
   `;
   let rows;
@@ -155,7 +155,7 @@ router.post('/:id/pin', requireAuth, async (req, res) => {
     && !await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(project.id, req.user.id))
     return res.status(403).json({ error: 'Forbidden' });
   const id = parseInt(req.params.id, 10);
-  (await db.prepare('INSERT OR IGNORE INTO user_project_pins (user_id, project_id) VALUES (?, ?)').run(req.user.id, id));
+  (await db.prepare('INSERT INTO user_project_pins (user_id, project_id) VALUES (?, ?) ON CONFLICT DO NOTHING').run(req.user.id, id));
   res.json({ ok: true });
 });
 router.delete('/:id/pin', requireAuth, async (req, res) => {
@@ -259,7 +259,7 @@ router.post('/', requireManager, async (req, res) => {
   const pid = await db.transaction(async tx => {
     const result = await tx.prepare('INSERT INTO projects (title, description, priority, deadline, customer_id, created_by) VALUES (?, ?, ?, ?, ?, ?)')
       .run(title.trim(), description || null, priority || 'medium', deadline || null, normalizedCustomer.value || null, req.user.id);
-    const ins = tx.prepare('INSERT OR IGNORE INTO project_assignments (project_id, user_id) VALUES (?, ?)');
+    const ins = tx.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING');
     for (const uid of normalizedMemberIds) await ins.run(result.lastInsertRowid, uid);
     return result.lastInsertRowid;
   });
@@ -333,7 +333,7 @@ router.put('/:id', requireManager, async (req, res) => {
     priority=COALESCE(?,priority), deadline=?, customer_id=?,
     status=COALESCE(?,status), pending_from_customer=?,
     completion_pct=COALESCE(?,completion_pct), rag_override=?,
-    updated_at=datetime('now') WHERE id=? AND status=? AND closure_request_version=?`)
+    updated_at=app_now() WHERE id=? AND status=? AND closure_request_version=?`)
     .run(title?.trim() || null, description, priority, deadline === undefined ? p.deadline : (deadline || null), normalizedCustomer.value !== undefined ? normalizedCustomer.value : p.customer_id, status, newPfc,
          completion_pct !== undefined ? completion_pct : null, newRagOverride, p.id, p.status, p.closure_request_version);
   if (!changed.changes) return res.status(409).json({ error: 'Project changed. Reload before saving.', code: 'PROJECT_CONFLICT' });
@@ -370,9 +370,9 @@ router.post('/:id/request-closure', requireAuth, async (req, res) => {
   if (req.user.role !== 'manager' && !await db.prepare('SELECT 1 FROM project_assignments WHERE project_id=? AND user_id=?').get(id, req.user.id)) return res.status(403).json({ error: 'You are not assigned to this project' });
   if (['closed', 'cancelled', 'pending_approval'].includes(project.status)) return res.status(400).json({ error: 'Cannot request closure in current status' });
   const changed = await db.transaction(async tx => {
-    const result = await tx.prepare(`UPDATE projects SET status='pending_approval', closure_requested_at=datetime('now'),
+    const result = await tx.prepare(`UPDATE projects SET status='pending_approval', closure_requested_at=app_now(),
         closure_requested_by=?, closure_request_version=closure_request_version+1,
-        closure_reviewed_by=NULL, closure_reviewed_at=NULL, closure_review_comment=NULL, closure_decision=NULL, updated_at=datetime('now')
+        closure_reviewed_by=NULL, closure_reviewed_at=NULL, closure_review_comment=NULL, closure_decision=NULL, updated_at=app_now()
       WHERE id=? AND status NOT IN ('closed','cancelled','pending_approval') AND closure_request_version=?`).run(req.user.id, id, project.closure_request_version);
     if (!result.changes) return false;
     const message = `Closure requested by ${req.user.name}`;
@@ -400,8 +400,8 @@ async function reviewClosure(req, res, decision) {
   const approved = decision === 'approved';
   const message = approved ? `Project closed and approved by ${req.user.name}${comment ? ': ' + comment : ''}` : `Closure rejected by ${req.user.name}: ${comment}`;
   const changed = await db.transaction(async tx => {
-    const result = await tx.prepare(`UPDATE projects SET status=?, closed_by=?, closed_at=CASE WHEN ?=1 THEN datetime('now') ELSE NULL END,
-      closure_reviewed_by=?, closure_reviewed_at=datetime('now'), closure_review_comment=?, closure_decision=?, updated_at=datetime('now')
+    const result = await tx.prepare(`UPDATE projects SET status=?, closed_by=?, closed_at=CASE WHEN ?=1 THEN app_now() ELSE NULL END,
+      closure_reviewed_by=?, closure_reviewed_at=app_now(), closure_review_comment=?, closure_decision=?, updated_at=app_now()
       WHERE id=? AND status='pending_approval' AND closure_request_version=?`)
       .run(approved ? 'closed' : 'reopened', approved ? req.user.id : null,
         approved ? 1 : 0,
@@ -451,7 +451,7 @@ router.post('/:id/members', requireManager, async (req, res) => {
   if (Object.keys(engineerMap).length !== normalized.ids.length)
     return res.status(400).json({ error: 'user_ids may only include active engineers' });
 
-  const ins = db.prepare('INSERT OR IGNORE INTO project_assignments (project_id, user_id) VALUES (?, ?)');
+  const ins = db.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING');
   for (const uid of normalized.ids) {
     const result = await ins.run(pid, uid);
     if (result.changes > 0) {

@@ -140,7 +140,7 @@ router.get('/summary', requireAuth, async (req, res) => {
   let q = 'SELECT COALESCE(SUM(hours),0) as total, COUNT(*) as entries FROM time_logs WHERE 1=1';
   const params = [];
   if (uid) { q += ' AND user_id = ?'; params.push(uid); }
-  if (month) { q += " AND strftime('%Y-%m', logged_at) = ?"; params.push(month); }
+  if (month) { q += " AND substr(logged_at,1,7) = ?"; params.push(month); }
   res.json((await db.prepare(q).get(...params)));
 });
 

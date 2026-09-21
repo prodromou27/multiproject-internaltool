@@ -18,7 +18,7 @@ router.put('/policy',async (req,res) => {
   const version=req.body.version;
   const row=version===0
     ? await db.prepare('INSERT INTO workload_policy (id,configuration,updated_by) VALUES (1,?,?) ON CONFLICT (id) DO NOTHING RETURNING version').get(JSON.stringify(policy),req.user.id)
-    : await db.prepare("UPDATE workload_policy SET configuration=?,updated_by=?,updated_at=datetime('now'),version=version+1 WHERE id=1 AND version=? RETURNING version").get(JSON.stringify(policy),req.user.id,version);
+    : await db.prepare("UPDATE workload_policy SET configuration=?,updated_by=?,updated_at=app_now(),version=version+1 WHERE id=1 AND version=? RETURNING version").get(JSON.stringify(policy),req.user.id,version);
   if (!row) return res.status(409).json({ error: 'Workload settings changed. Reload before saving.',code: 'WORKLOAD_POLICY_CONFLICT' });
   await logAudit(db,req,'workload_policy',1,'Workload weights','updated',`version=${row.version}`);
   res.json({ ...policy,version: row.version });

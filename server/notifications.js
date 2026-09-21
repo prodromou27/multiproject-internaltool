@@ -211,7 +211,7 @@ function notify(event, data) {
         const today = new Date().toISOString().slice(0, 10);
         try {
           const exists = await db.prepare(
-            `SELECT 1 FROM notifications WHERE user_id = ? AND link = ? AND date(created_at) = ?`
+            `SELECT 1 FROM notifications WHERE user_id = ? AND link = ? AND substr(created_at,1,10) = ?`
           ).get(data.engineer_id, dedupLink, today);
           if (!exists) {
             const body = `${data.visit_title} · ${data.customer_name} · ${data.scheduled_date}`;

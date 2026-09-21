@@ -21,7 +21,7 @@ async function generateActivityReference(tx, year = new Date().getFullYear()) {
   if (!counter) {
     counter = await tx.prepare(`INSERT INTO service_activity_sequences (year, last_value)
       SELECT CAST(? AS INTEGER), COALESCE(MAX(CAST(substr(activity_reference, 10, 6) AS INTEGER)), 0) + 1
-      FROM service_activities WHERE activity_reference LIKE ?
+      FROM service_activities WHERE activity_reference ILIKE ?
       ON CONFLICT (year) DO UPDATE SET last_value = service_activity_sequences.last_value + 1
       RETURNING last_value`).get(year, `ACT-${year}-%`);
   }

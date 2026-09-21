@@ -28,7 +28,7 @@ router.get('/overview', requireManager, async (req, res) => {
     SELECT mv.id, mv.title, mv.scheduled_date, mv.report_sent, mv.report_sent_at,
            mv.report_sent_to_customer, mv.status,
            c.name AS customer_name,
-           (SELECT GROUP_CONCAT(u.name, ', ')
+           (SELECT string_agg(u.name, ', ')
             FROM maintenance_visit_engineers mve JOIN users u ON mve.user_id = u.id
             WHERE mve.visit_id = mv.id) AS engineer_names
     FROM maintenance_visits mv
