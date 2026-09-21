@@ -2,6 +2,7 @@ import { useEffect,useState } from 'react';
 import { CheckCircle2,Loader2,RefreshCw,Save,Ticket } from 'lucide-react';
 import { api } from '../../api';
 import { Toggle } from './shared';
+import TicketMappingConfiguration from './TicketMappingConfiguration';
 
 const EMPTY={ enabled:false,base_url:'',api_token:'',api_token_set:false,sync_interval_minutes:60 };
 
@@ -45,6 +46,7 @@ export default function RequestTrackerIntegration({ sectionStyle,labelStyle }) {
       <button type="button" className="btn btn-ghost" disabled={!!busy || !form.api_token_set || !form.base_url} onClick={discover}>{busy==='queues' ? 'Loading...' : <><RefreshCw size={14} /> Discover Queues</>}</button>
     </div>
     {!!queues.length && <div className="table-wrap" style={{ marginTop:16,maxHeight:320,overflowY:'auto' }}><table><thead><tr><th>Queue ID</th><th>Name</th><th>Description</th></tr></thead><tbody>{queues.map(queue => <tr key={queue.id}><td>{queue.id}</td><td>{queue.name}</td><td className="text-muted">{queue.description || 'No description'}</td></tr>)}</tbody></table></div>}
+    <TicketMappingConfiguration />
     <p className="text-muted text-sm" style={{ marginTop:12 }}>Use a dedicated least-privilege RT token. Private-network RT URLs require the server setting ALLOW_PRIVATE_TICKETING_URLS=true.</p>
   </div>;
 }

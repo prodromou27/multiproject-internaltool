@@ -6,7 +6,8 @@ const { logAudit }=require('../auditLog');
 const { decrypt }=require('../fieldCipher');
 const settings=require('../ticketingSettings');
 const { createTicketingProvider }=require('../ticketing');
-const { syncCustomer }=require('../ticketSync');
+const { syncCustomer,applyMappingsToStoredTickets }=require('../ticketSync');
+const mappings=require('../ticketMappings');
 
 router.use(requireManager);
 
@@ -43,6 +44,17 @@ router.get('/queues',async (req,res) => {
     res.json({ rows:rows.map(queue => ({ ...queue,mapping:byQueue.get(String(queue.id)) || null })) });
   }
   catch(error) { res.status(error.status || 502).json({ error:error.status ? error.message : 'Could not retrieve Request Tracker queues' }); }
+});
+
+router.get('/mappings',async (req,res) => res.json(await mappings.loadMappings()));
+
+router.put('/mappings',async (req,res) => {
+  try {
+    const valid=mappings.validate(req.body);let reclassified=0;
+    await db.transaction(async tx => { await mappings.saveMappings(valid,tx);reclassified=await applyMappingsToStoredTickets(valid,tx); });
+    await logAudit(db,req,'settings','ticket_mapping_config','Ticket mappings','ticket_mappings_updated',`statuses=${valid.statuses.length}; priorities=${valid.priorities.length}; reclassified=${reclassified}`);
+    res.json({ ...valid,reclassified });
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not save ticket mappings' }); }
 });
 
 router.post('/sync/:customerId',async (req,res) => {

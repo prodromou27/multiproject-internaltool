@@ -1,11 +1,7 @@
 const db=require('./db');
 const ticketingSettings=require('./ticketingSettings');
 const { createTicketingProvider }=require('./ticketing');
-
-const STATUS_MAP={
-  new:['New','open'],open:['Open','open'],'in progress':['In Progress','open'],in_progress:['In Progress','open'],stalled:['Pending','open'],pending:['Pending','open'],
-  resolved:['Resolved','closed'],closed:['Closed','closed'],rejected:['Rejected','closed'],deleted:['Excluded','closed'],
-};
+const { DEFAULTS,loadMappings }=require('./ticketMappings');
 
 function normalizeDate(value) {
   if (!value) return null;
@@ -14,15 +10,17 @@ function normalizeDate(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function normalizeStatus(value) {
+function normalizeStatus(value,mappings=DEFAULTS) {
   const external=String(value || 'unknown').trim();
-  const mapped=STATUS_MAP[external.toLowerCase()] || [external || 'Unknown','open'];
-  return { external,normalized:mapped[0],group:mapped[1] };
+  const mapped=mappings.statuses.find(item => item.external.toLowerCase()===external.toLowerCase());
+  return { external,normalized:mapped?.normalized || external || 'Unknown',group:mapped?.group || 'open' };
 }
 
-function normalizePriority(value) {
+function normalizePriority(value,mappings=DEFAULTS) {
   if (value===null || value===undefined || value==='') return { external:null,normalized:null };
   const external=String(value).trim();const lower=external.toLowerCase();const numeric=Number(external);
+  const mapped=mappings.priorities.find(item => item.external.toLowerCase()===lower);
+  if (mapped) return { external,normalized:mapped.normalized };
   if (Number.isFinite(numeric)) return { external,normalized:numeric>=90?'Critical':numeric>=70?'High':numeric>=30?'Normal':'Low' };
   if (lower.includes('critical') || lower.includes('urgent')) return { external,normalized:'Critical' };
   if (lower.includes('high')) return { external,normalized:'High' };
@@ -30,11 +28,11 @@ function normalizePriority(value) {
   return { external,normalized:'Normal' };
 }
 
-function ticketRecord(ticket,mapping,baseUrl,now=new Date()) {
+function ticketRecord(ticket,mapping,baseUrl,now=new Date(),mappings=DEFAULTS) {
   const id=String(ticket.id ?? '');
   if (!/^\d+$/.test(id)) throw Object.assign(new Error('Request Tracker returned an invalid ticket identifier'),{ status:502 });
-  const status=normalizeStatus(ticket.Status || ticket.status);
-  const priority=normalizePriority(ticket.Priority ?? ticket.priority);
+  const status=normalizeStatus(ticket.Status || ticket.status,mappings);
+  const priority=normalizePriority(ticket.Priority ?? ticket.priority,mappings);
   const owner=ticket.Owner && typeof ticket.Owner==='object' ? ticket.Owner : {};
   const created=normalizeDate(ticket.Created || ticket.created);
   const updated=normalizeDate(ticket.LastUpdated || ticket.Updated || ticket.updated);
@@ -69,7 +67,8 @@ async function syncCustomer(customerId,{ provider,triggeredBy=null,store=db }={}
       if (!Number.isNaN(last.getTime())) updatedAfter=new Date(last.getTime()-5*60*1000).toISOString();
     }
     const tickets=await client.getTickets(mapping.external_queue_id,{ updatedAfter });
-    const records=tickets.map(ticket => ticketRecord(ticket,mapping,runtime.base_url));
+    const mappingConfig=await loadMappings(store);
+    const records=tickets.map(ticket => ticketRecord(ticket,mapping,runtime.base_url,new Date(),mappingConfig));
     const existing=new Set((await store.prepare("SELECT external_ticket_id FROM external_tickets WHERE provider_type='request_tracker' AND customer_id=?").all(customerId)).map(row => String(row.external_ticket_id)));
     let created=0,updated=0;
     await store.transaction(async tx => {
@@ -103,4 +102,17 @@ async function syncCustomer(customerId,{ provider,triggeredBy=null,store=db }={}
   }
 }
 
-module.exports={ STATUS_MAP,normalizeDate,normalizeStatus,normalizePriority,ticketRecord,syncCustomer };
+async function applyMappingsToStoredTickets(config,store=db) {
+  const apply=async runner => {
+    const rows=await runner.prepare('SELECT id,external_status,external_priority FROM external_tickets ORDER BY id').all();
+    const update=runner.prepare('UPDATE external_tickets SET normalized_status=?,status_group=?,normalized_priority=? WHERE id=?');
+    for (const row of rows) {
+      const status=normalizeStatus(row.external_status,config),priority=normalizePriority(row.external_priority,config);
+      await update.run(status.normalized,status.group,priority.normalized,row.id);
+    }
+    return rows.length;
+  };
+  return typeof store.transaction==='function' ? store.transaction(apply) : apply(store);
+}
+
+module.exports={ normalizeDate,normalizeStatus,normalizePriority,ticketRecord,syncCustomer,applyMappingsToStoredTickets };

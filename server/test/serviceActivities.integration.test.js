@@ -1590,6 +1590,18 @@ test('managed customer dashboard separates current state from period metrics',as
   assert.equal(typeof overview.data.activities.hours,'number');assert.equal(overview.data.period.from,'2026-09-01');
 });
 
+test('ticket mapping administration is manager-only and reclassifies stored tickets',async () => {
+  assert.equal((await api('/api/ticketing/mappings',{ token:ids.tokenEnabled })).status,403);
+  const current=await api('/api/ticketing/mappings',{ token:ids.tokenManager });
+  assert.equal(current.status,200);assert.equal(current.data.statuses.some(item => item.external==='open'),true);
+  const config={ statuses:[{ external:'open',normalized:'In Progress',group:'open' },{ external:'resolved',normalized:'Closed',group:'closed' }],priorities:[{ external:'95',normalized:'High' },{ external:'Normal',normalized:'Normal' }] };
+  const saved=await api('/api/ticketing/mappings',{ method:'PUT',token:ids.tokenManager,body:config });
+  assert.equal(saved.status,200);assert.equal(saved.data.reclassified>=2,true);
+  const open=await db.prepare("SELECT normalized_status,normalized_priority FROM external_tickets WHERE external_ticket_id='7001'").get();
+  assert.deepEqual(open,{ normalized_status:'In Progress',normalized_priority:'High' });
+  assert.equal((await api('/api/ticketing/mappings',{ method:'PUT',token:ids.tokenManager,body:{ statuses:[{ external:'open',normalized:'Bad',group:'open' }],priorities:[] } })).status,400);
+});
+
 test('SMTP settings await reads, redact and retain passwords on ordinary edits', async () => {
   await db.prepare("INSERT INTO settings (key,value) VALUES ('email_smtp',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ host: 'smtp.test.local',port: 587,user: 'report-user',password: 'retained-secret' }));
   const before = await api('/api/report-settings/smtp',{ token: ids.tokenManager });
