@@ -336,6 +336,7 @@ export const api = {
   saveManagedCustomerConfiguration: (id,data) => req('PUT',`/customers/${id}/managed-services`,data),
   testManagedCustomerMapping: id => req('POST',`/customers/${id}/managed-services/test-mapping`,{}),
   syncManagedCustomerTickets: id => req('POST',`/ticketing/sync/${id}`,{}),
+  ticketingMonitoring: options => req('GET','/ticketing/monitoring',undefined,options),
   ticketSyncRuns: (params={},options) => req('GET','/ticketing/sync-runs?' + new URLSearchParams(params).toString(),undefined,options),
   managedCustomers: options => req('GET','/managed-customers',undefined,options),
   managedCustomerOverview: (id,params={},options) => req('GET',`/managed-customers/${id}/overview?` + new URLSearchParams(params).toString(),undefined,options),

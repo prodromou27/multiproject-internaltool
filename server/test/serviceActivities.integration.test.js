@@ -1551,6 +1551,7 @@ test('ticket synchronization controls remain manager-only and validate mappings'
   assert.equal((await api('/api/ticketing/sync/not-an-id',{ method:'POST',token:ids.tokenManager,body:{} })).status,400);
   assert.equal((await api(`/api/ticketing/sync/${ids.customer}`,{ method:'POST',token:ids.tokenManager,body:{} })).status,400);
   assert.equal((await api('/api/ticketing/sync-runs',{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api('/api/ticketing/monitoring',{ token:ids.tokenEnabled })).status,403);
   assert.equal((await api('/api/ticketing/sync-runs?customer_id=invalid',{ token:ids.tokenManager })).status,400);
 });
 
@@ -1575,6 +1576,18 @@ test('ticket synchronization persists normalized snapshots and run counts',async
   assert.equal((await db.prepare("SELECT subject FROM external_tickets WHERE external_ticket_id='7001'").get()).subject,'Updated gateway alert');
   const runs=await db.prepare('SELECT id,customer_id,status FROM ticket_sync_runs ORDER BY id').all();
   assert.deepEqual(runs.map(row => [row.customer_id,row.status]),[[ids.customer,'success'],[ids.customer,'success']]);
+});
+
+test('ticket synchronization monitoring summarizes mappings and names run history',async () => {
+  const monitoring=await api('/api/ticketing/monitoring',{ token:ids.tokenManager });
+  assert.equal(monitoring.status,200);assert.equal(monitoring.data.integration.enabled,true);
+  assert.equal(monitoring.data.summary.mapped_customers,1);assert.equal(monitoring.data.summary.total_tickets,2);
+  assert.equal(monitoring.data.summary.last_successful_sync_at!==null,true);
+  assert.equal(monitoring.data.customers[0].customer_name,'Acme Corp');assert.equal(monitoring.data.customers[0].open_ticket_count,1);
+  const history=await api('/api/ticketing/sync-runs',{ token:ids.tokenManager });
+  assert.equal(history.status,200);assert.equal(history.data.rows.length,2);
+  assert.equal(history.data.rows.every(run => run.customer_name==='Acme Corp'),true);
+  assert.equal(history.data.rows.some(run => run.triggered_by_name),true);
 });
 
 test('managed customer dashboard separates current state from period metrics',async () => {
