@@ -4,6 +4,7 @@ const service=require('../managedCustomerService');
 const reporting=require('../managedCustomerReportingService');
 const { renderWord }=require('../managedCustomerWordRenderer');
 const { renderExcel }=require('../managedCustomerExcelRenderer');
+const { renderPdf }=require('../managedCustomerPdfRenderer');
 const reportHistory=require('../managedReportHistoryService');
 const db=require('../db');
 const { logAudit }=require('../auditLog');
@@ -127,6 +128,19 @@ router.post('/:id/report.xlsx',async (req,res) => {
     res.setHeader('X-Report-Id',String(history.id));res.setHeader('X-Report-Version',String(history.report_version));
     res.send(buffer);
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the Excel report' }); }
+});
+router.post('/:id/report.pdf',async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  try {
+    const { from,to,sections,narratives,status,templateId }=await reportRequest(req.body);
+    const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives });
+    if (!model) return res.status(404).json({ error:'Managed customer not found' });
+    const buffer=await renderPdf(model),safeName=model.customer.name.replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,80) || `customer_${id}`,filename=`${safeName}_${from}_${to}.pdf`;
+    const history=await reportHistory.archive({ customerId:id,templateId,from,to,format:'pdf',status,filename,sections:model.sections,userId:req.user.id,buffer });
+    await logAudit(db,req,'managed_report',history.id,filename,'managed_customer_pdf_report_generated',`customer_id=${id}; period=${from}:${to}; version=${history.report_version}; status=${status}; sections=${model.sections.join(',')}`);
+    res.setHeader('Content-Type','application/pdf');res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
+    res.setHeader('X-Report-Id',String(history.id));res.setHeader('X-Report-Version',String(history.report_version));res.send(buffer);
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the PDF report' }); }
 });
 
 router.get('/:id/reports',async (req,res) => {

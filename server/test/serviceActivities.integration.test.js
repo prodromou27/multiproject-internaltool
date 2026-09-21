@@ -1723,6 +1723,12 @@ test('managed customer report preview reuses dashboard metrics and protects cust
   assert.equal(secondDocument.status,200);assert.equal(secondDocument.headers.get('x-report-version'),'2');
   const updatedHistory=await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager });
   assert.equal(updatedHistory.data.rows[0].report_version,2);assert.equal(updatedHistory.data.rows[0].status,'final');
+  const pdfResponse=await fetch(`${baseUrl}${path.replace('report-preview','report.pdf')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ ...body,status:'final' }) });
+  assert.equal(pdfResponse.status,200);assert.match(pdfResponse.headers.get('content-type'),/application\/pdf/);assert.match(pdfResponse.headers.get('content-disposition'),/Acme_Corp_2026-09-01_2026-09-30\.pdf/);
+  const pdfBuffer=Buffer.from(await pdfResponse.arrayBuffer());assert.equal(pdfBuffer.subarray(0,5).toString(),'%PDF-');
+  const pdfHistory=await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager });
+  assert.equal(pdfHistory.data.rows[0].output_format,'pdf');assert.equal(pdfHistory.data.rows[0].report_version,1);assert.equal(pdfHistory.data.rows[0].status,'final');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='managed_customer_pdf_report_generated'").get()).count,1);
 });
 
 test('managed report templates are manager-only, validated and versioned',async () => {
