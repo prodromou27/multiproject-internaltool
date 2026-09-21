@@ -1,0 +1,90 @@
+/* Foundations: a refinement layer over index.css, loaded after it.
+   Same brand, same structure. It tightens typography, states and contrast in the
+   shared building blocks so every page inherits the change. Deleting this file (and
+   its import in main.jsx) restores the previous look exactly.
+
+   Rules of thumb used here:
+   - Sentence-case labels; no tracked-out all-caps.
+   - Muted text must still be readable (gray-500 or darker, never gray-400).
+   - Colour is not decoration: numbers and headings stay in ink, not brand blue.
+   - Dark mode: only text, spacing and borders are touched, so the existing
+     [data-theme="dark"] rules keep working. */
+
+/* ── Type ────────────────────────────────────────────────── */
+body { text-rendering: optimizeLegibility; font-variant-numeric: lining-nums; }
+h1, h2, h3 { text-wrap: balance; }
+p { text-wrap: pretty; }
+::selection { background: var(--primary-ring); }
+
+.page-title { font-size: 24px; font-weight: 650; letter-spacing: -.45px; line-height: 1.25; }
+.page-subtitle { font-size: 13px; color: var(--gray-500); margin-top: 4px; line-height: 1.55; }
+.section-title { font-size: 14px; font-weight: 650; color: var(--gray-800); letter-spacing: -.1px; }
+
+/* Muted text used to be gray-400 (about 2.5:1 on white). gray-500 clears 4.5:1. */
+.text-muted { color: var(--gray-500); }
+
+/* ── Forms ───────────────────────────────────────────────── */
+.form-group label {
+  text-transform: none; letter-spacing: 0;
+  font-size: 12px; font-weight: 600; color: var(--gray-700);
+}
+input, select, textarea { border-width: 1px; min-height: 36px; }
+input:hover:not(:focus):not(:disabled), select:hover:not(:focus):not(:disabled), textarea:hover:not(:focus):not(:disabled) { border-color: var(--gray-300); }
+input:disabled, select:disabled, textarea:disabled { opacity: .6; cursor: not-allowed; }
+input[type="checkbox"], input[type="radio"] { min-height: 0; accent-color: var(--primary); }
+textarea { min-height: 80px; }
+
+/* ── Tables ──────────────────────────────────────────────── */
+th {
+  text-transform: none; letter-spacing: 0;
+  font-size: 12px; font-weight: 600; color: var(--gray-600);
+  border-bottom-width: 1px;
+}
+td { padding-top: 12px; padding-bottom: 12px; line-height: 1.45; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Cards ───────────────────────────────────────────────── */
+.card { border-color: var(--gray-200); box-shadow: var(--shadow-xs); }
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn { min-height: 34px; justify-content: center; font-weight: 550; }
+.btn-sm { min-height: 28px; padding: 3px 10px; }
+.btn-icon { min-height: 0; }
+/* Flat fills: the coloured glow under each button added noise, not meaning. */
+.btn-primary, .btn-danger, .btn-success, .btn-warning { box-shadow: none; }
+.btn-primary:hover:not(:disabled), .btn-danger:hover:not(:disabled), .btn-success:hover:not(:disabled), .btn-warning:hover:not(:disabled) { box-shadow: var(--shadow-xs); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn-ghost { box-shadow: none; }
+
+/* ── Stat tiles ──────────────────────────────────────────── */
+/* Numbers are ink, aligned with their labels. Brand blue is kept for actions. */
+.stat { text-align: left; }
+.stat-value { font-size: 28px; font-weight: 700; color: var(--gray-900); letter-spacing: -.6px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 12px; color: var(--gray-500); margin-top: 6px; font-weight: 500; }
+.stat-card { border-color: var(--gray-200); box-shadow: var(--shadow-xs); }
+
+/* ── Badges ──────────────────────────────────────────────── */
+/* Status and priority read as words ("In progress"), not shouted labels. */
+.badge { text-transform: none; letter-spacing: 0; font-weight: 600; }
+
+/* ── Filters and tabs ────────────────────────────────────── */
+.filter-pill { border-width: 1px; font-weight: 550; }
+.filter-pill.overdue-pill { border-color: var(--danger); }
+.tab { font-weight: 550; }
+
+/* ── Empty and error states ──────────────────────────────── */
+.empty { color: var(--gray-500); }
+.empty p { color: var(--gray-600); line-height: 1.6; max-width: 46ch; margin-left: auto; margin-right: auto; }
+.empty-icon { opacity: .6; color: var(--gray-400); }
+.error-msg { line-height: 1.5; }
+
+/* ── Motion ──────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Touch targets: comfortable size for the controls people tap most. */
+@media (pointer: coarse) {
+  .btn-sm { min-height: 36px; }
+  .filter-pill { padding-top: 8px; padding-bottom: 8px; }
+}
