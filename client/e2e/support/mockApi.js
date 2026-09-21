@@ -50,7 +50,11 @@ export async function mockApi(page, { role = 'engineer', signedIn = true, teams 
     'GET /api/tasks/overdue-counts': () => ({ body: { tasks: 0, visits: 0 } }),
     'GET /api/teams/mine': () => ({ body: { service_activity_enabled: teams.length > 0, teams } }),
     'GET /api/statuses': () => ({ body: { project: [], task: [], visit: [], service_activity: statuses } }),
-    'GET /api/tasks': () => ({ body: { total: tasks.length, counts: { all: tasks.length, mine: tasks.length }, rows: tasks } }),
+    // The server pages tasks only when asked to (page or page_size in the query).
+    'GET /api/tasks': ({ request }) => {
+      const params = new URL(request.url()).searchParams;
+      return { body: params.has('page') || params.has('page_size') ? { total: tasks.length, counts: { all: tasks.length, mine: tasks.length }, rows: tasks } : tasks };
+    },
     'GET /api/operations/overview': () => ({ body: {
       scope: role === 'manager' ? 'management' : 'personal', as_of: '2026-09-21',
       tasks: { overdue: 0, due_today: 0, attention: [] },
