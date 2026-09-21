@@ -1746,6 +1746,17 @@ test('managed report templates are manager-only, validated and versioned',async 
   assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'DELETE',token:ids.tokenManager })).status,200);
 });
 
+test('concurrent report exports allocate unique versions on PostgreSQL', { skip:!process.env.TEST_DATABASE_URL },async () => {
+  const endpoint=`${baseUrl}/api/managed-customers/${ids.customer}/report.docx`,body={ from:'2026-08-01',to:'2026-08-31',sections:['executive_summary'],narratives:{ executive_summary:'Concurrent version allocation test.' },status:'draft' };
+  const responses=await Promise.all(Array.from({ length:4 },() => fetch(endpoint,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) })));
+  assert.equal(responses.every(response => response.status===200),true);
+  const versions=responses.map(response => Number(response.headers.get('x-report-version'))).sort((a,b) => a-b);
+  assert.deepEqual(versions,[1,2,3,4]);await Promise.all(responses.map(response => response.arrayBuffer()));
+  const rows=await db.prepare(`SELECT report_version,stored_name FROM managed_report_history
+    WHERE customer_id=? AND period_start=? AND period_end=? AND output_format='docx' ORDER BY report_version`).all(ids.customer,body.from,body.to);
+  assert.deepEqual(rows.map(row => row.report_version),[1,2,3,4]);assert.equal(new Set(rows.map(row => row.stored_name)).size,4);
+});
+
 test('ticket mapping administration is manager-only and reclassifies stored tickets',async () => {
   assert.equal((await api('/api/ticketing/mappings',{ token:ids.tokenEnabled })).status,403);
   const current=await api('/api/ticketing/mappings',{ token:ids.tokenManager });
