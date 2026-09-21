@@ -26,7 +26,10 @@ function extractStatements(root) {
     const text = fs.readFileSync(file, 'utf8');
     for (const m of text.matchAll(CALL)) {
       const sql = m[2].replace(/\\(['"`\\])/g, '$1');
-      const line = text.slice(0, m.index).split('\n').length;
+      const before = text.slice(0, m.index);
+      const line = before.split('\n').length;
+      const lineStart = before.slice(before.lastIndexOf('\n') + 1).trimStart();
+      if (lineStart.startsWith('*') || lineStart.startsWith('//')) continue; // an example in a comment
       if (sql.includes('${')) { dynamic++; continue; }
       if (!/^\s*(select|insert|update|delete|with)\b/i.test(sql)) continue;
       statements.push({ file: path.relative(root, file).replace(/\\/g, '/'), line, sql });
