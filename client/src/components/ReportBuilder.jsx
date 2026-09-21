@@ -10,9 +10,11 @@ import { useConfirm } from './Confirm';
 
 const initial = () => ({ source: 'tasks',fields: ['id','title','status'],filters: [],group_by: [],aggregations: [],sort: [] });
 
-function SaveDialog({ selected,definition,onSaved,onClose }) {
+function SaveDialog({ selected,definition,references,onSaved,onClose }) {
   const [name,setName] = useState(selected?.name || '');
   const [visibility,setVisibility] = useState(selected?.visibility || 'private');
+  const [sharedUsers,setSharedUsers] = useState(selected?.shared_user_ids || []);
+  const [sharedTeams,setSharedTeams] = useState(selected?.shared_team_ids || []);
   const [saving,setSaving] = useState(false);
   const [error,setError] = useState('');
   const lock = useRef(false);
@@ -21,7 +23,7 @@ function SaveDialog({ selected,definition,onSaved,onClose }) {
     if (lock.current) return;
     lock.current=true; setSaving(true); setError('');
     try {
-      const body = { name,visibility,definition };
+      const body = { name,visibility,definition,shared_user_ids: visibility==='shared' ? sharedUsers : [],shared_team_ids: visibility==='shared' ? sharedTeams : [] };
       const result = selected ? await api.updateSavedReport(selected.id,{ ...body,version: selected.version }) : await api.createSavedReport(body);
       onSaved({ ...body,...result,can_edit: true }); onClose();
     } catch (failure) { setError(failure.message); }
@@ -31,7 +33,12 @@ function SaveDialog({ selected,definition,onSaved,onClose }) {
     <form onSubmit={submit}>
       {error && <div className="error-msg" role="alert">{error}</div>}
       <div className="form-group"><label htmlFor="report-name">Name</label><input id="report-name" value={name} onChange={event => setName(event.target.value)} required maxLength={200} disabled={saving} autoFocus /></div>
-      <div className="form-group"><label htmlFor="report-visibility">Visibility</label><select id="report-visibility" value={visibility} onChange={event => setVisibility(event.target.value)} disabled={saving}><option value="private">Private to you</option><option value="management">Share with management</option></select></div>
+      <div className="form-group"><label htmlFor="report-visibility">Visibility</label><select id="report-visibility" value={visibility} onChange={event => setVisibility(event.target.value)} disabled={saving}><option value="private">Private to you</option><option value="shared">Specific managers or teams</option><option value="management">All management</option></select></div>
+      {visibility==='shared' && <div className="form-row" style={{ alignItems: 'start' }}>
+        <fieldset><legend>Managers</legend><div style={{ maxHeight: 180,overflowY: 'auto' }}>{references.share_users.map(row => <label key={row.id} style={{ display: 'flex',gap: 6 }}><input type="checkbox" checked={sharedUsers.includes(row.id)} onChange={event => setSharedUsers(old => event.target.checked ? [...old,row.id] : old.filter(id => id!==row.id))} disabled={saving} />{row.name}</label>)}</div></fieldset>
+        <fieldset><legend>Teams</legend><div style={{ maxHeight: 180,overflowY: 'auto' }}>{references.share_teams.map(row => <label key={row.id} style={{ display: 'flex',gap: 6 }}><input type="checkbox" checked={sharedTeams.includes(row.id)} onChange={event => setSharedTeams(old => event.target.checked ? [...old,row.id] : old.filter(id => id!==row.id))} disabled={saving} />{row.name}</label>)}</div></fieldset>
+        <p className="text-muted text-sm">Team sharing grants access to active managers who belong to those teams. Scheduled recipients must also have report access.</p>
+      </div>}
       <p className="text-muted text-sm">Definitions store the query choices. Runs use current data and permissions; results are not stored here.</p>
       <div className="modal-footer"><button className="btn btn-ghost" type="button" disabled={saving} onClick={onClose}>Cancel</button><button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save report'}</button></div>
     </form>
@@ -75,11 +82,20 @@ export default function ReportBuilder() {
   const source = references?.sources.find(row => row.key===definition.source);
   const grouped = !!(definition.group_by.length || definition.aggregations.length);
   const set = (key,value) => setDefinition(old => ({ ...old,[key]: value }));
-  const change = (key,index,value) => set(key,definition[key].map((entry,i) => i===index ? { ...entry,...value } : entry));
+  const change = (key,index,value) => set(key,definition[key].map((entry,i) => {
+    if (i!==index) return entry;
+    const next={ ...entry,...value };
+    for (const [name,item] of Object.entries(value)) if (item===undefined) delete next[name];
+    return next;
+  }));
   function collect() {
     return { ...definition,filters: definition.filters.map(filter => {
       if (['is_null','is_not_null'].includes(filter.operator)) return { field: filter.field,operator: filter.operator };
       const field = source.fields.find(row => row.key===filter.field);
+      if (filter.relative) {
+        if (String(filter.relative.offset_days).trim()==='') throw new Error(`Enter a relative day offset for ${field.label}`);
+        return { field: filter.field,operator: filter.operator,relative: { anchor: filter.relative.anchor,offset_days: Number(filter.relative.offset_days) } };
+      }
       const parse = value => {
         if (['number','id'].includes(field.type)) {
           if (String(value).trim()==='') throw new Error(`Enter a value for ${field.label}`);
@@ -136,7 +152,7 @@ export default function ReportBuilder() {
     {error && <div className="error-msg" role="alert">{error}</div>}
     <section className="card" style={{ marginBottom: 20 }}>
       <h2 style={{ fontSize: 18 }}>Report templates</h2>
-      <p className="text-muted text-sm">Dates resolved as of {references.templates.as_of} UTC. Monthly templates cover {references.templates.month_start} to {references.templates.month_end}. Saved copies retain their selected dates.</p>
+      <p className="text-muted text-sm">Preview date: {references.templates.as_of} UTC. Template date ranges stay relative and resolve again whenever a saved or scheduled report runs.</p>
       <div style={{ display: 'grid',gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',gap: 12 }}>
         {references.templates.rows.map(template => <div key={template.key}>
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => { opens.begin(); setSelected(null); setDefinition({ ...initial(),...template.definition }); setError(''); }}>{template.label}</button>
@@ -165,9 +181,11 @@ export default function ReportBuilder() {
       <fieldset style={{ margin: '16px 0' }}><legend>Filters (all must match)</legend>{definition.filters.map((entry,index) => {
         const field=source.fields.find(row => row.key===entry.field);
         return <div className="form-row" key={index}>
-          <select aria-label={`Filter field ${index+1}`} value={entry.field} onChange={event => change('filters',index,{ field: event.target.value,operator: 'eq',value: '' })}>{source.fields.map(row => <option key={row.key} value={row.key}>{row.label}</option>)}</select>
-          <select aria-label={`Filter operator ${index+1}`} value={entry.operator} onChange={event => change('filters',index,{ operator: event.target.value })}>{field.operators.map(value => <option key={value} value={value}>{value.replaceAll('_',' ')}</option>)}</select>
-          {!['is_null','is_not_null'].includes(entry.operator) && <input aria-label={`Filter value ${index+1}`} value={Array.isArray(entry.value) ? entry.value.join(',') : entry.value} onChange={event => change('filters',index,{ value: event.target.value })} type={['in','not_in'].includes(entry.operator) ? 'text' : field.type==='date' ? 'date' : ['id','number'].includes(field.type) ? 'number' : 'text'} step={field.type==='id' ? 1 : 'any'} min={field.type==='id' ? 1 : undefined} placeholder={['in','not_in'].includes(entry.operator) ? 'Comma-separated values' : 'Value'} maxLength={5000} />}
+          <select aria-label={`Filter field ${index+1}`} value={entry.field} onChange={event => change('filters',index,{ field: event.target.value,operator: 'eq',value: '',relative: undefined })}>{source.fields.map(row => <option key={row.key} value={row.key}>{row.label}</option>)}</select>
+          <select aria-label={`Filter operator ${index+1}`} value={entry.operator} onChange={event => change('filters',index,{ operator: event.target.value,...(['in','not_in','is_null','is_not_null'].includes(event.target.value) ? { relative: undefined } : {}) })}>{field.operators.map(value => <option key={value} value={value}>{value.replaceAll('_',' ')}</option>)}</select>
+          {field.type==='date' && !['in','not_in','is_null','is_not_null'].includes(entry.operator) && <select aria-label={`Date mode ${index+1}`} value={entry.relative?.anchor || 'fixed'} onChange={event => change('filters',index,event.target.value==='fixed' ? { relative: undefined,value: '' } : { value: undefined,relative: { anchor: event.target.value,offset_days: 0 } })}><option value="fixed">Fixed date</option><option value="today">Run date</option><option value="week_start">Start of run week</option><option value="week_end">End of run week</option><option value="month_start">Start of run month</option><option value="month_end">End of run month</option></select>}
+          {entry.relative && <input aria-label={`Relative day offset ${index+1}`} type="number" min="-3660" max="3660" step="1" required value={entry.relative.offset_days} onChange={event => change('filters',index,{ relative: { ...entry.relative,offset_days: event.target.value } })} title="Days before (-) or after (+) the selected anchor" />}
+          {!entry.relative && !['is_null','is_not_null'].includes(entry.operator) && <input aria-label={`Filter value ${index+1}`} value={Array.isArray(entry.value) ? entry.value.join(',') : entry.value} onChange={event => change('filters',index,{ value: event.target.value })} type={['in','not_in'].includes(entry.operator) ? 'text' : field.type==='date' ? 'date' : ['id','number'].includes(field.type) ? 'number' : 'text'} step={field.type==='id' ? 1 : 'any'} min={field.type==='id' ? 1 : undefined} placeholder={['in','not_in'].includes(entry.operator) ? 'Comma-separated values' : 'Value'} maxLength={5000} />}
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => set('filters',definition.filters.filter((_,i) => i!==index))}>Remove</button>
         </div>;
       })}<button className="btn btn-ghost btn-sm" type="button" disabled={definition.filters.length>=12} onClick={() => set('filters',[...definition.filters,{ field: source.fields[0].key,operator: 'eq',value: '' }])}>Add filter</button></fieldset>
@@ -176,6 +194,6 @@ export default function ReportBuilder() {
     </form>
     {preview?.signature===signature && <section className="card table-wrap" style={{ marginTop: 20 }}><p>{preview.rows.length} preview rows{preview.truncated ? ' · More matching rows exist; preview is truncated.' : ''}</p><table><thead><tr>{preview.columns.map(column => <th key={column.key}>{column.label}</th>)}</tr></thead><tbody>{preview.rows.map((row,index) => <tr key={index}>{preview.columns.map(column => <td key={column.key}>{row[column.key] ?? '—'}</td>)}</tr>)}</tbody></table>{!preview.rows.length && <p>No matching records.</p>}</section>}
     {schedule && <ReportScheduleDialog report={schedule} onClose={() => setSchedule(null)} />}
-    {save && <SaveDialog selected={save.selected} definition={save.definition} onClose={() => setSave(null)} onSaved={row => { setSelected({ ...row,owner_id: user.id }); toast.success('Report definition saved'); load(); }} />}
+    {save && <SaveDialog selected={save.selected} definition={save.definition} references={references} onClose={() => setSave(null)} onSaved={row => { setSelected({ ...row,owner_id: user.id }); toast.success('Report definition saved'); load(); }} />}
   </section>;
 }

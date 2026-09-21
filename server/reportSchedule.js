@@ -1,4 +1,5 @@
 const { compileReport } = require('./customReports');
+const { canAccessReport } = require('./reportAccess');
 const invalid = message => { throw Object.assign(new Error(message),{ status: 400 }); };
 function validateSchedule(body) {
   if (!body || typeof body.enabled!=='boolean' || !['daily','weekly','monthly'].includes(body.frequency)
@@ -24,10 +25,10 @@ function nextRun(schedule,now = new Date()) {
 async function eligibleRecipients(db,report,ids) {
   const owner = await db.prepare('SELECT role,active,must_change_password FROM users WHERE id=?').get(report.owner_id);
   if (!owner || owner.role!=='manager' || !owner.active || owner.must_change_password) invalid('Report owner is not currently eligible');
-  if (report.visibility==='private' && ids.some(id => id!==report.owner_id)) invalid('Private reports may only be delivered to their owner; share with management first');
   if (!ids.length || ids.length>20 || new Set(ids).size!==ids.length || ids.some(id => !Number.isSafeInteger(id) || id<1)) invalid('Invalid stored recipients');
   const users = await db.prepare(`SELECT id,email FROM users WHERE id IN (${ids.map(() => '?').join(',')}) AND role='manager' AND active=1 AND must_change_password=0`).all(...ids);
   if (users.length!==ids.length || users.some(user => typeof user.email!=='string' || user.email.length>254 || !/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(user.email))) invalid('All recipients must be active managers with valid email addresses and current access');
+  for (const user of users) if (!await canAccessReport(db,report,user.id)) invalid('Every recipient must currently have access to the saved report');
   compileReport(JSON.parse(report.definition),5000);
   return users;
 }

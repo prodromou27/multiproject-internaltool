@@ -1,9 +1,9 @@
-// Dates are resolved when a template is loaded. Saved definitions retain those dates.
 function reportTemplates(now = new Date(), config = {}) {
   const today = now.toISOString().slice(0,10);
   const monthStart = today.slice(0,7)+'-01';
   const monthEnd = new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,0)).toISOString().slice(0,10);
-  const range = field => [{ field,operator: 'gte',value: monthStart },{ field,operator: 'lte',value: monthEnd }];
+  const relative = anchor => ({ anchor,offset_days: 0 });
+  const range = field => [{ field,operator: 'gte',relative: relative('month_start') },{ field,operator: 'lte',relative: relative('month_end') }];
   const count = { field: '*',operation: 'count' };
   const minutes = { field: 'duration_minutes',operation: 'sum' };
   const group = (source,fields,filters,aggregations = [count]) => ({ source,fields,group_by: fields,aggregations,filters });
@@ -21,7 +21,7 @@ function reportTemplates(now = new Date(), config = {}) {
     { key: 'customer_activity_summary',label: 'Customer activity summary',description: 'Current UTC month: activity counts and recorded minutes per customer.',definition: group('activities',['customer_id'],range('activity_date'),[count,minutes]) },
   ];
   // Keep the engine's IN-value limit; never silently omit configured terminal states.
-  if (terminal.length<=50) rows.push({ key: 'overdue_projects',label: 'Overdue projects',description: 'Deadlines before today, excluding default and configured terminal states.',definition: { source: 'projects',fields: ['id','title','customer_id','status','deadline'],filters: [{ field: 'deadline',operator: 'lt',value: today },{ field: 'status',operator: 'not_in',value: terminal }],sort: [{ field: 'deadline',direction: 'asc' }] } });
+  if (terminal.length<=50) rows.push({ key: 'overdue_projects',label: 'Overdue projects',description: 'Deadlines before the run date, excluding default and configured terminal states.',definition: { source: 'projects',fields: ['id','title','customer_id','status','deadline'],filters: [{ field: 'deadline',operator: 'lt',relative: relative('today') },{ field: 'status',operator: 'not_in',value: terminal }],sort: [{ field: 'deadline',direction: 'asc' }] } });
   return { as_of: today,month_start: monthStart,month_end: monthEnd,rows };
 }
 module.exports = { reportTemplates };

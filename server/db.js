@@ -42,7 +42,7 @@ const pool = new Pool({
 pool.on('error', (err) => console.error('[pg pool]', err.message));
 
 // Tables with no `id` column — never append RETURNING id to inserts into these.
-const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|service_activity_technologies)\b/i;
+const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|service_activity_technologies|saved_custom_report_users|saved_custom_report_teams)\b/i;
 
 // ── SQL translation (SQLite → Postgres), memoized per unique SQL string ──────
 const _cache = new Map();
@@ -823,7 +823,7 @@ async function applyCompatibilityMigrations() {
       id SERIAL PRIMARY KEY,
       owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
-      visibility TEXT NOT NULL DEFAULT 'private' CHECK(visibility IN ('private','management')),
+      visibility TEXT NOT NULL DEFAULT 'private' CHECK(visibility IN ('private','shared','management')),
       definition TEXT NOT NULL,
       version INTEGER NOT NULL DEFAULT 1,
       created_at TEXT DEFAULT ${NOW},
@@ -864,6 +864,22 @@ async function applyCompatibilityMigrations() {
   migrations.push(['20260921_recommendation_tasks', `
     ALTER TABLE customer_recommendations ADD COLUMN IF NOT EXISTS related_task_id INTEGER REFERENCES tasks(id) ON DELETE RESTRICT;
     CREATE INDEX IF NOT EXISTS idx_recommendation_task ON customer_recommendations(related_task_id);
+  `]);
+  migrations.push(['20260921_custom_report_sharing', `
+    ALTER TABLE saved_custom_reports DROP CONSTRAINT IF EXISTS saved_custom_reports_visibility_check;
+    ALTER TABLE saved_custom_reports ADD CONSTRAINT saved_custom_reports_visibility_check CHECK(visibility IN ('private','shared','management'));
+    CREATE TABLE IF NOT EXISTS saved_custom_report_users (
+      report_id INTEGER NOT NULL REFERENCES saved_custom_reports(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      PRIMARY KEY(report_id,user_id)
+    );
+    CREATE TABLE IF NOT EXISTS saved_custom_report_teams (
+      report_id INTEGER NOT NULL REFERENCES saved_custom_reports(id) ON DELETE CASCADE,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      PRIMARY KEY(report_id,team_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_saved_report_user_access ON saved_custom_report_users(user_id,report_id);
+    CREATE INDEX IF NOT EXISTS idx_saved_report_team_access ON saved_custom_report_teams(team_id,report_id);
   `]);
 
   migrations.push(['20260917_project_closure_review', `

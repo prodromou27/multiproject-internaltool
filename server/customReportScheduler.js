@@ -27,7 +27,7 @@ async function tick({ now = new Date(),store = db,run = execution.run,send = ema
         if (!current || !current.enabled || current.version!==report.version || current.schedule_version!==schedule.version) throw Object.assign(new Error('Report or schedule changed during execution'),{ status: 400 });
         const users = await eligibleRecipients(store,current,recipients);
         const attachment = { filename: 'scheduled-report.csv',content: Buffer.from(execution.csv(result),'utf8'),contentType: 'text/csv; charset=utf-8' };
-        for (const user of users) await send({ to: user.email,subject: `Scheduled report: ${report.name}`,text: `Current data for ${report.name}. Generated ${now.toISOString()}. The attached CSV uses the saved filters, including fixed date ranges.`,attachments: [attachment] });
+        for (const user of users) await send({ to: user.email,subject: `Scheduled report: ${report.name}`,text: `Current data for ${report.name}. Generated ${now.toISOString()}. Relative date filters are resolved when the report runs.`,attachments: [attachment] });
       } catch (failure) {
         disable = failure.status===400;
         status = disable ? 'blocked' : 'failed';

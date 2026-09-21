@@ -1336,19 +1336,30 @@ test('saved custom reports protect private definitions, ownership and edit versi
     assert.equal((await api(path,{ token: roleToken })).status,403);
     assert.equal((await api('/api/reports/custom/saved',{ method: 'POST',token: roleToken,body })).status,403);
   }
-  const shared = { ...body,visibility: 'management',version: 1 };
-  assert.equal((await api(path,{ method: 'PUT',token: ids.tokenManager,body: shared })).data.version,2);
+  assert.equal((await api(path,{ method: 'PUT',token: ids.tokenManager,body: { ...body,visibility: 'shared',shared_user_ids: [ids.engineerEnabled],shared_team_ids: [],version: 1 } })).status,400);
+  const direct = { ...body,visibility: 'shared',shared_user_ids: [user],shared_team_ids: [],version: 1 };
+  assert.equal((await api(path,{ method: 'PUT',token: ids.tokenManager,body: direct })).data.version,2);
+  assert.deepEqual((await api(path,{ token: ids.tokenManager })).data.shared_user_ids,[user]);
+  assert.deepEqual((await api(path,{ token })).data.shared_user_ids,[],'share membership is visible only to the owner');
+  await db.prepare('INSERT INTO team_members (team_id,user_id) VALUES (?,?)').run(ids.teamEnabled,user);
+  const teamShared = { ...body,visibility: 'shared',shared_user_ids: [],shared_team_ids: [ids.teamEnabled],version: 2 };
+  assert.equal((await api(path,{ method: 'PUT',token: ids.tokenManager,body: teamShared })).data.version,3);
+  assert.equal((await api(path,{ token })).status,200,'manager team membership grants access');
+  await db.prepare('DELETE FROM team_members WHERE team_id=? AND user_id=?').run(ids.teamEnabled,user);
+  assert.equal((await api(path,{ token })).status,404,'team access is rechecked after membership removal');
+  const shared = { ...body,visibility: 'management',version: 3 };
+  assert.equal((await api(path,{ method: 'PUT',token: ids.tokenManager,body: shared })).data.version,4);
   const other = await api(path,{ token });
   assert.equal(other.status,200);
   assert.equal(other.data.can_edit,false);
   assert.deepEqual(other.data.definition,body.definition);
-  assert.equal((await api(path,{ method: 'PUT',token,body: { ...shared,version: 2 } })).status,403);
-  assert.equal((await api(path,{ method: 'DELETE',token,body: { version: 2 } })).status,403);
+  assert.equal((await api(path,{ method: 'PUT',token,body: { ...shared,version: 4 } })).status,403);
+  assert.equal((await api(path,{ method: 'DELETE',token,body: { version: 4 } })).status,403);
   assert.equal((await api(path,{ method: 'PUT',token: ids.tokenManager,body: shared })).status,409);
-  assert.equal((await api(path,{ method: 'PUT',token: ids.tokenManager,body: { ...body,version: 2 } })).data.version,3);
+  assert.equal((await api(path,{ method: 'PUT',token: ids.tokenManager,body: { ...body,version: 4 } })).data.version,5);
   assert.equal((await api(`${path}/preview`,{ method: 'POST',token })).status,404,'visibility is checked again on each run');
-  assert.equal((await api(path,{ method: 'DELETE',token: ids.tokenManager,body: { version: 2 } })).status,409);
-  assert.equal((await api(path,{ method: 'DELETE',token: ids.tokenManager,body: { version: 3 } })).status,200);
+  assert.equal((await api(path,{ method: 'DELETE',token: ids.tokenManager,body: { version: 4 } })).status,409);
+  assert.equal((await api(path,{ method: 'DELETE',token: ids.tokenManager,body: { version: 5 } })).status,200);
   assert.equal((await api(path,{ token: ids.tokenManager })).status,404);
 });
 
@@ -1418,7 +1429,7 @@ test('report schedules enforce ownership, recipient eligibility, versions and re
   const owner = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Scheduled owner','scheduled-owner@test.local',bcrypt.hashSync('pw',4),'manager')).lastInsertRowid;
   const peer = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Scheduled peer','scheduled-peer@test.local',bcrypt.hashSync('pw',4),'manager')).lastInsertRowid;
   const token = signJwt({ id: owner }),peerToken = signJwt({ id: peer });
-  const body = { name: 'Scheduled fixture',visibility: 'management',definition: { source: 'tasks',fields: ['id'] } };
+  const body = { name: 'Scheduled fixture',visibility: 'shared',shared_user_ids: [peer],shared_team_ids: [],definition: { source: 'tasks',fields: ['id'] } };
   const report = (await api('/api/reports/custom/saved',{ method: 'POST',token,body })).data;
   const path = `/api/reports/custom/saved/${report.id}/schedule`;
   assert.equal((await api(path,{ token: peerToken })).status,403);

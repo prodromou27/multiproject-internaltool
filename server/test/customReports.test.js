@@ -2,16 +2,19 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { metadata,compileReport,csvCell } = require('../customReports');
 const base = { source: 'tasks',fields: ['id','title'] };
-test('report templates compile with explicit UTC dates and configured terminal states', () => {
+test('report templates keep UTC date windows relative to execution and configured terminal states', () => {
   const { reportTemplates } = require('../reportTemplates');
   const templates = reportTemplates(new Date('2024-02-29T23:59:59Z'),{ project: [{ value: 'archived',is_terminal: true }] });
   assert.equal(templates.month_start,'2024-02-01');
   assert.equal(templates.month_end,'2024-02-29');
   assert.equal(templates.rows.length,11);
   for (const template of templates.rows) assert.doesNotThrow(() => compileReport(template.definition,100));
-  const overdue = compileReport(templates.rows.find(row => row.key==='overdue_projects').definition,100);
+  const overdue = compileReport(templates.rows.find(row => row.key==='overdue_projects').definition,100,new Date('2024-02-29T23:59:59Z'));
   assert.match(overdue.sql,/r.status NOT IN \(\?,\?,\?\)/);
   assert.deepEqual(overdue.params.slice(0,4),['2024-02-29','closed','cancelled','archived']);
+  const monthly = templates.rows.find(row => row.key==='monthly_customer_activity').definition;
+  assert.deepEqual(compileReport(monthly,100,new Date('2024-02-29T23:59:59Z')).params.slice(0,2),['2024-02-01','2024-02-29']);
+  assert.deepEqual(compileReport(monthly,100,new Date('2024-03-15T00:00:00Z')).params.slice(0,2),['2024-03-01','2024-03-31']);
   assert.equal(reportTemplates(new Date('2026-12-31T12:00:00Z')).month_end,'2026-12-31');
   assert.throws(() => compileReport({ ...base,filters: [{ field: 'id',operator: 'not_in',value: ['1'] }] },100),error => error.status===400);
 });
@@ -32,6 +35,10 @@ test('report compilation parameterizes values and restricts structural identifie
     { ...base,source: '__proto__' }, { ...base,fields: ['password'] }, { ...base,fields: ['title; DROP TABLE tasks'] },
     { ...base,sql: 'SELECT * FROM users' }, { ...base,filters: [{ field: 'id',operator: 'eq',value: '1' }] },
     { ...base,filters: [{ field: 'deadline',operator: 'eq',value: '2026-02-29' }] },
+    { ...base,filters: [{ field: 'deadline',operator: 'eq',relative: { anchor: 'quarter_start',offset_days: 0 } }] },
+    { ...base,filters: [{ field: 'deadline',operator: 'eq',relative: { anchor: 'today',offset_days: 3661 } }] },
+    { ...base,filters: [{ field: 'deadline',operator: 'eq',value: '2026-01-01',relative: { anchor: 'today',offset_days: 0 } }] },
+    { ...base,filters: [{ field: 'title',operator: 'eq',relative: { anchor: 'today',offset_days: 0 } }] },
     { ...base,filters: [{ field: 'id',operator: 'in',value: [] }] },
     { ...base,sort: [{ field: 'title',direction: 'asc; DROP TABLE users' }] },
     { ...base,fields: ['title','title'] }, { ...base,aggregations: [{ field: 'title',operation: 'sum' }] },

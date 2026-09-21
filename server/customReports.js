@@ -21,7 +21,21 @@ function array(value,max,label) {
 function metadata() {
   return Object.entries(SOURCES).map(([key,source]) => ({ key,label: source.label,grain: source.grain,fields: Object.entries(source.fields).map(([name,value]) => ({ key: name,type: value.type,label: value.label,operators: OPERATORS[value.type],aggregations: value.type==='number' ? ['count','sum','avg','min','max'] : ['count'] })) }));
 }
-function compileReport(definition,limit) {
+const RELATIVE_ANCHORS = ['today','week_start','week_end','month_start','month_end'];
+function relativeDate(relative,now) {
+  shape(relative,['anchor','offset_days'],'relative date');
+  if (!RELATIVE_ANCHORS.includes(relative.anchor) || !Number.isSafeInteger(relative.offset_days) || Math.abs(relative.offset_days)>3660) fail('Invalid relative date');
+  const date = new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()));
+  if (relative.anchor==='week_start' || relative.anchor==='week_end') {
+    const mondayOffset = (date.getUTCDay()+6)%7;
+    date.setUTCDate(date.getUTCDate()-mondayOffset+(relative.anchor==='week_end' ? 6 : 0));
+  } else if (relative.anchor==='month_start') date.setUTCDate(1);
+  else if (relative.anchor==='month_end') date.setUTCMonth(date.getUTCMonth()+1,0);
+  date.setUTCDate(date.getUTCDate()+relative.offset_days);
+  return date.toISOString().slice(0,10);
+}
+function compileReport(definition,limit,now = new Date()) {
+  if (!(now instanceof Date) || Number.isNaN(now.valueOf())) fail('Invalid report execution date');
   shape(definition,['source','fields','filters','group_by','aggregations','sort'],'report definition');
   if (typeof definition.source!=='string' || !Object.hasOwn(SOURCES,definition.source)) fail('Unknown report source');
   const source = SOURCES[definition.source];
@@ -55,11 +69,12 @@ function compileReport(definition,limit) {
     return value;
   };
   array(definition.filters ?? [],12,'Filters').forEach(filter => {
-    shape(filter,['field','operator','value'],'filter');
+    shape(filter,['field','operator','value','relative'],'filter');
     const value = get(filter.field);
     if (!OPERATORS[value.type].includes(filter.operator)) fail('Unsupported filter operator');
+    if (filter.relative!==undefined && (filter.value!==undefined || value.type!=='date' || ['in','not_in','is_null','is_not_null'].includes(filter.operator))) fail('Relative dates require a scalar date comparison');
     if (['is_null','is_not_null'].includes(filter.operator)) {
-      if (filter.value!==undefined) fail('Null operators do not accept values');
+      if (filter.value!==undefined || filter.relative!==undefined) fail('Null operators do not accept values');
       clauses.push(`${value.sql} IS ${filter.operator==='is_not_null' ? 'NOT ' : ''}NULL`);
     } else if (['in','not_in'].includes(filter.operator)) {
       const entries = array(filter.value,50,'IN values');
@@ -67,7 +82,7 @@ function compileReport(definition,limit) {
       entries.forEach(entry => params.push(scalar(entry,value.type)));
       clauses.push(`${value.sql} ${filter.operator==='not_in' ? 'NOT IN' : 'IN'} (${entries.map(() => '?').join(',')})`);
     } else {
-      const entry = scalar(filter.value,value.type);
+      const entry = filter.relative===undefined ? scalar(filter.value,value.type) : relativeDate(filter.relative,now);
       if (filter.operator==='contains') {
         params.push(`%${entry.toLowerCase().replace(/[\\%_]/g,'\\$&')}%`);
         clauses.push(`LOWER(${value.sql}) LIKE ?`);
