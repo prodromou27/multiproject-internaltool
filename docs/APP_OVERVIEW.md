@@ -89,6 +89,8 @@ manager account with a forced password change on first login.
   and an explicit Managed / Under support / Neither coverage classification. Sensitive
   technical text uses the customer field-encryption key; normalized asset-tag hashes
   enforce per-customer uniqueness without exposing tag values. Updates use versions.
+  Managers can attach support documents, diagrams, configuration exports, and warranty
+  records. Asset files use signature validation and optional AES-256-GCM encryption at rest.
   **service_activity_assets** and **maintenance_visit_assets** link the exact equipment
   serviced to activities and planned visits with database-enforced customer consistency;
   linked equipment is retained for operational history and must be retired or

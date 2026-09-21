@@ -906,6 +906,10 @@ async function applyCompatibilityMigrations() {
     );
     CREATE INDEX IF NOT EXISTS idx_maintenance_visit_asset_history ON maintenance_visit_assets(asset_id,visit_id);
   `]);
+  migrations.push(['20260921_customer_asset_attachments', `
+    ALTER TABLE attachments ADD COLUMN IF NOT EXISTS customer_asset_id INTEGER REFERENCES customer_assets(id) ON DELETE CASCADE;
+    CREATE INDEX IF NOT EXISTS idx_attachments_customer_asset ON attachments(customer_asset_id,created_at DESC);
+  `]);
 
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);

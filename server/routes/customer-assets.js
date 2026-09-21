@@ -1,12 +1,16 @@
 const router = require('express').Router({ mergeParams: true });
 const crypto = require('crypto');
 const net = require('net');
+const fs = require('fs');
+const path = require('path');
 const multer = require('multer');
 const ExcelJS = require('exceljs');
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
 const { encrypt,decrypt } = require('../fieldCipher');
 const { logAudit } = require('../auditLog');
+const fileCipher = require('../cipher');
+const { uploadDir,upload,safeStoredName,safeDownloadName,hasAllowedMagic } = require('../uploadUtils');
 const importUpload=multer({ storage:multer.memoryStorage(),limits:{ fileSize:5*1024*1024 } });
 
 const COVERAGE = new Set(['managed','support','neither']);
@@ -26,7 +30,8 @@ const excelText=value => value==null ? '' : value instanceof Date ? value.toISOS
 const safeCell=value => /^[=+\-@]/.test(String(value ?? '')) ? `'${value}` : value;
 
 router.use(requireManager, async (req,res,next) => {
-  if (req.path!=='/import' && ['POST','PUT','DELETE'].includes(req.method) && (!req.body || typeof req.body!=='object' || Array.isArray(req.body))) return res.status(400).json({ error: 'A JSON object is required' });
+  const isFileUpload=req.method==='POST' && /^\/\d+\/attachments$/.test(req.path) && req.is('multipart/form-data');
+  if (req.path!=='/import' && !isFileUpload && ['POST','PUT','DELETE'].includes(req.method) && (!req.body || typeof req.body!=='object' || Array.isArray(req.body))) return res.status(400).json({ error: 'A JSON object is required' });
   if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid customer ID' });
   if (!await db.prepare('SELECT id FROM customers WHERE id=?').get(Number(req.params.id))) return res.status(404).json({ error: 'Customer not found' });
   next();
@@ -141,13 +146,13 @@ router.get('/',async (req,res) => {
   const filter=filters(req);if(filter.error) return res.status(400).json({ error:filter.error });
   const { customer,page,where,params,search }=filter;
   if (search) {
-    const [raw,technologies,expiry_summary]=await Promise.all([db.prepare(`SELECT a.*,t.name AS technology_name,u.name AS updated_by_name,COALESCE(sac.activity_count,0) AS activity_count FROM customer_assets a LEFT JOIN technologies t ON t.id=a.technology_id LEFT JOIN users u ON u.id=COALESCE(a.updated_by,a.created_by) LEFT JOIN (SELECT asset_id,COUNT(*) AS activity_count FROM service_activity_assets GROUP BY asset_id) sac ON sac.asset_id=a.id WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT 5001`).all(...params),db.prepare('SELECT id,name FROM technologies WHERE active=1 ORDER BY sort_order,name LIMIT 500').all(),expirySummary(customer)]);
+    const [raw,technologies,expiry_summary]=await Promise.all([db.prepare(`SELECT a.*,t.name AS technology_name,u.name AS updated_by_name,COALESCE(sac.activity_count,0) AS activity_count,COALESCE(att.attachment_count,0) AS attachment_count FROM customer_assets a LEFT JOIN technologies t ON t.id=a.technology_id LEFT JOIN users u ON u.id=COALESCE(a.updated_by,a.created_by) LEFT JOIN (SELECT asset_id,COUNT(*) AS activity_count FROM service_activity_assets GROUP BY asset_id) sac ON sac.asset_id=a.id LEFT JOIN (SELECT customer_asset_id,COUNT(*) AS attachment_count FROM attachments WHERE customer_asset_id IS NOT NULL GROUP BY customer_asset_id) att ON att.customer_asset_id=a.id WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT 5001`).all(...params),db.prepare('SELECT id,name FROM technologies WHERE active=1 ORDER BY sort_order,name LIMIT 500').all(),expirySummary(customer)]);
     if (raw.length>5000) return res.status(413).json({ error:'Search exceeds 5000 candidate assets; narrow the filters' });
     const found=raw.map(decryptAsset).filter(row => matchesSearch(row,search));
     return res.json({ rows:found.slice((page-1)*25,page*25),total:found.length,page,page_size:25,technologies,expiry_summary,search_scope:'Up to 5000 assets matching the selected customer filters' });
   }
   const [rows,count,technologies,expiry_summary]=await Promise.all([
-    db.prepare(`SELECT a.*,t.name AS technology_name,u.name AS updated_by_name,COALESCE(sac.activity_count,0) AS activity_count FROM customer_assets a LEFT JOIN technologies t ON t.id=a.technology_id LEFT JOIN users u ON u.id=COALESCE(a.updated_by,a.created_by) LEFT JOIN (SELECT asset_id,COUNT(*) AS activity_count FROM service_activity_assets GROUP BY asset_id) sac ON sac.asset_id=a.id WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?`).all(...params,25,(page-1)*25),
+    db.prepare(`SELECT a.*,t.name AS technology_name,u.name AS updated_by_name,COALESCE(sac.activity_count,0) AS activity_count,COALESCE(att.attachment_count,0) AS attachment_count FROM customer_assets a LEFT JOIN technologies t ON t.id=a.technology_id LEFT JOIN users u ON u.id=COALESCE(a.updated_by,a.created_by) LEFT JOIN (SELECT asset_id,COUNT(*) AS activity_count FROM service_activity_assets GROUP BY asset_id) sac ON sac.asset_id=a.id LEFT JOIN (SELECT customer_asset_id,COUNT(*) AS attachment_count FROM attachments WHERE customer_asset_id IS NOT NULL GROUP BY customer_asset_id) att ON att.customer_asset_id=a.id WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?`).all(...params,25,(page-1)*25),
     db.prepare(`SELECT COUNT(*) AS total FROM customer_assets a WHERE ${where}`).get(...params),
     db.prepare('SELECT id,name FROM technologies WHERE active=1 ORDER BY sort_order,name LIMIT 500').all(),
     expirySummary(customer),
@@ -163,6 +168,73 @@ router.post('/',async (req,res) => {
     const row=await db.transaction(tx => insertRecord(tx,req,customer,input.value));
     res.status(201).json(decryptAsset(row));
   } catch (error) { if (error.code==='23505') return res.status(409).json({ error: 'This customer already has that asset tag' }); throw error; }
+});
+
+async function assetForCustomer(req,res) {
+  if (!positiveId(req.params.assetId)) { res.status(400).json({ error:'Invalid asset ID' });return null; }
+  const asset=await db.prepare('SELECT id,customer_id FROM customer_assets WHERE id=? AND customer_id=?').get(Number(req.params.assetId),Number(req.params.id));
+  if (!asset) { res.status(404).json({ error:'Asset not found' });return null; }
+  return asset;
+}
+
+router.get('/:assetId/attachments',async (req,res) => {
+  const asset=await assetForCustomer(req,res);if (!asset) return;
+  const rows=await db.prepare('SELECT a.id,a.original_name,a.mime_type,a.size,a.uploaded_by,a.created_at,u.name AS uploaded_by_name FROM attachments a JOIN users u ON u.id=a.uploaded_by WHERE a.customer_asset_id=? ORDER BY a.created_at DESC,a.id DESC').all(asset.id);
+  res.json(rows);
+});
+
+router.post('/:assetId/attachments',async (req,res) => {
+  const asset=await assetForCustomer(req,res);if (!asset) return;
+  try { await new Promise((resolve,reject) => upload.single('file')(req,res,error => error ? reject(error) : resolve())); }
+  catch(error) { return res.status(400).json({ error:error.message }); }
+  if (!req.file) return res.status(400).json({ error:'No file uploaded' });
+  try {
+    if (!hasAllowedMagic(req.file.path,req.file.mimetype)) return res.status(400).json({ error:'Uploaded file content does not match the declared file type' });
+    let encIv=null,encTag=null;
+    if (fileCipher.isConfigured()) {
+      const raw=await fs.promises.readFile(req.file.path),encrypted=fileCipher.encrypt(raw);
+      await fs.promises.writeFile(req.file.path,encrypted.data);encIv=encrypted.iv;encTag=encrypted.tag;
+    }
+    const name=safeDownloadName(req.file.originalname);
+    const result=await db.transaction(async tx => {
+      const inserted=await tx.prepare('INSERT INTO attachments (customer_asset_id,original_name,stored_name,mime_type,size,uploaded_by,enc_iv,enc_tag) VALUES (?,?,?,?,?,?,?,?)').run(asset.id,name,req.file.filename,req.file.mimetype,req.file.size,req.user.id,encIv,encTag);
+      await logAudit(tx,req,'attachment',inserted.lastInsertRowid,name,'attachment_uploaded',`customer_id=${asset.customer_id}; customer_asset_id=${asset.id}`);
+      return inserted;
+    });
+    res.status(201).json({ id:result.lastInsertRowid,original_name:name,encrypted:!!encIv });
+    req.file=null;
+  } finally {
+    if (req.file?.path) await fs.promises.unlink(req.file.path).catch(error => { if (error.code!=='ENOENT') console.error('[customer-assets] upload cleanup failed:',error); });
+  }
+});
+
+router.get('/:assetId/attachments/:attachmentId/download',async (req,res) => {
+  const asset=await assetForCustomer(req,res);if (!asset) return;
+  if (!positiveId(req.params.attachmentId)) return res.status(400).json({ error:'Invalid attachment ID' });
+  const attachment=await db.prepare('SELECT * FROM attachments WHERE id=? AND customer_asset_id=?').get(Number(req.params.attachmentId),asset.id);
+  if (!attachment) return res.status(404).json({ error:'Attachment not found' });
+  const storedName=safeStoredName(attachment.stored_name);if (!storedName) return res.status(400).json({ error:'Invalid file reference' });
+  const filePath=path.join(uploadDir,storedName),downloadName=safeDownloadName(attachment.original_name);
+  res.setHeader('Content-Disposition',`attachment; filename="${downloadName}"`);res.setHeader('Content-Type',attachment.mime_type || 'application/octet-stream');res.setHeader('X-Content-Type-Options','nosniff');
+  if (attachment.enc_iv && attachment.enc_tag) {
+    try { const plaintext=fileCipher.decrypt(await fs.promises.readFile(filePath),attachment.enc_iv,attachment.enc_tag);res.setHeader('Content-Length',plaintext.length);return res.send(plaintext); }
+    catch(error) { console.error('[customer-assets] attachment decrypt failed:',error.message);return res.status(500).json({ error:'Failed to decrypt file' }); }
+  }
+  res.download(filePath,downloadName);
+});
+
+router.delete('/:assetId/attachments/:attachmentId',async (req,res) => {
+  const asset=await assetForCustomer(req,res);if (!asset) return;
+  if (!positiveId(req.params.attachmentId)) return res.status(400).json({ error:'Invalid attachment ID' });
+  const attachment=await db.transaction(async tx => {
+    const removed=(await tx.prepare('DELETE FROM attachments WHERE id=? AND customer_asset_id=? RETURNING *').all(Number(req.params.attachmentId),asset.id))[0];
+    if (removed) await logAudit(tx,req,'attachment',removed.id,removed.original_name,'attachment_deleted',`customer_id=${asset.customer_id}; customer_asset_id=${asset.id}`);
+    return removed;
+  });
+  if (!attachment) return res.status(404).json({ error:'Attachment not found' });
+  const storedName=safeStoredName(attachment.stored_name);
+  if (storedName) await fs.promises.unlink(path.join(uploadDir,storedName)).catch(error => { if (error.code!=='ENOENT') console.error('[customer-assets] attachment cleanup failed:',error); });
+  res.json({ ok:true });
 });
 
 router.put('/:assetId',async (req,res) => {
@@ -185,6 +257,7 @@ router.put('/:assetId',async (req,res) => {
 router.delete('/:assetId',async (req,res) => {
   if (!positiveId(req.params.assetId) || !positiveId(req.body.version)) return res.status(400).json({ error: 'Valid asset ID and version are required' });
   if (await db.prepare('SELECT 1 FROM service_activity_assets WHERE asset_id=? UNION ALL SELECT 1 FROM maintenance_visit_assets WHERE asset_id=? LIMIT 1').get(Number(req.params.assetId),Number(req.params.assetId))) return res.status(409).json({ error:'This asset is linked to recorded service work and must be retired or decommissioned instead of deleted' });
+  const attachmentFiles=await db.prepare('SELECT stored_name FROM attachments WHERE customer_asset_id=?').all(Number(req.params.assetId));
   let row;
   try { row=await db.transaction(async tx => {
       const removed=(await tx.prepare('DELETE FROM customer_assets WHERE id=? AND customer_id=? AND version=? RETURNING *').all(Number(req.params.assetId),Number(req.params.id),Number(req.body.version)))[0];
@@ -192,6 +265,10 @@ router.delete('/:assetId',async (req,res) => {
     });
   } catch(error) { if(error.code==='23503') return res.status(409).json({ error:'This asset is linked to recorded service activity and must be retired or decommissioned instead of deleted' });throw error; }
   if (!row) return res.status(409).json({ error: 'This asset changed or was removed. Reload before deleting.',code:'ASSET_CONFLICT' });
+  await Promise.all(attachmentFiles.map(({ stored_name }) => {
+    const safeName=safeStoredName(stored_name);if (!safeName) return Promise.resolve();
+    return fs.promises.unlink(path.join(uploadDir,safeName)).catch(error => { if (error.code!=='ENOENT') console.error('[customer-assets] attachment cleanup failed:',error); });
+  }));
   res.json({ ok:true });
 });
 

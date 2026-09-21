@@ -245,6 +245,44 @@ test('customer assets validate technical identifiers, enforce versions and remai
   assert.equal(Number((await db.prepare('SELECT COUNT(*) AS total FROM customer_asset_history WHERE customer_id=?').get(ids.customer)).total)>=3,true);
 });
 
+test('customer asset files enforce ownership, file signatures, encryption and cleanup', async () => {
+  const base=`/api/customers/${ids.customer}/assets`;
+  const created=await api(base,{ method:'POST',token:ids.tokenManager,body:{ name:'Documented gateway',asset_tag:'DOC-GW-1',asset_type:'Security gateway',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'managed' } });
+  const other=await api(`/api/customers/${ids.customerUnassigned}/assets`,{ method:'POST',token:ids.tokenManager,body:{ name:'Other documented gateway',asset_tag:'DOC-GW-2',asset_type:'Security gateway',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'support' } });
+  assert.equal(created.status,201);assert.equal(other.status,201);
+  const filesPath=`${base}/${created.data.id}/attachments`;
+  const sendFile=async (token,content,type,name='document.pdf') => {
+    const form=new FormData();form.append('file',new Blob([content],{ type }),name);
+    return fetch(`${baseUrl}${filesPath}`,{ method:'POST',headers:{ Authorization:`Bearer ${token}`,'X-SolutionsHub-Request':'1' },body:form });
+  };
+  assert.equal((await sendFile(ids.tokenEnabled,'%PDF-1.4\ntest','application/pdf')).status,403);
+  assert.equal((await sendFile(ids.tokenManager,'not a PDF','application/pdf')).status,400);
+  process.env.ATTACHMENT_KEY='ab'.repeat(32);
+  try {
+    const uploaded=await sendFile(ids.tokenManager,'%PDF-1.4\nasset documentation','application/pdf');
+    assert.equal(uploaded.status,201);
+    const result=await uploaded.json(),stored=await db.prepare('SELECT * FROM attachments WHERE id=?').get(result.id);
+    assert.equal(stored.customer_asset_id,created.data.id);assert.ok(stored.enc_iv);assert.ok(stored.enc_tag);
+    const list=await api(filesPath,{ token:ids.tokenManager });
+    assert.equal(list.status,200);assert.equal(list.data.length,1);assert.equal(list.data[0].stored_name,undefined);assert.equal(list.data[0].enc_iv,undefined);
+    const inventory=await api(`${base}?search=Documented%20gateway`,{ token:ids.tokenManager });
+    assert.equal(Number(inventory.data.rows[0].attachment_count),1);
+    assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets/${created.data.id}/attachments`,{ token:ids.tokenManager })).status,404);
+    assert.equal((await api(`${filesPath}/${result.id}/download`,{ token:ids.tokenEnabled })).status,403);
+    const download=await fetch(`${baseUrl}${filesPath}/${result.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenManager}` } });
+    assert.equal(download.status,200);assert.equal(await download.text(),'%PDF-1.4\nasset documentation');assert.equal(download.headers.get('x-content-type-options'),'nosniff');
+    assert.equal((await api(`${filesPath}/${result.id}`,{ method:'DELETE',token:ids.tokenManager,body:{} })).status,200);
+    assert.equal((await api(filesPath,{ token:ids.tokenManager })).data.length,0);
+  } finally { delete process.env.ATTACHMENT_KEY; }
+  const cleanupUpload=await sendFile(ids.tokenManager,'%PDF-1.4\ncleanup check','application/pdf','cleanup.pdf');
+  assert.equal(cleanupUpload.status,201);
+  const cleanupResult=await cleanupUpload.json(),cleanupRow=await db.prepare('SELECT stored_name FROM attachments WHERE id=?').get(cleanupResult.id);
+  const cleanupPath=require('path').join(require('../uploadUtils').uploadDir,cleanupRow.stored_name);
+  assert.equal((await api(`${base}/${created.data.id}`,{ method:'DELETE',token:ids.tokenManager,body:{ version:created.data.version } })).status,200);
+  await assert.rejects(require('fs').promises.access(cleanupPath));
+  assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets/${other.data.id}`,{ method:'DELETE',token:ids.tokenManager,body:{ version:other.data.version } })).status,200);
+});
+
 test('engineer from a disabled team cannot access the service-activities module', async () => {
   const { status, data } = await api('/api/service-activities', { token: ids.tokenDisabled });
   assert.equal(status, 403);

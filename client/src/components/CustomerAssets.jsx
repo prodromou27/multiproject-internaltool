@@ -49,11 +49,55 @@ function AssetForm({ customerId,initial,technologies,onClose,onSaved }) {
   </Modal>;
 }
 
+const fileSize=bytes => {
+  const size=Number(bytes || 0);if (size<1024) return `${size} B`;if (size<1024*1024) return `${(size/1024).toFixed(1)} KB`;return `${(size/(1024*1024)).toFixed(1)} MB`;
+};
+
+function AssetFiles({ customerId,asset,onClose,onChanged }) {
+  const toast=useToast(),confirm=useConfirm(),inputRef=useRef(null);
+  const [files,setFiles]=useState([]),[loading,setLoading]=useState(true),[uploading,setUploading]=useState(false),[error,setError]=useState(''),[downloading,setDownloading]=useState(null);
+  const load=useCallback(async () => {
+    setLoading(true);setError('');
+    try { setFiles(await api.customerAssetAttachments(customerId,asset.id)); }
+    catch(failure) { setError(failure.message); }
+    finally { setLoading(false); }
+  },[customerId,asset.id]);
+  useEffect(() => { load(); },[load]);
+  async function uploadFiles(selected) {
+    if (!selected.length) return;setUploading(true);setError('');
+    try { for (const file of selected) await api.uploadCustomerAssetAttachment(customerId,asset.id,file);toast.success(selected.length===1 ? 'File uploaded' : `${selected.length} files uploaded`);await load();onChanged(); }
+    catch(failure) { setError(failure.message); }
+    finally { setUploading(false);if (inputRef.current) inputRef.current.value=''; }
+  }
+  async function download(file) {
+    setDownloading(file.id);setError('');
+    try { const blob=await api.downloadCustomerAssetAttachment(customerId,asset.id,file.id),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=file.original_name;document.body.appendChild(link);link.click();link.remove();setTimeout(() => URL.revokeObjectURL(url),1000); }
+    catch(failure) { setError(failure.message); }
+    finally { setDownloading(null); }
+  }
+  async function remove(file) {
+    if (!await confirm(`Remove ${file.original_name}?`,{ title:'Remove asset file?',label:'Remove' })) return;
+    try { await api.deleteCustomerAssetAttachment(customerId,asset.id,file.id);toast.success('File removed');await load();onChanged(); }
+    catch(failure) { setError(failure.message); }
+  }
+  return <Modal title={`Files for ${asset.name}`} onClose={uploading ? () => {} : onClose} wide>
+    {error && <div className="error-msg" role="alert">{error}</div>}
+    <p className="text-muted text-sm" style={{ marginBottom:12 }}>Store diagrams, support documents, configuration exports, and warranty records. Do not upload passwords, private keys, or credentials.</p>
+    <label className="btn btn-primary" style={{ display:'inline-flex',cursor:uploading ? 'wait' : 'pointer',marginBottom:16 }}>
+      {uploading ? 'Uploading...' : 'Upload files'}
+      <input ref={inputRef} type="file" multiple hidden disabled={uploading} onChange={event => uploadFiles([...event.target.files])} />
+    </label>
+    <span className="text-muted text-sm" style={{ marginLeft:10 }}>Maximum 20 MB per file</span>
+    {loading ? <p role="status">Loading files...</p> : !files.length ? <p className="text-muted">No files attached to this asset.</p> : <div className="table-wrap"><table><thead><tr><th>File</th><th>Size</th><th>Uploaded by</th><th>Date</th><th>Actions</th></tr></thead><tbody>{files.map(file => <tr key={file.id}><td>{file.original_name}</td><td>{fileSize(file.size)}</td><td>{file.uploaded_by_name}</td><td>{fmtDate(file.created_at)}</td><td><div className="flex gap-8"><button className="btn btn-ghost btn-sm" disabled={downloading===file.id} onClick={() => download(file)}>{downloading===file.id ? 'Preparing...' : 'Download'}</button><button className="btn btn-danger btn-sm" onClick={() => remove(file)}>Remove</button></div></td></tr>)}</tbody></table></div>}
+    <div className="modal-footer"><button className="btn btn-ghost" disabled={uploading} onClick={onClose}>Close</button></div>
+  </Modal>;
+}
+
 export default function CustomerAssets({ customerId }) {
   const toast=useToast(),confirm=useConfirm();
   const [page,setPage]=useState(1),[coverage,setCoverage]=useState(''),[status,setStatus]=useState('');
   const [searchInput,setSearchInput]=useState(''),[search,setSearch]=useState(''),[expiry,setExpiry]=useState('');
-  const [data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[editing,setEditing]=useState(null),[importing,setImporting]=useState(false),[exporting,setExporting]=useState(false);
+  const [data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[editing,setEditing]=useState(null),[filesFor,setFilesFor]=useState(null),[importing,setImporting]=useState(false),[exporting,setExporting]=useState(false);
   const scope=`${customerId}:${page}:${coverage}:${status}:${search}:${expiry}`;
   const { begin,isCurrent }=useLatestRequest(scope);
   const load=useCallback(() => {
@@ -82,11 +126,12 @@ export default function CustomerAssets({ customerId }) {
       {(data.expiry_summary?.expired>0 || data.expiry_summary?.due_30>0) && <div className="alert alert-warning" style={{ marginBottom:16 }} role="status">{data.expiry_summary.expired} active assets have expired support or warranty; {data.expiry_summary.due_30} expire within 30 days. Use the Expiry filter to review them.</div>}
       {!data.rows.length && <p className="text-muted">No customer assets in this view.</p>}
       <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,320px),1fr))',gap:16 }}>
-        {data.rows.map(row => <article className="card" key={row.id} style={{ overflowWrap:'anywhere' }}><h2 style={{ fontSize:17 }}>{row.name}</h2><p><strong>{row.asset_type}</strong> / {row.coverage_type==='support' ? 'Under support' : label(row.coverage_type)} / {label(row.lifecycle_status)}</p><p className="text-muted">{[row.vendor,row.model,row.software_version].filter(Boolean).join(' / ') || 'Vendor, model and version not recorded'}</p><p>{row.hostname || 'No hostname'}{row.ip_address ? ` / ${row.ip_address}` : ''}</p><p className="text-muted text-sm">Tag: {row.asset_tag || 'none'} / Serial: {row.serial_number || 'none'} / {label(row.environment)} / {label(row.criticality)} criticality</p>{Number(row.activity_count)>0 && <p><strong>{row.activity_count}</strong> linked service {Number(row.activity_count)===1 ? 'activity' : 'activities'}</p>}{row.support_end_date && <p>Support ends {fmtDate(row.support_end_date)}</p>}{row.warranty_expiry_date && <p>Warranty expires {fmtDate(row.warranty_expiry_date)}</p>}{row.notes && <p style={{ whiteSpace:'pre-wrap' }}>{row.notes}</p>}<div className="flex gap-8"><button className="btn btn-ghost" onClick={() => setEditing({ initial:row })}>Edit</button><button className="btn btn-danger" onClick={() => remove(row)}>Delete</button></div></article>)}
+        {data.rows.map(row => <article className="card" key={row.id} style={{ overflowWrap:'anywhere' }}><h2 style={{ fontSize:17 }}>{row.name}</h2><p><strong>{row.asset_type}</strong> / {row.coverage_type==='support' ? 'Under support' : label(row.coverage_type)} / {label(row.lifecycle_status)}</p><p className="text-muted">{[row.vendor,row.model,row.software_version].filter(Boolean).join(' / ') || 'Vendor, model and version not recorded'}</p><p>{row.hostname || 'No hostname'}{row.ip_address ? ` / ${row.ip_address}` : ''}</p><p className="text-muted text-sm">Tag: {row.asset_tag || 'none'} / Serial: {row.serial_number || 'none'} / {label(row.environment)} / {label(row.criticality)} criticality</p>{Number(row.activity_count)>0 && <p><strong>{row.activity_count}</strong> linked service {Number(row.activity_count)===1 ? 'activity' : 'activities'}</p>}{row.support_end_date && <p>Support ends {fmtDate(row.support_end_date)}</p>}{row.warranty_expiry_date && <p>Warranty expires {fmtDate(row.warranty_expiry_date)}</p>}{row.notes && <p style={{ whiteSpace:'pre-wrap' }}>{row.notes}</p>}<div className="flex gap-8" style={{ flexWrap:'wrap' }}><button className="btn btn-ghost" onClick={() => setFilesFor(row)}>Files ({Number(row.attachment_count || 0)})</button><button className="btn btn-ghost" onClick={() => setEditing({ initial:row })}>Edit</button><button className="btn btn-danger" onClick={() => remove(row)}>Delete</button></div></article>)}
       </div>
       <div className="flex gap-8" style={{ marginTop:16 }}><button className="btn btn-ghost" disabled={page<=1} onClick={() => setPage(value => value-1)}>Previous</button><span>Page {page} / {data.total} assets</span><button className="btn btn-ghost" disabled={page*data.page_size>=data.total} onClick={() => setPage(value => value+1)}>Next</button></div>
     </>}
     {editing && data && <AssetForm customerId={customerId} initial={editing.initial} technologies={data.technologies} onClose={() => setEditing(null)} onSaved={() => { toast.success('Asset saved');load(); }} />}
+    {filesFor && <AssetFiles customerId={customerId} asset={filesFor} onClose={() => setFilesFor(null)} onChanged={load} />}
     {importing && <ImportModal title="Import customer assets" templateUrl={api.customerAssetTemplateUrl(customerId)} importFn={file => api.importCustomerAssets(customerId,file)} columns={['name*','asset_type*','asset_tag','technology','hostname','ip_address','software_version','coverage_type','support_end_date']} onClose={() => setImporting(false)} onDone={() => { toast.success('Assets imported');load(); }} />}
   </section>;
 }

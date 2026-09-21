@@ -171,6 +171,14 @@ export const api = {
   createCustomerAsset: (id, body) => req('POST', `/customers/${id}/assets`, body),
   updateCustomerAsset: (id, assetId, body) => req('PUT', `/customers/${id}/assets/${assetId}`, body),
   deleteCustomerAsset: (id, assetId, version) => req('DELETE', `/customers/${id}/assets/${assetId}`, { version }),
+  customerAssetAttachments: (id,assetId) => req('GET',`/customers/${id}/assets/${assetId}/attachments`),
+  uploadCustomerAssetAttachment: (id,assetId,file) => upload(`/customers/${id}/assets/${assetId}/attachments`,'file',file),
+  downloadCustomerAssetAttachment: async (id,assetId,attachmentId) => {
+    const response=await fetch(`${BASE}/customers/${id}/assets/${assetId}/attachments/${attachmentId}/download`,{ credentials:'same-origin' });
+    if (!response.ok) { const data=await response.json().catch(() => ({}));handleUnauthorized(response.status,data,true);throw new Error(data.error || 'Attachment download failed'); }
+    return response.blob();
+  },
+  deleteCustomerAssetAttachment: (id,assetId,attachmentId) => req('DELETE',`/customers/${id}/assets/${assetId}/attachments/${attachmentId}`,{}),
   customerAssetTemplateUrl: id => `${BASE}/customers/${id}/assets/template`,
   importCustomerAssets: (id,file) => upload(`/customers/${id}/assets/import`,'file',file),
   exportCustomerAssets: async (id,params = {}) => {
