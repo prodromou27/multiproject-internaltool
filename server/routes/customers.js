@@ -9,6 +9,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 router.use('/:id/overview', require('./customer-overview'));
 router.use('/:id/recommendations', require('./customer-recommendations'));
 router.use('/:id/assets', require('./customer-assets'));
+router.use('/:id/managed-services', require('./managedCustomerConfiguration'));
 
 function cellToString(v) {
   if (v === null || v === undefined) return '';

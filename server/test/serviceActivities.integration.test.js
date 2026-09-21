@@ -1513,6 +1513,38 @@ test('Request Tracker settings are manager-only and never return or store a plai
   } finally { if (previous===undefined) delete process.env.CUSTOMER_FIELD_KEY;else process.env.CUSTOMER_FIELD_KEY=previous; }
 });
 
+test('managed customer configuration enforces manager access, versions and unique RT queues',async () => {
+  const path=`/api/customers/${ids.customer}/managed-services`;
+  assert.equal((await api(path,{ token:ids.tokenEnabled })).status,403);
+  const initial=await api(path,{ token:ids.tokenManager });
+  assert.equal(initial.status,200);assert.equal(initial.data.version,0);assert.equal(initial.data.managed_services_enabled,false);
+  const body={ ...initial.data,managed_services_enabled:true,service_activity_tracking_enabled:true,responsible_team_id:ids.teamEnabled,
+    service_manager_id:ids.manager,reporting_frequency:'monthly',ticket_integration_enabled:true,ticket_include_in_reporting:true,
+    external_queue_id:'42',external_queue_name:'Acme Support' };
+  for (const key of ['customer_id','last_successful_sync_at','last_sync_status']) delete body[key];
+  await db.prepare("INSERT INTO settings (key,value) VALUES ('ticketing_rt',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ enabled:false }));
+  assert.equal((await api(path,{ method:'PUT',token:ids.tokenManager,body })).status,409);
+  await db.prepare("UPDATE settings SET value=? WHERE key='ticketing_rt'").run(JSON.stringify({ enabled:true,base_url:'https://8.8.8.8/rt' }));
+  const saved=await api(path,{ method:'PUT',token:ids.tokenManager,body });
+  assert.equal(saved.status,200);assert.equal(saved.data.version,1);assert.equal(saved.data.external_queue_id,'42');
+  assert.equal((await db.prepare('SELECT service_activity_enabled FROM customers WHERE id=?').get(ids.customer)).service_activity_enabled,1);
+  assert.equal((await db.prepare('SELECT external_queue_name FROM customer_ticketing_configurations WHERE customer_id=?').get(ids.customer)).external_queue_name,'Acme Support');
+  assert.equal((await api(path,{ method:'PUT',token:ids.tokenManager,body })).status,409);
+
+  const otherInitial=(await api(`/api/customers/${ids.customerUnassigned}/managed-services`,{ token:ids.tokenManager })).data;
+  const other={ ...otherInitial,managed_services_enabled:true,ticket_integration_enabled:true,external_queue_id:'42',external_queue_name:'Duplicate Queue' };
+  for (const key of ['customer_id','last_successful_sync_at','last_sync_status']) delete other[key];
+  assert.equal((await api(`/api/customers/${ids.customerUnassigned}/managed-services`,{ method:'PUT',token:ids.tokenManager,body:other })).status,409);
+  assert.equal((await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...body,version:1,responsible_team_id:ids.teamDisabled } })).status,400);
+  assert.equal((await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...body,version:1,external_queue_id:'not-an-id' } })).status,400);
+
+  const cleared={ ...saved.data,ticket_integration_enabled:false,external_queue_id:'',external_queue_name:'' };
+  for (const key of ['customer_id','last_successful_sync_at','last_sync_status']) delete cleared[key];
+  const removed=await api(path,{ method:'PUT',token:ids.tokenManager,body:cleared });
+  assert.equal(removed.status,200);assert.equal(removed.data.external_queue_id,'');
+  assert.equal(await db.prepare('SELECT id FROM customer_ticketing_configurations WHERE customer_id=?').get(ids.customer),undefined);
+});
+
 test('SMTP settings await reads, redact and retain passwords on ordinary edits', async () => {
   await db.prepare("INSERT INTO settings (key,value) VALUES ('email_smtp',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ host: 'smtp.test.local',port: 587,user: 'report-user',password: 'retained-secret' }));
   const before = await api('/api/report-settings/smtp',{ token: ids.tokenManager });

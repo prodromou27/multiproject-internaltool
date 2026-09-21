@@ -330,6 +330,9 @@ export const api = {
   saveTicketingSettings: data => req('PUT','/ticketing/settings',data),
   testTicketingConnection: () => req('POST','/ticketing/test',{}),
   ticketingQueues: () => req('GET','/ticketing/queues'),
+  managedCustomerConfiguration: (id,options) => req('GET',`/customers/${id}/managed-services`,undefined,options),
+  saveManagedCustomerConfiguration: (id,data) => req('PUT',`/customers/${id}/managed-services`,data),
+  testManagedCustomerMapping: id => req('POST',`/customers/${id}/managed-services/test-mapping`,{}),
 
   // system update
   systemUpdateStatus:  () => req('GET',  '/settings/system-update/status'),

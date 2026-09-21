@@ -197,7 +197,7 @@ export default function Customers() {
                     <td><span className="badge badge-active">{c.visit_count}</span></td>
                     <td>
                       <div className="flex gap-8">
-                        {isManager && c.service_activity_enabled && (
+                        {isManager && (
                           <Link className="btn btn-sm btn-ghost" to={`/customers/${c.id}/service-profile`}>Customer 360</Link>
                         )}
                         {canCreate && <button className="btn btn-sm btn-ghost" onClick={() => openEdit(c)}>Edit</button>}

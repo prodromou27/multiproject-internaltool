@@ -25,6 +25,15 @@ test('RT provider reports connection failures without exposing credentials',asyn
   await assert.rejects(() => provider.testConnection(),error => error.status===502 && error.message==='Request Tracker returned HTTP 401' && !error.message.includes('do-not-expose'));
 });
 
+test('RT provider reads a single queue using a validated identifier',async () => {
+  const provider=new RequestTrackerProvider({ base_url:'https://rt.example.test',api_token:'token' },{ validateUrl:async () => {},fetchImpl:async url => {
+    assert.equal(String(url),'https://rt.example.test/REST/2.0/queue/42');
+    return json({ id:42,Name:'Customer Support',Description:'Managed queue' });
+  } });
+  assert.deepEqual(await provider.getQueue('42'),{ id:'42',name:'Customer Support',description:'Managed queue' });
+  await assert.rejects(() => provider.getQueue('../tickets'),error => error.status===400);
+});
+
 test('RT provider rejects incomplete settings and unbounded queue directories',async () => {
   await assert.rejects(() => new RequestTrackerProvider({ base_url:'https://rt.example.test' },{ validateUrl:async () => {} }).testConnection(),/not fully configured/);
   const provider=new RequestTrackerProvider({ base_url:'https://rt.example.test',api_token:'token' },{ validateUrl:async () => {},fetchImpl:async () => json({ pages:6,items:[] }) });

@@ -41,7 +41,7 @@ const pool = new Pool({
 pool.on('error', (err) => console.error('[pg pool]', err.message));
 
 // Tables with no `id` column — never append RETURNING id to inserts into these.
-const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|maintenance_visit_assets|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams)\b/i;
+const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|maintenance_visit_assets|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|managed_customer_configurations|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams)\b/i;
 
 // ── Placeholders: `?` -> `$1, $2, ...`, memoized per unique SQL string ───────
 const _cache = new Map();
@@ -890,6 +890,42 @@ async function applyCompatibilityMigrations() {
   migrations.push(['20260921_customer_asset_attachments', `
     ALTER TABLE attachments ADD COLUMN IF NOT EXISTS customer_asset_id INTEGER REFERENCES customer_assets(id) ON DELETE CASCADE;
     CREATE INDEX IF NOT EXISTS idx_attachments_customer_asset ON attachments(customer_asset_id,created_at DESC);
+  `]);
+  migrations.push(['20260921_managed_customer_configuration', `
+    CREATE TABLE IF NOT EXISTS managed_customer_configurations (
+      customer_id INTEGER PRIMARY KEY REFERENCES customers(id) ON DELETE CASCADE,
+      managed_services_enabled INTEGER NOT NULL DEFAULT 0,
+      task_reporting_enabled INTEGER NOT NULL DEFAULT 1,
+      project_reporting_enabled INTEGER NOT NULL DEFAULT 1,
+      maintenance_visit_reporting_enabled INTEGER NOT NULL DEFAULT 1,
+      recommendation_tracking_enabled INTEGER NOT NULL DEFAULT 1,
+      include_in_managed_services_reports INTEGER NOT NULL DEFAULT 1,
+      responsible_team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+      service_manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      reporting_frequency TEXT,
+      default_report_template_id INTEGER,
+      version INTEGER NOT NULL DEFAULT 1,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT ${NOW},
+      updated_at TEXT DEFAULT ${NOW}
+    );
+    CREATE TABLE IF NOT EXISTS customer_ticketing_configurations (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL UNIQUE REFERENCES customers(id) ON DELETE CASCADE,
+      provider_type TEXT NOT NULL DEFAULT 'request_tracker' CHECK(provider_type IN ('request_tracker')),
+      external_queue_id TEXT NOT NULL,
+      external_queue_name TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      include_in_reporting INTEGER NOT NULL DEFAULT 1,
+      last_successful_sync_at TEXT,
+      last_sync_status TEXT,
+      version INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT ${NOW},
+      updated_at TEXT DEFAULT ${NOW},
+      UNIQUE(provider_type,external_queue_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_managed_customer_enabled ON managed_customer_configurations(managed_services_enabled,customer_id);
+    CREATE INDEX IF NOT EXISTS idx_customer_ticketing_enabled ON customer_ticketing_configurations(enabled,customer_id);
   `]);
 
   migrations.push(['20260917_project_closure_review', `

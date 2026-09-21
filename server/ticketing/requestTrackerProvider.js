@@ -31,6 +31,13 @@ class RequestTrackerProvider {
     return { ok:true,queue_count:Number.isFinite(Number(result.total)) ? Number(result.total) : result.items.length };
   }
 
+  async getQueue(queueId) {
+    const id=String(queueId ?? '');
+    if (!/^\d+$/.test(id)) throw Object.assign(new Error('Invalid Request Tracker queue identifier'),{ status:400 });
+    const detail=await this.request(`/queue/${encodeURIComponent(id)}`);
+    return { id,name:String(detail.Name || detail.name || `Queue ${id}`).slice(0,500),description:String(detail.Description || detail.description || '').slice(0,2000) };
+  }
+
   async getQueues() {
     const references=[];let page=1,pages=1;
     do {
@@ -44,8 +51,8 @@ class RequestTrackerProvider {
       const batch=references.slice(offset,offset+10);
       queues.push(...await Promise.all(batch.map(async reference => {
         const id=String(reference.id ?? '');if (!/^\d+$/.test(id)) throw Object.assign(new Error('Request Tracker returned an invalid queue identifier'),{ status:502 });
-        const detail=reference.Name ? reference : await this.request(`/queue/${encodeURIComponent(id)}`);
-        return { id,name:String(detail.Name || detail.name || `Queue ${id}`).slice(0,500),description:String(detail.Description || detail.description || '').slice(0,2000) };
+        if (!reference.Name) return this.getQueue(id);
+        return { id,name:String(reference.Name || `Queue ${id}`).slice(0,500),description:String(reference.Description || '').slice(0,2000) };
       })));
     }
     return queues.sort((a,b) => a.name.localeCompare(b.name) || Number(a.id)-Number(b.id));

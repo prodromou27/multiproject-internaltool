@@ -6,6 +6,7 @@ import { StatusBadge } from '../components/Shared';
 import CustomerOverview from '../components/CustomerOverview';
 import CustomerRecommendations from '../components/CustomerRecommendations';
 import CustomerAssets from '../components/CustomerAssets';
+import ManagedCustomerConfiguration from '../components/ManagedCustomerConfiguration';
 import { fmtHours, plural, buildMix, HoursHero, Ranking } from '../components/ServiceCharts';
 import { fmtDuration, mixOf, groupByDay, LedgerDay } from '../components/activityLedger';
 import { useAuth } from '../App';
@@ -61,6 +62,7 @@ export default function CustomerServiceProfile() {
     const requested=new URLSearchParams(location.search).get('section');
     if (requested==='recommendations' && recommendationAccess) return requested;
     if (requested==='assets' && user.role==='manager') return requested;
+    if (requested==='managed-services' && user.role==='manager') return requested;
     return user.role==='manager' ? 'overview' : 'activities';
   });
   useEffect(() => {
@@ -68,6 +70,7 @@ export default function CustomerServiceProfile() {
     if (section==='overview' && user.role==='manager') setTab(section);
     else if (section==='recommendations' && recommendationAccess) setTab(section);
     else if (section==='assets' && user.role==='manager') setTab(section);
+    else if (section==='managed-services' && user.role==='manager') setTab(section);
     else if (section==='activities') setTab(section);
   }, [location.search,user.role,recommendationAccess]);
 
@@ -123,8 +126,9 @@ export default function CustomerServiceProfile() {
         <button className={`filter-pill${tab === 'activities' ? ' active' : ''}`} aria-pressed={tab === 'activities'} onClick={() => setTab('activities')}>Service activities and hours</button>
         {recommendationAccess && <button className={`filter-pill${tab === 'recommendations' ? ' active' : ''}`} aria-pressed={tab === 'recommendations'} onClick={() => setTab('recommendations')}>Recommendations</button>}
         {user.role === 'manager' && <button className={`filter-pill${tab === 'assets' ? ' active' : ''}`} aria-pressed={tab === 'assets'} onClick={() => setTab('assets')}>Assets</button>}
+        {user.role === 'manager' && <button className={`filter-pill${tab === 'managed-services' ? ' active' : ''}`} aria-pressed={tab === 'managed-services'} onClick={() => setTab('managed-services')}>Managed Services</button>}
       </div>
-      {tab === 'overview' ? <CustomerOverview key={customer.id} customer={customer} /> : tab === 'assets' && user.role === 'manager' ? <CustomerAssets key={customer.id} customerId={customer.id} /> : tab === 'recommendations' ? <CustomerRecommendations key={customer.id} customerId={customer.id} sourceVisitId={sourceVisitId} onSourceConsumed={() => {
+      {tab === 'overview' ? <CustomerOverview key={customer.id} customer={customer} /> : tab === 'managed-services' && user.role === 'manager' ? <ManagedCustomerConfiguration key={customer.id} customerId={customer.id} /> : tab === 'assets' && user.role === 'manager' ? <CustomerAssets key={customer.id} customerId={customer.id} /> : tab === 'recommendations' ? <CustomerRecommendations key={customer.id} customerId={customer.id} sourceVisitId={sourceVisitId} onSourceConsumed={() => {
         const params = new URLSearchParams(location.search); params.delete('source_visit');
         navigate(`${location.pathname}?${params.toString()}`, { replace: true });
       }} /> : <>
