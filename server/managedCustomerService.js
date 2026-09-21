@@ -224,4 +224,29 @@ async function getServiceReview(customerId,from,to,store=db) {
   return { period:{ from,to },visits,recommendations };
 }
 
-module.exports={ listManagedCustomers,getOverview,listTickets,getTicketAnalytics,getActivities,getWork,getServiceReview };
+async function getTimeline(customerId,from,to,{ page=1,pageSize=25,offset=0 }={},store=db) {
+  const managed=await store.prepare(`SELECT 1 FROM managed_customer_configurations mc JOIN customers c ON c.id=mc.customer_id
+    WHERE mc.customer_id=? AND mc.managed_services_enabled=1 AND c.active=1`).get(customerId);
+  if (!managed) return null;
+  const start=`${from}T00:00:00.000Z`,endDate=new Date(`${to}T00:00:00.000Z`);endDate.setUTCDate(endDate.getUTCDate()+1);const end=endDate.toISOString();
+  const sql=`SELECT 'ticket_created' AS kind,id AS source_id,created_at_external AS occurred_at,subject AS title,ticket_number AS reference,external_url AS link
+      FROM external_tickets WHERE customer_id=? AND created_at_external>=? AND created_at_external<?
+    UNION ALL SELECT 'ticket_resolved',id,resolved_at_external,subject,ticket_number,external_url FROM external_tickets WHERE customer_id=? AND resolved_at_external>=? AND resolved_at_external<?
+    UNION ALL SELECT 'activity_logged',id,activity_date||'T00:00:00.000Z',title,activity_reference,NULL FROM service_activities WHERE customer_id=? AND activity_date BETWEEN ? AND ?
+    UNION ALL SELECT 'task_completed',tk.id,tk.updated_at,tk.title,p.title,NULL FROM tasks tk JOIN projects p ON p.id=tk.project_id
+      WHERE p.customer_id=? AND tk.status IN ('completed','closed') AND tk.updated_at>=? AND tk.updated_at<?
+    UNION ALL SELECT 'visit_completed',id,scheduled_date||'T00:00:00.000Z',title,NULL,NULL FROM maintenance_visits WHERE customer_id=? AND status='completed' AND scheduled_date BETWEEN ? AND ?
+    UNION ALL SELECT 'visit_report_sent',id,report_sent_to_customer_at,title,NULL,NULL FROM maintenance_visits WHERE customer_id=? AND report_sent_to_customer_at>=? AND report_sent_to_customer_at<?
+    UNION ALL SELECT 'project_closed',id,closed_at,title,NULL,NULL FROM projects WHERE customer_id=? AND closed_at>=? AND closed_at<?
+    UNION ALL SELECT 'recommendation_created',id,created_at,finding,NULL,NULL FROM customer_recommendations WHERE customer_id=? AND created_at>=? AND created_at<?
+    UNION ALL SELECT 'recommendation_completed',id,updated_at,recommendation,NULL,NULL
+      FROM customer_recommendations WHERE customer_id=? AND status IN ('implemented','converted_to_project','closed') AND updated_at>=? AND updated_at<?`;
+  const params=[customerId,start,end,customerId,start,end,customerId,from,to,customerId,start,end,customerId,from,to,customerId,start,end,customerId,start,end,customerId,start,end,customerId,start,end];
+  const [rows,count]=await Promise.all([
+    store.prepare(`SELECT * FROM (${sql}) events ORDER BY occurred_at DESC,kind,title,source_id DESC LIMIT ? OFFSET ?`).all(...params,pageSize,offset),
+    store.prepare(`SELECT COUNT(*) AS total FROM (${sql}) events`).get(...params),
+  ]);
+  return { rows,total:Number(count.total),page,page_size:pageSize,period:{ from,to } };
+}
+
+module.exports={ listManagedCustomers,getOverview,listTickets,getTicketAnalytics,getActivities,getWork,getServiceReview,getTimeline };

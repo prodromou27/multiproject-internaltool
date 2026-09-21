@@ -344,6 +344,7 @@ export const api = {
   managedCustomerActivities: (id,params={},options) => req('GET',`/managed-customers/${id}/activities?` + new URLSearchParams(params).toString(),undefined,options),
   managedCustomerWork: (id,params={},options) => req('GET',`/managed-customers/${id}/work?` + new URLSearchParams(params).toString(),undefined,options),
   managedCustomerServiceReview: (id,params={},options) => req('GET',`/managed-customers/${id}/service-review?` + new URLSearchParams(params).toString(),undefined,options),
+  managedCustomerTimeline: (id,params={},options) => req('GET',`/managed-customers/${id}/timeline?` + new URLSearchParams(params).toString(),undefined,options),
 
   // system update
   systemUpdateStatus:  () => req('GET',  '/settings/system-update/status'),

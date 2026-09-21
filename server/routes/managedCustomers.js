@@ -65,5 +65,13 @@ router.get('/:id/service-review',async (req,res) => {
   const result=await service.getServiceReview(id,from,to);if (!result) return res.status(404).json({ error:'Managed customer not found' });
   res.json(result);
 });
+router.get('/:id/timeline',async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  const page=positiveInteger(req.query.page,1,1000000),pageSize=positiveInteger(req.query.page_size,25,100),from=req.query.from,to=req.query.to;
+  if (!page || !pageSize || !Number.isSafeInteger((page-1)*pageSize)) return res.status(400).json({ error:'Invalid pagination' });
+  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
+  const result=await service.getTimeline(id,from,to,{ page,pageSize,offset:(page-1)*pageSize });if (!result) return res.status(404).json({ error:'Managed customer not found' });
+  res.json(result);
+});
 
 module.exports=router;

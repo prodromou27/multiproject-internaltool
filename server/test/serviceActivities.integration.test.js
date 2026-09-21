@@ -1657,6 +1657,17 @@ test('managed customer service review combines visits, report delivery and recom
   assert.equal(typeof result.data.recommendations.summary.open_now,'number');assert.equal(Array.isArray(result.data.recommendations.statuses),true);
 });
 
+test('managed customer timeline combines source events with stable pagination',async () => {
+  const path=`/api/managed-customers/${ids.customer}/timeline`;
+  assert.equal((await api(`${path}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api(`${path}?from=2026-01-01&to=2026-12-31&page=0`,{ token:ids.tokenManager })).status,400);
+  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/timeline?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager })).status,404);
+  const result=await api(`${path}?from=2026-01-01&to=2026-12-31&page_size=2`,{ token:ids.tokenManager });
+  assert.equal(result.status,200);assert.equal(result.data.rows.length<=2,true);assert.equal(result.data.total>=result.data.rows.length,true);
+  assert.equal(result.data.rows.every(row => ['kind','source_id','occurred_at','title'].every(key => row[key])),true);
+  assert.deepEqual([...result.data.rows].sort((a,b) => b.occurred_at.localeCompare(a.occurred_at)),result.data.rows);
+});
+
 test('ticket mapping administration is manager-only and reclassifies stored tickets',async () => {
   assert.equal((await api('/api/ticketing/mappings',{ token:ids.tokenEnabled })).status,403);
   const current=await api('/api/ticketing/mappings',{ token:ids.tokenManager });
