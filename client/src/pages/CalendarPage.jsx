@@ -13,11 +13,11 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
                 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const TYPE_STYLE = {
-  follow_up:   { bg: '#dcfce7', color: '#166534', Icon: ClipboardList, label: 'Service Follow-up' },
-  report:      { bg: '#ffe4e6', color: '#be123c', Icon: FileText, label: 'Pending Visit Report' },
-  task:        { bg: '#dbeafe', color: '#1d4ed8', Icon: CheckSquare, label: 'Task' },
-  project:     { bg: '#ede9fe', color: '#6d28d9', Icon: FolderOpen,  label: 'Project Deadline' },
-  maintenance: { bg: '#fef3c7', color: '#b45309', Icon: Wrench,      label: 'Maintenance Visit' },
+  follow_up:   { bg: 'var(--cal-followup-bg)', color: 'var(--cal-followup-fg)', Icon: ClipboardList, label: 'Service Follow-up' },
+  report:      { bg: 'var(--cal-report-bg)', color: 'var(--cal-report-fg)', Icon: FileText, label: 'Pending Visit Report' },
+  task:        { bg: 'var(--cal-task-bg)', color: 'var(--cal-task-fg)', Icon: CheckSquare, label: 'Task' },
+  project:     { bg: 'var(--cal-project-bg)', color: 'var(--cal-project-fg)', Icon: FolderOpen,  label: 'Project Deadline' },
+  maintenance: { bg: 'var(--cal-visit-bg)', color: 'var(--cal-visit-fg)', Icon: Wrench,      label: 'Maintenance Visit' },
 };
 
 /* ── Engineer multi-picker ───────────────────────────────── */
@@ -191,7 +191,7 @@ function ContextMenu({ x, y, date, onNewVisit, onClose }) {
         style={{
           display: 'flex', alignItems: 'center', gap: 10, width: '100%',
           padding: '10px 14px', background: 'none', border: 'none',
-          cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#b45309',
+          cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tone-warning-text)',
           textAlign: 'left',
         }}
         onMouseEnter={e => e.currentTarget.style.background = '#fef3c7'}
@@ -199,7 +199,7 @@ function ContextMenu({ x, y, date, onNewVisit, onClose }) {
       >
         <span style={{
           width: 24, height: 24, borderRadius: 6,
-          background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'var(--warning-light)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <Wrench size={13} color="#b45309" />
         </span>
@@ -373,27 +373,27 @@ function ICalSubscribe() {
   const btnPrimary = { display: 'inline-flex', alignItems: 'center', gap: 5, background: '#0284c7', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 600, flexShrink: 0 };
 
   return (
-    <div style={{ marginTop: 20, padding: '14px 18px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+    <div style={{ marginTop: 20, padding: '14px 18px', background: 'var(--primary-light)', border: '1px solid #bae6fd', borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
       <Link2 size={18} color="#0284c7" style={{ flexShrink: 0, marginTop: 2 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#0c4a6e', marginBottom: 4 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--tone-info-text)', marginBottom: 4 }}>
           Subscribe to your calendar (iCal)
         </div>
-        <p style={{ margin: '0 0 8px', fontSize: 12, color: '#0369a1' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--tone-info-text)' }}>
           Add this URL to Google Calendar, Outlook, Apple Calendar or any iCal-compatible app to see your tasks and visits automatically update.
         </p>
 
         {err && <div className="error-msg" style={{ marginBottom: 8 }}>{err}</div>}
 
         {status === null ? (
-          <p style={{ margin: 0, fontSize: 12, color: '#0369a1' }}>Loading…</p>
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--tone-info-text)' }}>Loading…</p>
         ) : url ? (
           <>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <input
                 readOnly
                 value={url}
-                style={{ flex: 1, minWidth: 200, fontSize: 11, padding: '4px 8px', border: '1px solid #bae6fd', borderRadius: 4, background: '#fff', color: '#0369a1', fontFamily: 'monospace' }}
+                style={{ flex: 1, minWidth: 200, fontSize: 11, padding: '4px 8px', border: '1px solid #bae6fd', borderRadius: 4, background: 'var(--surface)', color: 'var(--tone-info-text)', fontFamily: 'monospace' }}
                 onClick={e => e.target.select()}
               />
               <button
@@ -410,14 +410,14 @@ function ICalSubscribe() {
           </>
         ) : status.enabled ? (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12, color: '#0369a1', flex: 1, minWidth: 200 }}>
+            <span style={{ fontSize: 12, color: 'var(--tone-info-text)', flex: 1, minWidth: 200 }}>
               You have an active subscription URL. For your security it can't be displayed again — regenerate to get a fresh URL (this invalidates the old one).
             </span>
             <button className="btn btn-sm" disabled={busy} onClick={generate} style={btnPrimary}>
               {busy ? '…' : 'Regenerate URL'}
             </button>
             <button className="btn btn-sm" disabled={busy} onClick={revoke}
-              style={{ background: '#fff', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+              style={{ background: '#fff', color: 'var(--tone-danger-text)', border: '1px solid #fecaca', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
               Revoke
             </button>
           </div>
@@ -701,7 +701,7 @@ export default function CalendarPage() {
                                 style={{
                                   opacity: 0, transition: 'opacity 0.15s',
                                   width: 18, height: 18, borderRadius: 4,
-                                  background: '#fef3c7', border: '1px solid #fcd34d',
+                                  background: 'var(--warning-light)', border: '1px solid #fcd34d',
                                   cursor: 'pointer', display: 'flex', alignItems: 'center',
                                   justifyContent: 'center', padding: 0, flexShrink: 0,
                                 }}
@@ -808,11 +808,11 @@ export default function CalendarPage() {
 
           {/* Quick-add hint for managers/planners */}
           {isManagerOrPlanner && (
-            <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef3c7', borderRadius: 8, border: '1px solid #fcd34d' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--warning-light)', borderRadius: 8, border: '1px solid #fcd34d' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--tone-warning-text)', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
                 <Wrench size={12} /> Quick-add visits
               </div>
-              <div style={{ fontSize: 11, color: '#b45309', lineHeight: 1.5 }}>
+              <div style={{ fontSize: 11, color: 'var(--tone-warning-text)', lineHeight: 1.5 }}>
                 <strong>Double-click</strong> any day, or <strong>right-click</strong> for a context menu. The date is pre-filled automatically.
               </div>
             </div>

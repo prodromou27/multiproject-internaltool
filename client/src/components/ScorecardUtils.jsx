@@ -17,12 +17,12 @@ export const DIFFICULTY_LABELS = {
 };
 
 export function getRating(score) {
-  if (score == null) return { label: '—',                   color: '#9ca3af', bg: '#f3f4f6' };
-  if (score >= 90)   return { label: 'Exceptional',         color: '#065f46', bg: '#d1fae5' };
-  if (score >= 80)   return { label: 'Strong',              color: '#1d4ed8', bg: '#dbeafe' };
-  if (score >= 70)   return { label: 'Acceptable',          color: '#854d0e', bg: '#fef9c3' };
-  if (score >= 60)   return { label: 'Needs Improvement',   color: '#92400e', bg: '#fef3c7' };
-  return               { label: 'Performance Concern',       color: '#991b1b', bg: '#fee2e2' };
+  if (score == null) return { label: '—',                   color: '#9ca3af', bg: 'var(--gray-100)' };
+  if (score >= 90)   return { label: 'Exceptional',         color: 'var(--tone-success-text)', bg: 'var(--success-light)' };
+  if (score >= 80)   return { label: 'Strong',              color: 'var(--tone-info-text)', bg: 'var(--primary-light)' };
+  if (score >= 70)   return { label: 'Acceptable',          color: 'var(--tone-warning-text)', bg: 'var(--warning-light)' };
+  if (score >= 60)   return { label: 'Needs Improvement',   color: 'var(--tone-warning-text)', bg: 'var(--warning-light)' };
+  return               { label: 'Performance Concern',       color: 'var(--tone-danger-text)', bg: 'var(--danger-light)' };
 }
 
 export function ScoreBadge({ score, size = 'md' }) {
@@ -46,7 +46,7 @@ export function ScoreGauge({ score, size = 80 }) {
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="#e5e7eb" strokeWidth={7} />
+        <circle cx={size/2} cy={size/2} r={radius} fill="none" style={{ stroke: 'var(--gray-200)' }} strokeWidth={7} />
         <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={r.color}
           strokeWidth={7} strokeLinecap="round"
           strokeDasharray={`${dash} ${circ}`}
@@ -73,7 +73,7 @@ export function DimPicker({ value, onChange, disabled }) {
           style={{
             width: 34, height: 34, borderRadius: 6, border: 'none', cursor: disabled ? 'default' : 'pointer',
             fontWeight: 700, fontSize: 14,
-            background: value >= n ? '#2563eb' : '#e5e7eb',
+            background: value >= n ? '#2563eb' : 'var(--gray-200)',
             color: value >= n ? '#fff' : '#6b7280',
             transition: 'background .1s'
           }}>
@@ -97,13 +97,13 @@ export function ScorecardBreakdown({ sc }) {
               <span style={{ fontWeight: 600, color: '#374151' }}>{meta.label}</span>
               <span style={{ color: '#6b7280' }}>{val}/5 &nbsp;<strong style={{ color: meta.color }}>{meta.pct}%</strong></span>
             </div>
-            <div style={{ background: '#e5e7eb', borderRadius: 99, height: 7, overflow: 'hidden' }}>
+            <div style={{ background: 'var(--gray-200)', borderRadius: 99, height: 7, overflow: 'hidden' }}>
               <div style={{ width: `${pct}%`, height: '100%', background: meta.color, borderRadius: 99, transition: 'width .4s' }} />
             </div>
           </div>
         );
       })}
-      <div style={{ marginTop: 6, padding: '8px 12px', background: '#f9fafb', borderRadius: 8, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12 }}>
+      <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--gray-50)', borderRadius: 8, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12 }}>
         <span>Base score: <strong>{sc.base_score}%</strong></span>
         <span>Difficulty: <strong style={{ color: DIFFICULTY_LABELS[sc.difficulty]?.color }}>
           {DIFFICULTY_LABELS[sc.difficulty]?.label} ({DIFFICULTY_LABELS[sc.difficulty]?.mult})

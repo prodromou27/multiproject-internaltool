@@ -243,7 +243,7 @@ export function renderMentions(text) {
   const parts = text.split(/(@\w[\w\s]*?\w(?=\s|$|[^a-zA-Z]))/g);
   return parts.map((p, i) =>
     p.startsWith('@')
-      ? <span key={i} style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: 4, padding: '0 3px', fontWeight: 600, fontSize: '0.92em' }}>{p}</span>
+      ? <span key={i} style={{ background: 'var(--primary-light)', color: 'var(--tone-info-text)', borderRadius: 4, padding: '0 3px', fontWeight: 600, fontSize: '0.92em' }}>{p}</span>
       : p
   );
 }

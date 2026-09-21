@@ -48,7 +48,7 @@ function parseQuery(raw, users, customers) {
   if (/\bpending[ -]?(approv(al|ed)|clos(ure|ed)?)\b|\bawaiting[ -]?approv(al|ed)\b/.test(s)) {
     filters.status = 'pending_closure';
     if (!filters.entity) filters.entity = 'projects';
-    chips.push({ key: 'status', label: 'Pending Closure', color: '#b45309', bg: '#fef3c7' });
+    chips.push({ key: 'status', label: 'Pending Closure', color: 'var(--tone-warning-text)', bg: 'var(--warning-light)' });
     strip(/\bpending[ -]?(approv(al|ed)|clos(ure|ed)?)\b/g, /\bawaiting[ -]?approv(al|ed)\b/g);
   } else if (/\bclos(ed|ure)?\b/.test(s)) {
     filters.status = 'closed';
@@ -56,7 +56,7 @@ function parseQuery(raw, users, customers) {
     strip(/\bclos(ed|ure)?\b/g);
   } else if (/\bon[ -]?hold\b/.test(s)) {
     filters.status = 'on_hold';
-    chips.push({ key: 'status', label: 'On Hold', color: '#6b7280', bg: '#f1f5f9' });
+    chips.push({ key: 'status', label: 'On Hold', color: '#6b7280', bg: 'var(--gray-100)' });
     strip(/\bon[ -]?hold\b/g);
   } else if (/\bin[ -]?progress\b/.test(s)) {
     filters.status = 'in_progress';
@@ -87,14 +87,14 @@ function parseQuery(raw, users, customers) {
   // ── Overdue ───────────────────────────────────────────────────────────────
   if (/\boverdue\b|\blast\b|\bpast.due\b/.test(s)) {
     filters.overdue = '1';
-    chips.push({ key: 'overdue', label: 'Overdue', color: '#dc2626', bg: '#fef2f2' });
+    chips.push({ key: 'overdue', label: 'Overdue', color: 'var(--tone-danger-text)', bg: 'var(--danger-light)' });
     strip(/\boverdue\b/g, /\bpast.due\b/g);
   }
 
   // ── Priority ──────────────────────────────────────────────────────────────
   if (/\bhigh[ -]?priority\b|\burgent\b|\bcritical\b/.test(s)) {
     filters.priority = 'high';
-    chips.push({ key: 'priority', label: 'High Priority', color: '#dc2626', bg: '#fef2f2' });
+    chips.push({ key: 'priority', label: 'High Priority', color: 'var(--tone-danger-text)', bg: 'var(--danger-light)' });
     strip(/\bhigh[ -]?priority\b/g, /\burgent\b/g, /\bcritical\b/g);
   } else if (/\blow[ -]?priority\b/.test(s)) {
     filters.priority = 'low';
@@ -135,7 +135,7 @@ function parseQuery(raw, users, customers) {
   // ── Unassigned ────────────────────────────────────────────────────────────
   if (/\bunassigned\b/.test(s)) {
     filters.unassigned = '1';
-    chips.push({ key: 'unassigned', label: 'Unassigned', color: '#6b7280', bg: '#f1f5f9' });
+    chips.push({ key: 'unassigned', label: 'Unassigned', color: '#6b7280', bg: 'var(--gray-100)' });
     strip(/\bunassigned\b/g);
   }
 
@@ -183,7 +183,7 @@ function parseQuery(raw, users, customers) {
 // Result cards
 // ─────────────────────────────────────────────────────────────────────────────
 const STATUS_BG = {
-  active: '#ecfdf5', on_hold: '#f1f5f9', pending_closure: '#fef3c7', closed: '#f9fafb',
+  active: 'var(--success-light)', on_hold: 'var(--gray-100)', pending_closure: 'var(--warning-light)', closed: 'var(--gray-50)',
   open: '#eff6ff', in_progress: '#eff6ff', done: '#ecfdf5', cancelled: '#f9fafb',
   scheduled: '#eff6ff', completed: '#ecfdf5',
 };
@@ -204,7 +204,7 @@ function SBadge({ s }) {
   return (
     <span style={{
       fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-      background: STATUS_BG[s] || '#f1f5f9',
+      background: STATUS_BG[s] || 'var(--gray-100)',
       color: STATUS_COLOR[s] || '#6b7280',
     }}>{STATUS_LABEL[s] || s}</span>
   );
@@ -230,7 +230,7 @@ function ProjectCard({ item, navigate }) {
 
   return (
     <div className="result-card" onClick={() => navigate(`/projects/${item.id}`)}>
-      <div className="result-card-icon" style={{ background: '#f5f3ff', color: '#7c3aed' }}>
+      <div className="result-card-icon" style={{ background: 'var(--tone-purple-bg)', color: '#7c3aed' }}>
         <FolderOpen size={16} />
       </div>
       <div className="result-card-body">
@@ -259,7 +259,7 @@ function TaskCard({ item, navigate }) {
 
   return (
     <div className="result-card" onClick={() => item.project_id && navigate(`/projects/${item.project_id}`)}>
-      <div className="result-card-icon" style={{ background: '#eff6ff', color: '#2563eb' }}>
+      <div className="result-card-icon" style={{ background: 'var(--primary-light)', color: '#2563eb' }}>
         <CheckSquare size={16} />
       </div>
       <div className="result-card-body">
@@ -296,7 +296,7 @@ function MVCard({ item, navigate }) {
 
   return (
     <div className="result-card" onClick={() => navigate('/maintenance-visits')}>
-      <div className="result-card-icon" style={{ background: '#fffbeb', color: '#d97706' }}>
+      <div className="result-card-icon" style={{ background: 'var(--warning-light)', color: '#d97706' }}>
         <Wrench size={16} />
       </div>
       <div className="result-card-body">
@@ -320,7 +320,7 @@ function MVCard({ item, navigate }) {
 function CustomerCard({ item, navigate }) {
   return (
     <div className="result-card" onClick={() => navigate('/customers')}>
-      <div className="result-card-icon" style={{ background: '#ecfdf5', color: '#059669' }}>
+      <div className="result-card-icon" style={{ background: 'var(--success-light)', color: '#059669' }}>
         <Building2 size={16} />
       </div>
       <div className="result-card-body">

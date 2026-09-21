@@ -95,3 +95,19 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* Cards laid out in a grid are aligned by the grid gap. The stacking margin in
    index.css (.card + .card) pushed every tile after the first one down. */
 :is(.grid-2, .grid-3, .grid-4, .grid-5) > .card + .card { margin-top: 0; }
+
+/* Calendar event types: a tinted background and its readable text colour, paired so they flip together. */
+:root {
+  --cal-followup-bg: #dcfce7; --cal-followup-fg: #166534;
+  --cal-report-bg: #ffe4e6;   --cal-report-fg: #be123c;
+  --cal-task-bg: #dbeafe;     --cal-task-fg: #1d4ed8;
+  --cal-project-bg: #ede9fe;  --cal-project-fg: #6d28d9;
+  --cal-visit-bg: #fef3c7;    --cal-visit-fg: #b45309;
+}
+[data-theme="dark"] {
+  --cal-followup-bg: rgba(34,197,94,.2);  --cal-followup-fg: #86efac;
+  --cal-report-bg: rgba(244,63,94,.2);    --cal-report-fg: #fda4af;
+  --cal-task-bg: rgba(59,130,246,.22);    --cal-task-fg: #93c5fd;
+  --cal-project-bg: rgba(139,92,246,.24); --cal-project-fg: #c4b5fd;
+  --cal-visit-bg: rgba(245,158,11,.2);    --cal-visit-fg: #fcd34d;
+}

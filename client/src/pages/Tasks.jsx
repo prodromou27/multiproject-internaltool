@@ -442,10 +442,10 @@ export default function Tasks() {
         <>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-          padding: '10px 16px', background: '#eff6ff', border: '1px solid #bfdbfe',
+          padding: '10px 16px', background: 'var(--primary-light)', border: '1px solid #bfdbfe',
           borderRadius: 8, marginBottom: 12, fontSize: 13,
         }}>
-          <span style={{ fontWeight: 600, color: '#1d4ed8' }}>{selected.size} selected</span>
+          <span style={{ fontWeight: 600, color: 'var(--tone-info-text)' }}>{selected.size} selected</span>
           <span style={{ color: '#93c5fd' }}>·</span>
           {isManager && (
             <>

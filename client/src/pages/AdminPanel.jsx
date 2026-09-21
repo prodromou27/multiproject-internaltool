@@ -400,7 +400,7 @@ function UsersTab({ currentUser }) {
                       {u.must_change_password ? (
                         <span title="Must set password on first login" style={{
                           display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 6,
-                          fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7',
+                          fontSize: 10, fontWeight: 700, color: 'var(--tone-warning-text)', background: 'var(--warning-light)',
                           border: '1px solid #fcd34d', borderRadius: 4, padding: '1px 5px',
                         }}>⚠ Awaiting setup</span>
                       ) : null}
@@ -790,7 +790,7 @@ function DataExportTab() {
       cols: { 'Title': 'title', 'Status': 'status', 'Priority': 'priority', 'Assigned To': 'assigned_to_name', 'Project': 'project_title', 'Ad-hoc': r => r.is_adhoc ? 'Yes' : 'No', 'Deadline': 'deadline', 'Created': 'created_at' },
     },
     {
-      name: 'maintenance_visits', label: 'Maintenance Visits', Icon: Wrench, color: '#b45309',
+      name: 'maintenance_visits', label: 'Maintenance Visits', Icon: Wrench, color: 'var(--tone-warning-text)',
       desc: 'All maintenance visits with engineer assignment and report status',
       fn: () => api.maintenanceVisits({}),
       cols: { 'Title': 'title', 'Customer': 'customer_name', 'Date': 'scheduled_date', 'Status': 'status', 'Engineers': 'engineer_names', 'Report Sent': r => r.report_sent ? 'Yes' : 'No', 'Sent to Customer': r => r.report_sent_to_customer ? 'Yes' : 'No' },
@@ -805,10 +805,10 @@ function DataExportTab() {
 
   return (
     <div style={{ maxWidth: 680 }}>
-      <div className="card" style={{ marginBottom: 20, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+      <div className="card" style={{ marginBottom: 20, background: 'var(--primary-light)', border: '1px solid #bfdbfe' }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <Database size={16} color="#2563eb" style={{ flexShrink: 0, marginTop: 1 }} />
-          <div style={{ fontSize: 13, color: '#1e3a8a' }}>
+          <div style={{ fontSize: 13, color: 'var(--tone-info-text)' }}>
             All exports are generated client-side as CSV files. Every record currently in the database is included. Data is not filtered by date or status.
           </div>
         </div>
@@ -1569,10 +1569,10 @@ function StatusManagementTab() {
   return (
     <div style={{ maxWidth: 740 }}>
       {/* Info banner */}
-      <div className="card" style={{ marginBottom: 24, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+      <div className="card" style={{ marginBottom: 24, background: 'var(--primary-light)', border: '1px solid #bfdbfe' }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <Tag size={16} color="#2563eb" style={{ flexShrink: 0, marginTop: 1 }} />
-          <div style={{ fontSize: 13, color: '#1e3a8a' }}>
+          <div style={{ fontSize: 13, color: 'var(--tone-info-text)' }}>
             Customise the statuses available for Projects, Tasks, and Maintenance Visits.
             Changes take effect immediately for all users. Click the colour dot to change the badge colour.
             Check <strong>Requires reason</strong> to prompt users for a note when selecting that status.
@@ -1822,7 +1822,7 @@ function AdminAlertsTab() {
               Last checked: {new Date(lastCheck.checked_at).toLocaleString()}
             </p>
             {lastCheck.alerts.length === 0
-              ? <div style={{ padding: '10px 14px', background: '#dcfce7', borderRadius: 8, color: '#166534', fontSize: 13 }}>✅ All systems healthy — no issues detected.</div>
+              ? <div style={{ padding: '10px 14px', background: 'var(--success-light)', borderRadius: 8, color: 'var(--tone-success-text)', fontSize: 13 }}>✅ All systems healthy — no issues detected.</div>
               : lastCheck.alerts.map((a, i) => {
                   const c = LEVEL_COLORS[a.level] || LEVEL_COLORS.warning;
                   return (
@@ -1924,7 +1924,7 @@ function ToggleRow({ label, description, value, onChange, recommended }) {
       <div>
         <div style={{ fontWeight: 500, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
           {label}
-          {recommended && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: '#dcfce7', color: '#166534' }}>Recommended</span>}
+          {recommended && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: 'var(--success-light)', color: 'var(--tone-success-text)' }}>Recommended</span>}
         </div>
         {description && <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>{description}</div>}
       </div>
@@ -2151,7 +2151,7 @@ function DeploymentHealthTab() {
 
   const meta = {
     ok: { label: 'Healthy', color: 'var(--success)', bg: '#dcfce7', Icon: CheckCircle2 },
-    warning: { label: 'Needs Attention', color: '#b45309', bg: '#fef3c7', Icon: AlertTriangle },
+    warning: { label: 'Needs Attention', color: 'var(--tone-warning-text)', bg: 'var(--warning-light)', Icon: AlertTriangle },
     error: { label: 'Action Required', color: 'var(--danger)', bg: '#fee2e2', Icon: ShieldAlert },
   };
 
@@ -2357,8 +2357,8 @@ function SystemUpdateTab() {
           style={{
             marginBottom: 16,
             borderColor: '#fde68a',
-            background: '#fffbeb',
-            color: '#92400e',
+            background: 'var(--warning-light)',
+            color: 'var(--tone-warning-text)',
             display: 'flex',
             alignItems: 'flex-start',
             gap: 10,
@@ -2377,10 +2377,10 @@ function SystemUpdateTab() {
             <Activity size={14} />
             Package Status
             {totalOutdated > 0
-              ? <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: 99, padding: '1px 8px', fontSize: 11, fontWeight: 700, marginLeft: 4 }}>
+              ? <span style={{ background: 'var(--warning-light)', color: 'var(--tone-warning-text)', borderRadius: 99, padding: '1px 8px', fontSize: 11, fontWeight: 700, marginLeft: 4 }}>
                   {totalOutdated} outdated
                 </span>
-              : <span style={{ background: '#dcfce7', color: '#166534', borderRadius: 99, padding: '1px 8px', fontSize: 11, fontWeight: 700, marginLeft: 4 }}>
+              : <span style={{ background: 'var(--success-light)', color: 'var(--tone-success-text)', borderRadius: 99, padding: '1px 8px', fontSize: 11, fontWeight: 700, marginLeft: 4 }}>
                   All up to date
                 </span>
             }
@@ -2476,7 +2476,7 @@ function SystemUpdateTab() {
 
       {/* ── Error banner ── */}
       {isError && status?.error && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '12px 16px', marginBottom: 16, color: '#991b1b', fontSize: 13, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <div style={{ background: 'var(--danger-light)', border: '1px solid #fecaca', borderRadius: 8, padding: '12px 16px', marginBottom: 16, color: 'var(--tone-danger-text)', fontSize: 13, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
           <div><strong>Update failed:</strong> {status.error}</div>
         </div>
@@ -2484,9 +2484,9 @@ function SystemUpdateTab() {
 
       {/* ── Restart card ── */}
       {isDone && status?.needs_restart && (
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: '#1e40af', marginBottom: 3 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--tone-info-text)', marginBottom: 3 }}>
               🚀 Update complete — restart required
             </div>
             <div style={{ fontSize: 13, color: '#3b82f6' }}>
@@ -2508,7 +2508,7 @@ function SystemUpdateTab() {
       )}
 
       {restarting && (
-        <div style={{ background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: '#92400e', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ background: 'var(--warning-light)', border: '1px solid #fde68a', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: 'var(--tone-warning-text)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
           Server is restarting… the page will reload automatically in a few seconds.
         </div>

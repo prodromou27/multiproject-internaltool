@@ -16,10 +16,10 @@ function StatusPill({ ok, atRisk, breached, total }) {
   if (total === 0)
     return <span style={{ fontSize: 12, color: 'var(--gray-400)', fontStyle: 'italic' }}>No items</span>;
   if (breached > 0)
-    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}><XCircle size={12} /> {breached} breached</span>;
+    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--danger-light)', color: 'var(--tone-danger-text)', border: '1px solid #fecaca', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}><XCircle size={12} /> {breached} breached</span>;
   if (atRisk > 0)
-    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}><AlertTriangle size={12} /> {atRisk} at risk</span>;
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}><CheckCircle size={12} /> All compliant</span>;
+    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--warning-light)', color: 'var(--tone-warning-text)', border: '1px solid #fde68a', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}><AlertTriangle size={12} /> {atRisk} at risk</span>;
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--success-light)', color: 'var(--tone-success-text)', border: '1px solid #bbf7d0', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}><CheckCircle size={12} /> All compliant</span>;
 }
 
 function ComplianceBar({ value }) {

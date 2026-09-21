@@ -193,22 +193,22 @@ function OverdueBanner({ overdueProjects, overdueTasks }) {
 
   return (
     <div style={{
-      background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10,
+      background:'var(--danger-light)', border:'1px solid #fecaca', borderRadius:10,
       padding:'12px 16px', marginBottom:20,
       display:'flex', alignItems:'flex-start', gap:12,
     }}>
       <AlertTriangle size={16} color="#ef4444" style={{ flexShrink:0, marginTop:2 }} />
       <div style={{ flex:1 }}>
-        <div style={{ fontWeight:700, fontSize:13, color:'#b91c1c', marginBottom:4 }}>
+        <div style={{ fontWeight:700, fontSize:13, color:'var(--tone-danger-text)', marginBottom:4 }}>
           Overdue items need attention
         </div>
-        <div style={{ fontSize:12, color:'#dc2626', display:'flex', gap:16, flexWrap:'wrap' }}>
+        <div style={{ fontSize:12, color:'var(--tone-danger-text)', display:'flex', gap:16, flexWrap:'wrap' }}>
           {overdueProjects.length > 0 && (
             <span>
               <strong>{overdueProjects.length}</strong> overdue project{overdueProjects.length !== 1 ? 's' : ''}:{' '}
               {overdueProjects.slice(0, 3).map((p, i) => (
                 <span key={p.id}>{i > 0 ? ', ' : ''}
-                  <Link to={`/projects/${p.id}`} style={{ color:'#dc2626', fontWeight:600 }}>{p.title}</Link>
+                  <Link to={`/projects/${p.id}`} style={{ color:'var(--tone-danger-text)', fontWeight:600 }}>{p.title}</Link>
                 </span>
               ))}
               {overdueProjects.length > 3 && ` +${overdueProjects.length - 3} more`}
@@ -433,9 +433,9 @@ export default function Dashboard() {
           .filter(p => p.rag_status === 'red' || p.rag_status === 'amber')
           .sort((a, b) => (a.rag_status === 'red' && b.rag_status !== 'red' ? -1 : 1));
         const RAG = [
-          { label:'Red',   count:ragRed,   bg:'#fef2f2', text:'#b91c1c', dot:'#ef4444' },
-          { label:'Amber', count:ragAmber, bg:'#fffbeb', text:'#92400e', dot:'#f59e0b' },
-          { label:'Green', count:ragGreen, bg:'#f0fdf4', text:'#166534', dot:'#22c55e' },
+          { label:'Red',   count:ragRed,   bg:'var(--danger-light)', text:'var(--tone-danger-text)', dot:'#ef4444' },
+          { label:'Amber', count:ragAmber, bg:'var(--warning-light)', text:'var(--tone-warning-text)', dot:'#f59e0b' },
+          { label:'Green', count:ragGreen, bg:'var(--success-light)', text:'var(--tone-success-text)', dot:'#22c55e' },
         ];
         return (
           <div key={id} className="card" style={{ marginBottom:20 }}>
@@ -712,8 +712,8 @@ export default function Dashboard() {
                 {overdueCount > 0 && (
                   <Link to="/tasks?filter=overdue"
                     style={{ display:'inline-flex', alignItems:'center', gap:3,
-                      fontSize:11, fontWeight:700, color:'#b91c1c',
-                      background:'#fef2f2', border:'1px solid #fecaca',
+                      fontSize:11, fontWeight:700, color:'var(--tone-danger-text)',
+                      background:'var(--danger-light)', border:'1px solid #fecaca',
                       borderRadius:99, padding:'2px 8px', textDecoration:'none' }}>
                     ⚠ {overdueCount} overdue
                   </Link>
@@ -945,8 +945,8 @@ export default function Dashboard() {
                 {engOverdueCount > 0 && (
                   <Link to="/tasks?filter=overdue"
                     style={{ display:'inline-flex', alignItems:'center', gap:3,
-                      fontSize:11, fontWeight:700, color:'#b91c1c',
-                      background:'#fef2f2', border:'1px solid #fecaca',
+                      fontSize:11, fontWeight:700, color:'var(--tone-danger-text)',
+                      background:'var(--danger-light)', border:'1px solid #fecaca',
                       borderRadius:99, padding:'2px 8px', textDecoration:'none' }}>
                     ⚠ {engOverdueCount} overdue
                   </Link>

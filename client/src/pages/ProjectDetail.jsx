@@ -371,7 +371,7 @@ function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, o
       <div style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
           <span style={{ fontWeight: 700, fontSize: 15 }}>{task.title}</span>
-          {task.is_adhoc && <span className="badge badge-adhoc">adhoc</span>}
+          {!!task.is_adhoc && <span className="badge badge-adhoc">adhoc</span>}
         </div>
         {task.description && <p style={{ color: 'var(--gray-600)', fontSize: 13, marginBottom: 8 }}>{task.description}</p>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: 13, marginBottom: 8 }}>
@@ -382,7 +382,7 @@ function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, o
         </div>
         {task.status === 'waiting_customer' && task.pending_from_customer && (
           <div style={{
-            background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8,
+            background: 'var(--warning-light)', border: '1px solid #fed7aa', borderRadius: 8,
             padding: '8px 12px', marginBottom: 10, fontSize: 13,
             display: 'flex', gap: 8, alignItems: 'flex-start',
           }}>
@@ -435,7 +435,7 @@ function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, o
             <Clock size={13} /> Time Logged
           </div>
           {totalHours > 0 && (
-            <span style={{ background: '#e0f2fe', color: '#0891b2', fontSize: 11, fontWeight: 700, borderRadius: 8, padding: '2px 8px' }}>
+            <span style={{ background: 'var(--primary-light)', color: '#0891b2', fontSize: 11, fontWeight: 700, borderRadius: 8, padding: '2px 8px' }}>
               {Math.round(totalHours * 10) / 10}h total
             </span>
           )}
@@ -643,7 +643,7 @@ function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowClick, o
       <tr style={{ cursor: 'pointer' }} onClick={() => onRowClick(task)}>
         <td style={{ fontWeight: 500 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            {task.is_blocked && (
+            {!!task.is_blocked && (
               <span title="Blocked by unfinished dependencies" style={{ color: '#6366f1', display: 'inline-flex', alignItems: 'center' }}>
                 <Lock size={12} />
               </span>
@@ -802,7 +802,7 @@ function GanttTab({ project, tasks, milestones = [] }) {
                 <div style={{ width: 190, flexShrink: 0, paddingRight: 10, fontSize: 12, fontWeight: 500, color: 'var(--gray-700)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
                   {(task.status === 'completed' || task.status === 'closed') && <CheckCircle2 size={11} color="var(--success)" style={{ flexShrink: 0 }} />}
                   {overdue && <AlertTriangle size={11} color="var(--danger)" style={{ flexShrink: 0 }} />}
-                  {task.is_blocked && <Lock size={11} color="#6366f1" style={{ flexShrink: 0 }} />}
+                  {!!task.is_blocked && <Lock size={11} color="#6366f1" style={{ flexShrink: 0 }} />}
                   <span title={task.title}>{task.title}</span>
                 </div>
 
@@ -1065,7 +1065,7 @@ function ScorecardTab({ projectId, members }) {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
           {cards.map(sc => (
             <div key={sc.id} onClick={() => setSel(sc)}
-              style={{ display: 'flex', gap: 12, alignItems: 'center', background: '#f9fafb',
+              style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'var(--gray-50)',
                 border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 14px', cursor: 'pointer',
                 flex: '1 1 220px', minWidth: 0 }}>
               <ScoreGauge score={sc.adjusted_score} size={56} />
@@ -1124,7 +1124,7 @@ function ScorecardTab({ projectId, members }) {
               </div>
             )}
             {/* Live preview */}
-            <div style={{ background:'#f8fafc', borderRadius:8, padding:'10px 14px', marginBottom:14,
+            <div style={{ background:'var(--gray-50)', borderRadius:8, padding:'10px 14px', marginBottom:14,
               display:'flex', alignItems:'center', gap:14, flexWrap:'wrap', border:`2px solid ${r.color}20` }}>
               <ScoreGauge score={adjP} size={64} />
               <div>
@@ -1136,7 +1136,7 @@ function ScorecardTab({ projectId, members }) {
               </div>
             </div>
             {/* Dimensions */}
-            <div style={{ background:'#f8fafc', borderRadius:8, padding:'10px 14px', marginBottom:12 }}>
+            <div style={{ background:'var(--gray-50)', borderRadius:8, padding:'10px 14px', marginBottom:12 }}>
               {Object.entries(WEIGHTS).map(([key, meta]) => (
                 <div key={key} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8, flexWrap:'wrap' }}>
                   <div style={{ width:180, flexShrink:0 }}>
@@ -1155,7 +1155,7 @@ function ScorecardTab({ projectId, members }) {
                   const dl = DIFFICULTY_LABELS[d]; const active = form.difficulty === d;
                   return (
                     <button key={d} type="button" onClick={() => setForm(f => ({ ...f, difficulty: d }))}
-                      style={{ padding:'4px 10px', borderRadius:6, border:`2px solid ${active?dl.color:'#e5e7eb'}`,
+                      style={{ padding:'4px 10px', borderRadius:6, border:`2px solid ${active?dl.color:'var(--gray-200)'}`,
                         background:active?dl.color+'15':'#fff', color:active?dl.color:'#6b7280',
                         cursor:'pointer', fontSize:11, fontWeight:active?700:400 }}>
                       D{d} {dl.label}<br/><span style={{ fontSize:10, opacity:.7 }}>{dl.mult}</span>
@@ -1281,7 +1281,7 @@ function ImportExcelModal({ projectId, onClose, onImported }) {
       {/* Metadata bar */}
       {preview?.meta && Object.keys(preview.meta).length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', marginBottom: 12,
-          padding: '8px 12px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1e40af' }}>
+          padding: '8px 12px', background: 'var(--primary-light)', borderRadius: 6, fontSize: 12, color: 'var(--tone-info-text)' }}>
           {preview.meta.customer    && <span><b>Customer:</b> {preview.meta.customer}</span>}
           {preview.meta.projectName && <span><b>Project:</b> {preview.meta.projectName}</span>}
           {preview.meta.reference   && <span><b>Ref:</b> {preview.meta.reference}</span>}
@@ -1306,14 +1306,14 @@ function ImportExcelModal({ projectId, onClose, onImported }) {
           <div style={{ maxHeight: 340, overflowY: 'auto', border: '1px solid var(--gray-200)', borderRadius: 6, marginBottom: 14 }}>
             {groupedTasks().map((item, idx) => {
               if (item.type === 'product') return (
-                <div key={idx} style={{ padding: '6px 10px', background: '#fef3c7', borderBottom: '1px solid #fde68a',
+                <div key={idx} style={{ padding: '6px 10px', background: 'var(--warning-light)', borderBottom: '1px solid #fde68a',
                   fontSize: 12, fontWeight: 700, color: '#78350f', letterSpacing: '.03em' }}>
                   📦 {item.label || 'General Product'}
                 </div>
               );
               if (item.type === 'sub') return (
-                <div key={idx} style={{ padding: '5px 18px', background: '#fffbeb', borderBottom: '1px solid #fde68a',
-                  fontSize: 12, fontWeight: 600, color: '#92400e' }}>
+                <div key={idx} style={{ padding: '5px 18px', background: 'var(--warning-light)', borderBottom: '1px solid #fde68a',
+                  fontSize: 12, fontWeight: 600, color: 'var(--tone-warning-text)' }}>
                   ▸ {item.label}
                 </div>
               );
@@ -1385,11 +1385,11 @@ function ProjectPrintView({ project, tasks, milestones, members }) {
       {/* Header */}
       <div className="print-report-header">
         <div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#1d4ed8', marginBottom: 4 }}>{project.title}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--tone-info-text)', marginBottom: 4 }}>{project.title}</div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
             <span style={{
               padding: '2px 10px', borderRadius: 99, fontWeight: 700, fontSize: 11,
-              background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd',
+              background: 'var(--primary-light)', color: 'var(--tone-info-text)', border: '1px solid #93c5fd',
             }}>{STATUS_LABELS[project.status] || project.status}</span>
             <span style={{ color: '#6b7280' }}>Priority: <b>{project.priority}</b></span>
             {project.customer_name && <span style={{ color: '#6b7280' }}>Customer: <b>{project.customer_name}</b></span>}
@@ -1402,8 +1402,8 @@ function ProjectPrintView({ project, tasks, milestones, members }) {
           <div style={{ marginTop: 4 }}>
             <span style={{
               padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-              background: project.rag_status === 'green' ? '#d1fae5' : project.rag_status === 'amber' ? '#fef3c7' : project.rag_status === 'red' ? '#fee2e2' : '#f3f4f6',
-              color: project.rag_status === 'green' ? '#065f46' : project.rag_status === 'amber' ? '#92400e' : project.rag_status === 'red' ? '#991b1b' : '#374151',
+              background: project.rag_status === 'green' ? 'var(--success-light)' : project.rag_status === 'amber' ? 'var(--warning-light)' : project.rag_status === 'red' ? 'var(--danger-light)' : 'var(--gray-100)',
+              color: project.rag_status === 'green' ? 'var(--tone-success-text)' : project.rag_status === 'amber' ? 'var(--tone-warning-text)' : project.rag_status === 'red' ? 'var(--tone-danger-text)' : 'var(--gray-700)',
             }}>
               {project.rag_status === 'green' ? '🟢 On Track' : project.rag_status === 'amber' ? '🟡 At Risk' : project.rag_status === 'red' ? '🔴 Critical' : 'Health N/A'}
             </span>
@@ -1427,7 +1427,7 @@ function ProjectPrintView({ project, tasks, milestones, members }) {
       </div>
 
       {/* Progress bar */}
-      <div style={{ background: '#f3f4f6', borderRadius: 8, height: 10, marginBottom: 16, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--gray-100)', borderRadius: 8, height: 10, marginBottom: 16, overflow: 'hidden' }}>
         <div style={{
           height: '100%', borderRadius: 8,
           width: `${pctDisplay}%`,
@@ -1437,7 +1437,7 @@ function ProjectPrintView({ project, tasks, milestones, members }) {
 
       {/* Description */}
       {project.description && (
-        <div style={{ marginBottom: 14, padding: '10px 14px', background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 13, color: '#374151' }}>
+        <div style={{ marginBottom: 14, padding: '10px 14px', background: 'var(--gray-50)', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 13, color: '#374151' }}>
           {project.description}
         </div>
       )}
@@ -1470,7 +1470,7 @@ function ProjectPrintView({ project, tasks, milestones, members }) {
               <div className="print-section-title">Team ({members.length})</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
                 {members.map(m => (
-                  <span key={m.id} style={{ fontSize: 11, padding: '2px 8px', background: '#eff6ff', color: '#1e40af', borderRadius: 99, fontWeight: 600 }}>{m.name}</span>
+                  <span key={m.id} style={{ fontSize: 11, padding: '2px 8px', background: 'var(--primary-light)', color: 'var(--tone-info-text)', borderRadius: 99, fontWeight: 600 }}>{m.name}</span>
                 ))}
               </div>
             </>
@@ -1594,9 +1594,9 @@ function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, onDupli
                     <GripVertical size={12} style={{ flexShrink: 0, marginTop: 1, color: 'var(--gray-300)' }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--gray-800)', wordBreak: 'break-word', lineHeight: 1.3 }}>
-                        {task.is_blocked && <Lock size={10} color="#6366f1" style={{ marginRight: 3, verticalAlign: 'middle' }} />}
+                        {!!task.is_blocked && <Lock size={10} color="#6366f1" style={{ marginRight: 3, verticalAlign: 'middle' }} />}
                         {task.title}
-                        {task.is_adhoc && <span className="badge badge-adhoc" style={{ marginLeft: 5 }}>adhoc</span>}
+                        {!!task.is_adhoc && <span className="badge badge-adhoc" style={{ marginLeft: 5 }}>adhoc</span>}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
                         <PriorityBadge p={task.priority} />
@@ -1773,7 +1773,7 @@ function CustomFieldsTab({ projectId, canManage }) {
                   {form.options.map(opt => (
                     <span key={opt} style={{
                       display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px',
-                      background: '#dbeafe', color: '#1e40af', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                      background: 'var(--primary-light)', color: 'var(--tone-info-text)', borderRadius: 6, fontSize: 12, fontWeight: 600,
                     }}>
                       {opt}
                       <button type="button" onClick={() => removeOption(opt)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3b82f6', padding: 0, display: 'flex', alignItems: 'center' }}>
@@ -2088,7 +2088,7 @@ export default function ProjectDetail() {
       {/* Waiting for Customer banner */}
       {project.status === 'waiting_customer' && (
         <div style={{
-          background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10,
+          background: 'var(--warning-light)', border: '1px solid #fed7aa', borderRadius: 10,
           padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start',
         }}>
           <span style={{ fontSize: 20, flexShrink: 0 }}>⏳</span>

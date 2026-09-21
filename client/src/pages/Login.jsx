@@ -251,7 +251,7 @@ export default function Login() {
         {step === '2fa' && (
           <form onSubmit={handle2FA}>
             <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eff6ff', border: '2px solid #3b82f6',
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--primary-light)', border: '2px solid #3b82f6',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
                 <ShieldCheck size={26} color="#3b82f6" />
               </div>
@@ -302,7 +302,7 @@ export default function Login() {
         {step === 'set_password' && (
           <form onSubmit={handleSetPassword}>
             <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#f0fdf4', border: '2px solid #22c55e',
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--success-light)', border: '2px solid #22c55e',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
                 <KeyRound size={26} color="#22c55e" />
               </div>
@@ -378,7 +378,7 @@ export default function Login() {
         {step === 'forgot_email' && (
           <form onSubmit={handleForgotPassword}>
             <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eff6ff', border: '2px solid #3b82f6',
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--primary-light)', border: '2px solid #3b82f6',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
                 <RotateCcw size={24} color="#3b82f6" />
               </div>
@@ -421,7 +421,7 @@ export default function Login() {
         {step === 'reset_password' && (
           <form onSubmit={handleResetPassword}>
             <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#f0fdf4', border: '2px solid #22c55e',
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--success-light)', border: '2px solid #22c55e',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
                 <KeyRound size={26} color="#22c55e" />
               </div>

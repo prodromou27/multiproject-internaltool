@@ -179,8 +179,8 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
               display: 'flex', gap: 12, marginBottom: result.errors?.length ? 12 : 0
             }}>
               <div style={{ flex: 1, background: '#d1fae5', borderRadius: 8, padding: '10px 16px', textAlign: 'center' }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: '#065f46' }}>{result.imported}</div>
-                <div style={{ fontSize: 11, color: '#065f46', fontWeight: 600 }}>Imported</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--tone-success-text)' }}>{result.imported}</div>
+                <div style={{ fontSize: 11, color: 'var(--tone-success-text)', fontWeight: 600 }}>Imported</div>
               </div>
               <div style={{ flex: 1, background: result.skipped ? '#fef3c7' : '#f0fdf4', borderRadius: 8, padding: '10px 16px', textAlign: 'center' }}>
                 <div style={{ fontSize: 22, fontWeight: 700, color: result.skipped ? '#92400e' : '#166534' }}>{result.skipped}</div>

@@ -324,7 +324,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
             <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>Report Status</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {reportBadge}
-              {visit.report_sent && (
+              {!!visit.report_sent && (
                 <div className="text-sm text-muted">
                   Submitted by {visit.report_sent_by_name} · {fmtDate(visit.report_sent_at)}
                 </div>
@@ -632,8 +632,8 @@ export default function MaintenanceVisits() {
                   const urgency  = isEngineer ? reportUrgency(v) : null;
                   const rowStyle = {
                     cursor: 'pointer',
-                    ...(urgency === 'red'    && { background: '#fef2f2', borderLeft: '3px solid #ef4444' }),
-                    ...(urgency === 'orange' && { background: '#fff7ed', borderLeft: '3px solid #f97316' }),
+                    ...(urgency === 'red'    && { background: 'var(--danger-light)', borderLeft: '3px solid #ef4444' }),
+                    ...(urgency === 'orange' && { background: 'var(--warning-light)', borderLeft: '3px solid #f97316' }),
                   };
                   return (
                   <tr key={v.id} style={rowStyle} onClick={() => { if (!actionBusy) setSelected(v); }}>
@@ -652,7 +652,7 @@ export default function MaintenanceVisits() {
                         : v.report_sent
                           ? <span className="badge badge-active" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Check size={10} /> Report Complete</span>
                           : urgency === 'red'
-                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#dc2626', fontWeight: 700, fontSize: 12 }}>
+                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--tone-danger-text)', fontWeight: 700, fontSize: 12 }}>
                                 <AlertCircle size={13} /> Overdue 7d+
                               </span>
                             : urgency === 'orange'
@@ -671,7 +671,7 @@ export default function MaintenanceVisits() {
                         {!isPM && !v.report_sent && v.status !== 'cancelled' && (
                           <button className="btn btn-sm btn-success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.markReportSent(v.id), 'Report marked as submitted'); }}><Check size={12} /> Submit Report</button>
                         )}
-                        {v.report_sent && !v.report_sent_to_customer && canManage && (
+                        {!!v.report_sent && !v.report_sent_to_customer && canManage && (
                           <button className="btn btn-sm btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.markCustomerSent(v.id), 'Report approved & sent to PM'); }}><Send size={12} /> Approve &amp; Send to PM</button>
                         )}
                         {canManage && <button className="btn btn-sm btn-ghost" disabled={actionBusy} onClick={() => openEdit(v)}>Edit</button>}

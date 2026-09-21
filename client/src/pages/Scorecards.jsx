@@ -102,7 +102,7 @@ function ScorecardForm({ initial, pendingProjects, engineers, onSave, onClose })
       )}
 
       {/* Live score preview */}
-      <div style={{ background: '#f8fafc', borderRadius: 10, padding: '14px 16px', marginBottom: 16,
+      <div style={{ background: 'var(--gray-50)', borderRadius: 10, padding: '14px 16px', marginBottom: 16,
         display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
         border: `2px solid ${r.color}20` }}>
         <ScoreGauge score={adjP} size={72} />
@@ -119,7 +119,7 @@ function ScorecardForm({ initial, pendingProjects, engineers, onSave, onClose })
       </div>
 
       {/* Dimension pickers */}
-      <div style={{ background: '#f8fafc', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
+      <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase',
           letterSpacing: '.05em', marginBottom: 10 }}>Scoring Dimensions</div>
         {Object.entries(WEIGHTS).map(([key, meta]) => (
@@ -145,7 +145,7 @@ function ScorecardForm({ initial, pendingProjects, engineers, onSave, onClose })
             const active = form.difficulty === d;
             return (
               <button key={d} type="button" onClick={() => setForm(f => ({ ...f, difficulty: d }))}
-                style={{ padding: '5px 12px', borderRadius: 6, border: `2px solid ${active ? dl.color : '#e5e7eb'}`,
+                style={{ padding: '5px 12px', borderRadius: 6, border: `2px solid ${active ? dl.color : 'var(--gray-200)'}`,
                   background: active ? dl.color + '15' : '#fff', color: active ? dl.color : '#6b7280',
                   cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400, transition: 'all .1s' }}>
                 D{d} — {dl.label}<br/>
@@ -187,7 +187,7 @@ function ScorecardDetail({ sc, isManager, onClose, onEdit, onDelete }) {
             Evaluated by {sc.evaluated_by_name} · {fmtDate(sc.updated_at || sc.created_at)}
           </div>
         </div>
-        <div style={{ textAlign: 'center', background: '#f9fafb', borderRadius: 8, padding: '8px 16px' }}>
+        <div style={{ textAlign: 'center', background: 'var(--gray-50)', borderRadius: 8, padding: '8px 16px' }}>
           <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.05em' }}>Target</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: sc.adjusted_score >= 80 ? 'var(--success)' : 'var(--danger)' }}>80%</div>
           <div style={{ fontSize: 11, color: sc.adjusted_score >= 80 ? 'var(--success)' : 'var(--danger)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
@@ -340,15 +340,15 @@ export default function Scorecards() {
       {isManager && !loading && pendingProjects.length > 0 && (
         <div style={{
           display: 'flex', alignItems: 'flex-start', gap: 12,
-          background: '#fffbeb', border: '1px solid #fcd34d',
+          background: 'var(--warning-light)', border: '1px solid #fcd34d',
           borderRadius: 10, padding: '12px 16px', marginBottom: 16,
         }}>
           <AlertTriangle size={16} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: '#92400e', marginBottom: 4 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--tone-warning-text)', marginBottom: 4 }}>
               Pending KPI scores — {pendingProjects.reduce((s, p) => s + p.unscored_engineers.length, 0)} engineer{pendingProjects.reduce((s, p) => s + p.unscored_engineers.length, 0) !== 1 ? 's' : ''} awaiting evaluation
             </div>
-            <div style={{ fontSize: 12, color: '#92400e', lineHeight: 1.6 }}>
+            <div style={{ fontSize: 12, color: 'var(--tone-warning-text)', lineHeight: 1.6 }}>
               {pendingProjects.map(p => (
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Clock size={11} />
@@ -435,7 +435,7 @@ export default function Scorecards() {
                   return (
                     <div key={eng.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
                       <span style={{ width: 130, fontSize: 12, fontWeight: 600, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{eng.name}</span>
-                      <div style={{ flex: 1, background: '#e5e7eb', borderRadius: 99, height: 10, overflow: 'hidden' }}>
+                      <div style={{ flex: 1, background: 'var(--gray-200)', borderRadius: 99, height: 10, overflow: 'hidden' }}>
                         <div style={{ width: `${eng.avg_adjusted ?? 0}%`, height: '100%',
                           background: r.color, borderRadius: 99, transition: 'width .4s',
                           position: 'relative' }}>
