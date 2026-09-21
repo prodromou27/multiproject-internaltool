@@ -29,6 +29,20 @@ function renderPdf(model) {
       };
       drawRow(headers,true);rows.forEach(row => drawRow(row));doc.moveDown(.5);
     };
+    const barChart=(chartTitle,rows) => {
+      const visible=rows.slice(0,10),height=Math.max(70,visible.length*22+38);ensureSpace(height);heading(chartTitle);
+      if (!visible.length) return paragraph('No matching records.');
+      const max=Math.max(1,...visible.map(row => Number(row.count))),labelWidth=125,barWidth=pageWidth-labelWidth-55;
+      visible.forEach(row => { const y=doc.y;doc.font('Helvetica').fontSize(8).fillColor(COLORS.text).text(display(row.name),doc.page.margins.left,y,{ width:labelWidth-8,lineBreak:false,ellipsis:true });doc.rect(doc.page.margins.left+labelWidth,y,barWidth,10).fill('#e2e8f0');doc.rect(doc.page.margins.left+labelWidth,y,Math.max(1,barWidth*Number(row.count)/max),10).fill(COLORS.accent);doc.fillColor(COLORS.text).text(String(row.count),doc.page.margins.left+labelWidth+barWidth+8,y-1,{ width:38,align:'right' });doc.y=y+20; });
+      doc.moveDown(.3);
+    };
+    const trendChart=trend => {
+      ensureSpace(215);heading('Ticket Throughput Trend');const points=trend.points,y=doc.y+8,height=125,x=doc.page.margins.left+25,width=pageWidth-50,max=Math.max(1,...points.flatMap(point => [point.created,point.resolved]));
+      doc.strokeColor(COLORS.line).lineWidth(1).moveTo(x,y).lineTo(x,y+height).lineTo(x+width,y+height).stroke();
+      const plot=(key,color) => { doc.strokeColor(color).lineWidth(2);points.forEach((point,index) => { const px=x+(points.length===1?0:index/(points.length-1)*width),py=y+height-(Number(point[key])/max*height);if (index===0) doc.moveTo(px,py);else doc.lineTo(px,py); });doc.stroke(); };
+      if (points.length) { plot('created',COLORS.accent);plot('resolved','#16a34a');doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted).text(points[0].date,x,y+height+6,{ width:90 });doc.text(points[points.length-1].date,x+width-90,y+height+6,{ width:90,align:'right' }); }
+      doc.fillColor(COLORS.accent).text('Created',x+width-130,y-8,{ width:55 });doc.fillColor('#16a34a').text('Resolved',x+width-65,y-8,{ width:55 });doc.y=y+height+28;
+    };
     const n=model.narratives;
     doc.moveDown(5).font('Helvetica-Bold').fontSize(28).fillColor(COLORS.accent).text('Managed Services Report',{ align:'center' }).moveDown(.6);
     doc.fontSize(22).fillColor(COLORS.text).text(model.customer.name,{ align:'center' }).moveDown(.5);
@@ -39,7 +53,7 @@ function renderPdf(model) {
     const builders={
       executive_summary:() => { heading('Executive Summary');paragraph(n.executive_summary || 'No executive summary provided.');if (n.key_highlights) { heading('Key Highlights');paragraph(n.key_highlights); }if (n.major_changes) { heading('Major Changes');paragraph(n.major_changes); } },
       service_overview:() => table('Service Overview',['Current / period measure','Value'],[['Open tickets now',model.overview.tickets?.open_now ?? 'Excluded'],['Pending tickets now',model.overview.tickets?.pending_now ?? 'Excluded'],['Service activities',model.overview.activities.activities],['Service hours',model.overview.activities.hours],['Open tasks now',model.overview.tasks.open_now],['Active projects now',model.overview.projects.active_now],['Maintenance Visits in period',model.overview.visits.visits_period],['Open recommendations now',model.overview.recommendations.open_now]]),
-      ticket_summary:() => { if (!model.tickets.enabled) return;const current=model.tickets.analytics.current,period=model.tickets.analytics.period;table('Ticket Summary',['Measure','Value'],[['Open backlog',current.total_open],['Created during period',period.created],['Resolved during period',period.resolved],['Closed during period',period.closed],['Rejected during period',period.rejected],['SLA breaches during period',period.sla_breaches]]);table('Open Tickets by Status',['Status','Count'],current.statuses.map(row => [row.name,row.count]));table('Open Ticket Aging',['Age','Count'],current.aging.map(row => [row.name,row.count])); },
+      ticket_summary:() => { if (!model.tickets.enabled) return;const { current,period,trend }=model.tickets.analytics;table('Ticket Summary',['Measure','Value'],[['Open backlog',current.total_open],['Created during period',period.created],['Resolved during period',period.resolved],['Closed during period',period.closed],['Rejected during period',period.rejected],['SLA breaches during period',period.sla_breaches]]);trendChart(trend);barChart('Open Tickets by Status',current.statuses);barChart('Open Tickets by Priority',current.priorities);barChart('Open Ticket Aging',current.aging); },
       open_tickets:() => { if (model.tickets.enabled) table('Open Tickets',['Ticket','Subject','Status','Priority','Owner','Created'],model.tickets.open.rows.map(row => [row.ticket_number,row.subject,row.normalized_status,row.normalized_priority,row.owner_name,row.created_at_external])); },
       period_tickets:() => { if (model.tickets.enabled) table('Tickets Created During Period',['Ticket','Subject','Status','Priority','Owner','Created'],model.tickets.period.rows.map(row => [row.ticket_number,row.subject,row.normalized_status,row.normalized_priority,row.owner_name,row.created_at_external])); },
       service_activities:() => { if (model.activities.enabled) table('Service Activities',['Date','Reference','Activity','Engineer','Category','Hours'],model.activities.rows.map(row => [row.activity_date,row.activity_reference,row.title,row.engineer_name,row.category_name,Math.round(Number(row.duration_minutes || 0)/6)/10])); },

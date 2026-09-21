@@ -1633,6 +1633,8 @@ test('managed customer ticket analytics separate current backlog from period thr
   assert.deepEqual(result.data.current.priorities,[{ name:'Critical',count:1 }]);
   assert.equal(result.data.period.created,2);assert.equal(result.data.period.resolved,1);
   assert.equal(result.data.current.aging.reduce((sum,row) => sum+row.count,0),1);
+  assert.equal(result.data.trend.bucket_days,1);assert.equal(result.data.trend.points.length,30);
+  assert.equal(result.data.trend.points.reduce((sum,row) => sum+row.created,0),2);assert.equal(result.data.trend.points.reduce((sum,row) => sum+row.resolved,0),1);
 });
 
 test('managed customer activities reuse customer-scoped activity records and period totals',async () => {
@@ -1706,7 +1708,7 @@ test('managed customer report preview reuses dashboard metrics and protects cust
   const workbookResponse=await fetch(`${baseUrl}${path.replace('report-preview','report.xlsx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) });
   assert.equal(workbookResponse.status,200);assert.match(workbookResponse.headers.get('content-type'),/spreadsheetml/);
   const workbook=new (require('exceljs').Workbook)();await workbook.xlsx.load(Buffer.from(await workbookResponse.arrayBuffer()));
-  assert.deepEqual(workbook.worksheets.map(sheet => sheet.name),['Summary','Activities']);assert.equal(workbook.getWorksheet('Summary').getCell('B2').value,'Acme Corp');
+  assert.deepEqual(workbook.worksheets.map(sheet => sheet.name),['Summary','Charts','Activities']);assert.equal(workbook.getWorksheet('Summary').getCell('B2').value,'Acme Corp');assert.equal(workbook.getWorksheet('Charts').getCell('A1').value,'Ticket Throughput Trend');
   assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='managed_customer_excel_report_generated'").get()).count,1);
   assert.equal((await api(path.replace('report-preview','report.docx'),{ method:'POST',token:ids.tokenManager,body:{ ...body,status:'published' } })).status,400);
   assert.equal((await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenEnabled })).status,403);

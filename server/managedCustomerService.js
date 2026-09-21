@@ -108,8 +108,20 @@ async function getTicketAnalytics(customerId,from,to,store=db,now=new Date()) {
     const days=Math.max(0,Math.floor((now-new Date(ticket.created_at_external))/86400000));
     aging[days<=2?0:days<=7?1:days<=14?2:days<=30?3:4].count++;
   }
+  const firstDay=new Date(`${from}T00:00:00.000Z`),lastDay=new Date(`${to}T00:00:00.000Z`),dayCount=Math.floor((lastDay-firstDay)/86400000)+1;
+  const bucketDays=dayCount<=45?1:dayCount<=366?7:Math.max(7,Math.ceil(dayCount/52));
+  const points=Array.from({ length:Math.ceil(dayCount/bucketDays) },(_,index) => {
+    const date=new Date(firstDay);date.setUTCDate(date.getUTCDate()+index*bucketDays);
+    return { date:date.toISOString().slice(0,10),created:0,resolved:0 };
+  });
+  const addTrend=(value,key) => {
+    if (!inPeriod(value)) return;
+    const index=Math.floor((new Date(value)-firstDay)/86400000/bucketDays);
+    if (points[index]) points[index][key]++;
+  };
+  periodRows.forEach(ticket => { addTrend(ticket.created_at_external,'created');addTrend(ticket.resolved_at_external,'resolved'); });
   const rows=(values,fallback) => [...values.reduce((result,row) => { const name=row.name || fallback;result.set(name,(result.get(name) || 0)+Number(row.count));return result; },new Map())].map(([name,count]) => ({ name,count })).sort((a,b) => b.count-a.count || a.name.localeCompare(b.name));
-  return { period:{ from,to,...period },current:{ total_open:rows(statuses).reduce((sum,row) => sum+row.count,0),statuses:rows(statuses),priorities:rows(priorities),owners:rows(owners,'Unassigned'),aging } };
+  return { period:{ from,to,...period },trend:{ bucket_days:bucketDays,points },current:{ total_open:rows(statuses).reduce((sum,row) => sum+row.count,0),statuses:rows(statuses),priorities:rows(priorities),owners:rows(owners,'Unassigned'),aging } };
 }
 
 async function getActivities(customerId,from,to,{ page=1,pageSize=25,offset=0 }={},store=db) {
