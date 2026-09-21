@@ -50,3 +50,6 @@ check_migration.js
 client/.e2e-dist/
 client/test-results/
 client/playwright-report/
+
+# Runtime uploads and generated report files (also written by the test suite)
+server/uploads/
