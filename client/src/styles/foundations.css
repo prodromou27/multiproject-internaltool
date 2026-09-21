@@ -111,3 +111,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   --cal-project-bg: rgba(139,92,246,.24); --cal-project-fg: #c4b5fd;
   --cal-visit-bg: rgba(245,158,11,.2);    --cal-visit-fg: #fcd34d;
 }
+
+.operations-page-state-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 4px; }
+/* The state card's blue applies to its own icon, not to icons inside its buttons. */
+.operations-page-state .btn svg { color: inherit; }

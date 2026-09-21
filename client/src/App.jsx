@@ -11,6 +11,7 @@ import Login from './pages/Login';
 import { api } from './api';
 import { PAGES, visiblePages, pageForPath, canAccessPage } from './navigation';
 import { PageState } from './components/PageLayout';
+import ErrorBoundary from './components/ErrorBoundary';
 import QuickCreate from './components/QuickCreate';
 import { StatusProvider } from './hooks/useStatuses';
 import { ToastProvider, useToast } from './components/Toast';
@@ -781,6 +782,7 @@ function PageLoader() {
 
 function PrivateRoute({ children, allowedRoles, page }) {
   const { user, saAccess } = useAuth();
+  const location = useLocation();
   if (!user) return <Navigate to="/login" replace />;
   const definition = page ? PAGES.find(item => item.id === page) : null;
   if (definition?.feature && user.role !== 'manager' && !saAccess.loaded) return <Layout><PageLoader /></Layout>;
@@ -788,7 +790,7 @@ function PrivateRoute({ children, allowedRoles, page }) {
       (allowedRoles && !allowedRoles.includes(user.role))) {
     return <Layout><PageState title="Access unavailable" description="Your role or team settings do not allow access to this page. Contact your administrator if you need access." /></Layout>;
   }
-  return <Layout><Suspense fallback={<PageLoader />}>{children}</Suspense></Layout>;
+  return <Layout><ErrorBoundary resetKey={location.pathname}><Suspense fallback={<PageLoader />}>{children}</Suspense></ErrorBoundary></Layout>;
 }
 
 function LegacySettingsRedirect() {
