@@ -2,25 +2,10 @@ const router = require('express').Router();
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
-
-// Count Mon–Fri days from startStr (exclusive) to endStr (inclusive)
-function workingDaysBetween(startStr, endStr) {
-  const start = new Date(startStr.slice(0, 10) + 'T12:00:00');
-  const end   = new Date(endStr.slice(0, 10)   + 'T12:00:00');
-  if (end <= start) return 0;
-  let count = 0;
-  const cur = new Date(start);
-  cur.setDate(cur.getDate() + 1);
-  while (cur <= end) {
-    const d = cur.getDay(); // 0=Sun, 6=Sat
-    if (d !== 0 && d !== 6) count++;
-    cur.setDate(cur.getDate() + 1);
-  }
-  return count;
-}
+const { workingDaysBetween } = require('../workingDays');
 
 router.get('/overview', requireManager, async (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = (await db.prepare('SELECT app_today() AS d').get()).d;
 
   // ── 1. MV Report Complete SLA (7 working days from scheduled_date) ────
   const MV_SLA = 7;

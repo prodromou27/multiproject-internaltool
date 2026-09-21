@@ -51,8 +51,8 @@ router.get('/', requireAuth, async (req, res) => {
   let q = BASE_SELECT + ' WHERE 1=1';
   const params = [];
 
-  if (req.user.role === 'engineer') {
-    // Engineers can only see their own scorecards
+  if (req.user.role !== 'manager') {
+    // Scorecards are performance evaluations: everyone but managers sees only their own
     q += ' AND sc.engineer_id = ?'; params.push(req.user.id);
   } else {
     if (engineer_id) { q += ' AND sc.engineer_id = ?';  params.push(engineer_id); }
@@ -148,6 +148,16 @@ router.get('/summary/engineers', requireManager, async (req, res) => {
 
 const RATING_FIELDS = ['timeline_rating','delivery_quality','communication_ownership','documentation_quality','customer_feedback'];
 
+// Difficulty is optional (defaults to 3) but, when given, must be a whole number 1–5.
+function parseDifficulty(value, fallback) {
+  if (value === undefined || value === null || value === '') return { value: fallback };
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 5) return { error: 'difficulty must be an integer between 1 and 5' };
+  return { value: n };
+}
+
+const positiveId = value => Number.isInteger(Number(value)) && Number(value) > 0;
+
 function validateRatings(body) {
   for (const f of RATING_FIELDS) {
     const v = Number(body[f]);
@@ -166,13 +176,17 @@ router.post('/', requireManager, async (req, res) => {
     difficulty, notes
   } = req.body;
 
+  if (!positiveId(project_id) || !positiveId(engineer_id))
+    return res.status(400).json({ error: 'project_id and engineer_id are required' });
   const validationErr = validateRatings(req.body);
   if (validationErr) return res.status(400).json({ error: validationErr });
+  const parsedDifficulty = parseDifficulty(difficulty, 3);
+  if (parsedDifficulty.error) return res.status(400).json({ error: parsedDifficulty.error });
 
   const dims = { timeline_rating: Number(timeline_rating), delivery_quality: Number(delivery_quality),
                  communication_ownership: Number(communication_ownership), documentation_quality: Number(documentation_quality),
                  customer_feedback: Number(customer_feedback) };
-  const diff = parseInt(difficulty) || 3;
+  const diff = parsedDifficulty.value;
   const { base_score, adjusted_score } = computeScores(dims, diff);
 
   try {
@@ -189,7 +203,7 @@ router.post('/', requireManager, async (req, res) => {
            base_score, adjusted_score, notes || null));
     res.json({ id: result.lastInsertRowid, base_score, adjusted_score, rating: rating(adjusted_score) });
   } catch (e) {
-    if (e.message.includes('UNIQUE'))
+    if (e.code === '23505')
       return res.status(409).json({ error: 'A scorecard for this engineer on this project already exists. Edit the existing one.' });
     console.error('[scorecards POST]', e.message);
     res.status(500).json({ error: 'Failed to save scorecard' });
@@ -217,7 +231,9 @@ router.put('/:id', requireManager, async (req, res) => {
     documentation_quality:   Number(req.body.documentation_quality   ?? sc.documentation_quality),
     customer_feedback:       Number(req.body.customer_feedback       ?? sc.customer_feedback),
   };
-  const diff = parseInt(req.body.difficulty) ?? sc.difficulty;
+  const parsedDifficulty = parseDifficulty(req.body.difficulty, sc.difficulty);
+  if (parsedDifficulty.error) return res.status(400).json({ error: parsedDifficulty.error });
+  const diff = parsedDifficulty.value;
   const { base_score, adjusted_score } = computeScores(dims, diff);
 
   (await db.prepare(`
