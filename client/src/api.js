@@ -342,6 +342,7 @@ export const api = {
   managedCustomerTickets: (id,params={},options) => req('GET',`/managed-customers/${id}/tickets?` + new URLSearchParams(params).toString(),undefined,options),
   managedCustomerTicketAnalytics: (id,params={},options) => req('GET',`/managed-customers/${id}/ticket-analytics?` + new URLSearchParams(params).toString(),undefined,options),
   managedCustomerActivities: (id,params={},options) => req('GET',`/managed-customers/${id}/activities?` + new URLSearchParams(params).toString(),undefined,options),
+  managedCustomerWork: (id,params={},options) => req('GET',`/managed-customers/${id}/work?` + new URLSearchParams(params).toString(),undefined,options),
 
   // system update
   systemUpdateStatus:  () => req('GET',  '/settings/system-update/status'),

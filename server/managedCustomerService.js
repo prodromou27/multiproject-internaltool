@@ -137,4 +137,48 @@ async function getActivities(customerId,from,to,{ page=1,pageSize=25,offset=0 }=
   return { enabled:true,summary:{ activities:Number(summary.activities),minutes:Number(summary.minutes),hours:Math.round(Number(summary.minutes)/6)/10 },breakdowns:{ categories:mapped(categories),technologies:mapped(technologies),engineers:mapped(engineers),locations:mapped(locations),billing:mapped(billing) },rows,total:Number(count.total),page,page_size:pageSize };
 }
 
-module.exports={ listManagedCustomers,getOverview,listTickets,getTicketAnalytics,getActivities };
+async function getWork(customerId,from,to,store=db) {
+  const config=await store.prepare(`SELECT mc.task_reporting_enabled,mc.project_reporting_enabled FROM managed_customer_configurations mc
+    JOIN customers c ON c.id=mc.customer_id WHERE mc.customer_id=? AND mc.managed_services_enabled=1 AND c.active=1`).get(customerId);
+  if (!config) return null;
+  const start=`${from}T00:00:00.000Z`,endDate=new Date(`${to}T00:00:00.000Z`);endDate.setUTCDate(endDate.getUTCDate()+1);const end=endDate.toISOString();
+  const taskTerminal="('completed','closed','cancelled')",projectTerminal="('completed','closed','cancelled')";
+  const tasks={ enabled:!!config.task_reporting_enabled,summary:{},rows:[] },projects={ enabled:!!config.project_reporting_enabled,summary:{},rows:[] };
+  if (tasks.enabled) {
+    const [summary,rows]=await Promise.all([
+      store.prepare(`SELECT COUNT(*) AS total,
+        SUM(CASE WHEN tk.status NOT IN ${taskTerminal} THEN 1 ELSE 0 END) AS open_now,
+        SUM(CASE WHEN tk.status='in_progress' THEN 1 ELSE 0 END) AS in_progress_now,
+        SUM(CASE WHEN tk.status NOT IN ${taskTerminal} AND tk.deadline<app_today() THEN 1 ELSE 0 END) AS overdue_now,
+        SUM(CASE WHEN tk.created_at>=? AND tk.created_at<? THEN 1 ELSE 0 END) AS created_period,
+        SUM(CASE WHEN tk.status IN ${taskTerminal} AND tk.updated_at>=? AND tk.updated_at<? THEN 1 ELSE 0 END) AS completed_period
+        FROM tasks tk JOIN projects p ON p.id=tk.project_id WHERE p.customer_id=?`).get(start,end,start,end,customerId),
+      store.prepare(`SELECT tk.id,tk.title,tk.status,tk.priority,tk.deadline,tk.created_at,tk.updated_at,tk.is_adhoc,
+        u.name AS assigned_to_name,p.id AS project_id,p.title AS project_title FROM tasks tk JOIN projects p ON p.id=tk.project_id
+        LEFT JOIN users u ON u.id=tk.assigned_to WHERE p.customer_id=? AND (tk.status NOT IN ${taskTerminal} OR (tk.created_at>=? AND tk.created_at<?) OR (tk.updated_at>=? AND tk.updated_at<?))
+        ORDER BY CASE WHEN tk.status NOT IN ${taskTerminal} THEN 0 ELSE 1 END,tk.deadline ASC NULLS LAST,tk.id DESC LIMIT 100`).all(customerId,start,end,start,end),
+    ]);
+    tasks.summary=numbers(summary);tasks.rows=rows;
+  }
+  if (projects.enabled) {
+    const upcomingDate=new Date();upcomingDate.setUTCDate(upcomingDate.getUTCDate()+30);const upcoming=upcomingDate.toISOString().slice(0,10);
+    const [summary,rows]=await Promise.all([
+      store.prepare(`SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status NOT IN ${projectTerminal} THEN 1 ELSE 0 END) AS active_now,
+        SUM(CASE WHEN (status='delayed' OR (status NOT IN ${projectTerminal} AND deadline<app_today())) THEN 1 ELSE 0 END) AS delayed_now,
+        SUM(CASE WHEN created_at>=? AND created_at<? THEN 1 ELSE 0 END) AS created_period,
+        SUM(CASE WHEN status IN ${projectTerminal} AND closed_at>=? AND closed_at<? THEN 1 ELSE 0 END) AS completed_period,
+        SUM(CASE WHEN status NOT IN ${projectTerminal} AND deadline BETWEEN app_today() AND ? THEN 1 ELSE 0 END) AS upcoming_deadlines
+        FROM projects WHERE customer_id=?`).get(start,end,start,end,upcoming,customerId),
+      store.prepare(`SELECT p.id,p.title,p.status,p.priority,p.deadline,p.created_at,p.closed_at,p.completion_pct,
+        COUNT(tk.id) AS task_count,SUM(CASE WHEN tk.status IN ${taskTerminal} THEN 1 ELSE 0 END) AS done_count
+        FROM projects p LEFT JOIN tasks tk ON tk.project_id=p.id WHERE p.customer_id=?
+        GROUP BY p.id,p.title,p.status,p.priority,p.deadline,p.created_at,p.closed_at,p.completion_pct
+        ORDER BY CASE WHEN p.status NOT IN ${projectTerminal} THEN 0 ELSE 1 END,p.deadline ASC NULLS LAST,p.id DESC LIMIT 100`).all(customerId),
+    ]);
+    projects.summary=numbers(summary);projects.rows=rows.map(row => ({ ...row,task_count:Number(row.task_count),done_count:Number(row.done_count || 0),completion_pct:row.completion_pct==null ? (Number(row.task_count)?Math.round(Number(row.done_count || 0)/Number(row.task_count)*100):0) : Number(row.completion_pct) }));
+  }
+  return { period:{ from,to },tasks,projects };
+}
+
+module.exports={ listManagedCustomers,getOverview,listTickets,getTicketAnalytics,getActivities,getWork };

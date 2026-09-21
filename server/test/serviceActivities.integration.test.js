@@ -1632,6 +1632,19 @@ test('managed customer activities reuse customer-scoped activity records and per
   assert.equal(result.data.rows[0].category_name.length>0,true);assert.equal(result.data.rows[0].engineer_name.length>0,true);
 });
 
+test('managed customer work reuses task and project relationships with configured reporting gates',async () => {
+  const path=`/api/managed-customers/${ids.customer}/work`;
+  assert.equal((await api(`${path}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api(`${path}?from=2026-12-31&to=2026-01-01`,{ token:ids.tokenManager })).status,400);
+  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/work?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager })).status,404);
+  const result=await api(`${path}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager });
+  assert.equal(result.status,200);assert.equal(result.data.tasks.enabled,true);assert.equal(result.data.projects.enabled,true);
+  assert.equal(result.data.tasks.summary.total>=result.data.tasks.rows.length,true);
+  assert.equal(result.data.projects.summary.total>=result.data.projects.rows.length,true);
+  assert.equal(result.data.tasks.rows.every(row => row.project_id),true);
+  assert.equal(result.data.projects.rows.every(row => Number.isInteger(row.completion_pct)),true);
+});
+
 test('ticket mapping administration is manager-only and reclassifies stored tickets',async () => {
   assert.equal((await api('/api/ticketing/mappings',{ token:ids.tokenEnabled })).status,403);
   const current=await api('/api/ticketing/mappings',{ token:ids.tokenManager });
