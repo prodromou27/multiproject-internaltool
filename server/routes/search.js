@@ -1,4 +1,6 @@
 const router = require('express').Router();
+// Escape LIKE wildcards so a literal % or _ typed in the search box matches itself.
+const escapeLike = value => value.replace(/[\\%_]/g, m => '\\' + m);
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
@@ -68,7 +70,7 @@ router.get('/', requireAuth, async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ projects: [], tasks: [], customers: [] });
 
-  const like = `%${q}%`;
+  const like = `%${escapeLike(q)}%`;
 
   let projects;
   if (req.user.role === 'manager' || req.user.role === 'pm') {
@@ -145,8 +147,8 @@ router.get('/smart', requireAuth, async (req, res) => {
     date_to,
   } = req.query;
 
-  const like   = q.trim() ? `%${q.trim()}%` : null;
-  const today  = new Date().toISOString().slice(0, 10);
+  const like   = q.trim() ? `%${escapeLike(q.trim())}%` : null;
+  const today  = (await db.prepare('SELECT app_today() AS d').get()).d;
   const isMgr  = req.user.role === 'manager';
   const results = {};
 
