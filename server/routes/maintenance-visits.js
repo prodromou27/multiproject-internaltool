@@ -13,13 +13,6 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 const BASE_SELECT = `
   SELECT mv.*,
     c.name as customer_name, c.contact_name, c.contact_email, c.contact_phone,
-    (SELECT GROUP_CONCAT(u2.name, ', ')
-     FROM maintenance_visit_engineers mve2
-     JOIN users u2 ON mve2.user_id = u2.id
-     WHERE mve2.visit_id = mv.id) as engineer_names,
-    (SELECT GROUP_CONCAT(CAST(mve3.user_id AS TEXT), ',')
-     FROM maintenance_visit_engineers mve3
-     WHERE mve3.visit_id = mv.id) as engineer_ids_csv,
     cb.name as created_by_name,
     rs.name as report_sent_by_name,
     rc.name as report_sent_to_customer_by_name
@@ -38,9 +31,8 @@ function parseEngIds(row) {
     contact_name:  decrypt(row.contact_name),
     contact_email: decrypt(row.contact_email),
     contact_phone: decrypt(row.contact_phone),
-    engineer_ids: row.engineer_ids_csv
-      ? row.engineer_ids_csv.split(',').map(Number)
-      : [],
+    engineer_ids: [],engineer_names: '',
+    asset_ids: [],
   };
 }
 
@@ -94,6 +86,20 @@ async function validateEngineerIds(values) {
   return { ids, engineers };
 }
 
+async function validateAssetIds(values,customerId) {
+  if (values===undefined) return { ids:undefined };
+  if (!Array.isArray(values) || values.length>100 || values.some(id => !Number.isSafeInteger(id) || id<1) || new Set(values).size!==values.length) return { error:'asset_ids must contain at most 100 unique positive integer IDs' };
+  if (values.length) {
+    const rows=await db.prepare(`SELECT id FROM customer_assets WHERE customer_id=? AND id IN (${values.map(() => '?').join(',')})`).all(customerId,...values);
+    if (rows.length!==values.length) return { error:'Every selected asset must belong to the visit customer' };
+  }
+  return { ids:values };
+}
+async function replaceAssets(visitId,customerId,assetIds,tx) {
+  await tx.prepare('DELETE FROM maintenance_visit_assets WHERE visit_id=?').run(visitId);
+  for (const assetId of assetIds || []) await tx.prepare('INSERT INTO maintenance_visit_assets (visit_id,asset_id,customer_id) VALUES (?,?,?)').run(visitId,assetId,customerId);
+}
+
 // Convert an ExcelJS cell value to string, handling dates and rich text.
 function cellToString(v) {
   if (v === null || v === undefined) return '';
@@ -135,7 +141,19 @@ router.get('/', requireAuth, async (req, res) => {
 
 async function filteredVisits(filters) {
   const rows = (await db.prepare(BASE_SELECT + ` WHERE ${filters.where} ORDER BY mv.scheduled_date ASC, mv.id ASC`).all(...filters.params)).map(parseEngIds);
-  return searchMaintenanceVisits(rows, filters.search);
+  return enrichVisitLinks(searchMaintenanceVisits(rows, filters.search));
+}
+
+async function enrichVisitLinks(rows) {
+  if (!rows.length) return rows;
+  const placeholders=rows.map(() => '?').join(','),ids=rows.map(row => row.id);
+  const [links,engineers]=await Promise.all([
+    db.prepare(`SELECT visit_id,asset_id FROM maintenance_visit_assets WHERE visit_id IN (${placeholders}) ORDER BY visit_id,asset_id`).all(...ids),
+    db.prepare(`SELECT mve.visit_id,mve.user_id,u.name FROM maintenance_visit_engineers mve JOIN users u ON u.id=mve.user_id WHERE mve.visit_id IN (${placeholders}) ORDER BY mve.visit_id,u.name,u.id`).all(...ids),
+  ]);
+  const byVisit=new Map();for(const link of links) { if(!byVisit.has(link.visit_id)) byVisit.set(link.visit_id,[]);byVisit.get(link.visit_id).push(link.asset_id); }
+  const engineerMap=new Map();for(const engineer of engineers) { if(!engineerMap.has(engineer.visit_id)) engineerMap.set(engineer.visit_id,[]);engineerMap.get(engineer.visit_id).push(engineer); }
+  return rows.map(row => { const assigned=engineerMap.get(row.id) || [];return { ...row,asset_ids:byVisit.get(row.id) || [],engineer_ids:assigned.map(item => item.user_id),engineer_names:assigned.map(item => item.name).join(', ') }; });
 }
 
 // Export uses the same authorized selection and stable order as the list.
@@ -172,20 +190,28 @@ router.get('/template/download', requireDownloadManagerOrPlanner, async (req, re
   res.send(buf);
 });
 
+router.get('/assets/choices',requireManagerOrPlanner,async (req,res) => {
+  const check=await validateCustomerId(req.query.customer_id);
+  if (check.error) return res.status(400).json({ error:check.error });
+  const rows=await db.prepare("SELECT id,name,asset_type,hostname,lifecycle_status FROM customer_assets WHERE customer_id=? AND lifecycle_status IN ('active','spare') ORDER BY id LIMIT 501").all(check.id);
+  if (rows.length>500) return res.status(413).json({ error:'This customer has more than 500 active assets; retire unused records before scheduling them' });
+  res.json(rows.map(row => ({ ...row,name:decrypt(row.name),hostname:decrypt(row.hostname) })));
+});
+
 // ── Get single ───────────────────────────────────────────────────────────────
 router.get('/:id', requireAuth, async (req, res) => {
   const mv = (await db.prepare(BASE_SELECT + ' WHERE mv.id = ?').get(req.params.id));
   if (!mv) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'engineer' && !await isAssignedEngineer(mv.id, req.user.id))
     return res.status(403).json({ error: 'Forbidden' });
-  res.json(parseEngIds(mv));
+  res.json((await enrichVisitLinks([parseEngIds(mv)]))[0]);
 });
 
 // ── Create ───────────────────────────────────────────────────────────────────
 router.post('/', requireManagerOrPlanner, async (req, res) => {
   const inputError = validateVisitText(req.body);
   if (inputError) return res.status(400).json({ error: inputError });
-  const { customer_id, title, description, scheduled_date, engineer_ids, notes } = req.body;
+  const { customer_id, title, description, scheduled_date, engineer_ids, asset_ids, notes } = req.body;
   if (!customer_id || !title || !scheduled_date)
     return res.status(400).json({ error: 'customer_id, title and scheduled_date are required' });
   if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'title is required' });
@@ -195,6 +221,8 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
   if (customerCheck.error) return res.status(400).json({ error: customerCheck.error });
   const engineerCheck = await validateEngineerIds(engineer_ids);
   if (engineerCheck.error) return res.status(400).json({ error: engineerCheck.error });
+  const assetCheck=await validateAssetIds(asset_ids,customerCheck.id);
+  if (assetCheck.error) return res.status(400).json({ error:assetCheck.error });
 
   const visitId = await db.transaction(async tx => {
     const result = await tx.prepare(
@@ -202,6 +230,7 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
     ).run(customerCheck.id, title.trim(), description || null, scheduled_date, notes || null, req.user.id);
 
     await replaceEngineers(result.lastInsertRowid, engineerCheck.ids || [], tx);
+    await replaceAssets(result.lastInsertRowid,customerCheck.id,assetCheck.ids || [],tx);
     return result.lastInsertRowid;
   });
 
@@ -314,7 +343,7 @@ router.put('/:id', requireAuth, async (req, res) => {
   if (req.user.role !== 'manager' && req.user.role !== 'planner')
     return res.status(403).json({ error: 'Forbidden' });
 
-  const { customer_id, title, description, scheduled_date, engineer_ids, status, notes } = req.body;
+  const { customer_id, title, description, scheduled_date, engineer_ids, asset_ids, status, notes } = req.body;
   const VALID_STATUSES = ['scheduled', 'in_progress', 'completed', 'cancelled'];
   if (status !== undefined && !VALID_STATUSES.includes(status))
     return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
@@ -331,6 +360,10 @@ router.put('/:id', requireAuth, async (req, res) => {
   const engineerCheck = await validateEngineerIds(engineer_ids);
   if (engineerCheck.error) return res.status(400).json({ error: engineerCheck.error });
   let oldIds = [];
+  const effectiveCustomer=customerCheck.id || mv.customer_id;
+  const retainedAssets=asset_ids===undefined && customer_id!==undefined ? (await db.prepare('SELECT asset_id FROM maintenance_visit_assets WHERE visit_id=?').all(mv.id)).map(row => row.asset_id) : asset_ids;
+  const assetCheck=await validateAssetIds(retainedAssets,effectiveCustomer);
+  if (assetCheck.error) return res.status(400).json({ error:assetCheck.error });
   await db.transaction(async tx => {
     await tx.prepare('SELECT id FROM maintenance_visits WHERE id = ? FOR UPDATE').get(mv.id);
     await tx.prepare(`UPDATE maintenance_visits SET
@@ -342,6 +375,7 @@ router.put('/:id', requireAuth, async (req, res) => {
       oldIds = (await tx.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(mv.id)).map(r => r.user_id);
       await replaceEngineers(mv.id, engineerCheck.ids, tx);
     }
+    if (assetCheck.ids!==undefined) await replaceAssets(mv.id,effectiveCustomer,assetCheck.ids,tx);
   });
   if (engineerCheck.ids !== undefined) {
     // Notify newly added engineers
@@ -454,7 +488,7 @@ router.delete('/:id', requireManagerOrPlanner, async (req, res) => {
 });
 
 router.use((error, req, res, next) => {
-  if (error.code === '23503') return res.status(409).json({ error: 'This visit is linked to a customer recommendation. Preserve its customer relationship and close the recommendation instead of deleting its source.' });
+  if (error.code === '23503') return res.status(409).json({ error: 'A linked recommendation, customer asset or related record prevents this change. Reload and preserve the existing customer relationship.' });
   next(error);
 });
 

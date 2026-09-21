@@ -184,7 +184,7 @@ router.put('/:assetId',async (req,res) => {
 
 router.delete('/:assetId',async (req,res) => {
   if (!positiveId(req.params.assetId) || !positiveId(req.body.version)) return res.status(400).json({ error: 'Valid asset ID and version are required' });
-  if (await db.prepare('SELECT 1 FROM service_activity_assets WHERE asset_id=?').get(Number(req.params.assetId))) return res.status(409).json({ error:'This asset is linked to recorded service activity and must be retired or decommissioned instead of deleted' });
+  if (await db.prepare('SELECT 1 FROM service_activity_assets WHERE asset_id=? UNION ALL SELECT 1 FROM maintenance_visit_assets WHERE asset_id=? LIMIT 1').get(Number(req.params.assetId),Number(req.params.assetId))) return res.status(409).json({ error:'This asset is linked to recorded service work and must be retired or decommissioned instead of deleted' });
   let row;
   try { row=await db.transaction(async tx => {
       const removed=(await tx.prepare('DELETE FROM customer_assets WHERE id=? AND customer_id=? AND version=? RETURNING *').all(Number(req.params.assetId),Number(req.params.id),Number(req.body.version)))[0];

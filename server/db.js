@@ -42,7 +42,7 @@ const pool = new Pool({
 pool.on('error', (err) => console.error('[pg pool]', err.message));
 
 // Tables with no `id` column — never append RETURNING id to inserts into these.
-const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams)\b/i;
+const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|maintenance_visit_assets|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams)\b/i;
 
 // ── SQL translation (SQLite → Postgres), memoized per unique SQL string ──────
 const _cache = new Map();
@@ -893,6 +893,18 @@ async function applyCompatibilityMigrations() {
       FOREIGN KEY(customer_id,asset_id) REFERENCES customer_assets(customer_id,id) ON DELETE RESTRICT
     );
     CREATE INDEX IF NOT EXISTS idx_service_activity_asset_history ON service_activity_assets(asset_id,service_activity_id);
+  `]);
+  migrations.push(['20260921_maintenance_visit_assets', `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_maintenance_visit_customer_pair ON maintenance_visits(customer_id,id);
+    CREATE TABLE IF NOT EXISTS maintenance_visit_assets (
+      visit_id INTEGER NOT NULL,
+      asset_id INTEGER NOT NULL,
+      customer_id INTEGER NOT NULL,
+      PRIMARY KEY(visit_id,asset_id),
+      FOREIGN KEY(customer_id,visit_id) REFERENCES maintenance_visits(customer_id,id) ON DELETE CASCADE,
+      FOREIGN KEY(customer_id,asset_id) REFERENCES customer_assets(customer_id,id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS idx_maintenance_visit_asset_history ON maintenance_visit_assets(asset_id,visit_id);
   `]);
 
   migrations.push(['20260917_project_closure_review', `

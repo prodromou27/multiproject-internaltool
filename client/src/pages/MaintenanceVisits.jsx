@@ -66,11 +66,22 @@ function EngineerPicker({ engineers, selected, onChange }) {
 function VisitForm({ initial, customers, engineers, onSave, onClose }) {
   const [form, setForm] = useState(initial || {
     customer_id: '', title: '', description: '', scheduled_date: '',
-    engineer_ids: [], notes: '', status: 'scheduled',
+    engineer_ids: [], asset_ids: [], notes: '', status: 'scheduled',
   });
   const [saving,   setSaving]   = useState(false);
   const [formErr,  setFormErr]  = useState('');
+  const [assets,setAssets]=useState([]);
+  const [assetsLoading,setAssetsLoading]=useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  useEffect(() => {
+    if (!form.customer_id) { setAssets([]);return; }
+    const controller=new AbortController();setAssetsLoading(true);
+    api.maintenanceVisitAssets(form.customer_id,{ signal:controller.signal }).then(rows => { if (!controller.signal.aborted) setAssets(rows); })
+      .catch(error => { if (!controller.signal.aborted) setFormErr(error.message || 'Could not load customer assets'); })
+      .finally(() => { if (!controller.signal.aborted) setAssetsLoading(false); });
+    return () => controller.abort();
+  },[form.customer_id]);
 
   async function submit(e) {
     e.preventDefault(); setSaving(true); setFormErr('');
@@ -83,7 +94,7 @@ function VisitForm({ initial, customers, engineers, onSave, onClose }) {
     <form onSubmit={submit}>
       <div className="form-group">
         <label>Customer *</label>
-        <select value={form.customer_id} onChange={set('customer_id')} required>
+        <select value={form.customer_id} onChange={event => setForm(old => ({ ...old,customer_id:event.target.value,asset_ids:String(event.target.value)===String(initial?.customer_id || '') ? initial?.asset_ids || [] : [] }))} required>
           <option value="">Select customer…</option>
           {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -121,6 +132,7 @@ function VisitForm({ initial, customers, engineers, onSave, onClose }) {
           onChange={ids => setForm(f => ({ ...f, engineer_ids: ids }))}
         />
       </div>
+      <div className="form-group"><label>Assets in scope</label><select multiple value={(form.asset_ids || []).map(String)} disabled={assetsLoading} onChange={event => setForm(old => ({ ...old,asset_ids:[...event.target.selectedOptions].map(option => Number(option.value)) }))} style={{ minHeight:80 }}>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name} · {asset.asset_type}{asset.hostname ? ` · ${asset.hostname}` : ''}</option>)}</select>{assetsLoading && <span className="text-muted text-sm" role="status">Loading assets…</span>}</div>
       <div className="form-group">
         <label>Notes</label>
         <textarea value={form.notes || ''} onChange={set('notes')} placeholder="Any additional notes…" />
@@ -307,6 +319,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
             </div>
             <div>{visit.engineer_names || <span className="text-muted">Unassigned</span>}</div>
           </div>
+          <div><div className="text-sm text-muted" style={{ textTransform:'uppercase',letterSpacing:'.05em',fontWeight:700,marginBottom:2 }}>Assets in scope</div><div>{visit.asset_ids?.length ? `${visit.asset_ids.length} linked customer ${visit.asset_ids.length===1 ? 'asset' : 'assets'}` : <span className="text-muted">None selected</span>}</div></div>
           <div>
             <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>Report Status</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

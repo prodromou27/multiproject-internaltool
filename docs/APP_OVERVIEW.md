@@ -89,9 +89,10 @@ manager account with a forced password change on first login.
   and an explicit Managed / Under support / Neither coverage classification. Sensitive
   technical text uses the customer field-encryption key; normalized asset-tag hashes
   enforce per-customer uniqueness without exposing tag values. Updates use versions.
-  **service_activity_assets** links the exact equipment serviced to an activity with
-  database-enforced customer consistency; linked equipment is retained for operational
-  history and must be retired or decommissioned instead of deleted.
+  **service_activity_assets** and **maintenance_visit_assets** link the exact equipment
+  serviced to activities and planned visits with database-enforced customer consistency;
+  linked equipment is retained for operational history and must be retired or
+  decommissioned instead of deleted.
 - **maintenance_visits** + **maintenance_visit_engineers** (many-to-many) —
   scheduled date, dual report-sent tracking (internal + to-customer)
 - **kpis**, **project_milestones**, **project_scorecards**, **project_custom_fields**,

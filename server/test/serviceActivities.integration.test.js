@@ -904,13 +904,20 @@ test('concurrent project closure requests and approvals write one update each on
 });
 
 test('maintenance visits validate dates, assignments and engineer notes', async () => {
-  const body = { title: 'Reviewed visit', customer_id: ids.customer, scheduled_date: '2026-11-01', engineer_ids: [ids.engineerEnabled] };
+  const asset=(await api(`/api/customers/${ids.customer}/assets`,{ method:'POST',token:ids.tokenManager,body:{ name:'Visit gateway',asset_tag:'VISIT-GW-1',asset_type:'Security gateway',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'managed' } })).data;
+  const other=(await api(`/api/customers/${ids.customerUnassigned}/assets`,{ method:'POST',token:ids.tokenManager,body:{ name:'Other visit gateway',asset_tag:'VISIT-GW-2',asset_type:'Security gateway',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'managed' } })).data;
+  const body = { title: 'Reviewed visit', customer_id: ids.customer, scheduled_date: '2026-11-01', engineer_ids: [ids.engineerEnabled],asset_ids:[asset.id] };
   for (const invalid of [{ ...body, scheduled_date: '2026-02-30' }, { ...body, engineer_ids: [ids.manager] }, { ...body, notes: {} }]) {
     assert.equal((await api('/api/maintenance-visits', { method: 'POST', token: ids.tokenManager, body: invalid })).status, 400);
   }
   const created = await api('/api/maintenance-visits', { method: 'POST', token: ids.tokenManager, body });
   assert.equal(created.status, 200);
+  assert.equal((await api('/api/maintenance-visits',{ method:'POST',token:ids.tokenManager,body:{ ...body,title:'Wrong asset',asset_ids:[other.id] } })).status,400);
+  assert.equal((await api(`/api/maintenance-visits/assets/choices?customer_id=${ids.customer}`,{ token:ids.tokenEnabled })).status,403);
+  const choices=await api(`/api/maintenance-visits/assets/choices?customer_id=${ids.customer}`,{ token:ids.tokenManager });
+  assert.equal(choices.data.some(row => row.id===asset.id),true);
   const endpoint = `/api/maintenance-visits/${created.data.id}`;
+  assert.deepEqual((await api(endpoint,{ token:ids.tokenManager })).data.asset_ids,[asset.id]);
   assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenDisabled, body: { notes: 'Private' } })).status, 403);
   assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenEnabled, body: { notes: {} } })).status, 400);
   assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenEnabled, body: { notes: 'Engineer notes' } })).status, 200);
