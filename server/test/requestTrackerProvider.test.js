@@ -34,6 +34,18 @@ test('RT provider reads a single queue using a validated identifier',async () =>
   await assert.rejects(() => provider.getQueue('../tickets'),error => error.status===400);
 });
 
+test('RT provider fetches expanded ticket pages without following response URLs',async () => {
+  const pages=[];
+  const provider=new RequestTrackerProvider({ base_url:'https://rt.example.test',api_token:'token' },{ validateUrl:async () => {},fetchImpl:async url => {
+    pages.push(String(url));
+    assert.equal(url.searchParams.get('query'),"Queue = 42 AND LastUpdated > '2026-09-01T00:00:00.000Z'");
+    assert.match(url.searchParams.get('fields'),/LastUpdated/);
+    return json(url.searchParams.get('page')==='1' ? { pages:null,next_page:'https://evil.invalid/',items:[{ id:'1' }] } : { pages:null,items:[{ id:'2' }] });
+  } });
+  assert.deepEqual((await provider.getTickets('42',{ updatedAfter:'2026-09-01' })).map(ticket => ticket.id),['1','2']);
+  assert.equal(new URL(pages[1]).searchParams.get('page'),'2');
+});
+
 test('RT provider rejects incomplete settings and unbounded queue directories',async () => {
   await assert.rejects(() => new RequestTrackerProvider({ base_url:'https://rt.example.test' },{ validateUrl:async () => {} }).testConnection(),/not fully configured/);
   const provider=new RequestTrackerProvider({ base_url:'https://rt.example.test',api_token:'token' },{ validateUrl:async () => {},fetchImpl:async () => json({ pages:6,items:[] }) });

@@ -38,6 +38,15 @@ export default function ManagedCustomerConfiguration({ customerId }) {
     catch(failure) { setError(failure.message); } finally { setBusy(''); }
   }
 
+  async function syncTickets() {
+    setBusy('sync');setError('');setMessage('');
+    try {
+      const result=await api.syncManagedCustomerTickets(customerId);
+      setForm(current => ({ ...current,last_successful_sync_at:result.completed_at || current.last_successful_sync_at,last_sync_status:'success' }));
+      setMessage(`Ticket sync completed: ${result.tickets_created} created and ${result.tickets_updated} updated.`);
+    } catch(failure) { setError(failure.message); } finally { setBusy(''); }
+  }
+
   function selectQueue(value) {
     const queue=queues.find(item => String(item.id)===value);
     setForm(current => ({ ...current,external_queue_id:value,external_queue_name:queue?.name || (value===String(current.external_queue_id) ? current.external_queue_name : ''),...(value ? {} : { ticket_integration_enabled:false }) }));
@@ -74,6 +83,7 @@ export default function ManagedCustomerConfiguration({ customerId }) {
       <div className="flex gap-8 managed-config-actions">
         <button type="button" className="btn btn-ghost" disabled={!!busy} onClick={discoverQueues}><RefreshCw size={14} /> {busy==='queues' ? 'Discovering...' : 'Discover queues'}</button>
         <button type="button" className="btn btn-ghost" disabled={!!busy || !savedMapping.enabled || !savedMapping.queueId || savedMapping.queueId!==String(form.external_queue_id)} onClick={testMapping}>{busy==='test' ? 'Testing...' : 'Test saved mapping'}</button>
+        <button type="button" className="btn btn-ghost" disabled={!!busy || !savedMapping.enabled || !savedMapping.queueId || savedMapping.queueId!==String(form.external_queue_id)} onClick={syncTickets}>{busy==='sync' ? 'Synchronizing...' : 'Sync tickets now'}</button>
       </div>
     </section>
 

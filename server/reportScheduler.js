@@ -81,6 +81,7 @@ async function initScheduler() {
   }
   await reschedule();
   require('./customReportScheduler').start();
+  require('./ticketSyncScheduler').start();
 }
 
 module.exports = { initScheduler, reschedule };

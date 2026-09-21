@@ -38,6 +38,28 @@ class RequestTrackerProvider {
     return { id,name:String(detail.Name || detail.name || `Queue ${id}`).slice(0,500),description:String(detail.Description || detail.description || '').slice(0,2000) };
   }
 
+  async getTickets(queueId,{ updatedAfter }={}) {
+    const id=String(queueId ?? '');
+    if (!/^\d+$/.test(id)) throw Object.assign(new Error('Invalid Request Tracker queue identifier'),{ status:400 });
+    let query=`Queue = ${id}`;
+    if (updatedAfter) {
+      const date=new Date(updatedAfter);
+      if (Number.isNaN(date.getTime())) throw Object.assign(new Error('Invalid incremental synchronization date'),{ status:400 });
+      query+=` AND LastUpdated > '${date.toISOString()}'`;
+    }
+    const tickets=[];let page=1;
+    while (page<=100) {
+      const result=await this.request('/tickets',{ query,page,per_page:100,fields:'Subject,Status,Priority,Owner,Created,LastUpdated,Resolved,Due,Queue','fields[Owner]':'Name','fields[Queue]':'Name' });
+      if (!Array.isArray(result.items)) throw Object.assign(new Error('Request Tracker ticket response is invalid'),{ status:502 });
+      tickets.push(...result.items);
+      if (tickets.length>10000) throw Object.assign(new Error('A single Request Tracker sync cannot exceed 10,000 tickets'),{ status:413 });
+      const hasPageCount=result.pages!==null && result.pages!==undefined && Number.isFinite(Number(result.pages));
+      if ((hasPageCount && page>=Number(result.pages)) || (!hasPageCount && !result.next_page) || result.items.length===0) return tickets;
+      page++;
+    }
+    throw Object.assign(new Error('Request Tracker ticket pagination exceeded 100 pages'),{ status:413 });
+  }
+
   async getQueues() {
     const references=[];let page=1,pages=1;
     do {

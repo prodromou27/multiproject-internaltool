@@ -1545,6 +1545,37 @@ test('managed customer configuration enforces manager access, versions and uniqu
   assert.equal(await db.prepare('SELECT id FROM customer_ticketing_configurations WHERE customer_id=?').get(ids.customer),undefined);
 });
 
+test('ticket synchronization controls remain manager-only and validate mappings',async () => {
+  assert.equal((await api(`/api/ticketing/sync/${ids.customer}`,{ method:'POST',token:ids.tokenEnabled,body:{} })).status,403);
+  assert.equal((await api('/api/ticketing/sync/not-an-id',{ method:'POST',token:ids.tokenManager,body:{} })).status,400);
+  assert.equal((await api(`/api/ticketing/sync/${ids.customer}`,{ method:'POST',token:ids.tokenManager,body:{} })).status,400);
+  assert.equal((await api('/api/ticketing/sync-runs',{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api('/api/ticketing/sync-runs?customer_id=invalid',{ token:ids.tokenManager })).status,400);
+});
+
+test('ticket synchronization persists normalized snapshots and run counts',async () => {
+  await db.prepare("INSERT INTO settings (key,value) VALUES ('ticketing_rt',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ enabled:true,base_url:'https://rt.example.test/rt',sync_interval_minutes:60 }));
+  await db.prepare(`INSERT INTO customer_ticketing_configurations
+    (customer_id,provider_type,external_queue_id,external_queue_name,enabled,include_in_reporting)
+    VALUES (?,'request_tracker','42','Acme Support',1,1)`).run(ids.customer);
+  const { syncCustomer }=require('../ticketSync');
+  const provider={ getTickets:async () => [
+    { id:'7001',Subject:'Open gateway alert',Status:'open',Priority:'95',Owner:{ id:'alice',Name:'Alice' },Created:'2026-09-20T10:00:00Z',LastUpdated:'2026-09-21T10:00:00Z',Due:'2026-09-21T12:00:00Z' },
+    { id:'7002',Subject:'Resolved request',Status:'resolved',Priority:'Normal',Owner:{ id:'bob',Name:'Bob' },Created:'2026-09-19T10:00:00Z',LastUpdated:'2026-09-20T10:00:00Z',Resolved:'2026-09-20T09:00:00Z' },
+  ] };
+  const first=await syncCustomer(ids.customer,{ provider,triggeredBy:ids.manager });
+  assert.deepEqual([first.tickets_found,first.tickets_created,first.tickets_updated],[2,2,0]);
+  const rows=await db.prepare('SELECT * FROM external_tickets WHERE customer_id=? ORDER BY external_ticket_id').all(ids.customer);
+  assert.equal(rows[0].normalized_priority,'Critical');assert.equal(rows[0].status_group,'open');assert.equal(rows[0].sla_breached,1);
+  assert.equal(rows[1].normalized_status,'Resolved');assert.equal(rows[1].status_group,'closed');
+  const firstTicket=(await provider.getTickets())[0];
+  const second=await syncCustomer(ids.customer,{ provider:{ getTickets:async () => [{ ...firstTicket,Subject:'Updated gateway alert' }] } });
+  assert.deepEqual([second.tickets_found,second.tickets_created,second.tickets_updated],[1,0,1]);
+  assert.equal((await db.prepare("SELECT subject FROM external_tickets WHERE external_ticket_id='7001'").get()).subject,'Updated gateway alert');
+  const runs=await db.prepare('SELECT id,customer_id,status FROM ticket_sync_runs ORDER BY id').all();
+  assert.deepEqual(runs.map(row => [row.customer_id,row.status]),[[ids.customer,'success'],[ids.customer,'success']]);
+});
+
 test('SMTP settings await reads, redact and retain passwords on ordinary edits', async () => {
   await db.prepare("INSERT INTO settings (key,value) VALUES ('email_smtp',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ host: 'smtp.test.local',port: 587,user: 'report-user',password: 'retained-secret' }));
   const before = await api('/api/report-settings/smtp',{ token: ids.tokenManager });

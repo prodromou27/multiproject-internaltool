@@ -927,6 +927,55 @@ async function applyCompatibilityMigrations() {
     CREATE INDEX IF NOT EXISTS idx_managed_customer_enabled ON managed_customer_configurations(managed_services_enabled,customer_id);
     CREATE INDEX IF NOT EXISTS idx_customer_ticketing_enabled ON customer_ticketing_configurations(enabled,customer_id);
   `]);
+  migrations.push(['20260921_external_ticket_sync', `
+    CREATE TABLE IF NOT EXISTS external_tickets (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      provider_type TEXT NOT NULL DEFAULT 'request_tracker',
+      external_queue_id TEXT NOT NULL,
+      external_queue_name TEXT NOT NULL,
+      external_ticket_id TEXT NOT NULL,
+      ticket_number TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      external_status TEXT NOT NULL,
+      normalized_status TEXT NOT NULL,
+      status_group TEXT NOT NULL CHECK(status_group IN ('open','closed')),
+      external_priority TEXT,
+      normalized_priority TEXT,
+      owner_external_id TEXT,
+      owner_name TEXT,
+      category TEXT,
+      subcategory TEXT,
+      created_at_external TEXT,
+      updated_at_external TEXT,
+      resolved_at_external TEXT,
+      closed_at_external TEXT,
+      sla_due_at TEXT,
+      sla_breached INTEGER NOT NULL DEFAULT 0,
+      external_url TEXT,
+      last_synced_at TEXT DEFAULT ${NOW},
+      raw_metadata TEXT,
+      UNIQUE(provider_type,external_ticket_id)
+    );
+    CREATE TABLE IF NOT EXISTS ticket_sync_runs (
+      id SERIAL PRIMARY KEY,
+      started_at TEXT DEFAULT ${NOW},
+      completed_at TEXT,
+      status TEXT NOT NULL CHECK(status IN ('running','success','failed')),
+      customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+      queue_id TEXT,
+      tickets_found INTEGER NOT NULL DEFAULT 0,
+      tickets_created INTEGER NOT NULL DEFAULT 0,
+      tickets_updated INTEGER NOT NULL DEFAULT 0,
+      errors INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      triggered_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_external_ticket_customer_status ON external_tickets(customer_id,status_group,normalized_status);
+    CREATE INDEX IF NOT EXISTS idx_external_ticket_period ON external_tickets(customer_id,created_at_external,resolved_at_external);
+    CREATE INDEX IF NOT EXISTS idx_ticket_sync_run_customer ON ticket_sync_runs(customer_id,started_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_sync_one_running ON ticket_sync_runs(customer_id) WHERE status='running';
+  `]);
 
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);

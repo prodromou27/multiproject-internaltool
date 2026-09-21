@@ -331,6 +331,7 @@ const keyFile  = path.join(certDir, 'key.pem');
     if (shuttingDown) return;
     shuttingDown = true;
     require('./customReportScheduler').stop();
+    require('./ticketSyncScheduler').stop();
     console.log(`[shutdown] ${signal} received — closing servers…`);
     const forceTimer = setTimeout(() => {
       console.error('[shutdown] timed out — forcing exit');

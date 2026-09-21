@@ -6,6 +6,7 @@ const { logAudit }=require('../auditLog');
 const { decrypt }=require('../fieldCipher');
 const settings=require('../ticketingSettings');
 const { createTicketingProvider }=require('../ticketing');
+const { syncCustomer }=require('../ticketSync');
 
 router.use(requireManager);
 
@@ -42,6 +43,26 @@ router.get('/queues',async (req,res) => {
     res.json({ rows:rows.map(queue => ({ ...queue,mapping:byQueue.get(String(queue.id)) || null })) });
   }
   catch(error) { res.status(error.status || 502).json({ error:error.status ? error.message : 'Could not retrieve Request Tracker queues' }); }
+});
+
+router.post('/sync/:customerId',async (req,res) => {
+  const customerId=Number(req.params.customerId);
+  if (!Number.isSafeInteger(customerId) || customerId<1) return res.status(400).json({ error:'Invalid customer ID' });
+  try {
+    const result=await syncCustomer(customerId,{ triggeredBy:req.user.id });
+    await logAudit(db,req,'customer',customerId,`Customer ${customerId}`,'ticket_sync_completed',`run_id=${result.run_id}; found=${result.tickets_found}; created=${result.tickets_created}; updated=${result.tickets_updated}`);
+    res.json(result);
+  }
+  catch(error) { res.status(error.status || 502).json({ error:error.status ? error.message : 'Ticket synchronization failed' }); }
+});
+
+router.get('/sync-runs',async (req,res) => {
+  const customerId=req.query.customer_id===undefined ? null : Number(req.query.customer_id);
+  if (customerId!==null && (!Number.isSafeInteger(customerId) || customerId<1)) return res.status(400).json({ error:'Invalid customer ID' });
+  const rows=customerId===null
+    ? await db.prepare('SELECT * FROM ticket_sync_runs ORDER BY started_at DESC,id DESC LIMIT 100').all()
+    : await db.prepare('SELECT * FROM ticket_sync_runs WHERE customer_id=? ORDER BY started_at DESC,id DESC LIMIT 100').all(customerId);
+  res.json({ rows });
 });
 
 module.exports=router;
