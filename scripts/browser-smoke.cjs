@@ -42,6 +42,13 @@ const server = http.createServer(async (req,res) => {
     } else if (url.pathname==='/api/settings/integrations') value={ teams: { enabled: true,webhook_url: '',webhook_url_set: true },webex: { enabled: true,bot_token: '',bot_token_set: true,mode: 'both' },notify_on: { task_assigned: true,project_assigned: true,visit_assigned: true } };
     else if (url.pathname==='/api/settings/security') value={ password_expiry_days: 90 };
     else if (url.pathname==='/api/settings/deployment-health') value={ status: 'ok' };
+    else if (url.pathname==='/api/customers/12') value={ id: 12,name: 'Asset fixture customer',contract_type: 'Managed services' };
+    else if (url.pathname==='/api/customers/12/assets') value={ rows: [{ id: 7,name: 'Primary gateway',asset_tag: 'GW-001',asset_type: 'Security gateway',technology_id: 1,technology_name: 'Firewall',vendor: 'Check Point',model: '6200',serial_number: 'CP123',hostname: 'gw01.example.local',ip_address: '192.0.2.10',mac_address: '00:11:22:33:44:55',software_version: 'R81.20',location: 'Primary DC',environment: 'production',criticality: 'critical',lifecycle_status: 'active',coverage_type: 'managed',support_end_date: '2027-12-31',version: 1 }],total: 1,page: 1,page_size: 25,technologies: [{ id: 1,name: 'Firewall' }] };
+    else if (url.pathname==='/api/customers/12/overview') value={ projects: [],tasks: [],visits: [],documents: [],timeline: [],counts: { projects:0,tasks:0,visits:0,documents:0,assets:1 },total:0,page:1,page_size:25 };
+    else if (url.pathname==='/api/customers/12/service-activities') value={ rows: [],total:0 };
+    else if (url.pathname==='/api/customers/12/service-summary') value={ total_activities:0,total_hours:0,byEngineer:[],byCategory:[],byTechnology:[],byBillable:[] };
+    else if (url.pathname==='/api/customers/12/contract-hours') value={ enabled:false };
+    else if (url.pathname==='/api/activity-categories') value=[];
     else if (/links|users|customers/.test(url.pathname)) value=[];
     res.setHeader('Content-Type','application/json'); res.end(JSON.stringify(value)); return;
   }
@@ -142,12 +149,20 @@ async function main() {
   await until("document.querySelector('[role=alert]')?.textContent.includes('Fixture metadata unavailable')");
   failSources=false; await click('Retry');
   await until("!!document.querySelector('#report-source')");
+  role='manager';
+  await call('Page.navigate',{ url: base+'/customers/12/service-profile?section=assets' });
+  await until("location.pathname==='/customers/12/service-profile' && [...document.querySelectorAll('h2')].some(node => node.textContent==='Primary gateway')");
+  assert.equal(await evaluate('document.documentElement.scrollWidth<=window.innerWidth+1'),true,'Customer assets overflow on mobile');
+  await click('Add asset');
+  await until("document.activeElement?.id==='asset-name'");
+  assert.equal(await evaluate("!!document.querySelector('#asset-coverage option[value=managed]') && !!document.querySelector('#asset-coverage option[value=support]')"),true,'Asset coverage choices are available');
+  await key('Escape');
   role='engineer';
   await navigate('/reports');
   await until("document.querySelector('#page-state-title')?.textContent==='Access unavailable'");
   assert.equal(await evaluate("!!document.querySelector('#report-source')"),false);
   assert.deepEqual(errors,[],'Browser runtime exceptions');
-  console.log('PASS: 1440/768/390px report layout; saved definitions; preview; dialog focus/Escape; schedule focus trap; mobile settings; keyboard switches; root/deep links; retry; role guard. Synthetic API fixtures only.');
+  console.log('PASS: report responsive layout; saved definitions; preview; dialog focus/Escape; schedule focus trap; mobile settings and customer assets; keyboard switches; root/deep links; retry; role guard. Synthetic API fixtures only.');
   await call('Browser.close');
 }
 main().catch(error => { console.error(error.message); if (errors.length) console.error(errors.join('\n')); process.exitCode=1; }).finally(async () => {

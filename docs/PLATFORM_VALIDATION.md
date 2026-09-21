@@ -6,12 +6,14 @@ screen or item in the redesign brief has been completed.
 
 ## Automated evidence
 
-- Server suite: 107 passed locally; 21 PostgreSQL-specific checks skipped locally.
+- Server suite: 108 passed locally; 21 PostgreSQL-specific checks skipped locally.
   CI runs those checks against PostgreSQL 16 as well as the in-memory backend.
 - Client suite: 11 passed; production Vite build passed.
 - Customer checks cover manager permissions, cross-customer links, source visits,
   recorded timeline pagination, mandatory recommendation history and atomic project
-  conversion with stale/concurrent version protection.
+  conversion with stale/concurrent version protection. Asset checks cover technical
+  identifier validation, manager-only access, duplicate tags, filters, encrypted-field
+  round trips, version conflicts, deletion and retained customer history.
 - Workload checks cover recorded estimates/availability, missing-data disclosures,
   configurable status factors, manager-only versioned policy edits, per-engineer
   visit effort, separate pressure components and concurrent input saves. Counts,
@@ -53,6 +55,7 @@ Passed checks:
 | Save dialog | Autofocus, Escape dismissal and focus restoration to the trigger |
 | Schedule dialog | Shift+Tab wraps within the dialog; Escape dismisses |
 | Settings | Mobile layout, Business/Technical navigation and root/deep links |
+| Customer assets | Mobile inventory layout, add-dialog autofocus and coverage choices |
 | Credential UI | Stored credentials remain absent from password input values |
 | Switches | Native Enter activation changes the announced state |
 | Failed metadata load | Visible error; Retry restores the builder |
@@ -65,7 +68,7 @@ must be recorded before child autofocus runs during the DOM commit.
 ## Deployment and remaining acceptance
 
 Startup applies additive, transactional migrations for recommendations,
-workload planning inputs, saved reports and report schedules. Back up the database
+customer assets, workload planning inputs, saved reports and report schedules. Back up the database
 and encrypted files before deploying. Keep the existing encryption keys; changing
 them prevents decryption of retained data. Deploy the reviewed DEV-3 revision to
 staging first and check `/api/health`. Saved-report schedules start disabled; their

@@ -8,6 +8,8 @@ import { api } from '../api';
 import { StatusBadge, fmtDate } from '../components/Shared';
 import CustomerOverview from '../components/CustomerOverview';
 import CustomerRecommendations from '../components/CustomerRecommendations';
+import CustomerAssets from '../components/CustomerAssets';
+import { useAuth } from '../App';
 
 function fmtDuration(minutes) {
   if (minutes == null) return '—';
@@ -16,6 +18,7 @@ function fmtDuration(minutes) {
 }
 
 export default function CustomerServiceProfile() {
+  const { user } = useAuth();
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -37,7 +40,7 @@ export default function CustomerServiceProfile() {
   const [tab, setTab] = useState('overview');
   useEffect(() => {
     const section = new URLSearchParams(location.search).get('section');
-    if (['overview','activities','recommendations'].includes(section)) setTab(section);
+    if (['overview','activities','recommendations','assets'].includes(section)) setTab(section);
   }, [location.search]);
 
   const [from, setFrom] = useState('');
@@ -91,8 +94,9 @@ export default function CustomerServiceProfile() {
         <button className={`filter-pill${tab === 'overview' ? ' active' : ''}`} aria-pressed={tab === 'overview'} onClick={() => setTab('overview')}>Overview and history</button>
         <button className={`filter-pill${tab === 'activities' ? ' active' : ''}`} aria-pressed={tab === 'activities'} onClick={() => setTab('activities')}>Service activities and hours</button>
         <button className={`filter-pill${tab === 'recommendations' ? ' active' : ''}`} aria-pressed={tab === 'recommendations'} onClick={() => setTab('recommendations')}>Recommendations</button>
+        {user.role === 'manager' && <button className={`filter-pill${tab === 'assets' ? ' active' : ''}`} aria-pressed={tab === 'assets'} onClick={() => setTab('assets')}>Assets</button>}
       </div>
-      {tab === 'overview' ? <CustomerOverview key={customer.id} customer={customer} /> : tab === 'recommendations' ? <CustomerRecommendations key={customer.id} customerId={customer.id} sourceVisitId={sourceVisitId} onSourceConsumed={() => {
+      {tab === 'overview' ? <CustomerOverview key={customer.id} customer={customer} /> : tab === 'assets' && user.role === 'manager' ? <CustomerAssets key={customer.id} customerId={customer.id} /> : tab === 'recommendations' ? <CustomerRecommendations key={customer.id} customerId={customer.id} sourceVisitId={sourceVisitId} onSourceConsumed={() => {
         const params = new URLSearchParams(location.search); params.delete('source_visit');
         navigate(`${location.pathname}?${params.toString()}`, { replace: true });
       }} /> : <>

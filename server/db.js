@@ -175,6 +175,55 @@ const RECOMMENDATIONS_SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_recommendation_history ON recommendation_history(recommendation_id,id);
 `;
+const CUSTOMER_ASSETS_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS customer_assets (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+    technology_id INTEGER REFERENCES technologies(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,
+    asset_tag TEXT,
+    asset_tag_hash TEXT,
+    asset_type TEXT NOT NULL,
+    vendor TEXT,
+    model TEXT,
+    serial_number TEXT,
+    hostname TEXT,
+    ip_address TEXT,
+    mac_address TEXT,
+    software_version TEXT,
+    location TEXT,
+    environment TEXT NOT NULL DEFAULT 'production' CHECK(environment IN ('production','test','development','dr','other')),
+    criticality TEXT NOT NULL DEFAULT 'medium' CHECK(criticality IN ('low','medium','high','critical')),
+    lifecycle_status TEXT NOT NULL DEFAULT 'active' CHECK(lifecycle_status IN ('active','spare','retired','decommissioned')),
+    coverage_type TEXT NOT NULL DEFAULT 'neither' CHECK(coverage_type IN ('managed','support','neither')),
+    support_provider TEXT,
+    support_reference TEXT,
+    support_start_date TEXT,
+    support_end_date TEXT,
+    warranty_expiry_date TEXT,
+    management_url TEXT,
+    notes TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    updated_by INTEGER REFERENCES users(id),
+    created_at TEXT DEFAULT ${NOW},
+    updated_at TEXT DEFAULT ${NOW}
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_asset_tag ON customer_assets(customer_id,asset_tag_hash) WHERE asset_tag_hash IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_customer_asset_list ON customer_assets(customer_id,lifecycle_status,coverage_type,id);
+  CREATE TABLE IF NOT EXISTS customer_asset_history (
+    id SERIAL PRIMARY KEY,
+    asset_id INTEGER,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action TEXT NOT NULL CHECK(action IN ('created','updated','deleted')),
+    lifecycle_status TEXT NOT NULL,
+    coverage_type TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    created_at TEXT DEFAULT ${NOW}
+  );
+  CREATE INDEX IF NOT EXISTS idx_customer_asset_history ON customer_asset_history(customer_id,created_at,id);
+`;
 
 async function init() {
   // Add the round(double precision, int) overload Postgres lacks, so existing
@@ -811,6 +860,7 @@ async function applyCompatibilityMigrations() {
       updated_at TEXT DEFAULT ${NOW}
     );
   `]);
+  migrations.push(['20260921_customer_assets', CUSTOMER_ASSETS_SCHEMA]);
 
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);

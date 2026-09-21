@@ -76,12 +76,13 @@ test('customer profile reads support cancellation across overview and recommenda
   const pending = Promise.allSettled([
     api.customer(12,options), api.customerOverview(12,{ page: 2 },options),
     api.customerRecommendations(12,{ status: 'open' },options),
+    api.customerAssets(12,{ coverage: 'managed' },options),
     api.customerServiceActivities(12,{},options), api.customerServiceSummary(12,{},options),
     api.customerContractHours(12,options), api.activityCategories(options),
   ]);
   controller.abort();
   assert.ok((await pending).every(result => result.status === 'rejected' && result.reason.name === 'AbortError'));
-  assert.equal(paths.length, 7);
+  assert.equal(paths.length, 8);
   assert.equal(window.location.href, '/current-page');
 });
 

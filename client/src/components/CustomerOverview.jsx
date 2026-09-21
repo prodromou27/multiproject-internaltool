@@ -36,6 +36,7 @@ export default function CustomerOverview({ customer }) {
       <p>{customer.contact_name || customer.primary_contact || 'No contact recorded'}</p>
       <p>{[customer.contact_email, customer.contact_phone, customer.address || customer.location].filter(Boolean).join(' · ')}</p>
       <p className="text-muted">{customer.contract_type || 'No contract type recorded'}{customer.contract_end_date ? ` · Contract ends ${fmtDate(customer.contract_end_date)}` : ''}</p>
+      <p><strong>{data.counts.assets} customer assets</strong> · <Link to={`/customers/${customer.id}/service-profile?section=assets`}>Open asset inventory</Link></p>
     </section>
     <div className="grid-2" style={{ gap: 20, marginBottom: 20 }}>
       {sections.map(([key, title, render]) => <section className="card" key={key}>

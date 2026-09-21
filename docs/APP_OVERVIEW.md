@@ -3,7 +3,7 @@
 A code-grounded description of the application: architecture, data model, security,
 and every feature module with notes on how each is handled.
 
-> Last reviewed: 2026-09-16.
+> Last reviewed: 2026-09-21.
 
 ---
 
@@ -82,6 +82,14 @@ manager account with a forced password change on first login.
   `require_billable_classification`)
 - **customer_teams** / **customer_engineers** — many-to-many customer↔team assignment,
   plus an optional explicit customer↔engineer allowlist for tighter restriction
+- **customer_assets** / **customer_asset_history** — manager-maintained customer
+  inventory for gateways, hosts, servers and other equipment. Records include asset
+  identity, vendor/model/serial, hostname/IP/MAC, software or firmware version,
+  location, environment, criticality, lifecycle, technology, support/warranty dates,
+  and an explicit Managed / Under support / Neither coverage classification. Sensitive
+  technical text uses the customer field-encryption key; normalized asset-tag hashes
+  enforce per-customer uniqueness without exposing tag values. Updates use versions,
+  while compact history survives asset deletion.
 - **maintenance_visits** + **maintenance_visit_engineers** (many-to-many) —
   scheduled date, dual report-sent tracking (internal + to-customer)
 - **kpis**, **project_milestones**, **project_scorecards**, **project_custom_fields**,
