@@ -49,4 +49,34 @@ async function getOverview(customerId,from,to,store=db) {
   return { customer,period:{ from,to },tickets:numbers(tickets),activities:{ ...numbers(activities),hours:Math.round(Number(activities.minutes || 0)/6)/10 },tasks:numbers(tasks),projects:numbers(projects),visits:{ ...numbers(visits),last_visit:visits.last_visit || null },recommendations:numbers(recommendations) };
 }
 
-module.exports={ listManagedCustomers,getOverview };
+async function listTickets(customerId,filters,store=db) {
+  const managed=await store.prepare(`SELECT 1 FROM managed_customer_configurations mc
+    JOIN customers c ON c.id=mc.customer_id WHERE mc.customer_id=? AND mc.managed_services_enabled=1 AND c.active=1`).get(customerId);
+  if (!managed) return null;
+  let where='WHERE customer_id=?';const params=[customerId];
+  if (filters.status) { where+=' AND normalized_status=?';params.push(filters.status); }
+  if (filters.priority) { where+=' AND normalized_priority=?';params.push(filters.priority); }
+  if (filters.owner) { where+=' AND owner_name=?';params.push(filters.owner); }
+  if (filters.from) { where+=' AND created_at_external>=?';params.push(`${filters.from}T00:00:00.000Z`); }
+  if (filters.to) {
+    const exclusive=new Date(`${filters.to}T00:00:00.000Z`);exclusive.setUTCDate(exclusive.getUTCDate()+1);
+    where+=' AND created_at_external<?';params.push(exclusive.toISOString());
+  }
+  if (filters.search) {
+    const literal=filters.search.replace(/[\\%_]/g,'\\$&').toLowerCase();
+    where+=' AND (subject ILIKE ? OR ticket_number ILIKE ?)';
+    params.push(`%${literal}%`,`%${literal}%`);
+  }
+  const [rows,count,statuses,priorities,owners]=await Promise.all([
+    store.prepare(`SELECT id,ticket_number,subject,normalized_status,status_group,normalized_priority,owner_name,category,subcategory,
+      created_at_external,updated_at_external,resolved_at_external,closed_at_external,sla_due_at,sla_breached,external_url,last_synced_at
+      FROM external_tickets ${where} ORDER BY created_at_external DESC,id DESC LIMIT ? OFFSET ?`).all(...params,filters.pageSize,filters.offset),
+    store.prepare(`SELECT COUNT(*) AS total FROM external_tickets ${where}`).get(...params),
+    store.prepare('SELECT DISTINCT normalized_status AS value FROM external_tickets WHERE customer_id=? AND normalized_status IS NOT NULL ORDER BY normalized_status').all(customerId),
+    store.prepare('SELECT DISTINCT normalized_priority AS value FROM external_tickets WHERE customer_id=? AND normalized_priority IS NOT NULL ORDER BY normalized_priority').all(customerId),
+    store.prepare("SELECT DISTINCT owner_name AS value FROM external_tickets WHERE customer_id=? AND owner_name IS NOT NULL AND owner_name!='' ORDER BY owner_name").all(customerId),
+  ]);
+  return { rows,total:Number(count.total),page:filters.page,page_size:filters.pageSize,facets:{ statuses:statuses.map(row => row.value),priorities:priorities.map(row => row.value),owners:owners.map(row => row.value) } };
+}
+
+module.exports={ listManagedCustomers,getOverview,listTickets };

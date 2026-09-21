@@ -339,6 +339,7 @@ export const api = {
   ticketSyncRuns: (params={},options) => req('GET','/ticketing/sync-runs?' + new URLSearchParams(params).toString(),undefined,options),
   managedCustomers: options => req('GET','/managed-customers',undefined,options),
   managedCustomerOverview: (id,params={},options) => req('GET',`/managed-customers/${id}/overview?` + new URLSearchParams(params).toString(),undefined,options),
+  managedCustomerTickets: (id,params={},options) => req('GET',`/managed-customers/${id}/tickets?` + new URLSearchParams(params).toString(),undefined,options),
 
   // system update
   systemUpdateStatus:  () => req('GET',  '/settings/system-update/status'),

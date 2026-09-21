@@ -1590,6 +1590,23 @@ test('managed customer dashboard separates current state from period metrics',as
   assert.equal(typeof overview.data.activities.hours,'number');assert.equal(overview.data.period.from,'2026-09-01');
 });
 
+test('managed customer tickets enforce access, validate filters and paginate local results',async () => {
+  const path=`/api/managed-customers/${ids.customer}/tickets`;
+  assert.equal((await api(path,{ token:ids.tokenEnabled })).status,403);
+  for (const query of ['page=0','page_size=101','from=2026-02-30','from=2026-09-22&to=2026-09-21','search=']) {
+    assert.equal((await api(`${path}?${query}`,{ token:ids.tokenManager })).status,400);
+  }
+  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/tickets`,{ token:ids.tokenManager })).status,404);
+  const first=await api(`${path}?page=1&page_size=1`,{ token:ids.tokenManager });
+  assert.equal(first.status,200);assert.equal(first.data.total,2);assert.equal(first.data.rows.length,1);assert.equal(first.data.page_size,1);
+  assert.equal(first.data.facets.owners.includes('Alice'),true);assert.equal(first.data.facets.statuses.includes('Open'),true);
+  const filtered=await api(`${path}?status=Open&priority=Critical&owner=Alice&from=2026-09-20&to=2026-09-20&search=gateway`,{ token:ids.tokenManager });
+  assert.equal(filtered.status,200);assert.equal(filtered.data.total,1);assert.equal(filtered.data.rows[0].ticket_number,'7001');
+  assert.match(filtered.data.rows[0].external_url,/^https:\/\//);
+  const literalWildcard=await api(`${path}?search=%25`,{ token:ids.tokenManager });
+  assert.equal(literalWildcard.status,200);assert.equal(literalWildcard.data.total,0);
+});
+
 test('ticket mapping administration is manager-only and reclassifies stored tickets',async () => {
   assert.equal((await api('/api/ticketing/mappings',{ token:ids.tokenEnabled })).status,403);
   const current=await api('/api/ticketing/mappings',{ token:ids.tokenManager });
