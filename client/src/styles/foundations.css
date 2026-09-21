@@ -88,3 +88,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .btn-sm { min-height: 36px; }
   .filter-pill { padding-top: 8px; padding-bottom: 8px; }
 }
+
+/* Page eyebrows repeat the breadcrumb above them; keep them quiet and sentence case. */
+.operations-eyebrow { color: var(--gray-500); font-size: 12px; font-weight: 550; letter-spacing: 0; text-transform: none; margin-bottom: 4px; }
+
+/* Cards laid out in a grid are aligned by the grid gap. The stacking margin in
+   index.css (.card + .card) pushed every tile after the first one down. */
+:is(.grid-2, .grid-3, .grid-4, .grid-5) > .card + .card { margin-top: 0; }
