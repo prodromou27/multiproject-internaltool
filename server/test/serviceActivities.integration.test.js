@@ -1686,7 +1686,7 @@ test('customer overview bounds sections, isolates customers and pages recorded e
   await db.prepare('INSERT INTO project_activity (project_id,user_id,action,detail) VALUES (?,?,?,?)').run(projectIds[0], ids.manager, 'closure_requested', 'Recorded review');
   const response = await api(`/api/customers/${customer}/overview`, { token: ids.tokenManager });
   assert.equal(response.status, 200);
-  assert.deepEqual(response.data.counts, { projects: 27, tasks: 1, visits: 1, documents: 1 });
+  assert.deepEqual(response.data.counts, { projects: 27, tasks: 1, visits: 1, documents: 1, assets: 0 });
   assert.equal(response.data.projects.length, 25);
   assert.equal(response.data.projects.some(row => row.id === foreign), false);
   assert.equal(response.data.documents[0].stored_name, undefined);
