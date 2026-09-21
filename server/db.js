@@ -42,7 +42,7 @@ const pool = new Pool({
 pool.on('error', (err) => console.error('[pg pool]', err.message));
 
 // Tables with no `id` column — never append RETURNING id to inserts into these.
-const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|service_activity_technologies|saved_custom_report_users|saved_custom_report_teams)\b/i;
+const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams)\b/i;
 
 // ── SQL translation (SQLite → Postgres), memoized per unique SQL string ──────
 const _cache = new Map();
@@ -880,6 +880,19 @@ async function applyCompatibilityMigrations() {
     );
     CREATE INDEX IF NOT EXISTS idx_saved_report_user_access ON saved_custom_report_users(user_id,report_id);
     CREATE INDEX IF NOT EXISTS idx_saved_report_team_access ON saved_custom_report_teams(team_id,report_id);
+  `]);
+  migrations.push(['20260921_service_activity_assets', `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_service_activity_customer_pair ON service_activities(customer_id,id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_asset_customer_pair ON customer_assets(customer_id,id);
+    CREATE TABLE IF NOT EXISTS service_activity_assets (
+      service_activity_id INTEGER NOT NULL,
+      asset_id INTEGER NOT NULL,
+      customer_id INTEGER NOT NULL,
+      PRIMARY KEY(service_activity_id,asset_id),
+      FOREIGN KEY(customer_id,service_activity_id) REFERENCES service_activities(customer_id,id) ON DELETE CASCADE,
+      FOREIGN KEY(customer_id,asset_id) REFERENCES customer_assets(customer_id,id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS idx_service_activity_asset_history ON service_activity_assets(asset_id,service_activity_id);
   `]);
 
   migrations.push(['20260917_project_closure_review', `

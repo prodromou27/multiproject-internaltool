@@ -48,6 +48,7 @@ function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
     status: initial?.status || meta.statuses[0]?.value || 'planned',
     description: initial?.description || '',
     technology_ids: initial?.technologies?.map(t => t.id) || [],
+    asset_ids: initial?.assets?.map(asset => asset.id) || [],
     start_time: initial?.start_time || '',
     end_time: initial?.end_time || '',
     work_location: initial?.work_location || '',
@@ -70,7 +71,21 @@ function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [err, setErr] = useState('');
+  const [assets,setAssets] = useState(initial?.assets || []);
+  const [assetsLoading,setAssetsLoading] = useState(false);
+  const [assetsError,setAssetsError] = useState('');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  useEffect(() => {
+    if (!form.customer_id) { setAssets([]);setAssetsError('');return; }
+    const controller=new AbortController();setAssetsLoading(true);setAssetsError('');
+    api.serviceActivityAssets(form.customer_id,{ signal:controller.signal }).then(rows => {
+      if (controller.signal.aborted) return;
+      const merged=new Map([...(initial?.assets || []),...rows].map(row => [row.id,row]));setAssets([...merged.values()]);
+    }).catch(error => { if (!controller.signal.aborted) setAssetsError(error.message || 'Could not load customer assets'); })
+      .finally(() => { if (!controller.signal.aborted) setAssetsLoading(false); });
+    return () => controller.abort();
+  },[form.customer_id,initial?.assets]);
 
   const category = meta.categories.find(c => String(c.id) === String(form.category_id));
   const customer = meta.customers.find(c => String(c.id) === String(form.customer_id));
@@ -118,7 +133,7 @@ function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
       {conflict && <button type="button" className="btn btn-ghost" onClick={onReload}>Reload latest activity</button>}
       <div className="form-group">
         <label>Customer *</label>
-        <select value={form.customer_id} onChange={set('customer_id')} required>
+        <select value={form.customer_id} onChange={e => setForm(f => ({ ...f,customer_id:e.target.value,asset_ids:String(e.target.value)===String(initial?.customer_id || '') ? initial?.assets?.map(asset => asset.id) || [] : [] }))} required>
           <option value="">Select a customer…</option>
           {meta.customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -170,6 +185,16 @@ function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
               style={{ minHeight: 80 }}>
               {meta.technologies.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
+          </div>
+          <div className="form-group"><label>Customer assets</label>
+            <select multiple value={form.asset_ids.map(String)} disabled={assetsLoading || !!assetsError}
+              onChange={e => setForm(f => ({ ...f,asset_ids:[...e.target.selectedOptions].map(option => Number(option.value)) }))}
+              style={{ minHeight:80 }} aria-describedby={assetsError ? 'activity-assets-error' : undefined}>
+              {assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name} · {asset.asset_type}{asset.hostname ? ` · ${asset.hostname}` : ''}{asset.lifecycle_status==='retired' || asset.lifecycle_status==='decommissioned' ? ` (${asset.lifecycle_status})` : ''}</option>)}
+            </select>
+            {assetsLoading && <span className="text-muted text-sm" role="status">Loading assets…</span>}
+            {assetsError && <span id="activity-assets-error" className="error-msg" role="alert">{assetsError}</span>}
+            {!assetsLoading && !assetsError && form.customer_id && !assets.length && <span className="text-muted text-sm">No active assets recorded for this customer.</span>}
           </div>
           <div className="form-row">
             <div className="form-group"><label>Start Time</label><input type="time" value={form.start_time} onChange={set('start_time')} /></div>
@@ -326,6 +351,7 @@ function ActivityDetailModal({ id, allowAttachments, onClose, onChanged }) {
             </div>
           </div>
         )}
+        {activity.assets?.length > 0 && <div><span className="text-muted">Customer assets</span><div style={{ display:'flex',gap:6,flexWrap:'wrap',marginTop:4 }}>{activity.assets.map(asset => <span key={asset.id} className="badge badge-active">{asset.name}{asset.hostname ? ` · ${asset.hostname}` : ''}</span>)}</div></div>}
         {(activity.related_project_title || activity.related_task_title || activity.related_visit_title) && (
           <div><span className="text-muted">Related</span>
             <div style={{ marginTop: 4 }}>

@@ -88,8 +88,10 @@ manager account with a forced password change on first login.
   location, environment, criticality, lifecycle, technology, support/warranty dates,
   and an explicit Managed / Under support / Neither coverage classification. Sensitive
   technical text uses the customer field-encryption key; normalized asset-tag hashes
-  enforce per-customer uniqueness without exposing tag values. Updates use versions,
-  while compact history survives asset deletion.
+  enforce per-customer uniqueness without exposing tag values. Updates use versions.
+  **service_activity_assets** links the exact equipment serviced to an activity with
+  database-enforced customer consistency; linked equipment is retained for operational
+  history and must be retired or decommissioned instead of deleted.
 - **maintenance_visits** + **maintenance_visit_engineers** (many-to-many) —
   scheduled date, dual report-sent tracking (internal + to-customer)
 - **kpis**, **project_milestones**, **project_scorecards**, **project_custom_fields**,
@@ -98,7 +100,7 @@ manager account with a forced password change on first login.
 - **activity_categories** / **activity_subcategories** — admin-managed lookup for
   service activity classification, with a `require_attachment` flag per category
 - **technologies** — admin-managed lookup (Firewall, M365, Intune, WAF, PAM, …), shared
-  by service activities and intended as the base for a future Asset/Device model
+  by service activities and customer assets
 - **service_activities** — the core MSP operations-log row: human-readable
   `activity_reference` (`ACT-YYYY-NNNNNN`, unique), customer/team/engineer FKs,
   date/time/duration, category/subcategory, title/description, status, priority, work

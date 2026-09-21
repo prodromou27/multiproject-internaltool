@@ -141,13 +141,13 @@ router.get('/',async (req,res) => {
   const filter=filters(req);if(filter.error) return res.status(400).json({ error:filter.error });
   const { customer,page,where,params,search }=filter;
   if (search) {
-    const [raw,technologies,expiry_summary]=await Promise.all([db.prepare(`SELECT a.*,t.name AS technology_name,u.name AS updated_by_name FROM customer_assets a LEFT JOIN technologies t ON t.id=a.technology_id LEFT JOIN users u ON u.id=COALESCE(a.updated_by,a.created_by) WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT 5001`).all(...params),db.prepare('SELECT id,name FROM technologies WHERE active=1 ORDER BY sort_order,name LIMIT 500').all(),expirySummary(customer)]);
+    const [raw,technologies,expiry_summary]=await Promise.all([db.prepare(`SELECT a.*,t.name AS technology_name,u.name AS updated_by_name,COALESCE(sac.activity_count,0) AS activity_count FROM customer_assets a LEFT JOIN technologies t ON t.id=a.technology_id LEFT JOIN users u ON u.id=COALESCE(a.updated_by,a.created_by) LEFT JOIN (SELECT asset_id,COUNT(*) AS activity_count FROM service_activity_assets GROUP BY asset_id) sac ON sac.asset_id=a.id WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT 5001`).all(...params),db.prepare('SELECT id,name FROM technologies WHERE active=1 ORDER BY sort_order,name LIMIT 500').all(),expirySummary(customer)]);
     if (raw.length>5000) return res.status(413).json({ error:'Search exceeds 5000 candidate assets; narrow the filters' });
     const found=raw.map(decryptAsset).filter(row => matchesSearch(row,search));
     return res.json({ rows:found.slice((page-1)*25,page*25),total:found.length,page,page_size:25,technologies,expiry_summary,search_scope:'Up to 5000 assets matching the selected customer filters' });
   }
   const [rows,count,technologies,expiry_summary]=await Promise.all([
-    db.prepare(`SELECT a.*,t.name AS technology_name,u.name AS updated_by_name FROM customer_assets a LEFT JOIN technologies t ON t.id=a.technology_id LEFT JOIN users u ON u.id=COALESCE(a.updated_by,a.created_by) WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?`).all(...params,25,(page-1)*25),
+    db.prepare(`SELECT a.*,t.name AS technology_name,u.name AS updated_by_name,COALESCE(sac.activity_count,0) AS activity_count FROM customer_assets a LEFT JOIN technologies t ON t.id=a.technology_id LEFT JOIN users u ON u.id=COALESCE(a.updated_by,a.created_by) LEFT JOIN (SELECT asset_id,COUNT(*) AS activity_count FROM service_activity_assets GROUP BY asset_id) sac ON sac.asset_id=a.id WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?`).all(...params,25,(page-1)*25),
     db.prepare(`SELECT COUNT(*) AS total FROM customer_assets a WHERE ${where}`).get(...params),
     db.prepare('SELECT id,name FROM technologies WHERE active=1 ORDER BY sort_order,name LIMIT 500').all(),
     expirySummary(customer),
@@ -184,10 +184,13 @@ router.put('/:assetId',async (req,res) => {
 
 router.delete('/:assetId',async (req,res) => {
   if (!positiveId(req.params.assetId) || !positiveId(req.body.version)) return res.status(400).json({ error: 'Valid asset ID and version are required' });
-  const row=await db.transaction(async tx => {
-    const removed=(await tx.prepare('DELETE FROM customer_assets WHERE id=? AND customer_id=? AND version=? RETURNING *').all(Number(req.params.assetId),Number(req.params.id),Number(req.body.version)))[0];
-    if (removed) await history(req,{ ...removed,name:decrypt(removed.name) },'deleted',tx); return removed;
-  });
+  if (await db.prepare('SELECT 1 FROM service_activity_assets WHERE asset_id=?').get(Number(req.params.assetId))) return res.status(409).json({ error:'This asset is linked to recorded service activity and must be retired or decommissioned instead of deleted' });
+  let row;
+  try { row=await db.transaction(async tx => {
+      const removed=(await tx.prepare('DELETE FROM customer_assets WHERE id=? AND customer_id=? AND version=? RETURNING *').all(Number(req.params.assetId),Number(req.params.id),Number(req.body.version)))[0];
+      if (removed) await history(req,{ ...removed,name:decrypt(removed.name) },'deleted',tx); return removed;
+    });
+  } catch(error) { if(error.code==='23503') return res.status(409).json({ error:'This asset is linked to recorded service activity and must be retired or decommissioned instead of deleted' });throw error; }
   if (!row) return res.status(409).json({ error: 'This asset changed or was removed. Reload before deleting.',code:'ASSET_CONFLICT' });
   res.json({ ok:true });
 });

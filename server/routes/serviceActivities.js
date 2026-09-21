@@ -164,6 +164,16 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
       if (rows.length !== ids.length) return { error: 'Invalid or inactive technology' };
     }
   }
+  if (body.asset_ids !== undefined) {
+    if (!Array.isArray(body.asset_ids) || body.asset_ids.length > 100
+      || body.asset_ids.some(id => !Number.isSafeInteger(id) || id <= 0)
+      || new Set(body.asset_ids).size !== body.asset_ids.length)
+      return { error: 'Asset IDs must be a list of unique positive integers' };
+    if (body.asset_ids.length) {
+      const rows = await db.prepare(`SELECT id FROM customer_assets WHERE customer_id=? AND id IN (${body.asset_ids.map(() => '?').join(',')})`).all(Number(customerId),...body.asset_ids);
+      if (rows.length !== body.asset_ids.length) return { error: 'Every selected asset must belong to the activity customer' };
+    }
+  }
 
   if (body.follow_up_required && !body.follow_up_date)
     return { error: 'Follow-up date is required when follow-up is required' };
@@ -239,6 +249,17 @@ router.get('/meta', requireAuth, requireServiceActivityAccess, async (req, res) 
     categories: categories.map(c => ({ ...c, subcategories: subcategories.filter(s => s.category_id === c.id) })),
     technologies, statuses, customers, settings,
   });
+});
+
+/* Scoped asset choices for activity capture. Asset administration remains manager-only. */
+router.get('/assets',requireAuth,requireServiceActivityAccess,async (req,res) => {
+  const value=req.query.customer_id;
+  if (typeof value!=='string' || !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) return res.status(400).json({ error:'Invalid customer ID' });
+  const customerId=Number(value);
+  if (req.user.role!=='manager' && !await isCustomerAuthorizedForEngineer(req.user.id,customerId,req.enabledTeamIds)) return res.status(403).json({ error:'You are not authorized to view assets for this customer' });
+  const rows=await db.prepare("SELECT id,name,asset_tag,asset_type,hostname,lifecycle_status FROM customer_assets WHERE customer_id=? AND lifecycle_status IN ('active','spare') ORDER BY id LIMIT 501").all(customerId);
+  if (rows.length>500) return res.status(413).json({ error:'This customer has more than 500 active assets; retire unused records before selecting them' });
+  res.json(rows.map(row => ({ ...row,name:decryptField(row.name),asset_tag:decryptField(row.asset_tag),hostname:decryptField(row.hostname) })));
 });
 
 /* ── List (server-side pagination + filters) ─────────────────────────── */
@@ -339,7 +360,11 @@ router.get('/:id(\\d+)', requireAuth, requireServiceActivityAccess, async (req, 
     JOIN technologies tech ON tech.id = sat.technology_id WHERE sat.service_activity_id = ?
   `).all(id);
 
-  res.json({ ...activity, customer_name: decryptField(activity.customer_name), technologies });
+  const assets = (await db.prepare(`SELECT a.id,a.name,a.asset_tag,a.asset_type,a.hostname,a.lifecycle_status
+    FROM service_activity_assets saa JOIN customer_assets a ON a.id=saa.asset_id
+    WHERE saa.service_activity_id=? ORDER BY a.id`).all(id)).map(row => ({ ...row,name:decryptField(row.name),asset_tag:decryptField(row.asset_tag),hostname:decryptField(row.hostname) }));
+
+  res.json({ ...activity, customer_name: decryptField(activity.customer_name), technologies,assets });
 });
 
 /* ── Create ───────────────────────────────────────────────────────────── */
@@ -409,6 +434,10 @@ router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => 
         if (Number.isInteger(techId) && techId > 0) await insTech.run(id, techId);
       }
     }
+    if (Array.isArray(body.asset_ids)) {
+      const insAsset=tx.prepare('INSERT INTO service_activity_assets (service_activity_id,asset_id,customer_id) VALUES (?,?,?)');
+      for (const assetId of body.asset_ids) await insAsset.run(id,assetId,Number(customerId));
+    }
     return { id, reference };
   });
 
@@ -438,8 +467,12 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
   const existingTechnologies = body.technology_ids === undefined
     ? await db.prepare('SELECT technology_id FROM service_activity_technologies WHERE service_activity_id = ?').all(id)
     : [];
+  const existingAssets = body.asset_ids === undefined
+    ? await db.prepare('SELECT asset_id FROM service_activity_assets WHERE service_activity_id=?').all(id)
+    : [];
   const effective = { ...existing, ...body, follow_up_task_id: existing.follow_up_task_id,
-    technology_ids: body.technology_ids === undefined ? existingTechnologies.map(t => t.technology_id) : body.technology_ids };
+    technology_ids: body.technology_ids === undefined ? existingTechnologies.map(t => t.technology_id) : body.technology_ids,
+    asset_ids: body.asset_ids === undefined ? existingAssets.map(row => row.asset_id) : body.asset_ids };
   const validation = await validateActivityPayload(effective, { customerId, isCreate: false });
   if (validation.error) return res.status(400).json({ error: validation.error });
 
@@ -514,6 +547,11 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
       const insTech = tx.prepare('INSERT INTO service_activity_technologies (service_activity_id, technology_id) VALUES (?, ?)');
       for (const techId of body.technology_ids) await insTech.run(id, techId);
     }
+    if (Array.isArray(body.asset_ids)) {
+      await tx.prepare('DELETE FROM service_activity_assets WHERE service_activity_id=?').run(id);
+      const insAsset=tx.prepare('INSERT INTO service_activity_assets (service_activity_id,asset_id,customer_id) VALUES (?,?,?)');
+      for (const assetId of body.asset_ids) await insAsset.run(id,assetId,Number(customerId));
+    }
     return true;
   });
   if (!updated) return res.status(409).json({ error: 'Activity changed. Your draft is preserved; reload the latest activity before saving.', code: 'ACTIVITY_CONFLICT' });
@@ -580,6 +618,9 @@ router.post('/:id/duplicate', requireAuth, requireServiceActivityAccess, require
     const techs = await tx.prepare('SELECT technology_id FROM service_activity_technologies WHERE service_activity_id = ?').all(id);
     const insTech = tx.prepare('INSERT INTO service_activity_technologies (service_activity_id, technology_id) VALUES (?, ?)');
     for (const t of techs) await insTech.run(newId, t.technology_id);
+    const assets=await tx.prepare('SELECT asset_id,customer_id FROM service_activity_assets WHERE service_activity_id=?').all(id);
+    const insAsset=tx.prepare('INSERT INTO service_activity_assets (service_activity_id,asset_id,customer_id) VALUES (?,?,?)');
+    for (const asset of assets) await insAsset.run(newId,asset.asset_id,asset.customer_id);
     return { id: newId, reference };
   });
 
@@ -745,6 +786,11 @@ router.delete('/:id/attachments/:attId', requireAuth, requireServiceActivityAcce
   });
   await logAudit(db, req, 'attachment', att.id, att.original_name, 'attachment_deleted', `service_activity_id=${id}`);
   res.json({ ok: true });
+});
+
+router.use((error,req,res,next) => {
+  if (error.code==='23503') return res.status(409).json({ error:'A selected customer asset or related record changed. Reload the activity before saving.' });
+  next(error);
 });
 
 module.exports = router;

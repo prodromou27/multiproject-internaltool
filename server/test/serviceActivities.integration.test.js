@@ -265,6 +265,27 @@ test('meta endpoint only returns customers assigned to the engineer\'s enabled t
   assert.ok(!names.includes('Other Corp'), 'unassigned customer must not be selectable');
 });
 
+test('activities link only authorized same-customer assets and preserve asset history', async () => {
+  const assetBody={ name:'Activity gateway',asset_tag:'ACT-GW-1',asset_type:'Security gateway',hostname:'activity-gw.example.local',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'managed' };
+  const createdAsset=await api(`/api/customers/${ids.customer}/assets`,{ method:'POST',token:ids.tokenManager,body:assetBody });
+  const otherAsset=await api(`/api/customers/${ids.customerUnassigned}/assets`,{ method:'POST',token:ids.tokenManager,body:{ ...assetBody,name:'Other gateway',asset_tag:'OTHER-GW-1',hostname:'other-gw.example.local' } });
+  assert.equal(createdAsset.status,201);assert.equal(otherAsset.status,201);
+  const choices=await api(`/api/service-activities/assets?customer_id=${ids.customer}`,{ token:ids.tokenEnabled });
+  assert.equal(choices.status,200);assert.equal(choices.data.find(row => row.id===createdAsset.data.id).hostname,'activity-gw.example.local');
+  assert.equal((await api(`/api/service-activities/assets?customer_id=${ids.customerUnassigned}`,{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await createActivity({ asset_ids:[otherAsset.data.id] })).status,400);
+  const activity=await createActivity({ title:'Gateway maintenance',asset_ids:[createdAsset.data.id] });
+  assert.equal(activity.status,200);
+  const detail=await api(`/api/service-activities/${activity.data.id}`,{ token:ids.tokenEnabled });
+  assert.deepEqual(detail.data.assets.map(row => row.id),[createdAsset.data.id]);
+  const inventory=await api(`/api/customers/${ids.customer}/assets?search=Activity%20gateway`,{ token:ids.tokenManager });
+  assert.equal(Number(inventory.data.rows[0].activity_count),1);
+  assert.equal((await api(`/api/customers/${ids.customer}/assets/${createdAsset.data.id}`,{ method:'DELETE',token:ids.tokenManager,body:{ version:1 } })).status,409);
+  assert.equal((await api(`/api/service-activities/${activity.data.id}`,{ method:'PUT',token:ids.tokenEnabled,body:{ asset_ids:[],version:detail.data.version } })).status,200);
+  assert.equal((await api(`/api/customers/${ids.customer}/assets/${createdAsset.data.id}`,{ method:'DELETE',token:ids.tokenManager,body:{ version:1 } })).status,200);
+  assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets/${otherAsset.data.id}`,{ method:'DELETE',token:ids.tokenManager,body:{ version:1 } })).status,200);
+});
+
 test('engineer can create an activity for an authorized customer, and server derives engineer_id/team_id itself', async () => {
   const { status, data } = await api('/api/service-activities', {
     method: 'POST',
@@ -399,6 +420,7 @@ test('invalid dates, durations, text and technology IDs return 400 instead of re
     { activity_date: '2026-02-30' }, { duration_minutes: 'abc' },
     { duration_minutes: 1.5 }, { duration_minutes: 1441 }, { title: 123 },
     { technology_ids: [999999] }, { technology_ids: [1, 1] },
+    { asset_ids: [999999] }, { asset_ids: [1, 1] }, { asset_ids: ['1'] },
   ]) {
     const result = await createActivity(body);
     assert.equal(result.status, 400, JSON.stringify(body));

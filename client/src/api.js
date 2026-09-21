@@ -393,6 +393,7 @@ export const api = {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
   serviceActivityMeta: () => req('GET', '/service-activities/meta'),
+  serviceActivityAssets: (customerId, options) => req('GET', `/service-activities/assets?customer_id=${encodeURIComponent(customerId)}`, undefined, options),
   serviceActivities: (params = {}, options) => req('GET', '/service-activities?' + new URLSearchParams(params).toString(), undefined, options),
   serviceActivity: (id, options) => req('GET', `/service-activities/${id}`, undefined, options),
   createServiceActivity: (data) => req('POST', '/service-activities', data),
