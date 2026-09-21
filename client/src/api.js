@@ -166,6 +166,7 @@ export const api = {
   createRecommendation: (id, body) => req('POST', `/customers/${id}/recommendations`, body),
   updateRecommendation: (id, recommendationId, body) => req('PUT', `/customers/${id}/recommendations/${recommendationId}`, body),
   convertRecommendation: (id, recommendationId, body) => req('POST', `/customers/${id}/recommendations/${recommendationId}/convert-to-project`, body),
+  convertRecommendationToTask: (id, recommendationId, body) => req('POST', `/customers/${id}/recommendations/${recommendationId}/convert-to-task`, body),
   customerAssets: (id, params = {}, options) => req('GET', `/customers/${id}/assets?` + new URLSearchParams(params).toString(), undefined, options),
   createCustomerAsset: (id, body) => req('POST', `/customers/${id}/assets`, body),
   updateCustomerAsset: (id, assetId, body) => req('PUT', `/customers/${id}/assets/${assetId}`, body),

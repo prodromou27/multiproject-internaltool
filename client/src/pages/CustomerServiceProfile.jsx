@@ -37,11 +37,20 @@ export default function CustomerServiceProfile() {
   const [error, setError] = useState('');
   const [profileError, setProfileError] = useState('');
   const [retry, setRetry] = useState(0);
-  const [tab, setTab] = useState('overview');
+  const recommendationAccess=['manager','planner','engineer'].includes(user.role);
+  const [tab, setTab] = useState(() => {
+    const requested=new URLSearchParams(location.search).get('section');
+    if (requested==='recommendations' && recommendationAccess) return requested;
+    if (requested==='assets' && user.role==='manager') return requested;
+    return user.role==='manager' ? 'overview' : 'activities';
+  });
   useEffect(() => {
     const section = new URLSearchParams(location.search).get('section');
-    if (['overview','activities','recommendations','assets'].includes(section)) setTab(section);
-  }, [location.search]);
+    if (section==='overview' && user.role==='manager') setTab(section);
+    else if (section==='recommendations' && recommendationAccess) setTab(section);
+    else if (section==='assets' && user.role==='manager') setTab(section);
+    else if (section==='activities') setTab(section);
+  }, [location.search,user.role,recommendationAccess]);
 
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -91,9 +100,9 @@ export default function CustomerServiceProfile() {
         </div>
       </div>
       <div className="filter-bar" style={{ marginBottom: 20 }}>
-        <button className={`filter-pill${tab === 'overview' ? ' active' : ''}`} aria-pressed={tab === 'overview'} onClick={() => setTab('overview')}>Overview and history</button>
+        {user.role === 'manager' && <button className={`filter-pill${tab === 'overview' ? ' active' : ''}`} aria-pressed={tab === 'overview'} onClick={() => setTab('overview')}>Overview and history</button>}
         <button className={`filter-pill${tab === 'activities' ? ' active' : ''}`} aria-pressed={tab === 'activities'} onClick={() => setTab('activities')}>Service activities and hours</button>
-        <button className={`filter-pill${tab === 'recommendations' ? ' active' : ''}`} aria-pressed={tab === 'recommendations'} onClick={() => setTab('recommendations')}>Recommendations</button>
+        {recommendationAccess && <button className={`filter-pill${tab === 'recommendations' ? ' active' : ''}`} aria-pressed={tab === 'recommendations'} onClick={() => setTab('recommendations')}>Recommendations</button>}
         {user.role === 'manager' && <button className={`filter-pill${tab === 'assets' ? ' active' : ''}`} aria-pressed={tab === 'assets'} onClick={() => setTab('assets')}>Assets</button>}
       </div>
       {tab === 'overview' ? <CustomerOverview key={customer.id} customer={customer} /> : tab === 'assets' && user.role === 'manager' ? <CustomerAssets key={customer.id} customerId={customer.id} /> : tab === 'recommendations' ? <CustomerRecommendations key={customer.id} customerId={customer.id} sourceVisitId={sourceVisitId} onSourceConsumed={() => {

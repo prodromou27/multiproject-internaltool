@@ -177,6 +177,11 @@ checks:
 
 - **Manager** — full access; only role that reaches `/api/admin/*`, reports,
   scorecards, workload, audit, and Service Activity Tracking admin settings.
+- Customer recommendations are visible to managers and planners, and to engineers
+  with an assigned project, visit, customer, or customer team. Planners and engineers
+  may author recommendations; non-managers edit only their own records. Task
+  conversion requires an existing project for the same customer, an active engineer,
+  and for engineer callers, their own assignment to that project.
 - **Planner / PM** — broad project visibility (scoped to assigned projects for some
   views); **no task list visibility** (`GET /tasks` returns `[]`); cannot edit tasks.
 - **Engineer** — sees only their own assigned tasks, visits, and the customers tied to

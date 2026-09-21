@@ -861,6 +861,10 @@ async function applyCompatibilityMigrations() {
     );
   `]);
   migrations.push(['20260921_customer_assets', CUSTOMER_ASSETS_SCHEMA]);
+  migrations.push(['20260921_recommendation_tasks', `
+    ALTER TABLE customer_recommendations ADD COLUMN IF NOT EXISTS related_task_id INTEGER REFERENCES tasks(id) ON DELETE RESTRICT;
+    CREATE INDEX IF NOT EXISTS idx_recommendation_task ON customer_recommendations(related_task_id);
+  `]);
 
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);

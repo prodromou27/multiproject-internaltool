@@ -305,6 +305,8 @@ router.put('/:id', requireManager, async (req, res) => {
     const customer = await db.prepare('SELECT id FROM customers WHERE id = ?').get(normalizedCustomer.value);
     if (!customer) return res.status(400).json({ error: 'customer_id does not exist' });
   }
+  const targetCustomer=normalizedCustomer.value !== undefined ? normalizedCustomer.value : p.customer_id;
+  if (targetCustomer!==p.customer_id && await db.prepare('SELECT 1 FROM customer_recommendations r JOIN tasks t ON t.id=r.related_task_id WHERE t.project_id=? LIMIT 1').get(p.id)) return res.status(409).json({ error:'This project has tasks converted from customer recommendations and must keep its customer relationship' });
   if (completion_pct !== undefined) {
     const pct = Number(completion_pct);
     if (!Number.isInteger(pct) || pct < 0 || pct > 100) return res.status(400).json({ error: 'completion_pct must be an integer between 0 and 100' });

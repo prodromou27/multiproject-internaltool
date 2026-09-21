@@ -8,6 +8,14 @@ import { useToast } from './Toast';
 const STATUSES = ['open','accepted','rejected','in_progress','implemented','deferred','converted_to_project','closed'];
 const label = value => value.replaceAll('_', ' ');
 
+function TaskConversionForm({ customerId,recommendation,projects,owners,onSaved,onClose }) {
+  const [form,setForm]=useState({ version:recommendation.version,title:recommendation.finding.slice(0,500),project_id:'',assigned_to:recommendation.owner_id || '',priority:recommendation.risk_level==='critical' ? 'high' : recommendation.risk_level,deadline:recommendation.due_date || '' });
+  const [saving,setSaving]=useState(false),[error,setError]=useState('');const inFlight=useRef(false);
+  const set=key => event => setForm(value => ({ ...value,[key]:event.target.value }));
+  async function submit(event) { event.preventDefault();if(inFlight.current)return;inFlight.current=true;setSaving(true);setError('');try { await api.convertRecommendationToTask(customerId,recommendation.id,form);onSaved();onClose(); } catch(failure){setError(failure.message);} finally {inFlight.current=false;setSaving(false);} }
+  return <Modal title="Convert recommendation to task" onClose={saving ? () => {} : onClose}><form onSubmit={submit}>{error && <div className="error-msg" role="alert">{error}</div>}<fieldset disabled={saving} style={{ border:0,padding:0,margin:0 }}><p className="text-muted">Creates a task in an existing project for this customer and records the relationship. It does not notify the customer.</p><div className="form-group"><label htmlFor="recommendation-task-title">Task title</label><input id="recommendation-task-title" required maxLength={500} autoFocus value={form.title} onChange={set('title')} /></div><div className="form-group"><label htmlFor="recommendation-task-project">Project</label><select id="recommendation-task-project" required value={form.project_id} onChange={set('project_id')}><option value="">Select project</option>{projects.map(row => <option key={row.id} value={row.id}>{row.title}</option>)}</select></div><div className="form-row"><div className="form-group"><label htmlFor="recommendation-task-owner">Engineer</label><select id="recommendation-task-owner" required value={form.assigned_to} onChange={set('assigned_to')}><option value="">Select engineer</option>{owners.filter(row => row.role==='engineer').map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></div><div className="form-group"><label htmlFor="recommendation-task-priority">Priority</label><select id="recommendation-task-priority" value={form.priority} onChange={set('priority')}>{['low','medium','high'].map(value => <option key={value} value={value}>{label(value)}</option>)}</select></div></div><div className="form-group"><label htmlFor="recommendation-task-deadline">Deadline</label><input id="recommendation-task-deadline" type="date" min="1900-01-01" max="9998-12-31" value={form.deadline} onChange={set('deadline')} /></div><div className="modal-footer"><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary">{saving ? 'Creating...' : 'Create task'}</button></div></fieldset></form></Modal>;
+}
+
 function RecommendationForm({ customerId, initial, sourceVisitId, visits, owners, converting, onSaved, onClose }) {
   const [form, setForm] = useState(initial || { finding: '', recommendation: '', risk_level: 'medium', owner_id: '', source_visit_id: sourceVisitId || '', due_date: '', status: 'open', follow_up_notes: '' });
   const [title, setTitle] = useState(initial?.finding.slice(0,300) || '');
@@ -91,7 +99,7 @@ export default function CustomerRecommendations({ customerId, sourceVisitId, onS
   return <section>
     <div className="flex gap-8" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
       <label htmlFor="recommendation-list-status">Status</label><select id="recommendation-list-status" value={status} onChange={event => { setStatus(event.target.value); setPage(1); }} style={{ width: 'auto' }}><option value="">All statuses</option>{STATUSES.map(value => <option key={value} value={value}>{label(value)}</option>)}</select>
-      <button className="btn btn-primary" disabled={busy || !!error} onClick={() => setEditing({ initial: null })}>Record recommendation</button>
+      {data?.capabilities?.can_create !== false && <button className="btn btn-primary" disabled={busy || !!error} onClick={() => setEditing({ initial: null })}>Record recommendation</button>}
       <button className="btn btn-ghost" disabled={busy} onClick={load}>Refresh</button>
     </div>
     {error ? <div className="error-msg" role="alert">{error} <button className="btn btn-ghost" onClick={load}>Retry</button></div> : busy ? <p role="status">Loading recommendations...</p> : <>
@@ -103,12 +111,12 @@ export default function CustomerRecommendations({ customerId, sourceVisitId, onS
         {row.source_visit_title && <p className="text-muted text-sm">Source: {row.source_visit_title}</p>}
         {row.follow_up_notes && <p style={{ whiteSpace: 'pre-wrap' }}>{row.follow_up_notes}</p>}
         <div className="flex gap-8">
-          <button className="btn btn-ghost" onClick={() => setEditing({ initial: row })}>Edit</button>
-          {row.related_project_id ? <Link className="btn btn-ghost" to={`/projects/${row.related_project_id}`}>Open converted project</Link> : <button className="btn btn-primary" onClick={() => setEditing({ initial: row, converting: true })}>Convert to project</button>}
+          {row.can_edit && <button className="btn btn-ghost" onClick={() => setEditing({ initial: row })}>Edit</button>}
+          {row.related_project_id ? <Link className="btn btn-ghost" to={`/projects/${row.related_project_id}`}>Open converted project</Link> : row.related_task_id ? <Link className="btn btn-ghost" to={`/projects/${row.related_task_project_id}`}>Open converted task project</Link> : row.can_edit && <>{data.capabilities.can_convert_task && data.projects.length>0 && <button className="btn btn-primary" onClick={() => setEditing({ initial: row, convertingTask: true })}>Convert to task</button>}{data.capabilities.can_convert_project && <button className="btn btn-primary" onClick={() => setEditing({ initial: row, converting: true })}>Convert to project</button>}</>}
         </div>
       </article>)}
       <div className="flex gap-8"><button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous</button><span>Page {page} · {data.total} recommendations</span><button className="btn btn-ghost" disabled={page * data.page_size >= data.total} onClick={() => setPage(value => value + 1)}>Next</button></div>
     </>}
-    {editing && <RecommendationForm customerId={customerId} initial={editing.initial} sourceVisitId={editing.sourceVisitId} visits={data.visits} owners={data.owners} converting={editing.converting} onClose={() => setEditing(null)} onSaved={() => { toast.success(editing.converting ? 'Project created' : 'Recommendation saved'); load(); }} />}
+    {editing?.convertingTask ? <TaskConversionForm customerId={customerId} recommendation={editing.initial} projects={data.projects} owners={data.owners} onClose={() => setEditing(null)} onSaved={() => { toast.success('Task created');load(); }} /> : editing && <RecommendationForm customerId={customerId} initial={editing.initial} sourceVisitId={editing.sourceVisitId} visits={data.visits} owners={data.owners} converting={editing.converting} onClose={() => setEditing(null)} onSaved={() => { toast.success(editing.converting ? 'Project created' : 'Recommendation saved'); load(); }} />}
   </section>;
 }

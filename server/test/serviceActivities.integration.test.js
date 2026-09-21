@@ -1600,15 +1600,20 @@ test('customer recommendations validate references, preserve history and reject 
   const foreign = (await db.prepare('INSERT INTO maintenance_visits (title,customer_id,scheduled_date,created_by) VALUES (?,?,?,?)').run('Foreign source', ids.customer, '2026-09-18', ids.manager)).lastInsertRowid;
   const path = `/api/customers/${customer}/recommendations`;
   const body = { finding: 'Obsolete equipment', recommendation: 'Replace equipment', source_visit_id: visit, owner_id: ids.engineerEnabled, risk_level: 'high', due_date: '2026-10-01' };
-  for (const token of [ids.tokenEnabled, ids.tokenDisabled]) {
-    assert.equal((await api(path, { token })).status, 403);
-    assert.equal((await api(path, { method: 'POST', token, body })).status, 403);
-  }
+  assert.equal((await api(path, { token:ids.tokenDisabled })).status,403);
+  await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id,user_id) VALUES (?,?)').run(visit,ids.engineerEnabled);
+  assert.equal((await api(path,{ token:ids.tokenEnabled })).status,200);
+  const engineerCreated=await api(path,{ method:'POST',token:ids.tokenEnabled,body:{ ...body,owner_id:ids.manager,finding:'Engineer finding' } });
+  assert.equal(engineerCreated.status,201);
+  assert.equal(engineerCreated.data.owner_id,ids.engineerEnabled);
+  let plannerToken,plannerCreated;
   for (const role of ['planner','pm']) {
     const user = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run(`Recommendation ${role}`, `recommendation-${role}@test.local`, bcrypt.hashSync('pw', 4), role)).lastInsertRowid;
     const token = signJwt({ id: user });
-    assert.equal((await api(path, { token })).status, 403);
-    assert.equal((await api(path, { method: 'POST', token, body })).status, 403);
+    assert.equal((await api(path, { token })).status,role==='planner' ? 200 : 403);
+    const response=await api(path,{ method:'POST',token,body:{ ...body,finding:`${role} finding` } });
+    assert.equal(response.status,role==='planner' ? 201 : 403);
+    if(role==='planner'){plannerToken=token;plannerCreated=response.data;}
     assert.equal((await api(`${path}/999/convert-to-project`, { method: 'POST', token, body: { version: 1, title: 'Denied conversion' } })).status, 403);
   }
   for (const query of ['page=0','page=1&page=2','page[x]=1','status=unknown','status=open&status=closed']) assert.equal((await api(`${path}?${query}`, { token: ids.tokenManager })).status, 400);
@@ -1635,8 +1640,18 @@ test('customer recommendations validate references, preserve history and reject 
   assert.equal(project.deadline, body.due_date);
   assert.ok(project.description.includes(body.finding) && project.description.includes(body.recommendation));
   assert.ok(await db.prepare('SELECT user_id FROM project_assignments WHERE project_id=? AND user_id=?').get(converted.data.related_project_id, ids.engineerEnabled));
+  const taskProject=(await db.prepare('INSERT INTO projects (title,customer_id,created_by) VALUES (?,?,?)').run('Recommendation task project',customer,ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO project_assignments (project_id,user_id) VALUES (?,?)').run(taskProject,ids.engineerEnabled);
+  const taskConversion=await api(`${path}/${plannerCreated.id}/convert-to-task`,{ method:'POST',token:plannerToken,body:{ version:1,title:'Replace equipment task',project_id:taskProject,assigned_to:ids.engineerEnabled,priority:'high',deadline:'2026-10-01' } });
+  assert.equal(taskConversion.status,201);
+  const task=await db.prepare('SELECT project_id,assigned_to,title FROM tasks WHERE id=?').get(taskConversion.data.task_id);
+  assert.deepEqual(task,{ project_id:taskProject,assigned_to:ids.engineerEnabled,title:'Replace equipment task' });
+  const engineerTask=await api(`${path}/${engineerCreated.data.id}/convert-to-task`,{ method:'POST',token:ids.tokenEnabled,body:{ version:1,title:'Engineer remediation',project_id:taskProject,assigned_to:ids.engineerEnabled } });
+  assert.equal(engineerTask.status,201);
+  assert.equal((await api(`${path}/${engineerCreated.data.id}/convert-to-task`,{ method:'POST',token:plannerToken,body:{ version:2,title:'Unauthorized',project_id:taskProject,assigned_to:ids.engineerEnabled } })).status,403);
+  assert.equal((await api(`/api/projects/${taskProject}`,{ method:'PUT',token:ids.tokenManager,body:{ customer_id:ids.customer } })).status,409);
   assert.equal((await api(`${path}/${id}/convert-to-project`, { method: 'POST', token: ids.tokenManager, body: { version: 3, title: 'Duplicate conversion' } })).status, 409);
-  assert.equal(Number((await db.prepare('SELECT COUNT(*) AS total FROM projects WHERE customer_id=?').get(customer)).total), 1);
+  assert.equal(Number((await db.prepare('SELECT COUNT(*) AS total FROM projects WHERE customer_id=?').get(customer)).total), 2);
 });
 
 test('recommendation conversion rolls back its project and version if history fails on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
