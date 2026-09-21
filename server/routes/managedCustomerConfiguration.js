@@ -1,6 +1,6 @@
 const router=require('express').Router({ mergeParams:true });
 const db=require('../db');
-const { requireManager }=require('../middleware/auth');
+const { requireManager,requirePermission }=require('../middleware/auth');
 const { logAudit }=require('../auditLog');
 const ticketingSettings=require('../ticketingSettings');
 const { createTicketingProvider }=require('../ticketing');
@@ -15,8 +15,6 @@ const integerOrNull=(value,label) => {
   if (!Number.isSafeInteger(parsed) || parsed<1) fail(`${label} must be a positive integer or null`);
   return parsed;
 };
-
-router.use(requireManager);
 
 async function customerId(req) {
   const id=integerOrNull(req.params.id,'Customer ID');
@@ -49,7 +47,7 @@ function responseShape(customer,managed={},ticket={}) {
   };
 }
 
-router.get('/',async (req,res) => {
+router.get('/',requirePermission('managed_customers.view'),async (req,res) => {
   try {
     const id=await customerId(req);
     const customer=await db.prepare('SELECT id,service_activity_enabled FROM customers WHERE id=?').get(id);
@@ -59,7 +57,7 @@ router.get('/',async (req,res) => {
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not load managed customer configuration' }); }
 });
 
-router.put('/',async (req,res) => {
+router.put('/',requireManager,async (req,res) => {
   try {
     const id=await customerId(req);
     if (!req.body || typeof req.body!=='object' || Array.isArray(req.body) || Object.keys(req.body).some(key => !ALLOWED_FIELDS.has(key))) fail('Invalid managed customer configuration');
@@ -143,7 +141,7 @@ router.put('/',async (req,res) => {
   }
 });
 
-router.post('/test-mapping',async (req,res) => {
+router.post('/test-mapping',requireManager,async (req,res) => {
   try {
     const id=await customerId(req);
     const mapping=await db.prepare("SELECT * FROM customer_ticketing_configurations WHERE customer_id=? AND provider_type='request_tracker' AND enabled=1").get(id);

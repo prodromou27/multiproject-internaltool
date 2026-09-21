@@ -1753,6 +1753,10 @@ test('permission administration supports versioned role and user overrides',asyn
   const matrix=await api(path,{ token:ids.tokenManager });assert.equal(matrix.status,200);assert.equal(matrix.data.definitions.some(item => item.key===permission_key),true);
   const roleBody={ scope:'role',role:'planner',permission_key,allowed:true,version:0 };
   const role=await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:roleBody });assert.equal(role.status,200);assert.equal(role.data.rule.version,1);
+  const delegated=await api('/api/managed-customers',{ token:ids.tokenPlanner });assert.equal(delegated.status,200);
+  const delegatedTemplates=await api('/api/managed-report-templates',{ token:ids.tokenPlanner });assert.equal(delegatedTemplates.status,200);
+  const delegatedExport=await api(`/api/managed-customers/${ids.customer}/report.docx`,{ method:'POST',token:ids.tokenPlanner,body:{ from:'2026-09-01',to:'2026-09-30',sections:['executive_summary'],narratives:{},status:'draft' } });assert.equal(delegatedExport.status,403);
+  const me=await api('/api/auth/me',{ token:ids.tokenPlanner });assert.equal(me.status,200);assert.equal(me.data.permissions[permission_key],true);
   assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...roleBody,allowed:false } })).status,409);
   const userBody={ scope:'user',user_id:ids.planner,permission_key,allowed:false,version:0 };
   const user=await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:userBody });assert.equal(user.status,200);assert.equal(user.data.rule.version,1);

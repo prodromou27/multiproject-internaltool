@@ -497,7 +497,7 @@ function SidebarContent({ user, logout, onNav }) {
     return () => { mounted = false; clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, []);
 
-  const pages = visiblePages(user.role, saAccess.enabled).filter(page => !page.hidden);
+  const pages = visiblePages(user, saAccess.enabled).filter(page => !page.hidden);
   const sections = [...new Set(pages.map(page => page.section))];
 
   return (
@@ -787,7 +787,7 @@ function PrivateRoute({ children, allowedRoles, page }) {
   if (!user) return <Navigate to="/login" replace />;
   const definition = page ? PAGES.find(item => item.id === page) : null;
   if (definition?.feature && user.role !== 'manager' && !saAccess.loaded) return <Layout><PageLoader /></Layout>;
-  if ((definition && !canAccessPage(definition, user.role, saAccess.enabled)) ||
+  if ((definition && !canAccessPage(definition, user, saAccess.enabled)) ||
       (allowedRoles && !allowedRoles.includes(user.role))) {
     return <Layout><PageState title="Access unavailable" description="Your role or team settings do not allow access to this page. Contact your administrator if you need access." /></Layout>;
   }

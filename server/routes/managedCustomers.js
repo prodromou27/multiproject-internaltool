@@ -1,5 +1,5 @@
 const router=require('express').Router();
-const { requireManager }=require('../middleware/auth');
+const { requirePermission }=require('../middleware/auth');
 const service=require('../managedCustomerService');
 const reporting=require('../managedCustomerReportingService');
 const { renderWord }=require('../managedCustomerWordRenderer');
@@ -9,7 +9,7 @@ const reportHistory=require('../managedReportHistoryService');
 const db=require('../db');
 const { logAudit }=require('../auditLog');
 
-router.use(requireManager);
+router.use(requirePermission('managed_customers.view'));
 const validCalendarDay=value => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value;
 const positiveInteger=(value,fallback,max) => {
   if (value===undefined) return fallback;
@@ -99,7 +99,7 @@ router.post('/:id/report-preview',async (req,res) => {
     res.json(result);
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not prepare the managed customer report' }); }
 });
-router.post('/:id/report.docx',async (req,res) => {
+router.post('/:id/report.docx',requirePermission('managed_reports.generate'),async (req,res) => {
   const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
   try {
     const { from,to,sections,narratives,status,templateId }=await reportRequest(req.body);
@@ -114,7 +114,7 @@ router.post('/:id/report.docx',async (req,res) => {
     res.send(buffer);
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the Word report' }); }
 });
-router.post('/:id/report.xlsx',async (req,res) => {
+router.post('/:id/report.xlsx',requirePermission('managed_reports.generate'),async (req,res) => {
   const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
   try {
     const { from,to,sections,narratives,status,templateId }=await reportRequest(req.body);
@@ -129,7 +129,7 @@ router.post('/:id/report.xlsx',async (req,res) => {
     res.send(buffer);
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the Excel report' }); }
 });
-router.post('/:id/report.pdf',async (req,res) => {
+router.post('/:id/report.pdf',requirePermission('managed_reports.generate'),async (req,res) => {
   const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
   try {
     const { from,to,sections,narratives,status,templateId }=await reportRequest(req.body);

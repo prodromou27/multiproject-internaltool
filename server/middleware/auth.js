@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const { hasPermission } = require('../permissions');
 const { requestToken, sessionCookie } = require('./session');
 
 // Fail fast at startup if JWT_SECRET is missing or too short
@@ -114,4 +115,16 @@ function requireDownloadManager(req, res, next) {
   });
 }
 
-module.exports = { requireAuth, requireDownloadAuth, requireManager, requireManagerOrPlanner, requireDownloadManager, requireDownloadManagerOrPlanner, signJwt, verifyJwt };
+function requirePermission(permissionKey) {
+  return (req, res, next) => requireAuth(req, res, async () => {
+    try {
+      if (!await hasPermission(req.user, permissionKey))
+        return res.status(403).json({ error: 'You do not have permission to perform this action' });
+      next();
+    } catch (error) {
+      next(error);
+    }
+  });
+}
+
+module.exports = { requireAuth, requireDownloadAuth, requireManager, requireManagerOrPlanner, requireDownloadManager, requireDownloadManagerOrPlanner, requirePermission, signJwt, verifyJwt };

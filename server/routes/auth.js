@@ -10,8 +10,17 @@ const db        = require('../db');
 const { signJwt, verifyJwt, requireAuth } = require('../middleware/auth');
 const { requestToken, setSessionCookie, clearSessionCookie } = require('../middleware/session');
 const { sendEmail } = require('../email');
+const { effectivePermissions } = require('../permissions');
 
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('not-the-real-password', 12);
+
+async function sessionUser(user) {
+  return {
+    id: user.id, name: user.name, email: user.email, role: user.role,
+    avatar_url: user.avatar_url || null,
+    permissions: await effectivePermissions(user),
+  };
+}
 
 function passwordError(password) {
   if (typeof password !== 'string' || password.length < 12)
@@ -216,7 +225,7 @@ router.post('/login', async (req, res) => {
   await recordSuccessfulLogin(req, user);
   res.json({
     token,
-    user: { id: user.id, name: user.name, email: user.email, role: user.role, avatar_url: user.avatar_url || null },
+    user: await sessionUser(user),
     must_change_password: mustChange,
     password_expired: passwordExpired,
   });
@@ -261,7 +270,7 @@ router.post('/2fa/verify', async (req, res) => {
   const token = issueSession(req, res, user);
   res.json({
     token,
-    user: { id: user.id, name: user.name, email: user.email, role: user.role, avatar_url: user.avatar_url || null },
+    user: await sessionUser(user),
     must_change_password: mustChange,
     password_expired: passwordExpired,
   });
@@ -337,7 +346,7 @@ router.get('/me', requireAuth, async (req, res) => {
   const u = (await db.prepare('SELECT id, name, email, role, avatar_url, created_at, last_login, totp_enabled, must_change_password FROM users WHERE id = ?').get(req.user.id));
   if (!u) return res.status(404).json({ error: 'User not found' });
   res.setHeader('Cache-Control', 'no-store');
-  res.json(u);
+  res.json({ ...u, permissions: await effectivePermissions(u) });
 });
 
 // PUT /api/auth/profile — update name and/or email
@@ -355,7 +364,7 @@ router.put('/profile', requireAuth, async (req, res) => {
     .run(name.trim(), email?.trim().toLowerCase() || null, req.user.id));
   const u = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
   const token = issueSession(req, res, u);
-  res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, avatar_url: u.avatar_url }, token });
+  res.json({ user: await sessionUser(u), token });
 });
 
 // POST /api/auth/change-password
@@ -546,7 +555,7 @@ router.post('/avatar', requireAuth, async (req, res, next) => {
     (await db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(url, req.user.id));
     const u = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
     const token = issueSession(req, res, u);
-    res.json({ avatar_url: url, user: { id: u.id, name: u.name, email: u.email, role: u.role, avatar_url: url }, token });
+    res.json({ avatar_url: url, user: await sessionUser({ ...u,avatar_url:url }), token });
   });
 });
 
@@ -560,7 +569,7 @@ router.delete('/avatar', requireAuth, async (req, res) => {
   (await db.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?').run(req.user.id));
   const updated = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
   const token = issueSession(req, res, updated);
-  res.json({ user: { id: updated.id, name: updated.name, email: updated.email, role: updated.role, avatar_url: null }, token });
+  res.json({ user: await sessionUser({ ...updated,avatar_url:null }), token });
 });
 
 router._hasValidImageMagic = hasValidImageMagic;

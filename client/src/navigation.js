@@ -9,7 +9,7 @@ export const PAGES = [
   { id: 'visits', path: '/maintenance-visits', label: 'Maintenance Visits', section: 'Operations', icon: 'Wrench', roles: everyone, badge: 'visits', description: 'Customer visits, engineer assignments and reports' },
   { id: 'activities', path: '/activity-log', label: 'Activity Log', section: 'Operations', icon: 'ClipboardList', roles: ['manager', 'engineer', 'pm'], feature: 'serviceActivity', description: 'Customer service work, evidence and follow-ups' },
   { id: 'customers', path: '/customers', label: 'Customers', section: 'Management', icon: 'Building2', roles: ['manager'], description: 'Customer profiles, service contracts and team access' },
-  { id: 'managedCustomers', path: '/managed-customers', label: 'Managed Customers', section: 'Management', icon: 'Building2', roles: ['manager'], description: 'Customer-centric managed-service health, tickets and reporting' },
+  { id: 'managedCustomers', path: '/managed-customers', label: 'Managed Customers', section: 'Management', icon: 'Building2', roles: ['manager'], permission: 'managed_customers.view', description: 'Customer-centric managed-service health, tickets and reporting' },
   { id: 'workload', path: '/workload', label: 'Workload', section: 'Management', icon: 'UsersIcon', roles: ['manager'], description: 'Engineer commitments and upcoming demand' },
   { id: 'reports', path: '/reports', label: 'Reports', section: 'Management', icon: 'BarChart2', roles: ['manager'], description: 'Operational summaries, delivery trends and reporting' },
   { id: 'approvals', path: '/approvals', label: 'Approvals', section: 'Management', icon: 'CheckCheck', roles: ['manager'], description: 'Review closure requests and explain decisions to the project team' },
@@ -25,13 +25,14 @@ export const PAGES = [
   { id: 'search', path: '/search', label: 'Smart Search', section: 'Workspace', icon: 'Search', roles: everyone, hidden: true, description: 'Search the work and customers you can access' },
 ];
 
-export function canAccessPage(page, role, serviceActivityEnabled = false) {
-  return !!page && page.roles.includes(role) &&
-    (!page.feature || role === 'manager' || serviceActivityEnabled);
+export function canAccessPage(page, userOrRole, serviceActivityEnabled = false) {
+  const user=typeof userOrRole==='string' ? { role:userOrRole,permissions:{} } : userOrRole;
+  return !!page && !!user && (page.roles.includes(user.role) || !!user.permissions?.[page.permission]) &&
+    (!page.feature || user.role === 'manager' || serviceActivityEnabled);
 }
 
-export function visiblePages(role, serviceActivityEnabled = false) {
-  return PAGES.filter(page => canAccessPage(page, role, serviceActivityEnabled));
+export function visiblePages(userOrRole, serviceActivityEnabled = false) {
+  return PAGES.filter(page => canAccessPage(page, userOrRole, serviceActivityEnabled));
 }
 
 export function pageForPath(pathname) {
