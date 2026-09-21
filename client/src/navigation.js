@@ -9,6 +9,7 @@ export const PAGES = [
   { id: 'visits', path: '/maintenance-visits', label: 'Maintenance Visits', section: 'Operations', icon: 'Wrench', roles: everyone, badge: 'visits', description: 'Customer visits, engineer assignments and reports' },
   { id: 'activities', path: '/activity-log', label: 'Activity Log', section: 'Operations', icon: 'ClipboardList', roles: ['manager', 'engineer', 'pm'], feature: 'serviceActivity', description: 'Customer service work, evidence and follow-ups' },
   { id: 'customers', path: '/customers', label: 'Customers', section: 'Management', icon: 'Building2', roles: ['manager'], description: 'Customer profiles, service contracts and team access' },
+  { id: 'managedCustomers', path: '/managed-customers', label: 'Managed Customers', section: 'Management', icon: 'Building2', roles: ['manager'], description: 'Customer-centric managed-service health, tickets and reporting' },
   { id: 'workload', path: '/workload', label: 'Workload', section: 'Management', icon: 'UsersIcon', roles: ['manager'], description: 'Engineer commitments and upcoming demand' },
   { id: 'reports', path: '/reports', label: 'Reports', section: 'Management', icon: 'BarChart2', roles: ['manager'], description: 'Operational summaries, delivery trends and reporting' },
   { id: 'approvals', path: '/approvals', label: 'Approvals', section: 'Management', icon: 'CheckCheck', roles: ['manager'], description: 'Review closure requests and explain decisions to the project team' },

@@ -170,6 +170,7 @@ app.use('/api/technologies',       require('./routes/technologies'));
 app.use('/api/service-activities', require('./routes/serviceActivities'));
 app.use('/api/service-activity-settings', require('./routes/serviceActivitySettings'));
 app.use('/api/ticketing', require('./routes/ticketing'));
+app.use('/api/managed-customers', require('./routes/managedCustomers'));
 
 // ── 404 handler for unknown /api/* paths (must come before the SPA catchall) ─
 app.use('/api', (req, res) => {

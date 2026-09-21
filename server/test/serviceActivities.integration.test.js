@@ -125,6 +125,7 @@ test.before(async () => {
   app.use('/api/report-settings', require('../routes/report-settings'));
   app.use('/api/settings', require('../routes/settings'));
   app.use('/api/ticketing', require('../routes/ticketing'));
+  app.use('/api/managed-customers', require('../routes/managedCustomers'));
   app.use('/api/service-activities', require('../routes/serviceActivities'));
   app.use('/api/projects/:projectId/custom-fields', require('../routes/customFields'));
   app.use(require('../middleware/errors').errorHandler);
@@ -1574,6 +1575,19 @@ test('ticket synchronization persists normalized snapshots and run counts',async
   assert.equal((await db.prepare("SELECT subject FROM external_tickets WHERE external_ticket_id='7001'").get()).subject,'Updated gateway alert');
   const runs=await db.prepare('SELECT id,customer_id,status FROM ticket_sync_runs ORDER BY id').all();
   assert.deepEqual(runs.map(row => [row.customer_id,row.status]),[[ids.customer,'success'],[ids.customer,'success']]);
+});
+
+test('managed customer dashboard separates current state from period metrics',async () => {
+  await db.prepare(`INSERT INTO managed_customer_configurations (customer_id,managed_services_enabled,version,updated_by)
+    VALUES (?,1,1,?) ON CONFLICT (customer_id) DO UPDATE SET managed_services_enabled=1`).run(ids.customer,ids.manager);
+  assert.equal((await api('/api/managed-customers',{ token:ids.tokenEnabled })).status,403);
+  const list=await api('/api/managed-customers',{ token:ids.tokenManager });
+  assert.equal(list.status,200);assert.equal(list.data.rows.some(row => row.id===ids.customer),true);
+  assert.equal((await api(`/api/managed-customers/${ids.customer}/overview?from=bad&to=2026-09-21`,{ token:ids.tokenManager })).status,400);
+  const overview=await api(`/api/managed-customers/${ids.customer}/overview?from=2026-09-01&to=2026-09-30`,{ token:ids.tokenManager });
+  assert.equal(overview.status,200);assert.equal(overview.data.customer.id,ids.customer);
+  assert.equal(overview.data.tickets.open_now>=1,true);assert.equal(overview.data.tickets.created_period>=2,true);
+  assert.equal(typeof overview.data.activities.hours,'number');assert.equal(overview.data.period.from,'2026-09-01');
 });
 
 test('SMTP settings await reads, redact and retain passwords on ordinary edits', async () => {

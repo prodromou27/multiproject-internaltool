@@ -41,6 +41,7 @@ const SearchPage        = lazy(() => import('./pages/SearchPage'));
 const EngineerHub       = lazy(() => import('./pages/EngineerHub'));
 const ActivityLog       = lazy(() => import('./pages/ActivityLog'));
 const ServiceOperations = lazy(() => import('./pages/ServiceOperations'));
+const ManagedCustomers   = lazy(() => import('./pages/ManagedCustomers'));
 const CustomerServiceProfile = lazy(() => import('./pages/CustomerServiceProfile'));
 
 export const AuthContext = createContext(null);
@@ -863,6 +864,8 @@ export default function App() {
           <Route path="/tasks"               element={<PrivateRoute page="tasks"><Tasks /></PrivateRoute>} />
           <Route path="/maintenance-visits"  element={<PrivateRoute page="visits"><MaintenanceVisits /></PrivateRoute>} />
           <Route path="/customers"           element={<PrivateRoute page="customers"><Customers /></PrivateRoute>} />
+          <Route path="/managed-customers"   element={<PrivateRoute page="managedCustomers"><ManagedCustomers /></PrivateRoute>} />
+          <Route path="/managed-customers/:id" element={<PrivateRoute page="managedCustomers"><ManagedCustomers /></PrivateRoute>} />
           <Route path="/scorecards"          element={<PrivateRoute page="scorecards"><Scorecards /></PrivateRoute>} />
           <Route path="/reports"             element={<PrivateRoute page="reports"><Reports /></PrivateRoute>} />
           <Route path="/approvals"           element={<PrivateRoute page="approvals"><Approvals /></PrivateRoute>} />
