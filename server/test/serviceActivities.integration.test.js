@@ -127,6 +127,7 @@ test.before(async () => {
   app.use('/api/ticketing', require('../routes/ticketing'));
   app.use('/api/managed-customers', require('../routes/managedCustomers'));
   app.use('/api/managed-report-templates', require('../routes/managedReportTemplates'));
+  app.use('/api/permissions', require('../routes/permissions'));
   app.use('/api/service-activities', require('../routes/serviceActivities'));
   app.use('/api/projects/:projectId/custom-fields', require('../routes/customFields'));
   app.use(require('../middleware/errors').errorHandler);
@@ -1744,6 +1745,22 @@ test('managed report templates are manager-only, validated and versioned',async 
   assert.equal(updated.status,200);assert.equal(updated.data.version,2);
   assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...editable,name:'Stale' } })).status,409);
   assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'DELETE',token:ids.tokenManager })).status,200);
+});
+
+test('permission administration supports versioned role and user overrides',async () => {
+  const path='/api/permissions',permission_key='managed_customers.view';
+  assert.equal((await api(path,{ token:ids.tokenPlanner })).status,403);
+  const matrix=await api(path,{ token:ids.tokenManager });assert.equal(matrix.status,200);assert.equal(matrix.data.definitions.some(item => item.key===permission_key),true);
+  const roleBody={ scope:'role',role:'planner',permission_key,allowed:true,version:0 };
+  const role=await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:roleBody });assert.equal(role.status,200);assert.equal(role.data.rule.version,1);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...roleBody,allowed:false } })).status,409);
+  const userBody={ scope:'user',user_id:ids.planner,permission_key,allowed:false,version:0 };
+  const user=await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:userBody });assert.equal(user.status,200);assert.equal(user.data.rule.version,1);
+  const permissionService=require('../permissions');assert.equal(await permissionService.hasPermission({ id:ids.planner,role:'planner' },permission_key),false);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...userBody,allowed:null,version:1 } })).status,200);
+  assert.equal(await permissionService.hasPermission({ id:ids.planner,role:'planner' },permission_key),true);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...roleBody,allowed:null,version:1 } })).status,200);
+  assert.equal(await permissionService.hasPermission({ id:ids.planner,role:'planner' },permission_key),false);
 });
 
 test('concurrent report exports allocate unique versions on PostgreSQL', { skip:!process.env.TEST_DATABASE_URL },async () => {

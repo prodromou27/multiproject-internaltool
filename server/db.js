@@ -41,7 +41,7 @@ const pool = new Pool({
 pool.on('error', (err) => console.error('[pg pool]', err.message));
 
 // Tables with no `id` column — never append RETURNING id to inserts into these.
-const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|maintenance_visit_assets|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|managed_customer_configurations|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams)\b/i;
+const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|maintenance_visit_assets|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|managed_customer_configurations|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams|role_permission_overrides|user_permission_overrides)\b/i;
 
 // ── Placeholders: `?` -> `$1, $2, ...`, memoized per unique SQL string ───────
 const _cache = new Map();
@@ -1031,6 +1031,27 @@ async function applyCompatibilityMigrations() {
       UNIQUE(customer_id,period_start,period_end,output_format,report_version)
     );
     CREATE INDEX IF NOT EXISTS idx_managed_report_history_customer ON managed_report_history(customer_id,generated_at DESC,id DESC);
+  `]);
+  migrations.push(['20260922_permission_overrides', `
+    CREATE TABLE IF NOT EXISTS role_permission_overrides (
+      role TEXT NOT NULL CHECK(role IN ('manager','engineer','planner','pm')),
+      permission_key TEXT NOT NULL,
+      allowed INTEGER NOT NULL CHECK(allowed IN (0,1)),
+      version INTEGER NOT NULL DEFAULT 1,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT DEFAULT ${NOW},
+      PRIMARY KEY(role,permission_key)
+    );
+    CREATE TABLE IF NOT EXISTS user_permission_overrides (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      permission_key TEXT NOT NULL,
+      allowed INTEGER NOT NULL CHECK(allowed IN (0,1)),
+      version INTEGER NOT NULL DEFAULT 1,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT DEFAULT ${NOW},
+      PRIMARY KEY(user_id,permission_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_permission_overrides_user ON user_permission_overrides(user_id);
   `]);
 
   migrations.push(['20260917_project_closure_review', `

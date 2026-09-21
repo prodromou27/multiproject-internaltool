@@ -155,6 +155,8 @@ export const api = {
 
   // admin
   adminUsers: () => req('GET', '/admin/users'),
+  permissionMatrix: options => req('GET','/permissions',undefined,options),
+  savePermissionRule: data => req('PUT','/permissions/rule',data),
   adminCreateUser: (data) => req('POST', '/admin/users', data),
   adminUpdateUser: (id, data) => req('PUT', `/admin/users/${id}`, data),
   adminResetPassword: (id, password) => req('POST', `/admin/users/${id}/reset-password`, { password }),

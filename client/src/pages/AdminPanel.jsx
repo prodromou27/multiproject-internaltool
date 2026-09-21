@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users as UsersIcon, Shield, FolderOpen, Wrench, ClipboardList, HardDrive, ScrollText, Activity, Settings, Download, BarChart3, ShieldAlert, Globe, Database, FileSpreadsheet, LayoutDashboard, Tag } from 'lucide-react';
+import { Users as UsersIcon, Shield, ShieldCheck, FolderOpen, Wrench, ClipboardList, HardDrive, ScrollText, Activity, Settings, Download, BarChart3, ShieldAlert, Globe, Database, FileSpreadsheet, LayoutDashboard, Tag } from 'lucide-react';
 import { api } from '../api';
 import { visiblePages } from '../navigation';
 import { useAuth } from '../App';
@@ -15,12 +15,14 @@ import { AdminAlertsTab, LoggingTab } from './admin/AlertsLoggingTab';
 import { DeploymentHealthTab, SystemUpdateTab, AuditLogTab, SecurityTab } from './admin/SystemTabs';
 import { ServiceActivityAdminTab } from './admin/ServiceActivityAdmin';
 import { ManagedReportTemplatesTab } from './admin/ManagedReportTemplatesTab';
+import { PermissionsTab } from './admin/PermissionsTab';
 
 /* ── MAIN PAGE ───────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
 const TABS = [
   { key: 'overview',       label: 'Overview',           Icon: LayoutDashboard, group: 'overview',      desc: 'Health, activity, and manager attention items' },
   { key: 'users',          label: 'Users & Access',     Icon: UsersIcon,       group: 'business_people',        desc: 'Accounts, roles, activation, passwords, and 2FA exceptions' },
+  { key: 'permissions',    label: 'Permissions',        Icon: ShieldCheck,     group: 'business_people',        desc: 'Role capabilities and explicit user access exceptions' },
   { key: 'projects',       label: 'Projects',           Icon: FolderOpen,      group: 'business_people',        desc: 'Project administration and status visibility' },
   { key: 'maintenance',    label: 'Maintenance Visits', Icon: Wrench,          group: 'business_people',        desc: 'Visit administration and report status' },
   { key: 'statuses',       label: 'Status Workflow',    Icon: Tag,             group: 'business_rules', desc: 'Project status labels, colors, and workflow rules' },
@@ -191,6 +193,7 @@ export default function AdminPanel() {
 
           {tab === 'overview'     && <OverviewTab />}
           {tab === 'users'        && <UsersTab currentUser={user} />}
+          {tab === 'permissions'  && <PermissionsTab />}
           {tab === 'projects'     && <ProjectsAdminTab />}
           {tab === 'maintenance'  && <MaintenanceAdminTab />}
           {tab === 'statuses'     && <StatusManagementTab />}
