@@ -7,6 +7,7 @@ import {
 import { api } from '../api';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../components/Shared';
 import WorkloadPlanning from '../components/WorkloadPlanning';
+import WorkloadPressure from '../components/WorkloadPressure';
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -373,7 +374,7 @@ export default function Workload() {
         <button
           className="btn btn-ghost btn-sm"
           onClick={() => tab === 'snapshot' ? loadSnapshot() : loadForecast()}
-          style={{ display: tab === 'planning' ? 'none' : 'inline-flex', alignItems: 'center', gap: 5 }}
+          style={{ display: ['planning','pressure'].includes(tab) ? 'none' : 'inline-flex', alignItems: 'center', gap: 5 }}
         >
           <RefreshCw size={13} /> Refresh
         </button>
@@ -407,6 +408,7 @@ export default function Workload() {
 
       {/* Tabs */}
       <div className="tabs" style={{ marginBottom: 16 }}>
+        <button className={'tab' + (tab === 'pressure' ? ' active' : '')} onClick={() => setTab('pressure')}>Operational pressure</button>
         <button className={'tab' + (tab === 'planning' ? ' active' : '')} onClick={() => setTab('planning')}>Effort and availability</button>
         <button className={'tab' + (tab === 'snapshot' ? ' active' : '')} onClick={() => setTab('snapshot')}>
           <Users size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />Current Snapshot
@@ -418,6 +420,7 @@ export default function Workload() {
 
       {/* Snapshot tab */}
       {tab === 'planning' && <WorkloadPlanning />}
+      {tab === 'pressure' && <WorkloadPressure />}
       {tab === 'snapshot' && (
         loading ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--gray-400)', padding: '24px 0' }}>

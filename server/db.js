@@ -802,6 +802,16 @@ async function applyCompatibilityMigrations() {
     CREATE INDEX IF NOT EXISTS idx_custom_report_schedule_due ON custom_report_schedules(enabled,next_run);
   `]);
 
+  migrations.push(['20260918_workload_policy', `
+    CREATE TABLE IF NOT EXISTS workload_policy (
+      id INTEGER PRIMARY KEY CHECK(id=1),
+      configuration TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT DEFAULT ${NOW}
+    );
+  `]);
+
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_request_version INTEGER NOT NULL DEFAULT 0;

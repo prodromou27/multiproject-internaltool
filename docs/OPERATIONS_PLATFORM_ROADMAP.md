@@ -112,6 +112,7 @@ part of the foundation work.
 | 7b | Persisted management recommendations | Finding/risk/owner/due/status/notes, visit-source intent, version conflicts, atomic project conversion and mandatory history; cross-customer links constrained | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 8 | Workload model | Estimates/availability and configurable weighting; capacity and pressure shown separately | In progress |
 | 8a | Recorded effort and availability | Manager-edited versioned remaining estimates and net weekly hours; four-week task/visit capacity with explicit missing/excluded coverage | Complete; PostgreSQL CI and browser QA tracked per commit |
+| 8b | Weighted capacity and operational pressure | Versioned task/visit status factors; separate urgency points for assigned work, pending visit reports and unlinked service follow-ups; bounded manager-only drilldown | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 9 | Custom report engine | Approved source metadata, parameterized filters/grouping/aggregations, bounded preview, permission tests | In progress |
 | 9a | Approved-source engine | Manager-only metadata, typed parameterized filters, grouping/numeric aggregations, stable sorts, 100-row previews, 5000-row export cap and 5s read-only execution | Complete; PostgreSQL CI tracked per commit |
 | 10 | Report Builder UI and saved reports | Field selection, typed filters, grouping, sorts, preview, definitions with private/management visibility and Excel/CSV | Complete; browser QA pending |

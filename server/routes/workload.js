@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireManager } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
 router.use('/planning', require('./workload-planning'));
+router.use('/pressure', require('./workload-pressure'));
 
 // GET /api/workload — full engineer workload snapshot
 // Replaces 4N individual queries with 4 batched queries (was: 80 queries for 20 engineers)

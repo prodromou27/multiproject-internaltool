@@ -65,11 +65,11 @@ export default function WorkloadPlanning() {
           {engineer.weeks.map(week => <section key={week.start} style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: 12 }}>
             <h3 style={{ fontSize: 14 }}>{fmtDate(week.start)} – {fmtDate(week.end)}</h3>
             <p><strong>{week.capacity_percent === null ? 'Percentage unavailable' : `${week.capacity_percent}% estimated task/visit load`}</strong></p>
-            <p>{week.estimated_hours}h known effort / {week.available_hours === null ? 'availability not recorded' : `${week.available_hours}h net available`}</p>
-            <p className="text-muted text-sm">{week.item_count} items · {week.unknown_estimates} missing estimates</p>
+            <p>{week.estimated_hours}h weighted effort / {week.available_hours === null ? 'availability not recorded' : `${week.available_hours}h net available`}</p>
+            <p className="text-muted text-sm">{week.unweighted_hours}h before weighting / {week.item_count} items · {week.unknown_estimates} missing estimates with positive weight</p>
             <button className="btn btn-ghost btn-sm" onClick={() => setEdit({ type: 'availability', title: `${engineer.name} · ${fmtDate(week.start)}`, userId: engineer.id, week: week.start, version: week.availability_version, hours: week.available_hours })}>Set availability</button>
             {week.items.map(item => <div key={`${item.kind}:${item.id}`} style={{ padding: '8px 0', borderTop: '1px solid var(--gray-100)' }}>
-              <div className="text-sm">{item.title}</div><div className="text-muted text-sm">{item.kind} · {item.status.replaceAll('_',' ')} · {fmtDate(item.date)}</div>
+              <div className="text-sm">{item.title}</div><div className="text-muted text-sm">{Math.round(item.status_weight*100)}% status factor / {item.kind} · {item.status.replaceAll('_',' ')} · {fmtDate(item.date)}</div>
               <button className="btn btn-ghost btn-sm" onClick={() => setEdit({ type: 'estimate', title: item.title, kind: item.kind, id: item.id, version: item.estimate_version, hours: item.remaining_hours })}>{item.remaining_hours === null ? 'Add estimate' : `${item.remaining_hours}h · Edit estimate`}</button>
             </div>)}
             {week.items_total>week.items.length && <p className="text-muted text-sm">Showing {week.items.length} of {week.items_total}, missing estimates first; totals include every item.</p>}

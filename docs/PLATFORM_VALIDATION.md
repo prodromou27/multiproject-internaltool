@@ -6,15 +6,16 @@ screen or item in the redesign brief has been completed.
 
 ## Automated evidence
 
-- Server suite: 103 passed locally; 21 PostgreSQL-specific checks skipped locally.
+- Server suite: 107 passed locally; 21 PostgreSQL-specific checks skipped locally.
   CI runs those checks against PostgreSQL 16 as well as the in-memory backend.
 - Client suite: 11 passed; production Vite build passed.
 - Customer checks cover manager permissions, cross-customer links, source visits,
   recorded timeline pagination, mandatory recommendation history and atomic project
   conversion with stale/concurrent version protection.
 - Workload checks cover recorded estimates/availability, missing-data disclosures,
-  per-engineer visit effort and concurrent input saves. Counts and logged hours
-  do not substitute for capacity.
+  configurable status factors, manager-only versioned policy edits, per-engineer
+  visit effort, separate pressure components and concurrent input saves. Counts,
+  logged hours and pressure points do not substitute for capacity.
 - Report checks cover structural SQL restrictions, typed parameters, manager-only
   access, preview/export limits, Excel/CSV parity, formula escaping, saved-definition
   visibility/ownership/versioning and schedule recipient eligibility. Delivery
@@ -80,9 +81,6 @@ Still pending:
   screens using staging data; the synthetic smoke matrix covers a focused subset.
 - Wider engineer/planner recommendation capture and task conversion; the delivered
   initial recommendation workflow is management-only and converts to projects.
-- Configurable workload status weighting and a separate operational pressure model,
-  including report/follow-up demand. Current capacity covers recorded task/visit
-  effort and availability with explicit exclusions.
 - Remaining shared detail/calendar views and pagination of older large lists.
 - Further business/technical feature settings and a broader app-wide permission,
   performance and deployment acceptance pass.

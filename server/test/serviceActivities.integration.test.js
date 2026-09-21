@@ -161,6 +161,41 @@ test.after(async () => {
   Module.prototype.require = originalRequire;
 });
 
+test('workload pressure enforces manager access, policy versions and independent obligations', async () => {
+  const { defaults } = require('../workloadPolicy');
+  const path='/api/workload/pressure';
+  for (const role of ['engineer','planner','pm']) {
+    const id=(await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run(`Pressure ${role}`,`pressure-${role}@test.local`,bcrypt.hashSync('pw',4),role)).lastInsertRowid;
+    const token=signJwt({ id });
+    assert.equal((await api(path,{ token })).status,403);
+    assert.equal((await api(`${path}/policy`,{ token })).status,403);
+    assert.equal((await api(`${path}/policy`,{ method: 'PUT',token,body: { ...defaults(),version: 0 } })).status,403);
+  }
+  const original=(await api(`${path}/policy`,{ token: ids.tokenManager })).data.policy;
+  assert.equal(original.version,0);
+  const save=body => api(`${path}/policy`,{ method: 'PUT',token: ids.tokenManager,body });
+  assert.equal((await save({ ...defaults(),version: 0 })).data.version,1);
+  if (process.env.TEST_DATABASE_URL) assert.equal((await save({ ...defaults(),version: 0 })).status,409);
+  assert.equal((await save({ ...defaults(),version: 1 })).data.version,2);
+  assert.equal((await save({ ...defaults(),version: 1 })).status,409);
+  assert.equal((await save({ ...defaults(),version: 2,pressure: { overdue: '2' } })).status,400);
+  for (const query of ['as_of=2026-02-29','as_of=','as_of=2026-09-18&as_of=2026-09-19']) assert.equal((await api(`${path}?${query}`,{ token: ids.tokenManager })).status,400);
+  const engineer=(await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Pressure owner','pressure-owner@test.local',bcrypt.hashSync('pw',4),'engineer')).lastInsertRowid;
+  const task=(await db.prepare('INSERT INTO tasks (title,status,priority,deadline,assigned_to,created_by) VALUES (?,?,?,?,?,?)').run('Waiting pressure','waiting_customer','high','2026-09-17',engineer,ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO tasks (title,status,assigned_to,created_by) VALUES (?,?,?,?)').run('Terminal pressure','completed',engineer,ids.manager);
+  const visit=(await db.prepare('INSERT INTO maintenance_visits (title,customer_id,scheduled_date,status,created_by) VALUES (?,?,?,?,?)').run('Report pressure',ids.customer,'2026-09-17','completed',ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id,user_id) VALUES (?,?)').run(visit,engineer);
+  for (const [reference,linked] of [['PRESSURE-UNLINKED',null],['PRESSURE-LINKED',task]]) await db.prepare('INSERT INTO service_activities (activity_reference,customer_id,team_id,engineer_id,activity_date,category_id,title,created_by,follow_up_required,follow_up_task_id) VALUES (?,?,?,?,?,?,?,?,1,?)').run(reference,ids.customer,ids.teamEnabled,engineer,'2026-09-18',ids.category,reference,ids.manager,linked);
+  const response=await api(`${path}?as_of=2026-09-18`,{ token: ids.tokenManager });
+  assert.equal(response.status,200);
+  const result=response.data.engineers.find(row => row.id===engineer);
+  assert.equal(result.breakdown.task.count,1);
+  assert.equal(result.breakdown.visit.count,0);
+  assert.equal(result.breakdown.report.count,1);
+  assert.equal(result.breakdown.follow_up.count,1);
+  assert.equal(result.pressure_points,7.75);
+});
+
 test('engineer from a disabled team cannot access the service-activities module', async () => {
   const { status, data } = await api('/api/service-activities', { token: ids.tokenDisabled });
   assert.equal(status, 403);
