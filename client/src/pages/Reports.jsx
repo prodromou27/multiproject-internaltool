@@ -5,6 +5,9 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { api } from '../api';
+import { fmtHours, plural, buildMix, HoursHero, Ranking } from '../components/ServiceCharts';
+import { fmtDuration, mixOf } from '../components/activityLedger';
+import './ServiceReport.css';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../components/Shared';
 import ReportBuilder from '../components/ReportBuilder';
 
@@ -165,7 +168,7 @@ function ServiceActivityReportTab() {
   const [entityId, setEntityId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -173,9 +176,8 @@ function ServiceActivityReportTab() {
 
   function monthBounds(ym) {
     const [y, m] = ym.split('-').map(Number);
-    const start = `${ym}-01`;
-    const end = new Date(y, m, 0).toISOString().slice(0, 10);
-    return [start, end];
+    const lastDay = new Date(y, m, 0).getDate(); // local calendar, so no UTC day shift
+    return [`${ym}-01`, `${ym}-${String(lastDay).padStart(2, '0')}`];
   }
 
   useEffect(() => {
@@ -223,102 +225,90 @@ function ServiceActivityReportTab() {
     <div>
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="form-row">
-          <div className="form-group"><label>Report Type</label>
-            <select value={reportType} onChange={e => { setReportType(e.target.value); setEntityId(''); setResult(null); }}>
-              <option value="customer">Customer Activity Report</option>
-              <option value="engineer">Engineer Activity Report</option>
-              <option value="team">Team Activity Report</option>
-              <option value="monthly_msp">Monthly MSP Service Report</option>
+          <div className="form-group"><label htmlFor="sr-type">Report type</label>
+            <select id="sr-type" value={reportType} onChange={e => { setReportType(e.target.value); setEntityId(''); setResult(null); }}>
+              <option value="customer">Customer activity report</option>
+              <option value="engineer">Engineer activity report</option>
+              <option value="team">Team activity report</option>
+              <option value="monthly_msp">Monthly MSP service report</option>
             </select>
           </div>
           <div className="form-group">
-            <label>{isMonthly ? 'Customer' : reportType === 'customer' ? 'Customer' : reportType === 'engineer' ? 'Engineer' : 'Team'}</label>
-            <select value={entityId} onChange={e => setEntityId(e.target.value)}>
-              <option value="">Select…</option>
+            <label htmlFor="sr-entity">{isMonthly ? 'Customer' : reportType === 'customer' ? 'Customer' : reportType === 'engineer' ? 'Engineer' : 'Team'}</label>
+            <select id="sr-entity" value={entityId} onChange={e => setEntityId(e.target.value)}>
+              <option value="">Select one</option>
               {entityOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           </div>
         </div>
         {isMonthly ? (
-          <div className="form-group" style={{ maxWidth: 220 }}><label>Month</label>
-            <input type="month" value={month} onChange={e => setMonth(e.target.value)} />
+          <div className="form-group" style={{ maxWidth: 220 }}><label htmlFor="sr-month">Month</label>
+            <input id="sr-month" type="month" value={month} onChange={e => setMonth(e.target.value)} />
           </div>
         ) : (
           <div className="form-row">
-            <div className="form-group"><label>From</label><input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
-            <div className="form-group"><label>To</label><input type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
+            <div className="form-group"><label htmlFor="sr-from">From</label><input id="sr-from" type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
+            <div className="form-group"><label htmlFor="sr-to">To</label><input id="sr-to" type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
           </div>
         )}
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" onClick={runReport} disabled={!entityId || loading}>{loading ? 'Running…' : 'Run Report'}</button>
+          <button className="btn btn-primary" onClick={runReport} disabled={!entityId || loading}>{loading ? 'Running…' : 'Run report'}</button>
           {result && <button className="btn btn-ghost" onClick={exportReport}>Export to Excel</button>}
         </div>
       </div>
 
       {error && <div className="alert alert-warning">{error}</div>}
 
-      {result && isMonthly && (
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{customers.find(c => String(c.id) === String(entityId))?.name}</div>
-          <div className="text-sm text-muted">Monthly MSP Service Report — {new Date(month + '-02').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div>
-        </div>
-      )}
+      {result && (() => {
+        const sum = result.summary;
+        const name = entityOptions.find(o => String(o.id) === String(entityId))?.name;
+        const kind = isMonthly ? 'Monthly MSP service report'
+          : reportType === 'customer' ? 'Customer activity report'
+          : reportType === 'engineer' ? 'Engineer activity report' : 'Team activity report';
+        const period = isMonthly ? new Date(`${month}-02`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+          : from || to ? 'selected dates' : 'all dates';
+        const rankings = [
+          <Ranking key="cat" title="Hours by category" rows={sum.byCategory || []} valueKey="hours" format={fmtHours}
+            detail={r => plural(r.count, 'activity', 'activities')} />,
+          reportType !== 'engineer' && <Ranking key="eng" title="Hours by engineer" rows={sum.byEngineer || []} valueKey="hours" format={fmtHours} />,
+          (reportType === 'engineer' || reportType === 'team') && <Ranking key="cus" title="Hours by customer" rows={sum.byCustomer || []} valueKey="hours" format={fmtHours} />,
+          <Ranking key="tech" title="Activities by technology" note="Activities can carry more than one technology"
+            rows={sum.byTechnology || []} valueKey="count" format={n => String(n)} />,
+        ];
+        return (
+          <div className="svc-report">
+            <header className="svc-report-head">
+              <h2>{name}</h2>
+              <p>{kind}, {period}</p>
+            </header>
 
-      {result && (
-        <>
-          <div className="grid-4" style={{ marginBottom: 20 }}>
-            <div className="card stat"><div className="stat-value">{result.summary.total_activities}</div><div className="stat-label">Total Activities</div></div>
-            <div className="card stat"><div className="stat-value">{result.summary.total_hours}h</div><div className="stat-label">Total Hours</div></div>
-            <div className="card stat"><div className="stat-value">{result.summary.byCategory.length}</div><div className="stat-label">Categories Covered</div></div>
-            <div className="card stat"><div className="stat-value">{(result.summary.byCustomer || result.summary.byEngineer || []).length}</div><div className="stat-label">{reportType === 'customer' ? 'Engineers Involved' : 'Customers Touched'}</div></div>
-          </div>
+            <HoursHero hours={sum.total_hours} mix={buildMix(sum.byBillable)}
+              context={`${plural(sum.total_activities, 'activity', 'activities')} in this report.`} />
 
-          <div className="grid-2" style={{ marginBottom: 20, gap: 20 }}>
-            <ChartCard title="Hours by Category">
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={result.summary.byCategory} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="hours" name="Hours" fill="#0891b2" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-            <ChartCard title={reportType === 'engineer' ? 'Hours by Category' : 'Hours by Engineer'}>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={result.summary.byEngineer} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="hours" name="Hours" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-          </div>
+            {sum.total_activities > 0 && <div className="svc-report-grid">{rankings}</div>}
 
-          <div className="card table-wrap">
-            <table>
-              <thead><tr><th>Date</th><th>Engineer</th><th>Category</th><th>Activity</th><th>Duration</th><th>Billable</th><th>Ticket</th></tr></thead>
-              <tbody>
-                {result.rows.map((r, i) => (
-                  <tr key={i}>
-                    <td>{fmtDate(r.activity_date)}</td>
-                    <td>{r.engineer}</td>
-                    <td>{r.category}</td>
-                    <td>{r.title}</td>
-                    <td>{r.duration_minutes != null ? `${Math.floor(r.duration_minutes / 60)}h ${r.duration_minutes % 60}m` : '—'}</td>
-                    <td>{r.billable_classification || '—'}</td>
-                    <td>{r.ticket_reference || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {result.rows.length === 0 && <p className="text-muted" style={{ padding: 16 }}>No activities in this range.</p>}
+            <div className="card table-wrap">
+              <table>
+                <thead><tr><th>Date</th><th>Engineer</th><th>Category</th><th>Activity</th><th>Time</th><th>Billing</th><th>Ticket</th></tr></thead>
+                <tbody>
+                  {result.rows.map((r, i) => (
+                    <tr key={`${r.activity_date}-${i}`}>
+                      <td>{fmtDate(r.activity_date)}</td>
+                      <td>{r.engineer}</td>
+                      <td>{r.category}</td>
+                      <td>{r.title}</td>
+                      <td>{r.duration_minutes != null ? fmtDuration(r.duration_minutes) : 'Not set'}</td>
+                      <td>{r.billable_classification ? mixOf(r.billable_classification).label : 'Not set'}</td>
+                      <td>{r.ticket_reference || 'Not set'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {result.rows.length === 0 && <p className="text-muted" style={{ padding: 16 }}>No activities were logged for these dates.</p>}
+            </div>
           </div>
-        </>
-      )}
+        );
+      })()}
     </div>
   );
 }

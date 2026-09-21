@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { ClipboardList, Search, Copy, CheckCircle2, ListPlus, Paperclip, Upload, Trash2, Pencil, Flag, SlidersHorizontal, X } from 'lucide-react';
 import '../components/billingMix.css';
+import './ActivityForm.css';
 import { fmtDuration, MIX, mixOf, groupByDay, LedgerDay } from '../components/activityLedger';
 import { PageHeader } from '../components/PageLayout';
 import { useSearchParams } from 'react-router-dom';
@@ -34,6 +35,39 @@ const BILLABLE_LABELS = {
   internal: 'Internal', not_applicable: 'Not Applicable',
 };
 const WORK_LOCATION_LABELS = { remote: 'Remote', onsite: 'On-site', internal: 'Internal', hybrid: 'Hybrid' };
+
+/* A labelled control: the label is tied to the input so it reads aloud and focuses it. */
+function Field({ label, required, className, children }) {
+  const id = useId();
+  const [control, ...extra] = React.Children.toArray(children);
+  return (
+    <div className={'af-field' + (className ? ` ${className}` : '')}>
+      <label htmlFor={id}>{label}{required && <span className="af-req" aria-hidden="true"> *</span>}</label>
+      {React.cloneElement(control, { id })}
+      {extra}
+    </div>
+  );
+}
+
+/* Multi-select as toggle chips: every option is visible, no Ctrl-click needed. */
+function ChipGroup({ legend, required, options, selected, onToggle, disabled, scroll, status, statusIsError }) {
+  return (
+    <fieldset className="af-chipset" disabled={disabled}>
+      <legend>{legend}{required && <span className="af-req" aria-hidden="true"> *</span>}</legend>
+      <div className={'af-chips' + (scroll ? ' is-scroll' : '')}>
+        {options.map(o => (
+          <label key={o.id} className={'af-chip' + (selected.includes(o.id) ? ' is-on' : '')}>
+            <input type="checkbox" checked={selected.includes(o.id)} onChange={() => onToggle(o.id)} />
+            <span>{o.label}</span>
+            {o.detail && <small>{o.detail}</small>}
+            {o.note && <small className="af-chip-note">{o.note}</small>}
+          </label>
+        ))}
+      </div>
+      {status && <span className={statusIsError ? 'error-msg' : 'af-hint'} role={statusIsError ? 'alert' : 'status'}>{status}</span>}
+    </fieldset>
+  );
+}
 
 /* ── Quick Log / Edit Activity form ──────────────────────────────────── */
 function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
@@ -126,154 +160,177 @@ function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
     finally { setSaving(false); }
   }
 
+  const toggleIn = (key, value) => setForm(f => ({
+    ...f, [key]: f[key].includes(value) ? f[key].filter(x => x !== value) : [...f[key], value],
+  }));
+  const today = iso(new Date());
+  const yesterday = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return iso(d); })();
+  const minutes = form.duration_minutes === '' ? null : Number(form.duration_minutes);
+
   return (
-    <form onSubmit={submit}>
-      {err && <div className="error-msg">{err}</div>}
+    <form onSubmit={submit} className="af-form" noValidate={false}>
+      {err && <div className="error-msg" role="alert">{err}</div>}
       {conflict && <button type="button" className="btn btn-ghost" onClick={onReload}>Reload latest activity</button>}
-      <div className="form-group">
-        <label>Customer *</label>
-        <select value={form.customer_id} onChange={e => setForm(f => ({ ...f,customer_id:e.target.value,asset_ids:String(e.target.value)===String(initial?.customer_id || '') ? initial?.assets?.map(asset => asset.id) || [] : [] }))} required>
-          <option value="">Select a customer…</option>
-          {meta.customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-      </div>
-      <div className="form-row">
-        <div className="form-group"><label>Activity Date *</label>
-          <input type="date" value={form.activity_date} onChange={set('activity_date')} max={iso(new Date())} required />
-        </div>
-        <div className="form-group"><label>Duration (minutes){customer?.require_duration ? ' *' : ''}</label>
-          <input type="number" min="1" max="1440" step="1" required={!!customer?.require_duration} value={form.duration_minutes} onChange={set('duration_minutes')} placeholder="e.g. 90" />
-        </div>
-      </div>
-      <div className="form-row">
-        <div className="form-group"><label>Category *</label>
-          <select value={form.category_id} onChange={e => setForm(f => ({ ...f, category_id: e.target.value, subcategory_id: '' }))} required>
-            <option value="">Select…</option>
+
+      <div className="af-grid">
+        <Field label="Customer" required className="af-wide">
+          <select value={form.customer_id} required
+            onChange={e => setForm(f => ({ ...f, customer_id: e.target.value, asset_ids: String(e.target.value) === String(initial?.customer_id || '') ? initial?.assets?.map(asset => asset.id) || [] : [] }))}>
+            <option value="">Select a customer</option>
+            {meta.customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+
+        <Field label="Title" required className="af-wide">
+          <input value={form.title} onChange={set('title')} maxLength={300} required placeholder="What did you do?" />
+        </Field>
+
+        <Field label="Category" required>
+          <select value={form.category_id} required onChange={e => setForm(f => ({ ...f, category_id: e.target.value, subcategory_id: '' }))}>
+            <option value="">Select a category</option>
             {meta.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-        </div>
-        <div className="form-group"><label>Status</label>
+        </Field>
+
+        <Field label="Status">
           <select value={form.status} onChange={set('status')}>
             {meta.statuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
-        </div>
-      </div>
-      <div className="form-group"><label>Title *</label>
-        <input value={form.title} onChange={set('title')} maxLength={300} required placeholder="Short summary of the work performed" />
-      </div>
-      <div className="form-group"><label>Notes{customer?.require_notes ? ' *' : ''}</label>
-        <textarea required={!!customer?.require_notes} maxLength={10000} value={form.description} onChange={set('description')} rows={3} placeholder="Details, actions taken, outcome…" />
+        </Field>
+
+        <Field label="Date" required>
+          <input type="date" value={form.activity_date} onChange={set('activity_date')} max={today} required />
+          <span className="af-quick">
+            {[['Today', today], ['Yesterday', yesterday]].map(([label, value]) => (
+              <button key={label} type="button" aria-pressed={form.activity_date === value} onClick={() => setForm(f => ({ ...f, activity_date: value }))}>{label}</button>
+            ))}
+          </span>
+        </Field>
+
+        <Field label="Time spent (minutes)" required={!!customer?.require_duration}>
+          <input type="number" min="1" max="1440" step="1" required={!!customer?.require_duration}
+            value={form.duration_minutes} onChange={set('duration_minutes')} placeholder="For example, 90" />
+          <span className="af-quick">
+            {[[30, '30m'], [60, '1h'], [90, '1h 30m'], [120, '2h']].map(([value, label]) => (
+              <button key={value} type="button" aria-pressed={minutes === value} onClick={() => setForm(f => ({ ...f, duration_minutes: value }))}>{label}</button>
+            ))}
+          </span>
+        </Field>
+
+        <Field label="Notes" required={!!customer?.require_notes} className="af-wide">
+          <textarea required={!!customer?.require_notes} maxLength={10000} value={form.description} onChange={set('description')} rows={3}
+            placeholder="Actions taken and the outcome" />
+        </Field>
       </div>
 
-      <details className="column-picker" open={showMore || requiredDetails} onToggle={e => setShowMore(e.target.open)} style={{ marginTop: 4 }}>
-        <summary className="btn btn-ghost btn-sm" style={{ display: 'inline-block' }}>
-          {showMore ? 'Hide' : 'Show'} More Details
-        </summary>
-        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--gray-100)' }}>
+      <details className="af-more" open={showMore || requiredDetails} onToggle={e => setShowMore(e.target.open)}>
+        <summary>More details</summary>
+
+        <fieldset className="af-group">
+          <legend>Classification</legend>
           {subcategories.length > 0 && (
-            <div className="form-group"><label>Subcategory</label>
+            <Field label="Subcategory">
               <select value={form.subcategory_id} onChange={set('subcategory_id')}>
                 <option value="">None</option>
                 {subcategories.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
-            </div>
+            </Field>
           )}
-          <div className="form-group"><label>Technology{customer?.require_technology ? ' *' : ''}</label>
-            <select multiple value={form.technology_ids.map(String)}
-              onChange={e => setForm(f => ({ ...f, technology_ids: [...e.target.selectedOptions].map(o => Number(o.value)) }))}
-              style={{ minHeight: 80 }}>
-              {meta.technologies.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          <Field label="Billing" required={!!customer?.require_billable_classification}>
+            <select required={!!customer?.require_billable_classification} value={form.billable_classification} onChange={set('billable_classification')}>
+              <option value="">Not specified</option>
+              {Object.entries(BILLABLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-          </div>
-          <div className="form-group"><label>Customer assets</label>
-            <select multiple value={form.asset_ids.map(String)} disabled={assetsLoading || !!assetsError}
-              onChange={e => setForm(f => ({ ...f,asset_ids:[...e.target.selectedOptions].map(option => Number(option.value)) }))}
-              style={{ minHeight:80 }} aria-describedby={assetsError ? 'activity-assets-error' : undefined}>
-              {assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name} · {asset.asset_type}{asset.hostname ? ` · ${asset.hostname}` : ''}{asset.lifecycle_status==='retired' || asset.lifecycle_status==='decommissioned' ? ` (${asset.lifecycle_status})` : ''}</option>)}
-            </select>
-            {assetsLoading && <span className="text-muted text-sm" role="status">Loading assets…</span>}
-            {assetsError && <span id="activity-assets-error" className="error-msg" role="alert">{assetsError}</span>}
-            {!assetsLoading && !assetsError && form.customer_id && !assets.length && <span className="text-muted text-sm">No active assets recorded for this customer.</span>}
-          </div>
-          <div className="form-row">
-            <div className="form-group"><label>Start Time</label><input type="time" value={form.start_time} onChange={set('start_time')} /></div>
-            <div className="form-group"><label>End Time</label><input type="time" value={form.end_time} onChange={set('end_time')} /></div>
-          </div>
-          <div className="form-row">
-            <div className="form-group"><label>Work Location</label>
+          </Field>
+          <ChipGroup legend="Technology" required={!!customer?.require_technology}
+            options={meta.technologies.map(t => ({ id: t.id, label: t.name }))}
+            selected={form.technology_ids} onToggle={id => toggleIn('technology_ids', id)} />
+        </fieldset>
+
+        <fieldset className="af-group">
+          <legend>Where and when</legend>
+          <div className="af-grid">
+            <Field label="Start time"><input type="time" value={form.start_time} onChange={set('start_time')} /></Field>
+            <Field label="End time"><input type="time" value={form.end_time} onChange={set('end_time')} /></Field>
+            <Field label="Work location">
               <select value={form.work_location} onChange={set('work_location')}>
                 <option value="">Not specified</option>
                 {Object.entries(WORK_LOCATION_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
-            </div>
-            <div className="form-group"><label>Billable Classification{customer?.require_billable_classification ? ' *' : ''}</label>
-              <select required={!!customer?.require_billable_classification} value={form.billable_classification} onChange={set('billable_classification')}>
-                <option value="">Not specified</option>
-                {Object.entries(BILLABLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
+            </Field>
           </div>
-          <div className="form-row">
-            <div className="form-group"><label>Ticket Reference{customer?.require_ticket_reference ? ' *' : ''}</label><input value={form.ticket_reference} onChange={set('ticket_reference')} /></div>
-            <div className="form-group"><label>Customer Impact</label><input value={form.customer_impact} onChange={set('customer_impact')} /></div>
+        </fieldset>
+
+        <fieldset className="af-group">
+          <legend>References</legend>
+          <div className="af-grid">
+            <Field label="Ticket reference" required={!!customer?.require_ticket_reference}>
+              <input value={form.ticket_reference} onChange={set('ticket_reference')} />
+            </Field>
+            <Field label="Customer impact"><input value={form.customer_impact} onChange={set('customer_impact')} /></Field>
           </div>
-          <div className="form-group">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
-              <input type="checkbox" checked={form.follow_up_required}
-                onChange={e => setForm(f => ({ ...f, follow_up_required: e.target.checked }))} style={{ width: 'auto' }} />
-              Follow-Up Required
-            </label>
-          </div>
-          {form.follow_up_required && (
-            <div className="form-group"><label>Follow-Up Date *</label>
-              <input type="date" value={form.follow_up_date} onChange={set('follow_up_date')} required />
-            </div>
+          {form.customer_id && (
+            <ChipGroup legend="Customer assets" scroll
+              options={assets.map(asset => ({
+                id: asset.id,
+                label: asset.name,
+                detail: asset.hostname || asset.asset_type,
+                note: asset.lifecycle_status === 'retired' || asset.lifecycle_status === 'decommissioned' ? asset.lifecycle_status : '',
+              }))}
+              selected={form.asset_ids} onToggle={id => toggleIn('asset_ids', id)}
+              disabled={assetsLoading || !!assetsError}
+              status={assetsLoading ? 'Loading assets…' : assetsError || (!assets.length ? 'No active assets recorded for this customer.' : '')}
+              statusIsError={!!assetsError} />
           )}
-        </div>
+        </fieldset>
+
+        <fieldset className="af-group">
+          <legend>Follow-up</legend>
+          <label className="af-check">
+            <input type="checkbox" checked={form.follow_up_required}
+              onChange={e => setForm(f => ({ ...f, follow_up_required: e.target.checked }))} />
+            This needs a follow-up
+          </label>
+          {form.follow_up_required && (
+            <Field label="Follow up by" required>
+              <input type="date" value={form.follow_up_date} onChange={set('follow_up_date')} required />
+            </Field>
+          )}
+        </fieldset>
       </details>
 
       {isChangeCategory && (
-        <details className="column-picker" open={showChangeDetails} onToggle={e => setShowChangeDetails(e.target.open)} style={{ marginTop: 8 }}>
-          <summary className="btn btn-ghost btn-sm" style={{ display: 'inline-block' }}>
-            {showChangeDetails ? 'Hide' : 'Show'} Change Details
-          </summary>
-          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--gray-100)' }}>
-            <div className="form-row">
-              <div className="form-group"><label>Change Type</label><input value={form.change_type} onChange={set('change_type')} placeholder="e.g. Firewall rule update" /></div>
-              <div className="form-group"><label>Risk</label>
-                <select value={form.change_risk} onChange={set('change_risk')}>
-                  <option value="">Not specified</option>
-                  <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
-                </select>
-              </div>
-            </div>
-            <div className="form-group"><label>Change Reason</label><textarea value={form.change_reason} onChange={set('change_reason')} rows={2} /></div>
-            <div className="form-row">
-              <div className="form-group"><label>Previous State</label><textarea value={form.previous_state} onChange={set('previous_state')} rows={2} /></div>
-              <div className="form-group"><label>New State</label><textarea value={form.new_state} onChange={set('new_state')} rows={2} /></div>
-            </div>
-            <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
-                <input type="checkbox" checked={form.rollback_available}
-                  onChange={e => setForm(f => ({ ...f, rollback_available: e.target.checked }))} style={{ width: 'auto' }} />
-                Rollback Available
-              </label>
-            </div>
-            <div className="form-group"><label>Customer Approval Reference</label><input value={form.customer_approval_reference} onChange={set('customer_approval_reference')} /></div>
-            <div className="form-group"><label>Verification Notes</label><textarea value={form.verification_notes} onChange={set('verification_notes')} rows={2} /></div>
+        <details className="af-more" open={showChangeDetails} onToggle={e => setShowChangeDetails(e.target.open)}>
+          <summary>Change details</summary>
+          <div className="af-grid">
+            <Field label="Change type"><input value={form.change_type} onChange={set('change_type')} placeholder="For example, firewall rule update" /></Field>
+            <Field label="Risk">
+              <select value={form.change_risk} onChange={set('change_risk')}>
+                <option value="">Not specified</option>
+                <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+              </select>
+            </Field>
+            <Field label="Reason" className="af-wide"><textarea value={form.change_reason} onChange={set('change_reason')} rows={2} /></Field>
+            <Field label="Previous state"><textarea value={form.previous_state} onChange={set('previous_state')} rows={2} /></Field>
+            <Field label="New state"><textarea value={form.new_state} onChange={set('new_state')} rows={2} /></Field>
+            <Field label="Customer approval reference"><input value={form.customer_approval_reference} onChange={set('customer_approval_reference')} /></Field>
+            <Field label="Verification notes"><textarea value={form.verification_notes} onChange={set('verification_notes')} rows={2} /></Field>
           </div>
+          <label className="af-check">
+            <input type="checkbox" checked={form.rollback_available}
+              onChange={e => setForm(f => ({ ...f, rollback_available: e.target.checked }))} />
+            A rollback is available
+          </label>
         </details>
       )}
 
       {category?.require_attachment && (
-        <div className="alert alert-warning" style={{ marginTop: 8 }}>
-          This category requires at least one attachment before the activity can be marked Completed.
-        </div>
+        <p className="af-note">This category needs at least one attachment before the activity can be marked completed. You can add it after saving.</p>
       )}
 
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+      <div className="af-footer">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save Activity'}</button>
+        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : initial ? 'Save changes' : 'Log activity'}</button>
       </div>
     </form>
   );
@@ -324,89 +381,105 @@ function ActivityDetailModal({ id, allowAttachments, onClose, onChanged }) {
     ? <div className="error-msg" role="alert">{loadError}<button className="btn btn-ghost btn-sm" onClick={load}>Retry</button></div>
     : <p className="text-muted">Loading…</p>}</Modal>;
 
+  const mix = mixOf(activity.billable_classification);
+  const fact = (label, value) => (
+    <div className="ad-fact"><dt>{label}</dt><dd>{value || <span className="ad-none">Not set</span>}</dd></div>
+  );
+
   return (
     <Modal title={activity.activity_reference} onClose={onClose} wide>
       {loadError && <div className="error-msg" role="alert">{loadError}<button className="btn btn-ghost btn-sm" onClick={load}>Retry</button></div>}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <strong style={{ fontSize: 16 }}>{activity.title}</strong>
+      <div className="ad">
+        <div className="ad-head">
+          <h3>{activity.title}</h3>
           <StatusBadge entityType="service_activity" s={activity.status} />
         </div>
-        <div className="grid-2" style={{ gap: 8 }}>
-          <div><span className="text-muted">Customer</span><div>{activity.customer_name}</div></div>
-          <div><span className="text-muted">Engineer</span><div>{activity.engineer_name}</div></div>
-          <div><span className="text-muted">Date</span><div>{fmtDate(activity.activity_date)}</div></div>
-          <div><span className="text-muted">Duration</span><div>{fmtDuration(activity.duration_minutes)}</div></div>
-          <div><span className="text-muted">Category</span><div>{activity.category_name}{activity.subcategory_name ? ` / ${activity.subcategory_name}` : ''}</div></div>
-          <div><span className="text-muted">Billable</span><div>{BILLABLE_LABELS[activity.billable_classification] || '—'}</div></div>
-          <div><span className="text-muted">Work Location</span><div>{WORK_LOCATION_LABELS[activity.work_location] || '—'}</div></div>
-          <div><span className="text-muted">Ticket Reference</span><div>{activity.ticket_reference || '—'}</div></div>
-        </div>
-        {activity.description && <div><span className="text-muted">Notes</span><p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{activity.description}</p></div>}
-        {activity.technologies?.length > 0 && (
-          <div><span className="text-muted">Technologies</span>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-              {activity.technologies.map(t => <span key={t.id} className="badge badge-active">{t.name}</span>)}
-            </div>
-          </div>
-        )}
-        {activity.assets?.length > 0 && <div><span className="text-muted">Customer assets</span><div style={{ display:'flex',gap:6,flexWrap:'wrap',marginTop:4 }}>{activity.assets.map(asset => <span key={asset.id} className="badge badge-active">{asset.name}{asset.hostname ? ` · ${asset.hostname}` : ''}</span>)}</div></div>}
-        {(activity.related_project_title || activity.related_task_title || activity.related_visit_title) && (
-          <div><span className="text-muted">Related</span>
-            <div style={{ marginTop: 4 }}>
-              {activity.related_project_title && <div>Project: {activity.related_project_title}</div>}
-              {activity.related_task_title && <div>Task: {activity.related_task_title}</div>}
-              {activity.related_visit_title && <div>Maintenance Visit: {activity.related_visit_title}</div>}
-            </div>
-          </div>
-        )}
+
         {activity.follow_up_required ? (
-          <div className="alert alert-warning">Follow-up required by {fmtDate(activity.follow_up_date)}</div>
+          <p className="ad-followup"><Flag size={14} aria-hidden="true" />
+            {`Follow up by ${fmtDate(activity.follow_up_date)}${activity.follow_up_task_title ? `, task: ${activity.follow_up_task_title}` : ''}`}</p>
         ) : null}
-        {activity.follow_up_task_title && <div><span className="text-muted">Follow-up Task</span><div>{activity.follow_up_task_title}</div></div>}
+
+        <dl className="ad-facts">
+          {fact('Customer', activity.customer_name)}
+          {fact('Engineer', activity.engineer_name)}
+          {fact('Date', fmtDate(activity.activity_date))}
+          {fact('Time spent', activity.duration_minutes ? fmtDuration(activity.duration_minutes) : '')}
+          {fact('Category', activity.category_name ? `${activity.category_name}${activity.subcategory_name ? `, ${activity.subcategory_name}` : ''}` : '')}
+          {fact('Billing', activity.billable_classification
+            ? <span className="ad-mix"><span className="al-swatch" style={{ background: mix.color }} aria-hidden="true" />{mix.label}</span> : '')}
+          {fact('Work location', WORK_LOCATION_LABELS[activity.work_location])}
+          {fact('Ticket', activity.ticket_reference)}
+        </dl>
+
+        {activity.description && <section className="ad-block"><h4>Notes</h4><p>{activity.description}</p></section>}
+
+        {(activity.technologies?.length > 0 || activity.assets?.length > 0) && (
+          <section className="ad-block">
+            {activity.technologies?.length > 0 && (
+              <><h4>Technology</h4><ul className="ad-chips">{activity.technologies.map(t => <li key={t.id}>{t.name}</li>)}</ul></>
+            )}
+            {activity.assets?.length > 0 && (
+              <><h4>Customer assets</h4><ul className="ad-chips">{activity.assets.map(asset => <li key={asset.id}>{asset.name}{asset.hostname ? `, ${asset.hostname}` : ''}</li>)}</ul></>
+            )}
+          </section>
+        )}
+
+        {(activity.related_project_title || activity.related_task_title || activity.related_visit_title) && (
+          <section className="ad-block">
+            <h4>Related work</h4>
+            <ul className="ad-list">
+              {activity.related_project_title && <li>Project: {activity.related_project_title}</li>}
+              {activity.related_task_title && <li>Task: {activity.related_task_title}</li>}
+              {activity.related_visit_title && <li>Maintenance visit: {activity.related_visit_title}</li>}
+            </ul>
+          </section>
+        )}
 
         {(activity.change_type || activity.change_reason || activity.previous_state || activity.new_state) && (
-          <div><span className="text-muted">Change Details</span>
-            <div style={{ marginTop: 4, fontSize: 12 }}>
-              {activity.change_type && <div><strong>Type:</strong> {activity.change_type}</div>}
-              {activity.change_risk && <div><strong>Risk:</strong> {activity.change_risk}</div>}
-              {activity.change_reason && <div><strong>Reason:</strong> {activity.change_reason}</div>}
-              {activity.previous_state && <div><strong>Previous State:</strong> {activity.previous_state}</div>}
-              {activity.new_state && <div><strong>New State:</strong> {activity.new_state}</div>}
-              <div><strong>Rollback Available:</strong> {activity.rollback_available ? 'Yes' : 'No'}</div>
-              {activity.customer_approval_reference && <div><strong>Customer Approval:</strong> {activity.customer_approval_reference}</div>}
-            </div>
-          </div>
+          <section className="ad-block">
+            <h4>Change details</h4>
+            <dl className="ad-facts">
+              {fact('Type', activity.change_type)}
+              {fact('Risk', activity.change_risk && activity.change_risk[0].toUpperCase() + activity.change_risk.slice(1))}
+              {fact('Reason', activity.change_reason)}
+              {fact('Previous state', activity.previous_state)}
+              {fact('New state', activity.new_state)}
+              {fact('Rollback available', activity.rollback_available ? 'Yes' : 'No')}
+              {activity.customer_approval_reference && fact('Customer approval', activity.customer_approval_reference)}
+            </dl>
+          </section>
         )}
 
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <span className="text-muted"><Paperclip size={12} style={{ verticalAlign: -1 }} /> Attachments</span>
+        <section className="ad-block">
+          <div className="ad-attach-head">
+            <h4><Paperclip size={13} aria-hidden="true" /> Attachments</h4>
             {allowAttachments !== false && (
-              <label className="btn btn-ghost btn-sm" style={{ cursor: 'pointer' }}>
-                <Upload size={12} /> {uploading ? 'Uploading…' : 'Upload'}
+              <label className="btn btn-ghost btn-sm ad-upload">
+                <Upload size={13} aria-hidden="true" /> {uploading ? 'Uploading…' : 'Upload a file'}
                 <input type="file" hidden onChange={handleUpload} disabled={uploading} />
               </label>
             )}
           </div>
           {attachments.length === 0
-            ? <p className="text-muted" style={{ fontSize: 12 }}>No attachments yet.</p>
-            : attachments.map(a => (
-              <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid var(--gray-100)' }}>
-                <button type="button" onClick={() => handleDownload(a)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontSize: 12, padding: 0, textAlign: 'left' }}>
-                  {a.original_name}
-                </button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleDeleteAttachment(a.id)} title="Delete"><Trash2 size={12} /></button>
-              </div>
-            ))}
-        </div>
+            ? <p className="ad-none">No attachments yet.</p>
+            : (
+              <ul className="ad-files">
+                {attachments.map(a => (
+                  <li key={a.id}>
+                    <button type="button" className="ad-file" onClick={() => handleDownload(a)}>{a.original_name}</button>
+                    <button type="button" className="ad-remove" aria-label={`Remove ${a.original_name}`} title="Remove" onClick={() => handleDeleteAttachment(a.id)}><Trash2 size={14} aria-hidden="true" /></button>
+                  </li>
+                ))}
+              </ul>
+            )}
+        </section>
 
-        <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
-          Created {fmtDateTime(activity.created_at)}{activity.completed_at ? ` · Completed ${fmtDateTime(activity.completed_at)}` : ''}
-        </div>
+        <p className="ad-stamp">
+          Logged {fmtDateTime(activity.created_at)}{activity.completed_at ? `, completed ${fmtDateTime(activity.completed_at)}` : ''}
+        </p>
       </div>
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+      <div className="af-footer">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
       </div>
     </Modal>
@@ -750,7 +823,7 @@ export default function ActivityLog() {
       )}
 
       {showForm && meta && (
-        <Modal title="Log Activity" onClose={() => setShowForm(false)}>
+        <Modal title="Log activity" onClose={() => setShowForm(false)}>
           <ActivityForm meta={meta} onSave={handleCreate} onClose={() => setShowForm(false)} />
         </Modal>
       )}
