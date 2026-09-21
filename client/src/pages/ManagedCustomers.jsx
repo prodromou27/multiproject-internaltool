@@ -46,9 +46,9 @@ function TicketFilters({ filters,setFilters,facets }) {
   </div>;
 }
 
-function Distribution({ title,rows }) {
-  const max=Math.max(...rows.map(row => row.count),1);
-  return <section className="card" style={{ padding:18 }}><h3 style={{ fontSize:14,marginBottom:14 }}>{title}</h3>{rows.some(row => row.count) ? <div style={{ display:'grid',gap:10 }}>{rows.filter(row => row.count).map(row => <div key={row.name}><div className="text-sm" style={{ display:'flex',justifyContent:'space-between',gap:12 }}><span>{row.name}</span><strong>{row.count}</strong></div><div className="progress-bar" style={{ height:6,marginTop:5 }}><div className="progress-bar-fill" style={{ width:`${row.count/max*100}%` }} /></div></div>)}</div> : <p className="text-muted text-sm">No matching tickets.</p>}</section>;
+function Distribution({ title,rows,valueKey='count',format=value => value }) {
+  const max=Math.max(...rows.map(row => row[valueKey]),1);
+  return <section className="card" style={{ padding:18 }}><h3 style={{ fontSize:14,marginBottom:14 }}>{title}</h3>{rows.some(row => row[valueKey]) ? <div style={{ display:'grid',gap:10 }}>{rows.filter(row => row[valueKey]).map(row => <div key={row.name}><div className="text-sm" style={{ display:'flex',justifyContent:'space-between',gap:12 }}><span>{row.name}</span><strong>{format(row[valueKey])}</strong></div><div className="progress-bar" style={{ height:6,marginTop:5 }}><div className="progress-bar-fill" style={{ width:`${row[valueKey]/max*100}%` }} /></div></div>)}</div> : <p className="text-muted text-sm">No matching records.</p>}</section>;
 }
 
 function TicketAnalytics({ id,range,refresh }) {
@@ -92,14 +92,36 @@ function Tickets({ id,range,refresh }) {
   </>;
 }
 
+const activityLabel=value => String(value || 'Not set').replaceAll('_',' ').replace(/\b\w/g,letter => letter.toUpperCase());
+function Activities({ id,range,refresh }) {
+  const [page,setPage]=useState(1),[data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState('');
+  useEffect(() => {
+    if (!range.from || !range.to) { setData(null);setLoading(false);return; }
+    const controller=new AbortController();setLoading(true);setError('');
+    api.managedCustomerActivities(id,{ ...range,page,page_size:25 },{ signal:controller.signal }).then(setData).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  },[id,range,page,refresh]);
+  useEffect(() => setPage(1),[range]);
+  if (!range.from || !range.to) return <div className="card empty"><p>Select both custom dates to load service activities.</p></div>;
+  if (error) return <div className="error-msg" role="alert">{error}</div>;
+  if (!data) return <div className="skeleton-table"><span /><span /><span /></div>;
+  if (!data.enabled) return <div className="card empty"><p>Service Activity Tracking is disabled for this managed customer.</p></div>;
+  const pages=Math.max(1,Math.ceil(data.total/data.page_size)),hours=minutes => `${Math.round(Number(minutes)/6)/10}h`;
+  return <><h2 style={{ fontSize:15,marginBottom:10 }}>Selected period · {range.from} to {range.to}</h2><div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:18 }}><Metric label="Service activities" value={data.summary.activities} /><Metric label="Logged hours" value={`${data.summary.hours}h`} /></div>
+    <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:12,marginBottom:22 }}><Distribution title="Hours by category" rows={data.breakdowns.categories} valueKey="minutes" format={hours} /><Distribution title="Hours by engineer" rows={data.breakdowns.engineers} valueKey="minutes" format={hours} /><Distribution title="Activities by technology" rows={data.breakdowns.technologies} /><Distribution title="Activities by location" rows={data.breakdowns.locations.map(row => ({ ...row,name:activityLabel(row.name) }))} /><Distribution title="Hours by billing" rows={data.breakdowns.billing.map(row => ({ ...row,name:activityLabel(row.name) }))} valueKey="minutes" format={hours} /></div>
+    {!data.rows.length ? <div className="card empty"><p>No service activities were recorded in this period.</p></div> : <div className="card table-wrap"><table><thead><tr><th>Date</th><th>Reference</th><th>Activity</th><th>Engineer</th><th>Category</th><th>Status</th><th>Location</th><th>Hours</th><th>Billing</th></tr></thead><tbody>{data.rows.map(row => <tr key={row.id}><td>{row.activity_date}</td><td>{row.activity_reference}</td><td>{row.title}</td><td>{row.engineer_name}</td><td>{row.category_name}</td><td>{activityLabel(row.status)}</td><td>{activityLabel(row.work_location)}</td><td>{hours(row.duration_minutes || 0)}</td><td>{activityLabel(row.billable_classification)}</td></tr>)}</tbody></table></div>}
+    <nav className="approval-pagination" aria-label="Activity pages"><span>{data.total} activit{data.total===1?'y':'ies'} · Page {data.page} of {pages}</span><button className="btn btn-ghost btn-sm" disabled={loading || page===1} onClick={() => setPage(value => value-1)}>Previous</button><button className="btn btn-ghost btn-sm" disabled={loading || page>=pages} onClick={() => setPage(value => value+1)}>Next</button></nav>
+  </>;
+}
+
 function Dashboard({ id }) {
   const [tab,setTab]=useState('overview'),[preset,setPreset]=useState('month'),[from,setFrom]=useState(''),[to,setTo]=useState(''),[data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const range=useMemo(() => period(preset,from,to),[preset,from,to]);
   useEffect(() => { if (!range.from || !range.to) return;const controller=new AbortController();setLoading(true);setError('');api.managedCustomerOverview(id,range,{ signal:controller.signal }).then(setData).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });return () => controller.abort(); },[id,range,retry]);
   return <div className="page"><div className="page-header"><div><Link to="/managed-customers" className="text-muted text-sm" style={{ display:'inline-flex',gap:4,alignItems:'center',marginBottom:6 }}><ArrowLeft size={13} /> Managed Customers</Link><h1 className="page-title">{data?.customer?.name || 'Managed customer'}</h1><p className="text-muted text-sm mt-4">{data?.customer?.responsible_team || 'No responsible team'} · {data?.customer?.service_manager || 'No service manager'} · Last ticket sync: {data?.customer?.last_successful_sync_at || 'Never'}</p></div></div>
-    <div className="tabs" role="tablist" aria-label="Managed customer sections"><button className={`tab${tab==='overview'?' active':''}`} role="tab" aria-selected={tab==='overview'} onClick={() => setTab('overview')}>Overview</button><button className={`tab${tab==='tickets'?' active':''}`} role="tab" aria-selected={tab==='tickets'} onClick={() => setTab('tickets')}>Tickets</button></div>
+    <div className="tabs" role="tablist" aria-label="Managed customer sections">{[['overview','Overview'],['tickets','Tickets'],['activities','Activities']].map(([key,label]) => <button key={key} className={`tab${tab===key?' active':''}`} role="tab" aria-selected={tab===key} onClick={() => setTab(key)}>{label}</button>)}</div>
     <div className="filter-bar" style={{ marginBottom:18 }}>{[['today','Today'],['week','This week'],['month','This month'],['last_month','Last month'],['quarter','Current quarter'],['previous_quarter','Previous quarter'],['year','Current year'],['custom','Custom']].map(([key,label]) => <button key={key} className={`filter-pill${preset===key?' active':''}`} onClick={() => setPreset(key)}>{label}</button>)}{preset==='custom' && <><input type="date" value={from} onChange={event => setFrom(event.target.value)} /><input type="date" value={to} onChange={event => setTo(event.target.value)} /></>}<button className="btn btn-ghost btn-sm" onClick={() => setRetry(value => value+1)}><RefreshCw size={13} /> Refresh</button></div>
-    {tab==='tickets' ? <Tickets id={id} range={range} refresh={retry} /> : <>
+    {tab==='tickets' ? <Tickets id={id} range={range} refresh={retry} /> : tab==='activities' ? <Activities id={id} range={range} refresh={retry} /> : <>
       {error ? <div className="error-msg" role="alert">{error}</div> : loading && !data ? <div className="skeleton-table"><span /><span /><span /></div> : data && <><h2 style={{ fontSize:15,marginBottom:10 }}>Current state</h2><div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:22 }}><Metric label="Open tickets now" value={data.tickets.open_now} /><Metric label="Pending tickets now" value={data.tickets.pending_now} /><Metric label="High / critical open" value={data.tickets.high_priority_open} /><Metric label="Open tasks now" value={data.tasks.open_now} /><Metric label="Active projects now" value={data.projects.active_now} /><Metric label="Open recommendations now" value={data.recommendations.open_now} /><Metric label="Overdue tasks now" value={data.tasks.overdue_now} /><Metric label="Open SLA breaches" value={data.tickets.sla_breached_open} /></div><h2 style={{ fontSize:15,marginBottom:10 }}>Selected period · {data.period.from} to {data.period.to}</h2><div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12 }}><Metric label="Tickets created" value={data.tickets.created_period} /><Metric label="Tickets resolved" value={data.tickets.resolved_period} /><Metric label="Service activities" value={data.activities.activities} /><Metric label="Service hours" value={data.activities.hours} /><Metric label="Maintenance visits" value={data.visits.visits_period} /></div></>}
     </>}
   </div>;

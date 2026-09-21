@@ -111,4 +111,30 @@ async function getTicketAnalytics(customerId,from,to,store=db,now=new Date()) {
   return { period:{ from,to,...period },current:{ total_open:rows(statuses).reduce((sum,row) => sum+row.count,0),statuses:rows(statuses),priorities:rows(priorities),owners:rows(owners,'Unassigned'),aging } };
 }
 
-module.exports={ listManagedCustomers,getOverview,listTickets,getTicketAnalytics };
+async function getActivities(customerId,from,to,{ page=1,pageSize=25,offset=0 }={},store=db) {
+  const managed=await store.prepare(`SELECT c.service_activity_enabled AS enabled FROM managed_customer_configurations mc
+    JOIN customers c ON c.id=mc.customer_id WHERE mc.customer_id=? AND mc.managed_services_enabled=1 AND c.active=1`).get(customerId);
+  if (!managed) return null;
+  const empty={ enabled:false,summary:{ activities:0,minutes:0,hours:0 },breakdowns:{ categories:[],technologies:[],engineers:[],locations:[],billing:[] },rows:[],total:0,page,page_size:pageSize };
+  if (!managed.enabled) return empty;
+  const range=[customerId,from,to];
+  const [summary,categories,technologies,engineers,locations,billing,rows,count]=await Promise.all([
+    store.prepare('SELECT COUNT(*) AS activities,COALESCE(SUM(duration_minutes),0) AS minutes FROM service_activities WHERE customer_id=? AND activity_date BETWEEN ? AND ?').get(...range),
+    store.prepare(`SELECT cat.name,COUNT(*) AS count,COALESCE(SUM(sa.duration_minutes),0) AS minutes FROM service_activities sa
+      JOIN activity_categories cat ON cat.id=sa.category_id WHERE sa.customer_id=? AND sa.activity_date BETWEEN ? AND ? GROUP BY cat.name ORDER BY minutes DESC,cat.name`).all(...range),
+    store.prepare(`SELECT tech.name,COUNT(*) AS count FROM service_activities sa JOIN service_activity_technologies sat ON sat.service_activity_id=sa.id
+      JOIN technologies tech ON tech.id=sat.technology_id WHERE sa.customer_id=? AND sa.activity_date BETWEEN ? AND ? GROUP BY tech.name ORDER BY count DESC,tech.name`).all(...range),
+    store.prepare(`SELECT u.name,COUNT(*) AS count,COALESCE(SUM(sa.duration_minutes),0) AS minutes FROM service_activities sa JOIN users u ON u.id=sa.engineer_id
+      WHERE sa.customer_id=? AND sa.activity_date BETWEEN ? AND ? GROUP BY u.name ORDER BY minutes DESC,u.name`).all(...range),
+    store.prepare("SELECT COALESCE(work_location,'Not set') AS name,COUNT(*) AS count FROM service_activities WHERE customer_id=? AND activity_date BETWEEN ? AND ? GROUP BY work_location ORDER BY count DESC,name").all(...range),
+    store.prepare("SELECT COALESCE(billable_classification,'Not set') AS name,COUNT(*) AS count,COALESCE(SUM(duration_minutes),0) AS minutes FROM service_activities WHERE customer_id=? AND activity_date BETWEEN ? AND ? GROUP BY billable_classification ORDER BY minutes DESC,name").all(...range),
+    store.prepare(`SELECT sa.id,sa.activity_reference,sa.activity_date,sa.title,sa.status,sa.duration_minutes,sa.work_location,sa.billable_classification,
+      sa.ticket_reference,cat.name AS category_name,u.name AS engineer_name FROM service_activities sa JOIN activity_categories cat ON cat.id=sa.category_id
+      JOIN users u ON u.id=sa.engineer_id WHERE sa.customer_id=? AND sa.activity_date BETWEEN ? AND ? ORDER BY sa.activity_date DESC,sa.id DESC LIMIT ? OFFSET ?`).all(...range,pageSize,offset),
+    store.prepare('SELECT COUNT(*) AS total FROM service_activities WHERE customer_id=? AND activity_date BETWEEN ? AND ?').get(...range),
+  ]);
+  const mapped=values => values.map(row => ({ ...row,count:Number(row.count),minutes:row.minutes===undefined?undefined:Number(row.minutes),hours:row.minutes===undefined?undefined:Math.round(Number(row.minutes)/6)/10 }));
+  return { enabled:true,summary:{ activities:Number(summary.activities),minutes:Number(summary.minutes),hours:Math.round(Number(summary.minutes)/6)/10 },breakdowns:{ categories:mapped(categories),technologies:mapped(technologies),engineers:mapped(engineers),locations:mapped(locations),billing:mapped(billing) },rows,total:Number(count.total),page,page_size:pageSize };
+}
+
+module.exports={ listManagedCustomers,getOverview,listTickets,getTicketAnalytics,getActivities };

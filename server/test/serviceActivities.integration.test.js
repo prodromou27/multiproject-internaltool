@@ -1620,6 +1620,18 @@ test('managed customer ticket analytics separate current backlog from period thr
   assert.equal(result.data.current.aging.reduce((sum,row) => sum+row.count,0),1);
 });
 
+test('managed customer activities reuse customer-scoped activity records and period totals',async () => {
+  const path=`/api/managed-customers/${ids.customer}/activities`;
+  assert.equal((await api(`${path}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenEnabled })).status,403);
+  for (const query of ['from=bad&to=2026-12-31','from=2026-12-31&to=2026-01-01','from=2026-01-01&to=2026-12-31&page_size=101']) assert.equal((await api(`${path}?${query}`,{ token:ids.tokenManager })).status,400);
+  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/activities?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager })).status,404);
+  const result=await api(`${path}?from=2026-01-01&to=2026-12-31&page=1&page_size=1`,{ token:ids.tokenManager });
+  assert.equal(result.status,200);assert.equal(result.data.enabled,true);assert.equal(result.data.rows.length,1);
+  assert.equal(result.data.total>=1,true);assert.equal(result.data.summary.activities,result.data.total);
+  assert.equal(typeof result.data.summary.hours,'number');assert.equal(result.data.breakdowns.categories.length>=1,true);
+  assert.equal(result.data.rows[0].category_name.length>0,true);assert.equal(result.data.rows[0].engineer_name.length>0,true);
+});
+
 test('ticket mapping administration is manager-only and reclassifies stored tickets',async () => {
   assert.equal((await api('/api/ticketing/mappings',{ token:ids.tokenEnabled })).status,403);
   const current=await api('/api/ticketing/mappings',{ token:ids.tokenManager });
