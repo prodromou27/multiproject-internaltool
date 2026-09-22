@@ -1,68 +1,37 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React,{ useEffect,useState } from 'react';
+import { Activity,BriefcaseBusiness,CalendarDays,CheckSquare,ClipboardList,ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { FolderOpen, CheckSquare, Wrench, FileText } from 'lucide-react';
 import { api } from '../api';
-import { useLatestRequest } from '../hooks/useLatestRequest';
-import { fmtDate, StatusBadge } from './Shared';
+import { fmtDate,StatusBadge } from './Shared';
+import { fmtDuration } from './activityLedger';
 
-// Same icon-to-concept mapping as the main navigation (navigation.js), so a
-// Projects card reads as "Projects" the same way whether it's in the sidebar
-// or here.
-const SECTION_ICONS = { projects: FolderOpen, tasks: CheckSquare, visits: Wrench, documents: FileText };
+function useOverviewModule(load,key) {
+  const [data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
+  useEffect(() => { const controller=new AbortController();setError('');setData(null);load(controller.signal).then(result => { if(!controller.signal.aborted) setData(result); }).catch(failure => { if(!controller.signal.aborted) setError(failure.message); });return () => controller.abort(); },[key,retry]);
+  return { data,error,retry:() => setRetry(value => value+1) };
+}
 
-export default function CustomerOverview({ customer }) {
-  const [page, setPage] = useState(1);
-  const [data, setData] = useState(null);
-  const [loadedScope, setLoadedScope] = useState(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
-  const scope = `${customer.id}:${page}`;
-  const { begin, isCurrent } = useLatestRequest(scope);
-  const load = useCallback(() => {
-    const request = begin();
-    if (request.signal.aborted) return;
-    setLoading(true); setError('');
-    api.customerOverview(customer.id, { page }, { signal: request.signal }).then(result => {
-      if (isCurrent(request)) { setData(result); setLoadedScope(scope); }
-    }).catch(failure => { if (isCurrent(request)) setError(failure.message); })
-      .finally(() => { if (isCurrent(request)) setLoading(false); });
-  }, [customer.id, page, scope, begin, isCurrent]);
-  useEffect(() => { load(); }, [load]);
-  if (error) return <div className="error-msg" role="alert">{error} <button className="btn btn-ghost" onClick={load}>Retry</button></div>;
-  if (loading || loadedScope !== scope) return <p role="status">Loading customer history...</p>;
-  const sections = [
-    ['projects', 'Projects', row => <><Link to={`/projects/${row.id}`}>{row.title}</Link><StatusBadge entityType="project" s={row.status} /><span>{fmtDate(row.deadline)}</span></>],
-    ['tasks', 'Tasks linked through projects', row => <><Link to={`/projects/${row.project_id}`}>{row.title}</Link><StatusBadge entityType="task" s={row.status} /><span>{row.assignee || 'Unassigned'} · {fmtDate(row.deadline)}</span></>],
-    ['visits', 'Maintenance visits', row => <><span>{row.title}</span><span>{row.status.replaceAll('_', ' ')} · {fmtDate(row.scheduled_date)}</span><span>{row.report_sent_to_customer ? 'Report forwarded' : row.report_sent ? 'Awaiting review' : 'Report not submitted'}</span></>],
-    ['documents', 'Project documents', row => <><Link to={`/projects/${row.project_id}`}>{row.original_name}</Link><span>{row.project_title}</span><span>{fmtDate(row.created_at)}</span></>],
-  ];
-  // Customer identity (contacts, contract, asset count) now lives in the
-  // profile's identity panel, visible on every section — not repeated here.
-  return <>
-    <div className="grid-2" style={{ gap: 20, marginBottom: 20 }}>
-      {sections.map(([key, title, render]) => {
-        const Icon = SECTION_ICONS[key];
-        return <section className="card cs-overview-card" key={key}>
-          <div className="cs-overview-card-head">
-            <h2><Icon size={15} aria-hidden="true" />{title}</h2>
-            <span className="cs-overview-count">{data.counts[key]}</span>
-          </div>
-          <p className="text-muted text-sm">Latest {data[key].length} of {data.counts[key]}. {key === 'tasks' && 'Ad-hoc tasks have no customer relationship and are excluded.'}</p>
-          {data[key].length === 0 ? <p className="text-muted">No records</p> : data[key].map(row => <div key={row.id} className="cs-overview-row">{render(row)}</div>)}
-          {key === 'visits' && <Link to="/maintenance-visits?filter=all">Open maintenance visits</Link>}
-        </section>;
-      })}
-    </div>
-    <section className="card">
-      <h2 style={{ fontSize: 18 }}>Customer timeline</h2>
-      <p className="text-muted text-sm">Recorded creation, project history and current report submission events. Undone report submissions no longer appear here.</p>
-      {data.timeline.length === 0 && <p>No recorded events</p>}
-      {data.timeline.map(row => <div key={`${row.kind}:${row.entity_id}`} style={{ padding: '10px 0', borderBottom: '1px solid var(--gray-100)' }}><span className="text-muted text-sm">{fmtDate(row.event_at)}</span><div><strong>{row.action.replaceAll('_', ' ')}</strong> · {row.title}</div></div>)}
-      <div className="flex gap-8" style={{ marginTop: 12 }}>
-        <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous</button>
-        <span>Page {page} · {data.total} events</span>
-        <button className="btn btn-ghost" disabled={page * data.page_size >= data.total} onClick={() => setPage(value => value + 1)}>Next</button>
-      </div>
+function Module({ icon:Icon,title,count,state,onView,children,empty }) {
+  return <section className="card cs-command-module"><header><div><Icon size={17} aria-hidden="true" /><h2>{title}</h2>{count!==undefined && <span>{count}</span>}</div>{onView && <button type="button" onClick={onView}>View all <ArrowRight size={13} /></button>}</header>
+    {state.error ? <div className="cs-module-local-error">Unavailable. <button onClick={state.retry}>Retry</button></div> : !state.data ? <div className="cs-module-skeleton"><span /><span /><span /></div> : state.data.length ? <div className="cs-command-list">{children}</div> : <p className="cs-command-empty">{empty}</p>}
+  </section>;
+}
+
+const activeRecommendation=row => !['implemented','rejected','closed','converted_to_project'].includes(row.status);
+const riskRank={ critical:0,high:1,medium:2,low:3 };
+
+export default function CustomerOverview({ customer,summary,summaryError,onSelectTab }) {
+  const projects=useOverviewModule(signal => api.customerOperationProjects(customer.id,{ page:1,page_size:4,filter:'active' },{ signal }).then(result => result.rows),`projects:${customer.id}`);
+  const tasks=useOverviewModule(signal => api.customerOperationTasks(customer.id,{ page:1,page_size:6,filter:'open' },{ signal }).then(result => result.rows),`tasks:${customer.id}`);
+  const recommendations=useOverviewModule(signal => api.customerRecommendations(customer.id,{ page:1 },{ signal }).then(result => result.rows.filter(activeRecommendation).sort((a,b) => (riskRank[a.risk_level] ?? 9)-(riskRank[b.risk_level] ?? 9) || String(a.due_date || '9999').localeCompare(String(b.due_date || '9999'))).slice(0,5)),`recommendations:${customer.id}`);
+  const activities={ data:summary?.activities?.recent || null,error:summaryError,retry:() => {} };
+  return <div className="cs-command-grid">
+    <Module icon={BriefcaseBusiness} title="Active projects" count={summary?.projects?.active} state={projects} onView={() => onSelectTab('projects','active')} empty="No active projects.">{projects.data?.map(row => <article key={row.id}><div><Link to={`/projects/${row.id}`}>{row.title}</Link><small>{row.owner_name} · Due {fmtDate(row.deadline)}</small></div><div className="cs-overview-status"><StatusBadge entityType="project" s={row.status} /><strong>{row.completion_pct}%</strong></div></article>)}</Module>
+    <Module icon={CheckSquare} title="Important tasks" count={summary?.tasks?.open} state={tasks} onView={() => onSelectTab('tasks','open')} empty="No open tasks.">{tasks.data?.map(row => <article key={row.id}><div><Link to={`/projects/${row.project_id}`}>{row.title}</Link><small>{row.assigned_to_name || 'Unassigned'} · {row.project_title}</small></div><div className="cs-overview-status"><span className={`badge badge-${row.priority}`}>{row.priority}</span><small>Due {fmtDate(row.deadline)}</small></div></article>)}</Module>
+    <Module icon={Activity} title="Recent service activities" state={activities} onView={() => onSelectTab('activities')} empty="No service activity has been logged.">{activities.data?.map(row => <article key={row.id}><div><strong>{row.title}</strong><small>{fmtDate(row.activity_date)} · {row.engineer_name} · {row.category_name}</small></div><div className="cs-overview-status"><StatusBadge entityType="service_activity" s={row.status} /><small>{fmtDuration(row.duration_minutes)}</small></div></article>)}</Module>
+    <section className="card cs-command-module"><header><div><CalendarDays size={17} aria-hidden="true" /><h2>Maintenance visits</h2><span>{summary?.visits?.this_year ?? '—'} this year</span></div><button type="button" onClick={() => onSelectTab('maintenance-visits')}>View all <ArrowRight size={13} /></button></header>
+      {summaryError ? <div className="cs-module-local-error">Operational summary unavailable.</div> : !summary ? <div className="cs-module-skeleton"><span /><span /></div> : <div className="cs-visit-pair"><div><small>Previous visit</small><strong>{summary.visits.last?.title || 'No previous visit'}</strong><span>{fmtDate(summary.visits.last?.scheduled_date)}</span></div><div><small>Next visit</small><strong>{summary.visits.next?.title || 'None scheduled'}</strong><span>{fmtDate(summary.visits.next?.scheduled_date)}</span></div>{summary.visits.reports_pending>0 && <button type="button" className="cs-attention-link" onClick={() => onSelectTab('maintenance-visits','report_pending')}>{summary.visits.reports_pending} reports pending</button>}</div>}
     </section>
-  </>;
+    <Module icon={ClipboardList} title="Recommendations requiring attention" count={summary?.recommendations?.open} state={recommendations} onView={() => onSelectTab('recommendations')} empty="No recommendations require attention.">{recommendations.data?.map(row => <article key={row.id}><div><strong>{row.finding}</strong><small>Due {fmtDate(row.due_date)} · {row.owner_name || 'Unassigned'}</small></div><div className="cs-overview-status"><span className={`badge badge-${row.risk_level}`}>{row.risk_level} risk</span><span>{row.status.replaceAll('_',' ')}</span></div></article>)}</Module>
+  </div>;
 }
