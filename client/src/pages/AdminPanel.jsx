@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Users as UsersIcon, Shield, ShieldCheck, FolderOpen, Wrench, ClipboardList, HardDrive, ScrollText, Activity, Settings, Download, BarChart3, ShieldAlert, Globe, Database, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound } from 'lucide-react';
+import { Users as UsersIcon, Shield, ShieldCheck, FolderOpen, Wrench, ClipboardList, HardDrive, ScrollText, Activity, Settings, Download, ShieldAlert, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound } from 'lucide-react';
 import { api } from '../api';
 import { visiblePages } from '../navigation';
 import { useAuth } from '../App';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { UsersTab } from './admin/UsersTab';
-import { OverviewTab, StatsTab, ActivityTab } from './admin/OverviewTab';
+import { OverviewTab, ActivityTab } from './admin/OverviewTab';
 import { ProjectsAdminTab, MaintenanceAdminTab, DataExportTab } from './admin/DataTabs';
 import { IntegrationsTab } from './admin/IntegrationsTab';
 import { WeeklyReportTab } from './admin/WeeklyReportTab';
 import { StatusManagementTab } from './admin/StatusManagementTab';
 import { LocalizationTab } from './admin/LocalizationTab';
-import { AdminAlertsTab, LoggingTab } from './admin/AlertsLoggingTab';
-import { DeploymentHealthTab, SystemUpdateTab, AuditLogTab, SecurityTab } from './admin/SystemTabs';
+import { AdminAlertsTab } from './admin/AlertsLoggingTab';
+import { SystemHealthTab, SystemUpdateTab, AuditLogTab, SecurityTab } from './admin/SystemTabs';
 import { ServiceActivityAdminTab, TeamsAdminSection } from './admin/ServiceActivityAdmin';
 import { ManagedReportTemplatesTab } from './admin/ManagedReportTemplatesTab';
 import { PermissionsTab } from './admin/PermissionsTab';
@@ -36,12 +36,10 @@ const TABS = [
   { key: 'localization',   label: 'Localization',       Icon: Globe,           group: 'technical_configuration', desc: 'Language and regional settings' },
   { key: 'security',       label: 'Security Policy',    Icon: Shield,          group: 'technical_security',      desc: 'Password expiry and reset policy' },
   { key: 'audit_log',      label: 'Audit Log',          Icon: ClipboardList,   group: 'technical_security',      desc: 'Traceable record of system changes' },
-  { key: 'logging',        label: 'Logging',            Icon: Database,        group: 'technical_security',      desc: 'Application logging and retention settings' },
   { key: 'admin_alerts',   label: 'System Alerts',      Icon: ShieldAlert,     group: 'technical_security',      desc: 'Manager alert preferences for operational issues' },
-  { key: 'managed_services', label: 'Managed Services', Icon: Building2,       group: 'technical_operations',    desc: 'Ticket sync health, mapped customers, and recent Request Tracker runs' },
-  { key: 'stats',          label: 'System Stats',       Icon: BarChart3,       group: 'technical_operations',    desc: 'Database, storage, and usage metrics' },
+  { key: 'managed_services', label: 'Ticket Sync Status', Icon: Building2,     group: 'technical_operations',    desc: 'Request Tracker sync health — mapped customers, ticket counts, and recent runs. To configure a customer’s mapping, use Managed Customers.' },
   { key: 'activity',       label: 'Activity Feed',      Icon: Activity,        group: 'technical_operations',    desc: 'Recent application activity' },
-  { key: 'deployment',     label: 'Deployment Health',  Icon: HardDrive,       group: 'technical_operations',    desc: 'Runtime configuration and deploy status checks' },
+  { key: 'system_health',  label: 'System Health',      Icon: HardDrive,       group: 'technical_operations',    desc: 'Stats, deployment status, and logging — in one place' },
   { key: 'export',         label: 'Data Export',        Icon: FileSpreadsheet, group: 'technical_operations',    desc: 'Download operational data' },
   { key: 'system_update',  label: 'System Update',      Icon: Download,        group: 'technical_operations',    desc: 'Controlled application update workflow' },
 ];
@@ -100,9 +98,9 @@ export default function AdminPanel() {
         if (!mounted) return;
         const next = {};
         if (deployment.status === 'fulfilled') {
-          next.deployment = deployment.value?.status || 'warning';
+          next.system_health = deployment.value?.status || 'warning';
         } else {
-          next.deployment = 'warning';
+          next.system_health = 'warning';
         }
         if (security.status === 'fulfilled') {
           next.security = Number(security.value?.password_expiry_days ?? 0) > 0 ? 'ok' : 'warning';
@@ -206,15 +204,13 @@ export default function AdminPanel() {
           {tab === 'service_activity_tracking' && <ServiceActivityAdminTab />}
           {tab === 'managed_report_templates' && <ManagedReportTemplatesTab />}
           {tab === 'managed_services' && <TicketSyncMonitoring standalone onMessage={toast.success} />}
-          {tab === 'stats'        && <StatsTab />}
           {tab === 'activity'     && <ActivityTab />}
+          {tab === 'system_health' && <SystemHealthTab />}
           {tab === 'export'       && <DataExportTab />}
           {tab === 'integrations'  && <IntegrationsTab />}
           {tab === 'weekly_report' && <WeeklyReportTab />}
-          {tab === 'logging'       && <LoggingTab />}
           {tab === 'localization'  && <LocalizationTab />}
           {tab === 'admin_alerts'  && <AdminAlertsTab />}
-          {tab === 'deployment'    && <DeploymentHealthTab />}
           {tab === 'system_update' && <SystemUpdateTab />}
           {tab === 'audit_log'     && <AuditLogTab />}
           {tab === 'security'      && <SecurityTab />}

@@ -14,7 +14,7 @@ export const PAGES = [
   { id: 'reports', path: '/reports', label: 'Reports', section: 'Management', icon: 'BarChart2', roles: ['manager'], description: 'Operational summaries, delivery trends and reporting' },
   { id: 'approvals', path: '/approvals', label: 'Approvals', section: 'Management', icon: 'CheckCheck', roles: ['manager'], permission: 'managed_reports.review', description: 'Review project closures and managed-service reports' },
   { id: 'scorecards', path: '/scorecards', label: 'Scorecards', section: 'Management', icon: 'Award', roles: ['manager'], description: 'Project delivery evaluations and engineer performance' },
-  { id: 'serviceOperations', path: '/service-operations', label: 'Service Operations', section: 'Management', icon: 'Activity', roles: ['manager'], description: 'Customer service activity and management reporting' },
+  { id: 'serviceOperations', path: '/service-operations', label: 'Service Activity Reports', section: 'Management', icon: 'Activity', roles: ['manager'], description: 'Aggregated reporting over logged service activity — see Managed Customers for per-customer detail' },
   { id: 'sla', path: '/sla', label: 'SLA', section: 'Management', icon: 'ShieldCheck', roles: ['manager'], description: 'Service commitments and exceptions requiring attention' },
   { id: 'templates', path: '/templates', label: 'Templates', section: 'Administration', icon: 'FileText', roles: ['manager'], description: 'Reusable project structures and default tasks' },
   { id: 'users', path: '/users', label: 'Users', section: 'Administration', icon: 'UsersIcon', roles: ['manager'], description: 'User accounts and operational roles' },

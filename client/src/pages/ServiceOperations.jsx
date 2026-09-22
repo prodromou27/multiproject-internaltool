@@ -56,8 +56,8 @@ export default function ServiceOperations() {
 
   return (
     <div className="page service-ops">
-      <PageHeader eyebrow="Operations" title="Service operations"
-        description="Where service time went in the selected period, and who spent it." />
+      <PageHeader eyebrow="Operations" title="Service Activity Reports"
+        description="Where service time went in the selected period, and who spent it. For a single customer's tickets and history, see Managed Customers." />
 
       <div className="so-toolbar">
         <div className="so-segment" role="group" aria-label="Period">

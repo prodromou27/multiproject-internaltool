@@ -4,6 +4,8 @@ import { api } from '../../api';
 import { fmtDate, fmtDateTime } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
+import { StatsTab } from './OverviewTab';
+import { LoggingTab } from './AlertsLoggingTab';
 
 /* ── System Update Tab ───────────────────────────────────── */
 export const PHASE_LABELS = {
@@ -42,6 +44,37 @@ export function StepDot({ phase, stepKey }) {
       }}>
         {isDone ? '✓' : isActive ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : ''}
       </div>
+    </div>
+  );
+}
+
+/* ── System Health Tab ───────────────────────────────────── *
+ * Combines three previously separate tabs (System Stats, Deployment Health,
+ * Logging) — all read-only or rarely-touched operational monitoring, not
+ * configuration a manager edits day to day — into one, to shorten the
+ * Settings tab list. */
+const SYSTEM_HEALTH_SECTIONS = [
+  { key: 'stats',      label: 'Stats' },
+  { key: 'deployment', label: 'Deployment' },
+  { key: 'logging',    label: 'Logging' },
+];
+
+export function SystemHealthTab() {
+  const [section, setSection] = useState('stats');
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 18 }} role="tablist" aria-label="System health section">
+        {SYSTEM_HEALTH_SECTIONS.map(s => (
+          <button key={s.key} type="button" role="tab" aria-selected={section === s.key}
+            className={'btn btn-sm ' + (section === s.key ? 'btn-primary' : 'btn-ghost')}
+            onClick={() => setSection(s.key)}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+      {section === 'stats' && <StatsTab />}
+      {section === 'deployment' && <DeploymentHealthTab />}
+      {section === 'logging' && <LoggingTab />}
     </div>
   );
 }
