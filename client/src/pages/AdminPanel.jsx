@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users as UsersIcon, Shield, ShieldCheck, FolderOpen, Wrench, ClipboardList, HardDrive, ScrollText, Activity, Settings, Download, BarChart3, ShieldAlert, Globe, Database, FileSpreadsheet, LayoutDashboard, Tag } from 'lucide-react';
+import { Users as UsersIcon, Shield, ShieldCheck, FolderOpen, Wrench, ClipboardList, HardDrive, ScrollText, Activity, Settings, Download, BarChart3, ShieldAlert, Globe, Database, FileSpreadsheet, LayoutDashboard, Tag, Building2 } from 'lucide-react';
 import { api } from '../api';
 import { visiblePages } from '../navigation';
 import { useAuth } from '../App';
@@ -16,6 +16,8 @@ import { DeploymentHealthTab, SystemUpdateTab, AuditLogTab, SecurityTab } from '
 import { ServiceActivityAdminTab } from './admin/ServiceActivityAdmin';
 import { ManagedReportTemplatesTab } from './admin/ManagedReportTemplatesTab';
 import { PermissionsTab } from './admin/PermissionsTab';
+import TicketSyncMonitoring from './admin/TicketSyncMonitoring';
+import { useToast } from '../components/Toast';
 
 /* ── MAIN PAGE ───────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
@@ -35,6 +37,7 @@ const TABS = [
   { key: 'audit_log',      label: 'Audit Log',          Icon: ClipboardList,   group: 'technical_security',      desc: 'Traceable record of system changes' },
   { key: 'logging',        label: 'Logging',            Icon: Database,        group: 'technical_security',      desc: 'Application logging and retention settings' },
   { key: 'admin_alerts',   label: 'System Alerts',      Icon: ShieldAlert,     group: 'technical_security',      desc: 'Manager alert preferences for operational issues' },
+  { key: 'managed_services', label: 'Managed Services', Icon: Building2,       group: 'technical_operations',    desc: 'Ticket sync health, mapped customers, and recent Request Tracker runs' },
   { key: 'stats',          label: 'System Stats',       Icon: BarChart3,       group: 'technical_operations',    desc: 'Database, storage, and usage metrics' },
   { key: 'activity',       label: 'Activity Feed',      Icon: Activity,        group: 'technical_operations',    desc: 'Recent application activity' },
   { key: 'deployment',     label: 'Deployment Health',  Icon: HardDrive,       group: 'technical_operations',    desc: 'Runtime configuration and deploy status checks' },
@@ -75,6 +78,7 @@ function SettingsStatusPill({ status }) {
 
 export default function AdminPanel() {
   const { user } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const { section } = useParams();
   const initialTab = TAB_KEYS.has(section) ? section : 'overview';
@@ -199,6 +203,7 @@ export default function AdminPanel() {
           {tab === 'statuses'     && <StatusManagementTab />}
           {tab === 'service_activity_tracking' && <ServiceActivityAdminTab />}
           {tab === 'managed_report_templates' && <ManagedReportTemplatesTab />}
+          {tab === 'managed_services' && <TicketSyncMonitoring standalone onMessage={toast.success} />}
           {tab === 'stats'        && <StatsTab />}
           {tab === 'activity'     && <ActivityTab />}
           {tab === 'export'       && <DataExportTab />}
