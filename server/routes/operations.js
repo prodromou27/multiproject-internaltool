@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getEnabledTeamIdsForUser } = require('../serviceActivities');
+const { decrypt } = require('../fieldCipher');
 
 const placeholders = values => values.map(() => '?').join(',');
 const numbers = row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, Number(value || 0)]));
@@ -36,7 +37,7 @@ router.get('/overview', requireAuth, async (req, res) => {
   const reportWhere = "mv.status IN ('completed','in_progress') AND mv.report_sent=0 AND mv.scheduled_date<=?";
   const serviceEnabled = manager || (await getEnabledTeamIdsForUser(req.user.id)).size > 0;
 
-  const [taskStats, tasks, projectStats, projects, visitStats, visits, reports] = await Promise.all([
+  const [taskStats, tasks, projectStats, projects, visitStats, visits, reports, reportReviewStats, reportReviews] = await Promise.all([
     db.prepare(`SELECT COUNT(*) AS open, SUM(CASE WHEN t.deadline<? THEN 1 ELSE 0 END) AS overdue,
       SUM(CASE WHEN t.deadline=? THEN 1 ELSE 0 END) AS due_today,
       SUM(CASE WHEN t.status='waiting_customer' THEN 1 ELSE 0 END) AS waiting_customer,
@@ -60,6 +61,11 @@ router.get('/overview', requireAuth, async (req, res) => {
       ORDER BY mv.scheduled_date ASC, mv.id ASC LIMIT 5`).all(...visitParams, asOf, soon),
     db.prepare(`SELECT mv.id, mv.title, mv.scheduled_date FROM ${visitFrom} WHERE ${reportWhere}
       ORDER BY mv.scheduled_date ASC, mv.id ASC LIMIT 5`).all(...visitParams, asOf),
+    manager ? db.prepare("SELECT COUNT(*) AS active FROM managed_report_history WHERE workflow_status IN ('in_review','approved')").get() : Promise.resolve({ active: 0 }),
+    manager ? db.prepare(`SELECT h.id,h.customer_id,c.name AS customer_name,h.original_name,h.workflow_status AS status,
+      COALESCE(h.submitted_at,h.generated_at) AS submitted_at FROM managed_report_history h JOIN customers c ON c.id=h.customer_id
+      WHERE h.workflow_status IN ('in_review','approved')
+      ORDER BY CASE h.workflow_status WHEN 'in_review' THEN 0 ELSE 1 END,COALESCE(h.submitted_at,h.generated_at),h.id LIMIT 5`).all() : Promise.resolve([]),
   ]);
 
   let service = { enabled: false };
@@ -88,7 +94,8 @@ router.get('/overview', requireAuth, async (req, res) => {
   }
   res.json({ as_of: asOf, week_from: weekFrom, week_to: weekTo, through: soon, scope: manager ? 'management' : 'personal',
     tasks: { ...numbers(taskStats), attention: tasks }, projects: { ...numbers(projectStats), commitments: projects },
-    visits: { ...numbers(visitStats), upcoming_items: visits, reports }, service });
+    visits: { ...numbers(visitStats), upcoming_items: visits, reports },
+    approvals: { managed_reports: Number(reportReviewStats.active || 0), reports: reportReviews.map(report => ({ ...report,customer_name:decrypt(report.customer_name) })) },service });
 });
 
 module.exports = router;

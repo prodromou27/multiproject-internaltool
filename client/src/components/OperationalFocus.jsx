@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, CalendarDays, CheckSquare, ClipboardList, FolderOpen, Send, Wrench } from 'lucide-react';
+import { ArrowRight, CalendarDays, CheckSquare, ClipboardList, FileCheck2, FolderOpen, Send, Wrench } from 'lucide-react';
 import { fmtDate } from './Shared';
 
 function WorkList({ items, empty }) {
@@ -22,6 +22,7 @@ export default function OperationalFocus({ data, error, onRefresh }) {
     ...data.projects.commitments.filter(item => item.deadline < data.as_of).map(item => ({ ...item, kind: 'Overdue project', date: item.deadline, icon: FolderOpen, link: `/projects/${item.id}` })),
     ...data.visits.reports.map(item => ({ ...item, kind: 'Visit report pending', date: item.scheduled_date, icon: Send, link: '/maintenance-visits?filter=report_pending' })),
     ...(data.service.follow_ups || []).map(item => ({ ...item, kind: 'Service follow-up due', date: item.follow_up_date, icon: ClipboardList, link: `/activity-log?activity=${item.id}` })),
+    ...((manager && data.approvals?.reports) || []).map(item => ({ ...item, title: `${item.customer_name}: ${item.original_name}`,kind: item.status==='approved' ? 'Report ready to finalize' : 'Managed report review',date:(item.submitted_at || data.as_of).slice(0,10),icon:FileCheck2,link:'/approvals?view=reports' })),
   ].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8);
   const upcoming = [
     ...data.projects.commitments.filter(item => item.deadline >= data.as_of).map(item => ({ ...item, kind: 'Project deadline', date: item.deadline, icon: FolderOpen, link: `/projects/${item.id}` })),
@@ -32,6 +33,7 @@ export default function OperationalFocus({ data, error, onRefresh }) {
     { value: data.tasks.due_today, label: 'Tasks due today', link: '/tasks?filter=due_today' },
     { value: data.projects.overdue, label: 'Overdue projects', link: '/projects?filter=overdue', urgent: true },
     { value: data.projects.awaiting_approval, label: manager ? 'Closure requests' : 'Awaiting closure review', link: manager ? '/approvals' : '/projects?filter=pending_approval' },
+    ...(manager ? [{ value:data.approvals?.managed_reports || 0,label:'Managed reports',link:'/approvals?view=reports' }] : []),
     { value: data.visits.reports_pending, label: 'Visit reports pending', link: '/maintenance-visits?filter=report_pending', urgent: true },
     ...(data.service.enabled ? [{ value: data.service.due, label: 'Service follow-ups due', link: '/activity-log', urgent: true }] : [{ value: data.visits.upcoming, label: 'Upcoming visits', link: '/maintenance-visits' }]),
   ];

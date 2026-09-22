@@ -2591,11 +2591,17 @@ test('operational overview scopes work and aggregates more than one activity pag
   assert.equal(overview.week_from, '2026-09-14');
   assert.equal(overview.week_to, '2026-09-20');
   for (const section of [overview.tasks.attention, overview.projects.commitments, overview.visits.reports, overview.visits.upcoming_items, overview.service.follow_ups]) assert.ok(section.length <= 5);
+  const queuedReport=await db.prepare("SELECT id FROM managed_report_history ORDER BY id LIMIT 1").get();
+  await db.prepare("UPDATE managed_report_history SET workflow_status='in_review',submitted_at='2026-09-15 10:00:00' WHERE id=?").run(queuedReport.id);
   const management = await api('/api/operations/overview?as_of=2026-09-17', { token: ids.tokenManager });
   assert.equal(management.status, 200);
   assert.equal(management.data.scope, 'management');
   assert.ok(management.data.projects.active > overview.projects.active);
   assert.ok(management.data.tasks.overdue > overview.tasks.overdue);
+  assert.equal(management.data.approvals.managed_reports,1);
+  assert.equal(management.data.approvals.reports[0].customer_name,'Acme Corp');
+  assert.deepEqual(overview.approvals,{ managed_reports:0,reports:[] });
+  await db.prepare("UPDATE managed_report_history SET workflow_status='draft',submitted_at=NULL WHERE id=?").run(queuedReport.id);
 });
 
 test('operational overview validates dates, honors disabled teams and rejects unauthorized roles', async () => {

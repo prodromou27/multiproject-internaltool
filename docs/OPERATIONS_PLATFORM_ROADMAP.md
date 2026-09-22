@@ -99,6 +99,7 @@ part of the foundation work.
 | 5a | Project closure reviews and backlog | Atomic approval/rejection with required revision comments, actors, request versions, audit history and notifications; manager-only paginated backlog | Complete |
 | 5b | Action-focused dashboards | Bounded scoped summaries, accurate service follow-up totals and operational exception cards implemented; browser QA pending | Complete |
 | 5c | Closure workflow integrity | Ordinary status edits cannot bypass closure requests or reviews; concurrent edits cannot overwrite closure transitions | Complete |
+| 5d | Managed-report review queue | Capability-scoped paginated backlog, protected downloads, versioned decisions, direct notifications and management-dashboard visibility | Complete; PostgreSQL CI tracked per commit |
 | 6 | Core detail/list and calendar improvements | Shared detail/timeline patterns; report/follow-up events; server pagination where justified | In progress |
 | 6a | Calendar reliability and access | Valid month boundaries, module-aligned scopes, cancellable loads, visible failures and shared accessible event dialog | Complete; browser QA pending |
 | 6b | Follow-up/report calendar and agenda | Owner/feature-scoped pending service follow-ups; reports shown on visit dates; agenda exposes all monthly events and activity detail links | Complete; browser QA pending |
