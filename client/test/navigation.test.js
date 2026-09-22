@@ -22,6 +22,9 @@ test('navigation and create actions respect existing role and feature boundaries
   assert.deepEqual(quickCreateActions('planner', true).map(action => action.id), ['visit']);
   assert.deepEqual(quickCreateActions('pm', true).map(action => action.id), ['activity']);
   assert.equal(quickCreateActions('manager').length, 4);
+  const delegatedReviewer={ role:'planner',permissions:{ 'managed_reports.review':true,'managed_customers.view':false } };
+  assert.equal(visiblePages(delegatedReviewer).some(page => page.id==='approvals'),true);
+  assert.equal(visiblePages(delegatedReviewer).some(page => page.id==='managedCustomers'),false);
 });
 
 test('detail paths inherit the parent page while unknown paths remain unknown', () => {

@@ -11,6 +11,7 @@ const STATUS_LABELS = {
   waiting_customer: 'Waiting for Customer', waiting_vendor: 'Waiting for Vendor',
   not_started: 'Not Started', delayed: 'Delayed', completed_engineer: 'Completed by Engineer',
   pending_approval: 'Pending Approval', reopened: 'Reopened',
+  draft: 'Draft', in_review: 'In Review', approved: 'Approved', final: 'Final',
 };
 
 export function StatusBadge({ s, entityType }) {

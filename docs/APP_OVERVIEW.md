@@ -491,6 +491,15 @@ name, downloadable template). Engineers see only customers linked to their work
 (project/visit assignment for the legacy modules; team/engineer assignment for Service
 Activity Tracking).
 
+Managed-service report approvals are also available from the central `/approvals`
+workspace. Users with `managed_reports.review` can list, filter, download, approve,
+return and finalize active report reviews without receiving broad managed-customer
+access. The queue is paginated, orders the oldest submissions first, excludes draft
+and final reports, decrypts customer names at the API boundary, and uses workflow
+versions to reject stale decisions. Submission notifications link directly to the
+report queue. A partial workflow-status/submission-time index keeps the active queue
+query bounded as report history grows.
+
 ### Maintenance Visits
 Customer recommendations are persisted separately from report text. Managers can
 record findings from visit details or Customer 360, set risk, owner, due date,

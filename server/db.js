@@ -1087,6 +1087,11 @@ async function applyCompatibilityMigrations() {
     INSERT INTO managed_report_workflow_history (report_id,from_status,to_status,action,actor_id,workflow_version,created_at)
       SELECT id,NULL,workflow_status,'generated',generated_by,workflow_version,generated_at FROM managed_report_history;
   `]);
+  migrations.push(['20260922_managed_report_review_queue', `
+    CREATE INDEX IF NOT EXISTS idx_managed_report_review_queue
+      ON managed_report_history(workflow_status,submitted_at,id)
+      WHERE workflow_status IN ('in_review','approved');
+  `]);
   migrations.push(['20260922_notification_center', `
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('normal','high','critical'));
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TEXT;

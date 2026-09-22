@@ -29,6 +29,9 @@
 .approval-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 16px; margin-top: 16px; font-size: 12px; color: var(--gray-600); }
 .approval-review-title { font-size: 16px; font-weight: 650; margin-bottom: 12px; }
 .approval-project-link { display: inline-block; margin: 12px 0 20px; font-size: 13px; }
+.approval-filters { display: flex; align-items: center; gap: 10px; margin: -4px 0 16px; color: var(--gray-600); font-size: 13px; }
+.approval-filters select { width: auto; min-width: 180px; }
+.approval-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .operational-focus { margin-bottom: 28px; }
 .focus-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .focus-heading h2 { font-size: 19px; letter-spacing: -.3px; }

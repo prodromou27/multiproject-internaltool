@@ -9,15 +9,73 @@ const reportHistory=require('../managedReportHistoryService');
 const db=require('../db');
 const { logAudit }=require('../auditLog');
 const { hasPermission,usersWithPermission }=require('../permissions');
+const { decrypt }=require('../fieldCipher');
 
-router.use(requirePermission('managed_customers.view'));
-const validCalendarDay=value => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value;
 const positiveInteger=(value,fallback,max) => {
   if (value===undefined) return fallback;
   if (typeof value!=='string' || !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value)>max) return null;
   return Number(value);
 };
 const positiveId=value => Number.isSafeInteger(Number(value)) && Number(value)>0 && /^\d+$/.test(String(value));
+async function updateReportWorkflow(req,res,customerId,reportId) {
+  const action=req.body?.action;
+  try {
+    const result=await reportHistory.transition(customerId,reportId,req.body || {},req.user.id);
+    const link=action==='submit' ? '/approvals?view=reports' : `/managed-customers/${customerId}`;
+    const titleByAction={ submit:'Managed report awaiting review',approve:'Managed report approved',reject:'Managed report returned for changes',finalize:'Managed report finalized',reopen:'Managed report reopened' };
+    let recipients=[];
+    if (action==='submit') {
+      recipients=(await usersWithPermission('managed_reports.review')).filter(user => user.id!==req.user.id).map(user => user.id);
+    } else if (result.report.generated_by && result.report.generated_by!==req.user.id) recipients=[result.report.generated_by];
+    try {
+      const priority=['submit','reject','finalize'].includes(action) ? 'high' : 'normal';
+      for (const userId of recipients) await db.prepare('INSERT INTO notifications (user_id,type,title,body,link,priority) VALUES (?,?,?,?,?,?)').run(userId,`managed_report.${result.change.event}`,titleByAction[action],result.report.original_name,link,priority);
+    } catch(error) { console.error('[managed-reports] workflow notification failed:',error.message); }
+    await logAudit(db,req,'managed_report',reportId,result.report.original_name,`managed_report_${result.change.event}`,`customer_id=${customerId}; from=${result.change.from}; to=${result.change.to}; workflow_version=${result.report.workflow_version}; comment=${result.change.comment || ''}`);
+    res.json({ report:(await reportHistory.list(customerId)).find(item => item.id===reportId) });
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not update the report workflow' }); }
+}
+router.put('/report-reviews/:reportId',requirePermission('managed_reports.review'),async (req,res) => {
+  if (!positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  if (!['approve','reject','finalize'].includes(req.body?.action)) return res.status(400).json({ error:'Invalid report review action' });
+  const report=await db.prepare("SELECT customer_id FROM managed_report_history WHERE id=? AND workflow_status IN ('in_review','approved')").get(Number(req.params.reportId));
+  if (!report) return res.status(404).json({ error:'Report review not found' });
+  return updateReportWorkflow(req,res,Number(report.customer_id),Number(req.params.reportId));
+});
+router.get('/report-reviews/:reportId/download',requirePermission('managed_reports.review'),async (req,res) => {
+  if (!positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  const report=await db.prepare("SELECT * FROM managed_report_history WHERE id=? AND workflow_status IN ('in_review','approved')").get(Number(req.params.reportId));
+  if (!report) return res.status(404).json({ error:'Report review not found' });
+  try {
+    const buffer=await reportHistory.read(report);
+    res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');
+    res.setHeader('Content-Type',report.mime_type);res.setHeader('Content-Disposition',`attachment; filename="${report.original_name}"`);res.setHeader('Content-Length',String(buffer.length));
+    res.send(buffer);
+  } catch(error) { console.error('[managed-reports] review download failed:',error.message);res.status(error.status || 500).json({ error:'Could not download the report under review' }); }
+});
+router.get('/report-reviews',requirePermission('managed_reports.review'),async (req,res) => {
+  const page=positiveInteger(req.query.page,1,1000000),pageSize=positiveInteger(req.query.page_size,25,100);
+  const status=req.query.status===undefined ? 'all' : req.query.status;
+  if (!page || !pageSize || !Number.isSafeInteger((page-1)*pageSize)) return res.status(400).json({ error:'Invalid pagination' });
+  if (typeof status!=='string' || !['all','in_review','approved'].includes(status)) return res.status(400).json({ error:'Invalid report review status' });
+  const where=status==='all' ? "h.workflow_status IN ('in_review','approved')" : 'h.workflow_status=?';
+  const params=status==='all' ? [] : [status];
+  const count=await db.prepare(`SELECT COUNT(*) AS total FROM managed_report_history h WHERE ${where}`).get(...params);
+  const rows=await db.prepare(`SELECT h.id,h.customer_id,c.name AS customer_name,h.template_id,t.name AS template_name,
+    h.period_start,h.period_end,h.output_format,h.report_version,h.workflow_status AS status,h.workflow_version,
+    h.original_name,h.generated_at,u.name AS generated_by_name,h.submitted_at,su.name AS submitted_by_name,
+    h.reviewed_at,ru.name AS reviewed_by_name,h.decision_comment
+    FROM managed_report_history h JOIN customers c ON c.id=h.customer_id
+    LEFT JOIN managed_report_templates t ON t.id=h.template_id LEFT JOIN users u ON u.id=h.generated_by
+    LEFT JOIN users su ON su.id=h.submitted_by LEFT JOIN users ru ON ru.id=h.reviewed_by
+    WHERE ${where}
+    ORDER BY CASE h.workflow_status WHEN 'in_review' THEN 0 ELSE 1 END,COALESCE(h.submitted_at,h.generated_at),h.id
+    LIMIT ? OFFSET ?`).all(...params,pageSize,(page-1)*pageSize);
+  res.json({ rows:rows.map(row => ({ ...row,customer_name:decrypt(row.customer_name) })),total:Number(count.total),page,page_size:pageSize });
+});
+
+router.use(requirePermission('managed_customers.view'));
+const validCalendarDay=value => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value;
 const reportStatus=value => value===undefined || value==='draft' ? 'draft' : null;
 const reportRequest=async body => {
   const { from,to,sections,narratives,template_id:templateId }=body || {};
@@ -163,22 +221,7 @@ router.put('/:id/reports/:reportId/workflow',async (req,res) => {
   const action=req.body?.action;
   const permission=action==='submit' ? 'managed_reports.generate' : 'managed_reports.review';
   if (!await hasPermission(req.user,permission)) return res.status(403).json({ error:'You do not have permission to perform this report workflow action' });
-  try {
-    const customerId=Number(req.params.id),reportId=Number(req.params.reportId);
-    const result=await reportHistory.transition(customerId,reportId,req.body || {},req.user.id);
-    const link=`/managed-customers/${customerId}`;
-    const titleByAction={ submit:'Managed report awaiting review',approve:'Managed report approved',reject:'Managed report returned for changes',finalize:'Managed report finalized',reopen:'Managed report reopened' };
-    let recipients=[];
-    if (action==='submit') {
-      recipients=(await usersWithPermission('managed_reports.review')).filter(user => user.id!==req.user.id).map(user => user.id);
-    } else if (result.report.generated_by && result.report.generated_by!==req.user.id) recipients=[result.report.generated_by];
-    try {
-      const priority=['submit','reject','finalize'].includes(action) ? 'high' : 'normal';
-      for (const userId of recipients) await db.prepare('INSERT INTO notifications (user_id,type,title,body,link,priority) VALUES (?,?,?,?,?,?)').run(userId,`managed_report.${result.change.event}`,titleByAction[action],result.report.original_name,link,priority);
-    } catch(error) { console.error('[managed-reports] workflow notification failed:',error.message); }
-    await logAudit(db,req,'managed_report',reportId,result.report.original_name,`managed_report_${result.change.event}`,`customer_id=${customerId}; from=${result.change.from}; to=${result.change.to}; workflow_version=${result.report.workflow_version}; comment=${result.change.comment || ''}`);
-    res.json({ report:(await reportHistory.list(customerId)).find(item => item.id===reportId) });
-  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not update the report workflow' }); }
+  return updateReportWorkflow(req,res,Number(req.params.id),Number(req.params.reportId));
 });
 
 router.get('/:id/reports/:reportId/download',async (req,res) => {
