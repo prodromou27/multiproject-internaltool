@@ -363,6 +363,8 @@ export const api = {
   managedCustomerExcelReport: (id,data) => download(`/managed-customers/${id}/report.xlsx`,data),
   managedCustomerPdfReport: (id,data) => download(`/managed-customers/${id}/report.pdf`,data),
   managedCustomerReportHistory: (id,options) => req('GET',`/managed-customers/${id}/reports`,undefined,options),
+  managedCustomerReportWorkflow: (id,reportId,options) => req('GET',`/managed-customers/${id}/reports/${reportId}/workflow`,undefined,options),
+  updateManagedCustomerReportWorkflow: (id,reportId,data) => req('PUT',`/managed-customers/${id}/reports/${reportId}/workflow`,data),
   managedCustomerArchivedReport: (id,reportId) => download(`/managed-customers/${id}/reports/${reportId}/download`),
 
   // system update

@@ -8,6 +8,7 @@ const { renderPdf }=require('../managedCustomerPdfRenderer');
 const reportHistory=require('../managedReportHistoryService');
 const db=require('../db');
 const { logAudit }=require('../auditLog');
+const { hasPermission,usersWithPermission }=require('../permissions');
 
 router.use(requirePermission('managed_customers.view'));
 const validCalendarDay=value => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value;
@@ -17,12 +18,12 @@ const positiveInteger=(value,fallback,max) => {
   return Number(value);
 };
 const positiveId=value => Number.isSafeInteger(Number(value)) && Number(value)>0 && /^\d+$/.test(String(value));
-const reportStatus=value => value===undefined ? 'draft' : ['draft','final'].includes(value) ? value : null;
+const reportStatus=value => value===undefined || value==='draft' ? 'draft' : null;
 const reportRequest=async body => {
   const { from,to,sections,narratives,template_id:templateId }=body || {};
   const status=reportStatus(body?.status);
   if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) throw Object.assign(new Error('from and to must be valid dates with from on or before to'),{ status:400 });
-  if (!status) throw Object.assign(new Error('Report status must be draft or final'),{ status:400 });
+  if (!status) throw Object.assign(new Error('Generated reports must begin as drafts and follow the review workflow'),{ status:400 });
   return { from,to,sections,narratives,status,templateId:await reportHistory.validateTemplate(templateId) };
 };
 
@@ -148,6 +149,35 @@ router.get('/:id/reports',async (req,res) => {
   const customer=await db.prepare('SELECT customer_id FROM managed_customer_configurations WHERE customer_id=? AND managed_services_enabled=1').get(Number(req.params.id));
   if (!customer) return res.status(404).json({ error:'Managed customer not found' });
   res.json({ rows:await reportHistory.list(Number(req.params.id)) });
+});
+
+router.get('/:id/reports/:reportId/workflow',async (req,res) => {
+  if (!positiveId(req.params.id) || !positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  const rows=await reportHistory.workflowHistory(Number(req.params.id),Number(req.params.reportId));
+  if (!rows) return res.status(404).json({ error:'Report not found' });
+  res.json({ rows });
+});
+
+router.put('/:id/reports/:reportId/workflow',async (req,res) => {
+  if (!positiveId(req.params.id) || !positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  const action=req.body?.action;
+  const permission=action==='submit' ? 'managed_reports.generate' : 'managed_reports.review';
+  if (!await hasPermission(req.user,permission)) return res.status(403).json({ error:'You do not have permission to perform this report workflow action' });
+  try {
+    const customerId=Number(req.params.id),reportId=Number(req.params.reportId);
+    const result=await reportHistory.transition(customerId,reportId,req.body || {},req.user.id);
+    const link=`/managed-customers/${customerId}`;
+    const titleByAction={ submit:'Managed report awaiting review',approve:'Managed report approved',reject:'Managed report returned for changes',finalize:'Managed report finalized',reopen:'Managed report reopened' };
+    let recipients=[];
+    if (action==='submit') {
+      recipients=(await usersWithPermission('managed_reports.review')).filter(user => user.id!==req.user.id).map(user => user.id);
+    } else if (result.report.generated_by && result.report.generated_by!==req.user.id) recipients=[result.report.generated_by];
+    try {
+      for (const userId of recipients) await db.prepare('INSERT INTO notifications (user_id,type,title,body,link) VALUES (?,?,?,?,?)').run(userId,`managed_report.${result.change.event}`,titleByAction[action],result.report.original_name,link);
+    } catch(error) { console.error('[managed-reports] workflow notification failed:',error.message); }
+    await logAudit(db,req,'managed_report',reportId,result.report.original_name,`managed_report_${result.change.event}`,`customer_id=${customerId}; from=${result.change.from}; to=${result.change.to}; workflow_version=${result.report.workflow_version}; comment=${result.change.comment || ''}`);
+    res.json({ report:(await reportHistory.list(customerId)).find(item => item.id===reportId) });
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not update the report workflow' }); }
 });
 
 router.get('/:id/reports/:reportId/download',async (req,res) => {

@@ -1053,6 +1053,32 @@ async function applyCompatibilityMigrations() {
     );
     CREATE INDEX IF NOT EXISTS idx_user_permission_overrides_user ON user_permission_overrides(user_id);
   `]);
+  migrations.push(['20260922_managed_report_workflow', `
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS workflow_status TEXT NOT NULL DEFAULT 'draft' CHECK(workflow_status IN ('draft','in_review','approved','final'));
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS workflow_version INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS submitted_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS submitted_at TEXT;
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS reviewed_at TEXT;
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS finalized_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS finalized_at TEXT;
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS decision_comment TEXT;
+    UPDATE managed_report_history SET workflow_status='final' WHERE status='final';
+    CREATE TABLE IF NOT EXISTS managed_report_workflow_history (
+      id SERIAL PRIMARY KEY,
+      report_id INTEGER NOT NULL REFERENCES managed_report_history(id) ON DELETE CASCADE,
+      from_status TEXT,
+      to_status TEXT NOT NULL CHECK(to_status IN ('draft','in_review','approved','final')),
+      action TEXT NOT NULL CHECK(action IN ('generated','submitted','approved','rejected','finalized','reopened')),
+      comment TEXT,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      workflow_version INTEGER NOT NULL,
+      created_at TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_managed_report_workflow_history_report ON managed_report_workflow_history(report_id,created_at,id);
+    INSERT INTO managed_report_workflow_history (report_id,from_status,to_status,action,actor_id,workflow_version,created_at)
+      SELECT id,NULL,workflow_status,'generated',generated_by,workflow_version,generated_at FROM managed_report_history;
+  `]);
 
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);

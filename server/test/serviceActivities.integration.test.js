@@ -1722,16 +1722,38 @@ test('managed customer report preview reuses dashboard metrics and protects cust
   const archived=await fetch(`${baseUrl}/api/managed-customers/${ids.customer}/reports/${wordHistory.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenManager}`,'X-SolutionsHub-Request':'1' } });
   assert.equal(archived.status,200);assert.match(archived.headers.get('content-disposition'),/Acme_Corp_2026-09-01_2026-09-30\.docx/);
   assert.equal(Buffer.from(await archived.arrayBuffer()).subarray(0,2).toString(),'PK');
-  const secondDocument=await fetch(`${baseUrl}${path.replace('report-preview','report.docx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ ...body,status:'final' }) });
+  const secondDocument=await fetch(`${baseUrl}${path.replace('report-preview','report.docx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ ...body,status:'draft' }) });
   assert.equal(secondDocument.status,200);assert.equal(secondDocument.headers.get('x-report-version'),'2');
   const updatedHistory=await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager });
-  assert.equal(updatedHistory.data.rows[0].report_version,2);assert.equal(updatedHistory.data.rows[0].status,'final');
-  const pdfResponse=await fetch(`${baseUrl}${path.replace('report-preview','report.pdf')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ ...body,status:'final' }) });
+  assert.equal(updatedHistory.data.rows[0].report_version,2);assert.equal(updatedHistory.data.rows[0].status,'draft');
+  const pdfResponse=await fetch(`${baseUrl}${path.replace('report-preview','report.pdf')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ ...body,status:'draft' }) });
   assert.equal(pdfResponse.status,200);assert.match(pdfResponse.headers.get('content-type'),/application\/pdf/);assert.match(pdfResponse.headers.get('content-disposition'),/Acme_Corp_2026-09-01_2026-09-30\.pdf/);
   const pdfBuffer=Buffer.from(await pdfResponse.arrayBuffer());assert.equal(pdfBuffer.subarray(0,5).toString(),'%PDF-');
   const pdfHistory=await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager });
-  assert.equal(pdfHistory.data.rows[0].output_format,'pdf');assert.equal(pdfHistory.data.rows[0].report_version,1);assert.equal(pdfHistory.data.rows[0].status,'final');
+  assert.equal(pdfHistory.data.rows[0].output_format,'pdf');assert.equal(pdfHistory.data.rows[0].report_version,1);assert.equal(pdfHistory.data.rows[0].status,'draft');
   assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='managed_customer_pdf_report_generated'").get()).count,1);
+});
+
+test('managed reports follow a conflict-safe reviewed workflow with an audit trail',async () => {
+  const reports=(await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager })).data.rows;
+  const report=reports.find(item => item.output_format==='pdf');assert.ok(report);assert.equal(report.workflow_version,1);
+  const endpoint=`/api/managed-customers/${ids.customer}/reports/${report.id}/workflow`;
+  assert.equal((await api(endpoint,{ method:'PUT',token:ids.tokenEnabled,body:{ action:'submit',version:1 } })).status,403);
+  await db.prepare(`INSERT INTO user_permission_overrides (user_id,permission_key,allowed,updated_by) VALUES (?,'managed_reports.review',1,?)`).run(ids.planner,ids.manager);
+  const submitted=await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'submit',version:1 } });
+  assert.equal(submitted.status,200);assert.equal(submitted.data.report.status,'in_review');assert.equal(submitted.data.report.workflow_version,2);
+  assert.equal((await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'submit',version:1 } })).status,409);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM notifications WHERE user_id=? AND type='managed_report.submitted'").get(ids.planner)).count,1);
+  const approved=await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'approve',version:2,comment:'Reviewed against the source data.' } });
+  assert.equal(approved.status,200);assert.equal(approved.data.report.status,'approved');
+  const finalized=await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'finalize',version:3 } });
+  assert.equal(finalized.status,200);assert.equal(finalized.data.report.status,'final');assert.equal(finalized.data.report.workflow_version,4);
+  assert.equal((await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'reopen',version:4 } })).status,400);
+  const reopened=await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'reopen',version:4,comment:'Customer scope changed.' } });
+  assert.equal(reopened.status,200);assert.equal(reopened.data.report.status,'draft');
+  const trail=await api(endpoint,{ token:ids.tokenManager });assert.equal(trail.status,200);assert.deepEqual(trail.data.rows.map(item => item.action),['generated','submitted','approved','finalized','reopened']);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action LIKE 'managed_report_%' AND entity_id=?").get(report.id)).count>=4,true);
+  await db.prepare("DELETE FROM user_permission_overrides WHERE user_id=? AND permission_key='managed_reports.review'").run(ids.planner);
 });
 
 test('managed report templates are manager-only, validated and versioned',async () => {

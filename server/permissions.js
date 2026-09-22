@@ -34,4 +34,16 @@ async function hasPermission(user,key,store=db) {
   return !!(await effectivePermissions(user,store))[key];
 }
 
-module.exports={ DEFINITIONS,KEYS,ROLES,DEFAULTS,validPermission,validRole,effectivePermissions,hasPermission };
+async function usersWithPermission(key,store=db) {
+  if (!validPermission(key)) return [];
+  const [users,roleRules,userRules]=await Promise.all([
+    store.prepare('SELECT id,role FROM users WHERE active=1').all(),
+    store.prepare('SELECT role,allowed FROM role_permission_overrides WHERE permission_key=?').all(key),
+    store.prepare('SELECT user_id,allowed FROM user_permission_overrides WHERE permission_key=?').all(key),
+  ]);
+  const byRole=new Map(roleRules.map(row => [row.role,!!row.allowed]));
+  const byUser=new Map(userRules.map(row => [Number(row.user_id),!!row.allowed]));
+  return users.filter(user => byUser.has(Number(user.id)) ? byUser.get(Number(user.id)) : byRole.has(user.role) ? byRole.get(user.role) : !!DEFAULTS[user.role]?.[key]);
+}
+
+module.exports={ DEFINITIONS,KEYS,ROLES,DEFAULTS,validPermission,validRole,effectivePermissions,hasPermission,usersWithPermission };
