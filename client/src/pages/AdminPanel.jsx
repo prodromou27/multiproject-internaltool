@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users as UsersIcon, Shield, ShieldCheck, FolderOpen, Wrench, ClipboardList, HardDrive, ScrollText, Activity, Settings, Download, BarChart3, ShieldAlert, Globe, Database, FileSpreadsheet, LayoutDashboard, Tag, Building2 } from 'lucide-react';
+import { Users as UsersIcon, Shield, ShieldCheck, FolderOpen, Wrench, ClipboardList, HardDrive, ScrollText, Activity, Settings, Download, BarChart3, ShieldAlert, Globe, Database, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound } from 'lucide-react';
 import { api } from '../api';
 import { visiblePages } from '../navigation';
 import { useAuth } from '../App';
@@ -13,7 +13,7 @@ import { StatusManagementTab } from './admin/StatusManagementTab';
 import { LocalizationTab } from './admin/LocalizationTab';
 import { AdminAlertsTab, LoggingTab } from './admin/AlertsLoggingTab';
 import { DeploymentHealthTab, SystemUpdateTab, AuditLogTab, SecurityTab } from './admin/SystemTabs';
-import { ServiceActivityAdminTab } from './admin/ServiceActivityAdmin';
+import { ServiceActivityAdminTab, TeamsAdminSection } from './admin/ServiceActivityAdmin';
 import { ManagedReportTemplatesTab } from './admin/ManagedReportTemplatesTab';
 import { PermissionsTab } from './admin/PermissionsTab';
 import TicketSyncMonitoring from './admin/TicketSyncMonitoring';
@@ -24,11 +24,12 @@ import { useToast } from '../components/Toast';
 const TABS = [
   { key: 'overview',       label: 'Overview',           Icon: LayoutDashboard, group: 'overview',      desc: 'Health, activity, and manager attention items' },
   { key: 'users',          label: 'Users & Access',     Icon: UsersIcon,       group: 'business_people',        desc: 'Accounts, roles, activation, passwords, and 2FA exceptions' },
+  { key: 'teams',          label: 'Teams',              Icon: UsersRound,      group: 'business_people',        desc: 'Create teams, manage membership, and enable Service Activity Tracking per team' },
   { key: 'permissions',    label: 'Permissions',        Icon: ShieldCheck,     group: 'business_people',        desc: 'Role capabilities and explicit user access exceptions' },
   { key: 'projects',       label: 'Projects',           Icon: FolderOpen,      group: 'business_people',        desc: 'Project administration and status visibility' },
   { key: 'maintenance',    label: 'Maintenance Visits', Icon: Wrench,          group: 'business_people',        desc: 'Visit administration and report status' },
   { key: 'statuses',       label: 'Status Workflow',    Icon: Tag,             group: 'business_rules', desc: 'Project status labels, colors, and workflow rules' },
-  { key: 'service_activity_tracking', label: 'Service Activity Tracking', Icon: ClipboardList, group: 'business_rules', desc: 'Teams, activity categories, technologies, and MSP operations log settings' },
+  { key: 'service_activity_tracking', label: 'Service Activity Tracking', Icon: ClipboardList, group: 'business_rules', desc: 'Activity categories, technologies, and MSP operations log settings' },
   { key: 'managed_report_templates', label: 'Managed Report Templates', Icon: FileSpreadsheet, group: 'business_rules', desc: 'Reusable sections and default narrative for customer reports' },
   { key: 'integrations',   label: 'Integrations',       Icon: Globe,           group: 'technical_configuration', desc: 'External service and SMTP configuration' },
   { key: 'weekly_report',  label: 'Weekly Report',      Icon: ScrollText,      group: 'technical_configuration', desc: 'Report schedule, recipients, and preview' },
@@ -197,6 +198,7 @@ export default function AdminPanel() {
 
           {tab === 'overview'     && <OverviewTab />}
           {tab === 'users'        && <UsersTab currentUser={user} />}
+          {tab === 'teams'        && <TeamsAdminSection />}
           {tab === 'permissions'  && <PermissionsTab />}
           {tab === 'projects'     && <ProjectsAdminTab />}
           {tab === 'maintenance'  && <MaintenanceAdminTab />}

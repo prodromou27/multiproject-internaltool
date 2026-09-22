@@ -180,7 +180,14 @@ export function ServiceActivityAdminTab() {
   return (
     <div>
       <ServiceActivityGeneralSettings />
-      <TeamsAdminSection />
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="section-title">Teams</div>
+        <p className="text-sm text-muted">
+          Create teams, manage membership, and enable Service Activity Tracking per team under
+          {' '}<strong>Teams</strong> in the People &amp; Work group.
+        </p>
+      </div>
 
       <LookupTable
         title="Activity Categories"
