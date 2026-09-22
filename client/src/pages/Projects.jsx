@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Building2, FolderOpen, X, Bell, Pin, Search } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import { useLatestRequest } from '../hooks/useLatestRequest';
-import { useCreateIntent } from '../hooks/useCreateIntent';
+import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import WaitingReasonDialog from '../components/WaitingReasonDialog';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -208,9 +208,7 @@ function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
 /* ── Project Form ─────────────────────────────────────────────── */
 function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCreated }) {
   const toast = useToast();
-  const [form, setForm] = useState(
-    initial || { title: '', description: '', priority: 'medium', deadline: '', customer_id: null, member_ids: [] }
-  );
+  const [form, setForm] = useState(() => ({ title: '', description: '', priority: 'medium', deadline: '', customer_id: null,...(initial || {}),member_ids:initial?.member_ids || [] }));
   const [saving,      setSaving]      = useState(false);
   const [memberError, setMemberError] = useState('');
 
@@ -295,12 +293,13 @@ export default function Projects() {
   const [search,     setSearch]     = useState('');
   const [ragFilter,  setRagFilter]  = useState('all');
   const [showCreate, setShowCreate] = useState(false);
+  const [createInitial,setCreateInitial]=useState(null);
   const [loading,    setLoading]    = useState(true);
   const [waitingDialog, setWaitingDialog] = useState(null);
 
   const loadCustomers = () => load();
   const [loadError, setLoadError] = useState('');
-  useCreateIntent({ allowed: isManager, ready: !loading && !loadError, onCreate: () => { setShowCreate(true); } });
+  useCreateIntent({ allowed: isManager, ready: !loading && !loadError, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateInitial(customerId?{ customer_id:customerId }:null);setShowCreate(true); } });
 
   const { begin, isCurrent } = useLatestRequest(user.role);
   const load = useCallback(() => {
@@ -378,7 +377,7 @@ export default function Projects() {
   return (
     <div className="page">
       <PageHeader eyebrow="Operations" title="Projects" description="Customer delivery, project ownership and upcoming commitments." actions={<>
-{isManager && <button className="btn btn-primary" onClick={() => setShowCreate(true)} disabled={loading || !!loadError}>+ New Project</button>}
+{isManager && <button className="btn btn-primary" onClick={() => { setCreateInitial(null);setShowCreate(true); }} disabled={loading || !!loadError}>+ New Project</button>}
       </>} />
 
       <div className="card mb-16">
@@ -588,12 +587,13 @@ export default function Projects() {
       )}
 
       {showCreate && (
-        <Modal title="New Project" onClose={() => setShowCreate(false)}>
+        <Modal title="New Project" onClose={() => { setShowCreate(false);setCreateInitial(null); }}>
           <ProjectForm
+            initial={createInitial}
             users={users}
             customers={customers}
             onSave={async form => { await api.createProject(form); toast.success('Project created'); await load(); }}
-            onClose={() => setShowCreate(false)}
+            onClose={() => { setShowCreate(false);setCreateInitial(null); }}
             onCustomerCreated={loadCustomers}
           />
         </Modal>

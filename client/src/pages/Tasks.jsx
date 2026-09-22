@@ -3,7 +3,7 @@ import { CheckSquare, Download, Trash2, UserCheck, Clock, Search, X, Pencil, Loc
 import { useLocation } from 'react-router-dom';
 import { PageHeader } from '../components/PageLayout';
 import { useLatestRequest } from '../hooks/useLatestRequest';
-import { useCreateIntent } from '../hooks/useCreateIntent';
+import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import WaitingReasonDialog from '../components/WaitingReasonDialog';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -163,6 +163,7 @@ export default function Tasks() {
   });
   const [sort, setSort] = useState({ key: 'deadline', direction: 'asc' });
   const [showCreate, setShowCreate] = useState(false);
+  const [createCustomerId,setCreateCustomerId]=useState(null);
   const [form, setForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', is_adhoc: false });
   const [loading, setLoading]   = useState(true);
   const [editTask, setEditTask] = useState(null);
@@ -195,7 +196,7 @@ export default function Tasks() {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => clearTimeout(timer);
   }, [search]);
-  useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !busy && !loadError, onCreate: () => { setShowCreate(true); } });
+  useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !busy && !loadError, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateCustomerId(customerId);if(customerId){ const matches=projects.filter(project => project.customer_id===customerId);setForm(current => ({ ...current,project_id:matches.length===1?String(matches[0].id):'' })); }setShowCreate(true); } });
 
   const { begin, isCurrent } = useLatestRequest(`${user.id}:${user.role}:${query}`);
   const load = useCallback(() => {
@@ -265,6 +266,7 @@ export default function Tasks() {
     try {
       await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, assigned_to: form.assigned_to ? Number(form.assigned_to) : null });
       setShowCreate(false);
+      setCreateCustomerId(null);
       setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', is_adhoc: false });
       load();
     } catch (err) { setCreateErr(err.message || 'Failed to create task'); }
@@ -366,7 +368,7 @@ export default function Tasks() {
               {TASK_COLUMNS.map(([id, label]) => <label key={id}><input type="checkbox" checked={visibleColumns.has(id)} onChange={() => toggleColumn(id)} /> {label}</label>)}
             </div>
           </details>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)} disabled={busy || !!loadError}>+ New Task</button>
+          <button className="btn btn-primary" onClick={() => { setCreateCustomerId(null);setShowCreate(true); }} disabled={busy || !!loadError}>+ New Task</button>
         </div>
       </>} />
 
@@ -616,7 +618,7 @@ export default function Tasks() {
       )}
 
       {showCreate && (
-        <Modal title="New Task" onClose={() => { setShowCreate(false); setCreateErr(''); }}>
+        <Modal title="New Task" onClose={() => { setShowCreate(false);setCreateCustomerId(null);setCreateErr(''); }}>
           <form onSubmit={createTask}>
             {createErr && <div className="error-msg" style={{ marginBottom: 10 }}>{createErr}</div>}
             <div className="form-group"><label>Title *</label><input value={form.title} onChange={set('title')} required /></div>
@@ -629,11 +631,12 @@ export default function Tasks() {
               </div>
               <div className="form-group"><label>Deadline</label><input type="date" value={form.deadline} onChange={set('deadline')} /></div>
             </div>
-            <div className="form-group"><label>{isManager ? 'Project (optional)' : 'Assigned Project *'}</label>
-              <select value={form.project_id} onChange={set('project_id')} required={!isManager}>
-                <option value="">{isManager ? 'No project (standalone)' : 'Select an assigned project'}</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+            <div className="form-group"><label>{createCustomerId ? 'Customer project *' : isManager ? 'Project (optional)' : 'Assigned Project *'}</label>
+              <select value={form.project_id} onChange={set('project_id')} required={!!createCustomerId || !isManager}>
+                <option value="">{createCustomerId?'Select a project for this customer':isManager ? 'No project (standalone)' : 'Select an assigned project'}</option>
+                {projects.filter(project => !createCustomerId || project.customer_id===createCustomerId).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
               </select>
+              {createCustomerId && !projects.some(project => project.customer_id===createCustomerId) && <p className="text-muted text-sm">Create a customer project before adding a related task.</p>}
             </div>
             {isManager && <div className="form-group"><label>Assign To</label>
               <select value={form.assigned_to} onChange={set('assigned_to')}>
@@ -648,7 +651,7 @@ export default function Tasks() {
               </label>
             </div>
             <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
-              <button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>Cancel</button>
+              <button type="button" className="btn btn-ghost" onClick={() => { setShowCreate(false);setCreateCustomerId(null); }}>Cancel</button>
               <button type="submit" className="btn btn-primary">Create</button>
             </div>
           </form>

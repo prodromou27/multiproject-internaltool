@@ -175,6 +175,7 @@ export const api = {
   customerOperationProjects: (id,params={},options) => req('GET',`/customers/${id}/operations/projects?${new URLSearchParams(params)}`,undefined,options),
   customerOperationTasks: (id,params={},options) => req('GET',`/customers/${id}/operations/tasks?${new URLSearchParams(params)}`,undefined,options),
   customerOperationVisits: (id,params={},options) => req('GET',`/customers/${id}/operations/visits?${new URLSearchParams(params)}`,undefined,options),
+  customerOperationTimeline: (id,params={},options) => req('GET',`/customers/${id}/operations/timeline?${new URLSearchParams(params)}`,undefined,options),
   customerRecommendations: (id, params = {}, options) => req('GET', `/customers/${id}/recommendations?` + new URLSearchParams(params).toString(), undefined, options),
   createRecommendation: (id, body) => req('POST', `/customers/${id}/recommendations`, body),
   updateRecommendation: (id, recommendationId, body) => req('PUT', `/customers/${id}/recommendations/${recommendationId}`, body),

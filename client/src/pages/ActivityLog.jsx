@@ -5,7 +5,7 @@ import './ActivityForm.css';
 import { fmtDuration, MIX, mixOf, groupByDay, LedgerDay } from '../components/activityLedger';
 import { PageHeader } from '../components/PageLayout';
 import { useSearchParams } from 'react-router-dom';
-import { useCreateIntent } from '../hooks/useCreateIntent';
+import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, fmtDate, fmtDateTime, Modal } from '../components/Shared';
@@ -517,6 +517,7 @@ export default function ActivityLog() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const [showForm, setShowForm] = useState(false);
+  const [createInitial,setCreateInitial]=useState(null);
   const [editActivity, setEditActivity] = useState(null);
   const [editLoadingId, setEditLoadingId] = useState(null);
   const editRequest = useRef(null);
@@ -531,7 +532,7 @@ export default function ActivityLog() {
     setSearchParams(next, { replace: true });
   }, [meta, searchParams, setSearchParams]);
 
-  useCreateIntent({ allowed: isManager || (saAccess.enabled && ['engineer', 'pm'].includes(user.role)), ready: !!meta, onCreate: () => { setShowForm(true); } });
+  useCreateIntent({ allowed: isManager || (saAccess.enabled && ['engineer', 'pm'].includes(user.role)), ready: !!meta, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateInitial(customerId?{ customer_id:customerId }:null);setShowForm(true); } });
 
   useEffect(() => () => editRequest.current?.abort(), []);
 
@@ -823,8 +824,8 @@ export default function ActivityLog() {
       )}
 
       {showForm && meta && (
-        <Modal title="Log activity" onClose={() => setShowForm(false)}>
-          <ActivityForm meta={meta} onSave={handleCreate} onClose={() => setShowForm(false)} />
+        <Modal title="Log activity" onClose={() => { setShowForm(false);setCreateInitial(null); }}>
+          <ActivityForm meta={meta} initial={createInitial} onSave={handleCreate} onClose={() => { setShowForm(false);setCreateInitial(null); }} />
         </Modal>
       )}
 

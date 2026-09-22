@@ -156,4 +156,28 @@ router.get('/visits',requireAuth,async (req,res) => {
   res.json({ rows:rows.map(row => ({ ...row,engineers:byVisit.get(row.id) || [] })),total:Number(count.total),page:paging.page,page_size:paging.pageSize });
 });
 
+router.get('/timeline',requireAuth,async (req,res) => {
+  const customerId=await authorizedCustomer(req,res);if (!customerId) return;
+  const paging=parsePage(req.query);if (!paging) return res.status(400).json({ error:'Invalid pagination' });
+  const events=[],params=[],role=req.user.role;
+  const add=(sql,...values) => { events.push(sql);params.push(...values); };
+  const projectJoin=role==='manager' ? '' : ' JOIN project_assignments pa_scope ON pa_scope.project_id=p.id AND pa_scope.user_id=?';
+  const projectParams=role==='manager' ? [customerId] : [req.user.id,customerId];
+  add(`SELECT p.id AS event_id,'project' AS kind,p.id AS entity_id,p.title,p.created_at AS event_at,'Project created' AS action,u.name AS actor_name FROM projects p${projectJoin} LEFT JOIN users u ON u.id=p.created_by WHERE p.customer_id=?`,...projectParams);
+  if (role!=='planner') add(`SELECT t.id,'task',t.id,t.title,t.created_at,'Task created',u.name FROM tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.created_by WHERE p.customer_id=?${role==='engineer'?' AND t.assigned_to=?':''}`,customerId,...(role==='engineer'?[req.user.id]:[]));
+  const visitJoin=role==='engineer' ? ' JOIN maintenance_visit_engineers mve_scope ON mve_scope.visit_id=mv.id AND mve_scope.user_id=?' : '';
+  const visitParams=role==='engineer' ? [req.user.id,customerId] : [customerId];
+  add(`SELECT mv.id,'visit',mv.id,mv.title,mv.created_at,'Visit scheduled',u.name FROM maintenance_visits mv${visitJoin} LEFT JOIN users u ON u.id=mv.created_by WHERE mv.customer_id=?`,...visitParams);
+  add(`SELECT mv.id,'visit_report',mv.id,mv.title,mv.report_sent_at,'Report submitted',u.name FROM maintenance_visits mv${visitJoin} LEFT JOIN users u ON u.id=mv.report_sent_by WHERE mv.customer_id=? AND mv.report_sent=1 AND mv.report_sent_at IS NOT NULL`,...visitParams);
+  add(`SELECT sa.id,'activity',sa.id,sa.title,sa.created_at,'Service activity logged',u.name FROM service_activities sa LEFT JOIN users u ON u.id=sa.engineer_id WHERE sa.customer_id=?${role==='engineer'?' AND sa.engineer_id=?':''}`,customerId,...(role==='engineer'?[req.user.id]:[]));
+  add(`SELECT h.id,'recommendation',r.id,substr(r.finding,1,300),h.created_at,h.action,u.name FROM recommendation_history h JOIN customer_recommendations r ON r.id=h.recommendation_id LEFT JOIN users u ON u.id=h.user_id WHERE r.customer_id=?`,customerId);
+  if (role==='manager') add(`SELECT h.id,'asset',h.asset_id,'Customer asset',h.created_at,h.action,u.name FROM customer_asset_history h LEFT JOIN users u ON u.id=h.user_id WHERE h.customer_id=?`,customerId);
+  const union=events.join(' UNION ALL '),offset=paging.offset;
+  const [rows,count]=await Promise.all([
+    db.prepare(`SELECT * FROM (${union}) events ORDER BY event_at DESC,kind,event_id DESC LIMIT ? OFFSET ?`).all(...params,paging.pageSize,offset),
+    db.prepare(`SELECT COUNT(*) AS total FROM (${union}) events`).get(...params),
+  ]);
+  res.json({ rows,total:Number(count.total),page:paging.page,page_size:paging.pageSize });
+});
+
 module.exports=router;

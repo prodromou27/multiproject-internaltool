@@ -20,14 +20,20 @@ router.get('/', async (req, res) => {
   const page = Number(rawPage), customer = Number(req.params.id);
   const where = `r.customer_id=?${req.query.status ? ' AND r.status=?' : ''}`;
   const params = [customer, ...(req.query.status ? [req.query.status] : [])];
-  const [rows, count, visits, owners,projects] = await Promise.all([
+  const [rows, count, visits, owners,projects,summary] = await Promise.all([
     db.prepare(`SELECT r.*,u.name AS owner_name,mv.title AS source_visit_title,t.title AS related_task_title,t.project_id AS related_task_project_id FROM customer_recommendations r LEFT JOIN users u ON u.id=r.owner_id LEFT JOIN maintenance_visits mv ON mv.id=r.source_visit_id LEFT JOIN tasks t ON t.id=r.related_task_id WHERE ${where} ORDER BY r.created_at DESC,r.id DESC LIMIT ? OFFSET ?`).all(...params,25,(page - 1) * 25),
     db.prepare(`SELECT COUNT(*) AS total FROM customer_recommendations r WHERE ${where}`).get(...params),
     req.user.role==='engineer' ? db.prepare('SELECT mv.id,mv.title,mv.scheduled_date FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id=mv.id WHERE mv.customer_id=? AND mve.user_id=? ORDER BY mv.scheduled_date DESC,mv.id DESC LIMIT 50').all(customer,req.user.id) : db.prepare('SELECT id,title,scheduled_date FROM maintenance_visits WHERE customer_id=? ORDER BY scheduled_date DESC,id DESC LIMIT 50').all(customer),
     req.user.role==='engineer' ? db.prepare('SELECT id,name,role FROM users WHERE id=?').all(req.user.id) : db.prepare("SELECT id,name,role FROM users WHERE active=1 AND role IN ('manager','engineer') ORDER BY name,id LIMIT 500").all(),
     req.user.role==='engineer' ? db.prepare('SELECT p.id,p.title FROM projects p JOIN project_assignments pa ON pa.project_id=p.id WHERE p.customer_id=? AND pa.user_id=? ORDER BY p.title,p.id LIMIT 500').all(customer,req.user.id) : db.prepare('SELECT id,title FROM projects WHERE customer_id=? ORDER BY title,id LIMIT 500').all(customer),
+    db.prepare(`SELECT
+      SUM(CASE WHEN status NOT IN ('implemented','rejected','closed','converted_to_project') THEN 1 ELSE 0 END) AS open,
+      SUM(CASE WHEN status NOT IN ('implemented','rejected','closed','converted_to_project') AND risk_level IN ('high','critical') THEN 1 ELSE 0 END) AS high_risk,
+      SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END) AS in_progress,
+      SUM(CASE WHEN status='implemented' THEN 1 ELSE 0 END) AS implemented
+      FROM customer_recommendations WHERE customer_id=?`).get(customer),
   ]);
-  res.json({ rows:rows.map(row => ({ ...row,can_edit:canEdit(req.user,row) })), total: Number(count.total), page, page_size: 25, visits, owners,projects,capabilities:{ can_create:['manager','planner','engineer'].includes(req.user.role),can_convert_project:req.user.role==='manager',can_convert_task:['manager','planner','engineer'].includes(req.user.role) } });
+  res.json({ rows:rows.map(row => ({ ...row,can_edit:canEdit(req.user,row) })), total: Number(count.total), page, page_size: 25, visits, owners,projects,summary:Object.fromEntries(Object.entries(summary).map(([key,value]) => [key,Number(value || 0)])),capabilities:{ can_create:['manager','planner','engineer'].includes(req.user.role),can_convert_project:req.user.role==='manager',can_convert_task:['manager','planner','engineer'].includes(req.user.role) } });
 });
 
 function validate(body, existing = {}) {

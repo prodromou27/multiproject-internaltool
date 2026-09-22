@@ -106,6 +106,7 @@ export default function CustomerRecommendations({ customerId, sourceVisitId, cre
   },[create,data,onSourceConsumed]);
   const busy = loading || loadedScope !== scope;
   return <section>
+    {data?.summary && <div className="cs-recommendation-summary"><div><span>Open</span><strong>{data.summary.open}</strong></div><div><span>High risk</span><strong>{data.summary.high_risk}</strong></div><div><span>In progress</span><strong>{data.summary.in_progress}</strong></div><div><span>Implemented</span><strong>{data.summary.implemented}</strong></div></div>}
     <div className="flex gap-8" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
       <label htmlFor="recommendation-list-status">Status</label><select id="recommendation-list-status" value={status} onChange={event => { setStatus(event.target.value); setPage(1); }} style={{ width: 'auto' }}><option value="">All statuses</option>{STATUSES.map(value => <option key={value} value={value}>{label(value)}</option>)}</select>
       {data?.capabilities?.can_create !== false && <button className="btn btn-primary" disabled={busy || !!error} onClick={() => setEditing({ initial: null })}>Record recommendation</button>}

@@ -1,5 +1,6 @@
 import { useEffect,useState } from 'react';
 import { CheckCircle2,RefreshCw,Save,Settings2,ShieldCheck } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { Toggle } from '../pages/admin/shared';
 
@@ -79,6 +80,7 @@ export default function ManagedCustomerConfiguration({ customerId }) {
         <label>RT queue<select value={form.external_queue_id} onChange={event => selectQueue(event.target.value)}><option value="">No queue mapped</option>{storedQueueMissing && <option value={form.external_queue_id}>{form.external_queue_name} ({form.external_queue_id})</option>}{queues.map(queue => <option key={queue.id} value={queue.id} disabled={!!queue.mapping && Number(queue.mapping.customer_id)!==Number(customerId)}>{queue.name} ({queue.id}){queue.mapping ? ` — mapped to ${queue.mapping.customer_name}` : ''}</option>)}</select></label>
         <label>Queue ID<input value={form.external_queue_id} readOnly placeholder="Discover and select a queue" /></label>
         <label>Last successful sync<input value={form.last_successful_sync_at || 'No successful sync yet'} readOnly /></label>
+        <label>Last sync status<input value={form.last_sync_status || 'No sync recorded'} readOnly /></label>
       </div>
       <div className="managed-config-options"><Toggle checked={form.ticket_include_in_reporting} onChange={value => set('ticket_include_in_reporting',value)} label="Include tickets in reports" /></div>
       <div className="managed-config-options">
@@ -102,6 +104,6 @@ export default function ManagedCustomerConfiguration({ customerId }) {
       </div>
     </section>
 
-    <button type="button" className="btn btn-primary" disabled={!!busy} onClick={save}><Save size={14} /> {busy==='save' ? 'Saving...' : 'Save configuration'}</button>
+    <div className="flex gap-8" style={{ flexWrap:'wrap' }}><button type="button" className="btn btn-primary" disabled={!!busy} onClick={save}><Save size={14} /> {busy==='save' ? 'Saving...' : 'Save configuration'}</button>{form.managed_services_enabled && <Link className="btn btn-ghost" to={`/managed-customers/${customerId}`}>Open Managed Services Dashboard</Link>}</div>
   </div>;
 }

@@ -3,7 +3,7 @@ import { Upload, X, Wrench, Check, Send, Printer, Download, AlertTriangle, Alert
 import { Link, useLocation } from 'react-router-dom';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { PageHeader } from '../components/PageLayout';
-import { useCreateIntent } from '../hooks/useCreateIntent';
+import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { localDateISO } from '../utils/dates';
 import { api } from '../api';
@@ -63,10 +63,10 @@ function EngineerPicker({ engineers, selected, onChange }) {
 }
 
 /* ── Visit Form ──────────────────────────────────────────── */
-function VisitForm({ initial, customers, engineers, onSave, onClose }) {
+function VisitForm({ initial, defaults, customers, engineers, onSave, onClose }) {
   const [form, setForm] = useState(initial || {
     customer_id: '', title: '', description: '', scheduled_date: '',
-    engineer_ids: [], asset_ids: [], notes: '', status: 'scheduled',
+    engineer_ids: [], asset_ids: [], notes: '', status: 'scheduled',...(defaults || {}),
   });
   const [saving,   setSaving]   = useState(false);
   const [formErr,  setFormErr]  = useState('');
@@ -418,6 +418,7 @@ export default function MaintenanceVisits() {
   const [search,      setSearch]      = useState('');
   const [selected,    setSelected]    = useState(null);
   const [showForm,    setShowForm]    = useState(false);
+  const [createDefaults,setCreateDefaults]=useState(null);
   const [showImport,  setShowImport]  = useState(false);
   const [editing,     setEditing]     = useState(null);
   const [loading,     setLoading]     = useState(true);
@@ -438,7 +439,7 @@ export default function MaintenanceVisits() {
     if (!VISIT_FILTERS.has(filter)) setFilter('upcoming');
   }, [filter, setFilter]);
 
-  useCreateIntent({ allowed: canManage, ready: !unavailable, onCreate: () => { setEditing(null); setShowForm(true); } });
+  useCreateIntent({ allowed: canManage, ready: !unavailable, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateDefaults(customerId?{ customer_id:customerId }:null);setEditing(null);setShowForm(true); } });
 
   const load = useCallback(() => {
     const request = begin();
@@ -699,9 +700,10 @@ export default function MaintenanceVisits() {
       )}
 
       {showForm && canManage && (
-        <Modal title={editing ? 'Edit Visit' : 'Schedule Maintenance Visit'} onClose={() => { setShowForm(false); setEditing(null); }}>
+        <Modal title={editing ? 'Edit Visit' : 'Schedule Maintenance Visit'} onClose={() => { setShowForm(false);setEditing(null);setCreateDefaults(null); }}>
           <VisitForm
             initial={editing}
+            defaults={createDefaults}
             customers={customers}
             engineers={engineers}
             onSave={async data => {
@@ -714,7 +716,7 @@ export default function MaintenanceVisits() {
               }
               load();
             }}
-            onClose={() => { setShowForm(false); setEditing(null); }}
+            onClose={() => { setShowForm(false);setEditing(null);setCreateDefaults(null); }}
           />
         </Modal>
       )}
