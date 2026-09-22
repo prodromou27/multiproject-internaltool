@@ -1,259 +1,26 @@
+/**
+ * Service Activity Tracking routes. Validation, status-config lookup and the
+ * access-control middleware live in separate modules (serviceActivityValidation.js,
+ * serviceActivityStatus.js, serviceActivitiesAccess.js) — this file is routing only.
+ */
 const router  = require('express').Router();
 const ExcelJS = require('exceljs');
 const db      = require('../db');
 const { requireAuth, requireManager, requireDownloadAuth } = require('../middleware/auth');
 const { logAudit } = require('../auditLog');
-const {
-  generateActivityReference, getEnabledTeamIdsForUser, isCustomerAuthorizedForEngineer,
-} = require('../serviceActivities');
+const { generateActivityReference, isCustomerAuthorizedForEngineer } = require('../serviceActivities');
 const { uploadDir, upload, safeStoredName, safeDownloadName, hasAllowedMagic } = require('../uploadUtils');
 const fs = require('fs');
 const path = require('path');
 const cipher = require('../cipher');
 const { decrypt: decryptField } = require('../fieldCipher');
 const { getServiceActivitySettings } = require('./serviceActivitySettings');
-const { attemptTicketWriteback } = require('../ticketWriteback');
-
-const VALID_WORK_LOCATIONS = new Set(['remote', 'onsite', 'internal', 'hybrid']);
-const VALID_BILLABLE = new Set(['included_in_contract', 'billable', 'non_billable', 'internal', 'not_applicable']);
-const VALID_PRIORITIES = new Set(['low', 'medium', 'high', 'critical']);
-const TERMINAL_COMPLETED_FALLBACK = 'completed';
-const positiveRouteId = value => typeof value === 'string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
-
-/** Middleware: engineer must belong to at least one team with tracking enabled.
- * Managers always pass (they administer/oversee all enabled teams). */
-async function requireServiceActivityAccess(req, res, next) {
-  if (req.user.role === 'manager') { req.enabledTeamIds = null; return next(); }
-  if (!['engineer', 'pm'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
-  const enabled = await getEnabledTeamIdsForUser(req.user.id);
-  if (!enabled.size) return res.status(403).json({ error: 'Service Activity Tracking is not enabled for your team' });
-  req.enabledTeamIds = enabled;
-  next();
-}
-
-async function requireOwnedActivity(req, res, next) {
-  const id = Number(req.params.id);
-  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid ID' });
-  const activity = await db.prepare('SELECT * FROM service_activities WHERE id = ?').get(id);
-  if (!activity) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role !== 'manager' && activity.engineer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-  req.activity = activity;
-  next();
-}
-
-async function requireAuthorizedActivityCustomer(req, res, next) {
-  if (req.user.role !== 'manager'
-    && !await isCustomerAuthorizedForEngineer(req.user.id, req.activity.customer_id, req.enabledTeamIds))
-    return res.status(403).json({ error: 'You are not authorized to log activity for this customer' });
-  next();
-}
-
-async function resolveActivityTeam(req, customerId, preferredTeamId) {
-  const assigned = await db.prepare('SELECT team_id FROM customer_teams WHERE customer_id = ? ORDER BY team_id').all(customerId);
-  const eligible = req.user.role === 'manager' ? assigned : assigned.filter(t => req.enabledTeamIds.has(t.team_id));
-  return eligible.find(t => t.team_id === preferredTeamId)?.team_id || eligible[0]?.team_id;
-}
-
-async function getStatusConfig() {
-  const row = await db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
-  if (!row) return [];
-  try { return JSON.parse(row.value).service_activity || []; } catch { return []; }
-}
-
-// Accepts an already-fetched statuses array when the caller has one (avoids a
-// redundant settings-table round trip on the hot create/update paths); falls
-// back to fetching it itself otherwise.
-async function terminalCompletedValue(statuses) {
-  const list = statuses || await getStatusConfig();
-  const completed = list.find(s => s.is_terminal && /complet/i.test(s.value));
-  return completed?.value || TERMINAL_COMPLETED_FALLBACK;
-}
-
-/** Category-level "require attachment" rule can only realistically be checked once
- * the activity exists (attachments FK to the activity id), so it's enforced here —
- * at the point status is being set to the terminal Completed value — rather than
- * at initial creation. */
-async function assertAttachmentRuleSatisfied(activityId, categoryId) {
-  const category = await db.prepare('SELECT require_attachment FROM activity_categories WHERE id = ?').get(categoryId);
-  if (!category?.require_attachment) return null;
-  const { c } = await db.prepare('SELECT COUNT(*) AS c FROM attachments WHERE service_activity_id = ?').get(activityId);
-  if (!c) return 'This category requires at least one attachment before the activity can be marked completed';
-  return null;
-}
-
-/**
- * Validate + resolve a create/update payload against customer-specific rules
- * and cross-entity ownership. Returns { error } or the resolved fields.
- */
-async function validateActivityPayload(body, { customerId, isCreate }) {
-  const customer = await db.prepare('SELECT * FROM customers WHERE id = ?').get(customerId);
-  if (!customer) return { error: 'Customer not found' };
-  if (isCreate && (!customer.active || !customer.service_activity_enabled)) return { error: 'Service Activity Tracking is not enabled for this customer' };
-
-  if (body.title != null && typeof body.title !== 'string') return { error: 'Title must be text' };
-  for (const field of ['ticket_reference', 'description', 'customer_impact', 'external_case_reference',
-    'change_type', 'change_reason', 'previous_state', 'new_state', 'change_risk', 'customer_approval_reference', 'verification_notes']) {
-    if (body[field] != null && (typeof body[field] !== 'string' || body[field].length > 10000))
-      return { error: `${field} must be text of at most 10000 characters` };
-  }
-  for (const field of ['customer_id', 'category_id', 'subcategory_id', 'related_project_id', 'related_task_id', 'related_visit_id', 'verified_by']) {
-    const value = body[field];
-    if (value != null && value !== '' && (!['number', 'string'].includes(typeof value)
-      || !/^\d+$/.test(String(value)) || !Number.isSafeInteger(Number(value)) || Number(value) < 1))
-      return { error: `${field} must be a positive integer` };
-  }
-  for (const field of ['follow_up_required', 'rollback_available']) {
-    if (body[field] != null && ![true, false, 0, 1].includes(body[field])) return { error: `${field} must be a boolean` };
-  }
-  for (const field of ['start_time', 'end_time']) {
-    if (body[field] != null && body[field] !== '' && (typeof body[field] !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(body[field])))
-      return { error: `${field} must use HH:MM in 24-hour format` };
-  }
-  if (body.follow_up_date != null && body.follow_up_date !== '') {
-    const date = body.follow_up_date;
-    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))
-      || new Date(date).toISOString().slice(0, 10) !== date) return { error: 'Follow-up date must be a valid YYYY-MM-DD date' };
-  }
-  const title = body.title?.trim();
-  if (isCreate || body.title !== undefined) {
-    if (!title) return { error: 'Title is required' };
-    if (title.length > 300) return { error: 'Title cannot exceed 300 characters' };
-  }
-
-  const activityDate = body.activity_date;
-  if (!activityDate) return { error: 'Activity date is required' };
-  if (activityDate) {
-    const d = new Date(activityDate + 'T00:00:00');
-    if (typeof activityDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(activityDate) || isNaN(d)
-      || d.getFullYear() !== Number(activityDate.slice(0, 4))
-      || d.getMonth() + 1 !== Number(activityDate.slice(5, 7))
-      || d.getDate() !== Number(activityDate.slice(8, 10))) return { error: 'Invalid activity date' };
-    const today = new Date(); today.setHours(23, 59, 59, 999);
-    if (d > today) return { error: 'Activity date cannot be in the future' };
-  }
-
-  if (!body.category_id) return { error: 'Category is required' };
-  if (body.category_id) {
-    const cat = await db.prepare('SELECT 1 FROM activity_categories WHERE id = ? AND active = 1').get(body.category_id);
-    if (!cat) return { error: 'Invalid category' };
-  }
-  if (body.subcategory_id) {
-    const sub = await db.prepare('SELECT 1 FROM activity_subcategories WHERE id = ? AND category_id = ?').get(body.subcategory_id, body.category_id);
-    if (!sub) return { error: 'Subcategory does not belong to the selected category' };
-  }
-
-  if (body.priority && !VALID_PRIORITIES.has(body.priority)) return { error: 'Invalid priority' };
-  if (body.work_location && !VALID_WORK_LOCATIONS.has(body.work_location)) return { error: 'Invalid work location' };
-  if (body.billable_classification && !VALID_BILLABLE.has(body.billable_classification)) return { error: 'Invalid billable classification' };
-
-  if (body.start_time && body.end_time && body.end_time < body.start_time)
-    return { error: 'End time cannot be before start time' };
-
-  for (const field of ['duration_minutes', 'billable_minutes']) {
-    const value = body[field];
-    if (value != null && value !== '' && (!['number', 'string'].includes(typeof value)
-      || !Number.isSafeInteger(Number(value)) || Number(value) < (field === 'duration_minutes' ? 1 : 0)
-      || Number(value) > 1440)) return { error: `${field} must be whole minutes within one day` };
-  }
-  if (body.technology_ids !== undefined) {
-    if (!Array.isArray(body.technology_ids) || body.technology_ids.length > 100
-      || body.technology_ids.some(id => !Number.isSafeInteger(id) || id <= 0)
-      || new Set(body.technology_ids).size !== body.technology_ids.length)
-      return { error: 'Technology IDs must be a list of unique positive integers' };
-    if (body.technology_ids.length) {
-      const ids = body.technology_ids;
-      const rows = await db.prepare(`SELECT id FROM technologies WHERE active = 1 AND id IN (${ids.map(() => '?').join(',')})`).all(...ids);
-      if (rows.length !== ids.length) return { error: 'Invalid or inactive technology' };
-    }
-  }
-  if (body.asset_ids !== undefined) {
-    if (!Array.isArray(body.asset_ids) || body.asset_ids.length > 100
-      || body.asset_ids.some(id => !Number.isSafeInteger(id) || id <= 0)
-      || new Set(body.asset_ids).size !== body.asset_ids.length)
-      return { error: 'Asset IDs must be a list of unique positive integers' };
-    if (body.asset_ids.length) {
-      const rows = await db.prepare(`SELECT id FROM customer_assets WHERE customer_id=? AND id IN (${body.asset_ids.map(() => '?').join(',')})`).all(Number(customerId),...body.asset_ids);
-      if (rows.length !== body.asset_ids.length) return { error: 'Every selected asset must belong to the activity customer' };
-    }
-  }
-
-  if (body.follow_up_required && !body.follow_up_date)
-    return { error: 'Follow-up date is required when follow-up is required' };
-
-  // Related entities, if supplied, must belong to the same customer.
-  if (body.related_project_id) {
-    const p = await db.prepare('SELECT 1 FROM projects WHERE id = ? AND customer_id = ?').get(body.related_project_id, customerId);
-    if (!p) return { error: 'Related project does not belong to the selected customer' };
-  }
-  if (body.related_task_id) {
-    const t = await db.prepare(`
-      SELECT 1 FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.customer_id = ?
-    `).get(body.related_task_id, customerId);
-    if (!t) return { error: 'Related task does not belong to the selected customer' };
-  }
-  if (body.related_visit_id) {
-    const v = await db.prepare('SELECT 1 FROM maintenance_visits WHERE id = ? AND customer_id = ?').get(body.related_visit_id, customerId);
-    if (!v) return { error: 'Related maintenance visit does not belong to the selected customer' };
-  }
-  if (body.follow_up_task_id) {
-    const task = await db.prepare(`SELECT t.project_id, p.customer_id FROM tasks t
-      LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?`).get(body.follow_up_task_id);
-    if (task?.project_id && task.customer_id !== Number(customerId)) return { error: 'Follow-up task does not belong to the selected customer' };
-  }
-
-  // Customer-specific requirement rules
-  const durationProvided = body.duration_minutes != null && body.duration_minutes !== '';
-  if (customer.require_duration && !durationProvided) return { error: 'Duration is required for this customer' };
-  if (customer.require_ticket_reference && !body.ticket_reference?.trim()) return { error: 'Ticket reference is required for this customer' };
-  if (customer.require_technology && !(Array.isArray(body.technology_ids) && body.technology_ids.length)) return { error: 'At least one technology is required for this customer' };
-  if (customer.require_notes && !body.description?.trim()) return { error: 'Notes are required for this customer' };
-  if (customer.require_billable_classification && !body.billable_classification) return { error: 'Billable classification is required for this customer' };
-
-  return { customer };
-}
-
-/**
- * A category with team_id set is only usable for activities that resolve to that
- * team — not just any team the engineer happens to also belong to. Checked
- * separately from validateActivityPayload (rather than folded into it) so that
- * other validation errors — e.g. a related project not belonging to the new
- * customer — still surface first when a request has multiple problems; this
- * check only matters once team resolution has actually succeeded.
- */
-async function assertCategoryUsableByTeam(categoryId, teamId) {
-  const cat = await db.prepare('SELECT team_id FROM activity_categories WHERE id = ?').get(categoryId);
-  if (cat?.team_id != null && cat.team_id !== teamId)
-    return 'This category is not available to the team this activity belongs to';
-  return null;
-}
-
-/**
- * Called only on the transition INTO the terminal Completed status. Best-effort:
- * never throws (attemptTicketWriteback already catches RT failures), and never
- * blocks the response on anything other than the RT call itself succeeding or
- * failing — the activity is already saved as completed by the time this runs,
- * so a slow or unreachable RT should not appear to fail the completion.
- */
-async function writeBackTicketOnCompletion(req, { id, title, customerId, ticketReference }) {
-  const outcome = await attemptTicketWriteback({ customerId, ticketReference });
-  if (!outcome.attempted) return;
-  const detail = outcome.ok ? `ticket_id=${outcome.ticket_id}; ${outcome.message}` : `ticket_id=${outcome.ticket_id}; error=${outcome.error}`;
-  await logAudit(db, req, 'service_activity', id, title, outcome.ok ? 'ticket_writeback_succeeded' : 'ticket_writeback_failed', detail);
-}
-
-/* ── Metadata for the quick-log form: categories, technologies, statuses, authorized customers ── */
-// req.enabledTeamIds is null for managers (see requireServiceActivityAccess) — they see
-// every team's categories, since a manager may log on behalf of any team.
-async function categoriesForTeams(enabledTeamIds) {
-  if (enabledTeamIds === null) {
-    return db.prepare('SELECT * FROM activity_categories WHERE active = 1 ORDER BY sort_order, name').all();
-  }
-  const teamIds = [...enabledTeamIds];
-  const placeholders = teamIds.map(() => '?').join(',');
-  return db.prepare(
-    `SELECT * FROM activity_categories WHERE active = 1 AND (team_id IS NULL OR team_id IN (${placeholders})) ORDER BY sort_order, name`
-  ).all(...teamIds);
-}
+const { getStatusConfig, terminalCompletedValue } = require('../serviceActivityStatus');
+const { validateActivityPayload, assertCategoryUsableByTeam, assertAttachmentRuleSatisfied } = require('../serviceActivityValidation');
+const {
+  positiveRouteId, requireServiceActivityAccess, requireOwnedActivity, requireAuthorizedActivityCustomer,
+  resolveActivityTeam, writeBackTicketOnCompletion, categoriesForTeams, activityFilters,
+} = require('./serviceActivitiesAccess');
 
 router.get('/meta', requireAuth, requireServiceActivityAccess, async (req, res) => {
   const [categories, subcategories, technologies, statuses, settings] = await Promise.all([
@@ -307,52 +74,6 @@ router.get('/assets',requireAuth,requireServiceActivityAccess,async (req,res) =>
 });
 
 /* ── List (server-side pagination + filters) ─────────────────────────── */
-function activityFilters(query, user) {
-  const integer = (key, fallback, max = Number.MAX_SAFE_INTEGER) => {
-    const value = query[key];
-    if (value === undefined) return fallback;
-    if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > max) throw new Error(`Invalid ${key}`);
-    return Number(value);
-  };
-  for (const key of ['from', 'to', 'status', 'billable_classification', 'search']) {
-    if (query[key] !== undefined && (typeof query[key] !== 'string' || !query[key].trim() || query[key].length > (key === 'search' ? 300 : 100))) throw new Error(`Invalid ${key}`);
-  }
-  const { from, to, status, billable_classification, search } = query;
-  for (const [key, value] of [['from', from], ['to', to]]) {
-    if (value !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) throw new Error(`Invalid ${key}`);
-  }
-  if (from && to && from > to) throw new Error('From date cannot be after To date');
-  const customer_id = integer('customer_id');
-  const category_id = integer('category_id');
-  const technology_id = integer('technology_id');
-  const page = integer('page', 1);
-  const limit = integer('page_size', 25, 200);
-  const offset = (page - 1) * limit;
-  if (!Number.isSafeInteger(offset)) throw new Error('Invalid page');
-  let where = 'WHERE 1=1';
-  const params = [];
-  if (user.role !== 'manager') {
-    where += ' AND sa.engineer_id = ?'; params.push(user.id);
-  }
-  if (from)         { where += ' AND sa.activity_date >= ?'; params.push(from); }
-  if (to)           { where += ' AND sa.activity_date <= ?'; params.push(to); }
-  if (customer_id)  { where += ' AND sa.customer_id = ?'; params.push(customer_id); }
-  if (category_id)  { where += ' AND sa.category_id = ?'; params.push(category_id); }
-  if (status)        { where += ' AND sa.status = ?'; params.push(status); }
-  if (billable_classification) { where += ' AND sa.billable_classification = ?'; params.push(billable_classification); }
-  if (technology_id) {
-    where += ' AND EXISTS (SELECT 1 FROM service_activity_technologies sat WHERE sat.service_activity_id = sa.id AND sat.technology_id = ?)';
-    params.push(technology_id);
-  }
-  if (search?.trim()) {
-    where += ' AND (sa.title ILIKE ? OR sa.description ILIKE ? OR sa.activity_reference ILIKE ? OR sa.ticket_reference ILIKE ?)';
-    const q = `%${search.trim()}%`;
-    params.push(q, q, q, q);
-  }
-
-  return { where, params, page, limit, offset };
-}
-
 router.get('/', requireAuth, requireServiceActivityAccess, async (req, res) => {
   let filters;
   try { filters = activityFilters(req.query, req.user); }

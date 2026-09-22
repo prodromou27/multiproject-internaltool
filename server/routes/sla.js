@@ -5,8 +5,7 @@ const { decrypt } = require('../fieldCipher');
 const { workingDaysBetween } = require('../workingDays');
 const { getTeamSlaTargets } = require('../teamSla');
 const { evaluateActivitySla, summarizeByTeam } = require('../serviceActivitySla');
-
-const TERMINAL_COMPLETED_FALLBACK = 'completed';
+const { getStatusConfig } = require('../serviceActivityStatus');
 
 router.get('/overview', requireManager, async (req, res) => {
   const today = (await db.prepare('SELECT app_today() AS d').get()).d;
@@ -120,10 +119,8 @@ router.get('/overview', requireManager, async (req, res) => {
   });
 
   // ── 5. Service Activity SLA, targets configurable per team ───────────
-  const statusConfigRow = (await db.prepare("SELECT value FROM settings WHERE key='status_config'").get());
-  let activityStatuses = [];
-  try { activityStatuses = statusConfigRow ? (JSON.parse(statusConfigRow.value).service_activity || []) : []; } catch { /* fall through to [] */ }
-  const completedValue = activityStatuses.find(s => s.is_terminal && /complet/i.test(s.value))?.value || TERMINAL_COMPLETED_FALLBACK;
+  const activityStatuses = await getStatusConfig();
+  const completedValue = activityStatuses.find(s => s.is_terminal && /complet/i.test(s.value))?.value || 'completed';
   const initialValue = activityStatuses[0]?.value || 'planned';
   const cancelledValue = activityStatuses.find(s => s.is_terminal && /cancel/i.test(s.value))?.value || 'cancelled';
 
