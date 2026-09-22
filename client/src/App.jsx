@@ -13,6 +13,7 @@ import { PAGES, visiblePages, pageForPath, canAccessPage } from './navigation';
 import { PageState } from './components/PageLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 import QuickCreate from './components/QuickCreate';
+import HelpMenu from './components/HelpMenu';
 import { loadLocaleConfig } from './utils/locale';
 import { StatusProvider } from './hooks/useStatuses';
 import { ToastProvider, useToast } from './components/Toast';
@@ -758,6 +759,7 @@ function Layout({ children }) {
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
           <QuickCreate role={user.role} serviceActivityEnabled={saAccess.enabled} />
           <GlobalSearch />
+          <HelpMenu role={user.role} />
           <NotificationBell />
           <div className="topbar-user">
             <strong>{initials}</strong><br />
@@ -780,6 +782,7 @@ function Layout({ children }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
             <QuickCreate role={user.role} serviceActivityEnabled={saAccess.enabled} />
             <GlobalSearch />
+            <HelpMenu role={user.role} />
             <NotificationBell />
             <NavLink to="/profile" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', marginLeft: 6 }}>
               <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#3b82f6,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', overflow: 'hidden', flexShrink: 0 }}>
