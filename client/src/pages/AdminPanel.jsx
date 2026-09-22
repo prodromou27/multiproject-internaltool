@@ -44,13 +44,16 @@ const TABS = [
   { key: 'system_update',  label: 'System Update',      Icon: Download,        group: 'technical_operations',    desc: 'Controlled application update workflow' },
 ];
 
+// One flat, always-visible list, grouped under clear headings — no separate
+// area switcher on top of it. Getting to any setting used to take two
+// decisions (pick an area, then a group); now it's one scroll or a search.
 const TAB_GROUPS = [
-  { key: 'overview',label: 'Overview',area: 'overview' },
-  { key: 'business_people',label: 'Business / People & Work',area: 'business' },
-  { key: 'business_rules',label: 'Business / Workflow & Service Rules',area: 'business' },
-  { key: 'technical_configuration',label: 'Technical / Application & Delivery',area: 'technical' },
-  { key: 'technical_security',label: 'Technical / Security & Audit',area: 'technical' },
-  { key: 'technical_operations',label: 'Technical / System Operations',area: 'technical' },
+  { key: 'overview',label: 'Overview' },
+  { key: 'business_people',label: 'People & Work' },
+  { key: 'business_rules',label: 'Workflow & Service Rules' },
+  { key: 'technical_configuration',label: 'Application & Delivery' },
+  { key: 'technical_security',label: 'Security & Audit' },
+  { key: 'technical_operations',label: 'System Operations' },
 ];
 
 const TAB_KEYS = new Set(TABS.map(t => t.key));
@@ -119,7 +122,6 @@ export default function AdminPanel() {
 
   const activeTab = TABS.find(t => t.key === tab) || TABS[0];
   const activeGroup = TAB_GROUPS.find(g => g.key === activeTab.group);
-  const activeArea = activeGroup?.area || 'overview';
   const businessLinks = visiblePages(user.role).filter(page => ['customers','templates','workload','approvals','reports'].includes(page.id));
   const q = tabSearch.trim().toLowerCase();
   const filteredTabs = TABS.filter(t => !q || t.label.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q));
@@ -141,20 +143,17 @@ export default function AdminPanel() {
 
       <div className="settings-shell">
         <aside className="settings-nav" aria-label="Settings sections">
-          <div aria-label="Administration areas" style={{ display: 'flex',flexWrap: 'wrap',gap: 6,marginBottom: 12 }}>
-            {[['overview','Overview','overview'],['business','Business','users'],['technical','Technical','integrations']].map(([area,label,first]) => <button key={area} type="button" className={'btn btn-sm '+(area===activeArea ? 'btn-primary' : 'btn-ghost')} aria-pressed={area===activeArea} onClick={() => { setTabSearch(''); selectTab(first); }}>{label}</button>)}
-          </div>
           <div className="settings-search">
             <input
               value={tabSearch}
               onChange={e => setTabSearch(e.target.value)}
               placeholder="Search settings"
               aria-label="Search settings"
+              autoFocus
             />
           </div>
 
           {TAB_GROUPS.map(group => {
-            if (!q && group.area!==activeArea) return null;
             const groupTabs = filteredTabs.filter(t => t.group === group.key);
             if (!groupTabs.length) return null;
             return (
@@ -177,7 +176,7 @@ export default function AdminPanel() {
             );
           })}
 
-          {activeArea==='business' && !q && <div className="settings-nav-group"><div className="settings-nav-heading">Business modules</div>{businessLinks.map(page => <Link className="settings-nav-item" key={page.id} to={page.path} style={{ display: 'block' }}>{page.label}</Link>)}</div>}
+          {!q && businessLinks.length > 0 && <div className="settings-nav-group"><div className="settings-nav-heading">Related pages</div>{businessLinks.map(page => <Link className="settings-nav-item" key={page.id} to={page.path} style={{ display: 'block' }}>{page.label}</Link>)}</div>}
           {filteredTabs.length === 0 && (
             <p className="text-sm text-muted" style={{ padding: '8px 10px' }}>No settings matched.</p>
           )}
