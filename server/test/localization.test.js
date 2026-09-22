@@ -32,3 +32,21 @@ test('every authenticated role can read localization settings, but only managers
     assert.equal(after.data.date_format, 'YYYY-MM-DD');
   }
 });
+
+// Regression: the server's allow-lists previously only covered a subset of what
+// client/src/pages/admin/LocalizationTab.jsx actually offers — picking one of the
+// missing options silently saved the default instead of the chosen value.
+test('every date and number format the client offers is accepted, not silently dropped', async () => {
+  for (const date_format of ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD', 'D MMM YYYY', 'MMM D, YYYY']) {
+    const saved = await h.api('/api/settings/localization', { method: 'PUT', token: manager.token, body: { date_format } });
+    assert.equal(saved.status, 200);
+    assert.equal((await h.api('/api/settings/localization', { token: manager.token })).data.date_format, date_format);
+  }
+  for (const number_format of ['1,000.00', '1.000,00', '1 000.00', '1000.00']) {
+    await h.api('/api/settings/localization', { method: 'PUT', token: manager.token, body: { number_format } });
+    assert.equal((await h.api('/api/settings/localization', { token: manager.token })).data.number_format, number_format);
+  }
+  // An unrecognized value still falls back to the default rather than being stored verbatim.
+  await h.api('/api/settings/localization', { method: 'PUT', token: manager.token, body: { date_format: 'not-a-real-format' } });
+  assert.equal((await h.api('/api/settings/localization', { token: manager.token })).data.date_format, 'DD/MM/YYYY');
+});
