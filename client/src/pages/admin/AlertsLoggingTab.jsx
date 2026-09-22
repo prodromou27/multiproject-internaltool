@@ -3,6 +3,7 @@ import { AlertTriangle, Zap, ScrollText, Bell, Save, Loader2, Settings, RefreshC
 import { api } from '../../api';
 import { useToast } from '../../components/Toast';
 import { timeSince, ToggleRow } from './shared';
+import { fmtDateTime } from '../../components/Shared';
 
 /* ── Admin Alerts Tab ────────────────────────────────────── */
 export const ALERT_TYPES = [
@@ -82,7 +83,7 @@ export function AdminAlertsTab() {
         {lastCheck ? (
           <div>
             <p style={{ fontSize: 12, color: 'var(--gray-400)', marginBottom: 10 }}>
-              Last checked: {new Date(lastCheck.checked_at).toLocaleString()}
+              Last checked: {fmtDateTime(lastCheck.checked_at)}
             </p>
             {lastCheck.alerts.length === 0
               ? <div style={{ padding: '10px 14px', background: 'var(--success-light)', borderRadius: 8, color: 'var(--tone-success-text)', fontSize: 13 }}>✅ All systems healthy — no issues detected.</div>

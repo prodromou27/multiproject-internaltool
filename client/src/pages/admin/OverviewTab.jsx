@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Users as UsersIcon, Shield, Cog, UserX, FolderOpen, CheckCircle2, Lock, AlertTriangle, CheckSquare, Inbox, Zap, Wrench, ClipboardList, Send, Building2, Paperclip, HardDrive, ScrollText, Bell, Loader2, Activity, RefreshCw, TrendingUp, ShieldAlert, LayoutDashboard } from 'lucide-react';
 import { api } from '../../api';
 import { fileSize, timeSince, ACTIVITY_ICONS, StatCard } from './shared';
+import { fmtDateTime } from '../../components/Shared';
 
 /* ══════════════════════════════════════════════════════════ */
 /* ── OVERVIEW TAB ────────────────────────────────────────── */
@@ -129,7 +130,7 @@ export function OverviewTab() {
                       <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <strong>{e.actor}</strong>{' '}<span style={{ color: 'var(--gray-600)' }}>{e.description}</span>
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 1 }}>{timeSince(e.created_at)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 1 }} title={fmtDateTime(e.created_at)}>{timeSince(e.created_at)}</div>
                     </div>
                   </li>
                 ))}
@@ -250,7 +251,7 @@ export function ActivityTab() {
                 <span style={{ color: 'var(--gray-600)' }}>{e.description}</span>
               </div>
               <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 2 }}>
-                {timeSince(e.created_at)} · {e.created_at ? new Date(e.created_at).toLocaleString() : ''}
+                {timeSince(e.created_at)} · {e.created_at ? fmtDateTime(e.created_at) : ''}
               </div>
             </div>
           </li>

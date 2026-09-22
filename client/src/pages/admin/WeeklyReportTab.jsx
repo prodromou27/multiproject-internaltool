@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, AlertTriangle, Send, ScrollText, Bell, Save, Loader2, Settings, AtSign, ExternalLink } from 'lucide-react';
 import { api } from '../../api';
-import { Modal } from '../../components/Shared';
+import { Modal, fmtDateTime } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
 
@@ -140,7 +140,7 @@ export function WeeklyReportTab() {
       {schedule.last_sent && (
         <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontSize: 13, color: 'var(--gray-600)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <CheckCircle2 size={14} color="var(--success)" />
-          Last report sent: <strong>{new Date(schedule.last_sent).toLocaleString()}</strong>
+          Last report sent: <strong>{fmtDateTime(schedule.last_sent)}</strong>
         </div>
       )}
 

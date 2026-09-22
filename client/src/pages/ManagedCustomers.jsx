@@ -3,9 +3,10 @@ import { ArrowLeft,Building2,ExternalLink,RefreshCw } from 'lucide-react';
 import { Link,useParams } from 'react-router-dom';
 import { api } from '../api';
 import ManagedCustomerReportBuilder from '../components/ManagedCustomerReportBuilder';
+import { fmtDateTime } from '../components/Shared';
 
 const iso=date => date.toISOString().slice(0,10);
-const formatDate=value => value ? new Date(value).toLocaleString() : '—';
+const formatDate=fmtDateTime;
 function period(preset,from,to) {
   const now=new Date();
   if (preset==='today') return { from:iso(now),to:iso(now) };

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Shield, CheckCircle2, Lock, AlertTriangle, Zap, HardDrive, Save, Loader2, Activity, Settings, RefreshCw, Download, ShieldAlert } from 'lucide-react';
 import { api } from '../../api';
-import { fmtDate } from '../../components/Shared';
+import { fmtDate, fmtDateTime } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
 
@@ -385,8 +385,8 @@ export function SystemUpdateTab() {
           {/* Timestamps */}
           {status?.started_at && (
             <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 8 }}>
-              Started: {new Date(status.started_at).toLocaleString()}
-              {status.done_at && ` · Completed: ${new Date(status.done_at).toLocaleString()}`}
+              Started: {fmtDateTime(status.started_at)}
+              {status.done_at && ` · Completed: ${fmtDateTime(status.done_at)}`}
             </div>
           )}
         </div>
