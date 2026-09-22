@@ -923,6 +923,8 @@ async function applyCompatibilityMigrations() {
       external_queue_name TEXT NOT NULL,
       enabled INTEGER NOT NULL DEFAULT 0,
       include_in_reporting INTEGER NOT NULL DEFAULT 1,
+      write_back_enabled INTEGER NOT NULL DEFAULT 0,
+      write_back_status TEXT,
       last_successful_sync_at TEXT,
       last_sync_status TEXT,
       version INTEGER NOT NULL DEFAULT 1,
@@ -1118,6 +1120,14 @@ async function applyCompatibilityMigrations() {
       updated_by                INTEGER REFERENCES users(id) ON DELETE SET NULL,
       updated_at                TEXT DEFAULT ${NOW}
     );
+  `]);
+  migrations.push(['20260923_ticket_writeback', `
+    -- Opt-in, per customer: when set, completing a service activity whose
+    -- ticket_reference matches one of this customer's synced RT tickets sets
+    -- that ticket's Status to write_back_status. Off (0/NULL) by default —
+    -- see ticketWriteback.js and routes/serviceActivities.js's /complete route.
+    ALTER TABLE customer_ticketing_configurations ADD COLUMN IF NOT EXISTS write_back_enabled INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE customer_ticketing_configurations ADD COLUMN IF NOT EXISTS write_back_status TEXT;
   `]);
 
   for (const [id, sql] of migrations) {

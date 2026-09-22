@@ -46,10 +46,10 @@ export function StatCard({ label, value, sub, color, Icon: IconComp }) {
   );
 }
 
-export function Toggle({ checked, onChange, label }) {
+export function Toggle({ checked, onChange, label, disabled }) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
-      <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)} style={{ border: 0,padding: 0,width: 40, height: 22, borderRadius: 11, position: 'relative', flexShrink: 0, transition: 'background 0.2s', background: checked ? 'var(--primary)' : 'var(--gray-300)' }}>
+    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: disabled ? 'not-allowed' : 'pointer', userSelect: 'none', opacity: disabled ? 0.5 : 1 }}>
+      <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)} style={{ border: 0,padding: 0,width: 40, height: 22, borderRadius: 11, position: 'relative', flexShrink: 0, transition: 'background 0.2s', background: checked ? 'var(--primary)' : 'var(--gray-300)', cursor: disabled ? 'not-allowed' : 'pointer' }}>
         <div style={{ position: 'absolute', top: 3, left: checked ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,.3)' }} />
       </button>
       <span style={{ fontSize: 13 }}>{label}</span>

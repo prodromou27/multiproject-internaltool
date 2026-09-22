@@ -12,6 +12,7 @@ const path = require('path');
 const cipher = require('../cipher');
 const { decrypt: decryptField } = require('../fieldCipher');
 const { getServiceActivitySettings } = require('./serviceActivitySettings');
+const { attemptTicketWriteback } = require('../ticketWriteback');
 
 const VALID_WORK_LOCATIONS = new Set(['remote', 'onsite', 'internal', 'hybrid']);
 const VALID_BILLABLE = new Set(['included_in_contract', 'billable', 'non_billable', 'internal', 'not_applicable']);
@@ -224,6 +225,20 @@ async function assertCategoryUsableByTeam(categoryId, teamId) {
   if (cat?.team_id != null && cat.team_id !== teamId)
     return 'This category is not available to the team this activity belongs to';
   return null;
+}
+
+/**
+ * Called only on the transition INTO the terminal Completed status. Best-effort:
+ * never throws (attemptTicketWriteback already catches RT failures), and never
+ * blocks the response on anything other than the RT call itself succeeding or
+ * failing — the activity is already saved as completed by the time this runs,
+ * so a slow or unreachable RT should not appear to fail the completion.
+ */
+async function writeBackTicketOnCompletion(req, { id, title, customerId, ticketReference }) {
+  const outcome = await attemptTicketWriteback({ customerId, ticketReference });
+  if (!outcome.attempted) return;
+  const detail = outcome.ok ? `ticket_id=${outcome.ticket_id}; ${outcome.message}` : `ticket_id=${outcome.ticket_id}; error=${outcome.error}`;
+  await logAudit(db, req, 'service_activity', id, title, outcome.ok ? 'ticket_writeback_succeeded' : 'ticket_writeback_failed', detail);
 }
 
 /* ── Metadata for the quick-log form: categories, technologies, statuses, authorized customers ── */
@@ -592,6 +607,11 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
   });
   if (!updated) return res.status(409).json({ error: 'Activity changed. Your draft is preserved; reload the latest activity before saving.', code: 'ACTIVITY_CONFLICT' });
 
+  if (newStatus === completedValue && existing.status !== completedValue) {
+    const effectiveTicketReference = body.ticket_reference !== undefined ? body.ticket_reference : existing.ticket_reference;
+    await writeBackTicketOnCompletion(req, { id, title: body.title?.trim() || existing.title, customerId, ticketReference: effectiveTicketReference });
+  }
+
   if (body.status && body.status !== existing.status) {
     await logAudit(db, req, 'service_activity', id, body.title?.trim() || existing.title, 'activity_status_changed', `status ${existing.status}->${body.status}`);
   }
@@ -627,6 +647,7 @@ router.post('/:id/complete', requireAuth, requireServiceActivityAccess, requireO
     .run(completedValue, req.user.id, id, activity.version);
   if (!updated.changes) return res.status(409).json({ error: 'Activity changed; reload before completing', code: 'ACTIVITY_CONFLICT' });
   await logAudit(db, req, 'service_activity', id, activity.title, 'activity_completed', null);
+  await writeBackTicketOnCompletion(req, { id, title: activity.title, customerId: activity.customer_id, ticketReference: activity.ticket_reference });
   res.json({ ok: true });
 });
 

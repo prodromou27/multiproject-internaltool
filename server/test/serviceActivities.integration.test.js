@@ -2621,3 +2621,70 @@ test('operational priorities honor configured terminal task statuses', async () 
     assert.ok(calendar.data.tasks.every(item => item.id !== task), 'calendar excludes configured terminal tasks');
   } finally { await db.prepare("UPDATE settings SET value=? WHERE key='status_config'").run(setting.value); }
 });
+
+test('completing an activity attempts RT ticket write-back only when the customer opted in and a matching synced ticket exists', async () => {
+  await db.prepare('DELETE FROM customer_ticketing_configurations WHERE customer_id = ?').run(ids.customer);
+  await db.prepare('DELETE FROM external_tickets WHERE customer_id = ?').run(ids.customer);
+
+  // 1. No write-back configured at all: completing does nothing extra, no audit entries.
+  const noConfig = await createActivity({ title: 'Writeback not configured', ticket_reference: 'RT#4001' });
+  await api(`/api/service-activities/${noConfig.data.id}/complete`, { method: 'POST', token: ids.tokenEnabled, body: {} });
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE entity_id=? AND action LIKE 'ticket_writeback%'").get(noConfig.data.id)).n, 0);
+
+  // 2. Write-back configured, but no synced ticket matches the reference: still nothing.
+  await db.prepare(`
+    INSERT INTO customer_ticketing_configurations (customer_id, provider_type, external_queue_id, external_queue_name, enabled, write_back_enabled, write_back_status)
+    VALUES (?, 'request_tracker', '7', 'Support', 1, 1, 'resolved')
+  `).run(ids.customer);
+  const noMatch = await createActivity({ title: 'No matching ticket', ticket_reference: 'RT#4002' });
+  await api(`/api/service-activities/${noMatch.data.id}/complete`, { method: 'POST', token: ids.tokenEnabled, body: {} });
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE entity_id=? AND action LIKE 'ticket_writeback%'").get(noMatch.data.id)).n, 0);
+
+  // 3. Write-back configured and a synced ticket matches: attempted (and, since the RT
+  // integration itself isn't configured in this test environment, recorded as failed —
+  // exercising the same "RT unreachable never fails the completion" path production hits).
+  await db.prepare(`
+    INSERT INTO external_tickets (customer_id, provider_type, external_queue_id, external_queue_name, external_ticket_id, ticket_number, subject, external_status, normalized_status, status_group)
+    VALUES (?, 'request_tracker', '7', 'Support', '4003', '4003', 'Matched ticket', 'open', 'Open', 'open')
+  `).run(ids.customer);
+  const matched = await createActivity({ title: 'Matched ticket', ticket_reference: 'RT#4003' });
+  const completion = await api(`/api/service-activities/${matched.data.id}/complete`, { method: 'POST', token: ids.tokenEnabled, body: {} });
+  assert.equal(completion.status, 200, 'a failed RT write-back must not fail the activity completion');
+  const entry = await db.prepare("SELECT * FROM audit_log WHERE entity_id=? AND action LIKE 'ticket_writeback%'").get(matched.data.id);
+  assert.equal(entry.action, 'ticket_writeback_failed');
+  assert.match(entry.detail, /ticket_id=4003/);
+
+  await db.prepare('DELETE FROM customer_ticketing_configurations WHERE customer_id = ?').run(ids.customer);
+  await db.prepare('DELETE FROM external_tickets WHERE customer_id = ?').run(ids.customer);
+});
+
+test('a direct PUT that transitions status into Completed also triggers write-back, same as the dedicated endpoint', async () => {
+  await db.prepare('DELETE FROM customer_ticketing_configurations WHERE customer_id = ?').run(ids.customer);
+  await db.prepare('DELETE FROM external_tickets WHERE customer_id = ?').run(ids.customer);
+  await db.prepare(`
+    INSERT INTO customer_ticketing_configurations (customer_id, provider_type, external_queue_id, external_queue_name, enabled, write_back_enabled, write_back_status)
+    VALUES (?, 'request_tracker', '7', 'Support', 1, 1, 'resolved')
+  `).run(ids.customer);
+  await db.prepare(`
+    INSERT INTO external_tickets (customer_id, provider_type, external_queue_id, external_queue_name, external_ticket_id, ticket_number, subject, external_status, normalized_status, status_group)
+    VALUES (?, 'request_tracker', '7', 'Support', '4004', '4004', 'Matched via PUT', 'open', 'Open', 'open')
+  `).run(ids.customer);
+
+  const created = await createActivity({ title: 'Completed via PUT', ticket_reference: 'RT#4004' });
+  const completedValue = (JSON.parse((await db.prepare("SELECT value FROM settings WHERE key='status_config'").get()).value).service_activity
+    .find(s => s.is_terminal && /complet/i.test(s.value))).value;
+  await api(`/api/service-activities/${created.data.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { status: completedValue } });
+  const entry = await db.prepare("SELECT * FROM audit_log WHERE entity_id=? AND action LIKE 'ticket_writeback%'").get(created.data.id);
+  assert.equal(entry.action, 'ticket_writeback_failed'); // RT itself isn't configured in this test env
+  assert.match(entry.detail, /ticket_id=4004/);
+
+  // A subsequent, unrelated edit (already-completed) must NOT re-attempt write-back.
+  const before = await db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE entity_id=? AND action LIKE 'ticket_writeback%'").get(created.data.id);
+  const stored = await api(`/api/service-activities/${created.data.id}`, { token: ids.tokenEnabled });
+  await api(`/api/service-activities/${created.data.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { version: stored.data.version, description: 'unrelated edit' } });
+  const after = await db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE entity_id=? AND action LIKE 'ticket_writeback%'").get(created.data.id);
+  assert.equal(after.n, before.n);
+
+  await db.prepare('DELETE FROM customer_ticketing_configurations WHERE customer_id = ?').run(ids.customer);
+  await db.prepare('DELETE FROM external_tickets WHERE customer_id = ?').run(ids.customer);
+});

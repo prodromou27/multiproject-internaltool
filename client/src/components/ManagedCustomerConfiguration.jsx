@@ -3,7 +3,7 @@ import { CheckCircle2,RefreshCw,Save,Settings2,ShieldCheck } from 'lucide-react'
 import { api } from '../api';
 import { Toggle } from '../pages/admin/shared';
 
-const DEFAULTS={ managed_services_enabled:false,service_activity_tracking_enabled:false,task_reporting_enabled:true,project_reporting_enabled:true,maintenance_visit_reporting_enabled:true,recommendation_tracking_enabled:true,include_in_managed_services_reports:true,responsible_team_id:null,service_manager_id:null,reporting_frequency:'',default_report_template_id:null,ticket_integration_enabled:false,ticket_include_in_reporting:true,external_queue_id:'',external_queue_name:'',version:0 };
+const DEFAULTS={ managed_services_enabled:false,service_activity_tracking_enabled:false,task_reporting_enabled:true,project_reporting_enabled:true,maintenance_visit_reporting_enabled:true,recommendation_tracking_enabled:true,include_in_managed_services_reports:true,responsible_team_id:null,service_manager_id:null,reporting_frequency:'',default_report_template_id:null,ticket_integration_enabled:false,ticket_include_in_reporting:true,ticket_write_back_enabled:false,ticket_write_back_status:'',external_queue_id:'',external_queue_name:'',version:0 };
 const REPORTING=[['task_reporting_enabled','Tasks'],['project_reporting_enabled','Projects'],['maintenance_visit_reporting_enabled','Maintenance visits'],['recommendation_tracking_enabled','Recommendations']];
 
 export default function ManagedCustomerConfiguration({ customerId }) {
@@ -59,7 +59,7 @@ export default function ManagedCustomerConfiguration({ customerId }) {
     {message && <div className="alert alert-success" role="status"><CheckCircle2 size={15} /> {message}</div>}
 
     <section className="card managed-config-section">
-      <div className="managed-config-heading"><Settings2 size={20} /><div><h2>Managed Services</h2><p>Controls whether this customer appears in the Managed Customers module and which operational data can be reported.</p></div><Toggle checked={form.managed_services_enabled} onChange={value => setForm(current => ({ ...current,managed_services_enabled:value,ticket_integration_enabled:value ? current.ticket_integration_enabled : false }))} label={form.managed_services_enabled ? 'Enabled' : 'Disabled'} /></div>
+      <div className="managed-config-heading"><Settings2 size={20} /><div><h2>Managed Services</h2><p>Controls whether this customer appears in the Managed Customers module and which operational data can be reported.</p></div><Toggle checked={form.managed_services_enabled} onChange={value => setForm(current => ({ ...current,managed_services_enabled:value,ticket_integration_enabled:value ? current.ticket_integration_enabled : false,ticket_write_back_enabled:value ? current.ticket_write_back_enabled : false }))} label={form.managed_services_enabled ? 'Enabled' : 'Disabled'} /></div>
       <div className="managed-config-grid">
         <label>Responsible team<select value={form.responsible_team_id || ''} onChange={event => set('responsible_team_id',event.target.value ? Number(event.target.value) : null)}><option value="">Not assigned</option>{teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}</select><small>Only teams already assigned to this customer are available.</small></label>
         <label>Service manager<select value={form.service_manager_id || ''} onChange={event => set('service_manager_id',event.target.value ? Number(event.target.value) : null)}><option value="">Not assigned</option>{managers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}</option>)}</select></label>
@@ -74,13 +74,27 @@ export default function ManagedCustomerConfiguration({ customerId }) {
     </section>
 
     <section className="card managed-config-section">
-      <div className="managed-config-heading"><ShieldCheck size={20} /><div><h2>Request Tracker queue</h2><p>Each managed customer can use one RT queue, and a queue cannot be assigned to another customer.</p></div><Toggle checked={form.ticket_integration_enabled} onChange={value => setForm(current => ({ ...current,ticket_integration_enabled:value,managed_services_enabled:value ? true : current.managed_services_enabled }))} label={form.ticket_integration_enabled ? 'Enabled' : 'Disabled'} /></div>
+      <div className="managed-config-heading"><ShieldCheck size={20} /><div><h2>Request Tracker queue</h2><p>Each managed customer can use one RT queue, and a queue cannot be assigned to another customer.</p></div><Toggle checked={form.ticket_integration_enabled} onChange={value => setForm(current => ({ ...current,ticket_integration_enabled:value,managed_services_enabled:value ? true : current.managed_services_enabled,ticket_write_back_enabled:value ? current.ticket_write_back_enabled : false }))} label={form.ticket_integration_enabled ? 'Enabled' : 'Disabled'} /></div>
       <div className="managed-config-grid">
         <label>RT queue<select value={form.external_queue_id} onChange={event => selectQueue(event.target.value)}><option value="">No queue mapped</option>{storedQueueMissing && <option value={form.external_queue_id}>{form.external_queue_name} ({form.external_queue_id})</option>}{queues.map(queue => <option key={queue.id} value={queue.id} disabled={!!queue.mapping && Number(queue.mapping.customer_id)!==Number(customerId)}>{queue.name} ({queue.id}){queue.mapping ? ` — mapped to ${queue.mapping.customer_name}` : ''}</option>)}</select></label>
         <label>Queue ID<input value={form.external_queue_id} readOnly placeholder="Discover and select a queue" /></label>
         <label>Last successful sync<input value={form.last_successful_sync_at || 'No successful sync yet'} readOnly /></label>
       </div>
       <div className="managed-config-options"><Toggle checked={form.ticket_include_in_reporting} onChange={value => set('ticket_include_in_reporting',value)} label="Include tickets in reports" /></div>
+      <div className="managed-config-options">
+        <Toggle checked={form.ticket_write_back_enabled} onChange={value => setForm(current => ({ ...current,ticket_write_back_enabled:value }))} label="Update the RT ticket status when a matching activity is completed" disabled={!form.ticket_integration_enabled} />
+      </div>
+      {form.ticket_write_back_enabled && (
+        <div className="managed-config-grid">
+          <label>
+            RT status to set on completion
+            <input value={form.ticket_write_back_status} onChange={event => set('ticket_write_back_status',event.target.value)} placeholder="e.g. resolved" maxLength={100} />
+          </label>
+        </div>
+      )}
+      {form.ticket_write_back_enabled && <p className="text-sm text-muted" style={{ marginTop:-8 }}>
+        An engineer's Ticket Reference on a service activity is matched against this customer's synced RT tickets (by number, ignoring any "RT#"/"#" prefix). When that activity is marked Completed, the matched ticket's Status is set to the value above.
+      </p>}
       <div className="flex gap-8 managed-config-actions">
         <button type="button" className="btn btn-ghost" disabled={!!busy} onClick={discoverQueues}><RefreshCw size={14} /> {busy==='queues' ? 'Discovering...' : 'Discover queues'}</button>
         <button type="button" className="btn btn-ghost" disabled={!!busy || !savedMapping.enabled || !savedMapping.queueId || savedMapping.queueId!==String(form.external_queue_id)} onClick={testMapping}>{busy==='test' ? 'Testing...' : 'Test saved mapping'}</button>

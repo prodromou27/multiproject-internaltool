@@ -25,6 +25,34 @@ class RequestTrackerProvider {
     try { return await response.json(); } catch { throw Object.assign(new Error('Request Tracker returned invalid JSON'),{ status:502 }); }
   }
 
+  /** Sets a ticket's Status field via RT REST 2.0's ticket update endpoint (PUT /ticket/{id}). */
+  async updateTicketStatus(ticketId,status) {
+    const id=String(ticketId ?? '');
+    if (!/^\d+$/.test(id)) throw Object.assign(new Error('Invalid Request Tracker ticket identifier'),{ status:400 });
+    if (!status || typeof status!=='string' || status.length>100) throw Object.assign(new Error('Invalid Request Tracker status value'),{ status:400 });
+    this.ready ||= this.validate();await this.ready;
+    const url=new URL(`${this.apiRoot}/ticket/${encodeURIComponent(id)}`);
+    let response;
+    try {
+      response=await this.fetchImpl(url,{
+        method:'PUT',
+        headers:{ Accept:'application/json','Content-Type':'application/json',Authorization:`token ${this.config.api_token}` },
+        body:JSON.stringify({ Status:status }),
+        redirect:'error',
+        signal:AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch(error) { throw Object.assign(new Error(error.name==='TimeoutError' ? 'Request Tracker did not respond before the timeout' : 'Could not connect to Request Tracker'),{ status:502 }); }
+    if (!response.ok) throw Object.assign(new Error(`Request Tracker returned HTTP ${response.status}`),{ status:502 });
+    const type=response.headers.get('content-type') || '';
+    let result=null;
+    if (type.toLowerCase().includes('application/json')) { try { result=await response.json(); } catch { /* fall through with no parsed body */ } }
+    // RT2.0 returns an array of per-field result messages on ticket update.
+    const messages=Array.isArray(result) ? result.map(entry => entry?.message).filter(Boolean) : [];
+    const failed=Array.isArray(result) && result.some(entry => entry && entry.ok===false);
+    if (failed) throw Object.assign(new Error(messages.join('; ') || 'Request Tracker rejected the status update'),{ status:502 });
+    return { ok:true,message:messages.join('; ') || `Status set to ${status}` };
+  }
+
   async testConnection() {
     const result=await this.request('/queues/all',{ page:1,per_page:1 });
     if (!Array.isArray(result.items)) throw Object.assign(new Error('Request Tracker queue response is invalid'),{ status:502 });

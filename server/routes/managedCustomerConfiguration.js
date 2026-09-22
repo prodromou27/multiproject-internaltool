@@ -6,8 +6,8 @@ const ticketingSettings=require('../ticketingSettings');
 const { createTicketingProvider }=require('../ticketing');
 
 const FREQUENCIES=new Set(['monthly','quarterly','semiannual','annual']);
-const BOOLEAN_FIELDS=['managed_services_enabled','service_activity_tracking_enabled','task_reporting_enabled','project_reporting_enabled','maintenance_visit_reporting_enabled','recommendation_tracking_enabled','include_in_managed_services_reports','ticket_integration_enabled','ticket_include_in_reporting'];
-const ALLOWED_FIELDS=new Set([...BOOLEAN_FIELDS,'responsible_team_id','service_manager_id','reporting_frequency','default_report_template_id','external_queue_id','external_queue_name','version']);
+const BOOLEAN_FIELDS=['managed_services_enabled','service_activity_tracking_enabled','task_reporting_enabled','project_reporting_enabled','maintenance_visit_reporting_enabled','recommendation_tracking_enabled','include_in_managed_services_reports','ticket_integration_enabled','ticket_include_in_reporting','ticket_write_back_enabled'];
+const ALLOWED_FIELDS=new Set([...BOOLEAN_FIELDS,'responsible_team_id','service_manager_id','reporting_frequency','default_report_template_id','external_queue_id','external_queue_name','ticket_write_back_status','version']);
 const fail=(message,status=400) => { throw Object.assign(new Error(message),{ status }); };
 const integerOrNull=(value,label) => {
   if (value===null || value===undefined || value==='') return null;
@@ -39,6 +39,8 @@ function responseShape(customer,managed={},ticket={}) {
     default_report_template_id:managed.default_report_template_id || null,
     ticket_integration_enabled:!!ticket.enabled,
     ticket_include_in_reporting:ticket.include_in_reporting===undefined ? true : !!ticket.include_in_reporting,
+    ticket_write_back_enabled:!!ticket.write_back_enabled,
+    ticket_write_back_status:ticket.write_back_status || '',
     external_queue_id:ticket.external_queue_id || '',
     external_queue_name:ticket.external_queue_name || '',
     last_successful_sync_at:ticket.last_successful_sync_at || null,
@@ -77,6 +79,10 @@ router.put('/',requireManager,async (req,res) => {
     if (req.body.ticket_integration_enabled && (!queueId || !queueName)) fail('Select an RT queue before enabling ticket integration');
     if (req.body.ticket_integration_enabled && !req.body.managed_services_enabled) fail('Managed Services must be enabled before ticket integration');
     if (req.body.ticket_integration_enabled && !(await ticketingSettings.storedSettings()).enabled) fail('Enable the Request Tracker integration before enabling this customer mapping',409);
+    const writeBackStatus=String(req.body.ticket_write_back_status || '').trim();
+    if (req.body.ticket_write_back_enabled && !req.body.ticket_integration_enabled) fail('Enable ticket integration before enabling status write-back');
+    if (req.body.ticket_write_back_enabled && !writeBackStatus) fail('An RT status value is required to enable status write-back (e.g. resolved)');
+    if (writeBackStatus.length>100) fail('RT status value must be at most 100 characters');
 
     const result=await db.transaction(async tx => {
       const current=await tx.prepare('SELECT * FROM managed_customer_configurations WHERE customer_id=?').get(id);
@@ -117,15 +123,19 @@ router.put('/',requireManager,async (req,res) => {
         if (existingTicket) await tx.prepare('DELETE FROM customer_ticketing_configurations WHERE id=?').run(existingTicket.id);
       } else if (existingTicket) {
         await tx.prepare(`UPDATE customer_ticketing_configurations SET external_queue_id=?,external_queue_name=?,enabled=?,include_in_reporting=?,
-          version=version+1,updated_at=app_now() WHERE id=?`).run(queueId,queueName,req.body.ticket_integration_enabled?1:0,req.body.ticket_include_in_reporting?1:0,existingTicket.id);
+          write_back_enabled=?,write_back_status=?,version=version+1,updated_at=app_now() WHERE id=?`).run(
+          queueId,queueName,req.body.ticket_integration_enabled?1:0,req.body.ticket_include_in_reporting?1:0,
+          req.body.ticket_write_back_enabled?1:0,writeBackStatus || null,existingTicket.id);
       } else {
         await tx.prepare(`INSERT INTO customer_ticketing_configurations
-          (customer_id,provider_type,external_queue_id,external_queue_name,enabled,include_in_reporting)
-          VALUES (?,'request_tracker',?,?,?,?)`).run(id,queueId,queueName,req.body.ticket_integration_enabled?1:0,req.body.ticket_include_in_reporting?1:0);
+          (customer_id,provider_type,external_queue_id,external_queue_name,enabled,include_in_reporting,write_back_enabled,write_back_status)
+          VALUES (?,'request_tracker',?,?,?,?,?,?)`).run(
+          id,queueId,queueName,req.body.ticket_integration_enabled?1:0,req.body.ticket_include_in_reporting?1:0,
+          req.body.ticket_write_back_enabled?1:0,writeBackStatus || null);
       }
       return nextVersion;
     });
-    await logAudit(db,req,'customer',id,`Customer ${id}`,'managed_services_configuration_updated',`managed=${req.body.managed_services_enabled}; ticketing=${req.body.ticket_integration_enabled}; queue_id=${queueId || 'none'}; version=${result}`);
+    await logAudit(db,req,'customer',id,`Customer ${id}`,'managed_services_configuration_updated',`managed=${req.body.managed_services_enabled}; ticketing=${req.body.ticket_integration_enabled}; write_back=${req.body.ticket_write_back_enabled}; queue_id=${queueId || 'none'}; version=${result}`);
     const customer=await db.prepare('SELECT id,service_activity_enabled FROM customers WHERE id=?').get(id);
     const managed=await db.prepare('SELECT * FROM managed_customer_configurations WHERE customer_id=?').get(id);
     const ticket=await db.prepare("SELECT * FROM customer_ticketing_configurations WHERE customer_id=? AND provider_type='request_tracker'").get(id);

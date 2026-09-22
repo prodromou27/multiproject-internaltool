@@ -51,3 +51,36 @@ test('RT provider rejects incomplete settings and unbounded queue directories',a
   const provider=new RequestTrackerProvider({ base_url:'https://rt.example.test',api_token:'token' },{ validateUrl:async () => {},fetchImpl:async () => json({ pages:6,items:[] }) });
   await assert.rejects(() => provider.getQueues(),error => error.status===413);
 });
+
+test('RT provider sets a ticket status via PUT and validates the identifier and status value', async () => {
+  let seen;
+  const provider = new RequestTrackerProvider({ base_url: 'https://rt.example.test', api_token: 'token' }, { validateUrl: async () => {}, fetchImpl: async (url, options) => {
+    seen = { url: String(url), options };
+    return json([{ id: 'ticket/123', type: 'ticket', ok: true, message: "Status changed from 'open' to 'resolved'" }]);
+  } });
+  const result = await provider.updateTicketStatus('123', 'resolved');
+  assert.equal(seen.url, 'https://rt.example.test/REST/2.0/ticket/123');
+  assert.equal(seen.options.method, 'PUT');
+  assert.equal(seen.options.headers['Content-Type'], 'application/json');
+  assert.deepEqual(JSON.parse(seen.options.body), { Status: 'resolved' });
+  assert.equal(result.ok, true);
+  assert.match(result.message, /resolved/);
+
+  await assert.rejects(() => provider.updateTicketStatus('not-a-number', 'resolved'), error => error.status === 400);
+  await assert.rejects(() => provider.updateTicketStatus('123', ''), error => error.status === 400);
+  await assert.rejects(() => provider.updateTicketStatus('123', 'x'.repeat(200)), error => error.status === 400);
+});
+
+test('RT provider surfaces a failed status update instead of reporting success', async () => {
+  const provider = new RequestTrackerProvider({ base_url: 'https://rt.example.test', api_token: 'token' }, { validateUrl: async () => {}, fetchImpl: async () =>
+    json([{ id: 'ticket/123', type: 'ticket', ok: false, message: "Status 'resolved' isn't a valid status for tickets in this queue" }]) });
+  await assert.rejects(() => provider.updateTicketStatus('123', 'resolved'), error => error.status === 502 && /valid status/.test(error.message));
+});
+
+test('RT provider status update reports connection failures and non-2xx the same way as reads', async () => {
+  const timeoutProvider = new RequestTrackerProvider({ base_url: 'https://rt.example.test', api_token: 'token' }, { validateUrl: async () => {}, fetchImpl: async () => { throw Object.assign(new Error('timeout'), { name: 'TimeoutError' }); } });
+  await assert.rejects(() => timeoutProvider.updateTicketStatus('123', 'resolved'), /did not respond before the timeout/);
+
+  const httpErrorProvider = new RequestTrackerProvider({ base_url: 'https://rt.example.test', api_token: 'do-not-expose' }, { validateUrl: async () => {}, fetchImpl: async () => json({ message: 'token do-not-expose rejected' }, 403) });
+  await assert.rejects(() => httpErrorProvider.updateTicketStatus('123', 'resolved'), error => error.status === 502 && !error.message.includes('do-not-expose'));
+});
