@@ -68,7 +68,7 @@ function AvatarSection({ user, onRefresh }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 20 }}>
+    <div className="card mb-20">
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
         <Camera size={15} color="var(--primary)" /> Profile Picture
       </div>
@@ -157,7 +157,7 @@ function PersonalInfoSection({ user, onRefresh }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 20 }}>
+    <div className="card mb-20">
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
         <User size={15} color="var(--primary)" /> Personal Info
       </div>
@@ -361,7 +361,7 @@ function TwoFactorSection({ user, onRefresh }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 20 }}>
+    <div className="card mb-20">
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
         <ShieldCheck size={15} color="var(--primary)" /> Two-Factor Authentication
       </div>
@@ -484,7 +484,7 @@ export default function Profile() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h1 className="page-title flex-center gap-8">
             <User size={20} /> My Profile
           </h1>
           <div className="page-subtitle">Manage your account details and password</div>

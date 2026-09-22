@@ -605,7 +605,7 @@ export default function CalendarPage() {
         </span>
       </div>
 
-      {loadError && <div className="error-msg" role="alert" style={{ marginBottom: 16 }}>
+      {loadError && <div className="error-msg mb-16" role="alert">
         {loadError} <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
       </div>}
       {rescheduling && <p role="status">Saving schedule change...</p>}
@@ -780,7 +780,7 @@ export default function CalendarPage() {
           </div>
 
           {/* Month summary */}
-          <div className="card" style={{ marginTop: 16 }}>
+          <div className="card mt-16">
             <div className="section-title">Month Summary</div>
             <div className="flex-col gap-8">
               {Object.entries(TYPE_STYLE).map(([type, s]) => {

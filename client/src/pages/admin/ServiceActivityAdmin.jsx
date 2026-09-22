@@ -59,7 +59,7 @@ export function TeamsAdminSection() {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
+    <div className="card mb-16">
       <div className="section-title">Teams</div>
       <p className="text-sm text-muted" style={{ marginBottom: 10 }}>
         Enable Service Activity Tracking per team. Engineers only see the Activity Log module if they belong to an enabled team.
@@ -169,7 +169,7 @@ export function ServiceActivityGeneralSettings() {
   if (!settings) return null;
 
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
+    <div className="card mb-16">
       <div className="section-title">General Settings</div>
       <div className="form-group">
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
@@ -221,7 +221,7 @@ export function ServiceActivityAdminTab() {
     <div>
       <ServiceActivityGeneralSettings />
 
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div className="section-title">Teams</div>
         <p className="text-sm text-muted">
           Create teams, manage membership, and enable Service Activity Tracking per team under

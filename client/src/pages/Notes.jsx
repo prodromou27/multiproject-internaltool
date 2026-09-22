@@ -137,7 +137,7 @@ export default function Notes() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h1 className="page-title flex-center gap-8">
             <StickyNote size={20} /> My Notes
           </h1>
           <div className="page-subtitle">Private scratchpad and to-do list — only visible to you</div>

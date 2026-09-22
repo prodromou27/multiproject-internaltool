@@ -366,7 +366,7 @@ export default function Workload() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h1 className="page-title flex-center gap-8">
             <Users size={20} /> Engineer Workload
           </h1>
           <div className="page-subtitle">Live snapshot of all engineers — {monthLabel}</div>
@@ -380,11 +380,11 @@ export default function Workload() {
         </button>
       </div>
 
-      {error && <div className="alert alert-warning" style={{ marginBottom: 16 }}>{error}</div>}
+      {error && <div className="alert alert-warning mb-16">{error}</div>}
 
       {/* Summary bar */}
       {!loading && tab === 'snapshot' && !error && (
-        <div className="grid-4" style={{ marginBottom: 20 }}>
+        <div className="grid-4 mb-20">
           <div className="card stat">
             <div className="stat-value" style={{ color: 'var(--primary)' }}>{engineers.length}</div>
             <div className="stat-label">Engineers</div>
@@ -407,7 +407,7 @@ export default function Workload() {
       )}
 
       {/* Tabs */}
-      <div className="tabs" style={{ marginBottom: 16 }}>
+      <div className="tabs mb-16">
         <button className={'tab' + (tab === 'pressure' ? ' active' : '')} onClick={() => setTab('pressure')}>Operational pressure</button>
         <button className={'tab' + (tab === 'planning' ? ' active' : '')} onClick={() => setTab('planning')}>Effort and availability</button>
         <button className={'tab' + (tab === 'snapshot' ? ' active' : '')} onClick={() => setTab('snapshot')}>

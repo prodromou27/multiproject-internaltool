@@ -72,14 +72,14 @@ export default function Users() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h1 className="page-title flex-center gap-8">
             <UsersIcon size={20} /> Team
           </h1>
           <div className="page-subtitle">{users.length} member{users.length !== 1 ? 's' : ''} · New accounts are created via Admin Panel</div>
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div style={{ position: 'relative', maxWidth: 340 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
           <input
@@ -92,7 +92,7 @@ export default function Users() {
       </div>
 
       {groups.map(g => (
-        <div key={g.key} className="card" style={{ marginBottom: 16 }}>
+        <div key={g.key} className="card mb-16">
           <div className="section-title" style={{ marginBottom: g.data.length > 0 ? 12 : 4 }}>
             {g.label} <span style={{ fontWeight: 400, color: 'var(--gray-400)', fontSize: 12 }}>({g.count})</span>
           </div>

@@ -64,7 +64,7 @@ export function OverviewTab() {
       </div>
 
       {/* ── Key metric cards ──────────────────────────────── */}
-      <div className="grid-4" style={{ marginBottom: 20 }}>
+      <div className="grid-4 mb-20">
         <StatCard Icon={UsersIcon}   label="Active Users"    value={users.active}               sub={`${users.managers} managers · ${users.engineers} engineers`}    color="var(--primary)" />
         <StatCard Icon={FolderOpen}  label="Active Projects" value={projects.active}            sub={projects.overdue ? `⚠ ${projects.overdue} overdue` : 'All on track'}  color={projects.overdue ? 'var(--danger)' : 'var(--success)'} />
         <StatCard Icon={CheckSquare} label="Open Tasks"      value={tasks.open}                 sub={`${tasks.done} completed · ${tasks.adhoc} ad-hoc`}              color="var(--warning)" />
@@ -72,7 +72,7 @@ export function OverviewTab() {
       </div>
 
       {/* ── Health + Recent Activity ──────────────────────── */}
-      <div className="grid-2" style={{ marginBottom: 20 }}>
+      <div className="grid-2 mb-20">
 
         {/* System health bars */}
         <div className="card">
@@ -178,7 +178,7 @@ export function StatsTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div>
-        <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><UsersIcon size={14} /> Users</div>
+        <div className="section-title flex-center gap-6"><UsersIcon size={14} /> Users</div>
         <div className="grid-4">
           <StatCard Icon={UsersIcon}     label="Total Users"    value={users.total}               sub={`${users.active} active`}   color="var(--primary)" />
           <StatCard Icon={Shield}        label="Managers"       value={users.managers}             sub="management role"            color="#7c3aed" />
@@ -187,7 +187,7 @@ export function StatsTab() {
         </div>
       </div>
       <div>
-        <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><FolderOpen size={14} /> Projects</div>
+        <div className="section-title flex-center gap-6"><FolderOpen size={14} /> Projects</div>
         <div className="grid-4">
           <StatCard Icon={FolderOpen}    label="Total"          value={projects.total}           sub="all time"               color="var(--primary)" />
           <StatCard Icon={CheckCircle2}  label="Active"         value={projects.active}          sub="in progress"            color="var(--success)" />
@@ -196,7 +196,7 @@ export function StatsTab() {
         </div>
       </div>
       <div>
-        <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CheckSquare size={14} /> Tasks</div>
+        <div className="section-title flex-center gap-6"><CheckSquare size={14} /> Tasks</div>
         <div className="grid-4">
           <StatCard Icon={CheckSquare}   label="Total Tasks"    value={tasks.total}   sub="active & completed"  color="var(--primary)" />
           <StatCard Icon={Inbox}         label="Open"           value={tasks.open}    sub="awaiting action"     color="var(--warning)" />
@@ -205,7 +205,7 @@ export function StatsTab() {
         </div>
       </div>
       <div>
-        <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Wrench size={14} /> Maintenance Visits</div>
+        <div className="section-title flex-center gap-6"><Wrench size={14} /> Maintenance Visits</div>
         <div className="grid-4">
           <StatCard Icon={Wrench}        label="Total MVs"          value={maintenance.total}          sub="all visits"         color="var(--primary)" />
           <StatCard Icon={ClipboardList} label="Reports Pending"    value={maintenance.report_pending} sub="not yet sent"       color="var(--warning)" />
@@ -214,7 +214,7 @@ export function StatsTab() {
         </div>
       </div>
       <div>
-        <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Paperclip size={14} /> Storage</div>
+        <div className="section-title flex-center gap-6"><Paperclip size={14} /> Storage</div>
         <div className="grid-2">
           <StatCard Icon={Paperclip}     label="Attachments"    value={attachments.count}               sub="files uploaded"      color="#7c3aed" />
           <StatCard Icon={HardDrive}     label="Storage Used"   value={fileSize(attachments.total_size)} sub="across all projects" color="var(--gray-600)" />

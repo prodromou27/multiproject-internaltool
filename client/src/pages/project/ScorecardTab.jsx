@@ -78,7 +78,7 @@ export function ScorecardTab({ projectId, members }) {
 
       {/* Add button */}
       {engineers.length > 0 && (
-        <button className="btn btn-primary btn-sm" style={{ marginBottom: 16 }} onClick={() => { setEditing(null); setShow(true); }}>
+        <button className="btn btn-primary btn-sm mb-16" onClick={() => { setEditing(null); setShow(true); }}>
           + Add Scorecard
         </button>
       )}

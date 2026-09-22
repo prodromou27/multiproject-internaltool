@@ -174,7 +174,7 @@ export default function Customers() {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search customers…" style={{ maxWidth: 320 }} />
       </div>
 

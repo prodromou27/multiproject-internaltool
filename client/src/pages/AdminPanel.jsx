@@ -131,7 +131,7 @@ export default function AdminPanel() {
     <div className="page">
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
-          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h1 className="page-title flex-center gap-8">
             <Settings size={22} /> Settings
           </h1>
           <p className="text-sm text-muted mt-4">System configuration, access control, security, and operations</p>

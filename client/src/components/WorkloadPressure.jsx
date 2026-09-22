@@ -75,9 +75,9 @@ export default function WorkloadPressure() {
   return <section>
     <div style={{ display: 'flex',gap: 8,flexWrap: 'wrap',alignItems: 'center',marginBottom: 16 }}><label htmlFor="pressure-date">As of</label><input id="pressure-date" type="date" min="1900-01-01" max="9998-12-01" value={date} onChange={event => setDate(event.target.value)} style={{ width: 'auto' }} /><button className="btn btn-ghost" disabled={loading} onClick={load}>Refresh</button><button className="btn btn-ghost" onClick={() => setEditing(true)}>Configure weights</button></div>
     {error ? <div className="error-msg" role="alert">{error} <button className="btn btn-ghost" onClick={load}>Retry</button></div> : loading ? <p role="status">Loading operational pressure...</p> : data && <>
-      <p className="text-muted" style={{ marginBottom: 16 }}>{data.coverage}</p>
+      <p className="text-muted mb-16">{data.coverage}</p>
       {!data.engineers.length && <p>No active engineers.</p>}
-      {data.engineers.map(engineer => <article key={engineer.id} className="card" style={{ marginBottom: 16 }}>
+      {data.engineers.map(engineer => <article key={engineer.id} className="card mb-16">
         <h2 style={{ fontSize: 18 }}>{engineer.name}: {engineer.pressure_points} pressure points</h2>
         <p className="text-muted">{engineer.overdue_count} overdue components; {engineer.undated_count} undated components.</p>
         <div style={{ display: 'flex',gap: 16,flexWrap: 'wrap' }}>{Object.entries(engineer.breakdown).map(([kind,total]) => <p key={kind}>{labels[kind]}: {total.count} / {total.points} points</p>)}</div>

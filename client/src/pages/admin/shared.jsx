@@ -106,7 +106,7 @@ export function LookupTable({ title, items, onAdd, onToggle, onDelete, extraColu
   }
 
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
+    <div className="card mb-16">
       <div className="section-title">{title}</div>
       <form onSubmit={add} style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder={`New ${title.toLowerCase()}…`} style={{ flex: 1, minWidth: 160 }} />

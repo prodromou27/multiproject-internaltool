@@ -164,7 +164,7 @@ export default function Login() {
 
         {/* Error */}
         {error && (
-          <div className="error-msg" style={{ marginBottom: 16 }}>
+          <div className="error-msg mb-16">
             <AlertCircle size={14} style={{ flexShrink: 0 }} />
             {error}
           </div>

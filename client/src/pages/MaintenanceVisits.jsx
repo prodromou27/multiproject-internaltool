@@ -536,14 +536,14 @@ export default function MaintenanceVisits() {
             }} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               <Download size={13} /> Export Matching Visits
             </button>
-            <button className="btn btn-ghost" disabled={unavailable} onClick={() => setShowImport(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Upload size={14} /> Import</button>
+            <button className="btn btn-ghost flex-center gap-6" disabled={unavailable} onClick={() => setShowImport(true)}><Upload size={14} /> Import</button>
             <button className="btn btn-primary" disabled={unavailable} onClick={() => { setEditing(null); setShowForm(true); }}>+ Schedule Visit</button>
           </div>
         )}
       </>} />
 
       {/* Quick stats */}
-      <div className="grid-4" style={{ marginBottom: 20 }}>
+      <div className="grid-4 mb-20">
         <div className="card stat">
           <div className="stat-value">{unavailable ? '...' : visits.filter(v => v.status === 'scheduled').length}</div>
           <div className="stat-label">Scheduled</div>
@@ -563,7 +563,7 @@ export default function MaintenanceVisits() {
       </div>
 
       {/* Search + Filters */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         {/* Search bar */}
         <div style={{ position: 'relative', marginBottom: 10 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />

@@ -54,11 +54,11 @@ export default function WorkloadPlanning() {
   useEffect(() => { setEdit(null); }, [asOf]);
   const busy = loading || loadedDate !== asOf;
   return <section>
-    <div className="flex gap-8" style={{ marginBottom: 16 }}><label htmlFor="planning-date">Planning date</label><input id="planning-date" type="date" min="1900-01-01" max="9998-12-01" value={asOf} onChange={event => setAsOf(event.target.value)} style={{ width: 'auto' }} /><button className="btn btn-ghost" disabled={busy} onClick={load}>Refresh</button></div>
+    <div className="flex gap-8 mb-16"><label htmlFor="planning-date">Planning date</label><input id="planning-date" type="date" min="1900-01-01" max="9998-12-01" value={asOf} onChange={event => setAsOf(event.target.value)} style={{ width: 'auto' }} /><button className="btn btn-ghost" disabled={busy} onClick={load}>Refresh</button></div>
     {error ? <div className="error-msg" role="alert">{error} <button className="btn btn-ghost" onClick={load}>Retry</button></div> : busy ? <p role="status">Loading effort and availability...</p> : <>
-      <p className="text-muted" style={{ marginBottom: 16 }}>{data.coverage}</p>
+      <p className="text-muted mb-16">{data.coverage}</p>
       {data.engineers.length === 0 && <p>No active engineers.</p>}
-      {data.engineers.map(engineer => <article className="card" key={engineer.id} style={{ marginBottom: 20 }}>
+      {data.engineers.map(engineer => <article className="card mb-20" key={engineer.id}>
         <h2 style={{ fontSize: 18 }}>{engineer.name}</h2>
         <p className="text-muted text-sm">{engineer.outside_window_count} outstanding items without a date or beyond this window; excluded from weekly percentages.</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 16 }}>

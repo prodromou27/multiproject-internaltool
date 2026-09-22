@@ -42,7 +42,7 @@ const CHART_COLORS = {
 
 function ChartCard({ title, children }) {
   return (
-    <div className="card" style={{ marginBottom: 20 }}>
+    <div className="card mb-20">
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 14, color: 'var(--gray-700)' }}>{title}</div>
       {children}
     </div>
@@ -75,7 +75,7 @@ function TrendsTab() {
   return (
     <div>
       {/* Summary pills */}
-      <div className="grid-4" style={{ marginBottom: 20 }}>
+      <div className="grid-4 mb-20">
         <div className="card stat">
           <div className="stat-value" style={{ color: CHART_COLORS.done }}>{totTasks}</div>
           <div className="stat-label">Tasks Completed (6 mo)</div>
@@ -223,7 +223,7 @@ function ServiceActivityReportTab() {
 
   return (
     <div>
-      <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card mb-20">
         <div className="form-row">
           <div className="form-group"><label htmlFor="sr-type">Report type</label>
             <select id="sr-type" value={reportType} onChange={e => { setReportType(e.target.value); setEntityId(''); setResult(null); }}>

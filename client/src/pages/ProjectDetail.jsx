@@ -329,7 +329,7 @@ export default function ProjectDetail() {
 
       {project.description && <p style={{ color: 'var(--gray-600)', marginBottom: 16 }}>{project.description}</p>}
 
-      <div className="grid-4" style={{ marginBottom: 20 }}>
+      <div className="grid-4 mb-20">
         <div className="card stat"><div className="stat-value" style={{ fontSize: 24 }}>{taskCount}</div><div className="stat-label">Total Tasks</div></div>
         <div className="card stat"><div className="stat-value" style={{ fontSize: 24, color: 'var(--success)' }}>{doneCount}</div><div className="stat-label">Completed</div></div>
         <div className="card stat"><div className="stat-value" style={{ fontSize: 24 }}>{project.members?.length || 0}</div><div className="stat-label">Members</div></div>
@@ -389,7 +389,7 @@ export default function ProjectDetail() {
 
             {canManage && (
               <>
-                <button className="btn btn-ghost btn-sm" onClick={() => setShowImportExcel(true)} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button className="btn btn-ghost btn-sm flex-center gap-4" onClick={() => setShowImportExcel(true)}>
                   <Upload size={14} /> Import from Excel
                 </button>
                 <button className="btn btn-primary btn-sm" onClick={() => setShowAddTask(true)}>+ Add Task</button>

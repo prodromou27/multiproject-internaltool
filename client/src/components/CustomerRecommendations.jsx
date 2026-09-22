@@ -104,7 +104,7 @@ export default function CustomerRecommendations({ customerId, sourceVisitId, onS
     </div>
     {error ? <div className="error-msg" role="alert">{error} <button className="btn btn-ghost" onClick={load}>Retry</button></div> : busy ? <p role="status">Loading recommendations...</p> : <>
       {data.rows.length === 0 && <p className="text-muted">No recommendations in this view.</p>}
-      {data.rows.map(row => <article className="card" key={row.id} style={{ marginBottom: 16 }}>
+      {data.rows.map(row => <article className="card mb-16" key={row.id}>
         <h2 style={{ fontSize: 17, whiteSpace: 'pre-wrap' }}>{row.finding}</h2>
         <p style={{ whiteSpace: 'pre-wrap' }}>{row.recommendation}</p>
         <p className="text-muted">{label(row.status)} · {row.risk_level} risk · {row.owner_name || 'Unassigned'} · Due {fmtDate(row.due_date)}</p>

@@ -260,7 +260,7 @@ export function SystemUpdateTab() {
     <div style={{ maxWidth: 780 }}>
 
       {/* ── Header card ── */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
           <div style={{
             width: 52, height: 52, borderRadius: 12, flexShrink: 0,
@@ -323,7 +323,7 @@ export function SystemUpdateTab() {
       )}
 
       {status?.outdated !== null && status?.outdated !== undefined && (
-        <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card mb-16">
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
             <Activity size={14} />
             Package Status
@@ -375,7 +375,7 @@ export function SystemUpdateTab() {
 
       {/* ── Progress steps ── */}
       {(isRunning || isDone || isError || logLines.length > 0) && (
-        <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card mb-16">
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 7 }}>
             <Zap size={14} />
             Update Progress
@@ -661,7 +661,7 @@ export function SecurityTab() {
 
   return (
     <div style={{ maxWidth: 600 }}>
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div className="card-header">
           <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
             <Lock size={15} /> Password Policy
@@ -690,7 +690,7 @@ export function SecurityTab() {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div className="card-header">
           <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
             <Shield size={15} /> Self-Service Reset
@@ -706,8 +706,8 @@ export function SecurityTab() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button className="btn btn-primary" onClick={save} disabled={saving || !dirty}
-          style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button className="btn btn-primary flex-center gap-6" onClick={save} disabled={saving || !dirty}
+         >
           <Save size={13} /> {saving ? 'Saving…' : 'Save Settings'}
         </button>
       </div>

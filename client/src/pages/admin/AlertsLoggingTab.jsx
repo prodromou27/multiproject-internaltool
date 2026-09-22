@@ -68,7 +68,7 @@ export function AdminAlertsTab() {
   return (
     <div style={{ maxWidth: 800 }}>
       {/* Live check card */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
             <ShieldAlert size={15} /> System Health Check
@@ -104,7 +104,7 @@ export function AdminAlertsTab() {
       </div>
 
       {/* Alert preferences */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div className="card-header">
           <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
             <Bell size={15} /> Alert Preferences
@@ -145,7 +145,7 @@ export function AdminAlertsTab() {
 
       {/* Recent system alerts */}
       {recentAlerts.length > 0 && (
-        <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card mb-16">
           <div className="card-header">
             <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
               <AlertTriangle size={15} /> Recent System Alerts
@@ -208,7 +208,7 @@ export function LoggingTab() {
   return (
     <div style={{ maxWidth: 720 }}>
       {/* Log Configuration */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div className="card-header">
           <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
             <ScrollText size={15} /> Log Configuration
@@ -250,7 +250,7 @@ export function LoggingTab() {
       </div>
 
       {/* Feature toggles */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div className="card-header">
           <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
             <Zap size={15} /> Logging Features
@@ -290,7 +290,7 @@ export function LoggingTab() {
 
       {/* Log download */}
       {cfg.log_download_enabled && saved?.log_download_enabled && (
-        <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card mb-16">
           <div className="card-header">
             <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
               <Download size={15} /> Export Logs

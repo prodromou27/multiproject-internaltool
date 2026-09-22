@@ -381,7 +381,7 @@ export default function Projects() {
 {isManager && <button className="btn btn-primary" onClick={() => setShowCreate(true)} disabled={loading || !!loadError}>+ New Project</button>}
       </>} />
 
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div style={{ position: 'relative', marginBottom: 10, maxWidth: 340 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
           <input
@@ -454,7 +454,7 @@ export default function Projects() {
         </div>
       </div>
 
-      {loadError && <div className="error-msg" role="alert" style={{ marginBottom: 16 }}>
+      {loadError && <div className="error-msg mb-16" role="alert">
         {loadError} <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
       </div>}
       {loadError && !loading ? <p role="status">This view is unavailable until it reloads successfully.</p> : loading ? <p className="text-muted">Loading…</p> : filtered.length === 0 ? (

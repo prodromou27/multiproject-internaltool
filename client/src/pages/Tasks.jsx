@@ -371,7 +371,7 @@ export default function Tasks() {
       </>} />
 
       {/* Filters */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div className="filter-presets">
           <select defaultValue="" onChange={e => { const preset = presets.find(p => p.name === e.target.value); if (preset) applyPreset(preset); e.target.value = ''; }}>
             <option value="">Apply saved preset…</option>
@@ -484,7 +484,7 @@ export default function Tasks() {
         </>
       )}
 
-      {loadError && <div className="error-msg" role="alert" style={{ marginBottom: 16 }}>
+      {loadError && <div className="error-msg mb-16" role="alert">
         {loadError} <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
       </div>}
       {loadError && !loading ? <p role="status">This view is unavailable until it reloads successfully.</p> : busy ? <div className="skeleton-table" aria-label="Loading tasks"><span /><span /><span /><span /><span /></div> : filtered.length === 0 ? (

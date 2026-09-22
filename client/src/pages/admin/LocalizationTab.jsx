@@ -60,7 +60,7 @@ export function LocalizationTab() {
   return (
     <div style={{ maxWidth: 720 }}>
       {/* Language */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div className="card-header">
           <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
             <Globe size={15} /> Language &amp; Region
@@ -101,7 +101,7 @@ export function LocalizationTab() {
       </div>
 
       {/* Date & Time */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card mb-16">
         <div className="card-header">
           <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
             <Clock size={15} /> Date, Time &amp; Numbers

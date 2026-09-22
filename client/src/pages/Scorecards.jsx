@@ -326,7 +326,7 @@ export default function Scorecards() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><BarChart2 size={22} /> Project Quality Scorecards</h1>
+          <h1 className="page-title flex-center gap-8"><BarChart2 size={22} /> Project Quality Scorecards</h1>
           <p className="text-sm text-muted mt-4">Target: <strong>80%</strong> · Weighted across 5 dimensions · Difficulty-adjusted</p>
         </div>
         {isManager && (
@@ -428,7 +428,7 @@ export default function Scorecards() {
                 {summary.map(eng => <EngineerSummaryCard key={eng.id} eng={eng} />)}
               </div>
               {/* Target attainment bar */}
-              <div className="card" style={{ marginBottom: 20 }}>
+              <div className="card mb-20">
                 <div className="section-title">Target Attainment (≥ 80%)</div>
                 {summary.filter(e => e.scorecard_count > 0).map(eng => {
                   const r = getRating(eng.avg_adjusted);

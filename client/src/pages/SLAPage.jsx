@@ -361,7 +361,7 @@ export default function SLAPage() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h1 className="page-title flex-center gap-8">
             <ShieldCheck size={22} /> SLA Compliance
           </h1>
           {genTime && <div style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 2 }}>Last updated at {genTime}</div>}
