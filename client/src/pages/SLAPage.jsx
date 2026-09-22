@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
   ShieldCheck, AlertTriangle, CheckCircle, XCircle,
-  Clock, ChevronDown, ChevronRight, RefreshCw,
+  Clock, ChevronDown, ChevronRight, RefreshCw, Activity,
 } from 'lucide-react';
 import { api } from '../api';
-import { fmtDate } from '../components/Shared';
+import { fmtDate, fmtDateTime } from '../components/Shared';
 
 /* ── helpers ─────────────────────────────────────────────── */
 function pct(num, den) {
@@ -252,16 +252,55 @@ function ClosureItems({ items }) {
   );
 }
 
+function ServiceActivityItems({ items }) {
+  const show = items.filter(i => i.breached || i.at_risk || i.response_breached || i.late_complete);
+  if (!show.length) return null;
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--gray-100)' }}>
+            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Activity</th>
+            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Team</th>
+            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Customer</th>
+            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Created</th>
+            <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Elapsed</th>
+            <th style={{ padding: '6px 8px' }} />
+          </tr>
+        </thead>
+        <tbody>
+          {show.map(item => (
+            <tr key={item.id} style={{ borderBottom: '1px solid var(--gray-50)' }}>
+              <td style={{ padding: '6px 8px', fontWeight: 600 }}>{item.reference} — {item.title}</td>
+              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{item.team_name}</td>
+              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{item.customer_name}</td>
+              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{fmtDateTime(item.created_at)}</td>
+              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: (item.breached || item.response_breached) ? '#ef4444' : '#f59e0b' }}>{item.elapsed_hours}h</td>
+              <td style={{ padding: '6px 8px' }}>
+                {item.breached && <span style={{ color: '#ef4444', fontSize: 11, fontWeight: 700 }}>BREACHED</span>}
+                {!item.breached && item.late_complete && <span style={{ color: '#ef4444', fontSize: 11, fontWeight: 700 }}>LATE</span>}
+                {!item.breached && !item.late_complete && item.response_breached && <span style={{ color: '#ef4444', fontSize: 11, fontWeight: 700 }}>NO RESPONSE</span>}
+                {!item.breached && !item.late_complete && !item.response_breached && item.at_risk && <span style={{ color: '#f59e0b', fontSize: 11, fontWeight: 700 }}>AT RISK</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /* ── Overall health bar ──────────────────────────────────── */
 function OverallHealth({ data }) {
   if (!data) return null;
-  const { mv, project_status, high_priority_tasks, closure_approval } = data;
+  const { mv, project_status, high_priority_tasks, closure_approval, service_activities } = data;
 
   const counts = [
     { label: 'MV Reports',       breached: mv?.breached || 0,             at_risk: mv?.at_risk || 0 },
     { label: 'Status Updates',   breached: project_status?.breached || 0, at_risk: project_status?.at_risk || 0 },
     { label: 'High-Prio Tasks',  breached: high_priority_tasks?.breached || 0, at_risk: high_priority_tasks?.at_risk || 0 },
     { label: 'Closure Reviews',  breached: closure_approval?.breached || 0,    at_risk: closure_approval?.at_risk || 0 },
+    { label: 'Service Activities', breached: (service_activities?.breached || 0) + (service_activities?.response_breached || 0), at_risk: service_activities?.at_risk || 0 },
   ];
 
   const totalBreached = counts.reduce((s, c) => s + c.breached, 0);
@@ -388,14 +427,55 @@ export default function SLAPage() {
               metric={data.closure_approval}
               renderItems={items => <ClosureItems items={items} />}
             />
+
+            <SLACard
+              icon={Activity}
+              title="Service Activities"
+              target="Per team — Settings → Teams → Targets"
+              metric={data.service_activities}
+              renderItems={items => <ServiceActivityItems items={items} />}
+            />
           </div>
+
+          {!!data.service_activities?.by_team?.length && (
+            <div className="card" style={{ marginTop: 16, padding: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Service Activity SLA by team</div>
+              <div className="table-wrap">
+                <table style={{ width: '100%', fontSize: 12 }}>
+                  <thead><tr>
+                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Team</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Response target</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Resolution target</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Open</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Breached</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>At risk</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>No response</th>
+                  </tr></thead>
+                  <tbody>
+                    {data.service_activities.by_team.map(t => (
+                      <tr key={t.team_id} style={{ borderTop: '1px solid var(--gray-100)' }}>
+                        <td style={{ padding: '4px 8px', fontWeight: 600 }}>{t.team_name}</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right' }}>{t.response_hours}h</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right' }}>{t.resolution_hours}h</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right' }}>{t.total}</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right', color: t.breached ? '#ef4444' : undefined, fontWeight: t.breached ? 700 : 400 }}>{t.breached}</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right', color: t.at_risk ? '#f59e0b' : undefined, fontWeight: t.at_risk ? 700 : 400 }}>{t.at_risk}</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right', color: t.response_breached ? '#ef4444' : undefined, fontWeight: t.response_breached ? 700 : 400 }}>{t.response_breached}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Legend */}
           <div style={{ marginTop: 24, padding: '12px 16px', background: 'var(--gray-50)', borderRadius: 8, fontSize: 12, color: 'var(--gray-500)' }}>
             <strong style={{ color: 'var(--gray-700)' }}>How SLA is calculated:</strong>
             {' '}Working days = Mon–Fri only. &nbsp;
             <span style={{ color: '#ef4444', fontWeight: 600 }}>Breached</span> = past the deadline. &nbsp;
-            <span style={{ color: '#f59e0b', fontWeight: 600 }}>At risk</span> = 1 working day remaining.
+            <span style={{ color: '#f59e0b', fontWeight: 600 }}>At risk</span> = 1 working day remaining. &nbsp;
+            Service activity targets (response/resolution, in hours) are set per team in Settings → Teams → Targets.
           </div>
         </>
       )}

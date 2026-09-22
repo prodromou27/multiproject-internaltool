@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth, requireManager } = require('../middleware/auth');
 const { logAudit } = require('../auditLog');
 const { getEnabledTeamIdsForUser } = require('../serviceActivities');
+const { validateSlaTargets, getTeamSlaTargets } = require('../teamSla');
 
 // Any authenticated user — used by the client to decide whether to show the
 // Activity Log nav item / route. Server-side routes independently re-check
@@ -38,7 +39,31 @@ router.get('/:id', async (req, res) => {
     SELECT u.id, u.name, u.email, u.role FROM team_members tm
     JOIN users u ON u.id = tm.user_id WHERE tm.team_id = ? ORDER BY u.name
   `).all(id);
-  res.json({ ...team, members });
+  const sla = (await getTeamSlaTargets([id]))[id];
+  res.json({ ...team, members, sla });
+});
+
+/* ── Service Activity SLA targets ─────────────────────────────
+ * Per-team response/resolution targets (hours). A team with no row uses the
+ * app-wide defaults (server/teamSla.js) — see routes/sla.js for how these
+ * are evaluated against open service activities. */
+router.put('/:id/sla', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  const team = await db.prepare('SELECT * FROM teams WHERE id = ?').get(id);
+  if (!team) return res.status(404).json({ error: 'Not found' });
+  const parsed = validateSlaTargets(req.body);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  await db.prepare(`
+    INSERT INTO team_sla_targets (team_id, response_hours, resolution_hours, updated_by, updated_at)
+    VALUES (?, ?, ?, ?, app_now())
+    ON CONFLICT (team_id) DO UPDATE SET
+      response_hours = EXCLUDED.response_hours, resolution_hours = EXCLUDED.resolution_hours,
+      updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at
+  `).run(id, parsed.value.response_hours, parsed.value.resolution_hours, req.user.id);
+  await logAudit(db, req, 'team', id, team.name, 'team_sla_updated',
+    `response_hours=${parsed.value.response_hours}; resolution_hours=${parsed.value.resolution_hours}`);
+  res.json({ ok: true, sla: parsed.value });
 });
 
 router.post('/', async (req, res) => {

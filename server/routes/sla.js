@@ -3,6 +3,10 @@ const db = require('../db');
 const { requireManager } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
 const { workingDaysBetween } = require('../workingDays');
+const { getTeamSlaTargets } = require('../teamSla');
+const { evaluateActivitySla, summarizeByTeam } = require('../serviceActivitySla');
+
+const TERMINAL_COMPLETED_FALLBACK = 'completed';
 
 router.get('/overview', requireManager, async (req, res) => {
   const today = (await db.prepare('SELECT app_today() AS d').get()).d;
@@ -115,6 +119,36 @@ router.get('/overview', requireManager, async (req, res) => {
     };
   });
 
+  // ── 5. Service Activity SLA, targets configurable per team ───────────
+  const statusConfigRow = (await db.prepare("SELECT value FROM settings WHERE key='status_config'").get());
+  let activityStatuses = [];
+  try { activityStatuses = statusConfigRow ? (JSON.parse(statusConfigRow.value).service_activity || []) : []; } catch { /* fall through to [] */ }
+  const completedValue = activityStatuses.find(s => s.is_terminal && /complet/i.test(s.value))?.value || TERMINAL_COMPLETED_FALLBACK;
+  const initialValue = activityStatuses[0]?.value || 'planned';
+  const cancelledValue = activityStatuses.find(s => s.is_terminal && /cancel/i.test(s.value))?.value || 'cancelled';
+
+  // Every still-open activity counts regardless of age (an old one is exactly what
+  // should show as badly breached); completed ones are windowed to the last 90 days
+  // so "late complete" stats stay about recent performance, not the whole history.
+  const cutoff90 = new Date(today + 'T12:00:00'); cutoff90.setDate(cutoff90.getDate() - 90);
+  const cutoff90Str = cutoff90.toISOString().slice(0, 10);
+  const openActivities = (await db.prepare(`
+    SELECT sa.id, sa.activity_reference, sa.title, sa.status, sa.team_id, sa.created_at, sa.completed_at,
+           t.name AS team_name, c.name AS customer_name
+    FROM service_activities sa
+    JOIN teams t ON t.id = sa.team_id
+    JOIN customers c ON c.id = sa.customer_id
+    WHERE sa.status NOT IN (?, ?)
+       OR (sa.status = ? AND sa.completed_at >= ?)
+  `).all(cancelledValue, completedValue, completedValue, cutoff90Str));
+
+  const slaTargets = await getTeamSlaTargets(openActivities.map(a => a.team_id));
+  const activityItems = openActivities.map(a => evaluateActivitySla(
+    { ...a, customer_name: decrypt(a.customer_name) },
+    slaTargets[a.team_id],
+    { completedValue, initialValue },
+  ));
+
   res.json({
     generated_at: new Date().toISOString(),
     mv: {
@@ -150,22 +184,37 @@ router.get('/overview', requireManager, async (req, res) => {
       breached: closureItems.filter(r => r.breached).length,
       items:    closureItems,
     },
+    // Targets are per-team (Settings → Teams → SLA), not fixed like the four blocks
+    // above — response_hours/resolution_hours vary per team, defaulting to 8h/48h.
+    service_activities: {
+      total:              activityItems.length,
+      ok:                 activityItems.filter(r => !r.breached && !r.at_risk && !r.response_breached).length,
+      at_risk:            activityItems.filter(r => r.at_risk).length,
+      breached:           activityItems.filter(r => r.breached).length,
+      response_breached:  activityItems.filter(r => r.response_breached).length,
+      late_complete:      activityItems.filter(r => r.late_complete).length,
+      by_team:            summarizeByTeam(activityItems),
+      items:              activityItems,
+    },
     forecast: {
       predicted_breaches_next_working_day:
         mvItems.filter(r => r.at_risk).length +
         projItems.filter(r => r.at_risk).length +
         taskItems.filter(r => r.at_risk).length +
-        closureItems.filter(r => r.at_risk).length,
+        closureItems.filter(r => r.at_risk).length +
+        activityItems.filter(r => r.at_risk).length,
       current_breaches:
         mvItems.filter(r => r.breached).length +
         projItems.filter(r => r.breached).length +
         taskItems.filter(r => r.breached).length +
-        closureItems.filter(r => r.breached).length,
+        closureItems.filter(r => r.breached).length +
+        activityItems.filter(r => r.breached).length,
       escalation_recommended: [
         ...mvItems.filter(r => r.breached).map(r => ({ type: 'maintenance', id: r.id, title: r.title })),
         ...projItems.filter(r => r.breached).map(r => ({ type: 'project', id: r.id, title: r.title })),
         ...taskItems.filter(r => r.breached).map(r => ({ type: 'task', id: r.id, title: r.title })),
         ...closureItems.filter(r => r.breached).map(r => ({ type: 'closure', id: r.id, title: r.title })),
+        ...activityItems.filter(r => r.breached).map(r => ({ type: 'service_activity', id: r.id, title: r.title })),
       ].slice(0, 20),
     },
   });
