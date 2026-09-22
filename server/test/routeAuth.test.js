@@ -15,6 +15,7 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || 'postgres://fake:fak
 const AUTH_NAMES = new Set([
   'requireAuth', 'requireDownloadAuth', 'requireManager', 'requireManagerOrPlanner',
   'requireDownloadManager', 'requireDownloadManagerOrPlanner',
+  'requirePermissionMiddleware',
 ]);
 
 // "<file> <METHOD> <path>" — endpoints that are public by design.

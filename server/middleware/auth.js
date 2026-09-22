@@ -116,15 +116,17 @@ function requireDownloadManager(req, res, next) {
 }
 
 function requirePermission(permissionKey) {
-  return (req, res, next) => requireAuth(req, res, async () => {
-    try {
-      if (!await hasPermission(req.user, permissionKey))
-        return res.status(403).json({ error: 'You do not have permission to perform this action' });
-      next();
-    } catch (error) {
-      next(error);
-    }
-  });
+  return function requirePermissionMiddleware(req, res, next) {
+    return requireAuth(req, res, async () => {
+      try {
+        if (!await hasPermission(req.user, permissionKey))
+          return res.status(403).json({ error: 'You do not have permission to perform this action' });
+        next();
+      } catch (error) {
+        next(error);
+      }
+    });
+  };
 }
 
 module.exports = { requireAuth, requireDownloadAuth, requireManager, requireManagerOrPlanner, requireDownloadManager, requireDownloadManagerOrPlanner, requirePermission, signJwt, verifyJwt };
