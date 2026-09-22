@@ -33,8 +33,9 @@ router.get('/summary',requireAuth,async (req,res) => {
   const customerId=Number(req.params.id);
   if (!await db.prepare('SELECT id FROM customers WHERE id=?').get(customerId)) return res.status(404).json({ error:'Customer not found' });
   if (!await canAccessCustomer(req.user,customerId)) return res.status(403).json({ error:'You do not have access to this customer' });
-  const engineer=req.user.role==='engineer',userId=req.user.id;
-  const projectJoin=engineer ? ' JOIN project_assignments pa_scope ON pa_scope.project_id=p.id AND pa_scope.user_id=?' : '';
+  const engineer=req.user.role==='engineer',planner=req.user.role==='planner',userId=req.user.id;
+  const projectRestricted=engineer || planner;
+  const projectJoin=projectRestricted ? ' JOIN project_assignments pa_scope ON pa_scope.project_id=p.id AND pa_scope.user_id=?' : '';
   const taskScope=engineer ? ' AND t.assigned_to=?' : '';
   const visitJoin=engineer ? ' JOIN maintenance_visit_engineers mve_scope ON mve_scope.visit_id=mv.id AND mve_scope.user_id=?' : '';
   const activityScope=engineer ? ' AND sa.engineer_id=?' : '';
@@ -42,8 +43,8 @@ router.get('/summary',requireAuth,async (req,res) => {
   const [projects,tasks,recommendations,visits,lastVisit,nextVisit,activities,configuration,assets]=await Promise.all([
     db.prepare(`SELECT COUNT(*) FILTER (WHERE p.status NOT IN ('closed','cancelled')) AS active,
       COUNT(*) FILTER (WHERE p.status NOT IN ('closed','cancelled') AND (p.status='delayed' OR (p.deadline IS NOT NULL AND p.deadline<app_today()))) AS delayed
-      FROM projects p${projectJoin} WHERE p.customer_id=?`).get(...(engineer?[userId]:[]),customerId),
-    db.prepare(`SELECT COUNT(*) FILTER (WHERE t.status NOT IN ('completed','closed','cancelled')) AS open,
+      FROM projects p${projectJoin} WHERE p.customer_id=?`).get(...(projectRestricted?[userId]:[]),customerId),
+    planner ? Promise.resolve({ open:0,overdue:0,in_progress:0,recently_completed:0 }) : db.prepare(`SELECT COUNT(*) FILTER (WHERE t.status NOT IN ('completed','closed','cancelled')) AS open,
       COUNT(*) FILTER (WHERE t.status NOT IN ('completed','closed','cancelled') AND t.deadline IS NOT NULL AND t.deadline<app_today()) AS overdue,
       COUNT(*) FILTER (WHERE t.status='in_progress') AS in_progress,
       COUNT(*) FILTER (WHERE t.status IN ('completed','closed') AND t.updated_at>=app_now()-INTERVAL '30 days') AS recently_completed
@@ -81,7 +82,7 @@ router.get('/summary',requireAuth,async (req,res) => {
     else if (configuration.last_sync_status && configuration.last_sync_status!=='success') managed={ visible:true,state:'sync_attention',...configuration };
     else managed={ visible:true,state:'active',...configuration };
   }
-  res.json({ projects:numbers(projects),tasks:numbers(tasks),recommendations:numbers(recommendations),
+  res.json({ projects:numbers(projects),tasks:{ ...numbers(tasks),visible:!planner },recommendations:numbers(recommendations),
     visits:{ ...numbers(visits),last:lastVisit || null,next:nextVisit || null },activities:{ recent:activities },
     assets:Number(assets.total || 0),managed });
 });
@@ -116,6 +117,7 @@ router.get('/tasks',requireAuth,async (req,res) => {
   const customerId=await authorizedCustomer(req,res);if (!customerId) return;
   const paging=validateListQuery(req.query,['all','open','in_progress','overdue','recently_completed']);if (paging.error) return res.status(400).json({ error:paging.error });
   if (req.query.priority && !['low','medium','high','critical'].includes(req.query.priority)) return res.status(400).json({ error:'Invalid priority' });
+  if (req.query.status && !['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','cancelled','closed'].includes(req.query.status)) return res.status(400).json({ error:'Invalid status' });
   const clauses=['p.customer_id=?'],params=[customerId],filter=req.query.filter || 'all';
   if (req.user.role==='engineer') { clauses.push('t.assigned_to=?');params.push(req.user.id); }
   else if (req.query.engineer_id) { clauses.push('t.assigned_to=?');params.push(Number(req.query.engineer_id)); }

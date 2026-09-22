@@ -2615,9 +2615,23 @@ test('customer operational summary is bounded and respects customer scope',async
   const engineer=await api(path,{ token:ids.tokenEnabled });
   assert.equal(engineer.status,200);assert.deepEqual(engineer.data.managed,{ visible:false,state:'unavailable' });
   assert.equal(engineer.data.activities.recent.every(row => row.engineer_id===ids.engineerEnabled),true);
+  const planner=await api(path,{ token:ids.tokenPlanner });
+  assert.equal(planner.status,200);assert.deepEqual(planner.data.tasks,{ open:0,overdue:0,in_progress:0,recently_completed:0,visible:false });
   const privateCustomer=(await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Private operations customer')).lastInsertRowid;
   assert.equal((await api(`/api/customers/${privateCustomer}/operations/summary`,{ token:ids.tokenEnabled })).status,403);
   assert.equal((await api(`/api/customers/${privateCustomer}`,{ token:ids.tokenEnabled })).status,403);
+});
+
+test('customer activity views reject malformed filters and missing customers consistently',async () => {
+  const root=`/api/customers/${ids.customer}`;
+  for (const query of ['page=0','page_size=201','page=1&page=2','from=bad','from=2026-09-20&to=2026-09-01','engineer_id=nope']) {
+    assert.equal((await api(`${root}/service-activities?${query}`,{ token:ids.tokenManager })).status,400);
+  }
+  for (const query of ['from=bad','from=2026-09-20&to=2026-09-01','from=2026-09-01&from=2026-09-02']) {
+    assert.equal((await api(`${root}/service-summary?${query}`,{ token:ids.tokenManager })).status,400);
+  }
+  assert.equal((await api('/api/customers/99999999/service-activities',{ token:ids.tokenManager })).status,404);
+  assert.equal((await api('/api/customers/99999999/service-summary',{ token:ids.tokenManager })).status,404);
 });
 
 test('customer operational work lists paginate, filter, and enforce role scope',async () => {

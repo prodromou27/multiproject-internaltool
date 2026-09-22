@@ -610,6 +610,7 @@ export default function ActivityLog() {
   async function handleCreate(payload) {
     await api.createServiceActivity(payload);
     setShowForm(false);
+    setCreateInitial(null);
     toast.success('Activity logged');
     load();
   }

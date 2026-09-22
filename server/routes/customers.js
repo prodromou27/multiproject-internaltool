@@ -4,7 +4,7 @@ const ExcelJS = require('exceljs');
 const db = require('../db');
 const { requireAuth, requireManager, requireManagerOrPlanner } = require('../middleware/auth');
 const { encryptCustomer, decryptCustomer } = require('../fieldCipher');
-const { canAccessCustomer }=require('../customerAccess');
+const { canAccessCustomer,positiveId }=require('../customerAccess');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 router.use('/:id/overview', require('./customer-overview'));
@@ -359,12 +359,18 @@ router.put('/:id/engineers', requireManagerOrPlanner, async (req, res) => {
 
 /* ── Customer Service Profile: activity timeline + summary ────────────── */
 router.get('/:id/service-activities', requireAuth, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid customer ID' });
+  const id=Number(req.params.id);
+  if (!await db.prepare('SELECT id FROM customers WHERE id=?').get(id)) return res.status(404).json({ error:'Customer not found' });
   if (!await canAccessCustomer(req.user,id)) return res.status(403).json({ error:'Forbidden' });
   const { from, to, engineer_id, category_id, technology_id, status, page = 1, page_size = 25 } = req.query;
-  const limit = Math.min(Math.max(parseInt(page_size, 10) || 25, 1), 200);
-  const offset = (Math.max(parseInt(page, 10) || 1, 1) - 1) * limit;
+  for (const [key,value] of Object.entries({ from,to,engineer_id,category_id,technology_id,status,page,page_size })) if (value!==undefined && typeof value!=='string' && typeof value!=='number') return res.status(400).json({ error:`${key} must be a single value` });
+  const validDate=value => value===undefined || (typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number(value.slice(0,4))>=1900 && Number(value.slice(0,4))<=9998 && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10)===value);
+  if (!validDate(from) || !validDate(to) || (from && to && from>to)) return res.status(400).json({ error:'Invalid date range' });
+  for (const [key,value] of Object.entries({ engineer_id,category_id,technology_id })) if (value!==undefined && !positiveId(value)) return res.status(400).json({ error:`${key} must be a positive integer` });
+  if (status!==undefined && (typeof status!=='string' || !/^[a-z0-9_-]{1,100}$/i.test(status))) return res.status(400).json({ error:'Invalid status' });
+  if (!positiveId(page) || !positiveId(page_size) || Number(page_size)>200 || !Number.isSafeInteger((Number(page)-1)*Number(page_size))) return res.status(400).json({ error:'Invalid pagination' });
+  const limit=Number(page_size),offset=(Number(page)-1)*limit;
 
   let where = 'WHERE sa.customer_id = ?';
   const params = [id];
@@ -388,7 +394,7 @@ router.get('/:id/service-activities', requireAuth, async (req, res) => {
   `).all(...params, limit, offset);
 
   const { total } = await db.prepare(`SELECT COUNT(*) AS total FROM service_activities sa ${where}`).get(...params);
-  res.json({ rows, total, page: Number(page), page_size: limit });
+  res.json({ rows, total:Number(total), page:Number(page), page_size:limit });
 });
 
 /* ── Contract hour tracking (optional — only meaningful when included_hours is set) ── */
@@ -417,10 +423,14 @@ router.get('/:id/contract-hours', requireManagerOrPlanner, async (req, res) => {
 });
 
 router.get('/:id/service-summary', requireAuth, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  if (!positiveId(req.params.id)) return res.status(400).json({ error:'Invalid customer ID' });
+  const id=Number(req.params.id);
+  if (!await db.prepare('SELECT id FROM customers WHERE id=?').get(id)) return res.status(404).json({ error:'Customer not found' });
   if (!await canAccessCustomer(req.user,id)) return res.status(403).json({ error:'Forbidden' });
   const { from, to } = req.query;
+  if ((from!==undefined && typeof from!=='string') || (to!==undefined && typeof to!=='string')) return res.status(400).json({ error:'Dates must be single values' });
+  const validDate=value => value===undefined || (/^\d{4}-\d{2}-\d{2}$/.test(value) && Number(value.slice(0,4))>=1900 && Number(value.slice(0,4))<=9998 && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10)===value);
+  if (!validDate(from) || !validDate(to) || (from && to && from>to)) return res.status(400).json({ error:'Invalid date range' });
   let where = 'WHERE sa.customer_id = ?';
   const params = [id];
   if (req.user.role==='engineer') { where += ' AND sa.engineer_id = ?';params.push(req.user.id); }
