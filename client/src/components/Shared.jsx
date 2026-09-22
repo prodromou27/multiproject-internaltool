@@ -1,6 +1,7 @@
 import React, { useContext, useRef, useState, useEffect, useId } from 'react';
 import { X, AtSign } from 'lucide-react';
 import { StatusContext, getStatusDef } from '../hooks/useStatuses';
+import { formatDate, formatDateTime, formatNumber } from '../utils/locale';
 
 // Fallback labels for when config isn't loaded yet
 const STATUS_LABELS = {
@@ -78,22 +79,16 @@ export function PriorityBadge({ p }) {
   );
 }
 
-export function fmtDate(d) {
-  if (!d) return null;
-  // Parse YYYY-MM-DD as local date to avoid UTC-to-local offset shifting the day
-  const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return '—';
-  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  if (isNaN(date)) return '—';
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+// Delegates to the admin-configured date format and timezone (client/src/utils/locale.js).
+// Calendar dates (deadlines, scheduled dates, …) are never timezone-shifted — a stored
+// 2026-09-22 reads as the 22nd for every viewer, same as before localization existed.
+export function fmtDate(d) { return formatDate(d); }
 
-export function fmtDateTime(d) {
-  if (!d) return '—';
-  const date = new Date(d);
-  if (isNaN(date)) return '—';
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
+// Actual timestamps (created_at, sent_at, …) are converted into the configured timezone.
+export function fmtDateTime(d) { return formatDateTime(d); }
+
+// Formats a number using the admin-configured group/decimal separators.
+export function fmtNumber(n, opts) { return formatNumber(n, undefined, opts); }
 
 export function isOverdue(d) {
   if (!d) return false;

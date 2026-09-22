@@ -13,6 +13,7 @@ import { PAGES, visiblePages, pageForPath, canAccessPage } from './navigation';
 import { PageState } from './components/PageLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 import QuickCreate from './components/QuickCreate';
+import { loadLocaleConfig } from './utils/locale';
 import { StatusProvider } from './hooks/useStatuses';
 import { ToastProvider, useToast } from './components/Toast';
 import { ConfirmProvider } from './components/Confirm';
@@ -854,6 +855,10 @@ export default function App() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     let mounted = true;
+    // Loaded alongside auth (not awaited sequentially) so the app's configured date/time/
+    // number format is already in place before the first protected page renders — no
+    // flash of default formatting, no need for pages to know localization exists.
+    loadLocaleConfig().catch(() => {});
     api.me({ redirectOnUnauthorized: false }).then(fresh => {
       if (!mounted) return;
       if (fresh.must_change_password) setPasswordChangeUser(fresh);

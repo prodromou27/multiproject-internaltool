@@ -377,7 +377,7 @@ export const api = {
   deploymentHealth:    () => req('GET',  '/settings/deployment-health'),
 
   // localization settings
-  getLocalization: () => req('GET', '/settings/localization'),
+  getLocalization: (options) => req('GET', '/settings/localization', undefined, options),
   saveLocalization: (data) => req('PUT', '/settings/localization', data),
 
   // admin notifications

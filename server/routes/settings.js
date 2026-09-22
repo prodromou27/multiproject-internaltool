@@ -2,7 +2,7 @@ const router = require('express').Router();
 const db     = require('../db');
 const fs     = require('fs');
 const path   = require('path');
-const { requireManager } = require('../middleware/auth');
+const { requireManager, requireAuth } = require('../middleware/auth');
 const { sendTest } = require('../notifications');
 const updateMgr = require('../update-manager');
 const { assertPublicHttpUrl, isInAppUpdateEnabled, requireInAppUpdateEnabled } = require('../security');
@@ -132,7 +132,9 @@ const DEFAULT_LOCALIZATION = {
   timezone: 'Asia/Nicosia',
 };
 
-router.get('/localization', requireManager, async (req, res) => {
+// Every authenticated role reads this — it drives date/time/number formatting
+// across the whole app, not just admin screens. Only managers may change it (below).
+router.get('/localization', requireAuth, async (req, res) => {
   const row = (await db.prepare("SELECT value FROM settings WHERE key='localization_config'").get());
   if (!row) return res.json(DEFAULT_LOCALIZATION);
   try { res.json({ ...DEFAULT_LOCALIZATION, ...JSON.parse(row.value) }); }

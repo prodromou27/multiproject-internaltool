@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Save, Loader2, Settings, Globe, Clock } from 'lucide-react';
 import { api } from '../../api';
 import { useToast } from '../../components/Toast';
+import { setLocaleConfig } from '../../utils/locale';
 
 /* ── Localization Tab ────────────────────────────────────── */
 export const LANGUAGES = [
@@ -43,7 +44,13 @@ export function LocalizationTab() {
 
   async function save() {
     setSaving(true);
-    try { await api.saveLocalization(cfg); setSaved({ ...cfg }); toast.success('Localization settings saved'); }
+    try {
+      await api.saveLocalization(cfg);
+      setSaved({ ...cfg });
+      // Applies immediately, everywhere in this session — dates/numbers reformat without a reload.
+      setLocaleConfig(cfg);
+      toast.success('Localization settings saved — dates and numbers across the app now use it');
+    }
     catch (e) { toast.error(e.message); }
     finally { setSaving(false); }
   }
