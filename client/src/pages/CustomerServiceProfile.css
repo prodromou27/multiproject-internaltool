@@ -1,6 +1,47 @@
-/* Service activities tab of the Customer 360 page. Scoped under .cs-activities.
-   The hero, rankings and ledger come from shared components; this file only adds
-   what's specific to a single customer: the contract meter and the filter row. */
+/* Customer 360 (pages/CustomerServiceProfile.jsx). Page shell + identity panel
+   here; the hero, rankings and ledger come from shared components, and this
+   file adds what's specific to a single customer: the identity rail, the
+   health strip, the contract meter, and the activity filter row. */
+
+/* ── Page shell ──────────────────────────────────────────── */
+.cs-back { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--gray-400); text-decoration: none; margin-bottom: 14px; }
+.cs-back:hover { color: var(--gray-600); text-decoration: none; }
+.cs-shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; align-items: start; }
+.cs-main { min-width: 0; }
+
+/* ── Identity panel ──────────────────────────────────────── *
+ * The one fixed point on the page — everything else changes as the section
+ * below it changes. Echoes the signed-in user's own avatar treatment in the
+ * top bar, so "this is an identity" reads the same way for a customer as it
+ * does for a person. */
+.cs-identity {
+  position: sticky; top: 88px;
+  padding: 22px 20px;
+  display: flex; flex-direction: column; align-items: flex-start;
+  text-align: left;
+}
+.cs-identity-avatar {
+  width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  color: #fff; font-size: 16px; font-weight: 700; letter-spacing: .02em;
+  margin-bottom: 14px;
+}
+.cs-identity-name { font-size: 19px; font-weight: 750; letter-spacing: -.3px; line-height: 1.25; color: var(--gray-900); }
+.cs-identity-contract { font-size: 12px; color: var(--gray-500); margin-top: 4px; }
+.cs-identity-contact-name { font-size: 13px; font-weight: 650; color: var(--gray-800); margin-top: 18px; }
+.cs-identity-details { list-style: none; display: flex; flex-direction: column; gap: 7px; margin-top: 8px; width: 100%; }
+.cs-identity-details li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--gray-600); }
+.cs-identity-details li svg { flex-shrink: 0; color: var(--gray-400); }
+.cs-identity-details li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-identity-facts { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray-100); width: 100%; }
+.cs-identity-facts > div { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--gray-500); }
+.cs-identity-facts svg { color: var(--gray-400); flex-shrink: 0; }
+
+@media (max-width: 900px) {
+  .cs-shell { grid-template-columns: 1fr; }
+  .cs-identity { position: static; padding: 16px; }
+}
 
 .cs-activities { display: flex; flex-direction: column; gap: 16px; }
 
@@ -24,22 +65,32 @@
 
 .cs-activities .cs-rankings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px; align-items: start; }
 
-/* ── Health strip (visible on every tab, not just Overview) ─ */
+/* ── Health strip (visible on every section, not just Overview) ─
+ * Left-edge accent bar for alert states — the same device the Dashboard's
+ * OperationalFocus cards already use for "needs attention" metrics. */
 .cs-health-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
 .cs-health-card {
   display: block; text-align: left; padding: 14px 16px; border: 0; font: inherit; cursor: default;
-  --cs-health: var(--gray-400);
+  border-left: 3px solid transparent; --cs-health: var(--gray-400);
 }
-.cs-health-card.is-warning { --cs-health: var(--warning); }
-.cs-health-card.is-danger  { --cs-health: var(--danger); }
+.cs-health-card.is-warning { border-left-color: var(--warning); }
+.cs-health-card.is-danger  { border-left-color: var(--danger); }
 .cs-health-card.is-actionable { cursor: pointer; transition: box-shadow .15s ease, transform .15s ease; }
 .cs-health-card.is-actionable:hover { box-shadow: 0 2px 10px rgba(0,0,0,.08); transform: translateY(-1px); }
-.cs-health-head { display: flex; align-items: center; gap: 6px; color: var(--gray-500); font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .03em; }
+.cs-health-head { display: flex; align-items: center; gap: 6px; color: var(--gray-500); font-size: 12px; font-weight: 600; }
 .cs-health-head svg { flex-shrink: 0; }
 .cs-health-value { font-size: 22px; font-weight: 750; color: var(--gray-900); margin-top: 6px; font-variant-numeric: tabular-nums; }
-.cs-health-card.is-warning .cs-health-value, .cs-health-card.is-danger .cs-health-value { color: var(--cs-health); }
+.cs-health-card.is-danger .cs-health-value { color: var(--danger); }
 .cs-health-note { font-size: 12px; color: var(--gray-500); margin-top: 3px; }
-.cs-health-card.is-danger .cs-health-note { color: var(--cs-health); font-weight: 600; }
+.cs-health-card.is-danger .cs-health-note { color: var(--danger); font-weight: 600; }
+
+/* ── Overview cards (Projects / Tasks / Visits / Documents) ── */
+.cs-overview-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.cs-overview-card-head h2 { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 650; color: var(--gray-800); flex: 1; }
+.cs-overview-card-head h2 svg { color: var(--primary); flex-shrink: 0; }
+.cs-overview-count { font-size: 12px; font-weight: 700; color: var(--gray-500); background: var(--gray-100); border-radius: 999px; padding: 2px 9px; }
+.cs-overview-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--gray-100); }
+.cs-overview-row:last-of-type { border-bottom: 0; }
 
 /* ── Contract meter ──────────────────────────────────────── */
 .cs-activities .cs-meter { padding: 20px 24px; --cs-meter: var(--success); }

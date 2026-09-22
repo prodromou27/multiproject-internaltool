@@ -1,8 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { FolderOpen, CheckSquare, Wrench, FileText } from 'lucide-react';
 import { api } from '../api';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { fmtDate, StatusBadge } from './Shared';
+
+// Same icon-to-concept mapping as the main navigation (navigation.js), so a
+// Projects card reads as "Projects" the same way whether it's in the sidebar
+// or here.
+const SECTION_ICONS = { projects: FolderOpen, tasks: CheckSquare, visits: Wrench, documents: FileText };
 
 export default function CustomerOverview({ customer }) {
   const [page, setPage] = useState(1);
@@ -30,21 +36,22 @@ export default function CustomerOverview({ customer }) {
     ['visits', 'Maintenance visits', row => <><span>{row.title}</span><span>{row.status.replaceAll('_', ' ')} · {fmtDate(row.scheduled_date)}</span><span>{row.report_sent_to_customer ? 'Report forwarded' : row.report_sent ? 'Awaiting review' : 'Report not submitted'}</span></>],
     ['documents', 'Project documents', row => <><Link to={`/projects/${row.project_id}`}>{row.original_name}</Link><span>{row.project_title}</span><span>{fmtDate(row.created_at)}</span></>],
   ];
+  // Customer identity (contacts, contract, asset count) now lives in the
+  // profile's identity panel, visible on every section — not repeated here.
   return <>
-    <section className="card" style={{ marginBottom: 20 }}>
-      <h2 style={{ fontSize: 18 }}>Contacts and service profile</h2>
-      <p>{customer.contact_name || customer.primary_contact || 'No contact recorded'}</p>
-      <p>{[customer.contact_email, customer.contact_phone, customer.address || customer.location].filter(Boolean).join(' · ')}</p>
-      <p className="text-muted">{customer.contract_type || 'No contract type recorded'}{customer.contract_end_date ? ` · Contract ends ${fmtDate(customer.contract_end_date)}` : ''}</p>
-      <p><strong>{data.counts.assets} customer assets</strong> · <Link to={`/customers/${customer.id}/service-profile?section=assets`}>Open asset inventory</Link></p>
-    </section>
     <div className="grid-2" style={{ gap: 20, marginBottom: 20 }}>
-      {sections.map(([key, title, render]) => <section className="card" key={key}>
-        <h2 style={{ fontSize: 16 }}>{title} ({data.counts[key]})</h2>
-        <p className="text-muted text-sm">Latest {data[key].length} of {data.counts[key]}. {key === 'tasks' && 'Ad-hoc tasks have no customer relationship and are excluded.'}</p>
-        {data[key].length === 0 ? <p className="text-muted">No records</p> : data[key].map(row => <div key={row.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--gray-100)' }}>{render(row)}</div>)}
-        {key === 'visits' && <Link to="/maintenance-visits?filter=all">Open maintenance visits</Link>}
-      </section>)}
+      {sections.map(([key, title, render]) => {
+        const Icon = SECTION_ICONS[key];
+        return <section className="card cs-overview-card" key={key}>
+          <div className="cs-overview-card-head">
+            <h2><Icon size={15} aria-hidden="true" />{title}</h2>
+            <span className="cs-overview-count">{data.counts[key]}</span>
+          </div>
+          <p className="text-muted text-sm">Latest {data[key].length} of {data.counts[key]}. {key === 'tasks' && 'Ad-hoc tasks have no customer relationship and are excluded.'}</p>
+          {data[key].length === 0 ? <p className="text-muted">No records</p> : data[key].map(row => <div key={row.id} className="cs-overview-row">{render(row)}</div>)}
+          {key === 'visits' && <Link to="/maintenance-visits?filter=all">Open maintenance visits</Link>}
+        </section>;
+      })}
     </div>
     <section className="card">
       <h2 style={{ fontSize: 18 }}>Customer timeline</h2>

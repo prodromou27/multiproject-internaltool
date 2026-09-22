@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, ClipboardList, Ticket, Clock, ExternalLink, Settings2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ClipboardList, Ticket, Clock, ExternalLink, Settings2, Mail, Phone, MapPin, Layers } from 'lucide-react';
 import { api } from '../api';
-import { StatusBadge } from '../components/Shared';
+import { StatusBadge, fmtDate } from '../components/Shared';
 import CustomerOverview from '../components/CustomerOverview';
 import CustomerRecommendations from '../components/CustomerRecommendations';
 import CustomerAssets from '../components/CustomerAssets';
@@ -87,7 +87,7 @@ function CustomerHealthStrip({ customerId, contractHours, recommendations, manag
     } else if (managed.enabled) {
       cards.push(
         <HealthCard key="managed" icon={ExternalLink} label="Managed Services" value="Enrolled"
-          note="Full ticket/reporting dashboard →" href={`/managed-customers/${customerId}`} />
+          note="Open the ticket and reporting dashboard" href={`/managed-customers/${customerId}`} />
       );
     } else {
       cards.push(
@@ -99,6 +99,45 @@ function CustomerHealthStrip({ customerId, contractHours, recommendations, manag
 
   if (!cards.length) return null;
   return <div className="cs-health-strip">{cards}</div>;
+}
+
+const initialsOf = name => (name || '').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?';
+
+/* The account's identity, held constant while the section below it changes —
+   the one thing on this page that stays visually distinct from the metric
+   and list cards around it, the same way the signed-in user's own avatar is
+   the one fixed point in the top bar. */
+function IdentityPanel({ customer, assetCount }) {
+  const contact = customer.contact_name || customer.primary_contact;
+  const details = [
+    customer.contact_email && { icon: Mail, text: customer.contact_email },
+    customer.contact_phone && { icon: Phone, text: customer.contact_phone },
+    (customer.address || customer.location) && { icon: MapPin, text: customer.address || customer.location },
+  ].filter(Boolean);
+
+  return (
+    <aside className="cs-identity">
+      <div className="cs-identity-avatar" aria-hidden="true">{initialsOf(customer.name)}</div>
+      <h1 className="cs-identity-name">{customer.name}</h1>
+      <p className="cs-identity-contract">
+        {customer.contract_type || 'No contract type recorded'}
+        {customer.contract_end_date && <span> · renews {fmtDate(customer.contract_end_date)}</span>}
+      </p>
+
+      {contact && <div className="cs-identity-contact-name">{contact}</div>}
+      {details.length > 0 && (
+        <ul className="cs-identity-details">
+          {details.map(({ icon: Icon, text }) => <li key={text}><Icon size={13} aria-hidden="true" /><span>{text}</span></li>)}
+        </ul>
+      )}
+
+      {assetCount != null && (
+        <div className="cs-identity-facts">
+          <div><Layers size={13} aria-hidden="true" /><span>{assetCount} asset{assetCount === 1 ? '' : 's'} on record</span></div>
+        </div>
+      )}
+    </aside>
+  );
 }
 
 export default function CustomerServiceProfile() {
@@ -159,10 +198,16 @@ export default function CustomerServiceProfile() {
   // which tab is active, since the strip itself is visible on all of them.
   const [openRecommendations, setOpenRecommendations] = useState(null);
   const [managedStatus, setManagedStatus] = useState(null);
+  const [assetCount, setAssetCount] = useState(null);
   useEffect(() => {
     const controller = new AbortController();
     const options = { signal: controller.signal };
-    setOpenRecommendations(null); setManagedStatus(null);
+    setOpenRecommendations(null); setManagedStatus(null); setAssetCount(null);
+    if (user.role === 'manager') {
+      api.customerAssets(id, { page: 1 }, options)
+        .then(result => { if (!controller.signal.aborted) setAssetCount(result.total); })
+        .catch(() => {});
+    }
     if (recommendationAccess) {
       api.customerRecommendations(id, { status: 'open', page: 1 }, options)
         .then(result => { if (!controller.signal.aborted) setOpenRecommendations(result.total); })
@@ -205,25 +250,32 @@ export default function CustomerServiceProfile() {
   if (profileError) return <div className="page"><div className="error-msg" role="alert">{profileError} <button className="btn btn-ghost" onClick={() => setRetry(value => value + 1)}>Retry</button></div></div>;
   if (!customer || customer.id !== Number(id)) return <div className="page"><p className="text-muted">Loading…</p></div>;
 
+  const sections = [
+    user.role === 'manager' && ['overview', 'Overview'],
+    ['activities', 'Service activities'],
+    recommendationAccess && ['recommendations', 'Recommendations'],
+    user.role === 'manager' && ['assets', 'Assets'],
+    user.role === 'manager' && ['managed-services', 'Managed Services'],
+  ].filter(Boolean);
+
   return (
-    <div className="page">
-      <div className="page-header">
-        <div>
-          <Link to="/customers" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--gray-400)', marginBottom: 6 }}>
-            <ArrowLeft size={12} /> Back to Customers
-          </Link>
-          <h1 className="page-title">{customer.name} — Customer 360</h1>
-        </div>
-      </div>
-      <CustomerHealthStrip customerId={customer.id} contractHours={contractHours} recommendations={openRecommendations}
-        managed={managedStatus} onSelectTab={setTab} />
-      <div className="filter-bar" style={{ marginBottom: 20 }}>
-        {user.role === 'manager' && <button className={`filter-pill${tab === 'overview' ? ' active' : ''}`} aria-pressed={tab === 'overview'} onClick={() => setTab('overview')}>Overview and history</button>}
-        <button className={`filter-pill${tab === 'activities' ? ' active' : ''}`} aria-pressed={tab === 'activities'} onClick={() => setTab('activities')}>Service activities and hours</button>
-        {recommendationAccess && <button className={`filter-pill${tab === 'recommendations' ? ' active' : ''}`} aria-pressed={tab === 'recommendations'} onClick={() => setTab('recommendations')}>Recommendations</button>}
-        {user.role === 'manager' && <button className={`filter-pill${tab === 'assets' ? ' active' : ''}`} aria-pressed={tab === 'assets'} onClick={() => setTab('assets')}>Assets</button>}
-        {user.role === 'manager' && <button className={`filter-pill${tab === 'managed-services' ? ' active' : ''}`} aria-pressed={tab === 'managed-services'} onClick={() => setTab('managed-services')}>Managed Services</button>}
-      </div>
+    <div className="page cs-page">
+      <Link to="/customers" className="cs-back">
+        <ArrowLeft size={12} /> Back to Customers
+      </Link>
+      <div className="cs-shell">
+        <IdentityPanel customer={customer} assetCount={assetCount} />
+
+        <div className="cs-main">
+          <CustomerHealthStrip customerId={customer.id} contractHours={contractHours} recommendations={openRecommendations}
+            managed={managedStatus} onSelectTab={setTab} />
+
+          <div className="tabs" role="tablist" aria-label="Customer 360 sections">
+            {sections.map(([key, label]) => (
+              <button key={key} type="button" className={`tab${tab === key ? ' active' : ''}`} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>{label}</button>
+            ))}
+          </div>
+
       {tab === 'overview' ? <CustomerOverview key={customer.id} customer={customer} /> : tab === 'managed-services' && user.role === 'manager' ? <ManagedCustomerConfiguration key={customer.id} customerId={customer.id} /> : tab === 'assets' && user.role === 'manager' ? <CustomerAssets key={customer.id} customerId={customer.id} /> : tab === 'recommendations' ? <CustomerRecommendations key={customer.id} customerId={customer.id} sourceVisitId={sourceVisitId} onSourceConsumed={() => {
         const params = new URLSearchParams(location.search); params.delete('source_visit');
         navigate(`${location.pathname}?${params.toString()}`, { replace: true });
@@ -314,6 +366,8 @@ export default function CustomerServiceProfile() {
           )}
       </div>
       </>}
+        </div>
+      </div>
     </div>
   );
 }
