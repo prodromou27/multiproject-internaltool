@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Trash2, Save, Activity, Settings, Plus } from 'lucide-react';
+import { Trash2, Save, Activity, Settings, Plus, Clock } from 'lucide-react';
 import { api } from '../../api';
 import { Modal } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
@@ -13,6 +13,7 @@ export function TeamsAdminSection() {
   const [users, setUsers] = useState([]);
   const [name, setName] = useState('');
   const [editingMembers, setEditingMembers] = useState(null);
+  const [editingSla, setEditingSla] = useState(null);
 
   const load = () => Promise.all([api.teams(), api.users()]).then(([t, u]) => { setTeams(t); setUsers(u); });
   useEffect(() => { load(); }, []);
@@ -45,6 +46,18 @@ export function TeamsAdminSection() {
     catch (e2) { toast.error(e2.message); }
   }
 
+  async function openSla(team) {
+    const full = await api.team(team.id);
+    setEditingSla({ id: team.id, name: team.name, response_hours: full.sla.response_hours, resolution_hours: full.sla.resolution_hours });
+  }
+
+  async function saveSla() {
+    try {
+      await api.saveTeamSla(editingSla.id, { response_hours: Number(editingSla.response_hours), resolution_hours: Number(editingSla.resolution_hours) });
+      toast.success('SLA targets updated'); setEditingSla(null); load();
+    } catch (e2) { toast.error(e2.message); }
+  }
+
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="section-title">Teams</div>
@@ -57,7 +70,7 @@ export function TeamsAdminSection() {
       </form>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Team</th><th>Members</th><th>Tracking Enabled</th><th></th></tr></thead>
+          <thead><tr><th>Team</th><th>Members</th><th>Tracking Enabled</th><th>SLA</th><th></th></tr></thead>
           <tbody>
             {teams.map(t => (
               <tr key={t.id}>
@@ -66,10 +79,11 @@ export function TeamsAdminSection() {
                   <button className="btn btn-sm btn-ghost" onClick={() => openMembers(t)}>{t.member_count} member(s)</button>
                 </td>
                 <td><input type="checkbox" checked={!!t.service_activity_enabled} onChange={() => toggleEnabled(t)} style={{ width: 'auto' }} /></td>
+                <td><button className="btn btn-sm btn-ghost" onClick={() => openSla(t)}><Clock size={12} /> Targets</button></td>
                 <td><button className="btn btn-sm btn-ghost" onClick={() => remove(t)}><Trash2 size={12} /></button></td>
               </tr>
             ))}
-            {teams.length === 0 && <tr><td colSpan={4} className="text-muted">No teams yet.</td></tr>}
+            {teams.length === 0 && <tr><td colSpan={5} className="text-muted">No teams yet.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -86,6 +100,31 @@ export function TeamsAdminSection() {
           <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
             <button className="btn btn-ghost" onClick={() => setEditingMembers(null)}>Cancel</button>
             <button className="btn btn-primary" onClick={saveMembers}>Save Members</button>
+          </div>
+        </Modal>
+      )}
+
+      {editingSla && (
+        <Modal title={`Service Activity SLA — ${editingSla.name}`} onClose={() => setEditingSla(null)}>
+          <p className="text-sm text-muted" style={{ marginBottom: 12 }}>
+            Response is how long an activity can sit unstarted before it's flagged; resolution is how long it can stay
+            open in total. Shown on the SLA page, broken down per team.
+          </p>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Response target (hours)</label>
+              <input type="number" min="0.5" max="8760" step="0.5" value={editingSla.response_hours}
+                onChange={e => setEditingSla(s => ({ ...s, response_hours: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label>Resolution target (hours)</label>
+              <input type="number" min="0.5" max="8760" step="0.5" value={editingSla.resolution_hours}
+                onChange={e => setEditingSla(s => ({ ...s, resolution_hours: e.target.value }))} />
+            </div>
+          </div>
+          <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+            <button className="btn btn-ghost" onClick={() => setEditingSla(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveSla}><Save size={13} /> Save Targets</button>
           </div>
         </Modal>
       )}
@@ -172,9 +211,10 @@ export function ServiceActivityAdminTab() {
   const confirm = useConfirm();
   const [categories, setCategories] = useState([]);
   const [technologies, setTechnologies] = useState([]);
+  const [teams, setTeams] = useState([]);
 
-  const load = () => Promise.all([api.activityCategories(), api.technologies()])
-    .then(([c, t]) => { setCategories(c); setTechnologies(t); });
+  const load = () => Promise.all([api.activityCategories(), api.technologies(), api.teams()])
+    .then(([c, t, tm]) => { setCategories(c); setTechnologies(t); setTeams(tm); });
   useEffect(() => { load(); }, []);
 
   return (
@@ -192,20 +232,42 @@ export function ServiceActivityAdminTab() {
       <LookupTable
         title="Activity Categories"
         items={categories}
-        onAdd={async name => { await api.createActivityCategory({ name }); load(); }}
+        onAdd={async (name, teamId) => { await api.createActivityCategory({ name, team_id: teamId || null }); load(); }}
         onToggle={async item => { await api.updateActivityCategory(item.id, { active: !item.active }); load(); }}
         onDelete={async item => {
           const ok = await confirm(`Delete category "${item.name}"?`, { title: 'Delete Category' });
           if (!ok) return;
           try { await api.deleteActivityCategory(item.id); load(); } catch (e) { toast.error(e.message); }
         }}
-        extraColumn={{
-          label: 'Require Attachment',
-          render: item => (
-            <input type="checkbox" checked={!!item.require_attachment} style={{ width: 'auto' }}
-              onChange={async () => { await api.updateActivityCategory(item.id, { require_attachment: !item.require_attachment }); load(); }} />
+        extraField={{
+          label: 'Team',
+          initial: '',
+          render: (value, setValue) => (
+            <select value={value || ''} onChange={e => setValue(e.target.value)} style={{ minWidth: 160 }} aria-label="Team">
+              <option value="">Shared (every team)</option>
+              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
           ),
         }}
+        extraColumns={[
+          {
+            label: 'Team',
+            render: item => (
+              <select value={item.team_id || ''} style={{ minWidth: 160 }} aria-label={`Team for ${item.name}`}
+                onChange={async e => { await api.updateActivityCategory(item.id, { team_id: e.target.value || null }); load(); }}>
+                <option value="">Shared (every team)</option>
+                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            ),
+          },
+          {
+            label: 'Require Attachment',
+            render: item => (
+              <input type="checkbox" checked={!!item.require_attachment} style={{ width: 'auto' }}
+                onChange={async () => { await api.updateActivityCategory(item.id, { require_attachment: !item.require_attachment }); load(); }} />
+            ),
+          },
+        ]}
       />
 
       <LookupTable

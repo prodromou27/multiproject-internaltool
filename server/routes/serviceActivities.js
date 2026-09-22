@@ -211,10 +211,38 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
   return { customer };
 }
 
+/**
+ * A category with team_id set is only usable for activities that resolve to that
+ * team — not just any team the engineer happens to also belong to. Checked
+ * separately from validateActivityPayload (rather than folded into it) so that
+ * other validation errors — e.g. a related project not belonging to the new
+ * customer — still surface first when a request has multiple problems; this
+ * check only matters once team resolution has actually succeeded.
+ */
+async function assertCategoryUsableByTeam(categoryId, teamId) {
+  const cat = await db.prepare('SELECT team_id FROM activity_categories WHERE id = ?').get(categoryId);
+  if (cat?.team_id != null && cat.team_id !== teamId)
+    return 'This category is not available to the team this activity belongs to';
+  return null;
+}
+
 /* ── Metadata for the quick-log form: categories, technologies, statuses, authorized customers ── */
+// req.enabledTeamIds is null for managers (see requireServiceActivityAccess) — they see
+// every team's categories, since a manager may log on behalf of any team.
+async function categoriesForTeams(enabledTeamIds) {
+  if (enabledTeamIds === null) {
+    return db.prepare('SELECT * FROM activity_categories WHERE active = 1 ORDER BY sort_order, name').all();
+  }
+  const teamIds = [...enabledTeamIds];
+  const placeholders = teamIds.map(() => '?').join(',');
+  return db.prepare(
+    `SELECT * FROM activity_categories WHERE active = 1 AND (team_id IS NULL OR team_id IN (${placeholders})) ORDER BY sort_order, name`
+  ).all(...teamIds);
+}
+
 router.get('/meta', requireAuth, requireServiceActivityAccess, async (req, res) => {
   const [categories, subcategories, technologies, statuses, settings] = await Promise.all([
-    db.prepare('SELECT * FROM activity_categories WHERE active = 1 ORDER BY sort_order, name').all(),
+    categoriesForTeams(req.enabledTeamIds),
     db.prepare('SELECT * FROM activity_subcategories WHERE active = 1 ORDER BY sort_order, name').all(),
     db.prepare('SELECT * FROM technologies WHERE active = 1 ORDER BY sort_order, name').all(),
     getStatusConfig(),
@@ -394,6 +422,8 @@ router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => 
 
   const validation = await validateActivityPayload(body, { customerId, isCreate: true });
   if (validation.error) return res.status(400).json({ error: validation.error });
+  const categoryError = await assertCategoryUsableByTeam(body.category_id, teamId);
+  if (categoryError) return res.status(400).json({ error: categoryError });
 
   const engineerId = req.user.id; // never trust client-supplied engineer_id
 
@@ -474,6 +504,7 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
   const effective = { ...existing, ...body, follow_up_task_id: existing.follow_up_task_id,
     technology_ids: body.technology_ids === undefined ? existingTechnologies.map(t => t.technology_id) : body.technology_ids,
     asset_ids: body.asset_ids === undefined ? existingAssets.map(row => row.asset_id) : body.asset_ids };
+
   const validation = await validateActivityPayload(effective, { customerId, isCreate: false });
   if (validation.error) return res.status(400).json({ error: validation.error });
 
@@ -481,6 +512,10 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
   if (Number(customerId) !== existing.customer_id) {
     teamId = await resolveActivityTeam(req, customerId, existing.team_id);
     if (!teamId) return res.status(400).json({ error: 'Customer has no eligible team assigned' });
+  }
+  if (effective.category_id) {
+    const categoryError = await assertCategoryUsableByTeam(effective.category_id, teamId);
+    if (categoryError) return res.status(400).json({ error: categoryError });
   }
 
   const statuses = await getStatusConfig();
@@ -582,6 +617,8 @@ router.post('/:id/complete', requireAuth, requireServiceActivityAccess, requireO
   const technologyIds = (await db.prepare('SELECT technology_id FROM service_activity_technologies WHERE service_activity_id = ?').all(id)).map(t => t.technology_id);
   const validation = await validateActivityPayload({ ...activity, technology_ids: technologyIds }, { customerId: activity.customer_id, isCreate: false });
   if (validation.error) return res.status(400).json({ error: validation.error });
+  const categoryError = await assertCategoryUsableByTeam(activity.category_id, activity.team_id);
+  if (categoryError) return res.status(400).json({ error: categoryError });
 
   const attachmentError = await assertAttachmentRuleSatisfied(id, activity.category_id);
   if (attachmentError) return res.status(400).json({ error: attachmentError });

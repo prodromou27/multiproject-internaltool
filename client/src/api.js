@@ -412,6 +412,7 @@ export const api = {
   updateTeam: (id, data) => req('PUT', `/teams/${id}`, data),
   deleteTeam: (id) => req('DELETE', `/teams/${id}`),
   setTeamMembers: (id, user_ids) => req('PUT', `/teams/${id}/members`, { user_ids }),
+  saveTeamSla: (id, data) => req('PUT', `/teams/${id}/sla`, data),
 
   // activity categories / subcategories
   activityCategories: (options) => req('GET', '/activity-categories', undefined, options),

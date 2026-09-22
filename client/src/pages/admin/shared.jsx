@@ -87,28 +87,35 @@ export function ToggleRow({ label, description, value, onChange, recommended }) 
 }
 
 /* ── Service Activity Tracking admin tab ──────────────────── */
-export function LookupTable({ title, items, onAdd, onToggle, onDelete, extraColumn }) {
+// extraColumns: array of { label, render(item) } — rendered as additional table columns.
+// extraField: { label, initial, render(value, setValue) } — an extra control in the add
+// form; its value is passed as the second argument to onAdd(name, extraValue).
+export function LookupTable({ title, items, onAdd, onToggle, onDelete, extraColumns, extraField }) {
   const [name, setName] = useState('');
+  const [fieldValue, setFieldValue] = useState(extraField?.initial ?? null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
+  const columns = extraColumns || [];
 
   async function add(e) {
     e.preventDefault();
     if (!name.trim()) return;
     setBusy(true);
-    try { await onAdd(name.trim()); setName(''); } catch (e2) { toast.error(e2.message); } finally { setBusy(false); }
+    try { await onAdd(name.trim(), fieldValue); setName(''); setFieldValue(extraField?.initial ?? null); }
+    catch (e2) { toast.error(e2.message); } finally { setBusy(false); }
   }
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="section-title">{title}</div>
-      <form onSubmit={add} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder={`New ${title.toLowerCase()}…`} />
+      <form onSubmit={add} style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder={`New ${title.toLowerCase()}…`} style={{ flex: 1, minWidth: 160 }} />
+        {extraField && extraField.render(fieldValue, setFieldValue)}
         <button className="btn btn-primary btn-sm" disabled={busy || !name.trim()}><Plus size={13} /> Add</button>
       </form>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Name</th><th>Active</th>{extraColumn && <th>{extraColumn.label}</th>}<th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Active</th>{columns.map(c => <th key={c.label}>{c.label}</th>)}<th></th></tr></thead>
           <tbody>
             {items.map(item => (
               <tr key={item.id}>
@@ -118,11 +125,11 @@ export function LookupTable({ title, items, onAdd, onToggle, onDelete, extraColu
                     <input type="checkbox" checked={!!item.active} onChange={() => onToggle(item)} style={{ width: 'auto' }} />
                   </label>
                 </td>
-                {extraColumn && <td>{extraColumn.render(item)}</td>}
+                {columns.map(c => <td key={c.label}>{c.render(item)}</td>)}
                 <td><button className="btn btn-sm btn-ghost" onClick={() => onDelete(item)}><Trash2 size={12} /></button></td>
               </tr>
             ))}
-            {items.length === 0 && <tr><td colSpan={extraColumn ? 4 : 3} className="text-muted">None yet.</td></tr>}
+            {items.length === 0 && <tr><td colSpan={3 + columns.length} className="text-muted">None yet.</td></tr>}
           </tbody>
         </table>
       </div>

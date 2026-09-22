@@ -562,9 +562,15 @@ async function init() {
       PRIMARY KEY (customer_id, user_id)
     );
 
+    -- team_id NULL = shared/global category, visible to every team (the original,
+    -- pre-team-scoping behavior). A non-null team_id scopes it to that team only.
+    -- Name uniqueness is enforced in the app layer, scoped per team_id (see
+    -- routes/activityCategories.js), not by a DB constraint — Postgres UNIQUE
+    -- treats every NULL as distinct, so it can't express "unique per NULL group".
     CREATE TABLE IF NOT EXISTS activity_categories (
       id                 SERIAL PRIMARY KEY,
-      name               TEXT NOT NULL UNIQUE,
+      name               TEXT NOT NULL,
+      team_id            INTEGER REFERENCES teams(id) ON DELETE CASCADE,
       active             INTEGER NOT NULL DEFAULT 1,
       sort_order         INTEGER NOT NULL DEFAULT 0,
       require_attachment INTEGER NOT NULL DEFAULT 0,
@@ -1097,6 +1103,22 @@ async function applyCompatibilityMigrations() {
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_review_comment TEXT;
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_decision TEXT;
   `]);
+  migrations.push(['20260923_team_activity_categories', `
+    ALTER TABLE activity_categories DROP CONSTRAINT IF EXISTS activity_categories_name_key;
+    ALTER TABLE activity_categories ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
+    CREATE INDEX IF NOT EXISTS idx_activity_categories_team ON activity_categories(team_id, sort_order, name);
+  `]);
+  migrations.push(['20260923_team_sla_targets', `
+    -- One row per team; a team with no row uses the app-wide default targets
+    -- (see routes/teams.js DEFAULT_SLA_TARGETS).
+    CREATE TABLE IF NOT EXISTS team_sla_targets (
+      team_id                  INTEGER PRIMARY KEY REFERENCES teams(id) ON DELETE CASCADE,
+      response_hours           REAL NOT NULL DEFAULT 8,
+      resolution_hours         REAL NOT NULL DEFAULT 48,
+      updated_by                INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at                TEXT DEFAULT ${NOW}
+    );
+  `]);
 
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
@@ -1191,11 +1213,17 @@ const DEFAULT_TECHNOLOGIES = [
 ];
 
 async function seedServiceActivityLookups() {
+  // Seeded as global (team_id NULL) categories, visible to every team. No ON CONFLICT
+  // needed: this only runs once, when the table is confirmed empty, and the names in
+  // DEFAULT_ACTIVITY_CATEGORIES are distinct — unlike `technologies` below, category
+  // names are no longer globally unique (they're unique per team_id; see db.js's
+  // activity_categories comment), so there is no longer a single constraint an
+  // ON CONFLICT (name) clause could target.
   const { rows: catRows } = await pool.query('SELECT COUNT(*)::int AS c FROM activity_categories');
   if (catRows[0].c === 0) {
     for (let i = 0; i < DEFAULT_ACTIVITY_CATEGORIES.length; i++) {
       await pool.query(
-        'INSERT INTO activity_categories (name, sort_order) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING',
+        'INSERT INTO activity_categories (name, sort_order) VALUES ($1, $2)',
         [DEFAULT_ACTIVITY_CATEGORIES[i], i]
       );
     }
