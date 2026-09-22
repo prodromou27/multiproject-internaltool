@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ClipboardList, Ticket, Clock, ExternalLink, Settings2 } from 'lucide-react';
 import { api } from '../api';
 import { StatusBadge } from '../components/Shared';
 import CustomerOverview from '../components/CustomerOverview';
@@ -35,6 +35,70 @@ function ContractMeter({ data }) {
       <p className="cs-meter-figures"><strong>{fmtHours(used)}</strong> used of {fmtHours(total)} included</p>
     </section>
   );
+}
+
+/* One at-a-glance card in the health strip. `state` drives the accent color,
+   matching ContractMeter's own success/warning/danger convention. */
+function HealthCard({ icon: Icon, label, value, note, state = 'default', onClick, href }) {
+  const body = <>
+    <div className="cs-health-head"><Icon size={14} aria-hidden="true" /><span>{label}</span></div>
+    <div className="cs-health-value">{value}</div>
+    {note && <div className="cs-health-note">{note}</div>}
+  </>;
+  const className = `card cs-health-card${state !== 'default' ? ` is-${state}` : ''}${onClick || href ? ' is-actionable' : ''}`;
+  if (href) return <Link to={href} className={className}>{body}</Link>;
+  if (onClick) return <button type="button" className={className} onClick={onClick}>{body}</button>;
+  return <section className={className}>{body}</section>;
+}
+
+/* Visible on every tab (not just Overview) so a manager sees customer health
+   without an extra click, and so it can link across to the separate Managed
+   Customers dashboard (/managed-customers/:id) — a different page covering
+   tickets/reporting for the same customer that nothing else here points to. */
+function CustomerHealthStrip({ customerId, contractHours, recommendations, managed, onSelectTab }) {
+  const cards = [];
+
+  if (contractHours?.enabled) {
+    const over = contractHours.remaining_hours < 0;
+    const low = !over && contractHours.remaining_hours < contractHours.included_hours * 0.2;
+    cards.push(
+      <HealthCard key="hours" icon={Clock} label="Contract hours" state={over ? 'danger' : low ? 'warning' : 'default'}
+        value={`${fmtHours(contractHours.consumed_hours)} / ${fmtHours(contractHours.included_hours)}`}
+        note={over ? `${fmtHours(-contractHours.remaining_hours)} over` : `${fmtHours(contractHours.remaining_hours)} left`}
+        onClick={() => onSelectTab('activities')} />
+    );
+  }
+
+  if (recommendations !== null) {
+    cards.push(
+      <HealthCard key="recs" icon={ClipboardList} label="Open recommendations" value={recommendations}
+        state={recommendations > 0 ? 'warning' : 'default'} onClick={() => onSelectTab('recommendations')} />
+    );
+  }
+
+  if (managed) {
+    if (managed.ticketing) {
+      cards.push(
+        <HealthCard key="tickets" icon={Ticket} label="Open tickets" value={managed.open_tickets}
+          state={managed.sla_breached > 0 ? 'danger' : managed.open_tickets > 0 ? 'warning' : 'default'}
+          note={managed.sla_breached > 0 ? `${managed.sla_breached} SLA breach${managed.sla_breached === 1 ? '' : 'es'}` : 'No SLA breaches'}
+          href={`/managed-customers/${customerId}`} />
+      );
+    } else if (managed.enabled) {
+      cards.push(
+        <HealthCard key="managed" icon={ExternalLink} label="Managed Services" value="Enrolled"
+          note="Full ticket/reporting dashboard →" href={`/managed-customers/${customerId}`} />
+      );
+    } else {
+      cards.push(
+        <HealthCard key="not-managed" icon={Settings2} label="Managed Services" value="Not enrolled"
+          note="Enable it to track tickets and reports" onClick={() => onSelectTab('managed-services')} />
+      );
+    }
+  }
+
+  if (!cards.length) return null;
+  return <div className="cs-health-strip">{cards}</div>;
 }
 
 export default function CustomerServiceProfile() {
@@ -91,6 +155,36 @@ export default function CustomerServiceProfile() {
     return () => controller.abort();
   }, [id, retry]);
 
+  // Health strip data — loaded once per customer (not per tab), independent of
+  // which tab is active, since the strip itself is visible on all of them.
+  const [openRecommendations, setOpenRecommendations] = useState(null);
+  const [managedStatus, setManagedStatus] = useState(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    const options = { signal: controller.signal };
+    setOpenRecommendations(null); setManagedStatus(null);
+    if (recommendationAccess) {
+      api.customerRecommendations(id, { status: 'open', page: 1 }, options)
+        .then(result => { if (!controller.signal.aborted) setOpenRecommendations(result.total); })
+        .catch(() => {}); // the strip card is a bonus, not core — a failure here shouldn't block the page
+    }
+    if (user.role === 'manager') {
+      api.managedCustomerConfiguration(id, options).then(config => {
+        if (controller.signal.aborted) return;
+        if (!config.managed_services_enabled) { setManagedStatus({ enabled: false }); return; }
+        if (!config.ticket_integration_enabled) { setManagedStatus({ enabled: true, ticketing: false }); return; }
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+        api.managedCustomerOverview(id, { from: monthStart, to: monthEnd }, options).then(overview => {
+          if (controller.signal.aborted) return;
+          setManagedStatus({ enabled: true, ticketing: true, open_tickets: overview.tickets.open_now, sla_breached: overview.tickets.sla_breached_open });
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+    return () => controller.abort();
+  }, [id, user.role, recommendationAccess]);
+
   useEffect(() => {
     const controller = new AbortController();
     const params = { page, page_size: 25 };
@@ -121,6 +215,8 @@ export default function CustomerServiceProfile() {
           <h1 className="page-title">{customer.name} — Customer 360</h1>
         </div>
       </div>
+      <CustomerHealthStrip customerId={customer.id} contractHours={contractHours} recommendations={openRecommendations}
+        managed={managedStatus} onSelectTab={setTab} />
       <div className="filter-bar" style={{ marginBottom: 20 }}>
         {user.role === 'manager' && <button className={`filter-pill${tab === 'overview' ? ' active' : ''}`} aria-pressed={tab === 'overview'} onClick={() => setTab('overview')}>Overview and history</button>}
         <button className={`filter-pill${tab === 'activities' ? ' active' : ''}`} aria-pressed={tab === 'activities'} onClick={() => setTab('activities')}>Service activities and hours</button>
