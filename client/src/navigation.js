@@ -20,7 +20,8 @@ export const PAGES = [
   { id: 'users', path: '/users', label: 'Users', section: 'Administration', icon: 'UsersIcon', roles: ['manager'], description: 'User accounts and operational roles' },
   { id: 'settings', path: '/settings', label: 'Settings', section: 'Administration', icon: 'Settings', roles: ['manager'], description: 'Business configuration, integrations and system settings' },
   { id: 'notes', path: '/notes', label: 'My Notes', section: 'Personal', icon: 'StickyNote', roles: everyone, description: 'Your private scratchpad and personal to-do list' },
-  { id: 'profile', path: '/profile', label: 'My Profile', section: 'Personal', icon: 'UserCircle', roles: everyone, description: 'Your profile, password and account security' },
+  // Profile is deliberately not a nav-list entry — it's already one click away
+  // via the account avatar in the sidebar and top bar, on both desktop and mobile.
   { id: 'responses', path: '/customer-responses', label: 'Customer Responses', section: 'Personal', icon: 'MessageSquare', roles: everyone, description: 'Track work waiting on customer responses' },
   { id: 'search', path: '/search', label: 'Smart Search', section: 'Workspace', icon: 'Search', roles: everyone, hidden: true, description: 'Search the work and customers you can access' },
 ];

@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation, useNaviga
 import {
   LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench,
   Building2, Award, BarChart2, Users as UsersIcon, Settings, LogOut, Search, X,
-  ExternalLink, MessageSquare, Ticket, Database, Bell, CheckCheck, Trash2,
+  MessageSquare, Ticket, Database, Bell, CheckCheck, Trash2,
   ClipboardList, Briefcase, Wrench as WrenchIcon, FileText, StickyNote, UserCircle,
   Moon, Sun, AtSign, ShieldCheck, Zap, Activity,
 } from 'lucide-react';
@@ -568,34 +568,19 @@ function SidebarContent({ user, logout, onNav }) {
           })}
         </React.Fragment>)}
 
-        {/* Useful Links — visible to all roles */}
-        <div className="sidebar-section-label" style={{ marginTop: 8 }}>Useful Links</div>
-        <a
-          href="https://ts.odysseycs.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={onNav}
-          style={{ display: 'flex', alignItems: 'center' }}
-        >
-          <Ticket size={16} />
-          Odyssey Ticketing
-          <ExternalLink size={11} style={{ marginLeft: 'auto', opacity: .5 }} />
-        </a>
-        <a
-          href="https://9605283.app.netsuite.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={onNav}
-          style={{ display: 'flex', alignItems: 'center' }}
-        >
-          <Database size={16} />
-          Netsuite
-          <ExternalLink size={11} style={{ marginLeft: 'auto', opacity: .5 }} />
-        </a>
       </nav>
 
-      {/* Footer */}
+      {/* Footer — external tools live here as compact links, out of the way of
+          the app's own pages, instead of a full "Useful Links" section above. */}
       <div className="sidebar-footer">
+        <div className="sidebar-external-links">
+          <a href="https://ts.odysseycs.com/" target="_blank" rel="noopener noreferrer" onClick={onNav} title="Odyssey Ticketing (opens in a new tab)">
+            <Ticket size={14} /> Ticketing
+          </a>
+          <a href="https://9605283.app.netsuite.com" target="_blank" rel="noopener noreferrer" onClick={onNav} title="Netsuite (opens in a new tab)">
+            <Database size={14} /> Netsuite
+          </a>
+        </div>
         <button onClick={toggleDark} style={{ marginBottom: 6 }}>
           {dark ? <Sun size={14} /> : <Moon size={14} />}
           {dark ? 'Light Mode' : 'Dark Mode'}
@@ -761,10 +746,10 @@ function Layout({ children }) {
           <GlobalSearch />
           <HelpMenu role={user.role} />
           <NotificationBell />
-          <div className="topbar-user">
+          <NavLink to="/profile" className="topbar-user" style={{ textDecoration: 'none', color: 'inherit' }}>
             <strong>{initials}</strong><br />
             <span style={{ fontSize: 10 }}>{user.role}</span>
-          </div>
+          </NavLink>
         </div>
       </header>
 

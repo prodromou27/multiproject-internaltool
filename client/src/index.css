@@ -262,6 +262,15 @@ a:hover { text-decoration: underline; }
 .sidebar nav a.admin-link.active { background: rgba(251,191,36,.15); color: #fde68a; border-radius: var(--radius); }
 
 .sidebar-footer { padding: 12px 10px; border-top: 1px solid rgba(255,255,255,.06); }
+.sidebar-external-links { display: flex; gap: 6px; margin-bottom: 8px; }
+.sidebar-external-links a {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; justify-content: center;
+  padding: 7px 6px; border: 1px solid rgba(255,255,255,.08); border-radius: var(--radius);
+  color: #94a3b8; font-size: 11px; font-weight: 500; text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sidebar-external-links a:hover { background: rgba(255,255,255,.07); color: #e2e8f0; text-decoration: none; }
+.sidebar-external-links a svg { flex-shrink: 0; }
 .sidebar-footer button {
   width: 100%; padding: 8px 10px;
   background: transparent;
