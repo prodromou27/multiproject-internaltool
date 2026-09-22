@@ -83,7 +83,7 @@ async function start(mounts) {
     Module.prototype.require = originalRequire;
   }
 
-  return { api, makeUser, stop, db };
+  return { api, makeUser, stop, db, baseUrl };
 }
 
 module.exports = { start };
