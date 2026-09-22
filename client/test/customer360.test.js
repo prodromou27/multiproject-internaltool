@@ -8,6 +8,9 @@ test('Customer 360 defaults managers to overview and engineers to service activi
 });
 
 test('Customer 360 accepts available deep links and safely rejects unavailable sections',() => {
+  assert.equal(customer360Section({ role:'manager' },'projects'),'projects');
+  assert.equal(customer360Section({ role:'engineer' },'tasks'),'tasks');
+  assert.equal(customer360Section({ role:'planner' },'tasks'),'activities');
   assert.equal(customer360Section({ role:'manager' },'timeline'),'overview');
   assert.equal(customer360Section({ role:'manager' },'managed-services'),'service-configuration');
   assert.equal(customer360Section({ role:'engineer' },'assets'),'activities');

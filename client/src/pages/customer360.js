@@ -1,9 +1,9 @@
 export const CUSTOMER_360_SECTIONS=Object.freeze([
   { id:'overview',label:'Overview',roles:['manager'] },
   { id:'activities',label:'Service Activities',roles:['manager','engineer','planner'] },
-  { id:'projects',label:'Projects',roles:['manager','engineer','planner'],pending:true },
-  { id:'tasks',label:'Tasks',roles:['manager','engineer'],pending:true },
-  { id:'maintenance-visits',label:'Maintenance Visits',roles:['manager','engineer','planner'],pending:true },
+  { id:'projects',label:'Projects',roles:['manager','engineer','planner'] },
+  { id:'tasks',label:'Tasks',roles:['manager','engineer'] },
+  { id:'maintenance-visits',label:'Maintenance Visits',roles:['manager','engineer','planner'] },
   { id:'recommendations',label:'Recommendations',roles:['manager','engineer','planner'] },
   { id:'assets',label:'Assets',roles:['manager'] },
   { id:'timeline',label:'Timeline',roles:['manager','engineer','planner'],pending:true },

@@ -2620,6 +2620,28 @@ test('customer operational summary is bounded and respects customer scope',async
   assert.equal((await api(`/api/customers/${privateCustomer}`,{ token:ids.tokenEnabled })).status,403);
 });
 
+test('customer operational work lists paginate, filter, and enforce role scope',async () => {
+  const root=`/api/customers/${ids.customer}/operations`;
+  for (const resource of ['projects','tasks','visits']) {
+    const manager=await api(`${root}/${resource}?page=1&page_size=5`,{ token:ids.tokenManager });
+    assert.equal(manager.status,200);assert.equal(manager.data.page,1);assert.equal(manager.data.page_size,5);assert.ok(manager.data.rows.length<=5);
+    assert.equal(manager.data.rows.every(row => row.customer_id===ids.customer),true);
+    assert.equal((await api(`${root}/${resource}?page=0`,{ token:ids.tokenManager })).status,400);
+    assert.equal((await api(`${root}/${resource}?filter=not-real`,{ token:ids.tokenManager })).status,400);
+  }
+  const projects=await api(`${root}/projects`,{ token:ids.tokenEnabled });
+  assert.equal(projects.status,200);
+  for (const project of projects.data.rows) assert.ok(await db.prepare('SELECT 1 FROM project_assignments WHERE project_id=? AND user_id=?').get(project.id,ids.engineerEnabled));
+  const tasks=await api(`${root}/tasks`,{ token:ids.tokenEnabled });
+  assert.equal(tasks.status,200);assert.equal(tasks.data.rows.every(row => row.assigned_to===ids.engineerEnabled),true);
+  const visits=await api(`${root}/visits`,{ token:ids.tokenEnabled });
+  assert.equal(visits.status,200);
+  for (const visit of visits.data.rows) assert.ok(await db.prepare('SELECT 1 FROM maintenance_visit_engineers WHERE visit_id=? AND user_id=?').get(visit.id,ids.engineerEnabled));
+  assert.equal((await api(`${root}/tasks`,{ token:ids.tokenPlanner })).status,403);
+  const privateCustomer=(await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Private work-list customer')).lastInsertRowid;
+  for (const resource of ['projects','tasks','visits']) assert.equal((await api(`/api/customers/${privateCustomer}/operations/${resource}`,{ token:ids.tokenEnabled })).status,403);
+});
+
 test('operational overview validates dates, honors disabled teams and rejects unauthorized roles', async () => {
   assert.equal((await api('/api/operations/overview')).status, 401);
   for (const asOf of ['bad', '2026-02-30', '2026-13-01', '1800-01-01', '9999-01-01', '2026-09-17&as_of=2026-09-18']) {
