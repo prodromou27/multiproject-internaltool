@@ -107,7 +107,7 @@ function AvatarSection({ user, onRefresh }) {
           <p className="text-sm text-muted" style={{ marginBottom: 10 }}>
             JPG, PNG or WebP · Max 2 MB · Click the photo to upload
           </p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="flex gap-8 flex-wrap">
             <button
               className="btn btn-primary btn-sm"
               onClick={() => fileRef.current?.click()}
@@ -208,7 +208,7 @@ function PersonalInfoSection({ user, onRefresh }) {
               />
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="flex-center gap-12">
             <button
               type="submit"
               className="btn btn-primary btn-sm"
@@ -410,7 +410,7 @@ function TwoFactorSection({ user, onRefresh }) {
             <strong>Step 1:</strong> Scan this QR code with your authenticator app (e.g. Google Authenticator, Authy).
           </div>
           {qrUrl && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+            <div className="flex justify-center mb-12">
               <img src={qrUrl} alt="2FA QR Code" style={{ width: 180, height: 180, border: '3px solid var(--gray-100)', borderRadius: 8 }} />
             </div>
           )}

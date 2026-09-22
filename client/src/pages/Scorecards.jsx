@@ -350,7 +350,7 @@ export default function Scorecards() {
             </div>
             <div style={{ fontSize: 12, color: 'var(--tone-warning-text)', lineHeight: 1.6 }}>
               {pendingProjects.map(p => (
-                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div key={p.id} className="flex-center gap-6">
                   <Clock size={11} />
                   <strong>{p.title}</strong>
                   &nbsp;—&nbsp;{p.unscored_engineers.map(e => e.name).join(', ')}

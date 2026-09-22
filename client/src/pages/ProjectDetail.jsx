@@ -639,7 +639,7 @@ export default function ProjectDetail() {
             {/* Pending From Customer/Vendor — required when requires_reason status */}
             {(editForm.status === 'waiting_customer' || editForm.status === 'waiting_vendor') && (
               <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label className="flex-center gap-6">
                   ⏳ {editForm.status === 'waiting_vendor' ? 'Pending From Vendor' : 'Pending From Customer'} <span style={{ color: 'var(--danger)' }}>*</span>
                 </label>
                 <textarea

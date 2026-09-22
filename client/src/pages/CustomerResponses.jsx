@@ -93,8 +93,8 @@ function TemplateCard({ tpl }) {
 
   return (
     <div className="card" style={{ marginBottom: 16, borderLeft: `3px solid ${tpl.color}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div className="flex items-center justify-between mb-12">
+        <div className="flex-center gap-10">
           <div style={{ width: 10, height: 10, borderRadius: '50%', background: tpl.color, flexShrink: 0 }} />
           <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--gray-900)' }}>{tpl.title}</span>
         </div>

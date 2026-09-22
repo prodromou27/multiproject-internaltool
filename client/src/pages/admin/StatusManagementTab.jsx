@@ -71,7 +71,7 @@ export function StatusRow({ status, onUpdate, onDelete, onMoveUp, onMoveDown, is
       {/* Label & value */}
       <div style={{ flex: 1, minWidth: 0 }}>
         {editing ? (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="flex-center gap-6 flex-wrap">
             <input
               value={editLabel}
               onChange={e => setEditLabel(e.target.value)}
@@ -88,7 +88,7 @@ export function StatusRow({ status, onUpdate, onDelete, onMoveUp, onMoveDown, is
             />
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="flex-center gap-8">
             <span style={{ fontWeight: 600, fontSize: 13 }}>{status.label}</span>
             <code style={{ fontSize: 11, color: 'var(--gray-400)', background: 'var(--gray-100)', padding: '1px 5px', borderRadius: 4 }}>{status.value}</code>
           </div>

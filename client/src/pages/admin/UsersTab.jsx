@@ -73,7 +73,7 @@ export function ResetPasswordForm({ user, onClose }) {
 
   if (done) return (
     <div style={{ textAlign: 'center', padding: '20px 0' }}>
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+      <div className="flex justify-center mb-12">
         <CheckCircle2 size={48} color="var(--success)" strokeWidth={1.5} />
       </div>
       <p style={{ fontWeight: 600 }}>Password reset successfully for <strong>{user.name}</strong></p>
@@ -144,7 +144,7 @@ export function UsersTab({ currentUser }) {
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email…" style={{ flex: 1, minWidth: 200, maxWidth: 320 }} />
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div className="flex gap-6 flex-wrap">
           {[
             { value: 'all',      label: 'All' },
             { value: 'manager',  label: 'Managers' },
@@ -189,9 +189,9 @@ export function UsersTab({ currentUser }) {
                         }}>⚠ Awaiting setup</span>
                       ) : null}
                     </td>
-                    <td style={{ textAlign: 'center' }}>{u.project_count}</td>
-                    <td style={{ textAlign: 'center' }}>{u.open_tasks}</td>
-                    <td style={{ textAlign: 'center' }}>{u.mv_count}</td>
+                    <td className="text-center">{u.project_count}</td>
+                    <td className="text-center">{u.open_tasks}</td>
+                    <td className="text-center">{u.mv_count}</td>
                     <td className="text-sm text-muted">{timeSince(u.last_login)}</td>
                     <td className="text-sm text-muted">{fmtDate(u.created_at)}</td>
                     <td>

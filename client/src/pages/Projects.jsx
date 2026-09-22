@@ -176,7 +176,7 @@ function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
   return (
     <div>
       {!creating ? (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="flex-center gap-8">
           <select value={value || ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)} style={{ flex: 1 }}>
             <option value="">— No customer —</option>
             {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -186,7 +186,7 @@ function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
           </button>
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="flex-center gap-8">
           <input
             autoFocus
             value={newName}
@@ -257,7 +257,7 @@ function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCre
         <label>Assign Engineers <span style={{ color: 'var(--danger)' }}>*</span></label>
         {engineers.length === 0
           ? <p className="text-sm text-muted" style={{ marginTop: 4 }}>No engineers registered yet.</p>
-          : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+          : <div className="flex flex-wrap gap-6 mt-4">
               {engineers.map(u => (
                 <label key={u.id} style={{
                   display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '4px 8px',
@@ -487,7 +487,7 @@ export default function Projects() {
               {filtered.map(p => (
                 <tr key={p.id}>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div className="flex-center gap-6">
                       {isManager && (
                         <button
                           onClick={e => handlePin(p, e)}
@@ -527,9 +527,9 @@ export default function Projects() {
                   <td><RagBadge rag={p.rag_status} /></td>
                   <td>
                     {p.task_count > 0 ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div className="flex-center gap-6">
                         <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <div className="flex-center gap-5">
                             <span style={{
                               fontSize: 11, fontWeight: 700,
                               color: p.completion_pct >= 100 ? '#10b981' : p.completion_pct >= 50 ? '#3b82f6' : 'var(--gray-600)',

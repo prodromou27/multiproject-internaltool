@@ -348,7 +348,7 @@ export function SystemUpdateTab() {
                     <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>
                       {scope} ({Object.keys(pkgs).length})
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div className="flex-col gap-4">
                       {Object.entries(pkgs).slice(0, 10).map(([name, info]) => (
                         <div key={name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, padding: '4px 8px', background: 'var(--gray-50)', borderRadius: 6 }}>
                           <span style={{ fontWeight: 600, color: '#374151' }}>{name}</span>
@@ -528,32 +528,32 @@ export function AuditLogTab() {
 
       {/* Filters */}
       <form onSubmit={applyFilter} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'flex-end' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div className="flex-col gap-3">
           <label style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>Entity Type</label>
           <select value={filter.entity_type} onChange={e => setFilter(f => ({ ...f, entity_type: e.target.value }))} style={{ width: 130, fontSize: 12 }}>
             <option value="">All</option>
             {ENTITY_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
           </select>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div className="flex-col gap-3">
           <label style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>Action</label>
           <select value={filter.action} onChange={e => setFilter(f => ({ ...f, action: e.target.value }))} style={{ width: 130, fontSize: 12 }}>
             <option value="">All</option>
             {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div className="flex-col gap-3">
           <label style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>User</label>
           <select value={filter.user_id} onChange={e => setFilter(f => ({ ...f, user_id: e.target.value }))} style={{ width: 150, fontSize: 12 }}>
             <option value="">All users</option>
             {auditUsers.map(u => <option key={u.user_id} value={u.user_id}>{u.user_name}</option>)}
           </select>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div className="flex-col gap-3">
           <label style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>From</label>
           <input type="date" value={filter.date_from} onChange={e => setFilter(f => ({ ...f, date_from: e.target.value }))} style={{ width: 140, fontSize: 12 }} />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div className="flex-col gap-3">
           <label style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>To</label>
           <input type="date" value={filter.date_to} onChange={e => setFilter(f => ({ ...f, date_to: e.target.value }))} style={{ width: 140, fontSize: 12 }} />
         </div>

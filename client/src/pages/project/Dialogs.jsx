@@ -178,7 +178,7 @@ export function ImportExcelModal({ projectId, onClose, onImported }) {
             <span style={{ fontSize: 13, color: 'var(--gray-600)' }}>
               Found <b>{preview.tasks.length}</b> task{preview.tasks.length !== 1 ? 's' : ''} — {selected.size} selected
             </span>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="flex gap-8">
               <button className="btn btn-ghost btn-sm" onClick={() => toggleAll(true)}>Select All</button>
               <button className="btn btn-ghost btn-sm" onClick={() => toggleAll(false)}>None</button>
             </div>

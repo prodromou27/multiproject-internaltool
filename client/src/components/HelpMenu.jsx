@@ -36,7 +36,7 @@ export default function HelpMenu({ role }) {
       {open && (
         <Modal title="Help" onClose={() => setOpen(false)} wide>
           {role === 'manager' && (
-            <div style={{ marginBottom: 20 }}>
+            <div className="mb-20">
               <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>First-time setup</h3>
               <ol style={{ paddingLeft: 18, fontSize: 13, color: 'var(--gray-600)', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {MANAGER_STEPS.map(step => <li key={step}>{step}</li>)}

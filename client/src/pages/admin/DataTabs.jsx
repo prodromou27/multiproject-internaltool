@@ -47,7 +47,7 @@ export function ProjectsAdminTab() {
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by title or customer…" style={{ flex: 1, minWidth: 200, maxWidth: 320 }} />
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div className="flex gap-6 flex-wrap">
           {[['all','All'],['in_progress','In Progress'],['not_started','Not Started'],['on_hold','On Hold'],['pending_approval','Pending'],['closed','Closed'],['cancelled','Cancelled']].map(([k,l]) => (
             <button key={k} className={'btn btn-sm ' + (filter === k ? 'btn-primary' : 'btn-ghost')} onClick={() => setFilter(k)}>
               {l} ({counts[k] ?? 0})
@@ -140,7 +140,7 @@ export function MaintenanceAdminTab() {
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by visit, customer or engineer…" style={{ flex: 1, minWidth: 200, maxWidth: 340 }} />
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div className="flex gap-6 flex-wrap">
           {[['all','All'],['scheduled','Scheduled'],['in_progress','In Progress'],['completed','Completed'],['cancelled','Cancelled']].map(([k,l]) => (
             <button key={k} className={'btn btn-sm ' + (filter === k ? 'btn-primary' : 'btn-ghost')} onClick={() => setFilter(k)}>
               {l} ({counts[k] ?? 0})
@@ -263,7 +263,7 @@ export function DataExportTab() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="flex-col gap-12">
         {EXPORTS.map(({ name, label, Icon, color, desc, fn, cols }) => (
           <div key={name} className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px' }}>
             <div style={{ width: 44, height: 44, borderRadius: 10, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

@@ -26,7 +26,7 @@ function ComplianceBar({ value }) {
   if (value === null) return null;
   const color = value >= 90 ? '#22c55e' : value >= 70 ? '#f59e0b' : '#ef4444';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="flex-center gap-8">
       <div style={{ flex: 1, height: 6, background: 'var(--gray-100)', borderRadius: 4, overflow: 'hidden' }}>
         <div style={{ width: `${value}%`, height: '100%', background: color, borderRadius: 4, transition: 'width .4s ease' }} />
       </div>
@@ -64,24 +64,24 @@ function SLACard({ icon: Icon, title, target, metric, renderItems }) {
 
       {/* Stats row */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
-        <div style={{ textAlign: 'center' }}>
+        <div className="text-center">
           <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--gray-900)' }}>{total}</div>
           <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Total</div>
         </div>
         {good > 0 && (
-          <div style={{ textAlign: 'center' }}>
+          <div className="text-center">
             <div style={{ fontSize: 22, fontWeight: 800, color: '#22c55e' }}>{good}</div>
             <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>On Time</div>
           </div>
         )}
         {at_risk > 0 && (
-          <div style={{ textAlign: 'center' }}>
+          <div className="text-center">
             <div style={{ fontSize: 22, fontWeight: 800, color: '#f59e0b' }}>{at_risk}</div>
             <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>At Risk</div>
           </div>
         )}
         {breached > 0 && (
-          <div style={{ textAlign: 'center' }}>
+          <div className="text-center">
             <div style={{ fontSize: 22, fontWeight: 800, color: '#ef4444' }}>{breached}</div>
             <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Breached</div>
           </div>

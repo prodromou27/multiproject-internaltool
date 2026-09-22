@@ -157,7 +157,7 @@ export function KpiSection({ projectId }) {
   }
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+      <div className="flex items-center justify-between mb-12">
         <div className="section-title" style={{ margin: 0 }}>KPIs</div>
         <button className="btn btn-sm btn-ghost" onClick={() => setShowAdd(true)}>+ Add KPI</button>
       </div>

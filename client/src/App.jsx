@@ -227,7 +227,7 @@ function NotificationBell() {
                 </span>
               )}
             </span>
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div className="flex gap-6">
               {unread > 0 && (
                 <button onClick={markAllRead} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 3, padding: '2px 6px', borderRadius: 4 }}>
                   <CheckCheck size={12} /> Mark all read

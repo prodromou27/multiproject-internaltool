@@ -84,7 +84,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
     <Modal onClose={onClose}>
       <div style={{ minWidth: 420, maxWidth: 560 }}>
         {/* Header */}
-        <div style={{ marginBottom: 20 }}>
+        <div className="mb-20">
           <h2 style={{ margin: 0, fontSize: 18, display: 'flex', alignItems: 'center', gap: 8 }}><Upload size={18} /> {title}</h2>
         </div>
 
@@ -121,7 +121,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
         </div>
 
         {/* File drop zone */}
-        <div style={{ marginBottom: 16 }}>
+        <div className="mb-16">
           <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>Step 2 — Upload your file</div>
           <div
             onClick={() => inputRef.current?.click()}
@@ -174,7 +174,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
 
         {/* Result summary */}
         {result && (
-          <div style={{ marginBottom: 16 }}>
+          <div className="mb-16">
             <div style={{
               display: 'flex', gap: 12, marginBottom: result.errors?.length ? 12 : 0
             }}>

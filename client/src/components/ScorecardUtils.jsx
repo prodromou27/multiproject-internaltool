@@ -67,7 +67,7 @@ export function ScoreGauge({ score, size = 80 }) {
 /* Star-style 1-5 picker */
 export function DimPicker({ value, onChange, disabled }) {
   return (
-    <div style={{ display: 'flex', gap: 4 }}>
+    <div className="flex gap-4">
       {[1,2,3,4,5].map(n => (
         <button key={n} type="button" disabled={disabled} onClick={() => onChange(n)}
           style={{

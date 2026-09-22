@@ -117,7 +117,7 @@ export function IntegrationsTab() {
             </div>
             <div className="form-group" style={{ marginBottom: 12 }}>
               <label style={labelStyle}>Delivery Mode</label>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div className="flex gap-8">
                 {[['direct','Direct (email)'],['space','Space (room)'],['both','Both']].map(([v,l]) => (
                   <button key={v} className={'btn btn-sm ' + (cfg.webex.mode === v ? 'btn-primary' : 'btn-ghost')} onClick={() => setWebex('mode', v)}>{l}</button>
                 ))}
@@ -146,7 +146,7 @@ export function IntegrationsTab() {
         <div style={sectionStyle}>
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}><Bell size={15} /> Notification Events</div>
           <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 16 }}>Choose which events trigger a notification.</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="flex-col gap-12">
             <Toggle checked={cfg.notify_on.task_assigned}    onChange={v => setNotify('task_assigned', v)}    label="Task assigned to an engineer" />
             <Toggle checked={cfg.notify_on.project_assigned} onChange={v => setNotify('project_assigned', v)} label="Engineer added to a project" />
             <Toggle checked={cfg.notify_on.visit_assigned}   onChange={v => setNotify('visit_assigned', v)}   label="Maintenance visit assigned to an engineer" />

@@ -37,7 +37,7 @@ const STATUS_COLORS = {
 /* ── Multi-engineer picker ───────────────────────────────── */
 function EngineerPicker({ engineers, selected, onChange }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+    <div className="flex flex-wrap gap-6 mt-4">
       {engineers.map(e => {
         const active = selected.includes(e.id);
         return (
@@ -256,7 +256,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
 
   return (
     <Modal title="Maintenance Visit Details" onClose={saving ? () => {} : onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="flex-col gap-12">
         <div>
           <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>Customer</div>
           <div style={{ fontWeight: 700, fontSize: 15 }}>{visit.customer_name}</div>
@@ -322,7 +322,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
           <div><div className="text-sm text-muted" style={{ textTransform:'uppercase',letterSpacing:'.05em',fontWeight:700,marginBottom:2 }}>Assets in scope</div><div>{visit.asset_ids?.length ? `${visit.asset_ids.length} linked customer ${visit.asset_ids.length===1 ? 'asset' : 'assets'}` : <span className="text-muted">None selected</span>}</div></div>
           <div>
             <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>Report Status</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div className="flex-col gap-4">
               {reportBadge}
               {!!visit.report_sent && (
                 <div className="text-sm text-muted">
@@ -521,7 +521,7 @@ export default function MaintenanceVisits() {
     <div className="page">
       <PageHeader eyebrow="Operations" title="Maintenance Visits" description="Plan customer visits and track completion through report delivery." actions={<>
 {canManage && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="flex gap-8 flex-wrap">
             <button className="btn btn-ghost btn-sm" disabled={unavailable} onClick={async () => {
               try {
                 // Use a short-lived (60 s) scoped download token — never expose

@@ -93,7 +93,7 @@ function TemplateCard({ tpl, onDelete, onRefresh }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           {editing ? (
-            <form onSubmit={saveEdit} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <form onSubmit={saveEdit} className="flex-center gap-8 flex-wrap">
               <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} required style={{ flex: 2, minWidth: 140 }} placeholder="Template name" />
               <input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} style={{ flex: 3, minWidth: 180 }} placeholder="Description (optional)" />
               <button type="submit" className="btn btn-primary btn-sm">Save</button>
@@ -215,7 +215,7 @@ function ApplyTemplateModal({ tpl, onClose, onCreated }) {
         </div>
         <div className="form-group">
           <label>Assign Engineers</label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+          <div className="flex flex-wrap gap-6 mt-4">
             {engineers.map(u => (
               <label key={u.id} style={{
                 display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '4px 8px',

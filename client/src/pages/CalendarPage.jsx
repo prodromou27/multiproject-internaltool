@@ -23,7 +23,7 @@ const TYPE_STYLE = {
 /* ── Engineer multi-picker ───────────────────────────────── */
 function EngineerPicker({ engineers, selected, onChange }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+    <div className="flex flex-wrap gap-6 mt-4">
       {engineers.map(e => {
         const active = selected.includes(e.id);
         return (
@@ -255,7 +255,7 @@ function EventPopover({ event, onClose, onReportSent }) {
     <Modal title="Calendar event" onClose={onClose}>
       {error && <div className="error-msg" role="alert">{error}</div>}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="flex-center gap-8">
             <span style={{ width: 36, height: 36, borderRadius: 8, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <s.Icon size={18} color={s.color} />
             </span>
@@ -389,7 +389,7 @@ function ICalSubscribe() {
           <p style={{ margin: 0, fontSize: 12, color: 'var(--tone-info-text)' }}>Loading…</p>
         ) : url ? (
           <>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="flex gap-8 items-center flex-wrap">
               <input
                 readOnly
                 value={url}
@@ -409,7 +409,7 @@ function ICalSubscribe() {
             </p>
           </>
         ) : status.enabled ? (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="flex gap-8 items-center flex-wrap">
             <span style={{ fontSize: 12, color: 'var(--tone-info-text)', flex: 1, minWidth: 200 }}>
               You have an active subscription URL. For your security it can't be displayed again — regenerate to get a fresh URL (this invalidates the old one).
             </span>
@@ -589,7 +589,7 @@ export default function CalendarPage() {
             <input type="checkbox" checked={filters[type]}
               onChange={() => setFilters(f => ({ ...f, [type]: !f[type] }))}
               style={{ width: 'auto' }} />
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span className="flex-center gap-4">
               <span style={{ width: 12, height: 12, borderRadius: 3, background: s.bg, border: `2px solid ${s.color}`, display: 'inline-block' }} />
               {s.label}
             </span>
@@ -782,11 +782,11 @@ export default function CalendarPage() {
           {/* Month summary */}
           <div className="card" style={{ marginTop: 16 }}>
             <div className="section-title">Month Summary</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="flex-col gap-8">
               {Object.entries(TYPE_STYLE).map(([type, s]) => {
                 const count = allEvents.filter(e => e.type === type).length;
                 return (
-                  <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div key={type} className="flex-center gap-8">
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
                     <span style={{ fontSize: 13, flex: 1 }}>{s.label}s</span>
                     <span style={{ fontWeight: 700, fontSize: 14 }}>{count}</span>

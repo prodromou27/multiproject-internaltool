@@ -118,7 +118,7 @@ export function WeeklyReportTab() {
             Automatically email a comprehensive status report to management each week.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div className="flex gap-10">
           <button className="btn btn-ghost btn-sm" onClick={loadPreview} disabled={previewing} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             {previewing ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <ScrollText size={13} />}
             Preview Report

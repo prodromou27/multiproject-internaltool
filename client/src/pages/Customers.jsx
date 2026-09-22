@@ -168,7 +168,7 @@ export default function Customers() {
     <div className="page">
       <div className="page-header">
         <h1 className="page-title">Customers</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="flex gap-8">
           {canCreate && <button className="btn btn-ghost" onClick={() => setShowImport(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Upload size={14} /> Import</button>}
           {canCreate && <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>+ New Customer</button>}
         </div>

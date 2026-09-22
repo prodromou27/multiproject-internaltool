@@ -355,7 +355,7 @@ export default function Tasks() {
   return (
     <div className="page">
       <PageHeader eyebrow="Operations" title="Tasks" description="Prioritize assigned work, track progress and manage deadlines." actions={<>
-<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+<div className="flex gap-8 flex-wrap">
           <button className="btn btn-ghost btn-sm" onClick={exportTasks} disabled={busy || !!loadError || search.trim() !== debouncedSearch} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <Download size={13} /> Export all matching
           </button>
@@ -555,7 +555,7 @@ export default function Tasks() {
                       </div>
                     )}
                   </td>}
-                  <td style={{ textAlign: 'center' }}>
+                  <td className="text-center">
                     {(isManager || t.assigned_to === user.id) && (
                       <button
                         className="btn btn-ghost btn-sm"

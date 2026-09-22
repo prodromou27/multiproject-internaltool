@@ -134,7 +134,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
             </div>
           </div>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="flex-center gap-8">
           <span style={{ fontSize: 12, color: 'var(--gray-400)' }}>Quick status:</span>
           <select
             value={task.status}
@@ -199,7 +199,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
           </ul>
         )}
 
-        <form onSubmit={submitTimeLog} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <form onSubmit={submitTimeLog} className="flex-center gap-6 flex-wrap">
           <input
             type="number" min="0.25" step="0.25"
             value={timeForm.hours}
@@ -300,7 +300,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
                   )}
                 </div>
               ))}
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div className="flex gap-6">
                 <button className="btn btn-primary btn-sm" onClick={saveCustomFields} disabled={savingCustom}>{savingCustom ? 'Saving…' : 'Save'}</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setEditingCustom(false)}>Cancel</button>
               </div>
@@ -406,7 +406,7 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
         <td style={{ fontSize: 11, color: '#0891b2', fontWeight: task.logged_hours > 0 ? 700 : 400 }}>
           {task.logged_hours > 0 ? `${task.logged_hours}h` : '—'}
         </td>
-        <td onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <td onClick={e => e.stopPropagation()} className="flex-center gap-6">
           <select
             value={task.status}
             onChange={e => {
@@ -502,7 +502,7 @@ export function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, 
             </div>
 
             {/* Task cards */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div className="flex-col gap-6">
               {colTasks.map(task => (
                 <div
                   key={task.id}

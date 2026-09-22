@@ -150,8 +150,8 @@ export default function Notes() {
 
         {/* ── Left: Scratchpad ─────────────────────────────── */}
         <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="flex items-center justify-between mb-12">
+            <div className="flex-center gap-8">
               <StickyNote size={15} color="var(--warning)" />
               <span style={{ fontWeight: 700, fontSize: 14 }}>Scratchpad</span>
             </div>
@@ -201,8 +201,8 @@ export default function Notes() {
 
         {/* ── Right: Todos ─────────────────────────────────── */}
         <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="flex items-center justify-between mb-12">
+            <div className="flex-center gap-8">
               <CheckSquare size={15} color="var(--primary)" />
               <span style={{ fontWeight: 700, fontSize: 14 }}>To-Do List</span>
               {openTodos.length > 0 && (

@@ -186,7 +186,7 @@ export function ProgressBar({ value, max, showLabel }) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   const color = pct >= 100 ? 'var(--success)' : pct >= 70 ? 'var(--primary)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="flex-center gap-8">
       <div className="progress-bar" style={{ flex: 1 }}>
         <div className="progress-bar-fill" style={{ width: pct + '%', background: color }} />
       </div>
@@ -362,7 +362,7 @@ export function EmptyState({ icon, title, description, action }) {
       {icon && <div className="empty-icon">{icon}</div>}
       <p style={{ fontWeight: 600, color: 'var(--gray-600)', marginBottom: 4 }}>{title}</p>
       {description && <p style={{ fontSize: 13 }}>{description}</p>}
-      {action && <div style={{ marginTop: 16 }}>{action}</div>}
+      {action && <div className="mt-16">{action}</div>}
     </div>
   );
 }

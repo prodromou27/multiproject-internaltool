@@ -250,7 +250,7 @@ function ForecastGrid({ forecast, loading }) {
           { label: 'Moderate (4-6)', color: 'var(--warning)', bg: '#fffbeb' },
           { label: 'Heavy (7+)', color: 'var(--danger)', bg: '#fef2f2' },
         ].map(l => (
-          <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span key={l.label} className="flex-center gap-5">
             <span style={{ width: 12, height: 12, borderRadius: 3, background: l.bg, border: `1.5px solid ${l.color}40`, display: 'inline-block' }} />
             <span style={{ color: 'var(--gray-500)' }}>{l.label}</span>
           </span>

@@ -68,7 +68,7 @@ export function CustomFieldsTab({ projectId, canManage }) {
   return (
     <div>
       {canManage && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <div className="flex justify-end mb-12">
           <button className="btn btn-primary btn-sm" onClick={openAdd}>+ Add Field</button>
         </div>
       )}
@@ -98,7 +98,7 @@ export function CustomFieldsTab({ projectId, canManage }) {
                   </td>
                   <td>{f.required ? <span style={{ color: '#ef4444', fontWeight: 700 }}>Required</span> : <span className="text-muted">Optional</span>}</td>
                   {canManage && (
-                    <td style={{ display: 'flex', gap: 6 }}>
+                    <td className="flex gap-6">
                       <button className="btn btn-sm btn-ghost" onClick={() => openEdit(f)}>Edit</button>
                       <button className="btn btn-sm btn-danger" onClick={() => del(f.id)}>Delete</button>
                     </td>

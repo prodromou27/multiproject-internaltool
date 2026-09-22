@@ -19,7 +19,7 @@ function KpiHealthRow({ k }) {
       <td>{k.name}</td>
       <td>{k.current_value}{k.unit || ''} / {k.target_value}{k.unit || ''}</td>
       <td>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="flex-center gap-8">
           <div className="progress-bar" style={{ width: 80 }}>
             <div style={{ height: '100%', borderRadius: 99, background: color, width: Math.min(k.pct, 100) + '%' }} />
           </div>
@@ -251,7 +251,7 @@ function ServiceActivityReportTab() {
             <div className="form-group"><label htmlFor="sr-to">To</label><input id="sr-to" type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
           </div>
         )}
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="flex gap-8">
           <button className="btn btn-primary" onClick={runReport} disabled={!entityId || loading}>{loading ? 'Running…' : 'Run report'}</button>
           {result && <button className="btn btn-ghost" onClick={exportReport}>Export to Excel</button>}
         </div>

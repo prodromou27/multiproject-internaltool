@@ -62,18 +62,18 @@ export function GanttTab({ project, tasks, milestones = [] }) {
       {/* Legend */}
       <div style={{ display: 'flex', gap: 14, marginBottom: 16, flexWrap: 'wrap', fontSize: 12 }}>
         {Object.entries(STATUS_COLORS).map(([s, c]) => (
-          <span key={s} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span key={s} className="flex-center gap-5">
             <span style={{ width: 12, height: 12, borderRadius: 3, background: c, display: 'inline-block' }} />
             {s === 'in_progress' ? 'In Progress' : s.charAt(0).toUpperCase() + s.slice(1)}
           </span>
         ))}
-        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <span className="flex-center gap-5">
           <span style={{ width: 12, height: 12, borderRadius: 3, background: '#ef4444', display: 'inline-block' }} /> Overdue
         </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <span className="flex-center gap-5">
           <Diamond color="#7c3aed" size={12} /> Milestone
         </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <span className="flex-center gap-5">
           <span style={{ width: 2, height: 14, background: '#ef4444', display: 'inline-block' }} /> Today
         </span>
       </div>
@@ -236,7 +236,7 @@ export function MilestonesTab({ projectId, canManage, milestones, onReload }) {
   return (
     <div>
       {canManage && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <div className="flex justify-end mb-12">
           <button className="btn btn-primary btn-sm" onClick={openAdd}>+ Add Milestone</button>
         </div>
       )}

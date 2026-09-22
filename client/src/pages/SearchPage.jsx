@@ -599,7 +599,7 @@ export default function SearchPage() {
     const show = (type) => activeTab === 'all' || activeTab === type;
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="flex-col gap-8">
         {show('projects') && results.projects?.length > 0 && (
           <div>
             {activeTab === 'all' && <div className="result-section-label"><FolderOpen size={13} /> Projects ({results.projects.length})</div>}
@@ -697,7 +697,7 @@ export default function SearchPage() {
       </div>
 
       {showAdvanced && (
-        <div style={{ marginBottom: 16 }}>
+        <div className="mb-16">
           <AdvancedFilters filters={{ ...parsedFilters, ...manualFilters }} setFilters={setManualFilters} users={users} customers={customers} isManager={isManager} />
         </div>
       )}
@@ -740,7 +740,7 @@ export default function SearchPage() {
                 ['"high priority unassigned tasks"',  'Combine multiple filters'],
                 ['"my tasks"',                        'Show your own items'],
               ].map(([ex, desc]) => (
-                <div key={ex} style={{ display: 'flex', gap: 6 }}>
+                <div key={ex} className="flex gap-6">
                   <code style={{ background: 'var(--gray-100)', borderRadius: 4, padding: '1px 5px', fontSize: 11, flexShrink: 0, cursor: 'pointer', color: 'var(--gray-700)' }} onClick={() => setQuery(ex.replace(/"/g, ''))}>{ex}</code>
                   <span style={{ color: 'var(--gray-400)', fontSize: 11 }}>{desc}</span>
                 </div>

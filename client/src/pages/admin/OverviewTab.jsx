@@ -49,7 +49,7 @@ export function OverviewTab() {
   return (
     <div>
       {/* ── Alert banner ──────────────────────────────────── */}
-      <div style={{ marginBottom: 20 }}>
+      <div className="mb-20">
         {alerts.length === 0
           ? <div className="alert alert-success" style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
               <CheckCircle2 size={14} /> All systems healthy — no outstanding issues detected
