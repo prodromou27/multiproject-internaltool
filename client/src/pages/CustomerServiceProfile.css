@@ -122,3 +122,46 @@
   .cs-activities .cs-toolbar input, .cs-activities .cs-toolbar select { min-width: 0; width: 100%; }
   .cs-activities .cs-toolbar > div { flex: 1 1 140px; }
 }
+
+/* Operational command-center header and responsive tab shell. */
+.cs-customer-header { display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:18px;align-items:center;padding:20px 22px;margin-bottom:16px;background:linear-gradient(135deg,var(--surface) 0%,var(--gray-50) 100%); }
+.cs-customer-header .cs-identity-avatar { margin:0;width:58px;height:58px; }
+.cs-customer-heading { min-width:0; }
+.cs-customer-title { display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
+.cs-customer-title h1 { margin:0;font-size:24px;line-height:1.2;letter-spacing:-.4px; }
+.cs-customer-meta { display:flex;flex-wrap:wrap;gap:7px 16px;margin-top:9px;color:var(--gray-500);font-size:12.5px; }
+.cs-customer-meta span,.cs-customer-meta a { display:inline-flex;align-items:center;gap:5px;min-width:0;color:inherit;text-decoration:none; }
+.cs-customer-meta a:hover { color:var(--primary); }
+.cs-header-actions { display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap; }
+.cs-quick-add { position:relative; }
+.cs-quick-add > summary { list-style:none;cursor:pointer; }
+.cs-quick-add > summary::-webkit-details-marker { display:none; }
+.cs-quick-menu { position:absolute;right:0;top:calc(100% + 7px);z-index:20;min-width:230px;padding:6px;background:var(--surface);border:1px solid var(--gray-200);border-radius:var(--radius-md);box-shadow:var(--shadow-lg); }
+.cs-quick-menu a,.cs-quick-menu button { width:100%;display:flex;align-items:center;gap:9px;border:0;background:none;color:var(--gray-700);padding:9px 10px;border-radius:7px;text-decoration:none;font:inherit;font-size:13px;text-align:left;cursor:pointer; }
+.cs-quick-menu a:hover,.cs-quick-menu button:hover { background:var(--gray-50);color:var(--primary); }
+.cs-tabs { position:sticky;top:64px;z-index:8;background:var(--bg);padding-top:2px; }
+.cs-tab-panel { min-width:0; }
+.cs-module-warning { padding:10px 14px;margin-bottom:14px;border-radius:var(--radius-md);background:#fffbeb;color:#92400e;font-size:13px; }
+.cs-profile-skeleton { display:grid;gap:12px; }
+.cs-profile-skeleton span { display:block;height:84px;border-radius:var(--radius-lg);background:linear-gradient(90deg,var(--gray-100) 25%,var(--gray-50) 50%,var(--gray-100) 75%);background-size:200% 100%;animation:skeleton-shimmer 1.2s infinite linear; }
+.cs-health-skeleton { min-height:112px;background:linear-gradient(90deg,var(--gray-100) 25%,var(--gray-50) 50%,var(--gray-100) 75%);background-size:200% 100%;animation:skeleton-shimmer 1.2s infinite linear; }
+.cs-activity-metrics { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px; }
+
+@media (max-width:800px) {
+  .cs-customer-header { grid-template-columns:auto minmax(0,1fr);padding:16px;align-items:start; }
+  .cs-header-actions { grid-column:1/-1;justify-content:flex-start; }
+  .cs-tabs { top:56px; }
+  .cs-health-strip { display:flex;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:4px; }
+  .cs-health-card { flex:0 0 min(76vw,230px);scroll-snap-align:start; }
+  .cs-activity-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:480px) {
+  .cs-customer-header { grid-template-columns:1fr; }
+  .cs-customer-header .cs-identity-avatar { width:46px;height:46px; }
+  .cs-customer-title h1 { font-size:20px; }
+  .cs-header-actions { grid-column:auto; }
+  .cs-header-actions .btn { flex:1 1 auto;justify-content:center; }
+  .cs-quick-add { flex:1 1 auto; }
+  .cs-quick-add > summary { justify-content:center; }
+  .cs-quick-menu { left:0;right:auto;max-width:calc(100vw - 32px); }
+}

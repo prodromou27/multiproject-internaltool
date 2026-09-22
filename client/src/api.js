@@ -171,6 +171,7 @@ export const api = {
   customers: (options) => req('GET', '/customers', undefined, options),
   customer: (id, options) => req('GET', `/customers/${id}`, undefined, options),
   customerOverview: (id, params = {}, options) => req('GET', `/customers/${id}/overview?` + new URLSearchParams(params).toString(), undefined, options),
+  customerOperationsSummary: (id,options) => req('GET',`/customers/${id}/operations/summary`,undefined,options),
   customerRecommendations: (id, params = {}, options) => req('GET', `/customers/${id}/recommendations?` + new URLSearchParams(params).toString(), undefined, options),
   createRecommendation: (id, body) => req('POST', `/customers/${id}/recommendations`, body),
   updateRecommendation: (id, recommendationId, body) => req('PUT', `/customers/${id}/recommendations/${recommendationId}`, body),

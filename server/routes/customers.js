@@ -4,12 +4,14 @@ const ExcelJS = require('exceljs');
 const db = require('../db');
 const { requireAuth, requireManager, requireManagerOrPlanner } = require('../middleware/auth');
 const { encryptCustomer, decryptCustomer } = require('../fieldCipher');
+const { canAccessCustomer }=require('../customerAccess');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 router.use('/:id/overview', require('./customer-overview'));
 router.use('/:id/recommendations', require('./customer-recommendations'));
 router.use('/:id/assets', require('./customer-assets'));
 router.use('/:id/managed-services', require('./managedCustomerConfiguration'));
+router.use('/:id/operations',require('./customer-operations'));
 
 function cellToString(v) {
   if (v === null || v === undefined) return '';
@@ -88,20 +90,7 @@ router.get('/:id', requireAuth, async (req, res) => {
   const c = (await db.prepare('SELECT * FROM customers WHERE id = ?').get(id));
   if (!c) return res.status(404).json({ error: 'Not found' });
   // Engineers may only view customers from their own assigned visits/projects
-  if (req.user.role === 'engineer') {
-    const allowed = (await db.prepare(`
-      SELECT 1 FROM (
-        SELECT mv.customer_id FROM maintenance_visits mv
-        JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
-        WHERE mve.user_id = ? AND mv.customer_id = ?
-        UNION
-        SELECT p.customer_id FROM projects p
-        JOIN project_assignments pa ON pa.project_id = p.id
-        WHERE pa.user_id = ? AND p.customer_id = ?
-      )
-    `).get(req.user.id, c.id, req.user.id, c.id));
-    if (!allowed) return res.status(403).json({ error: 'Forbidden' });
-  }
+  if (!await canAccessCustomer(req.user,c.id)) return res.status(403).json({ error:'Forbidden' });
   res.json(decryptCustomer(c));
 });
 
@@ -369,15 +358,17 @@ router.put('/:id/engineers', requireManagerOrPlanner, async (req, res) => {
 });
 
 /* ── Customer Service Profile: activity timeline + summary ────────────── */
-router.get('/:id/service-activities', requireManagerOrPlanner, async (req, res) => {
+router.get('/:id/service-activities', requireAuth, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  if (!await canAccessCustomer(req.user,id)) return res.status(403).json({ error:'Forbidden' });
   const { from, to, engineer_id, category_id, technology_id, status, page = 1, page_size = 25 } = req.query;
   const limit = Math.min(Math.max(parseInt(page_size, 10) || 25, 1), 200);
   const offset = (Math.max(parseInt(page, 10) || 1, 1) - 1) * limit;
 
   let where = 'WHERE sa.customer_id = ?';
   const params = [id];
+  if (req.user.role==='engineer') { where += ' AND sa.engineer_id = ?';params.push(req.user.id); }
   if (from)   { where += ' AND sa.activity_date >= ?'; params.push(from); }
   if (to)     { where += ' AND sa.activity_date <= ?'; params.push(to); }
   if (engineer_id) { where += ' AND sa.engineer_id = ?'; params.push(engineer_id); }
@@ -425,12 +416,14 @@ router.get('/:id/contract-hours', requireManagerOrPlanner, async (req, res) => {
   });
 });
 
-router.get('/:id/service-summary', requireManagerOrPlanner, async (req, res) => {
+router.get('/:id/service-summary', requireAuth, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  if (!await canAccessCustomer(req.user,id)) return res.status(403).json({ error:'Forbidden' });
   const { from, to } = req.query;
   let where = 'WHERE sa.customer_id = ?';
   const params = [id];
+  if (req.user.role==='engineer') { where += ' AND sa.engineer_id = ?';params.push(req.user.id); }
   if (from) { where += ' AND sa.activity_date >= ?'; params.push(from); }
   if (to)   { where += ' AND sa.activity_date <= ?'; params.push(to); }
 

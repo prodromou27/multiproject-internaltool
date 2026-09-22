@@ -928,7 +928,7 @@ export default function App() {
           <Route path="/customer-responses"  element={<PrivateRoute page="responses"><CustomerResponses /></PrivateRoute>} />
           <Route path="/activity-log"        element={<PrivateRoute page="activities"><ActivityLog /></PrivateRoute>} />
           <Route path="/service-operations"  element={<PrivateRoute page="serviceOperations"><ServiceOperations /></PrivateRoute>} />
-          <Route path="/customers/:id/service-profile" element={<PrivateRoute page="customers"><CustomerServiceProfile /></PrivateRoute>} />
+          <Route path="/customers/:id/service-profile" element={<PrivateRoute allowedRoles={['manager','engineer','planner']}><CustomerServiceProfile /></PrivateRoute>} />
           <Route path="*" element={<PrivateRoute><PageState title="Page not found" description="This page may have moved, or the link may be incorrect." /></PrivateRoute>} />
         </Routes>
       </BrowserRouter>

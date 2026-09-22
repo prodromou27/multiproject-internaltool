@@ -2,19 +2,8 @@ const router = require('express').Router({ mergeParams: true });
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { logAudit } = require('../auditLog');
+const { positiveId,canAccessCustomer }=require('../customerAccess');
 const STATUSES = new Set(['open','accepted','rejected','in_progress','implemented','deferred','converted_to_project','closed']);
-const positiveId = value => (typeof value === 'number' || typeof value === 'string') && /^[1-9]\d*$/.test(String(value)) && Number.isSafeInteger(Number(value));
-
-async function canAccessCustomer(user,customer) {
-  if (['manager','planner'].includes(user.role)) return true;
-  if (user.role!=='engineer') return false;
-  return !!await db.prepare(`SELECT 1 FROM (
-    SELECT p.customer_id FROM projects p JOIN project_assignments pa ON pa.project_id=p.id WHERE pa.user_id=? AND p.customer_id=?
-    UNION SELECT mv.customer_id FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id=mv.id WHERE mve.user_id=? AND mv.customer_id=?
-    UNION SELECT ce.customer_id FROM customer_engineers ce WHERE ce.user_id=? AND ce.customer_id=?
-    UNION SELECT ct.customer_id FROM customer_teams ct JOIN team_members tm ON tm.team_id=ct.team_id WHERE tm.user_id=? AND ct.customer_id=?
-  ) allowed LIMIT 1`).get(user.id,customer,user.id,customer,user.id,customer,user.id,customer);
-}
 router.use(requireAuth, async (req, res, next) => {
   if (['POST','PUT'].includes(req.method) && (!req.body || typeof req.body !== 'object' || Array.isArray(req.body))) return res.status(400).json({ error: 'A JSON object is required' });
   if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid customer ID' });

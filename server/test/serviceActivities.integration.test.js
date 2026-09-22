@@ -2604,6 +2604,22 @@ test('operational overview scopes work and aggregates more than one activity pag
   await db.prepare("UPDATE managed_report_history SET workflow_status='draft',submitted_at=NULL WHERE id=?").run(queuedReport.id);
 });
 
+test('customer operational summary is bounded and respects customer scope',async () => {
+  const path=`/api/customers/${ids.customer}/operations/summary`;
+  assert.equal((await api(path)).status,401);
+  for (const invalid of ['0','bad','9007199254740992']) assert.equal((await api(`/api/customers/${invalid}/operations/summary`,{ token:ids.tokenManager })).status,400);
+  assert.equal((await api('/api/customers/99999999/operations/summary',{ token:ids.tokenManager })).status,404);
+  const manager=await api(path,{ token:ids.tokenManager });
+  assert.equal(manager.status,200);assert.equal(typeof manager.data.projects.active,'number');assert.equal(typeof manager.data.tasks.open,'number');
+  assert.equal(manager.data.managed.visible,true);assert.equal(Array.isArray(manager.data.activities.recent),true);assert.equal(manager.data.activities.recent.length<=6,true);
+  const engineer=await api(path,{ token:ids.tokenEnabled });
+  assert.equal(engineer.status,200);assert.deepEqual(engineer.data.managed,{ visible:false,state:'unavailable' });
+  assert.equal(engineer.data.activities.recent.every(row => row.engineer_id===ids.engineerEnabled),true);
+  const privateCustomer=(await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Private operations customer')).lastInsertRowid;
+  assert.equal((await api(`/api/customers/${privateCustomer}/operations/summary`,{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api(`/api/customers/${privateCustomer}`,{ token:ids.tokenEnabled })).status,403);
+});
+
 test('operational overview validates dates, honors disabled teams and rejects unauthorized roles', async () => {
   assert.equal((await api('/api/operations/overview')).status, 401);
   for (const asOf of ['bad', '2026-02-30', '2026-13-01', '1800-01-01', '9999-01-01', '2026-09-17&as_of=2026-09-18']) {

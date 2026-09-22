@@ -62,7 +62,7 @@ function RecommendationForm({ customerId, initial, sourceVisitId, visits, owners
   </Modal>;
 }
 
-export default function CustomerRecommendations({ customerId, sourceVisitId, onSourceConsumed }) {
+export default function CustomerRecommendations({ customerId, sourceVisitId, create=false, onSourceConsumed }) {
   const toast = useToast();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
@@ -72,6 +72,7 @@ export default function CustomerRecommendations({ customerId, sourceVisitId, onS
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null);
   const sourceOpened = useRef(null);
+  const createOpened = useRef(false);
   const scope = `${customerId}:${page}:${status}`;
   const { begin, isCurrent } = useLatestRequest(scope);
   const load = useCallback(() => {
@@ -95,6 +96,14 @@ export default function CustomerRecommendations({ customerId, sourceVisitId, onS
       onSourceConsumed?.();
     }
   }, [data, sourceVisitId, onSourceConsumed]);
+  useEffect(() => {
+    if (!create) createOpened.current=false;
+    if (create && data && data.capabilities?.can_create !== false && !createOpened.current) {
+      createOpened.current=true;
+      setEditing({ initial:null });
+      onSourceConsumed?.();
+    }
+  },[create,data,onSourceConsumed]);
   const busy = loading || loadedScope !== scope;
   return <section>
     <div className="flex gap-8" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
