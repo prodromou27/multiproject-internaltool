@@ -305,8 +305,9 @@ export const api = {
   clearDoneTodos: () => req('DELETE', '/notes/todos'),
 
   // notifications
-  notifications: () => req('GET', '/notifications'),
+  notifications: (params={}) => req('GET', `/notifications?${new URLSearchParams(params).toString()}`),
   markNotificationRead: (id) => req('PATCH', `/notifications/${id}/read`, {}),
+  acknowledgeNotification: (id) => req('PATCH', `/notifications/${id}/acknowledge`, {}),
   markAllNotificationsRead: () => req('POST', '/notifications/read-all', {}),
   deleteNotification: (id) => req('DELETE', `/notifications/${id}`),
   clearNotifications: () => req('DELETE', '/notifications'),

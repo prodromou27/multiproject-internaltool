@@ -1079,6 +1079,15 @@ async function applyCompatibilityMigrations() {
     INSERT INTO managed_report_workflow_history (report_id,from_status,to_status,action,actor_id,workflow_version,created_at)
       SELECT id,NULL,workflow_status,'generated',generated_by,workflow_version,generated_at FROM managed_report_history;
   `]);
+  migrations.push(['20260922_notification_center', `
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('normal','high','critical'));
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TEXT;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS acknowledged_at TEXT;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dismissed_at TEXT;
+    UPDATE notifications SET read_at=created_at WHERE read=1 AND read_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_notifications_center ON notifications(user_id,dismissed_at,created_at DESC,id DESC);
+    CREATE INDEX IF NOT EXISTS idx_notifications_action_required ON notifications(user_id,priority,acknowledged_at) WHERE dismissed_at IS NULL;
+  `]);
 
   migrations.push(['20260917_project_closure_review', `
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_requested_by INTEGER REFERENCES users(id);

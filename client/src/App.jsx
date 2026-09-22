@@ -64,6 +64,11 @@ const NOTIF_ICONS = {
   'visit.reminder':   <WrenchIcon  size={14} color="#ef4444" />,
   'project.assigned': <Briefcase   size={14} color="#8b5cf6" />,
   'report.submitted': <FileText    size={14} color="#10b981" />,
+  'managed_report.submitted': <FileText size={14} color="#f59e0b" />,
+  'managed_report.approved':  <FileText size={14} color="#10b981" />,
+  'managed_report.rejected':  <FileText size={14} color="#ef4444" />,
+  'managed_report.finalized': <FileText size={14} color="#10b981" />,
+  'managed_report.reopened':  <FileText size={14} color="#f59e0b" />,
   'mention':          <AtSign      size={14} color="#ec4899" />,
 };
 
@@ -79,16 +84,22 @@ function timeSinceNotif(dt) {
 function NotificationBell() {
   const [notifs, setNotifs]   = useState([]);
   const [unread, setUnread]   = useState(0);
+  const [actionRequired,setActionRequired]=useState(0);
+  const [filter,setFilter]=useState('all');
+  const [page,setPage]=useState(1);
+  const [pages,setPages]=useState(1);
   const [open, setOpen]       = useState(false);
   const ref = useRef(null);
   const navigate = useNavigate();
 
-  const load = useCallback(() => {
-    api.notifications().then(d => {
-      setNotifs(d.notifications || []);
+  const load = useCallback((nextPage=1,append=false) => {
+    api.notifications({ status:filter,page:nextPage,page_size:30 }).then(d => {
+      setNotifs(current => append ? [...current,...(d.notifications || [])] : (d.notifications || []));
       setUnread(d.unread || 0);
+      setActionRequired(d.action_required || 0);
+      setPage(d.page || 1);setPages(d.pages || 1);
     }).catch(() => {});
-  }, []);
+  }, [filter]);
 
   // Initial load + poll every 60 s; pause when tab is hidden
   useEffect(() => {
@@ -118,7 +129,7 @@ function NotificationBell() {
 
   async function markAllRead() {
     await api.markAllNotificationsRead().catch(() => {});
-    setNotifs(n => n.map(x => ({ ...x, read: 1 })));
+    setNotifs(n => filter==='unread' ? [] : n.map(x => ({ ...x,read:1,read_at:x.read_at || new Date().toISOString() })));
     setUnread(0);
   }
 
@@ -126,13 +137,24 @@ function NotificationBell() {
     await api.clearNotifications().catch(() => {});
     setNotifs([]);
     setUnread(0);
+    setActionRequired(0);
   }
 
   async function dismiss(id, e) {
     e.stopPropagation();
     await api.deleteNotification(id).catch(() => {});
+    const item=notifs.find(x => x.id===id);
     setNotifs(n => n.filter(x => x.id !== id));
-    setUnread(u => Math.max(0, u - 1));
+    if (item && !item.read) setUnread(u => Math.max(0,u-1));
+    if (item && ['high','critical'].includes(item.priority) && !item.acknowledged_at) setActionRequired(value => Math.max(0,value-1));
+  }
+
+  async function acknowledge(n,e) {
+    e.stopPropagation();
+    try { await api.acknowledgeNotification(n.id); } catch { return; }
+    setNotifs(current => filter==='action_required' ? current.filter(item => item.id!==n.id) : current.map(item => item.id===n.id ? { ...item,read:1,acknowledged_at:new Date().toISOString() } : item));
+    if (!n.read) setUnread(value => Math.max(0,value-1));
+    setActionRequired(value => Math.max(0,value-1));
   }
 
   async function clickNotif(n) {
@@ -211,10 +233,14 @@ function NotificationBell() {
               )}
               {notifs.length > 0 && (
                 <button onClick={clearAll} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--gray-400)', display: 'flex', alignItems: 'center', gap: 3, padding: '2px 6px', borderRadius: 4 }}>
-                  <Trash2 size={12} /> Clear
+                  <Trash2 size={12} /> Dismiss all
                 </button>
               )}
             </div>
+          </div>
+
+          <div style={{ display:'flex',gap:6,padding:'8px 12px',borderBottom:'1px solid var(--gray-100)',position:'sticky',top:45,background:'var(--surface)',zIndex:1 }}>
+            {[['all','All'],['unread',`Unread (${unread})`],['action_required',`Action (${actionRequired})`]].map(([value,label]) => <button key={value} type="button" onClick={() => setFilter(value)} className={`btn btn-sm ${filter===value?'btn-primary':'btn-ghost'}`} style={{ flex:1 }}>{label}</button>)}
           </div>
 
           {/* List */}
@@ -244,9 +270,10 @@ function NotificationBell() {
                   {NOTIF_ICONS[n.type] || <Bell size={14} color="var(--gray-500)" />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: n.read ? 500 : 700, color: 'var(--gray-900)', marginBottom: 2 }}>{n.title}</div>
+                  <div style={{ fontSize: 12, fontWeight: n.read ? 500 : 700, color: 'var(--gray-900)', marginBottom: 2 }}>{n.title}{['high','critical'].includes(n.priority) && <span style={{ marginLeft:6,fontSize:9,textTransform:'uppercase',color:n.priority==='critical'?'#dc2626':'#d97706' }}>{n.priority}</span>}</div>
                   {n.body && <div style={{ fontSize: 11, color: 'var(--gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.body}</div>}
                   <div style={{ fontSize: 10, color: 'var(--gray-400)', marginTop: 3 }}>{timeSinceNotif(n.created_at)}</div>
+                  {['high','critical'].includes(n.priority) && !n.acknowledged_at && <button type="button" onClick={e => acknowledge(n,e)} style={{ background:'none',border:0,padding:'4px 0 0',fontSize:10,color:'var(--primary)',cursor:'pointer',fontWeight:700 }}><CheckCheck size={11} style={{ verticalAlign:'middle',marginRight:3 }} />Acknowledge</button>}
                 </div>
                 <button onClick={e => dismiss(n.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-300)', padding: 2, borderRadius: 4, flexShrink: 0 }}
                   onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
@@ -257,6 +284,7 @@ function NotificationBell() {
               </div>
             ))
           }
+          {page<pages && <div style={{ padding:10,textAlign:'center' }}><button type="button" className="btn btn-ghost btn-sm" onClick={() => load(page+1,true)}>Load older notifications</button></div>}
         </div>
       )}
     </div>

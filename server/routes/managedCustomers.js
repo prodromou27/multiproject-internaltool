@@ -173,7 +173,8 @@ router.put('/:id/reports/:reportId/workflow',async (req,res) => {
       recipients=(await usersWithPermission('managed_reports.review')).filter(user => user.id!==req.user.id).map(user => user.id);
     } else if (result.report.generated_by && result.report.generated_by!==req.user.id) recipients=[result.report.generated_by];
     try {
-      for (const userId of recipients) await db.prepare('INSERT INTO notifications (user_id,type,title,body,link) VALUES (?,?,?,?,?)').run(userId,`managed_report.${result.change.event}`,titleByAction[action],result.report.original_name,link);
+      const priority=['submit','reject','finalize'].includes(action) ? 'high' : 'normal';
+      for (const userId of recipients) await db.prepare('INSERT INTO notifications (user_id,type,title,body,link,priority) VALUES (?,?,?,?,?,?)').run(userId,`managed_report.${result.change.event}`,titleByAction[action],result.report.original_name,link,priority);
     } catch(error) { console.error('[managed-reports] workflow notification failed:',error.message); }
     await logAudit(db,req,'managed_report',reportId,result.report.original_name,`managed_report_${result.change.event}`,`customer_id=${customerId}; from=${result.change.from}; to=${result.change.to}; workflow_version=${result.report.workflow_version}; comment=${result.change.comment || ''}`);
     res.json({ report:(await reportHistory.list(customerId)).find(item => item.id===reportId) });

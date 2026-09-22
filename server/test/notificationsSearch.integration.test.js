@@ -48,6 +48,25 @@ test('notifications are private to their owner', async () => {
   assert.equal((await h.api('/api/notifications')).status, 401);
 });
 
+test('notification filters, acknowledgements and pagination preserve actionable history',async () => {
+  const high=(await h.db.prepare("INSERT INTO notifications (user_id,type,title,priority) VALUES (?,'managed_report.submitted','Review report','high')").run(alice.id)).lastInsertRowid;
+  for (let index=1;index<=4;index++) await seedNotification(alice.id,`Routine ${index}`);
+  assert.equal((await h.api('/api/notifications?status=bogus',{ token:alice.token })).status,400);
+  assert.equal((await h.api('/api/notifications?page=0',{ token:alice.token })).status,400);
+  const first=await h.api('/api/notifications?page_size=2',{ token:alice.token });
+  assert.equal(first.status,200);assert.equal(first.data.notifications.length,2);assert.equal(first.data.total,5);assert.equal(first.data.pages,3);assert.equal(first.data.unread,5);assert.equal(first.data.action_required,1);
+  const action=await h.api('/api/notifications?status=action_required',{ token:alice.token });
+  assert.deepEqual(action.data.notifications.map(item => item.id),[high]);
+  assert.equal((await h.api(`/api/notifications/${high}/acknowledge`,{ method:'PATCH',token:bob.token })).status,404);
+  assert.equal((await h.api(`/api/notifications/${high}/acknowledge`,{ method:'PATCH',token:alice.token })).status,200);
+  const acknowledged=await h.db.prepare('SELECT read,read_at,acknowledged_at FROM notifications WHERE id=?').get(high);
+  assert.equal(acknowledged.read,1);assert.ok(acknowledged.read_at);assert.ok(acknowledged.acknowledged_at);
+  assert.equal((await h.api('/api/notifications?status=action_required',{ token:alice.token })).data.total,0);
+  await h.api(`/api/notifications/${high}`,{ method:'DELETE',token:alice.token });
+  assert.ok((await h.db.prepare('SELECT dismissed_at FROM notifications WHERE id=?').get(high)).dismissed_at);
+  assert.equal((await h.api('/api/notifications',{ token:alice.token })).data.total,4);
+});
+
 test('search treats % and _ literally and respects task visibility', realDb, async () => {
   const mk = (title, assignee) => h.db.prepare('INSERT INTO tasks (title, status, assigned_to, created_by) VALUES (?, ?, ?, ?)')
     .run(title, 'todo', assignee, manager.id);
