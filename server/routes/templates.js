@@ -1,6 +1,16 @@
 const router = require('express').Router();
+const { z } = require('zod');
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
+
+// A second demonstration of the zod-based validate() middleware (see
+// middleware/validate.js and routes/settings/security.js for the first) —
+// still not applied app-wide.
+const createTemplateSchema = z.object({
+  name: z.string('Name required').trim().min(1, 'Name required'),
+  description: z.string().optional(),
+});
 
 // GET all templates
 router.get('/', requireManager, async (req, res) => {
@@ -25,12 +35,11 @@ router.get('/:id', requireManager, async (req, res) => {
 });
 
 // POST create template
-router.post('/', requireManager, async (req, res) => {
+router.post('/', requireManager, validate(createTemplateSchema), async (req, res) => {
   const { name, description } = req.body;
-  if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
   const result = (await db.prepare(
     'INSERT INTO project_templates (name, description, created_by) VALUES (?, ?, ?)'
-  ).run(name.trim(), description || null, req.user.id));
+  ).run(name, description || null, req.user.id));
   res.json({ id: result.lastInsertRowid });
 });
 
