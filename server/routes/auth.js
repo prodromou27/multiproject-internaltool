@@ -349,6 +349,12 @@ router.get('/me', requireAuth, async (req, res) => {
   res.json({ ...u, permissions: await effectivePermissions(u) });
 });
 
+// Lightweight capability snapshot for active sessions after an administrator changes overrides.
+router.get('/permissions',requireAuth,async (req,res) => {
+  res.setHeader('Cache-Control','no-store');
+  res.json({ permissions:await effectivePermissions(req.user) });
+});
+
 // PUT /api/auth/profile — update name and/or email
 router.put('/profile', requireAuth, async (req, res) => {
   const { name, email } = req.body;

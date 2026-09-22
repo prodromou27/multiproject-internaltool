@@ -840,6 +840,15 @@ export default function App() {
   // re-verifies team membership + enablement on each request.
   const [saAccess, setSaAccess] = useState({ enabled: false, teams: [], loaded: false });
 
+  const refreshPermissions=useCallback(async () => {
+    const result=await api.myPermissions();
+    setUser(current => {
+      if (!current) return current;
+      const next=result.permissions || {};
+      return JSON.stringify(current.permissions || {})===JSON.stringify(next) ? current : { ...current,permissions:next };
+    });
+  },[]);
+
   useEffect(() => {
     // Remove legacy browser-stored credentials; identity now comes from the API.
     localStorage.removeItem('token');
@@ -863,6 +872,20 @@ export default function App() {
     }).catch(() => { if (mounted) setSaAccess({ enabled: false, teams: [], loaded: true }); });
     return () => { mounted = false; };
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const refresh=() => refreshPermissions().catch(() => {});
+    const timer=setInterval(refresh,60000);
+    const onVisibility=() => { if (document.visibilityState==='visible') refresh(); };
+    document.addEventListener('visibilitychange',onVisibility);
+    window.addEventListener('permissions-changed',refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange',onVisibility);
+      window.removeEventListener('permissions-changed',refresh);
+    };
+  },[user?.id,refreshPermissions]);
 
   const login = (userData) => {
     setPasswordChangeUser(null);

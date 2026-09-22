@@ -14,7 +14,7 @@ export function PermissionsTab() {
   const userRule=(userId,key) => data.user_rules.find(rule => rule.user_id===Number(userId) && rule.permission_key===key);
   async function change(scope,owner,key,value) {
     const rule=scope==='role'?roleRule(owner,key):userRule(owner,key),id=`${scope}:${owner}:${key}`;setSaving(id);setError('');
-    try { await api.savePermissionRule({ scope,role:scope==='role'?owner:undefined,user_id:scope==='user'?Number(owner):undefined,permission_key:key,allowed:value==='default'?null:value==='allow',version:rule?.version || 0 });await load();toast.success('Permission rule saved'); }
+    try { await api.savePermissionRule({ scope,role:scope==='role'?owner:undefined,user_id:scope==='user'?Number(owner):undefined,permission_key:key,allowed:value==='default'?null:value==='allow',version:rule?.version || 0 });window.dispatchEvent(new Event('permissions-changed'));await load();toast.success('Permission rule saved'); }
     catch(failure) { setError(failure.message);await load(); }
     finally { setSaving(''); }
   }

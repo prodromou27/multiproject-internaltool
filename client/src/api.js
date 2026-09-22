@@ -75,6 +75,7 @@ export const api = {
   disable2fa: (password) => req('DELETE', '/auth/2fa', { password }),
   users: (options) => req('GET', '/auth/users', undefined, options),
   me: (options) => req('GET', '/auth/me', undefined, options),
+  myPermissions: (options) => req('GET','/auth/permissions',undefined,options),
   updateProfile: (data) => req('PUT', '/auth/profile', data),
   changePassword: (data) => req('POST', '/auth/change-password', data),
   firstTimeChangePassword: (new_password) => req('POST', '/auth/change-password-first', { new_password }),
