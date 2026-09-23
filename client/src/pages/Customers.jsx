@@ -10,7 +10,7 @@ import { useAuth } from '../App';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 
-function CustomerForm({ initial, teams, onSave, onSaveTeams, onClose }) {
+function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClose }) {
   const toast = useToast();
   const [form, setForm] = useState(initial || {
     name: '', contact_name: '', contact_email: '', contact_phone: '', address: '', notes: '',
@@ -21,6 +21,7 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onClose }) {
     require_category: false, require_notes: false, require_billable_classification: false,
   });
   const [selectedTeams, setSelectedTeams] = useState(() => (initial?.team_ids) || []);
+  const [newTeam, setNewTeam] = useState(null); // null = not creating; string = name being typed
   const [showService, setShowService] = useState(!!initial?.service_activity_enabled);
   const [saving, setSaving] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -66,10 +67,20 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onClose }) {
           </div>
           {teams && (
             <div className="form-group"><label htmlFor="customer-team-add">Assigned Team(s)</label>
-              <select id="customer-team-add" value="" onChange={e => { const id = Number(e.target.value); if (id && !selectedTeams.includes(id)) setSelectedTeams([...selectedTeams, id]); }}>
+              <select id="customer-team-add" value="" onChange={e => { if (e.target.value === '__new__') { setNewTeam(''); return; } const id = Number(e.target.value); if (id && !selectedTeams.includes(id)) setSelectedTeams([...selectedTeams, id]); }}>
                 <option value="">{selectedTeams.length ? 'Add another team…' : 'Select a team…'}</option>
                 {teams.filter(t => !selectedTeams.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {onCreateTeam && <option value="__new__">+ Create a new team…</option>}
               </select>
+              {newTeam !== null && (
+                <div className="flex gap-8 mt-8">
+                  <input autoFocus value={newTeam} onChange={e => setNewTeam(e.target.value)} placeholder="New team name" maxLength={120}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.nextSibling.click(); } }} />
+                  <button type="button" className="btn btn-primary btn-sm" disabled={!newTeam.trim()}
+                    onClick={async () => { try { const id = await onCreateTeam(newTeam.trim()); setSelectedTeams(current => [...current, id]); setNewTeam(null); } catch (err) { toast.error(err.message); } }}>Create &amp; add</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNewTeam(null)}>Cancel</button>
+                </div>
+              )}
               {selectedTeams.length > 0 && (
                 <div className="flex gap-6 flex-wrap mt-8">
                   {selectedTeams.map(id => (
@@ -266,6 +277,7 @@ export default function Customers() {
               const { id } = await api.createCustomer(data); toast.success('Customer created'); return id;
             }}
             onSaveTeams={isManager ? async (id, teamIds) => { await api.setCustomerTeams(id, teamIds); } : null}
+            onCreateTeam={isManager ? async (name) => { const created = await api.createTeam({ name, service_activity_enabled: false }); setTeams(current => [...current, { id: created.id, name }]); return created.id; } : null}
             onClose={() => { setShowForm(false); load(); }}
           />
         </Modal>
