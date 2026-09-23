@@ -357,8 +357,11 @@ use server aggregates rather than the sample rows. Weekly service counts, hours
 and distinct customers include all matching records, not just a list page.
 Follow-ups include earlier activities, exclude cancellations and completed linked
 tasks, and remain pending after activity completion until resolved. Disabled
-engineer teams receive no service-activity totals. My Work reuses this overview
-and retains its timer, timesheet, Kanban, notes, reminders and bookmarked projects.
+engineer teams receive no service-activity totals. My Work reuses this overview,
+retains its timer, timesheet, Kanban, notes, reminders and bookmarked projects, and
+orders its workflow banner, quick actions, managed-customer context and delivery work
+from the combined capabilities of every team membership. Customer 360 uses the same
+emphasis to order its shared tabs and actions; it does not widen API access.
 Partial load errors stay visible; stale refreshes cannot overwrite newer results.
 
 Aggregated health: active projects, open/overdue tasks, this-week visits, KPI bars,

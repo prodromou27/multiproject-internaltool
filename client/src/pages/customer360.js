@@ -10,15 +10,23 @@ export const CUSTOMER_360_SECTIONS=Object.freeze([
   { id:'service-configuration',label:'Service Configuration',roles:['manager'] },
 ]);
 
-export function customer360Sections(user) {
-  return CUSTOMER_360_SECTIONS.filter(section => !section.pending && section.roles.includes(user?.role));
+export function customer360Sections(user,capabilities={}) {
+  const available=CUSTOMER_360_SECTIONS.filter(section => !section.pending && section.roles.includes(user?.role));
+  if (user?.role!=='engineer' || (capabilities.managedServiceOperations===undefined && capabilities.projectDelivery===undefined)) return available;
+  const managed=capabilities.managedServiceOperations===true;
+  const delivery=capabilities.projectDelivery===true;
+  if (!managed && !delivery) return available;
+  const order=managed
+    ? delivery ? ['activities','projects','tasks','maintenance-visits','recommendations','timeline'] : ['activities','timeline','recommendations','projects','tasks','maintenance-visits']
+    : ['projects','tasks','maintenance-visits','recommendations','activities','timeline'];
+  return order.map(id => available.find(section => section.id===id)).filter(Boolean);
 }
 
-export function customer360Section(user,requested) {
-  const available=customer360Sections(user);
+export function customer360Section(user,requested,capabilities={}) {
+  const available=customer360Sections(user,capabilities);
   const aliases={ 'managed-services':'service-configuration' };
   const normalized=aliases[requested] || requested;
-  return available.some(section => section.id===normalized) ? normalized : user?.role==='manager' ? 'overview' : 'activities';
+  return available.some(section => section.id===normalized) ? normalized : available[0]?.id || 'overview';
 }
 
 /* A transparent 0-100 health score from the operations summary. Every point

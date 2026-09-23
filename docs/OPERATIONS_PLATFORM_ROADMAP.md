@@ -139,8 +139,8 @@ part of the foundation work.
 | 15b | Brand foundation | TeamHub across user-facing application, documents, email and calendars while compatibility identifiers remain stable | Complete; centralized client/server product constants |
 | 16 | Team-aware workflow emphasis | One shared application whose navigation, quick actions, My Work and Customer 360 emphasize relevant workflows from combined team capabilities | In progress |
 | 16a | Team capability foundation | Managed Services and Project Delivery emphasis configured per team, combined for multi-team users, with RBAC unchanged | Complete; navigation and quick-create ordering included |
-| 16b | Adaptive My Work | Managed Services, Project Delivery and mixed layouts answer what the engineer should work on now while retaining secondary work | Next |
-| 16c | Adaptive Customer 360 | Reorder shared customer sections and quick actions from workflow emphasis without widening API access | Planned |
+| 16b | Adaptive My Work | Managed Services, Project Delivery and mixed layouts answer what the engineer should work on now while retaining secondary work | Complete; focused browser coverage included |
+| 16c | Adaptive Customer 360 | Reorder shared customer sections and quick actions from workflow emphasis without widening API access | Complete; unit coverage included |
 
 ## Reporting design constraints
 

@@ -24,6 +24,13 @@ test('Customer 360 accepts available deep links and safely rejects unavailable s
   assert.equal(customer360Section({ role:'engineer' },'not-real'),'activities');
   assert.equal(customer360Sections({ role:'engineer' }).some(section => section.id==='service-configuration'),false);
   assert.equal(customer360Sections({ role:'manager' }).some(section => section.id==='service-configuration'),true);
+  assert.deepEqual(customer360Sections({ role:'engineer' },{ managedServiceOperations:true,projectDelivery:false }).map(section => section.id),
+    ['activities','timeline','recommendations','projects','tasks','maintenance-visits']);
+  assert.deepEqual(customer360Sections({ role:'engineer' },{ managedServiceOperations:false,projectDelivery:true }).map(section => section.id),
+    ['projects','tasks','maintenance-visits','recommendations','activities','timeline']);
+  assert.equal(customer360Section({ role:'engineer' },null,{ managedServiceOperations:false,projectDelivery:true }),'projects');
+  assert.equal(customer360Section({ role:'engineer' },null,{ managedServiceOperations:true,projectDelivery:true }),'activities');
+  assert.equal(customer360Section({ role:'engineer' },null,{ managedServiceOperations:false,projectDelivery:false }),'activities');
 });
 
 import { customerHealth, customerHue } from '../src/pages/customer360.js';

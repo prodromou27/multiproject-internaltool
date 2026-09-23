@@ -62,6 +62,7 @@ export async function mockApi(page, { role = 'engineer', signedIn = true, teams 
       visits: { reports_pending: 0, upcoming: 0, reports: [], upcoming_items: [] },
       service: { enabled: false, due: 0, follow_ups: [] },
     } }),
+    'GET /api/operations/my-managed-customers': () => ({ body:{ rows:[] } }),
     'GET /api/reports/summary': () => ({ body: { total: 0, overdue: 0, byStatus: [], engineerLoad: [], pendingClosure: [], kpiHealth: [], taskStats: {} } }),
     'GET /api/projects': () => ({ body: [] }),
     'GET /api/users': () => ({ body: [] }),

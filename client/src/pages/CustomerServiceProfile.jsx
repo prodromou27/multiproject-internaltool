@@ -32,6 +32,9 @@ function QuickAdd({ customer,user,saAccess,onRecommendation }) {
   if (user.role==='manager') items.push(['project','Create Project',`/projects?create=1&customer_id=${customer.id}`,BriefcaseBusiness]);
   if (['manager','planner'].includes(user.role)) items.push(['visit','Schedule Maintenance Visit',`/maintenance-visits?create=1&customer_id=${customer.id}`,Wrench]);
   if (['manager','planner','engineer'].includes(user.role)) items.push(['recommendation','Add Recommendation',null,ClipboardList]);
+  if (user.role==='engineer' && saAccess.capabilities?.projectDelivery && !saAccess.capabilities?.managedServiceOperations) {
+    const order=['task','visit','recommendation','activity'];items.sort((left,right) => order.indexOf(left[0])-order.indexOf(right[0]));
+  }
   if (!items.length) return null;
   return <details className="cs-quick-add"><summary className="btn btn-primary"><Plus size={15} /> Add <ChevronDown size={14} /></summary><div className="cs-quick-menu" role="menu">
     {items.map(([key,label,to,Icon]) => to ? <Link key={key} to={to} role="menuitem"><Icon size={15} />{label}</Link> : <button key={key} type="button" role="menuitem" onClick={event => { event.currentTarget.closest('details').open=false;onRecommendation(); }}><Icon size={15} />{label}</button>)}
@@ -123,18 +126,18 @@ export default function CustomerServiceProfile() {
   const { user,saAccess }=useAuth(),{ id }=useParams(),location=useLocation(),navigate=useNavigate();
   const query=new URLSearchParams(location.search),source=query.get('source_visit');
   const sourceVisitId=source && /^[1-9]\d*$/.test(source) && Number.isSafeInteger(Number(source)) ? Number(source) : null;
-  const tab=customer360Section(user,query.get('section'));
+  const tab=customer360Section(user,query.get('section'),saAccess.capabilities);
   const [customer,setCustomer]=useState(null),[operations,setOperations]=useState(null),[operationsError,setOperationsError]=useState(''),[profileError,setProfileError]=useState(''),[retry,setRetry]=useState(0);
   const [engineers,setEngineers]=useState([]),[categories,setCategories]=useState([]);
   useEffect(() => { const controller=new AbortController();setCustomer(null);setProfileError('');api.customer(id,{ signal:controller.signal }).then(result => { if (!controller.signal.aborted) setCustomer(result); }).catch(failure => { if (!controller.signal.aborted) setProfileError(failure.message); });return () => controller.abort(); },[id,retry]);
   useEffect(() => { const controller=new AbortController();setOperations(null);setOperationsError('');api.customerOperationsSummary(id,{ signal:controller.signal }).then(result => { if (!controller.signal.aborted) setOperations(result); }).catch(failure => { if (!controller.signal.aborted) setOperationsError(failure.message); });return () => controller.abort(); },[id,retry]);
   useEffect(() => { if (!['activities','tasks'].includes(tab)) return undefined;const controller=new AbortController();Promise.all([api.users({ signal:controller.signal }),tab==='activities'?api.activityCategories({ signal:controller.signal }):Promise.resolve([])]).then(([users,cats]) => { if (!controller.signal.aborted) { setEngineers(users.filter(item => item.role==='engineer'));setCategories(cats); } }).catch(() => {});return () => controller.abort(); },[tab]);
-  function selectTab(section,filter=null,create=false) { const params=new URLSearchParams(location.search);params.set('section',customer360Section(user,section));if (filter) params.set('filter',filter);else params.delete('filter');if (create) params.set('create','1');else params.delete('create');if (section!=='recommendations') params.delete('source_visit');navigate({ pathname:location.pathname,search:`?${params}` }); }
+  function selectTab(section,filter=null,create=false) { const params=new URLSearchParams(location.search);params.set('section',customer360Section(user,section,saAccess.capabilities));if (filter) params.set('filter',filter);else params.delete('filter');if (create) params.set('create','1');else params.delete('create');if (section!=='recommendations') params.delete('source_visit');navigate({ pathname:location.pathname,search:`?${params}` }); }
   function moveTab(event,index) { if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?sections.length-1:(index+(event.key==='ArrowRight'?1:-1)+sections.length)%sections.length;selectTab(sections[next].id);requestAnimationFrame(() => document.getElementById(`customer-tab-${sections[next].id}`)?.focus()); }
-  useEffect(() => { const requested=query.get('section'),safe=customer360Section(user,requested);if (requested!==safe) { const params=new URLSearchParams(location.search);params.set('section',safe);navigate({ pathname:location.pathname,search:`?${params}` },{ replace:true }); } },[location.pathname,location.search,navigate,user]);
+  useEffect(() => { if (!saAccess.loaded) return;const requested=query.get('section'),safe=customer360Section(user,requested,saAccess.capabilities);if (requested!==safe) { const params=new URLSearchParams(location.search);params.set('section',safe);navigate({ pathname:location.pathname,search:`?${params}` },{ replace:true }); } },[location.pathname,location.search,navigate,user,saAccess.capabilities,saAccess.loaded]);
   if (profileError) return <div className="page"><div className="error-msg" role="alert">{profileError} <button className="btn btn-ghost" onClick={() => setRetry(value => value+1)}>Retry</button></div></div>;
-  if (!customer || customer.id!==Number(id)) return <div className="page"><div className="cs-profile-skeleton"><span /><span /><span /></div></div>;
-  const sections=customer360Sections(user);
+  if (!saAccess.loaded || !customer || customer.id!==Number(id)) return <div className="page"><div className="cs-profile-skeleton"><span /><span /><span /></div></div>;
+  const sections=customer360Sections(user,saAccess.capabilities);
   return <div className="page cs-page"><Link to={user.role==='manager'?'/customers':'/'} className="cs-back"><ArrowLeft size={12} /> {user.role==='manager'?'Back to Customers':'Back to Dashboard'}</Link>
     <CustomerHeader customer={customer} operations={operations} user={user} saAccess={saAccess} onRecommendation={() => selectTab('recommendations',null,true)} />
     <CustomerHealthStrip customerId={customer.id} data={operations} error={operationsError} onSelectTab={selectTab} />

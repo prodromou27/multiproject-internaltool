@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, Clock, ClipboardList, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
+import { ArrowRight, Building2, CalendarDays, CheckCircle2, Clock, ClipboardList, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import OperationalFocus from '../components/OperationalFocus';
 import { localDateISO } from '../utils/dates';
@@ -33,21 +33,22 @@ function formatElapsed(seconds) {
   return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
 }
 
-function ServiceActivityCard({ stats }) {
-  if (!stats?.enabled) return null;
+function ServiceActivityCard({ stats, customers=[], canLog=false }) {
+  if (!stats?.enabled && !customers.length) return null;
 
   return (
-    <section className="card mt-16">
-      <div className="section-header"><h2 className="section-title">Service Activity</h2><Link to="/activity-log">Activity Log →</Link></div>
-      <div className="grid-4 mb-12">
+    <section className="card workflow-service-workspace">
+      <div className="section-header"><div><p className="operations-eyebrow">Managed Services</p><h2 className="section-title">Customer operations</h2></div>{canLog && <div className="flex gap-8"><Link className="btn btn-primary btn-sm" to="/activity-log?create=1"><Plus size={13} /> Log activity</Link><Link className="btn btn-ghost btn-sm" to="/activity-log">Activity Log <ArrowRight size={13} /></Link></div>}</div>
+      {stats?.enabled && <div className="grid-4 mb-12">
         <div className="stat-card"><strong>{stats.today}</strong><span>Today</span></div>
         <div className="stat-card"><strong>{stats.week}</strong><span>This week</span></div>
         <div className="stat-card"><strong>{stats.hours}h</strong><span>Hours logged</span></div>
         <div className="stat-card"><strong className={stats.pending ? 'overdue' : ''}>{stats.pending}</strong><span>Follow-ups pending</span></div>
+      </div>}
+      <div className="workflow-service-columns">
+        <div><h3 className="hub-subheading">My managed customers</h3>{customers.slice(0,5).map(customer => <Link className="workflow-customer-row" key={customer.id} to={`/customers/${customer.id}/service-profile`}><Building2 size={14} /><span><strong>{customer.name}</strong><small>{customer.activities_this_month || 0} activities this month{customer.ticketing_enabled ? ` · ${customer.open_tickets || 0} open tickets` : ''}</small></span><ArrowRight size={13} /></Link>)}{!customers.length && <p className="text-muted text-sm">No managed customers are assigned to your teams.</p>}</div>
+        <div><h3 className="hub-subheading">Follow-ups and recent work</h3>{(stats?.follow_ups || []).map(item => <Link className="my-day-row" key={`follow-${item.id}`} to={`/activity-log?activity=${item.id}`}><CheckCircle2 size={14} /><span>{item.title}</span><small>Due {fmtDate(item.follow_up_date)}</small></Link>)}{(stats?.recent || []).slice(0,5).map(item => <Link className="my-day-row" key={`recent-${item.id}`} to={`/activity-log?activity=${item.id}`}><ClipboardList size={14} /><span>{item.title}</span><small>{fmtDate(item.activity_date)}</small></Link>)}{!(stats?.follow_ups || []).length && !(stats?.recent || []).length && <p className="text-muted text-sm">No recent activity or due follow-ups.</p>}</div>
       </div>
-      {stats.recent.length > 0 && stats.recent.map(r => (
-        <div className="my-day-row" key={r.id}><ClipboardList size={14} /><span>{r.title}</span><small>{fmtDate(r.activity_date)}</small></div>
-      ))}
     </section>
   );
 }
@@ -65,6 +66,7 @@ export default function EngineerHub() {
   const [tasks, setTasks] = useState([]);
   const [calendar, setCalendar] = useState({ visits: [], projects: [] });
   const [projects, setProjects] = useState([]);
+  const [managedCustomers,setManagedCustomers]=useState([]);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dragged, setDragged] = useState(null);
@@ -92,13 +94,22 @@ export default function EngineerHub() {
   const [overviewError, setOverviewError] = useState('');
   const [loadError, setLoadError] = useState('');
   const loadRequest = useRef(0);
+  const workflowProfile=saAccess.capabilities?.profile || 'shared';
+  const managedFocus=['managed_services','mixed'].includes(workflowProfile);
+  const workflowCopy=workflowProfile==='mixed'
+    ? { eyebrow:'Combined team workflow',title:'Balance customer operations and delivery work',description:'Service operations and delivery commitments are both prioritized from your team memberships.' }
+    : workflowProfile==='managed_services'
+      ? { eyebrow:'Managed Services focus',title:'Keep customer operations moving',description:'Log customer work, review recent activity and close follow-ups. Projects, tasks and visits remain available below.' }
+      : workflowProfile==='project_delivery'
+        ? { eyebrow:'Project Delivery focus',title:'Move assigned delivery work forward',description:'Start with deadlines, overdue work, project updates and visit reporting. Service activities remain available when authorized.' }
+        : { eyebrow:'Shared workflow',title:'Move your assigned work forward',description:'Review your operational priorities, deadlines and assigned work across the shared workspace.' };
   const load = () => {
     const request = ++loadRequest.current;
     setLoading(true); setLoadError('');
-    return Promise.allSettled([api.tasks(), api.calendar(month), api.projects(), api.myTimeLogs(from, to), api.operationsOverview({ as_of: today })])
+    return Promise.allSettled([api.tasks(), api.calendar(month), api.projects(), api.myTimeLogs(from, to), api.operationsOverview({ as_of: today }),managedFocus?api.myManagedCustomers():Promise.resolve({ rows:[] })])
       .then(results => {
         if (request !== loadRequest.current) return;
-        const setters = [setTasks, setCalendar, setProjects, setLogs, setOverview];
+        const setters = [setTasks, setCalendar, setProjects, setLogs, setOverview,value => setManagedCustomers(value?.rows || [])];
         results.forEach((result, index) => { if (result.status === 'fulfilled') setters[index](result.value); });
         setOverviewError(results[4].status === 'rejected' ? results[4].reason?.message || 'Unable to load work overview' : '');
         const failures = results.filter(result => result.status === 'rejected').map(result => result.reason?.message || 'Request failed');
@@ -106,7 +117,7 @@ export default function EngineerHub() {
       }).finally(() => { if (request === loadRequest.current) setLoading(false); });
   };
 
-  useEffect(() => { load(); return () => { loadRequest.current++; }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!saAccess.loaded) return undefined;load();return () => { loadRequest.current++; }; }, [saAccess.loaded,workflowProfile]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!timer) return undefined;
     const id = setInterval(() => setTick(Date.now()), 1000);
@@ -210,6 +221,8 @@ export default function EngineerHub() {
       <PageHeader eyebrow="Workspace" title="My Work" description="Your daily priorities, upcoming commitments and personal work tools."
         actions={<button className="btn btn-ghost" onClick={load}><RotateCw size={15} /> Refresh</button>} />
       {loadError && <p className="error-msg" role="alert">{loadError}</p>}
+      <section className={`workflow-banner is-${workflowProfile}`}><div><p className="operations-eyebrow">{workflowCopy.eyebrow}</p><h2>{workflowCopy.title}</h2><p>{workflowCopy.description}</p></div><div className="workflow-banner-actions">{managedFocus && saAccess.enabled && <Link className="btn btn-primary" to="/activity-log?create=1"><ClipboardList size={15} /> Log activity</Link>}<Link className={managedFocus && saAccess.enabled?'btn btn-ghost':'btn btn-primary'} to="/tasks"><CheckCircle2 size={15} /> Open tasks</Link><Link className="btn btn-ghost" to="/projects"><FolderOpen size={15} /> My projects</Link></div></section>
+      {managedFocus && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canLog={saAccess.enabled} />}
       <OperationalFocus data={overview} error={overviewError} onRefresh={load} />
 
       <div className="grid-2 mb-16">
@@ -230,7 +243,7 @@ export default function EngineerHub() {
 
       <section className="card mt-16"><div className="section-header"><h2 className="section-title">Personal Kanban</h2><Link to="/tasks">All tasks →</Link></div><div className="engineer-kanban">{KANBAN.map(([status, label]) => <div className="kanban-column" key={status} onDragOver={e => e.preventDefault()} onDrop={() => moveTask(dragged, status)}><h3>{label}<span>{tasks.filter(t => t.status === status).length}</span></h3>{tasks.filter(t => t.status === status).map(task => { const list = checklists[task.id] || []; const done = list.filter(i => i.done).length; return <article key={task.id} draggable onDragStart={() => setDragged(task)} className="kanban-card"><div className="kanban-card-title">{task.title}</div><div className="kanban-card-meta"><PriorityBadge p={task.priority} />{task.deadline && <span>{fmtDate(task.deadline)}</span>}</div>{list.map(item => <label className="checklist-item" key={item.id}><input type="checkbox" checked={item.done} onChange={() => toggleChecklist(task.id, item.id)} />{item.title}</label>)}{list.length > 0 && <div className="checklist-progress"><span style={{ width: `${done / list.length * 100}%` }} /></div>}<div className="kanban-actions"><button onClick={() => addChecklistItem(task)} title="Add checklist item"><Plus size={11} /></button>{!timer && <button onClick={() => startTimer(task)} title="Start timer"><TimerReset size={11} /></button>}<select defaultValue="" onChange={e => { if (e.target.value) quickNote(task, e.target.value); e.target.value = ''; }}><option value="">Quick update…</option>{QUICK_NOTES.map(note => <option key={note}>{note}</option>)}</select></div></article>; })}</div>)}</div></section>
 
-      {saAccess?.enabled && <ServiceActivityCard stats={overview?.service} />}
+      {!managedFocus && saAccess?.enabled && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canLog={saAccess.enabled} />}
 
       <div className="grid-2 mt-16"><section className="card"><div className="section-header"><h2 className="section-title">Recurring reminders</h2><button className="btn btn-ghost btn-sm" onClick={addReminder}><Plus size={12} /> Add</button></div>{reminders.map(reminder => <div className="reminder-row" key={reminder.id}><RotateCw size={13} /><span>{reminder.title}<small>{reminder.cadence} · next {fmtDate(reminder.next)}</small></span><button className="btn btn-success btn-sm" onClick={() => completeReminder(reminder)}><CheckCircle2 size={11} /></button></div>)}{!reminders.length && <p className="text-muted">No recurring reminders.</p>}</section><section className="card"><div className="section-header"><h2 className="section-title">Projects</h2><FolderOpen size={16} /></div><h3 className="hub-subheading">Bookmarked</h3>{pinned.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}{!pinned.length && <p className="text-muted">Pin projects from the Projects page.</p>}<h3 className="hub-subheading">Recently viewed</h3>{recentProjects.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}</section></div>
     </div>
