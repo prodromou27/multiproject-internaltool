@@ -463,15 +463,23 @@ function TwoFactorSection({ user, onRefresh }) {
 function NotificationPreferencesSection({ user, onRefresh }) {
   const [saving, setSaving] = useState('');
   const [msg, setMsg] = useState({ type: '', text: '' });
-  const [webhookDraft, setWebhookDraft] = useState(user.notify_teams_webhook_url || '');
-  // The profile page loads a fresh /auth/me after mount (see Profile()'s own
-  // effect); sync the draft once that lands, since useState's initializer
-  // only runs on first render and ctxUser may not have carried this field.
-  useEffect(() => { setWebhookDraft(user.notify_teams_webhook_url || ''); }, [user.notify_teams_webhook_url]);
+  // The saved webhook URL is a secret and never comes back from the server —
+  // this only ever holds what the user is typing right now.
+  const [webhookDraft, setWebhookDraft] = useState('');
 
   const webexOn = user.notify_external_enabled !== false; // treat unset (older sessions) as the default: on
   const teamsOn = !!user.notify_teams_enabled;
   const emailOn = !!user.notify_email_enabled;
+
+  async function sendTest(channel) {
+    setSaving(`test-${channel}`); setMsg({ type: '', text: '' });
+    try {
+      const result = await api.testNotificationChannel(channel);
+      setMsg({ type: 'success', text: result.message });
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message });
+    } finally { setSaving(''); }
+  }
 
   async function save(channel, changes, successText) {
     setSaving(channel); setMsg({ type: '', text: '' });
@@ -505,15 +513,20 @@ function NotificationPreferencesSection({ user, onRefresh }) {
         </div>
 
         <div>
-          <Toggle checked={teamsOn} disabled={!!saving || !user.notify_teams_webhook_url}
+          <Toggle checked={teamsOn} disabled={!!saving || !user.notify_teams_webhook_set}
             onChange={value => save('teams', { notify_teams_enabled: value }, value ? 'Personal Teams notifications turned on.' : 'Personal Teams notifications turned off.')}
             label="Personal Teams channel" />
-          <div style={{ margin: '6px 0 0 50px', display: 'flex', gap: 8, maxWidth: 440 }}>
-            <input value={webhookDraft} onChange={e => setWebhookDraft(e.target.value)} placeholder="Your Teams incoming webhook URL" style={{ flex: 1 }} />
-            <button type="button" className="btn btn-ghost btn-sm" disabled={saving === 'teams-url' || webhookDraft.trim() === (user.notify_teams_webhook_url || '')}
-              onClick={() => save('teams-url', { notify_teams_webhook_url: webhookDraft.trim() }, 'Teams webhook saved.')}>
+          <div style={{ margin: '6px 0 0 50px', display: 'flex', gap: 8, maxWidth: 520, flexWrap: 'wrap' }}>
+            <input type="password" autoComplete="new-password" value={webhookDraft} onChange={e => setWebhookDraft(e.target.value)}
+              placeholder={user.notify_teams_webhook_set ? 'Webhook saved — paste a new URL to replace it' : 'Your Teams incoming webhook URL'} style={{ flex: 1, minWidth: 200 }} />
+            <button type="button" className="btn btn-ghost btn-sm" disabled={saving === 'teams-url' || !webhookDraft.trim()}
+              onClick={async () => { await save('teams-url', { notify_teams_webhook_url: webhookDraft.trim() }, 'Teams webhook saved.'); setWebhookDraft(''); }}>
               {saving === 'teams-url' ? 'Saving…' : 'Save'}
             </button>
+            {user.notify_teams_webhook_set && <>
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!!saving} onClick={() => sendTest('teams')}>{saving === 'test-teams' ? 'Sending…' : 'Send test'}</button>
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!!saving} onClick={() => save('teams-url', { notify_teams_webhook_url: '' }, 'Teams webhook removed.')}>Remove</button>
+            </>}
           </div>
           <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '4px 0 0 50px' }}>
             Teams has no per-person inbox the way Webex does — paste a webhook URL for a channel only you (or your team) can see, from that channel's ··· menu → Workflows.
@@ -525,8 +538,18 @@ function NotificationPreferencesSection({ user, onRefresh }) {
             onChange={value => save('email', { notify_email_enabled: value }, value ? 'Email alerts turned on.' : 'Email alerts turned off.')}
             label={`Email alerts${user.email ? ` (${user.email})` : ''}`} />
           <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '4px 0 0 50px' }}>
-            Sent to your account email above. Only available once an administrator has configured email delivery for this organization.
+            Sent to your account email above.
           </p>
+          {!user.email_delivery_available && (
+            <p style={{ fontSize: 12, color: 'var(--warning)', fontWeight: 600, margin: '4px 0 0 50px' }}>
+              Email delivery isn't set up for this organization yet, so alerts can't be sent. Ask an administrator to configure SMTP.
+            </p>
+          )}
+          {emailOn && user.email_delivery_available && (
+            <div style={{ margin: '6px 0 0 50px' }}>
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!!saving} onClick={() => sendTest('email')}>{saving === 'test-email' ? 'Sending…' : 'Send test email'}</button>
+            </div>
+          )}
         </div>
       </div>
     </div>

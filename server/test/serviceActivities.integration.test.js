@@ -751,12 +751,14 @@ test('notification preferences default correctly, validate their input, and pers
   // Personal Teams/email are brand-new channels nobody has opted into — off by default.
   assert.equal(initial.data.notify_external_enabled, 1);
   assert.equal(initial.data.notify_teams_enabled, 0);
-  assert.equal(initial.data.notify_teams_webhook_url, null);
+  assert.equal(initial.data.notify_teams_webhook_set, false);
+  assert.equal('notify_teams_webhook_url' in initial.data, false); // the URL itself is never sent to the browser
+  assert.equal(typeof initial.data.email_delivery_available, 'boolean');
   assert.equal(initial.data.notify_email_enabled, 0);
   // An empty body is a valid no-op (partial-update design: send only what you're changing).
   const noop = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: {} });
   assert.equal(noop.status, 200);
-  assert.deepEqual(noop.data, { notify_external_enabled: true, notify_teams_enabled: false, notify_teams_webhook_url: '', notify_email_enabled: false });
+  assert.deepEqual(noop.data, { notify_external_enabled: true, notify_teams_enabled: false, notify_email_enabled: false, notify_teams_webhook_set: false, email_delivery_available: noop.data.email_delivery_available });
   for (const bad of [{ notify_external_enabled: 'yes' }, { notify_external_enabled: 1 }, { notify_external_enabled: null },
     { notify_teams_enabled: 'yes' }, { notify_email_enabled: 'yes' }, { notify_teams_webhook_url: 123 }]) {
     assert.equal((await api('/api/auth/notification-preferences', { method: 'PUT', token, body: bad })).status, 400);
@@ -767,7 +769,8 @@ test('notification preferences default correctly, validate their input, and pers
   assert.equal((await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_teams_webhook_url: 'http://127.0.0.1/hook' } })).status, 400);
   const withUrl = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_teams_webhook_url: 'https://93.184.216.34/hook' } });
   assert.equal(withUrl.status, 200);
-  assert.equal(withUrl.data.notify_teams_webhook_url, 'https://93.184.216.34/hook');
+  assert.equal(withUrl.data.notify_teams_webhook_set, true);
+  assert.equal(JSON.stringify(withUrl.data).includes('93.184.216.34'), false); // never echoed back, even to its owner
   // Now that a URL is on file, enabling it in the same request (or a later one) works.
   const teamsOn = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_teams_enabled: true } });
   assert.equal(teamsOn.status, 200);
@@ -777,15 +780,32 @@ test('notification preferences default correctly, validate their input, and pers
   assert.equal(emailOn.data.notify_email_enabled, true);
   const off = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_external_enabled: false } });
   assert.equal(off.status, 200);
-  assert.deepEqual(off.data, { notify_external_enabled: false, notify_teams_enabled: true, notify_teams_webhook_url: 'https://93.184.216.34/hook', notify_email_enabled: true });
+  assert.equal(off.data.notify_external_enabled, false);
+  assert.equal(off.data.notify_teams_enabled, true);
+  assert.equal(off.data.notify_teams_webhook_set, true);
+  assert.equal(off.data.notify_email_enabled, true);
   assert.equal((await db.prepare('SELECT notify_external_enabled FROM users WHERE id=?').get(target)).notify_external_enabled, 0);
   // Unlike PUT /profile, this doesn't touch token_version or issue a new token — the same token keeps working.
   assert.equal((await api('/api/auth/me', { token })).status, 200);
   // Clearing the URL also turns the toggle back off server-side — an empty destination can't stay "enabled".
   const cleared = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_teams_webhook_url: '' } });
   assert.equal(cleared.status, 200);
-  assert.equal(cleared.data.notify_teams_webhook_url, '');
+  assert.equal(cleared.data.notify_teams_webhook_set, false);
   assert.equal(cleared.data.notify_teams_enabled, false);
+  // Personal test buttons: reject bad channels, and report a real, specific error instead of pretending success.
+  assert.equal((await api('/api/auth/notification-preferences/test', { method: 'POST', token, body: { channel: 'sms' } })).status, 400);
+  const noUrl = await api('/api/auth/notification-preferences/test', { method: 'POST', token, body: { channel: 'teams' } });
+  assert.equal(noUrl.status, 400);
+  assert.match(noUrl.data.error, /Save a Teams webhook URL first/);
+  const notifications = require('../notifications');
+  await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_teams_webhook_url: 'https://93.184.216.34/mine' } });
+  const posted = [];
+  notifications._setTransport(async (u) => { posted.push(u.pathname); return { status: 200, body: '', headers: {} }; });
+  try {
+    const ok = await api('/api/auth/notification-preferences/test', { method: 'POST', token, body: { channel: 'teams' } });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(posted, ['/mine']);
+  } finally { notifications._setTransport(); }
 });
 
 test('2FA partial tokens do not grant cookie-based access', async () => {

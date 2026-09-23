@@ -78,6 +78,7 @@ export const api = {
   myPermissions: (options) => req('GET','/auth/permissions',undefined,options),
   updateProfile: (data) => req('PUT', '/auth/profile', data),
   updateNotificationPreferences: (changes) => req('PUT', '/auth/notification-preferences', changes),
+  testNotificationChannel: (channel) => req('POST', '/auth/notification-preferences/test', { channel }),
   changePassword: (data) => req('POST', '/auth/change-password', data),
   firstTimeChangePassword: (new_password) => req('POST', '/auth/change-password-first', { new_password }),
   forgotPassword: (email) => req('POST', '/auth/forgot-password', { email }, { redirectOnUnauthorized: false }),

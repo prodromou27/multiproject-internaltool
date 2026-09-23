@@ -9,10 +9,12 @@ const QRCode    = require('qrcode');
 const db        = require('../db');
 const { signJwt, verifyJwt, requireAuth } = require('../middleware/auth');
 const { requestToken, setSessionCookie, clearSessionCookie } = require('../middleware/session');
-const { sendEmail } = require('../email');
+const { sendEmail, getSmtpSettings } = require('../email');
+const { encrypt: encryptField, decrypt: decryptField } = require('../fieldCipher');
 const { assertPublicHttpUrl } = require('../security');
 const { effectivePermissions } = require('../permissions');
 const { PRODUCT_NAME } = require('../product');
+const { sendPersonalTest } = require('../notifications');
 
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('not-the-real-password', 12);
 
@@ -348,8 +350,22 @@ router.get('/me', requireAuth, async (req, res) => {
   const u = (await db.prepare('SELECT id, name, email, role, avatar_url, created_at, last_login, totp_enabled, must_change_password, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled FROM users WHERE id = ?').get(req.user.id));
   if (!u) return res.status(404).json({ error: 'User not found' });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ...u, permissions: await effectivePermissions(u) });
+  res.json({ ...(await notificationPrefsView(u)), permissions: await effectivePermissions(u) });
 });
+
+// What the browser is allowed to know about a user's notification setup. The
+// Teams webhook URL is a secret (anyone holding it can post to that channel),
+// so it's encrypted at rest and never sent back — only whether one is set,
+// mirroring how the admin integration redacts its own webhook/bot token.
+async function notificationPrefsView(row) {
+  const { notify_teams_webhook_url, ...rest } = row;
+  const smtp = await getSmtpSettings();
+  return {
+    ...rest,
+    notify_teams_webhook_set: !!notify_teams_webhook_url,
+    email_delivery_available: !!smtp?.host,
+  };
+}
 
 // PUT /api/auth/notification-preferences — self-service configuration of how
 // (and whether) this user is pinged outside the app. Deliberately separate
@@ -386,14 +402,29 @@ router.put('/notification-preferences', requireAuth, async (req, res) => {
   const sets = [], params = [];
   if (has('notify_external_enabled'))    { sets.push('notify_external_enabled = ?');    params.push(notify_external_enabled ? 1 : 0); }
   if (effectiveTeamsEnabled !== undefined) { sets.push('notify_teams_enabled = ?');      params.push(effectiveTeamsEnabled ? 1 : 0); }
-  if (url !== undefined)                 { sets.push('notify_teams_webhook_url = ?');    params.push(url || null); }
+  if (url !== undefined)                 { sets.push('notify_teams_webhook_url = ?');    params.push(url ? encryptField(url) : null); }
   if (has('notify_email_enabled'))       { sets.push('notify_email_enabled = ?');        params.push(req.body.notify_email_enabled ? 1 : 0); }
   if (sets.length) {
     params.push(req.user.id);
     await db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...params);
   }
   const row = await db.prepare('SELECT notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled FROM users WHERE id = ?').get(req.user.id);
-  res.json({ notify_external_enabled: !!row.notify_external_enabled, notify_teams_enabled: !!row.notify_teams_enabled, notify_teams_webhook_url: row.notify_teams_webhook_url || '', notify_email_enabled: !!row.notify_email_enabled });
+  res.json(await notificationPrefsView({ ...row, notify_external_enabled: !!row.notify_external_enabled, notify_teams_enabled: !!row.notify_teams_enabled, notify_email_enabled: !!row.notify_email_enabled }));
+});
+
+// POST /api/auth/notification-preferences/test — send a real test message
+// through the caller's OWN saved channel and report the real delivery error,
+// like the admin Integrations 'Send Test' button does for the org channels.
+router.post('/notification-preferences/test', requireAuth, async (req, res) => {
+  const { channel } = req.body;
+  if (!['teams', 'email'].includes(channel)) return res.status(400).json({ error: 'channel must be "teams" or "email"' });
+  const row = await db.prepare('SELECT email, notify_teams_webhook_url FROM users WHERE id = ?').get(req.user.id);
+  try {
+    await sendPersonalTest(channel, { email: row.email, webhook_url: decryptField(row.notify_teams_webhook_url) });
+    res.json({ ok: true, message: channel === 'teams' ? 'Test posted to your Teams webhook.' : `Test email sent to ${row.email}.` });
+  } catch (e) {
+    res.status(400).json({ error: e.message || 'Test failed' });
+  }
 });
 
 // Lightweight capability snapshot for active sessions after an administrator changes overrides.

@@ -9,6 +9,7 @@ const db    = require('./db');
 const { assertPublicHttpUrl } = require('./security');
 const { PRODUCT_NAME } = require('./product');
 const { sendEmail } = require('./email');
+const { decrypt: decryptField } = require('./fieldCipher');
 
 // ── Fetch settings from DB ───────────────────────────────────────────────────
 async function getSettings() {
@@ -334,7 +335,7 @@ function notify(event, data) {
       const sendLabels = ['Teams', 'Webex'];
       for (const person of recipients) {
         if (person.notify_teams_enabled && person.notify_teams_webhook_url) {
-          sends.push(sendTeams({ enabled: true, webhook_url: person.notify_teams_webhook_url }, msg));
+          sends.push(sendTeams({ enabled: true, webhook_url: decryptField(person.notify_teams_webhook_url) }, msg));
           sendLabels.push(`Personal Teams (user ${person.id})`);
         }
         if (person.notify_email_enabled && person.email) {
@@ -380,4 +381,21 @@ async function sendTest(platform, settings) {
   throw new Error('Unknown platform');
 }
 
-module.exports = { notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, _setTransport };
+/** sendPersonalTest — the Profile page's "Send test" buttons; rejects with the real delivery error. */
+async function sendPersonalTest(channel, { email, webhook_url }) {
+  const msg = {
+    title:    '🔔 Test Notification',
+    subtitle: `${PRODUCT_NAME} personal notification test`,
+    body:     'If you see this, your personal notification channel is working correctly.',
+    facts:    [{ name: 'Sent at', value: new Date().toLocaleString() }],
+  };
+  if (channel === 'teams') {
+    if (!webhook_url) throw new Error('Save a Teams webhook URL first');
+    await sendTeams({ enabled: true, webhook_url }, msg);
+  } else if (channel === 'email') {
+    if (!email) throw new Error('Your account has no email address');
+    await sendEmail({ to: email, subject: msg.title, html: emailHtml(msg) });
+  } else throw new Error('Unknown channel');
+}
+
+module.exports = { sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, _setTransport };
