@@ -2622,6 +2622,26 @@ test('customer operational summary is bounded and respects customer scope',async
   assert.equal((await api(`/api/customers/${privateCustomer}`,{ token:ids.tokenEnabled })).status,403);
 });
 
+test('customer service summary includes a zero-filled 6-month trend for the Customer 360 chart', { skip: !process.env.TEST_DATABASE_URL ? 'needs TEST_DATABASE_URL (pg-mem lacks the ROUND()-with-precision overload used by /service-summary)' : false }, async () => {
+  const today=new Date().toISOString().slice(0,10);
+  await db.prepare('INSERT INTO service_activities (activity_reference,customer_id,team_id,engineer_id,activity_date,category_id,title,created_by,duration_minutes) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run('TREND-CURRENT-MONTH',ids.customer,ids.teamEnabled,ids.engineerEnabled,today,ids.category,'Trend fixture',ids.manager,120);
+  const result=await api(`/api/customers/${ids.customer}/service-summary`,{ token:ids.tokenManager });
+  assert.equal(result.status,200);
+  assert.equal(Array.isArray(result.data.monthly),true);
+  assert.equal(result.data.monthly.length,6);
+  const currentMonth=result.data.monthly[5];
+  assert.equal(currentMonth.month,today.slice(0,7));
+  assert.ok(currentMonth.hours>=2); // the 120-minute fixture activity, at least (other seeded activity may add more)
+  assert.ok(currentMonth.count>=1);
+  for (const row of result.data.monthly) { assert.equal(typeof row.label,'string');assert.equal(typeof row.hours,'number');assert.equal(typeof row.count,'number'); }
+  // an engineer restricted to their own activity still gets a 6-month trend, scoped to their own rows
+  const engineerResult=await api(`/api/customers/${ids.customer}/service-summary`,{ token:ids.tokenEnabled });
+  assert.equal(engineerResult.status,200);
+  assert.equal(engineerResult.data.monthly.length,6);
+  assert.equal(engineerResult.data.monthly[5].hours,currentMonth.hours); // the fixture activity belongs to this same engineer
+});
+
 test('customer activity views reject malformed filters and missing customers consistently',async () => {
   const root=`/api/customers/${ids.customer}`;
   for (const query of ['page=0','page_size=201','page=1&page=2','from=bad','from=2026-09-20&to=2026-09-01','engineer_id=nope']) {

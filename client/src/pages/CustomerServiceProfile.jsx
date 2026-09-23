@@ -17,8 +17,8 @@ import './CustomerServiceProfile.css';
 
 const initialsOf=name => (name || '').trim().split(/\s+/).map(word => word[0]).slice(0,2).join('').toUpperCase() || '?';
 
-function HealthCard({ icon:Icon,label,value,note,state='default',onClick,href }) {
-  const body=<><div className="cs-health-head"><Icon size={15} aria-hidden="true" /><span>{label}</span></div><div className="cs-health-value">{value}</div>{note && <div className="cs-health-note">{note}</div>}</>;
+function HealthCard({ icon:Icon,label,value,note,state='default',onClick,href,bar }) {
+  const body=<><div className="cs-health-head"><Icon size={15} aria-hidden="true" /><span>{label}</span></div><div className="cs-health-value">{value}</div>{note && <div className="cs-health-note">{note}</div>}{bar}</>;
   const className=`card cs-health-card${state!=='default'?` is-${state}`:''}${onClick || href?' is-actionable':''}`;
   if (href) return <Link to={href} className={className}>{body}</Link>;
   if (onClick) return <button type="button" className={className} onClick={onClick}>{body}</button>;
@@ -65,12 +65,18 @@ function CustomerHealthStrip({ customerId,data,error,onSelectTab }) {
   const managed=managedLabels[data.managed?.state] || managedLabels.unavailable;
   const managedValue=ticketsKnown ? `${data.managed.open_tickets} open` : managed[0];
   const managedNote=ticketsKnown ? `${data.managed.closed_tickets} closed${data.managed.state==='sync_attention' ? ' · Last sync failed' : ' · Open Managed Services dashboard'}` : managed[1];
+  const managedBar=ticketsKnown && (data.managed.open_tickets+data.managed.closed_tickets)>0
+    ? <div className="cs-health-bar" role="img" aria-label={`${data.managed.open_tickets} open, ${data.managed.closed_tickets} closed`}>
+        {data.managed.open_tickets>0 && <span style={{ flexGrow:data.managed.open_tickets,background:'var(--warning)' }} />}
+        {data.managed.closed_tickets>0 && <span style={{ flexGrow:data.managed.closed_tickets,background:'var(--success)' }} />}
+      </div>
+    : null;
   return <div className="cs-health-strip">
     <HealthCard icon={BriefcaseBusiness} label="Active Projects" value={data.projects.active} note={`${data.projects.delayed} delayed or overdue`} state={data.projects.delayed?'danger':'default'} onClick={() => onSelectTab('projects',data.projects.delayed?'delayed':'active')} />
     {data.tasks.visible!==false && <HealthCard icon={CheckSquare} label="Open Tasks" value={data.tasks.open} note={`${data.tasks.overdue} overdue`} state={data.tasks.overdue?'danger':'default'} onClick={() => onSelectTab('tasks',data.tasks.overdue?'overdue':'open')} />}
     <HealthCard icon={ClipboardList} label="Recommendations" value={data.recommendations.open} note={`${data.recommendations.high_risk} high risk`} state={data.recommendations.high_risk?'warning':'default'} onClick={() => onSelectTab('recommendations')} />
     <HealthCard icon={CalendarDays} label="Maintenance Visits" value={data.visits.next ? fmtDate(data.visits.next.scheduled_date) : 'None scheduled'} note={data.visits.reports_pending ? `${data.visits.reports_pending} reports pending` : `${data.visits.this_year} this year`} state={data.visits.reports_pending?'warning':'default'} onClick={() => onSelectTab('maintenance-visits',data.visits.reports_pending?'report_pending':'upcoming')} />
-    {data.managed?.visible && <HealthCard icon={Settings2} label="Managed Services" value={managedValue} note={managedNote} state={data.managed.state==='sync_attention'?'danger':data.managed.state==='setup_required'?'warning':'default'} href={['active','sync_attention'].includes(data.managed.state)?`/managed-customers/${customerId}`:undefined} onClick={!['active','sync_attention'].includes(data.managed.state)?() => onSelectTab('service-configuration'):undefined} />}
+    {data.managed?.visible && <HealthCard icon={Settings2} label="Managed Services" value={managedValue} note={managedNote} bar={managedBar} state={data.managed.state==='sync_attention'?'danger':data.managed.state==='setup_required'?'warning':'default'} href={['active','sync_attention'].includes(data.managed.state)?`/managed-customers/${customerId}`:undefined} onClick={!['active','sync_attention'].includes(data.managed.state)?() => onSelectTab('service-configuration'):undefined} />}
     {data.assets>0 && <HealthCard icon={Layers} label="Assets" value={data.assets} note="Recorded customer assets" onClick={() => onSelectTab('assets')} />}
   </div>;
 }

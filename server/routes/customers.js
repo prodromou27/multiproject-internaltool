@@ -467,7 +467,27 @@ router.get('/:id/service-summary', requireAuth, async (req, res) => {
     `).all(...params),
   ]);
 
-  res.json({ ...totals, byCategory, byEngineer, byTechnology, byBillable });
+  // Rolling 6-month trend, independent of any from/to filter above — a fixed
+  // window so the Customer 360 Overview chart always shows recent history.
+  const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCMonth(monthStart.getUTCMonth() - 5);
+  const monthlyFrom = monthStart.toISOString().slice(0, 7) + '-01';
+  let monthlyWhere = 'WHERE sa.customer_id = ? AND sa.activity_date >= ?';
+  const monthlyParams = [id, monthlyFrom];
+  if (req.user.role === 'engineer') { monthlyWhere += ' AND sa.engineer_id = ?'; monthlyParams.push(req.user.id); }
+  const monthlyRows = await db.prepare(`
+    SELECT substr(sa.activity_date, 1, 7) AS month, COUNT(*) AS count,
+      COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+    FROM service_activities sa ${monthlyWhere} GROUP BY month ORDER BY month
+  `).all(...monthlyParams);
+  const monthlyMap = new Map(monthlyRows.map(row => [row.month, row]));
+  const monthly = Array.from({ length: 6 }, (_, index) => {
+    const d = new Date(monthStart); d.setUTCMonth(d.getUTCMonth() + index);
+    const key = d.toISOString().slice(0, 7);
+    const row = monthlyMap.get(key);
+    return { month: key, label: d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }), hours: Number(row?.hours || 0), count: Number(row?.count || 0) };
+  });
+
+  res.json({ ...totals, byCategory, byEngineer, byTechnology, byBillable, monthly });
 });
 
 router.delete('/:id', requireManagerOrPlanner, async (req, res) => {
