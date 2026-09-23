@@ -918,6 +918,19 @@ deduplicate active work, retry transient failures with bounded backoff, recover 
 locks after a restart and retain thirty days of job history. Queue backlog and recent
 failures appear in the management Deployment Health checklist. Manual ticket sync
 remains synchronous so administrators receive its detailed result immediately.
+Custom Report Excel and CSV exports also use this queue. Generated files are encrypted
+at rest with `ATTACHMENT_KEY`, can be read only by the manager who requested them,
+expire after 24 hours and produce a direct-download notification when processing
+finishes. Report definitions are validated before enqueueing and authorization is
+applied again when the worker executes them.
+
+The operational overview uses a 15-second user-and-role-scoped response cache to
+coalesce repeat dashboard reads without crossing authorization boundaries. Dashboard
+core metrics render before secondary visit and customer panels finish. Smart Search
+uses validated server pagination with stale-request protection in the client. On real
+PostgreSQL deployments, `pg_trgm` GIN indexes accelerate the existing literal
+substring searches for project, task and maintenance-visit titles and descriptions;
+Deployment Health reports if any expected index is missing.
 
 Not covered: a manual browser and screen-reader pass on real staging data, real-device
 testing, and end-to-end runs of the browser against the real API.

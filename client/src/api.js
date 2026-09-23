@@ -291,7 +291,16 @@ export const api = {
   savedReportSchedule: (id,options) => req('GET',`/reports/custom/saved/${id}/schedule`,undefined,options),
   updateSavedReportSchedule: (id,body) => req('PUT',`/reports/custom/saved/${id}/schedule`,body),
   customReportExport: async (definition,format = 'xlsx') => {
-    const response = await fetch('/api/reports/custom/' + (format==='csv' ? 'export-csv' : 'export'),{ method: 'POST',credentials: 'same-origin',headers: { 'Content-Type': 'application/json','X-SolutionsHub-Request': '1' },body: JSON.stringify(definition) });
+    const job=await req('POST','/reports/custom/exports',{ definition,format });
+    let status;
+    for (let attempt=0;attempt<120;attempt += 1) {
+      status=await req('GET',`/reports/custom/exports/${job.id}`);
+      if (status.status==='failed') throw new Error(status.error || 'Report export failed');
+      if (status.ready) break;
+      await new Promise(resolve => setTimeout(resolve,1000));
+    }
+    if (!status?.ready) throw new Error('The export is still processing. You will receive a notification when it is ready.');
+    const response = await fetch(`/api/reports/custom/exports/${job.id}/download`,{ credentials:'same-origin' });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       handleUnauthorized(response.status,data,true);

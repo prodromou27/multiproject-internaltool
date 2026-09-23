@@ -486,6 +486,7 @@ export default function SearchPage() {
   const location  = useLocation();
   const navigate  = useNavigate();
   const inputRef  = useRef(null);
+  const searchRequest = useRef(0);
 
   // Seed query from URL ?q=
   const initQ = new URLSearchParams(location.search).get('q') || '';
@@ -497,6 +498,7 @@ export default function SearchPage() {
   const [loading,      setLoading]      = useState(false);
   const [activeTab,    setActiveTab]    = useState('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [page,          setPage]          = useState(1);
   const [users,        setUsers]        = useState([]);
   const [customers,    setCustomers]    = useState([]);
 
@@ -521,28 +523,30 @@ export default function SearchPage() {
     setParsedFilters(filters);
   }, [query, users, customers]);
 
+  useEffect(() => { setPage(1); }, [parsedFilters, manualFilters]);
+
   // Debounced search — fires on parsed filters + manual filter changes
   const doSearch = useCallback(async (merged) => {
     // Need at least a query or one active filter
     const hasInput = query.trim().length >= 1 || Object.values(merged).some(v => v && v !== 'all');
-    if (!hasInput) { setResults(null); return; }
+    if (!hasInput) { searchRequest.current += 1;setResults(null);setLoading(false);return; }
 
-    setLoading(true);
+    const request=++searchRequest.current;setLoading(true);
     try {
-      const data = await api.smartSearch(merged);
-      setResults(data);
+      const data = await api.smartSearch({ ...merged,page,page_size:25 });
+      if (request===searchRequest.current) setResults(data);
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      if (request===searchRequest.current) setLoading(false);
     }
-  }, [query]);
+  }, [query,page]);
 
   useEffect(() => {
     const combined = { ...parsedFilters, ...Object.fromEntries(Object.entries(manualFilters).filter(([, v]) => v && v !== 'all')) };
     const t = setTimeout(() => doSearch(combined), 300);
     return () => clearTimeout(t);
-  }, [parsedFilters, manualFilters, doSearch]);
+  }, [parsedFilters, manualFilters, page, doSearch]);
 
   // Remove a chip → clear that filter from manual override
   function removeChip(key) {
@@ -571,11 +575,13 @@ export default function SearchPage() {
     setParsedFilters({});
     setManualFilters({ entity: 'all' });
     setResults(null);
+    setPage(1);
     inputRef.current?.focus();
   }
 
   const total     = results ? (results.projects?.length || 0) + (results.tasks?.length || 0) + (results.mv?.length || 0) + (results.customers?.length || 0) : 0;
   const hasQuery  = query.trim().length > 0 || Object.values(manualFilters).some(v => v && v !== 'all');
+  const hasNextPage = Object.values(results?.pagination?.has_more || {}).some(Boolean);
   const tabs      = [
     { key: 'all',       label: 'All',       count: total },
     { key: 'projects',  label: 'Projects',  count: results?.projects?.length  || 0, icon: FolderOpen },
@@ -624,6 +630,7 @@ export default function SearchPage() {
             {results.customers.map(c => <CustomerCard key={c.id} item={c} navigate={navigate} />)}
           </div>
         )}
+        {(page>1 || hasNextPage) && <nav className="approval-pagination" aria-label="Search result pages"><span>Page {page}</span><button className="btn btn-ghost btn-sm" disabled={loading || page===1} onClick={() => setPage(value => Math.max(1,value-1))}>Previous</button><button className="btn btn-ghost btn-sm" disabled={loading || !hasNextPage} onClick={() => setPage(value => value+1)}>Next</button></nav>}
       </div>
     );
   }
@@ -693,7 +700,7 @@ export default function SearchPage() {
           </button>
         )}
         {loading && <span style={{ fontSize: 12, color: 'var(--gray-400)' }}>Searching…</span>}
-        {!loading && results && <span style={{ fontSize: 12, color: 'var(--gray-500)', marginLeft: 'auto' }}>{total} result{total !== 1 ? 's' : ''}</span>}
+        {!loading && results && <span style={{ fontSize: 12, color: 'var(--gray-500)', marginLeft: 'auto' }}>{total} result{total !== 1 ? 's' : ''} on page {page}</span>}
       </div>
 
       {showAdvanced && (

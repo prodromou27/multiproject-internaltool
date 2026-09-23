@@ -1,4 +1,6 @@
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const db = require('./db');
 
 const workerId = `${process.pid}-${crypto.randomUUID().slice(0,8)}`;
@@ -41,13 +43,21 @@ async function claim() {
 }
 
 async function finish(job,result) {
-  await db.prepare("UPDATE background_jobs SET status='completed',result=?,completed_at=app_now(),locked_at=NULL,locked_by=NULL,dedupe_key=NULL WHERE id=? AND status='running' AND locked_by=?")
-    .run(JSON.stringify(result ?? {}),job.id,workerId);
+  const artifact=result?.artifact || null;
+  const publicResult={ ...(result || {}) };delete publicResult.artifact;
+  const updated=await db.prepare("UPDATE background_jobs SET status='completed',result=?,completed_at=app_now(),locked_at=NULL,locked_by=NULL,dedupe_key=NULL,artifact_name=?,artifact_path=?,artifact_type=?,artifact_iv=?,artifact_tag=?,artifact_expires_at=? WHERE id=? AND status='running' AND locked_by=?")
+    .run(JSON.stringify(publicResult),artifact?.name || null,artifact?.path || null,artifact?.type || null,artifact?.iv || null,artifact?.tag || null,artifact?.expires_at || null,job.id,workerId);
+  if (!updated.changes) {
+    if (artifact?.path) await fs.promises.unlink(path.resolve(__dirname,'uploads','exports',path.basename(artifact.path))).catch(() => {});
+    return;
+  }
+  if (job.created_by && artifact) await db.prepare("INSERT INTO notifications(user_id,type,title,body,link) VALUES (?,'export.ready','Export ready',?,?)")
+    .run(job.created_by,`${artifact.name} is ready to download.`,`/api/reports/custom/exports/${job.id}/download`);
 }
 
 async function fail(job,error) {
   const message=String(error?.message || 'Background job failed').slice(0,1000);
-  if (job.attempts < job.max_attempts) {
+  if (!error?.permanent && job.attempts < job.max_attempts) {
     const delay=Math.min(15*60_000,Math.max(5_000,2 ** (job.attempts-1) * 30_000));
     await db.prepare("UPDATE background_jobs SET status='queued',run_after=?,error=?,locked_at=NULL,locked_by=NULL WHERE id=? AND status='running' AND locked_by=?")
       .run(isoAfter(delay),message,job.id,workerId);
@@ -74,7 +84,14 @@ async function workOne() {
 async function poll() {
   if (Date.now()-lastCleanup > 24*60*60_000) {
     const cutoff=dbTimestamp(Date.now()-30*24*60*60_000);
+    const expired=await db.prepare("SELECT artifact_path FROM background_jobs WHERE artifact_path IS NOT NULL AND (artifact_expires_at<? OR completed_at<?)").all(dbTimestamp(),cutoff);
+    const exportRoot=path.resolve(__dirname,'uploads','exports');
+    for (const row of expired) {
+      const target=path.resolve(exportRoot,path.basename(row.artifact_path));
+      if (target.startsWith(`${exportRoot}${path.sep}`)) await fs.promises.unlink(target).catch(() => {});
+    }
     await db.prepare("DELETE FROM background_jobs WHERE status IN ('completed','failed') AND completed_at<?").run(cutoff);
+    await db.prepare("UPDATE background_jobs SET artifact_path=NULL,artifact_iv=NULL,artifact_tag=NULL WHERE artifact_path IS NOT NULL AND artifact_expires_at<?").run(dbTimestamp());
     lastCleanup=Date.now();
   }
   const concurrency=Math.max(1,Math.min(8,Number(process.env.BACKGROUND_JOB_CONCURRENCY) || 2));

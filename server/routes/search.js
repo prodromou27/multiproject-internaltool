@@ -10,7 +10,7 @@ const { decrypt } = require('../fieldCipher');
 // app layer, then substring-filter. Visibility mirrors the customers route:
 // managers/planners see all; engineers see only customers tied to their own
 // projects or maintenance visits.
-async function searchCustomers(req, term, limit) {
+async function searchCustomers(req, term, limit, offset = 0) {
   const needle = (term || '').trim().toLowerCase();
 
   let rows;
@@ -34,6 +34,7 @@ async function searchCustomers(req, term, limit) {
   }
 
   const out = [];
+  let matched=0;
   for (const r of rows) {
     const dec = {
       ...r,
@@ -45,7 +46,8 @@ async function searchCustomers(req, term, limit) {
     const hay = [dec.name, dec.contact_name, dec.contact_email]
       .filter(Boolean).join(' ').toLowerCase();
     if (!needle || hay.includes(needle)) {
-      out.push(dec);
+      if (matched >= offset) out.push(dec);
+      matched += 1;
       if (out.length >= limit) break;
     }
   }
@@ -132,6 +134,10 @@ router.get('/smart', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Search filters must be text; search is limited to 200 characters' });
   if (req.query.entity && !['all', 'projects', 'tasks', 'mv', 'customers'].includes(req.query.entity))
     return res.status(400).json({ error: 'Invalid search entity' });
+  const page=Number(req.query.page || 1),pageSize=Number(req.query.page_size || 25);
+  if (!Number.isSafeInteger(page) || page<1 || page>10_000 || !Number.isSafeInteger(pageSize) || pageSize<1 || pageSize>50 || !Number.isSafeInteger((page-1)*pageSize))
+    return res.status(400).json({ error:'Invalid search pagination' });
+  const offset=(page-1)*pageSize,fetchSize=pageSize+1,hasMore={ projects:false,tasks:false,mv:false,customers:false };
   const {
     q = '',
     entity = 'all',     // all | projects | tasks | mv | customers
@@ -190,8 +196,9 @@ router.get('/smart', requireAuth, async (req, res) => {
       LEFT JOIN customers cu ON p.customer_id = cu.id
       LEFT JOIN users u ON p.created_by = u.id
       ${where}
-      ORDER BY p.updated_at DESC LIMIT 50
-    `).all(...p)).map(r => ({ ...r, customer_name: decrypt(r.customer_name) }));
+      ORDER BY p.updated_at DESC LIMIT ? OFFSET ?
+    `).all(...p,fetchSize,offset)).map(r => ({ ...r, customer_name: decrypt(r.customer_name) }));
+    hasMore.projects=results.projects.length>pageSize;results.projects=results.projects.slice(0,pageSize);
   }
 
   // ── Tasks ─────────────────────────────────────────────────────────────────
@@ -248,8 +255,9 @@ router.get('/smart', requireAuth, async (req, res) => {
       ${where}
       ORDER BY CASE t.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
                t.deadline ASC, t.updated_at DESC
-      LIMIT 50
-    `).all(...p)).map(r => ({ ...r, customer_name: decrypt(r.customer_name) }));
+      LIMIT ? OFFSET ?
+    `).all(...p,fetchSize,offset)).map(r => ({ ...r, customer_name: decrypt(r.customer_name) }));
+    hasMore.tasks=results.tasks.length>pageSize;results.tasks=results.tasks.slice(0,pageSize);
   }
 
   // ── Maintenance Visits ────────────────────────────────────────────────────
@@ -297,15 +305,17 @@ router.get('/smart', requireAuth, async (req, res) => {
       FROM maintenance_visits mv
       JOIN customers cu ON mv.customer_id = cu.id
       ${where}
-      ORDER BY mv.scheduled_date DESC LIMIT 50
-    `).all(...p)).map(r => ({ ...r, customer_name: decrypt(r.customer_name) }));
+      ORDER BY mv.scheduled_date DESC LIMIT ? OFFSET ?
+    `).all(...p,fetchSize,offset)).map(r => ({ ...r, customer_name: decrypt(r.customer_name) }));
+    hasMore.mv=results.mv.length>pageSize;results.mv=results.mv.slice(0,pageSize);
   }
 
   // ── Customers ─────────────────────────────────────────────────────────────
   // PII columns are encrypted at rest, so matching happens in the app layer
   // (decrypt-and-filter). Visibility + substring matching live in searchCustomers().
   if (entity === 'all' || entity === 'customers') {
-    results.customers = await searchCustomers(req, q, 20);
+    results.customers = await searchCustomers(req, q, fetchSize, offset);
+    hasMore.customers=results.customers.length>pageSize;results.customers=results.customers.slice(0,pageSize);
   }
 
   res.json({
@@ -313,6 +323,7 @@ router.get('/smart', requireAuth, async (req, res) => {
     tasks:     results.tasks     || [],
     mv:        results.mv        || [],
     customers: results.customers || [],
+    pagination:{ page,page_size:pageSize,has_more:hasMore },
   });
 });
 

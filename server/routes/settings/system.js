@@ -41,6 +41,12 @@ router.get('/deployment-health', requireManager, async (req, res) => {
   } catch {
     add('schema_migrations', 'Schema migrations', 'warning', 'Could not inspect schema migration status.');
   }
+  try {
+    const indexes=await db.prepare("SELECT COUNT(*)::int AS count FROM pg_indexes WHERE indexname IN ('idx_projects_title_trgm','idx_projects_description_trgm','idx_tasks_title_trgm','idx_tasks_description_trgm','idx_mv_title_trgm','idx_mv_description_trgm')").get();
+    add('search_indexes','Indexed text search',Number(indexes?.count)===6 ? 'ok' : 'warning',`${Number(indexes?.count) || 0}/6 PostgreSQL trigram indexes available.`);
+  } catch {
+    add('search_indexes','Indexed text search','warning','Could not inspect PostgreSQL search indexes.');
+  }
   const database = db.queryMetrics();
   const elevatedFailureRate = database.count >= 100 && database.failed / database.count >= 0.05;
   add(

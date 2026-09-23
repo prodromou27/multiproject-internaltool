@@ -399,6 +399,13 @@ async function init() {
       completed_at TEXT,
       result TEXT,
       error TEXT,
+      artifact_name TEXT,
+      artifact_path TEXT,
+      artifact_type TEXT,
+      artifact_iv TEXT,
+      artifact_tag TEXT,
+      artifact_expires_at TEXT,
+      artifact_downloaded_at TEXT,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL DEFAULT ${NOW}
     );
@@ -731,6 +738,27 @@ async function init() {
     CREATE INDEX IF NOT EXISTS idx_customer_teams_team      ON customer_teams(team_id);
     CREATE INDEX IF NOT EXISTS idx_customer_engineers_user  ON customer_engineers(user_id);
   `);
+
+  // PostgreSQL trigram indexes preserve the application's intentional substring
+  // search semantics while avoiding sequential scans on the largest text lists.
+  // pg-mem does not implement extensions. The integration harness uses this
+  // sentinel URL while swapping in its own Pool implementation.
+  const isPgMemTestDatabase = process.env.DATABASE_URL === 'postgres://fake:fake@localhost/fake';
+  if (process.env.DATABASE_URL && !isPgMemTestDatabase) {
+    try {
+      await pool.query(`
+        CREATE EXTENSION IF NOT EXISTS pg_trgm;
+        CREATE INDEX IF NOT EXISTS idx_projects_title_trgm ON projects USING GIN (title gin_trgm_ops);
+        CREATE INDEX IF NOT EXISTS idx_projects_description_trgm ON projects USING GIN (description gin_trgm_ops);
+        CREATE INDEX IF NOT EXISTS idx_tasks_title_trgm ON tasks USING GIN (title gin_trgm_ops);
+        CREATE INDEX IF NOT EXISTS idx_tasks_description_trgm ON tasks USING GIN (description gin_trgm_ops);
+        CREATE INDEX IF NOT EXISTS idx_mv_title_trgm ON maintenance_visits USING GIN (title gin_trgm_ops);
+        CREATE INDEX IF NOT EXISTS idx_mv_description_trgm ON maintenance_visits USING GIN (description gin_trgm_ops);
+      `);
+    } catch (error) {
+      console.warn('[db] Could not create pg_trgm search indexes:',error.message);
+    }
+  }
 
   await seedStatusConfig();
   await seedAdmin();
@@ -1182,27 +1210,20 @@ async function applyCompatibilityMigrations() {
   `]);
 
   migrations.push(['20260924_background_jobs', `
-    CREATE TABLE IF NOT EXISTS background_jobs (
-      id SERIAL PRIMARY KEY,
-      type TEXT NOT NULL,
-      payload TEXT NOT NULL DEFAULT '{}',
-      status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','completed','failed')),
-      priority INTEGER NOT NULL DEFAULT 100,
-      run_after TEXT NOT NULL DEFAULT ${NOW},
-      attempts INTEGER NOT NULL DEFAULT 0,
-      max_attempts INTEGER NOT NULL DEFAULT 3,
-      dedupe_key TEXT UNIQUE,
-      locked_at TEXT,
-      locked_by TEXT,
-      started_at TEXT,
-      completed_at TEXT,
-      result TEXT,
-      error TEXT,
-      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      created_at TEXT NOT NULL DEFAULT ${NOW}
-    );
-    CREATE INDEX IF NOT EXISTS idx_background_jobs_claim ON background_jobs(status,run_after,priority,id);
-    CREATE INDEX IF NOT EXISTS idx_background_jobs_history ON background_jobs(created_at,id);
+    -- The final-state schema above creates this table before compatibility
+    -- migrations run. Keep this marker for deployed revision history; the
+    -- artifact migration below remains additive for existing installations.
+    SELECT 1;
+  `]);
+
+  migrations.push(['20260924_background_job_artifacts', `
+    ALTER TABLE background_jobs ADD COLUMN IF NOT EXISTS artifact_name TEXT;
+    ALTER TABLE background_jobs ADD COLUMN IF NOT EXISTS artifact_path TEXT;
+    ALTER TABLE background_jobs ADD COLUMN IF NOT EXISTS artifact_type TEXT;
+    ALTER TABLE background_jobs ADD COLUMN IF NOT EXISTS artifact_iv TEXT;
+    ALTER TABLE background_jobs ADD COLUMN IF NOT EXISTS artifact_tag TEXT;
+    ALTER TABLE background_jobs ADD COLUMN IF NOT EXISTS artifact_expires_at TEXT;
+    ALTER TABLE background_jobs ADD COLUMN IF NOT EXISTS artifact_downloaded_at TEXT;
   `]);
 
   migrations.push(['20260923_personal_notification_channels', `

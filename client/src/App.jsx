@@ -171,7 +171,8 @@ function NotificationBell() {
     }
     // Guard against open redirects: only follow absolute same-origin paths (not protocol-relative //host/...)
     if (n.link && /^\/[^/]/.test(n.link)) {
-      navigate(n.link);
+      if (n.link.startsWith('/api/')) window.location.assign(n.link);
+      else navigate(n.link);
     }
     setOpen(false);
   }

@@ -19,12 +19,17 @@ function setup(t, responder) {
 test('custom report exports use protected cookie requests and preserve visible errors', async t => {
   const definition = { source: 'tasks', fields: ['id'] };
   setup(t, async (path, options) => {
-    assert.equal(path, '/api/reports/custom/export-csv');
-    assert.equal(options.method, 'POST');
+    if (path === '/api/reports/custom/exports') {
+      assert.equal(options.method, 'POST');
+      assert.equal(options.credentials, 'same-origin');
+      assert.equal(options.headers['X-SolutionsHub-Request'], '1');
+      assert.equal(options.headers.Authorization, undefined);
+      assert.deepEqual(JSON.parse(options.body), { definition,format:'csv' });
+      return Response.json({ id: 41,status:'queued' }, { status: 202 });
+    }
+    if (path === '/api/reports/custom/exports/41') return Response.json({ id:41,status:'completed',ready:true });
+    assert.equal(path, '/api/reports/custom/exports/41/download');
     assert.equal(options.credentials, 'same-origin');
-    assert.equal(options.headers['X-SolutionsHub-Request'], '1');
-    assert.equal(options.headers.Authorization, undefined);
-    assert.deepEqual(JSON.parse(options.body), definition);
     return new Response('"ID"\r\n"1"', { headers: { 'Content-Type': 'text/csv' } });
   });
   assert.equal(await (await api.customReportExport(definition, 'csv')).text(), '"ID"\r\n"1"');

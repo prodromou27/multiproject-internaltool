@@ -90,6 +90,8 @@ test('search treats % and _ literally and respects task visibility', realDb, asy
   assert.deepEqual((await h.api('/api/search?q=a', { token: alice.token })).data, { projects: [], tasks: [], customers: [] });
   assert.equal((await h.api(`/api/search?q=${'x'.repeat(201)}`, { token: alice.token })).status, 400);
   assert.equal((await h.api('/api/search/smart?entity=bogus', { token: alice.token })).status, 400);
+  for (const query of ['page=0','page=1.5','page_size=0','page_size=51','page=9007199254740991&page_size=50'])
+    assert.equal((await h.api(`/api/search/smart?entity=tasks&${query}`, { token:alice.token })).status,400);
 });
 
 test('smart search overdue filter uses the app date', realDb, async () => {
@@ -102,4 +104,5 @@ test('smart search overdue filter uses the app date', realDb, async () => {
   const names = (res.data.projects || []).map(x => x.title);
   assert.ok(names.includes('Old deadline project'));
   assert.ok(!names.includes('Far future project'));
+  assert.deepEqual(res.data.pagination,{ page:1,page_size:25,has_more:{ projects:false,tasks:false,mv:false,customers:false } });
 });

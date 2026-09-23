@@ -93,6 +93,7 @@ async function initScheduler() {
       const result=await syncCustomer(Number(payload.customer_id),{ triggeredBy:payload.triggered_by || null });
       return { run_id:result.run_id,tickets_found:result.tickets_found,tickets_created:result.tickets_created,tickets_updated:result.tickets_updated };
     },
+    custom_report_export: (payload,job) => require('./customReportExport').generate(payload,job),
   });
   await reschedule();
   require('./customReportScheduler').start();

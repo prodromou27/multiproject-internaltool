@@ -2063,6 +2063,38 @@ test('report schedules enforce ownership, recipient eligibility, versions and re
   assert.equal(await db.prepare('SELECT * FROM custom_report_schedules WHERE report_id=?').get(report.id),undefined);
 });
 
+test('queued custom report exports remain encrypted and private to their owner',async () => {
+  const previousKey=process.env.ATTACHMENT_KEY;
+  const fs=require('node:fs'),path=require('node:path'),{ exportRoot }=require('../customReportExport');
+  let jobId,filePath;
+  process.env.ATTACHMENT_KEY='ab'.repeat(32);
+  try {
+    const owner=(await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Export owner','export-owner@test.local',bcrypt.hashSync('pw',4),'manager')).lastInsertRowid;
+    const peer=(await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Export peer','export-peer@test.local',bcrypt.hashSync('pw',4),'manager')).lastInsertRowid;
+    const token=signJwt({ id:owner }),peerToken=signJwt({ id:peer });
+    const queued=await api('/api/reports/custom/exports',{ method:'POST',token,body:{ format:'csv',definition:{ source:'tasks',fields:['id','title'] } } });
+    assert.equal(queued.status,202);assert.equal(queued.data.status,'queued');jobId=queued.data.id;
+    assert.equal((await api(`/api/reports/custom/exports/${jobId}`,{ token:peerToken })).status,404);
+    assert.equal((await api(`/api/reports/custom/exports/${jobId}`,{ token:ids.tokenEnabled })).status,403);
+    await db.prepare("UPDATE users SET role='engineer' WHERE id=?").run(owner);
+    await assert.rejects(require('../customReportExport').generate({ format:'csv',definition:{ source:'tasks',fields:['id'] } },{ id:jobId,created_by:owner }),/no longer has permission/);
+    await db.prepare("UPDATE users SET role='manager' WHERE id=?").run(owner);
+    const fileCipher=require('../cipher');
+    const plain=Buffer.from('ID,Title\n1,Private result\n'),encrypted=fileCipher.encrypt(plain),file=`job-${jobId}.bin`;
+    filePath=path.join(exportRoot,file);
+    await fs.promises.mkdir(exportRoot,{ recursive:true });await fs.promises.writeFile(filePath,encrypted.data);
+    await db.prepare("UPDATE background_jobs SET status='completed',artifact_name='custom-report.csv',artifact_path=?,artifact_type='text/csv',artifact_iv=?,artifact_tag=?,artifact_expires_at='2999-01-01 00:00:00',completed_at=app_now() WHERE id=?").run(file,encrypted.iv,encrypted.tag,jobId);
+    const download=await fetch(`${baseUrl}/api/reports/custom/exports/${jobId}/download`,{ headers:{ Authorization:`Bearer ${token}` } });
+    assert.equal(download.status,200);assert.equal(Buffer.from(await download.arrayBuffer()).equals(plain),true);
+    assert.equal((await fetch(`${baseUrl}/api/reports/custom/exports/${jobId}/download`,{ headers:{ Authorization:`Bearer ${peerToken}` } })).status,404);
+    assert.equal((await api('/api/reports/custom/exports',{ method:'POST',token,body:{ format:'pdf',definition:{ source:'tasks',fields:['id'] } } })).status,400);
+  } finally {
+    if (filePath) await fs.promises.unlink(filePath).catch(()=>{});
+    if (jobId) await db.prepare('DELETE FROM background_jobs WHERE id=?').run(jobId);
+    if (previousKey === undefined) delete process.env.ATTACHMENT_KEY; else process.env.ATTACHMENT_KEY=previousKey;
+  }
+});
+
 test('concurrent schedule creation and edits conflict on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
   const report = (await api('/api/reports/custom/saved',{ method: 'POST',token: ids.tokenManager,body: { name: 'Concurrent schedule',visibility: 'private',definition: { source: 'tasks',fields: ['id'] } } })).data;
   const path = `/api/reports/custom/saved/${report.id}/schedule`;

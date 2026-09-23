@@ -271,31 +271,36 @@ export default function Dashboard() {
     else setLoading(true);
     setError('');
     try {
-      const calls = [
+      const corePromise=Promise.allSettled([
         (isPlanner) ? Promise.resolve([]) : api.projects(),
         (isPlanner || isPM) ? Promise.resolve([]) : api.tasks({}),
         isManager ? api.reportSummary() : Promise.resolve(null),
+        (isManager || isEngineer) ? api.operationsOverview({ as_of: localDateISO() }) : Promise.resolve(null),
+      ]);
+      const detailPromise=Promise.allSettled([
         api.maintenanceVisits({ month: new Date().toISOString().slice(0,7), overview:1 }),
         isManager ? api.maintenanceVisits({ review_pending:1 }) : Promise.resolve([]),
         (isManager || isPM) ? api.maintenanceVisits({ not_completed:1 }) : Promise.resolve([]),
         isEngineer ? api.maintenanceVisits({ pending_report:1 }) : Promise.resolve([]),
-        (isManager || isEngineer) ? api.operationsOverview({ as_of: localDateISO() }) : Promise.resolve(null),
         isEngineer ? api.myManagedCustomers().then(r => r.rows) : Promise.resolve([]),
-      ];
-      const [pR, tR, sR, vR, rR, iR, prR, oR, mR] = await Promise.allSettled(calls);
+      ]);
+      const [pR,tR,sR,oR]=await corePromise;
       if (request !== overviewRequest.current) return;
       if (oR.status === 'fulfilled') { setOverview(oR.value); setOverviewError(''); }
       else setOverviewError(oR.reason?.message || 'Unable to load the work overview');
       if (pR.status  === 'fulfilled') setProjects(pR.value ?? []);
       if (tR.status  === 'fulfilled') setTasks(tR.value ?? []);
       if (sR.status  === 'fulfilled') setSummary(sR.value);
+      loadedOnce.current=true;setLoading(false);
+      const [vR,rR,iR,prR,mR]=await detailPromise;
+      if (request !== overviewRequest.current) return;
       if (vR.status  === 'fulfilled') setVisits(vR.value ?? []);
       if (rR.status  === 'fulfilled') setReviewVisits(rR.value ?? []);
       if (iR.status  === 'fulfilled') setIncompleteVisits(iR.value ?? []);
       if (prR.status === 'fulfilled') setPendingReports(prR.value ?? []);
       if (mR.status  === 'fulfilled') setMyManagedCustomers(mR.value ?? []);
-      // Not included in `failed` below: it's a bonus widget, not core dashboard
-      // data, so a failure here shouldn't surface as a page-level error banner.
+      // Managed-customer context is a bonus widget, so its failure does not
+      // replace usable dashboard data with a page-level error.
       const failed = [pR, tR, sR, vR, rR, iR, prR, oR]
         .filter(r => r.status === 'rejected').map(r => r.reason?.message || 'Unknown');
       if (failed.length) setError(`Some data could not be loaded: ${failed.join(' · ')}`);

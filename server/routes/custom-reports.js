@@ -1,6 +1,8 @@
 const router = require('express').Router();
 const db = require('../db');
 const ExcelJS = require('exceljs');
+const fs = require('node:fs');
+const path = require('node:path');
 const { requireManager } = require('../middleware/auth');
 const { metadata,compileReport } = require('../customReports');
 const { logAudit } = require('../auditLog');
@@ -8,6 +10,9 @@ const { reportTemplates } = require('../reportTemplates');
 const { run,csv } = require('../reportExecution');
 const { validateSchedule,nextRun,eligibleRecipients } = require('../reportSchedule');
 const { ACCESS_SQL,validateShares,replaceShares,reportShares } = require('../reportAccess');
+const backgroundJobs = require('../backgroundJobs');
+const fileCipher = require('../cipher');
+const { exportRoot } = require('../customReportExport');
 router.use(requireManager);
 router.get('/sources',async (req,res) => {
   const row = await db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
@@ -122,6 +127,38 @@ router.put('/saved/:reportId/schedule',async (req,res) => {
 });
 
 router.post('/preview',async (req,res) => res.json(await run(req.body,100)));
+router.post('/exports',async (req,res) => {
+  if (!req.body || !['csv','xlsx'].includes(req.body.format)) return res.status(400).json({ error:'Export format must be csv or xlsx' });
+  compileReport(req.body.definition,5000);
+  if (!fileCipher.isConfigured()) return res.status(503).json({ error:'Encrypted export storage is unavailable' });
+  const job=await backgroundJobs.enqueue('custom_report_export',{ definition:req.body.definition,format:req.body.format },{ createdBy:req.user.id,maxAttempts:2,priority:80 });
+  res.status(202).json({ id:job.id,status:job.status });
+});
+router.get('/exports/:jobId',async (req,res) => {
+  if (!id(req.params.jobId)) return res.status(400).json({ error:'Invalid export job ID' });
+  const job=await db.prepare("SELECT id,status,result,error,artifact_name,artifact_expires_at,created_at,completed_at FROM background_jobs WHERE id=? AND type='custom_report_export' AND created_by=?").get(Number(req.params.jobId),req.user.id);
+  if (!job) return res.status(404).json({ error:'Export job not found' });
+  let result=null;try { result=job.result ? JSON.parse(job.result) : null; } catch { /* malformed result remains unavailable */ }
+  res.json({ ...job,result,error:job.status==='failed' ? job.error : null,ready:job.status==='completed' && !!job.artifact_name && (!job.artifact_expires_at || job.artifact_expires_at>backgroundJobs.dbTimestamp()) });
+});
+router.get('/exports/:jobId/download',async (req,res) => {
+  if (!id(req.params.jobId)) return res.status(400).json({ error:'Invalid export job ID' });
+  const job=await db.prepare("SELECT * FROM background_jobs WHERE id=? AND type='custom_report_export' AND created_by=? AND status='completed'").get(Number(req.params.jobId),req.user.id);
+  if (!job) return res.status(404).json({ error:'Completed export not found' });
+  if (!job.artifact_path || job.artifact_expires_at<=backgroundJobs.dbTimestamp()) return res.status(410).json({ error:'This export has expired. Generate it again.' });
+  const target=path.resolve(exportRoot,path.basename(job.artifact_path));
+  if (!target.startsWith(`${exportRoot}${path.sep}`)) return res.status(404).json({ error:'Export artifact not found' });
+  try {
+    const buffer=fileCipher.decrypt(await fs.promises.readFile(target),job.artifact_iv,job.artifact_tag);
+    await db.prepare('UPDATE background_jobs SET artifact_downloaded_at=app_now() WHERE id=?').run(job.id);
+    res.setHeader('Content-Type',job.artifact_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition',`attachment; filename="${job.artifact_name === 'custom-report.csv' ? 'custom-report.csv' : 'custom-report.xlsx'}"`);
+    res.send(buffer);
+  } catch(error) {
+    if (error.code==='ENOENT') return res.status(410).json({ error:'This export is no longer available. Generate it again.' });
+    throw error;
+  }
+});
 router.post('/export-csv',async (req,res) => {
   const result = await run(req.body,5000);
   if (result.truncated) return res.status(413).json({ error: 'Report exceeds 5000 rows. Narrow the filters before exporting.' });

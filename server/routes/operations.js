@@ -4,12 +4,14 @@ const { requireAuth } = require('../middleware/auth');
 const { getEnabledTeamIdsForUser } = require('../serviceActivities');
 const { decrypt } = require('../fieldCipher');
 const { listManagedCustomersForUser } = require('../managedCustomerService');
+const { createResponseCache } = require('../responseCache');
 
 const placeholders = values => values.map(() => '?').join(',');
 const numbers = row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, Number(value || 0)]));
 const iso = date => date.toISOString().slice(0, 10);
+const overviewCache=createResponseCache({ ttlMs:15_000,maxEntries:1000,key:req => req.user ? `${req.user.id}:${req.user.role}:${req.query.as_of || ''}` : null });
 
-router.get('/overview', requireAuth, async (req, res) => {
+router.get('/overview', requireAuth, overviewCache, async (req, res) => {
   if (!['manager', 'engineer'].includes(req.user.role)) return res.status(403).json({ error: 'This overview is available to managers and engineers' });
   const asOf = req.query.as_of === undefined ? iso(new Date()) : req.query.as_of;
   if (typeof asOf !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(asOf) || !Number.isFinite(Date.parse(asOf)) || iso(new Date(asOf)) !== asOf || Number(asOf.slice(0, 4)) < 1900 || Number(asOf.slice(0, 4)) > 9998) return res.status(400).json({ error: 'as_of must be a valid date (YYYY-MM-DD, years 1900–9998)' });
