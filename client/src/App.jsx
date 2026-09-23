@@ -124,11 +124,13 @@ function NotificationBell() {
     };
   }, [load]);
 
-  // Close on outside click
+  // Close on outside click or Escape (keyboard users had no way to dismiss it)
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const esc = e => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', esc); };
   }, []);
 
   async function markAllRead() {
