@@ -64,6 +64,11 @@ validation reported 22 client unit tests and 43 Playwright browser tests passing
 The added browser coverage checks compact navigation, the operational dashboard,
 shared project/task/visit list controls, customer service coverage filtering and
 recovery, managed-customer health filters, report deep links and stale-report recovery.
+The acceptance matrix also renders eight core workspaces at 390px in light mode and
+768px in dark mode, rejects page-level overflow and runtime exceptions, and verifies
+the skip link plus mobile-drawer focus isolation and restoration.
+With this matrix included, the full production-build Playwright suite contains 60
+passing checks; the client unit suite contains 22 passing checks.
 The recommendation workflow includes scoped engineer/planner capture and task
 conversion. Versioned role/user permission overrides cover managed services and
 notification-rule administration; core modules retain their established role and
@@ -122,7 +127,8 @@ review their displayed outcome before changing/re-enabling a schedule.
 Still pending:
 
 - Full manual keyboard, responsive, dark-mode and screen-reader QA across all core
-  screens using staging data; the synthetic smoke matrix covers a focused subset.
+  screens using staging data; follow [STAGING_ACCEPTANCE.md](STAGING_ACCEPTANCE.md) and
+  attach its release record. The synthetic matrix supports but cannot replace this pass.
 - Remaining shared detail/calendar views and pagination of older large lists.
 - Expansion of granular permission overrides beyond managed services and notification
   rules, with server enforcement and PostgreSQL route tests for every new capability.
