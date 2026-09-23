@@ -23,6 +23,6 @@ the AlmaLinux/Docker/PostgreSQL deployment path.
 - Run dependency scanning: `npm run audit:prod` in both `server/` and `client/`.
 - Confirm PROD `.env` has unique values for `JWT_SECRET`, `CUSTOMER_FIELD_KEY`, and `ATTACHMENT_KEY`.
 - After setting `CUSTOMER_FIELD_KEY`, run `npm run encrypt:customers -- --dry` from `server/`, then `npm run encrypt:customers` to backfill customer `name`, contact, address, and notes fields.
-- Back up `CUSTOMER_FIELD_KEY` and `ATTACHMENT_KEY` in a secrets manager before production use. Losing either key can make encrypted data unrecoverable.
+- Back up `CUSTOMER_FIELD_KEY` and `ATTACHMENT_KEY` in a secrets manager before production use. Losing either key can make encrypted data unrecoverable. If either key is ever suspected compromised, see [KEY_ROTATION.md](KEY_ROTATION.md) — rotation needs a maintenance window with the current design, not a config change.
 - Confirm `APP_URL` is the public HTTPS production URL.
 - Confirm `ALLOW_IN_APP_UPDATES=false` in production.
