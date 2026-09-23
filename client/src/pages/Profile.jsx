@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, KeyRound, User, Save, Trash2, CheckCircle, AlertCircle, Lock, ShieldCheck, ShieldOff, QrCode, Loader2 } from 'lucide-react';
+import { Camera, KeyRound, User, Save, Trash2, CheckCircle, AlertCircle, Lock, ShieldCheck, ShieldOff, QrCode, Loader2, Bell } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { useConfirm } from '../components/Confirm';
+import { Toggle } from './admin/shared';
 
 /* ── Inline alert helper ─────────────────────────────────── */
 function Alert({ type, msg }) {
@@ -459,6 +460,37 @@ function TwoFactorSection({ user, onRefresh }) {
   );
 }
 
+function NotificationPreferencesSection({ user, onRefresh }) {
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState({ type: '', text: '' });
+  const enabled = user.notify_external_enabled !== false; // treat unset (older sessions) as the default: on
+
+  async function toggle(value) {
+    setSaving(true); setMsg({ type: '', text: '' });
+    try {
+      const result = await api.updateNotificationPreferences(value);
+      onRefresh(result);
+      setMsg({ type: 'success', text: value ? 'Direct chat notifications turned on.' : 'Direct chat notifications turned off.' });
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message });
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="card mb-20">
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Bell size={15} color="var(--primary)" /> Notifications
+      </div>
+      <Alert type={msg.type} msg={msg.text} />
+      <Toggle checked={enabled} disabled={saving} onChange={toggle} label="Direct chat notifications (Webex)" />
+      <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '8px 0 0' }}>
+        When this is on and Webex is configured for your organization, you may receive a direct Webex message for things assigned to you.
+        This never affects the notifications you see in this app (the bell icon), or messages posted to a shared Teams/Webex channel.
+      </p>
+    </div>
+  );
+}
+
 /* ── Main page ───────────────────────────────────────────── */
 export default function Profile() {
   const { user: ctxUser, login } = useAuth();
@@ -496,6 +528,7 @@ export default function Profile() {
         <PersonalInfoSection user={user} onRefresh={refresh} />
         <ChangePasswordSection />
         <TwoFactorSection    user={user} onRefresh={refresh} />
+        <NotificationPreferencesSection user={user} onRefresh={refresh} />
       </div>
     </div>
   );

@@ -294,7 +294,13 @@ function notify(event, data) {
       if (notifyOn[eventKey] === false) return;
 
       // A submitted report goes to managers, so never DM the submitting engineer.
-      const dmEmail = event === 'report.submitted' ? null : data.engineer_email;
+      // Otherwise respect the recipient's own opt-out of direct chat notifications
+      // (in-app notifications above are unaffected — this only governs the Webex DM).
+      let dmEmail = event === 'report.submitted' ? null : data.engineer_email;
+      if (dmEmail && data.engineer_id) {
+        const recipient = await db.prepare('SELECT notify_external_enabled FROM users WHERE id = ?').get(data.engineer_id);
+        if (recipient && !recipient.notify_external_enabled) dmEmail = null;
+      }
       const results = await Promise.allSettled([
         sendTeams(settings.teams, msg),
         sendWebex(settings.webex, msg, dmEmail),

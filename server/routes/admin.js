@@ -152,6 +152,21 @@ router.delete('/users/:id', async (req, res) => {
   }
 });
 
+// Sign the user out everywhere without deactivating the account or forcing a
+// password reset — for a suspected compromised session, a shared/lost
+// device, or after a permission change the admin wants to take effect
+// immediately rather than waiting for the JWT to expire naturally (up to
+// 24h). Every route already re-checks token_version per request, so this
+// alone is enough to invalidate all of that user's active sessions.
+router.post('/users/:id/revoke-sessions', async (req, res) => {
+  if (Number(req.params.id) === req.user.id) return res.status(400).json({ error: 'You cannot revoke your own session this way — use Sign Out instead' });
+  const user = (await db.prepare('SELECT id, name FROM users WHERE id = ?').get(req.params.id));
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  (await db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(user.id));
+  await logAudit(db, req, 'user', user.id, user.name, 'user_sessions_revoked', 'Admin revoked all active sessions');
+  res.json({ ok: true });
+});
+
 router.post('/users/:id/toggle-2fa-exempt', async (req, res) => {
   const user = (await db.prepare('SELECT id, totp_exempt FROM users WHERE id = ?').get(req.params.id));
   if (!user) return res.status(404).json({ error: 'User not found' });

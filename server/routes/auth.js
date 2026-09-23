@@ -344,10 +344,21 @@ router.get('/users', requireAuth, async (req, res) => {
 
 // GET /api/auth/me — current user profile
 router.get('/me', requireAuth, async (req, res) => {
-  const u = (await db.prepare('SELECT id, name, email, role, avatar_url, created_at, last_login, totp_enabled, must_change_password FROM users WHERE id = ?').get(req.user.id));
+  const u = (await db.prepare('SELECT id, name, email, role, avatar_url, created_at, last_login, totp_enabled, must_change_password, notify_external_enabled FROM users WHERE id = ?').get(req.user.id));
   if (!u) return res.status(404).json({ error: 'User not found' });
   res.setHeader('Cache-Control', 'no-store');
   res.json({ ...u, permissions: await effectivePermissions(u) });
+});
+
+// PUT /api/auth/notification-preferences — self-service opt-out of direct
+// chat notifications. Deliberately separate from PUT /profile: it isn't an
+// identity field, doesn't belong in the JWT, and shouldn't force a re-issued
+// session the way a name/email change does.
+router.put('/notification-preferences', requireAuth, async (req, res) => {
+  const { notify_external_enabled } = req.body;
+  if (typeof notify_external_enabled !== 'boolean') return res.status(400).json({ error: 'notify_external_enabled must be true or false' });
+  await db.prepare('UPDATE users SET notify_external_enabled = ? WHERE id = ?').run(notify_external_enabled ? 1 : 0, req.user.id);
+  res.json({ notify_external_enabled });
 });
 
 // Lightweight capability snapshot for active sessions after an administrator changes overrides.

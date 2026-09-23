@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users as UsersIcon, UserX, CheckCircle2, Pencil, KeyRound, UserCheck, Trash2, Save, ShieldAlert } from 'lucide-react';
+import { Users as UsersIcon, UserX, CheckCircle2, Pencil, KeyRound, UserCheck, Trash2, Save, ShieldAlert, LogOut } from 'lucide-react';
 import { api } from '../../api';
 import { fmtDate, Modal } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
@@ -134,6 +134,12 @@ export function UsersTab({ currentUser }) {
     try { await api.adminToggle2faExempt(u.id); load(); } catch(e) { toast.error(e.message); }
   }
 
+  async function revokeSessions(u) {
+    const ok = await confirm(`Sign ${u.name} out of every active session? They'll need to log in again, but their account stays enabled and their password is unchanged.`, { title: 'Revoke Active Sessions', label: 'Revoke Sessions' });
+    if (!ok) return;
+    try { await api.adminRevokeSessions(u.id); toast.success(`${u.name}'s sessions were revoked`); } catch(e) { toast.error(e.message); }
+  }
+
   async function deleteUser(u) {
     const ok = await confirm(`Permanently delete ${u.name}? This cannot be undone.`, { title: 'Delete User' });
     if (!ok) return;
@@ -198,6 +204,9 @@ export function UsersTab({ currentUser }) {
                       <div className="flex gap-8" style={{ flexWrap: 'nowrap' }}>
                         <button className="btn btn-sm btn-ghost inline-flex items-center" onClick={() => setEditing(u)} title="Edit"><Pencil size={13} /></button>
                         <button className="btn btn-sm btn-ghost inline-flex items-center" onClick={() => setResetting(u)} title="Reset password"><KeyRound size={13} /></button>
+                        {u.id !== currentUser.id && (
+                          <button className="btn btn-sm btn-ghost inline-flex items-center" onClick={() => revokeSessions(u)} title="Revoke active sessions — sign them out everywhere"><LogOut size={13} /></button>
+                        )}
                         {u.id !== currentUser.id && (
                           <button className={'btn btn-sm ' + (u.active ? 'btn-ghost' : 'btn-success')} onClick={() => toggleActive(u)} title={u.active ? 'Deactivate' : 'Activate'} style={{ display: 'inline-flex', alignItems: 'center' }}>
                             {u.active ? <UserX size={13} /> : <UserCheck size={13} />}

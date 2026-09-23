@@ -713,6 +713,27 @@ test('browser cookies enforce CSRF, required password changes, renewal and logou
   assert.equal((await api('/api/auth/me', { token: profile.data.token })).status, 401);
 });
 
+test('notification preferences default on, validate their input, and persist without re-issuing a session', async () => {
+  const passwordHash = bcrypt.hashSync('pw', 4);
+  const target = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+    .run('Notification prefs user', 'notify-prefs@test.local', passwordHash, 'engineer')).lastInsertRowid;
+  const token = signJwt({ id: target });
+  const initial = await api('/api/auth/me', { token });
+  assert.equal(initial.data.notify_external_enabled, 1); // on by default — unchanged behavior until the user opts out
+  for (const bad of [{}, { notify_external_enabled: 'yes' }, { notify_external_enabled: 1 }, { notify_external_enabled: null }]) {
+    assert.equal((await api('/api/auth/notification-preferences', { method: 'PUT', token, body: bad })).status, 400);
+  }
+  const off = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_external_enabled: false } });
+  assert.equal(off.status, 200);
+  assert.deepEqual(off.data, { notify_external_enabled: false });
+  assert.equal((await db.prepare('SELECT notify_external_enabled FROM users WHERE id=?').get(target)).notify_external_enabled, 0);
+  // Unlike PUT /profile, this doesn't touch token_version or issue a new token — the same token keeps working.
+  assert.equal((await api('/api/auth/me', { token })).status, 200);
+  const on = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_external_enabled: true } });
+  assert.equal(on.status, 200);
+  assert.equal((await db.prepare('SELECT notify_external_enabled FROM users WHERE id=?').get(target)).notify_external_enabled, 1);
+});
+
 test('2FA partial tokens do not grant cookie-based access', async () => {
   const partial = signJwt({ id: ids.manager, partial: true }, { expiresIn: '5m' });
   const result = await api('/api/auth/me', { cookie: `solutionshub_session=${partial}` });
@@ -1051,6 +1072,30 @@ test('admin user input validation, duplicate emails and email clearing return pr
   assert.equal((await api(`/api/admin/users/${ids.manager}/toggle-active`, { method: 'POST', token: ids.tokenManager })).status, 400);
   assert.equal((await api(`/api/admin/users/${ids.manager}`, { method: 'DELETE', token: ids.tokenManager })).status, 400);
   assert.equal((await api('/api/admin/users', { method: 'POST', token: ids.tokenEnabled, body })).status, 403);
+});
+
+test('admin session revocation bumps token_version without deactivating or resetting the password', async () => {
+  // A dedicated throwaway user — this test intentionally invalidates its
+  // token, so it must not be one of the shared ids.* fixtures other tests
+  // in this file continue to rely on.
+  const passwordHash = bcrypt.hashSync('pw', 4);
+  const target = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+    .run('Revocation target', 'revocation-target@test.local', passwordHash, 'engineer')).lastInsertRowid;
+  const targetToken = signJwt({ id: target });
+  const before = (await db.prepare('SELECT token_version, password FROM users WHERE id=?').get(target));
+  const forbidden = await api(`/api/admin/users/${target}/revoke-sessions`, { method: 'POST', token: targetToken });
+  assert.equal(forbidden.status, 403); // manager-only, same as every other /admin/users route
+  const self = await api(`/api/admin/users/${ids.manager}/revoke-sessions`, { method: 'POST', token: ids.tokenManager });
+  assert.equal(self.status, 400);
+  assert.equal((await api('/api/admin/users/99999999/revoke-sessions', { method: 'POST', token: ids.tokenManager })).status, 404);
+  const result = await api(`/api/admin/users/${target}/revoke-sessions`, { method: 'POST', token: ids.tokenManager });
+  assert.equal(result.status, 200);
+  const after = (await db.prepare('SELECT token_version, password, active FROM users WHERE id=?').get(target));
+  assert.equal(after.token_version, before.token_version + 1);
+  assert.equal(after.password, before.password); // unchanged — this isn't a password reset
+  assert.equal(after.active, 1); // unchanged — this isn't a deactivation
+  // The user's existing token is now stale and must be rejected, like any other token_version bump.
+  assert.equal((await api('/api/customers', { token: targetToken })).status, 401);
 });
 
 test('the final active manager cannot demote themselves', async () => {

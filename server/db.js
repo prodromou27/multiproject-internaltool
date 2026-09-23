@@ -232,7 +232,8 @@ async function init() {
       password_changed_at  TEXT,
       ical_token_hash      TEXT,
       ical_token_created_at TEXT,
-      token_version        INTEGER NOT NULL DEFAULT 0
+      token_version        INTEGER NOT NULL DEFAULT 0,
+      notify_external_enabled INTEGER NOT NULL DEFAULT 1
     );
 
     CREATE TABLE IF NOT EXISTS customers (
@@ -1133,6 +1134,15 @@ async function applyCompatibilityMigrations() {
     -- see ticketWriteback.js and routes/serviceActivities.js's /complete route.
     ALTER TABLE customer_ticketing_configurations ADD COLUMN IF NOT EXISTS write_back_enabled INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE customer_ticketing_configurations ADD COLUMN IF NOT EXISTS write_back_status TEXT;
+  `]);
+
+  migrations.push(['20260923_notification_preferences', `
+    -- Per-user opt-out for direct chat notifications (currently: Webex direct
+    -- messages). Defaults to 1 so existing behavior is unchanged for everyone
+    -- until they turn it off themselves. Teams/Webex space posts go to a
+    -- shared channel, not a specific person, so this only affects Webex
+    -- "direct"/"both" mode DMs — see notifications.js.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_external_enabled INTEGER NOT NULL DEFAULT 1;
   `]);
 
   for (const [id, sql] of migrations) {
