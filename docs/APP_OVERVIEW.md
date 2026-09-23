@@ -94,7 +94,8 @@ then, put logic that is reused by a second route into one of these modules.
 
 ```
 client/src/
-  App.jsx            auth context, layout, routes, command palette (Ctrl+K), quick create
+  App.jsx            auth context, layout, routes, compact personal navigation,
+                     permission-aware module directory, command palette (Ctrl+K), quick create
   navigation.js      the page registry (path, roles, feature flags) used by the sidebar,
                      command palette and route guards; the server stays authoritative
   api.js             every request: cookie session, X-SolutionsHub-Request header,
@@ -115,8 +116,9 @@ client/src/
   component library (hand-built CSS plus `lucide-react` icons). **Dark mode** is the
   `[data-theme="dark"]` attribute, switched from the sidebar and remembered in
   `localStorage` (`hub_theme`). `styles/foundations.css` refines the shared building
-  blocks (sentence-case labels, readable muted text, flat buttons, stat tiles, empty
-  and error states, reduced-motion and touch-size rules); deleting it and its import in
+  blocks (sentence-case labels, readable muted text, flat buttons and surfaces,
+  data-dense tables/forms, optional per-user compact spacing, stat tiles, empty and
+  error states, reduced-motion and touch-size rules); deleting it and its import in
   `main.jsx` restores the previous look. Feature CSS (`billingMix.css`,
   `ServiceCharts.css`, `ActivityLedger.css`, `ActivityForm.css`, `ServiceOperations.css`,
   `ServiceReport.css`, `Dashboard.css`) is scoped under its page class. The dashboard

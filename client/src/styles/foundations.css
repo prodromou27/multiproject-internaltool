@@ -115,3 +115,68 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .operations-page-state-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 4px; }
 /* The state card's blue applies to its own icon, not to icons inside its buttons. */
 .operations-page-state .btn svg { color: inherit; }
+
+/* Operations workspace ----------------------------------------------------
+   A flatter, denser visual system for data-heavy screens. Feature modules
+   keep their own layout, while shared surfaces read as one product. */
+:root {
+  --workspace-bg: #f4f5f3;
+  --radius: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}
+[data-theme="dark"] { --workspace-bg: #111a25; }
+
+.operations-shell .main { background: var(--workspace-bg); }
+.operations-shell .sidebar-logo { height: 60px; }
+.operations-shell .sidebar-user { margin-bottom: 6px; padding-top: 10px; padding-bottom: 10px; }
+.operations-shell .desktop-topbar { min-height: 60px; padding: 9px 28px; }
+.operations-shell .page { max-width: 1520px; padding: 26px 28px 38px; }
+.operations-page-header { margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--gray-200); }
+.operations-page-header h1 { font-size: 24px; font-weight: 680; letter-spacing: -.5px; }
+
+.card { border-color: var(--gray-200); border-radius: var(--radius-lg); box-shadow: none; }
+.card-header { padding-bottom: 11px; border-bottom: 1px solid var(--gray-100); }
+
+input, select, textarea { background: var(--surface); border-color: var(--gray-300); border-radius: var(--radius); }
+input:focus, select:focus, textarea:focus { box-shadow: 0 0 0 2px var(--primary-ring); }
+.btn { border-radius: var(--radius); }
+.btn-ghost { background: var(--surface); box-shadow: none; }
+
+.table-wrap { border: 1px solid var(--gray-200); border-radius: var(--radius-lg); background: var(--surface); }
+.card > .table-wrap { margin-right: -1px; margin-left: -1px; }
+th { padding: 9px 12px; background: var(--gray-100); border-bottom: 1px solid var(--gray-200); }
+td { padding: 10px 12px; border-bottom-color: var(--gray-200); }
+tbody tr:hover td { background: var(--highlight); }
+
+.filter-bar.card { padding: 12px; }
+.filter-bar input, .filter-bar select { min-height: 34px; }
+.tabs { gap: 18px; border-bottom-color: var(--gray-200); }
+.tab { padding: 9px 1px; }
+.alert { border-radius: var(--radius); }
+.modal { border-radius: var(--radius-xl); border-color: var(--gray-200); }
+.modal-header, .modal-footer { border-color: var(--gray-200); }
+.modal-close { border-radius: var(--radius); }
+
+/* People can opt into higher information density from the navigation footer. */
+.operations-shell.density-compact .page { padding-top: 18px; padding-bottom: 26px; }
+.density-compact .operations-page-header { margin-bottom: 14px; padding-bottom: 13px; }
+.density-compact .card { padding: 14px; }
+.density-compact .card + .card { margin-top: 12px; }
+.density-compact :is(.grid-2, .grid-3, .grid-4, .grid-5) { gap: 12px; }
+
+@media (min-width: 901px) and (pointer: fine) {
+  .density-compact .sidebar nav a { min-height: 36px; }
+  .density-compact input, .density-compact select { min-height: 31px; padding-top: 5px; padding-bottom: 5px; }
+  .density-compact textarea { padding-top: 6px; padding-bottom: 6px; }
+  .density-compact th { padding-top: 7px; padding-bottom: 7px; }
+  .density-compact td { padding-top: 7px; padding-bottom: 7px; }
+  .density-compact .btn { min-height: 30px; padding-top: 4px; padding-bottom: 4px; }
+  .density-compact .btn-sm { min-height: 26px; }
+  .density-compact .form-group { margin-bottom: 10px; }
+}
+
+@media (max-width: 900px) {
+  .operations-shell .page { padding: 20px 16px 28px; }
+  .operations-page-header { padding-bottom: 14px; }
+}

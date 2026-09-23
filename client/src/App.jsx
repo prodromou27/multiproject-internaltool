@@ -6,7 +6,7 @@ import {
   MessageSquare, Ticket, Database, Bell, CheckCheck, Trash2,
   ClipboardList, Briefcase, Wrench as WrenchIcon, FileText, StickyNote, UserCircle,
   Moon, Sun, AtSign, ShieldCheck, Zap, Activity, Grid3X3, Pin, PinOff,
-  PanelLeftClose, PanelLeftOpen, Clock3,
+  PanelLeftClose, PanelLeftOpen, Clock3, Rows3,
 } from 'lucide-react';
 import Login from './pages/Login';
 import { api } from './api';
@@ -512,7 +512,7 @@ function OverdueDot({ count }) {
   );
 }
 
-function SidebarContent({ user, logout, onNav, pages, compact, onOpenLauncher, onToggleCompact }) {
+function SidebarContent({ user, logout, onNav, pages, compact, onOpenLauncher, onToggleCompact, dense, onToggleDensity }) {
   const toast = useToast();
   const { dark, toggleDark } = useAuth();
   const initials = user.name?.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
@@ -581,6 +581,10 @@ function SidebarContent({ user, logout, onNav, pages, compact, onOpenLauncher, o
             <Database size={14} /> Netsuite
           </a>
         </div>
+        <button onClick={onToggleDensity} style={{ marginBottom: 6 }} title={dense ? 'Use comfortable spacing' : 'Use compact spacing'}>
+          <Rows3 size={15} />
+          <span>{dense ? 'Comfortable spacing' : 'Compact spacing'}</span>
+        </button>
         <button onClick={onToggleCompact} className="sidebar-collapse" title={compact ? 'Expand navigation' : 'Collapse navigation'}>
           {compact ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
           <span>{compact ? 'Expand' : 'Collapse'}</span>
@@ -768,6 +772,7 @@ function Layout({ children }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [compactNav, setCompactNav] = useState(() => localStorage.getItem(`hub_nav_compact_${user.id}`) === '1');
+  const [dense, setDense] = useState(() => localStorage.getItem(`hub_density_${user.id}`) === 'compact');
   const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 900px)').matches);
   const drawerRef = useRef(null);
   const location = useLocation();
@@ -805,6 +810,13 @@ function Layout({ children }) {
   const toggleCompactNav = () => {
     setCompactNav(current => {
       localStorage.setItem(`hub_nav_compact_${user.id}`, current ? '0' : '1');
+      return !current;
+    });
+  };
+
+  const toggleDensity = () => {
+    setDense(current => {
+      localStorage.setItem(`hub_density_${user.id}`, current ? 'comfortable' : 'compact');
       return !current;
     });
   };
@@ -865,7 +877,7 @@ function Layout({ children }) {
   const initials = user.name?.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
   return (
-    <div className={`layout operations-shell${compactNav ? ' nav-compact' : ''}`}>
+    <div className={`layout operations-shell${compactNav ? ' nav-compact' : ''}${dense ? ' density-compact' : ''}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <ModuleLauncher open={launcherOpen} pages={availablePages} pinnedIds={validPinnedIds}
@@ -876,7 +888,8 @@ function Layout({ children }) {
         aria-hidden={mobile && !open ? true : undefined} inert={mobile && !open ? '' : undefined}>
         {mobile && open && <button className="drawer-close" type="button" onClick={() => setOpen(false)}><X size={18} /> Close navigation</button>}
         <SidebarContent user={user} logout={logout} onNav={() => setOpen(false)} pages={sidebarPages}
-          compact={compactNav && !mobile} onOpenLauncher={() => { setOpen(false); setPaletteOpen(false); setLauncherOpen(true); }} onToggleCompact={toggleCompactNav} />
+          compact={compactNav && !mobile} onOpenLauncher={() => { setOpen(false); setPaletteOpen(false); setLauncherOpen(true); }}
+          onToggleCompact={toggleCompactNav} dense={dense} onToggleDensity={toggleDensity} />
       </aside>
 
       {/* Mobile overlay */}
