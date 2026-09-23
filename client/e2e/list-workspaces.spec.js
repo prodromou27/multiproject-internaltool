@@ -54,3 +54,20 @@ test('customer directory combines service coverage with recoverable loading', as
   await expect(page.getByRole('link', { name: 'Northwind Logistics' })).toBeVisible();
   await expect(page.getByText('Contoso Retail')).toHaveCount(0);
 });
+
+test('managed customer landing filters service health with visible result context', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/managed-customers', () => ({ body: { rows: [
+    { id: 1, name: 'Northwind Logistics', responsible_team: 'Security', service_manager: 'Alex Mercer', service_status: 'healthy', open_tickets: 2, pending_tickets: 1, activities_this_month: 8, open_tasks: 2, active_projects: 1 },
+    { id: 2, name: 'Contoso Retail', responsible_team: 'Cloud', service_manager: 'Jordan Lee', service_status: 'attention', open_tickets: 4, pending_tickets: 2, activities_this_month: 3, open_tasks: 1, active_projects: 0 },
+  ] } }));
+  await page.goto('/managed-customers');
+
+  await expect(page.getByText('2 of 2 managed customers')).toBeVisible();
+  await page.getByLabel('Service status').selectOption('attention');
+  await expect(page.getByText('1 of 2 managed customers')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Contoso Retail' })).toBeVisible();
+  await expect(page.getByText('Northwind Logistics')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Reset view' }).click();
+  await expect(page.getByText('2 of 2 managed customers')).toBeVisible();
+});

@@ -1,9 +1,11 @@
 import { useEffect,useMemo,useState } from 'react';
-import { ArrowLeft,Building2,ExternalLink,RefreshCw } from 'lucide-react';
+import { ArrowLeft,ExternalLink,RefreshCw } from 'lucide-react';
 import { Link,useParams } from 'react-router-dom';
 import { api } from '../api';
 import ManagedCustomerReportBuilder from '../components/ManagedCustomerReportBuilder';
 import { fmtDateTime } from '../components/Shared';
+import { PageHeader } from '../components/PageLayout';
+import { ListSearch, ResultContext } from '../components/ListWorkspace';
 
 const iso=date => date.toISOString().slice(0,10);
 const formatDate=fmtDateTime;
@@ -27,17 +29,28 @@ function age(ticket) {
 const Metric=({ label,value,note }) => <div className="card" style={{ padding:18 }}><div className="text-muted text-sm">{label}</div><div style={{ fontSize:28,fontWeight:750,marginTop:4 }}>{value ?? 0}</div>{note && <div className="text-muted text-sm mt-4">{note}</div>}</div>;
 
 function Landing() {
-  const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[filters,setFilters]=useState({ search:'',team:'',manager:'',status:'' });
-  useEffect(() => { const controller=new AbortController();api.managedCustomers({ signal:controller.signal }).then(result => setRows(result.rows || [])).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });return () => controller.abort(); },[]);
+  const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0),[filters,setFilters]=useState({ search:'',team:'',manager:'',status:'' });
+  useEffect(() => { const controller=new AbortController();setLoading(true);setError('');api.managedCustomers({ signal:controller.signal }).then(result => setRows(result.rows || [])).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });return () => controller.abort(); },[retry]);
   const options=key => [...new Set(rows.map(row => row[key]).filter(Boolean))].sort((a,b) => a.localeCompare(b));
   const filtered=rows.filter(row => row.name.toLowerCase().includes(filters.search.trim().toLowerCase()) && (!filters.team || row.responsible_team===filters.team) && (!filters.manager || row.service_manager===filters.manager) && (!filters.status || row.service_status===filters.status));
   const statusLabel=value => ({ healthy:'Healthy',attention:'Sync issue',awaiting_sync:'Awaiting first sync',activity_only:'No ticket integration' }[value] || value);
-  return <div className="page"><div className="page-header"><div><h1 className="page-title"><Building2 size={22} /> Managed Customers</h1><p className="text-muted text-sm mt-4">Current service health across customers enrolled in Managed Services. For aggregated reporting across all customers, see <Link to="/service-operations">Service Activity Reports</Link>.</p></div></div>
-    <div className="card filter-bar" style={{ marginBottom:16 }}><input value={filters.search} onChange={event => setFilters(current => ({ ...current,search:event.target.value }))} placeholder="Search managed customers..." style={{ minWidth:240 }} /><select aria-label="Responsible team" value={filters.team} onChange={event => setFilters(current => ({ ...current,team:event.target.value }))}><option value="">All teams</option>{options('responsible_team').map(value => <option key={value}>{value}</option>)}</select><select aria-label="Service manager" value={filters.manager} onChange={event => setFilters(current => ({ ...current,manager:event.target.value }))}><option value="">All service managers</option>{options('service_manager').map(value => <option key={value}>{value}</option>)}</select><select aria-label="Service status" value={filters.status} onChange={event => setFilters(current => ({ ...current,status:event.target.value }))}><option value="">All service statuses</option>{['healthy','attention','awaiting_sync','activity_only'].map(value => <option key={value} value={value}>{statusLabel(value)}</option>)}</select></div>
-    {error ? <div className="error-msg" role="alert">{error}</div> : loading ? <div className="skeleton-table"><span /><span /><span /></div> : !filtered.length ? <div className="card empty"><p>No managed customers match this view.</p><p className="text-muted text-sm">Enable Managed Services from a customer’s Customer 360 profile.</p></div> : <div className="card table-wrap"><table><thead><tr><th>Customer</th><th>Service status</th><th>Open tickets</th><th>Pending</th><th>Activities this month</th><th>Open tasks</th><th>Active projects</th><th>Last Maintenance Visit</th><th>Last ticket sync</th><th>Service manager</th></tr></thead><tbody>{filtered.map(row => <tr key={row.id}><td><Link to={`/managed-customers/${row.id}`} style={{ fontWeight:700 }}>{row.name}</Link><div className="text-muted text-sm">{row.responsible_team || 'No responsible team'}</div></td><td><span className={`badge badge-${row.service_status==='healthy'?'done':row.service_status==='attention'?'cancelled':row.service_status==='awaiting_sync'?'pending_closure':'open'}`}>{statusLabel(row.service_status)}</span></td><td>{row.open_tickets}</td><td>{row.pending_tickets}</td><td>{row.activities_this_month}</td><td>{row.open_tasks}</td><td>{row.active_projects}</td><td className="text-sm">{row.last_maintenance_visit || 'Never'}</td><td className="text-sm">{row.last_successful_sync_at || 'Never'}</td><td>{row.service_manager || 'Unassigned'}</td></tr>)}</tbody></table></div>}
+  const activeFilters=Object.values(filters).filter(value => String(value).trim()).length;
+  const clearFilters=() => setFilters({ search:'',team:'',manager:'',status:'' });
+  return <div className="page">
+    <PageHeader eyebrow="Management" title="Managed Customers" description="Current service health, support workload and integration freshness for Managed Services customers."
+      actions={<><Link to="/service-operations" className="btn btn-ghost">Service activity overview</Link><button className="btn btn-ghost" onClick={() => setRetry(value => value+1)} disabled={loading}><RefreshCw size={14} /> Refresh</button></>} />
+    <div className="card managed-customer-filters">
+      <ListSearch value={filters.search} onChange={value => setFilters(current => ({ ...current,search:value }))} label="Search managed customers" placeholder="Search managed customers…" />
+      <div className="managed-filter-selects">
+        <select aria-label="Responsible team" value={filters.team} onChange={event => setFilters(current => ({ ...current,team:event.target.value }))}><option value="">All teams</option>{options('responsible_team').map(value => <option key={value}>{value}</option>)}</select>
+        <select aria-label="Service manager" value={filters.manager} onChange={event => setFilters(current => ({ ...current,manager:event.target.value }))}><option value="">All service managers</option>{options('service_manager').map(value => <option key={value}>{value}</option>)}</select>
+        <select aria-label="Service status" value={filters.status} onChange={event => setFilters(current => ({ ...current,status:event.target.value }))}><option value="">All service statuses</option>{['healthy','attention','awaiting_sync','activity_only'].map(value => <option key={value} value={value}>{statusLabel(value)}</option>)}</select>
+      </div>
+    </div>
+    {!loading && !error && <ResultContext shown={filtered.length} total={rows.length} noun="managed customers" activeFilters={activeFilters} onClear={clearFilters} />}
+    {error ? <div className="error-msg" role="alert">{error} <button className="btn btn-ghost btn-sm" onClick={() => setRetry(value => value+1)}>Retry</button></div> : loading ? <div className="skeleton-table"><span /><span /><span /></div> : !filtered.length ? <div className="card empty"><p>No managed customers match this view.</p><p className="text-muted text-sm">Enable Managed Services from a customer’s Customer 360 profile.</p>{activeFilters > 0 && <button className="btn btn-ghost btn-sm mt-12" onClick={clearFilters}>Reset view</button>}</div> : <div className="card table-wrap"><table><thead><tr><th>Customer</th><th>Service status</th><th>Open tickets</th><th>Pending</th><th>Activities this month</th><th>Open tasks</th><th>Active projects</th><th>Last visit</th><th>Last ticket sync</th><th>Service manager</th></tr></thead><tbody>{filtered.map(row => <tr key={row.id}><td className="customer-identity"><Link to={`/managed-customers/${row.id}`}>{row.name}</Link><span>{row.responsible_team || 'No responsible team'}</span></td><td><span className={`badge badge-${row.service_status==='healthy'?'done':row.service_status==='attention'?'cancelled':row.service_status==='awaiting_sync'?'pending_closure':'open'}`}>{statusLabel(row.service_status)}</span></td><td>{row.open_tickets}</td><td>{row.pending_tickets}</td><td>{row.activities_this_month}</td><td>{row.open_tasks}</td><td>{row.active_projects}</td><td className="text-sm">{row.last_maintenance_visit || 'Never'}</td><td className="text-sm">{row.last_successful_sync_at || 'Never'}</td><td>{row.service_manager || 'Unassigned'}</td></tr>)}</tbody></table></div>}
   </div>;
 }
-
 function TicketFilters({ filters,setFilters,facets }) {
   const change=(key,value) => setFilters(current => ({ ...current,[key]:value,page:1 }));
   return <div className="card filter-bar" style={{ marginBottom:16 }}>
