@@ -31,12 +31,14 @@ async function getOverview(customerId,from,to,store=db) {
   if (!row) return null;
   const [tickets,activities,tasks,projects,visits,recommendations]=await Promise.all([
     store.prepare(`SELECT COUNT(*) FILTER (WHERE status_group='open') AS open_now,
+      COUNT(*) FILTER (WHERE status_group='closed') AS closed_now,
       COUNT(*) FILTER (WHERE normalized_status='Pending') AS pending_now,
       COUNT(*) FILTER (WHERE status_group='open' AND normalized_priority IN ('High','Critical')) AS high_priority_open,
       COUNT(*) FILTER (WHERE created_at_external>=? AND created_at_external<?) AS created_period,
       COUNT(*) FILTER (WHERE resolved_at_external>=? AND resolved_at_external<?) AS resolved_period,
+      COUNT(*) FILTER (WHERE status_group='closed' AND closed_at_external>=? AND closed_at_external<?) AS closed_period,
       COUNT(*) FILTER (WHERE sla_breached=1 AND status_group='open') AS sla_breached_open
-      FROM external_tickets WHERE customer_id=?`).get(`${from}T00:00:00.000Z`,`${to}T23:59:59.999Z`,`${from}T00:00:00.000Z`,`${to}T23:59:59.999Z`,customerId),
+      FROM external_tickets WHERE customer_id=?`).get(`${from}T00:00:00.000Z`,`${to}T23:59:59.999Z`,`${from}T00:00:00.000Z`,`${to}T23:59:59.999Z`,`${from}T00:00:00.000Z`,`${to}T23:59:59.999Z`,customerId),
     store.prepare('SELECT COUNT(*) AS activities,SUM(COALESCE(duration_minutes,0)) AS minutes FROM service_activities WHERE customer_id=? AND activity_date BETWEEN ? AND ?').get(customerId,from,to),
     store.prepare(`SELECT COUNT(*) FILTER (WHERE tk.status NOT IN ('completed','closed','cancelled')) AS open_now,
       COUNT(*) FILTER (WHERE tk.status NOT IN ('completed','closed','cancelled') AND tk.deadline<app_today()) AS overdue_now

@@ -40,7 +40,7 @@ router.get('/summary',requireAuth,async (req,res) => {
   const visitJoin=engineer ? ' JOIN maintenance_visit_engineers mve_scope ON mve_scope.visit_id=mv.id AND mve_scope.user_id=?' : '';
   const activityScope=engineer ? ' AND sa.engineer_id=?' : '';
   const activeRecommendations="r.status NOT IN ('implemented','rejected','closed','converted_to_project')";
-  const [projects,tasks,recommendations,visits,lastVisit,nextVisit,activities,configuration,assets]=await Promise.all([
+  const [projects,tasks,recommendations,visits,lastVisit,nextVisit,activities,configuration,assets,tickets_ext]=await Promise.all([
     db.prepare(`SELECT COUNT(*) FILTER (WHERE p.status NOT IN ('closed','cancelled')) AS active,
       COUNT(*) FILTER (WHERE p.status NOT IN ('closed','cancelled') AND (p.status='delayed' OR (p.deadline IS NOT NULL AND p.deadline<app_today()))) AS delayed
       FROM projects p${projectJoin} WHERE p.customer_id=?`).get(...(projectRestricted?[userId]:[]),customerId),
@@ -73,14 +73,17 @@ router.get('/summary',requireAuth,async (req,res) => {
       LEFT JOIN customer_ticketing_configurations tc ON tc.customer_id=mc.customer_id
       WHERE mc.customer_id=?`).get(customerId) : Promise.resolve(null),
     req.user.role==='manager' ? db.prepare('SELECT COUNT(*) AS total FROM customer_assets WHERE customer_id=?').get(customerId) : Promise.resolve({ total:0 }),
+    req.user.role==='manager' ? db.prepare(`SELECT COUNT(*) FILTER (WHERE status_group='open') AS open,
+      COUNT(*) FILTER (WHERE status_group='closed') AS closed FROM external_tickets WHERE customer_id=?`).get(customerId) : Promise.resolve({ open:0,closed:0 }),
   ]);
   const numbers=row => Object.fromEntries(Object.entries(row || {}).map(([key,value]) => [key,Number(value || 0)]));
   let managed={ visible:req.user.role==='manager',state:'unavailable' };
   if (req.user.role==='manager') {
+    const ticketCounts={ open_tickets:Number(tickets_ext.open || 0),closed_tickets:Number(tickets_ext.closed || 0) };
     if (!configuration?.managed_services_enabled) managed={ visible:true,state:'not_enabled' };
     else if (!configuration.ticket_integration_enabled) managed={ visible:true,state:'setup_required',...configuration };
-    else if (configuration.last_sync_status && configuration.last_sync_status!=='success') managed={ visible:true,state:'sync_attention',...configuration };
-    else managed={ visible:true,state:'active',...configuration };
+    else if (configuration.last_sync_status && configuration.last_sync_status!=='success') managed={ visible:true,state:'sync_attention',...configuration,...ticketCounts };
+    else managed={ visible:true,state:'active',...configuration,...ticketCounts };
   }
   res.json({ projects:numbers(projects),tasks:{ ...numbers(tasks),visible:!planner },recommendations:numbers(recommendations),
     visits:{ ...numbers(visits),last:lastVisit || null,next:nextVisit || null },activities:{ recent:activities },
