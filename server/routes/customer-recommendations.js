@@ -3,7 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { logAudit } = require('../auditLog');
 const { positiveId,canAccessCustomer }=require('../customerAccess');
-const STATUSES = new Set(['open','accepted','rejected','in_progress','implemented','deferred','converted_to_project','closed']);
+const { STATUSES,AUTHOR_ROLES,capabilitiesFor,canEdit,validateRecommendation,validateTaskConversion }=require('../services/customerRecommendations');
 router.use(requireAuth, async (req, res, next) => {
   if (['POST','PUT'].includes(req.method) && (!req.body || typeof req.body !== 'object' || Array.isArray(req.body))) return res.status(400).json({ error: 'A JSON object is required' });
   if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid customer ID' });
@@ -33,27 +33,14 @@ router.get('/', async (req, res) => {
       SUM(CASE WHEN status='implemented' THEN 1 ELSE 0 END) AS implemented
       FROM customer_recommendations WHERE customer_id=?`).get(customer),
   ]);
-  res.json({ rows:rows.map(row => ({ ...row,can_edit:canEdit(req.user,row) })), total: Number(count.total), page, page_size: 25, visits, owners,projects,summary:Object.fromEntries(Object.entries(summary).map(([key,value]) => [key,Number(value || 0)])),capabilities:{ can_create:['manager','planner','engineer'].includes(req.user.role),can_convert_project:req.user.role==='manager',can_convert_task:['manager','planner','engineer'].includes(req.user.role) } });
+  res.json({ rows:rows.map(row => ({ ...row,can_edit:canEdit(req.user,row) })), total: Number(count.total), page, page_size: 25, visits, owners,projects,summary:Object.fromEntries(Object.entries(summary).map(([key,value]) => [key,Number(value || 0)])),capabilities:capabilitiesFor(req.user.role) });
 });
-
-function validate(body, existing = {}) {
-  const value = { ...existing, ...body };
-  for (const key of ['finding','recommendation']) if (typeof value[key] !== 'string' || !value[key].trim() || value[key].length > 10000) return { error: `${key} must contain 1 to 10000 characters` };
-  if (value.follow_up_notes != null && (typeof value.follow_up_notes !== 'string' || value.follow_up_notes.length > 10000)) return { error: 'Follow-up notes must be text of at most 10000 characters' };
-  if (!['low','medium','high','critical'].includes(value.risk_level ?? 'medium')) return { error: 'Invalid risk level' };
-  if (!STATUSES.has(value.status ?? 'open')) return { error: 'Invalid status' };
-  if (value.status === 'converted_to_project' && !existing.related_project_id) return { error: 'Use Convert to project to record a conversion' };
-  for (const key of ['owner_id','source_visit_id']) if (value[key] != null && value[key] !== '' && !positiveId(value[key])) return { error: `Invalid ${key}` };
-  if (value.due_date != null && value.due_date !== '' && (typeof value.due_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.due_date) || Number(value.due_date.slice(0,4)) < 1900 || Number(value.due_date.slice(0,4)) > 9998 || Number.isNaN(Date.parse(value.due_date)) || new Date(value.due_date).toISOString().slice(0,10) !== value.due_date)) return { error: 'Invalid due date' };
-  return { value: { finding: value.finding.trim(), recommendation: value.recommendation.trim(), risk_level: value.risk_level ?? 'medium', owner_id: value.owner_id ? Number(value.owner_id) : null, source_visit_id: value.source_visit_id ? Number(value.source_visit_id) : null, due_date: value.due_date || null, status: value.status ?? 'open', follow_up_notes: value.follow_up_notes || null } };
-}
 
 async function references(value, customer, tx, existing = {},user) {
   if (value.owner_id && value.owner_id !== existing.owner_id && !await tx.prepare("SELECT id FROM users WHERE id=? AND active=1 AND role IN ('manager','engineer')").get(value.owner_id)) return 'Owner must be an active manager or engineer';
   if (value.source_visit_id && !await tx.prepare('SELECT id FROM maintenance_visits WHERE id=? AND customer_id=?').get(value.source_visit_id,customer)) return 'Source visit must belong to this customer';
   if (user?.role==='engineer' && value.source_visit_id && !await tx.prepare('SELECT 1 FROM maintenance_visit_engineers WHERE visit_id=? AND user_id=?').get(value.source_visit_id,user.id)) return 'Engineers may only use an assigned source visit';
 }
-const canEdit=(user,row) => user.role==='manager' || (['planner','engineer'].includes(user.role) && row.created_by===user.id);
 async function history(tx, req, row, action) {
   await tx.prepare('INSERT INTO recommendation_history (recommendation_id,user_id,action,status,version) VALUES (?,?,?,?,?)').run(row.id,req.user.id,action,row.status,row.version);
   await logAudit(tx,req,'recommendation',row.id,'Customer recommendation',action,`customer_id=${row.customer_id}; version=${row.version}`);
@@ -61,9 +48,9 @@ async function history(tx, req, row, action) {
 const conflict = res => res.status(409).json({ error: 'This recommendation changed. Reload before saving.', code: 'RECOMMENDATION_CONFLICT' });
 
 router.post('/', async (req, res) => {
-  if (!['manager','planner','engineer'].includes(req.user.role)) return res.status(403).json({ error:'This role cannot record recommendations' });
+  if (!AUTHOR_ROLES.has(req.user.role)) return res.status(403).json({ error:'This role cannot record recommendations' });
   const body=req.user.role==='engineer' ? { ...req.body,owner_id:req.user.id } : req.body;
-  const input = validate(body);
+  const input = validateRecommendation(body);
   if (input.error) return res.status(400).json({ error: input.error });
   const value = input.value, customer = Number(req.params.id);
   const result = await db.transaction(async tx => {
@@ -84,7 +71,7 @@ router.put('/:recommendationId', async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Recommendation not found' });
   if (!canEdit(req.user,existing)) return res.status(403).json({ error:'Only management or the recommendation author can edit it' });
   const body=req.user.role==='engineer' ? { ...req.body,owner_id:req.user.id } : req.body;
-  const input = validate(body,existing);
+  const input = validateRecommendation(body,existing);
   if (input.error) return res.status(400).json({ error: input.error });
   const value = input.value;
   const result = await db.transaction(async tx => {
@@ -119,24 +106,22 @@ router.post('/:recommendationId/convert-to-project', async (req, res) => {
 });
 
 router.post('/:recommendationId/convert-to-task',async (req,res) => {
-  if (!['manager','planner','engineer'].includes(req.user.role)) return res.status(403).json({ error:'This role cannot convert recommendations to tasks' });
+  if (!AUTHOR_ROLES.has(req.user.role)) return res.status(403).json({ error:'This role cannot convert recommendations to tasks' });
   const body=req.body || {};
-  if (!positiveId(req.params.recommendationId) || !positiveId(body.version) || !positiveId(body.project_id) || !positiveId(body.assigned_to)) return res.status(400).json({ error:'Valid recommendation version, project and assignee are required' });
-  if (typeof body.title!=='string' || !body.title.trim() || body.title.trim().length>500) return res.status(400).json({ error:'Task title must contain 1 to 500 characters' });
-  if (!['low','medium','high'].includes(body.priority ?? 'medium')) return res.status(400).json({ error:'Invalid task priority' });
-  if (body.deadline && (typeof body.deadline!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.deadline) || Number.isNaN(Date.parse(body.deadline)) || new Date(body.deadline).toISOString().slice(0,10)!==body.deadline)) return res.status(400).json({ error:'Invalid task deadline' });
-  const customer=Number(req.params.id),id=Number(req.params.recommendationId),project=await db.prepare('SELECT id FROM projects WHERE id=? AND customer_id=?').get(Number(body.project_id),customer);
+  const input=validateTaskConversion(body,req.params.recommendationId);
+  if (input.error) return res.status(400).json({ error:input.error });
+  const value=input.value,customer=Number(req.params.id),id=value.recommendation_id,project=await db.prepare('SELECT id FROM projects WHERE id=? AND customer_id=?').get(value.project_id,customer);
   if (!project) return res.status(400).json({ error:'Project must belong to this customer' });
-  const assignee=await db.prepare("SELECT id FROM users WHERE id=? AND active=1 AND role='engineer'").get(Number(body.assigned_to));
-  if (!assignee || (req.user.role==='engineer' && Number(body.assigned_to)!==req.user.id)) return res.status(400).json({ error:'Assignee must be an eligible active engineer' });
+  const assignee=await db.prepare("SELECT id FROM users WHERE id=? AND active=1 AND role='engineer'").get(value.assigned_to);
+  if (!assignee || (req.user.role==='engineer' && value.assigned_to!==req.user.id)) return res.status(400).json({ error:'Assignee must be an eligible active engineer' });
   if (req.user.role==='engineer' && !await db.prepare('SELECT 1 FROM project_assignments WHERE project_id=? AND user_id=?').get(project.id,req.user.id)) return res.status(403).json({ error:'Engineers can only create tasks in assigned projects' });
   const existing=await db.prepare('SELECT * FROM customer_recommendations WHERE id=? AND customer_id=?').get(id,customer);
   if (!existing) return res.status(404).json({ error:'Recommendation not found' });
   if (!canEdit(req.user,existing)) return res.status(403).json({ error:'Only management or the recommendation author can convert it' });
   const result=await db.transaction(async tx => {
-    const row=(await tx.prepare('UPDATE customer_recommendations SET version=version+1 WHERE id=? AND customer_id=? AND version=? AND related_project_id IS NULL AND related_task_id IS NULL RETURNING *').all(id,customer,Number(body.version)))[0];
+    const row=(await tx.prepare('UPDATE customer_recommendations SET version=version+1 WHERE id=? AND customer_id=? AND version=? AND related_project_id IS NULL AND related_task_id IS NULL RETURNING *').all(id,customer,value.version))[0];
     if (!row) return null;
-    const task=await tx.prepare("INSERT INTO tasks (project_id,title,description,status,priority,assigned_to,deadline,is_adhoc,created_by) VALUES (?,?,?,'open',?,?,?,0,?)").run(project.id,body.title.trim(),`${row.finding}\n\nRecommendation: ${row.recommendation}`,body.priority ?? 'medium',Number(body.assigned_to),body.deadline || row.due_date || null,req.user.id);
+    const task=await tx.prepare("INSERT INTO tasks (project_id,title,description,status,priority,assigned_to,deadline,is_adhoc,created_by) VALUES (?,?,?,'open',?,?,?,0,?)").run(project.id,value.title,`${row.finding}\n\nRecommendation: ${row.recommendation}`,value.priority,value.assigned_to,value.deadline || row.due_date || null,req.user.id);
     const converted=(await tx.prepare("UPDATE customer_recommendations SET related_task_id=?,status='implemented',updated_at=app_now() WHERE id=? RETURNING *").all(task.lastInsertRowid,id))[0];
     await history(tx,req,converted,'converted_to_task');
     await tx.prepare('INSERT INTO project_activity (project_id,user_id,action,detail) VALUES (?,?,?,?)').run(project.id,req.user.id,'task_created',`Task ${task.lastInsertRowid} converted from recommendation ${id}`);
