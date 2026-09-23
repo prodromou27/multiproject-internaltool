@@ -2623,23 +2623,29 @@ test('customer operational summary is bounded and respects customer scope',async
 });
 
 test('customer service summary includes a zero-filled 6-month trend for the Customer 360 chart', { skip: !process.env.TEST_DATABASE_URL ? 'needs TEST_DATABASE_URL (pg-mem lacks the ROUND()-with-precision overload used by /service-summary)' : false }, async () => {
+  // A dedicated customer, isolated from the shared ids.customer fixture (which
+  // accumulates unrelated service activity from many other tests in this file
+  // dated within the current month, making its totals non-deterministic here).
   const today=new Date().toISOString().slice(0,10);
+  const customer=(await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Trend chart fixture')).lastInsertRowid;
+  await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(customer, ids.teamEnabled);
   await db.prepare('INSERT INTO service_activities (activity_reference,customer_id,team_id,engineer_id,activity_date,category_id,title,created_by,duration_minutes) VALUES (?,?,?,?,?,?,?,?,?)')
-    .run('TREND-CURRENT-MONTH',ids.customer,ids.teamEnabled,ids.engineerEnabled,today,ids.category,'Trend fixture',ids.manager,120);
-  const result=await api(`/api/customers/${ids.customer}/service-summary`,{ token:ids.tokenManager });
+    .run('TREND-CURRENT-MONTH',customer,ids.teamEnabled,ids.engineerEnabled,today,ids.category,'Trend fixture',ids.manager,120);
+  const result=await api(`/api/customers/${customer}/service-summary`,{ token:ids.tokenManager });
   assert.equal(result.status,200);
   assert.equal(Array.isArray(result.data.monthly),true);
   assert.equal(result.data.monthly.length,6);
   const currentMonth=result.data.monthly[5];
   assert.equal(currentMonth.month,today.slice(0,7));
-  assert.ok(currentMonth.hours>=2); // the 120-minute fixture activity, at least (other seeded activity may add more)
-  assert.ok(currentMonth.count>=1);
+  assert.equal(currentMonth.hours,2); // exactly the 120-minute fixture activity on this isolated customer
+  assert.equal(currentMonth.count,1);
   for (const row of result.data.monthly) { assert.equal(typeof row.label,'string');assert.equal(typeof row.hours,'number');assert.equal(typeof row.count,'number'); }
-  // an engineer restricted to their own activity still gets a 6-month trend, scoped to their own rows
-  const engineerResult=await api(`/api/customers/${ids.customer}/service-summary`,{ token:ids.tokenEnabled });
+  assert.deepEqual(result.data.monthly.slice(0,5).map(row => row.hours),[0,0,0,0,0]); // the other 5 months are zero-filled, not omitted
+  // an engineer scoped to this customer's team sees the same single activity, since it's their own
+  const engineerResult=await api(`/api/customers/${customer}/service-summary`,{ token:ids.tokenEnabled });
   assert.equal(engineerResult.status,200);
   assert.equal(engineerResult.data.monthly.length,6);
-  assert.equal(engineerResult.data.monthly[5].hours,currentMonth.hours); // the fixture activity belongs to this same engineer
+  assert.equal(engineerResult.data.monthly[5].hours,2);
 });
 
 test('customer activity views reject malformed filters and missing customers consistently',async () => {
