@@ -30,7 +30,10 @@ router.put('/rule',async (req,res) => {
   const { scope,permission_key:permissionKey,allowed,version }=req.body;
   const owner=scope==='role'?req.body.role:req.body.user_id,table=scope==='role'?'role_permission_overrides':'user_permission_overrides',column=scope==='role'?'role':'user_id';
   const result=await db.transaction(async tx => {
-    if (scope==='user' && !(await tx.prepare('SELECT id FROM users WHERE id=?').get(owner))) return { status:404,error:'User not found' };
+    const targetUser=scope==='user' ? await tx.prepare('SELECT id,role FROM users WHERE id=?').get(owner) : null;
+    if (scope==='user' && !targetUser) return { status:404,error:'User not found' };
+    const targetRole=scope==='role' ? owner : targetUser.role;
+    if (allowed===true && !permissions.eligibleRole(permissionKey,targetRole)) return { status:400,error:'This role is not eligible for this permission' };
     const current=await tx.prepare(`SELECT allowed,version FROM ${table} WHERE ${column}=? AND permission_key=? FOR UPDATE`).get(owner,permissionKey);
     if ((current?.version || 0)!==version) return { status:409,error:'Permission rule changed since it was loaded',code:'PERMISSION_CONFLICT',current:current || null };
     if (allowed===null) {

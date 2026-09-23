@@ -11,6 +11,7 @@ import './ServiceReport.css';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../components/Shared';
 import ReportBuilder from '../components/ReportBuilder';
 import { PageHeader } from '../components/PageLayout';
+import { useAuth } from '../App';
 
 const REPORT_VIEWS = ['overview', 'builder', 'projects', 'kpis', 'trends', 'service_activity'];
 
@@ -317,14 +318,17 @@ function ServiceActivityReportTab() {
 }
 
 export default function Reports() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [summary, setSummary] = useState(null);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError,setLoadError] = useState('');
   const [retry,setRetry] = useState(0);
+  const canViewKpis = user.permissions?.['kpis.view'] ?? user.role === 'manager';
+  const availableViews = canViewKpis ? REPORT_VIEWS : REPORT_VIEWS.filter(view => view !== 'kpis');
   const requestedView = searchParams.get('view');
-  const tab = REPORT_VIEWS.includes(requestedView) ? requestedView : 'overview';
+  const tab = availableViews.includes(requestedView) ? requestedView : 'overview';
   const setTab = next => setSearchParams(current => {
     const updated = new URLSearchParams(current);
     if (next === 'overview') updated.delete('view'); else updated.set('view', next);
@@ -354,7 +358,7 @@ export default function Reports() {
         actions={<Link className="btn btn-ghost" to="/service-operations">Service activity overview</Link>} />
 
       <div className="tabs" aria-label="Report sections">
-        {[['overview','Overview'],['builder','Report Builder'],['projects','Projects'],['kpis','KPIs'],['trends','Trends'],['service_activity','Service Activity']].map(([k, l]) => (
+        {[['overview','Overview'],['builder','Report Builder'],['projects','Projects'],...(canViewKpis ? [['kpis','KPIs']] : []),['trends','Trends'],['service_activity','Service Activity']].map(([k, l]) => (
           <button key={k} className={'tab' + (tab === k ? ' active' : '')} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
@@ -439,7 +443,7 @@ export default function Reports() {
 
       {tab === 'kpis' && (
         <div className="card table-wrap">
-          {summary.kpiHealth.length === 0 ? <p className="text-muted text-sm">No KPIs defined yet</p> : (
+          {(summary.kpiHealth || []).length === 0 ? <p className="text-muted text-sm">No KPIs defined yet</p> : (
             <table>
               <thead><tr><th>Project</th><th>KPI</th><th>Value</th><th>Progress</th></tr></thead>
               <tbody>{summary.kpiHealth.map((k, i) => <KpiHealthRow key={i} k={k} />)}</tbody>

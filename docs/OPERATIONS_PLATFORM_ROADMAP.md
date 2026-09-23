@@ -48,7 +48,7 @@ application or promise that every listed gap has already been resolved.
 | Users / teams | Users and AdminPanel; manager | Last-manager safeguards, active users, team memberships | Centralize UI capabilities using existing roles; separate business and technical settings visually |
 | Service activities / technology tags | ActivityLog, ServiceOperations; enabled engineer/pm teams, own records; manager all | Customer eligibility, references, duration requirements, attachments, version conflicts, matching Excel/list filters | Faster contextual creation, details layout, due follow-up visibility; retention/file cleanup needs a separate lifecycle review |
 | Approvals | Project closure controls and reports; manager approves | Atomic requests and approval transitions | Dedicated backlog; rejection comments and attribution; current schema lacks a generic approvals module |
-| KPIs / scorecards / SLA | ProjectDetail, Scorecards, SLAPage; project KPIs differ from management evaluations | Configurable metrics, weighted evaluations, SLA exception calculations | Preserve project KPI visibility; verify management-sensitive export permissions independently of screen guards |
+| KPIs / scorecards / SLA | ProjectDetail, Scorecards, SLAPage; KPI access requires explicit management permissions | Configurable metrics, weighted evaluations, SLA exception calculations, server-enforced engineer exclusion | Extend the secured KPI model into definitions, calculation previews, history and administration |
 | Workload | Workload; manager | Batched engineer snapshot and four-week forecast | Existing forecast is not the requested full effort/capacity engine; add estimates and availability before claiming capacity percentages; keep pressure separate |
 | Reports | Reports, ServiceOperations; management | Fixed operational reports, trend queries, Excel and weekly digest | Metadata-driven custom builder, definitions, typed filters, grouping, aggregation, query budgets and templates |
 | Notifications | Shared bell; authenticated user's inbox | Assignment/reminder events and configurable integrations | Accurate failures, keyboard interaction, deduplication and configurable due-work reminders |
@@ -77,9 +77,9 @@ application or promise that every listed gap has already been resolved.
    authorized labels may be decrypted after querying. Expose approved fields only.
 6. Workload currently lacks the complete availability/estimate model required for
    honest capacity reporting. Avoid equating task count or logged hours with load.
-7. Existing project KPIs are visible to assigned engineers. Management evaluations
-   and sensitive reports are a distinct permission concern; preserve working KPI
-   functionality unless a reviewed visibility setting replaces it.
+7. KPI data is management-sensitive. `kpis.view` and `kpis.manage` are restricted to
+   eligible management roles, and engineers cannot be granted either permission by a
+   role or user override. APIs and report summaries enforce the boundary server-side.
 8. Integration tests cover many mutation and security flows, but there is no browser
    automation suite. Builds cannot prove responsive layout or keyboard usability.
 
@@ -135,7 +135,7 @@ part of the foundation work.
 | 14a | High-use list workspaces | Shared search/filter/result context across projects, tasks, visits, customers and managed-customer health | Complete; CI browser coverage tracked per commit |
 | 14b | Report workspace resilience | Shareable report views, explicit refresh, stale-data warning and direct service-operations links | Complete; CI browser coverage tracked per commit |
 | 15 | UI, branding and KPI modernization | Shared enterprise UI adoption, centralized product brand and secure configurable KPI administration | Planned; see `UI_KPI_MODERNIZATION_PLAN.md` |
-| 15a | KPI security boundary | Dedicated view/manage capabilities with an invariant engineer denial across APIs, reports, exports and frontend state | Next |
+| 15a | KPI security boundary | Dedicated view/manage capabilities with an invariant engineer denial across APIs, reports, exports and frontend state | Complete; unit, integration and browser coverage included |
 | 15b | Brand foundation | Confirmed product name across user-facing application, documents, email and calendars while compatibility identifiers remain stable | Awaiting name confirmation |
 
 ## Reporting design constraints

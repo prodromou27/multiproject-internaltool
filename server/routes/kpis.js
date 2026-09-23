@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const db = require('../db');
-const { requireAuth, requireManager } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/auth');
 
 function parseNumber(value, label, { min = 0 } = {}) {
   if (value === undefined || value === null || value === '') return { value: null };
@@ -9,18 +9,12 @@ function parseNumber(value, label, { min = 0 } = {}) {
   return { value: n };
 }
 
-// Managers and PMs see every project's KPIs; everyone else (engineers, planners)
-// only for projects they're assigned to — the same rule as milestones and search.
-router.get('/:project_id', requireAuth, async (req, res) => {
-  if (!['manager', 'pm'].includes(req.user.role)) {
-    const assigned = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(req.params.project_id, req.user.id));
-    if (!assigned) return res.status(403).json({ error: 'Forbidden' });
-  }
+router.get('/:project_id', requirePermission('kpis.view'), async (req, res) => {
   const rows = (await db.prepare('SELECT k.*, u.name as updated_by_name FROM kpis k LEFT JOIN users u ON k.updated_by = u.id WHERE k.project_id = ? ORDER BY k.id').all(req.params.project_id));
   res.json(rows);
 });
 
-router.post('/:project_id', requireManager, async (req, res) => {
+router.post('/:project_id', requirePermission('kpis.manage'), async (req, res) => {
   const { name, target_value, current_value, unit } = req.body;
   if (!name?.trim() || target_value == null) return res.status(400).json({ error: 'Name and target required' });
   if (name.trim().length > 120) return res.status(400).json({ error: 'Name cannot exceed 120 characters' });
@@ -34,7 +28,7 @@ router.post('/:project_id', requireManager, async (req, res) => {
   res.json({ id: result.lastInsertRowid });
 });
 
-router.put('/:project_id/:id', requireManager, async (req, res) => {
+router.put('/:project_id/:id', requirePermission('kpis.manage'), async (req, res) => {
   const { name, target_value, current_value, unit } = req.body;
   if (name !== undefined && !name?.trim()) return res.status(400).json({ error: 'Name cannot be empty' });
   if (name?.trim().length > 120) return res.status(400).json({ error: 'Name cannot exceed 120 characters' });
@@ -50,7 +44,7 @@ router.put('/:project_id/:id', requireManager, async (req, res) => {
   res.json({ ok: true });
 });
 
-router.delete('/:project_id/:id', requireManager, async (req, res) => {
+router.delete('/:project_id/:id', requirePermission('kpis.manage'), async (req, res) => {
   const result = (await db.prepare('DELETE FROM kpis WHERE id = ? AND project_id = ?').run(req.params.id, req.params.project_id));
   if (!result.changes) return res.status(404).json({ error: 'KPI not found' });
   res.json({ ok: true });

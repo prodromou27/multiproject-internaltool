@@ -2,10 +2,12 @@ const router = require('express').Router();
 const ExcelJS = require('exceljs');
 const db = require('../db');
 const { requireManager, requireDownloadManager } = require('../middleware/auth');
+const { hasPermission } = require('../permissions');
 const { decrypt: decryptField } = require('../fieldCipher');
 router.use('/custom', require('./custom-reports'));
 
 router.get('/summary', requireManager, async (req, res) => {
+  const canViewKpis = await hasPermission(req.user,'kpis.view');
   const total = (await db.prepare('SELECT COUNT(*) as c FROM projects').get()).c;
   const byStatus = (await db.prepare('SELECT status, COUNT(*) as count FROM projects GROUP BY status').all());
   const overdue = (await db.prepare(`SELECT COUNT(*) as c FROM projects WHERE deadline < app_today() AND status NOT IN ('closed','cancelled','pending_approval')`).get()).c;
@@ -21,10 +23,10 @@ router.get('/summary', requireManager, async (req, res) => {
     FROM users u LEFT JOIN tasks t ON t.assigned_to = u.id AND t.status != 'cancelled'
     WHERE u.role = 'engineer' GROUP BY u.id ORDER BY task_count DESC`).all());
   const pendingClosure = (await db.prepare(`SELECT p.*, u.name as created_by_name FROM projects p JOIN users u ON p.created_by = u.id WHERE p.status = 'pending_approval'`).all());
-  const kpiHealth = (await db.prepare(`SELECT p.title, k.name, k.target_value, k.current_value, k.unit,
+  const kpiHealth = canViewKpis ? (await db.prepare(`SELECT p.title, k.name, k.target_value, k.current_value, k.unit,
     ROUND(CASE WHEN k.target_value > 0 THEN (k.current_value * 100.0 / k.target_value) ELSE 0 END, 1) as pct
-    FROM kpis k JOIN projects p ON k.project_id = p.id ORDER BY pct ASC`).all());
-  res.json({ total, byStatus, overdue, taskStats, engineerLoad, pendingClosure, kpiHealth });
+    FROM kpis k JOIN projects p ON k.project_id = p.id ORDER BY pct ASC`).all()) : null;
+  res.json({ total, byStatus, overdue, taskStats, engineerLoad, pendingClosure, ...(canViewKpis ? { kpiHealth } : {}) });
 });
 
 router.get('/projects', requireManager, async (req, res) => {

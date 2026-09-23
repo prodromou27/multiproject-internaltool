@@ -385,10 +385,14 @@ Project detail decrypts the linked customer's contact fields for display.
 
 The project page (`pages/ProjectDetail.jsx`, with its parts in `pages/project/`) offers
 the task list and a **Kanban** board (drag a card to change status), a **Gantt**
-timeline with milestones, manager-only **KPIs** and **Scorecard** tabs, **Custom
+timeline with milestones, permission-controlled **KPIs** and a manager-only **Scorecard** tab, **Custom
 fields**, **Attachments**, task detail modals (comments, dependencies, time
 logs, waiting-on-customer reasons), Excel task import, task duplication, and a
 print-friendly project summary.
+
+KPI reads require `kpis.view` and mutations require `kpis.manage`. These permissions
+are limited to eligible management roles. Engineers cannot receive KPI data or be
+granted KPI permissions through role or user overrides.
 
 Project creation saves memberships in the same transaction. Closure requests and
 approvals save their status and update message atomically, and conditional writes
@@ -732,7 +736,8 @@ partial SMTP delivery is possible and the schedule displays its latest outcome.
 Access/definition changes block and disable delivery until reviewed and enabled.
 SMTP configuration is reused, with bounded connection and socket timeouts. New
 schedules default to disabled and no additional environment variables are required.
-Summary stats, by-status breakdown, engineer load, KPI health (sorted worst-first),
+Summary stats, by-status breakdown and engineer load are returned to report users.
+KPI health (sorted worst-first) is queried and included only with `kpis.view`, followed by
 6-month trend charts (tasks created/completed/on-time, visits scheduled/completed/
 reported, hours logged — built with batched range queries), pending-closure list, a
 scheduled **weekly email digest** (`reportScheduler.js`), and the Service Activity
@@ -834,7 +839,7 @@ query param).
 | `/api/maintenance-visits` | visit CRUD, engineer assignment, reports, import/export |
 | `/api/calendar` + `/api/calendar/ical` | month feed, iCal subscription |
 | `/api/reports` | summary, monthly trends, projects, service-activity customer/engineer/team/overview reports + export; `/custom` (report builder, saved reports, schedules, templates) |
-| `/api/kpis`, `/api/milestones`, `/api/scorecards` | per-project metrics & evaluations |
+| `/api/kpis`, `/api/milestones`, `/api/scorecards` | per-project metrics and evaluations; KPI reads/writes require `kpis.view`/`kpis.manage`, which engineers cannot hold |
 | `/api/workload` | engineer load + 4-week forecast; `/planning` (effort/availability inputs), `/pressure` (ranking + policy) |
 | `/api/time-logs` | hour logging + summaries |
 | `/api/sla` | live SLA overview |
@@ -903,8 +908,10 @@ testing, and end-to-end runs of the browser against the real API.
 Flagged for a reviewer (human or AI) looking to improve functionality, UI, or security:
 
 - **Granular permissions are incremental.** Versioned role and user overrides cover
-  managed-customer access, managed-report generation/review and notification-rule
-  administration. Project, task, visit, customer, asset, reporting and Service Activity
+  managed-customer access, managed-report generation/review, notification-rule
+  administration and KPI view/manage access. KPI permissions also enforce role
+  eligibility so engineer overrides cannot expose management KPI data. Project, task,
+  visit, customer, asset, reporting and Service Activity
   permissions still use role checks plus scoped membership checks
   (`project_assignments`, `maintenance_visit_engineers`, `team_members`,
   `customer_teams` and `customer_engineers`). Add new keys with server enforcement and

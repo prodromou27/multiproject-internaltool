@@ -37,10 +37,10 @@ const calendar = {
   projects: [], visits: [],
 };
 
-export async function mockApi(page, { role = 'engineer', signedIn = true, teams = [{ id: 1, name: 'Security Team', service_activity_enabled: 1 }] } = {}) {
+export async function mockApi(page, { role = 'engineer', signedIn = true, teams = [{ id: 1, name: 'Security Team', service_activity_enabled: 1 }], permissions } = {}) {
   const calls = [];
   const overrides = new Map();
-  const user = { ...ALEX, role };
+  const user = { ...ALEX, role, ...(permissions ? { permissions } : {}) };
 
   const routes = {
     'GET /api/auth/me': () => signedIn ? { body: user } : { status: 401, body: { error: 'Not signed in' } },

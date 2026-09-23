@@ -8,6 +8,7 @@ test.before(async () => {
   h = await harness.start({
     '/api/kpis': require('../routes/kpis'),
     '/api/milestones': require('../routes/milestones'),
+    '/api/reports': require('../routes/reports'),
   });
   manager = await h.makeUser('Kpi Manager', 'manager');
   planner = await h.makeUser('Kpi Planner', 'planner');
@@ -18,17 +19,35 @@ test.before(async () => {
 });
 test.after(() => h.stop());
 
-test('KPIs are readable only by managers, PMs and assigned users; writes are manager-only', async () => {
+test('KPI permissions never expose management data to engineers', async () => {
   const body = { name: 'Uptime', target_value: 99.9, current_value: 98, unit: '%' };
   assert.equal((await h.api(`/api/kpis/${project}`, { method: 'POST', token: assignedEngineer.token, body })).status, 403);
   assert.equal((await h.api(`/api/kpis/${project}`, { method: 'POST', token: planner.token, body })).status, 403);
   assert.equal((await h.api(`/api/kpis/${project}`, { method: 'POST', token: manager.token, body })).status, 200);
 
   assert.equal((await h.api(`/api/kpis/${project}`, { token: manager.token })).data.length, 1);
-  assert.equal((await h.api(`/api/kpis/${project}`, { token: assignedEngineer.token })).status, 200);
+  assert.equal((await h.api(`/api/kpis/${project}`, { token: assignedEngineer.token })).status, 403);
   assert.equal((await h.api(`/api/kpis/${project}`, { token: otherEngineer.token })).status, 403);
-  // Planners are held to the same assignment rule as engineers.
   assert.equal((await h.api(`/api/kpis/${project}`, { token: planner.token })).status, 403);
+
+  await h.db.prepare("INSERT INTO user_permission_overrides (user_id,permission_key,allowed,updated_by) VALUES (?,'kpis.view',1,?),(?,'kpis.manage',1,?)").run(planner.id,manager.id,planner.id,manager.id);
+  assert.equal((await h.api(`/api/kpis/${project}`, { token: planner.token })).status,200,'authorized management can view KPIs');
+  assert.equal((await h.api(`/api/kpis/${project}`, { method:'POST',token:planner.token,body:{ name:'Risk',target_value:5 } })).status,200,'authorized management can manage KPIs');
+
+  await h.db.prepare("INSERT INTO user_permission_overrides (user_id,permission_key,allowed,updated_by) VALUES (?,'kpis.view',1,?)").run(assignedEngineer.id,manager.id);
+  assert.equal((await h.api(`/api/kpis/${project}`, { token: assignedEngineer.token })).status,403,'a forged engineer override remains denied');
+});
+
+test('report summaries omit KPI fields when KPI viewing is denied',async () => {
+  if (process.env.TEST_DATABASE_URL) {
+    const allowed=await h.api('/api/reports/summary',{ token:manager.token });
+    assert.equal(allowed.status,200);
+    assert.ok(Array.isArray(allowed.data.kpiHealth));
+  }
+  await h.db.prepare("INSERT INTO user_permission_overrides (user_id,permission_key,allowed,updated_by) VALUES (?,'kpis.view',0,?)").run(manager.id,manager.id);
+  const denied=await h.api('/api/reports/summary',{ token:manager.token });
+  assert.equal(denied.status,200);
+  assert.equal(Object.hasOwn(denied.data,'kpiHealth'),false);
 });
 
 test('KPI validation rejects bad numbers, empty names and missing rows', async () => {

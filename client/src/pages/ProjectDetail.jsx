@@ -352,7 +352,8 @@ export default function ProjectDetail() {
           'members',
           ...(isPM ? [] : ['attachments']),
           ...(canManage ? ['fields'] : []),
-          ...(isManager ? ['kpis', 'scorecard'] : []),
+          ...((user.permissions?.['kpis.view'] ?? isManager) ? ['kpis'] : []),
+          ...(isManager ? ['scorecard'] : []),
         ].map(t => (
           <button key={t} className={'tab' + (tab === t ? ' active' : '')} onClick={() => setTab(t)}>
             {t === 'kpis' ? 'KPIs' : t === 'scorecard' ? 'Scorecard' : t === 'fields' ? 'Custom Fields' : t.charAt(0).toUpperCase() + t.slice(1)}
@@ -587,8 +588,8 @@ export default function ProjectDetail() {
         <div className="card"><CustomFieldsTab projectId={id} canManage={canManage} /></div>
       )}
 
-      {tab === 'kpis' && isManager && (
-        <div className="card"><KpiSection projectId={id} /></div>
+      {tab === 'kpis' && (user.permissions?.['kpis.view'] ?? isManager) && (
+        <div className="card"><KpiSection projectId={id} canManage={user.permissions?.['kpis.manage'] ?? isManager} /></div>
       )}
 
       {tab === 'scorecard' && isManager && (

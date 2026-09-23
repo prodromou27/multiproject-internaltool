@@ -141,7 +141,7 @@ export function AttachmentsSection({ projectId }) {
   );
 }
 
-export function KpiSection({ projectId }) {
+export function KpiSection({ projectId, canManage = false }) {
   const [kpis, setKpis] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -159,7 +159,7 @@ export function KpiSection({ projectId }) {
     <div>
       <div className="flex items-center justify-between mb-12">
         <div className="section-title" style={{ margin: 0 }}>KPIs</div>
-        <button className="btn btn-sm btn-ghost" onClick={() => setShowAdd(true)}>+ Add KPI</button>
+        {canManage && <button className="btn btn-sm btn-ghost" onClick={() => setShowAdd(true)}>+ Add KPI</button>}
       </div>
       {kpis.length === 0 ? <p className="text-muted text-sm">No KPIs defined</p> : kpis.map(k => {
         const pct = k.target_value > 0 ? Math.round((k.current_value / k.target_value) * 100) : 0;
@@ -168,12 +168,12 @@ export function KpiSection({ projectId }) {
             <div className="kpi-label">{k.name}</div>
             <div className="kpi-bar"><ProgressBar value={k.current_value} max={k.target_value} /></div>
             <div className="kpi-value">{k.current_value}{k.unit || ''} / {k.target_value}{k.unit || ''} ({pct}%)</div>
-            <button className="btn btn-sm btn-ghost" onClick={() => { setEditing(k); setForm({ name: k.name, target_value: k.target_value, current_value: k.current_value, unit: k.unit || '' }); setShowAdd(true); }}>Edit</button>
-            <button className="btn btn-sm btn-danger" onClick={() => { api.deleteKpi(projectId, k.id).then(load); }}>Del</button>
+            {canManage && <button className="btn btn-sm btn-ghost" onClick={() => { setEditing(k); setForm({ name: k.name, target_value: k.target_value, current_value: k.current_value, unit: k.unit || '' }); setShowAdd(true); }}>Edit</button>}
+            {canManage && <button className="btn btn-sm btn-danger" onClick={() => { api.deleteKpi(projectId, k.id).then(load); }}>Del</button>}
           </div>
         );
       })}
-      {showAdd && (
+      {showAdd && canManage && (
         <Modal title={editing ? 'Edit KPI' : 'Add KPI'} onClose={() => { setShowAdd(false); setEditing(null); }}>
           <form onSubmit={save}>
             <div className="form-group"><label>KPI Name *</label><input value={form.name} onChange={set('name')} required /></div>

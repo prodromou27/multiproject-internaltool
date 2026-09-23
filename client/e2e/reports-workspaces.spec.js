@@ -14,6 +14,16 @@ test('report sections are deep-linkable and overview metrics use the shared ledg
   await expect(page).toHaveURL(/view=builder/);
 });
 
+test('denied KPI permissions keep KPI data and deep links out of report state',async ({ page }) => {
+  const api=await mockApi(page,{ role:'manager',permissions:{ 'kpis.view':false,'kpis.manage':false } });
+  api.override('GET /api/reports/summary',() => ({ body:{ total:0,overdue:0,byStatus:[],engineerLoad:[],pendingClosure:[],taskStats:{} } }));
+  await page.goto('/reports?view=kpis');
+
+  await expect(page.getByRole('button',{ name:'KPIs' })).toHaveCount(0);
+  await expect(page.getByRole('button',{ name:'Overview' })).toHaveClass(/active/);
+  await expect(page.getByText('No KPIs defined yet')).toHaveCount(0);
+});
+
 test('service operations preserves the last report when refresh fails', async ({ page }) => {
   const api = await mockApi(page, { role: 'manager' });
   let calls = 0;

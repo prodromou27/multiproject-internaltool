@@ -1787,6 +1787,10 @@ test('permission administration supports versioned role and user overrides',asyn
   const path='/api/permissions',permission_key='managed_customers.view';
   assert.equal((await api(path,{ token:ids.tokenPlanner })).status,403);
   const matrix=await api(path,{ token:ids.tokenManager });assert.equal(matrix.status,200);assert.equal(matrix.data.definitions.some(item => item.key===permission_key),true);
+  assert.equal(matrix.data.definitions.some(item => item.key==='kpis.view' && item.eligible_roles?.includes('manager')),true);
+  const engineerKpiRule={ scope:'user',user_id:ids.engineerEnabled,permission_key:'kpis.view',allowed:true,version:0 };
+  const rejectedEngineerKpi=await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:engineerKpiRule });
+  assert.equal(rejectedEngineerKpi.status,400);assert.match(rejectedEngineerKpi.data.error,/not eligible/i);
   const roleBody={ scope:'role',role:'planner',permission_key,allowed:true,version:0 };
   const role=await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:roleBody });assert.equal(role.status,200);assert.equal(role.data.rule.version,1);
   assert.equal((await api('/api/auth/permissions',{ token:ids.tokenPlanner })).data.permissions[permission_key],true);
