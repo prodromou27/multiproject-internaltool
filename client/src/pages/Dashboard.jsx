@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   RefreshCw, CheckCircle2, AlertTriangle, Clock, Wrench,
   FolderOpen, ListTodo, Send, ClipboardCheck, CalendarX, X,
-  Settings2, GripVertical,
+  Settings2, GripVertical, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import OperationalFocus from '../components/OperationalFocus';
@@ -11,6 +11,7 @@ import { localDateISO } from '../utils/dates';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../components/Shared';
+import './Dashboard.css';
 
 /* ── Widget definitions per role ─────────────────────────── */
 const WIDGET_DEFS = {
@@ -93,30 +94,42 @@ function useWidgetPrefs(userId, role) {
 function WidgetCustomizer({ prefs, defs, onToggle, onReorder, onReset, onClose }) {
   const [dragFrom, setDragFrom] = useState(null);
   const [overIdx,  setOverIdx]  = useState(null);
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialogRef.current?.focus();
+    const onKeyDown = event => {
+      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Tab') return;
+      const controls = [...dialogRef.current.querySelectorAll('button:not([disabled])')];
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [onClose]);
 
   return (
-    <div
-      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)',
-        display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}
-      onClick={onClose}
-    >
-      <div
-        style={{ background:'var(--surface)', borderRadius:14, padding:24,
-          width:420, maxWidth:'94vw', boxShadow:'0 20px 60px rgba(0,0,0,.18)' }}
-        onClick={e => e.stopPropagation()}
-      >
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
-          <div style={{ fontWeight:700, fontSize:16 }}>Customize Dashboard</div>
-          <button onClick={onClose}
-            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray-400)', padding:4 }}>
+    <div className="dashboard-customizer-backdrop" onMouseDown={onClose}>
+      <section ref={dialogRef} tabIndex={-1} className="dashboard-customizer" role="dialog" aria-modal="true"
+        aria-labelledby="dashboard-customizer-title" onMouseDown={event => event.stopPropagation()}>
+        <header>
+          <div><h2 id="dashboard-customizer-title">Arrange workspace</h2>
+            <p>Choose the information shown and set its reading order.</p></div>
+          <button type="button" onClick={onClose} aria-label="Close dashboard customizer">
             <X size={18} />
           </button>
-        </div>
-        <p style={{ fontSize:12, color:'var(--gray-500)', marginBottom:16 }}>
-          Drag to reorder &bull; Show/Hide to toggle visibility
-        </p>
+        </header>
 
-        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+        <div className="dashboard-widget-options">
           {prefs.order.map((id, idx) => {
             const def    = defs.find(d => d.id === id);
             if (!def) return null;
@@ -134,32 +147,15 @@ function WidgetCustomizer({ prefs, defs, onToggle, onReorder, onReset, onClose }
                   if (dragFrom !== null && dragFrom !== idx) onReorder(dragFrom, idx);
                   setDragFrom(null); setOverIdx(null);
                 }}
-                style={{
-                  display:'flex', alignItems:'center', gap:10,
-                  padding:'10px 12px', borderRadius:8, cursor:'grab',
-                  background: overIdx === idx ? 'var(--primary-light)' : hidden ? 'var(--gray-50)' : 'var(--surface)',
-                  border:`1px solid ${overIdx === idx ? 'var(--primary)' : 'var(--gray-200)'}`,
-                  opacity: dragFrom === idx ? 0.35 : hidden ? 0.65 : 1,
-                  transition:'background .1s, border-color .1s',
-                  userSelect:'none',
-                }}
+                className={`dashboard-widget-option${overIdx === idx ? ' drag-over' : ''}${dragFrom === idx ? ' dragging' : ''}${hidden ? ' is-hidden' : ''}`}
               >
-                <GripVertical size={14} color="var(--gray-300)" style={{ flexShrink:0 }} />
-                <span style={{ flex:1, fontSize:13,
-                  fontWeight: hidden ? 400 : 600,
-                  color: hidden ? 'var(--gray-400)' : 'var(--gray-900)' }}>
-                  {def.label}
-                </span>
-                <button
-                  onClick={() => onToggle(id)}
-                  style={{
-                    padding:'3px 12px', borderRadius:20, fontSize:11, fontWeight:700,
-                    border:'none', cursor:'pointer', flexShrink:0,
-                    background: hidden ? 'var(--gray-100)' : 'var(--primary-light)',
-                    color:      hidden ? 'var(--gray-500)' : 'var(--primary)',
-                    transition:'all .1s',
-                  }}
-                >
+                <GripVertical size={14} aria-hidden="true" />
+                <span>{def.label}</span>
+                <div className="dashboard-widget-order" aria-label={`Move ${def.label}`}>
+                  <button type="button" onClick={() => onReorder(idx, idx - 1)} disabled={idx === 0} aria-label={`Move ${def.label} up`}><ArrowUp size={13} /></button>
+                  <button type="button" onClick={() => onReorder(idx, idx + 1)} disabled={idx === prefs.order.length - 1} aria-label={`Move ${def.label} down`}><ArrowDown size={13} /></button>
+                </div>
+                <button type="button" className="dashboard-widget-toggle" onClick={() => onToggle(id)} aria-pressed={!hidden}>
                   {hidden ? 'Show' : 'Hide'}
                 </button>
               </div>
@@ -167,17 +163,13 @@ function WidgetCustomizer({ prefs, defs, onToggle, onReorder, onReset, onClose }
           })}
         </div>
 
-        <div style={{ display:'flex', justifyContent:'space-between', marginTop:18 }}>
-          <button
-            onClick={onReset}
-            style={{ background:'none', border:'1px solid var(--gray-200)', borderRadius:8,
-              padding:'6px 14px', fontSize:12, cursor:'pointer', color:'var(--gray-500)' }}
-          >
+        <footer>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onReset}>
             Reset to default
           </button>
           <button className="btn btn-primary" onClick={onClose}>Done</button>
-        </div>
-      </div>
+        </footer>
+      </section>
     </div>
   );
 }
@@ -229,25 +221,13 @@ function OverdueBanner({ overdueProjects, overdueTasks }) {
 
 /* ── StatCard ────────────────────────────────────────────── */
 function StatCard({ icon: Icon, iconBg, iconColor, value, label, valueColor, to }) {
-  const navigate = useNavigate();
-  const clickable = !!to;
+  const Component = to ? Link : 'div';
   return (
-    <div
-      className="card"
-      style={{ padding:'16px 20px', cursor:clickable ? 'pointer' : 'default', transition:'transform .15s, box-shadow .15s' }}
-      onClick={clickable ? () => navigate(to) : undefined}
-      onMouseEnter={clickable ? e => { e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow='0 6px 20px rgba(0,0,0,.1)'; } : undefined}
-      onMouseLeave={clickable ? e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow=''; } : undefined}
-    >
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
-        <div style={{ width:36, height:36, borderRadius:10, background:iconBg,
-          display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <Icon size={18} color={iconColor} />
-        </div>
-      </div>
-      <div style={{ fontSize:28, fontWeight:800, color:valueColor || 'var(--gray-900)', letterSpacing:'-.5px' }}>{value}</div>
-      <div style={{ fontSize:12, color:'var(--gray-500)', marginTop:3, fontWeight:500 }}>{label}</div>
-    </div>
+    <Component to={to} className={`dashboard-stat${to ? ' dashboard-stat-link' : ''}`}
+      style={{ '--stat-icon-bg': iconBg, '--stat-icon-color': iconColor, '--stat-value-color': valueColor || 'var(--gray-900)' }}>
+      <span className="dashboard-stat-icon"><Icon size={18} /></span>
+      <span className="dashboard-stat-copy"><strong>{value}</strong><small>{label}</small></span>
+    </Component>
   );
 }
 
@@ -269,6 +249,8 @@ export default function Dashboard() {
   const [completingVisit,  setCompletingVisit]  = useState(null); // visit id being completed
   const [error,            setError]            = useState('');
   const [loading,          setLoading]          = useState(true);
+  const [refreshing,       setRefreshing]       = useState(false);
+  const [lastUpdated,      setLastUpdated]      = useState(null);
   const [showCustomizer,   setShowCustomizer]   = useState(false);
 
   const { prefs, defs, isVisible, toggle, reorder, reset } = useWidgetPrefs(user.id, user.role);
@@ -276,10 +258,13 @@ export default function Dashboard() {
   const [overview, setOverview] = useState(null);
   const [overviewError, setOverviewError] = useState('');
   const overviewRequest = useRef(0);
+  const loadedOnce = useRef(false);
 
   const load = useCallback(async () => {
     const request = ++overviewRequest.current;
-    setLoading(true); setError('');
+    if (loadedOnce.current) setRefreshing(true);
+    else setLoading(true);
+    setError('');
     try {
       const calls = [
         (isPlanner) ? Promise.resolve([]) : api.projects(),
@@ -307,18 +292,24 @@ export default function Dashboard() {
       if (failed.length) setError(`Some data could not be loaded: ${failed.join(' · ')}`);
     } catch (err) {
       setError(err.message || 'Failed to load dashboard');
-    } finally { if (request === overviewRequest.current) setLoading(false); }
+    } finally {
+      if (request === overviewRequest.current) {
+        loadedOnce.current = true;
+        setLastUpdated(new Date());
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
   }, [isManager, isPlanner, isEngineer, isPM]);
 
   useEffect(() => { load(); return () => { overviewRequest.current++; }; }, [load]);
 
   if (loading) return (
-    <div className="page">
-      <div style={{ display:'flex', alignItems:'center', gap:12, color:'var(--gray-400)', paddingTop:48 }}>
+    <div className="page dashboard-page">
+      <div className="dashboard-loading" role="status">
         <RefreshCw size={18} style={{ animation:'spin 1s linear infinite' }} />
         Loading dashboard…
       </div>
-      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 
@@ -1102,7 +1093,7 @@ export default function Dashboard() {
   const renderFn = isManager ? managerWidget : isPlanner ? plannerWidget : isPM ? pmWidget : engineerWidget;
 
   return (
-    <div className="page">
+    <div className="page dashboard-page">
       {/* Page header */}
       <PageHeader eyebrow="Workspace" title={isManager ? 'Operations overview' : isEngineer ? 'My work overview' : isPlanner ? 'Maintenance planning' : 'Project overview'}
         description={isManager ? 'Review exceptions, outstanding decisions and upcoming commitments.' : isEngineer ? 'Start with due work, report obligations and customer follow-ups.' : 'Plan and review the work available to your role.'}
@@ -1117,12 +1108,19 @@ export default function Dashboard() {
           >
             <Settings2 size={13} /> Customize
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={load}
+          <button className="btn btn-ghost btn-sm" onClick={load} disabled={refreshing}
             style={{ display:'inline-flex', alignItems:'center', gap:5 }}>
-            <RefreshCw size={13} /> Refresh
+            <RefreshCw size={13} className={refreshing ? 'dashboard-spin' : ''} /> {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
         </>} />
+
+      <div className="dashboard-statusbar" aria-live="polite">
+        <span className="dashboard-snapshot"><i /> Current snapshot</span>
+        <span>{new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</span>
+        <span>Updated {lastUpdated ? lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'just now'}</span>
+        <span className="dashboard-widget-count">{prefs.order.length - prefs.hidden.length} of {prefs.order.length} widgets visible</span>
+      </div>
 
       {error && (
         <div className="alert alert-warning" style={{ marginBottom:20 }}>

@@ -119,7 +119,9 @@ client/src/
   and error states, reduced-motion and touch-size rules); deleting it and its import in
   `main.jsx` restores the previous look. Feature CSS (`billingMix.css`,
   `ServiceCharts.css`, `ActivityLedger.css`, `ActivityForm.css`, `ServiceOperations.css`,
-  `ServiceReport.css`) is scoped under its page class.
+  `ServiceReport.css`, `Dashboard.css`) is scoped under its page class. The dashboard
+  uses a dense operations-ledger layout, keeps data visible during refresh, and stores
+  each user's visible widget order locally.
 - **Colours must be theme tokens.** Status panels use `--danger-light`, `--warning-light`,
   `--success-light`, `--primary-light`, `--surface`, `--gray-*`, plus `--tone-*` (text
   on those panels) and `--cal-*` (calendar event types), which flip together in dark
