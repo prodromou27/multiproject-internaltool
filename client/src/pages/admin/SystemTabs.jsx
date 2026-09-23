@@ -171,6 +171,19 @@ export function DeploymentHealthTab() {
           })}
         </div>
       </div>
+      <div className="card mt-16">
+        <div className="card-header"><h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}><Activity size={15} /> Database Query Activity</h3></div>
+        <div style={{ padding: '14px 20px 18px' }}>
+          <div className="grid-4 mb-12">
+            <div className="stat-card"><strong>{data.database?.count || 0}</strong><span>Observed</span></div>
+            <div className="stat-card"><strong>{data.database?.average_ms || 0}ms</strong><span>Average</span></div>
+            <div className="stat-card"><strong>{data.database?.slow || 0}</strong><span>Slow</span></div>
+            <div className="stat-card"><strong>{data.database?.pool?.waiting || 0}</strong><span>Pool waiting</span></div>
+          </div>
+          {(data.database?.recent_slow || []).length ? <div className="table-wrap"><table><thead><tr><th>Safe query label</th><th>Duration</th><th>Observed</th><th>Result</th></tr></thead><tbody>{data.database.recent_slow.map((query,index) => <tr key={`${query.occurred_at}-${index}`}><td>{query.label}</td><td>{query.duration_ms}ms</td><td>{fmtDateTime(query.occurred_at)}</td><td><span className={`badge ${query.failed?'badge-danger':'badge-warning'}`}>{query.failed?'Failed':'Slow'}</span></td></tr>)}</tbody></table></div> : <p className="text-muted text-sm">No queries have crossed the {data.database?.threshold_ms || 250}ms threshold since this process started.</p>}
+          <p className="text-muted text-xs mt-8">Labels contain only the operation and database relation. SQL values and customer data are never retained.</p>
+        </div>
+      </div>
     </div>
   );
 }

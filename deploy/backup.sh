@@ -31,5 +31,13 @@ docker compose "${COMPOSE[@]}" exec -T db \
   pg_dump -U "$PGUSER" -d "$PGDB" --clean --if-exists \
   | gzip > "$OUT"
 
+gzip -t "$OUT"
+BACKUP_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+BACKUP_FILE="$(basename "$OUT")"
+BACKUP_SIZE="$(wc -c < "$OUT" | tr -d ' ')"
+docker compose "${COMPOSE[@]}" exec -T db psql -v ON_ERROR_STOP=1 -U "$PGUSER" -d "$PGDB" \
+  -v backup_at="$BACKUP_AT" -v backup_file="$BACKUP_FILE" -v backup_size="$BACKUP_SIZE" \
+  -c "INSERT INTO settings(key,value) VALUES ('last_backup_status',json_build_object('completed_at',:'backup_at','file',:'backup_file','size_bytes',:'backup_size'::bigint)::text) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value;" >/dev/null
+
 echo "==> Done ($(du -h "$OUT" | cut -f1)). Pruning dumps older than ${RETENTION} days."
 find "$OUTDIR" -name "${PGDB}-*.sql.gz" -type f -mtime +"$RETENTION" -print -delete

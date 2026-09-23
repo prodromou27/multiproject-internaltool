@@ -141,6 +141,10 @@ part of the foundation work.
 | 16a | Team capability foundation | Managed Services and Project Delivery emphasis configured per team, combined for multi-team users, with RBAC unchanged | Complete; navigation and quick-create ordering included |
 | 16b | Adaptive My Work | Managed Services, Project Delivery and mixed layouts answer what the engineer should work on now while retaining secondary work | Complete; focused browser coverage included |
 | 16c | Adaptive Customer 360 | Reorder shared customer sections and quick actions from workflow emphasis without widening API access | Complete; unit coverage included |
+| 17 | Performance and reliability | Durable background work, database observability, incremental dashboards, indexed search and recoverability checks | In progress |
+| 17a | Database and recovery visibility | Privacy-safe slow-query metrics, pool pressure, backup freshness and non-destructive restore verification in Deployment Health | Complete |
+| 17b | Durable background jobs | PostgreSQL-backed queue for scheduled reports, ticket synchronization and asynchronous exports | Next |
+| 17c | Read-path performance | Cached dashboard aggregates, consistent large-list pagination and indexed full-text search | Planned |
 
 ## Reporting design constraints
 

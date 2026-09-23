@@ -904,6 +904,14 @@ and SQL check against a PostgreSQL 16 container; client tests, production build,
 Playwright tests (report uploaded on failure) and `npm audit`; and
 `docker compose config` validation.
 
+Database calls made through the application data facade are timed in-process. The
+management-only Deployment Health view reports pool pressure, aggregate latency and
+a bounded list of slow-query labels. Labels contain only the SQL operation and table;
+query text, parameters and customer data are never retained. `SLOW_QUERY_MS` may
+override the default 250 ms threshold. The backup helper integrity-checks each archive
+and records its completion, while `deploy/verify-backup.sh` performs a non-destructive
+restore into a temporary database and records the latest successful verification.
+
 Not covered: a manual browser and screen-reader pass on real staging data, real-device
 testing, and end-to-end runs of the browser against the real API.
 

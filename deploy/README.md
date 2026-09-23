@@ -202,6 +202,7 @@ instead of being force-killed.
 
 ```bash
 ./deploy/backup.sh prod                     # one-off dump → deploy/backups/
+./deploy/verify-backup.sh prod deploy/backups/app-YYYYmmdd-HHMMSS.sql.gz
 ./deploy/restore.sh prod deploy/backups/app-YYYYmmdd-HHMMSS.sql.gz
 ```
 
@@ -212,6 +213,10 @@ Schedule daily dumps via cron:
 ```
 
 Dumps older than `BACKUP_RETENTION_DAYS` (default 14) are pruned automatically.
+Every backup is checked with `gzip -t` and recorded for the management Deployment
+Health screen. Run the non-destructive verifier at least monthly; it restores into a
+temporary PostgreSQL database, checks core tables, drops the temporary database and
+records the successful verification without changing live application data.
 
 ## 6. Import legacy SQLite data (one-time, PROD promotion)
 

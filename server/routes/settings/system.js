@@ -40,6 +40,32 @@ router.get('/deployment-health', requireManager, async (req, res) => {
   } catch {
     add('schema_migrations', 'Schema migrations', 'warning', 'Could not inspect schema migration status.');
   }
+  const database = db.queryMetrics();
+  const elevatedFailureRate = database.count >= 100 && database.failed / database.count >= 0.05;
+  add(
+    'database_performance',
+    'Database performance',
+    database.pool.waiting > 0 || elevatedFailureRate || database.recent_slow.length >= 5 ? 'warning' : 'ok',
+    `${database.count} observed queries; ${database.average_ms}ms average; ${database.slow} over ${database.threshold_ms}ms; ${database.failed} failed; pool ${database.pool.idle}/${database.pool.total} idle${database.pool.waiting ? `, ${database.pool.waiting} waiting` : ''}.`
+  );
+
+  async function operationalRecord(key) {
+    const row = await db.prepare('SELECT value FROM settings WHERE key=?').get(key);
+    if (!row) return null;
+    try { return JSON.parse(row.value); } catch { return null; }
+  }
+  try {
+    const backup = await operationalRecord('last_backup_status');
+    const backupAge = backup?.completed_at ? Date.now() - Date.parse(backup.completed_at) : Infinity;
+    add('database_backup', 'Database backup', backupAge <= 36 * 60 * 60 * 1000 ? 'ok' : 'warning',
+      backup ? `${backup.file || 'Backup'} completed ${backup.completed_at}; archive ${bytes(Number(backup.size_bytes) || 0)}.` : 'No successful backup has been recorded.');
+    const restore = await operationalRecord('last_restore_verification');
+    const restoreAge = restore?.completed_at ? Date.now() - Date.parse(restore.completed_at) : Infinity;
+    add('restore_verification', 'Backup restore verification', restoreAge <= 31 * 24 * 60 * 60 * 1000 ? 'ok' : 'warning',
+      restore ? `${restore.file || 'Backup'} restored into a temporary database and passed checks at ${restore.completed_at}.` : 'No non-destructive restore verification has been recorded.');
+  } catch {
+    add('database_backup', 'Database backup', 'warning', 'Could not inspect backup status.');
+  }
 
   add(
     'attachment_encryption',
@@ -152,6 +178,7 @@ router.get('/deployment-health', requireManager, async (req, res) => {
       uptime_seconds: Math.round(process.uptime()),
       pid: process.pid,
     },
+    database,
     checks,
   });
 });

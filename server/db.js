@@ -23,6 +23,7 @@
 const pg = require('pg');
 const { Pool } = pg;
 const bcrypt = require('bcryptjs');
+const queryMetrics = require('./queryMetrics');
 
 // node-pg returns int8 (bigint) and numeric as STRINGS by default. SQLite gave
 // JS numbers, and the app does arithmetic/comparisons on COUNT/SUM/AVG/ROUND
@@ -57,15 +58,16 @@ function translate(sql) {
 
 // Build the prepare()-style interface bound to a runner (pool or tx client).
 function makeInterface(runner) {
+  const query = (sql, params) => queryMetrics.observeQuery(sql, () => runner.query(sql, params));
   return {
     prepare(rawSql) {
       return {
         async get(...params) {
-          const r = await runner.query(translate(rawSql), params);
+          const r = await query(translate(rawSql), params);
           return r.rows[0];
         },
         async all(...params) {
-          const r = await runner.query(translate(rawSql), params);
+          const r = await query(translate(rawSql), params);
           return r.rows;
         },
         async run(...params) {
@@ -76,7 +78,7 @@ function makeInterface(runner) {
           if (/^\s*insert\s/i.test(sql) && !/returning/i.test(sql) && !/on\s+conflict/i.test(sql) && !NO_ID_TABLE_RE.test(sql)) {
             sql = sql.replace(/;?\s*$/, '') + ' RETURNING id';
           }
-          const r = await runner.query(sql, params);
+          const r = await query(sql, params);
           return {
             lastInsertRowid: r.rows && r.rows[0] ? r.rows[0].id : undefined,
             changes: r.rowCount,
@@ -86,7 +88,7 @@ function makeInterface(runner) {
     },
     async exec(rawSql) {
       // Multi-statement DDL/SQL — passed through untranslated (used for schema).
-      return runner.query(rawSql);
+      return query(rawSql);
     },
   };
 }
@@ -1324,5 +1326,6 @@ module.exports = {
   transaction,
   init,
   pool,
+  queryMetrics: () => queryMetrics.snapshot(pool),
   _translate: translate, // exported for tests
 };
