@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Building2, FolderOpen, X, Bell, Pin } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
@@ -13,67 +14,37 @@ import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useStatuses } from '../hooks/useStatuses';
 import { useToast } from '../components/Toast';
 
-/* ── Inline status dropdown ────────────────────────────────────── */
+/* ── Inline status dropdown ────────────────────────────────────── *
+ * Built on Radix's unstyled DropdownMenu primitive instead of a hand-
+ * rolled click-outside/scroll/position implementation. The trigger is a
+ * real, keyboard-operable <button> with correct aria-haspopup/expanded;
+ * the menu gets arrow-key navigation, Escape-to-close and click-outside
+ * for free, and positions itself (no more manual getBoundingClientRect).
+ * Visual classes (inline-dropdown*) are unchanged from the previous
+ * implementation, so no CSS moved. */
 function InlineStatusSelect({ project, onUpdate }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const ref = useRef(null);
-  const dropdownRef = useRef(null);
   const statusCtx = useStatuses();
   const statuses = (statusCtx?.config?.project || []).filter(s => s.value !== 'pending_approval');
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target) &&
-          dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false);
-    }
-    function handleScroll(e) {
-      // Ignore scroll events that originate inside the dropdown itself
-      if (dropdownRef.current && dropdownRef.current.contains(e.target)) return;
-      setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    window.addEventListener('scroll', handleScroll, true);
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      window.removeEventListener('scroll', handleScroll, true);
-    };
-  }, [open]);
-
-  function handleTrigger(e) {
-    e.preventDefault(); e.stopPropagation();
-    if (!open) {
-      const rect = ref.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.left });
-    }
-    setOpen(o => !o);
-  }
-
   return (
-    <div ref={ref} style={{ display: 'inline-block' }}>
-      <div onClick={handleTrigger}
-        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-        title="Click to change status"
-      >
-        <StatusBadge entityType="project" s={project.status} />
-        <span style={{ fontSize: 9, color: 'var(--gray-400)', lineHeight: 1, marginTop: 1 }}>▾</span>
-      </div>
-      {open && (
-        <div ref={dropdownRef} className="inline-dropdown" style={{ top: pos.top, left: pos.left, minWidth: 220 }}>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" className="inline-dropdown-trigger" title="Click to change status">
+          <StatusBadge entityType="project" s={project.status} />
+          <span style={{ fontSize: 9, color: 'var(--gray-400)', lineHeight: 1, marginTop: 1 }}>▾</span>
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="inline-dropdown" style={{ minWidth: 220 }} align="start" sideOffset={4}>
           {statuses.map(s => (
-            <div
-              key={s.value}
-              className={`inline-dropdown-item${s.value === project.status ? ' active' : ''}`}
-              onClick={e => { e.stopPropagation(); onUpdate(project, s.value); setOpen(false); }}
-            >
+            <DropdownMenu.Item key={s.value} className={`inline-dropdown-item${s.value === project.status ? ' active' : ''}`}
+              onSelect={() => onUpdate(project, s.value)}>
               <StatusBadge entityType="project" s={s.value} />
               {s.value === project.status && <span className="inline-dropdown-check">✓</span>}
-            </div>
+            </DropdownMenu.Item>
           ))}
-        </div>
-      )}
-    </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 
@@ -85,55 +56,19 @@ const PRIORITY_OPTIONS = [
 ];
 
 function InlinePrioritySelect({ project, onUpdate }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const ref = useRef(null);
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target) &&
-          dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false);
-    }
-    function handleScroll(e) {
-      if (dropdownRef.current && dropdownRef.current.contains(e.target)) return;
-      setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    window.addEventListener('scroll', handleScroll, true);
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      window.removeEventListener('scroll', handleScroll, true);
-    };
-  }, [open]);
-
-  function handleTrigger(e) {
-    e.preventDefault(); e.stopPropagation();
-    if (!open) {
-      const rect = ref.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.left });
-    }
-    setOpen(o => !o);
-  }
-
   return (
-    <div ref={ref} style={{ display: 'inline-block' }}>
-      <div onClick={handleTrigger}
-        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-        title="Click to change priority"
-      >
-        <PriorityBadge p={project.priority} />
-        <span style={{ fontSize: 9, color: 'var(--gray-400)', lineHeight: 1, marginTop: 1 }}>▾</span>
-      </div>
-      {open && (
-        <div ref={dropdownRef} className="inline-dropdown" style={{ top: pos.top, left: pos.left, minWidth: 150 }}>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" className="inline-dropdown-trigger" title="Click to change priority">
+          <PriorityBadge p={project.priority} />
+          <span style={{ fontSize: 9, color: 'var(--gray-400)', lineHeight: 1, marginTop: 1 }}>▾</span>
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="inline-dropdown" style={{ minWidth: 150 }} align="start" sideOffset={4}>
           {PRIORITY_OPTIONS.map(p => (
-            <div
-              key={p.value}
-              className={`inline-dropdown-item${p.value === project.priority ? ' active' : ''}`}
-              onClick={e => { e.stopPropagation(); onUpdate(project, p.value); setOpen(false); }}
-            >
+            <DropdownMenu.Item key={p.value} className={`inline-dropdown-item${p.value === project.priority ? ' active' : ''}`}
+              onSelect={() => onUpdate(project, p.value)}>
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
                 padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600,
@@ -143,11 +78,11 @@ function InlinePrioritySelect({ project, onUpdate }) {
                 {p.label}
               </span>
               {p.value === project.priority && <span className="inline-dropdown-check">✓</span>}
-            </div>
+            </DropdownMenu.Item>
           ))}
-        </div>
-      )}
-    </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 

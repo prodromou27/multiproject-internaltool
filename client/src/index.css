@@ -1103,7 +1103,18 @@ tr:hover td { background: var(--gray-50); transition: background .1s; }
 }
 .inline-dropdown-item:hover { background: var(--gray-100); }
 .inline-dropdown-item.active { background: var(--gray-100); }
+/* Radix's DropdownMenu.Item marks keyboard/pointer focus with this data
+   attribute instead of :hover, so arrow-key navigation gets the same
+   highlight a mouse hover already gives every other item. */
+.inline-dropdown-item[data-highlighted] { background: var(--gray-100); outline: none; }
 .inline-dropdown-check { margin-left: auto; font-size: 12px; color: var(--primary); }
+/* The Radix trigger renders a real <button>; reset it to look like the
+   plain clickable label it's replacing. */
+.inline-dropdown-trigger {
+  background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 3px;
+}
+.inline-dropdown-trigger:focus-visible { outline: 2px solid var(--primary-ring); outline-offset: 2px; border-radius: 4px; }
 
 /* ── Dark mode ────────────────────────────────────────────── */
 [data-theme="dark"] {

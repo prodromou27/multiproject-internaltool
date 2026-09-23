@@ -1,0 +1,64 @@
+/* CSS Modules demo: Vite supports *.module.css with zero config — class
+   names are hashed and scoped to this file automatically, so `.toast`
+   here can never collide with the app's global `.toast` (if any) or a
+   future one. Picked Toast.jsx because it was 100% inline styles with a
+   per-variant color palette that reads far better as CSS than as JS
+   objects merged at render time. */
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, .13);
+  max-width: 390px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 500;
+  pointer-events: auto;
+  transition: transform .25s cubic-bezier(.34, 1.56, .64, 1), opacity .2s ease;
+  transform: translateX(80px) scale(.95);
+  opacity: 0;
+}
+.toast.visible {
+  transform: translateX(0) scale(1);
+  opacity: 1;
+}
+
+.success { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+.error   { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+.warning { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
+.info    { background: #eff6ff; border: 1px solid #93c5fd; color: #1e40af; }
+
+.icon { flex-shrink: 0; margin-top: 1px; }
+.success .icon { color: #22c55e; }
+.error   .icon { color: #ef4444; }
+.warning .icon { color: #f59e0b; }
+.info    .icon { color: #3b82f6; }
+
+.message { flex: 1; }
+
+.dismiss {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  opacity: .5;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.dismiss:hover { opacity: .85; }
+
+.stack {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  pointer-events: none;
+}
