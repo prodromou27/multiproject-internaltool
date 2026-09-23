@@ -139,7 +139,7 @@ function VisitForm({ initial, defaults, customers, engineers, onSave, onClose })
         <label>Notes</label>
         <textarea value={form.notes || ''} onChange={set('notes')} placeholder="Any additional notes…" />
       </div>
-      {formErr && <div className="error-msg" style={{ marginBottom: 8 }}>{formErr}</div>}
+      {formErr && <div className="error-msg mb-8">{formErr}</div>}
       <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
@@ -347,7 +347,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
           </div>
         </>}
         <div className="divider" />
-        <div className="form-group" style={{ margin: 0 }}>
+        <div className="form-group m-0">
           <label htmlFor={`visit-notes-${visit.id}`}>Notes</label>
           <textarea id={`visit-notes-${visit.id}`} disabled={saving} value={notes} onChange={e => !isPM && setNotes(e.target.value)} rows={3} readOnly={isPM} style={isPM ? { background: 'var(--gray-50)', color: 'var(--gray-500)' } : {}} />
         </div>
@@ -361,19 +361,19 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
         {isManager && !saving && <Link className="btn btn-ghost btn-sm" to={`/customers/${visit.customer_id}/service-profile?section=recommendations&source_visit=${visit.id}`}>Record finding</Link>}
         {/* PM: mark complete */}
         {isPM && visit.status !== 'completed' && visit.status !== 'cancelled' && (
-          <button className="btn btn-success" onClick={markComplete} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn btn-success inline-flex items-center gap-6" onClick={markComplete} disabled={saving}>
             <Check size={14} /> Mark as Completed
           </button>
         )}
         {/* Step 1 → 2 : engineer submits report */}
         {!isPM && reportState === 'pending' && visit.status !== 'cancelled' && (
-          <button className="btn btn-success" onClick={markSent} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn btn-success inline-flex items-center gap-6" onClick={markSent} disabled={saving}>
             <Check size={14} /> Submit Report
           </button>
         )}
         {/* Step 2 → 3 : manager/planner approves and sends to PM */}
         {reportState === 'report_complete' && canManage && (
-          <button className="btn btn-primary" onClick={markCustomerSent} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn btn-primary inline-flex items-center gap-6" onClick={markCustomerSent} disabled={saving}>
             <Send size={14} /> Approve &amp; Send to PM
           </button>
         )}
@@ -525,7 +525,7 @@ export default function MaintenanceVisits() {
       <PageHeader eyebrow="Operations" title="Maintenance Visits" description="Plan customer visits and track completion through report delivery." actions={<>
 {canManage && (
           <div className="flex gap-8 flex-wrap">
-            <button className="btn btn-ghost btn-sm" disabled={unavailable} onClick={async () => {
+            <button className="btn btn-ghost btn-sm inline-flex items-center gap-5" disabled={unavailable} onClick={async () => {
               try {
                 // Use a short-lived (60 s) scoped download token — never expose
                 // the full session JWT in a URL (would be captured in server logs)
@@ -536,7 +536,7 @@ export default function MaintenanceVisits() {
                 a.href = '/api/maintenance-visits/export?' + params.toString();
                 a.download = 'maintenance-visits.xlsx'; a.click();
               } catch { toast.error('Export failed. Please try again.'); }
-            }} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            }}>
               <Download size={13} /> Export Matching Visits
             </button>
             <button className="btn btn-ghost flex-center gap-6" disabled={unavailable} onClick={() => setShowImport(true)}><Upload size={14} /> Import</button>
@@ -584,7 +584,7 @@ export default function MaintenanceVisits() {
             ))}
           </FilterGroup>
           <input type="month" value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={{ width: 'auto', padding: '5px 10px' }} title="Filter by month" />
-          {monthFilter && <button className="btn btn-sm btn-ghost" onClick={() => setMonthFilter('')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><X size={12} /> Clear month</button>}
+          {monthFilter && <button className="btn btn-sm btn-ghost inline-flex items-center gap-4" onClick={() => setMonthFilter('')}><X size={12} /> Clear month</button>}
         </div>
       </div>
 
@@ -600,7 +600,7 @@ export default function MaintenanceVisits() {
             <div className="empty-icon"><Wrench size={40} strokeWidth={1.2} /></div>
             <p>{search.trim() ? `No visits matching "${search}"` : 'No maintenance visits in this view'}</p>
             {(search.trim() || monthFilter) && (
-              <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }}
+              <button className="btn btn-ghost btn-sm mt-12"
                 onClick={() => { setSearch(''); setMonthFilter(''); setFilter('all'); }}>
                 Clear filters
               </button>
@@ -630,12 +630,12 @@ export default function MaintenanceVisits() {
                   };
                   return (
                   <tr key={v.id} style={rowStyle} onClick={() => { if (!actionBusy) setSelected(v); }}>
-                    <td style={{ fontWeight: 600 }}>{v.customer_name}</td>
+                    <td className="font-semibold">{v.customer_name}</td>
                     <td><button className="btn btn-ghost btn-sm" disabled={actionBusy} onClick={event => { event.stopPropagation(); setSelected(v); }} aria-label={`View visit: ${v.title}`}>{v.title}</button></td>
                     <td className={isOverdue(v.scheduled_date) && v.status === 'scheduled' ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
                     <td>
                       {v.engineer_names
-                        ? <span style={{ fontSize: 12 }}>{v.engineer_names}</span>
+                        ? <span className="text-sm">{v.engineer_names}</span>
                         : <span className="text-muted">Unassigned</span>}
                     </td>
                     <td><span className={`badge ${STATUS_COLORS[v.status]}`}>{v.status.replace('_', ' ')}</span></td>
@@ -658,14 +658,14 @@ export default function MaintenanceVisits() {
                       <div className="flex gap-8">
                         {/* PM: mark complete */}
                         {isPM && v.status !== 'completed' && v.status !== 'cancelled' && (
-                          <button className="btn btn-sm btn-success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.completeVisit(v.id), 'Visit marked as complete'); }}><Check size={12} /> Mark Complete</button>
+                          <button className="btn btn-sm btn-success inline-flex items-center gap-4" disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.completeVisit(v.id), 'Visit marked as complete'); }}><Check size={12} /> Mark Complete</button>
                         )}
                         {/* Engineer: submit report */}
                         {!isPM && !v.report_sent && v.status !== 'cancelled' && (
-                          <button className="btn btn-sm btn-success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.markReportSent(v.id), 'Report marked as submitted'); }}><Check size={12} /> Submit Report</button>
+                          <button className="btn btn-sm btn-success inline-flex items-center gap-4" disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.markReportSent(v.id), 'Report marked as submitted'); }}><Check size={12} /> Submit Report</button>
                         )}
                         {!!v.report_sent && !v.report_sent_to_customer && canManage && (
-                          <button className="btn btn-sm btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.markCustomerSent(v.id), 'Report approved & sent to PM'); }}><Send size={12} /> Approve &amp; Send to PM</button>
+                          <button className="btn btn-sm btn-primary inline-flex items-center gap-4" disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.markCustomerSent(v.id), 'Report approved & sent to PM'); }}><Send size={12} /> Approve &amp; Send to PM</button>
                         )}
                         {canManage && <button className="btn btn-sm btn-ghost" disabled={actionBusy} onClick={() => openEdit(v)}>Edit</button>}
                         {canManage && <button className="btn btn-sm btn-danger" disabled={actionBusy} onClick={() => handleDelete(v.id)}>Del</button>}

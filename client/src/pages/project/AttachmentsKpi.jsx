@@ -87,10 +87,10 @@ export function AttachmentsSection({ projectId }) {
         }}
       >
         <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'center' }}><Paperclip size={28} color="var(--gray-400)" /></div>
-        <p className="text-sm text-muted" style={{ marginBottom: 8 }}>
+        <p className="text-sm text-muted mb-8">
           {uploading ? 'Uploading…' : 'Drag & drop files here, or'}
         </p>
-        <label className="btn btn-ghost btn-sm" style={{ cursor: 'pointer' }}>
+        <label className="btn btn-ghost btn-sm cursor-pointer">
           Browse Files
           <input type="file" multiple style={{ display: 'none' }} onChange={onInputChange} disabled={uploading} />
         </label>
@@ -158,7 +158,7 @@ export function KpiSection({ projectId, canManage = false }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-12">
-        <div className="section-title" style={{ margin: 0 }}>KPIs</div>
+        <div className="section-title m-0">KPIs</div>
         {canManage && <button className="btn btn-sm btn-ghost" onClick={() => setShowAdd(true)}>+ Add KPI</button>}
       </div>
       {kpis.length === 0 ? <p className="text-muted text-sm">No KPIs defined</p> : kpis.map(k => {

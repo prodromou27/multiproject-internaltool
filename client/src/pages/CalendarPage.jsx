@@ -92,7 +92,7 @@ function NewVisitModal({ prefillDate, onClose, onCreated }) {
         <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--gray-400)' }}>Loading…</div>
       ) : (
         <form onSubmit={submit}>
-          {err && <div className="error-msg" style={{ marginBottom: 12 }}>{err}</div>}
+          {err && <div className="error-msg mb-12">{err}</div>}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
@@ -136,8 +136,8 @@ function NewVisitModal({ prefillDate, onClose, onCreated }) {
 
           <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            <button type="submit" className="btn btn-primary inline-flex items-center gap-6"
+             
               disabled={saving}>
               {saving ? '⏳ Saving…' : <><Wrench size={14} /> Create Visit</>}
             </button>
@@ -375,7 +375,7 @@ function ICalSubscribe() {
   return (
     <div style={{ marginTop: 20, padding: '14px 18px', background: 'var(--primary-light)', border: '1px solid #bae6fd', borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
       <Link2 size={18} color="#0284c7" style={{ flexShrink: 0, marginTop: 2 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="flex-1 min-w-0">
         <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--tone-info-text)', marginBottom: 4 }}>
           Subscribe to your calendar (iCal)
         </div>
@@ -383,7 +383,7 @@ function ICalSubscribe() {
           Add this URL to Google Calendar, Outlook, Apple Calendar or any iCal-compatible app to see your tasks and visits automatically update.
         </p>
 
-        {err && <div className="error-msg" style={{ marginBottom: 8 }}>{err}</div>}
+        {err && <div className="error-msg mb-8">{err}</div>}
 
         {status === null ? (
           <p style={{ margin: 0, fontSize: 12, color: 'var(--tone-info-text)' }}>Loading…</p>
@@ -564,17 +564,17 @@ export default function CalendarPage() {
         <div className="flex gap-8" style={{ alignItems: 'center' }}>
           {isManagerOrPlanner && (
             <button
-              className="btn btn-primary btn-sm"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              className="btn btn-primary btn-sm inline-flex items-center gap-6"
+             
               onClick={() => openNewVisit(todayStr)}
             >
               <Plus size={14} /> New Visit
             </button>
           )}
           <button className="btn btn-ghost btn-sm" onClick={goToday} disabled={rescheduling}>Today</button>
-          <button className="btn btn-ghost btn-sm" onClick={prevMonth} aria-label="Previous month" disabled={rescheduling || year === 1900 && month === 0} style={{ display: 'inline-flex', alignItems: 'center' }}><ChevronLeft size={16} /></button>
+          <button className="btn btn-ghost btn-sm inline-flex items-center" onClick={prevMonth} aria-label="Previous month" disabled={rescheduling || year === 1900 && month === 0}><ChevronLeft size={16} /></button>
           <span style={{ fontWeight: 700, minWidth: 160, textAlign: 'center', fontSize: 15 }}>{MONTHS[month]} {year}</span>
-          <button className="btn btn-ghost btn-sm" onClick={nextMonth} aria-label="Next month" disabled={rescheduling || year === 9998 && month === 11} style={{ display: 'inline-flex', alignItems: 'center' }}><ChevronRight size={16} /></button>
+          <button className="btn btn-ghost btn-sm inline-flex items-center" onClick={nextMonth} aria-label="Next month" disabled={rescheduling || year === 9998 && month === 11}><ChevronRight size={16} /></button>
         </div>
       </>} />
 
@@ -742,7 +742,7 @@ export default function CalendarPage() {
             <div className="section-title">Upcoming This Month</div>
             {upcoming.length === 0
               ? <p className="text-muted text-sm">Nothing coming up</p>
-              : <ul style={{ listStyle: 'none' }}>
+              : <ul className="list-none">
                   {upcoming.map((e, i) => {
                     const s = TYPE_STYLE[e.type];
                     return (
@@ -752,7 +752,7 @@ export default function CalendarPage() {
                         cursor: 'pointer', alignItems: 'flex-start',
                       }}>
                         <div style={{ width: 4, borderRadius: 2, background: s.color, flexShrink: 0, alignSelf: 'stretch', minHeight: 20 }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="flex-1 min-w-0">
                           <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
                             <s.Icon size={12} color={s.color} /> {e.title || e.customer_name}
                           </div>

@@ -69,7 +69,7 @@ export function StatusRow({ status, onUpdate, onDelete, onMoveUp, onMoveDown, is
       )}
 
       {/* Label & value */}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="flex-1 min-w-0">
         {editing ? (
           <div className="flex-center gap-6 flex-wrap">
             <input
@@ -154,7 +154,7 @@ export function StatusSection({ title, statuses, onChange }) {
     <div style={{ marginBottom: 28 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--gray-800)' }}>{title}</h3>
-        <button className="btn btn-sm btn-ghost" onClick={addNew} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <button className="btn btn-sm btn-ghost inline-flex items-center gap-4" onClick={addNew}>
           <Plus size={12} /> Add Status
         </button>
       </div>
@@ -244,7 +244,7 @@ export function StatusManagementTab() {
       />
 
       <div style={{ display: 'flex', gap: 10, paddingTop: 8 }}>
-        <button className="btn btn-primary" onClick={save} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <button className="btn btn-primary inline-flex items-center gap-6" onClick={save} disabled={saving}>
           {saving ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving…</> : <><Save size={14} /> Save All Changes</>}
         </button>
         <button className="btn btn-ghost" onClick={() => setDraft(JSON.parse(JSON.stringify(statusCtx.config)))} disabled={saving}>

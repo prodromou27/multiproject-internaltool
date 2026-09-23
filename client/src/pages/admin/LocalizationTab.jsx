@@ -132,8 +132,8 @@ export function LocalizationTab() {
       </div>
 
       <div className="flex gap-10">
-        <button className="btn btn-primary" disabled={!dirty || saving} onClick={save}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <button className="btn btn-primary inline-flex items-center gap-6" disabled={!dirty || saving} onClick={save}
+         >
           {saving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={14} />}
           {saving ? 'Saving…' : 'Save Settings'}
         </button>

@@ -106,7 +106,7 @@ export function TeamsAdminSection() {
 
       {editingSla && (
         <Modal title={`Service Activity SLA — ${editingSla.name}`} onClose={() => setEditingSla(null)}>
-          <p className="text-sm text-muted" style={{ marginBottom: 12 }}>
+          <p className="text-sm text-muted mb-12">
             Response is how long an activity can sit unstarted before it's flagged; resolution is how long it can stay
             open in total. Shown on the SLA page, broken down per team.
           </p>
@@ -190,7 +190,7 @@ export function ServiceActivityGeneralSettings() {
         <input type="number" min="1" value={settings.retention_days || ''} placeholder="No limit"
           onChange={e => setSettings(s => ({ ...s, retention_days: e.target.value || null }))} />
       </div>
-      <button className="btn btn-primary btn-sm" onClick={save} disabled={saving} style={{ marginBottom: 12 }}>
+      <button className="btn btn-primary btn-sm mb-12" onClick={save} disabled={saving}>
         {saving ? 'Saving…' : 'Save Settings'}
       </button>
 

@@ -164,7 +164,7 @@ export default function ReportBuilder() {
     <section className="card mb-20">
       <h2 style={{ fontSize: 18 }}>Saved reports</h2>
       <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>{references.saved.rows.map(row => <button className="btn btn-ghost btn-sm" key={row.id} onClick={() => openReport(row.id)}>{row.name} · {row.visibility}</button>)}</div>
-      <div className="flex gap-8" style={{ marginTop: 12 }}><button className="btn btn-ghost btn-sm" disabled={page<=1} onClick={() => setPage(value => value-1)}>Previous</button><span>Page {page} · {references.saved.total} definitions</span><button className="btn btn-ghost btn-sm" disabled={page*25>=references.saved.total} onClick={() => setPage(value => value+1)}>Next</button><button className="btn btn-ghost btn-sm" onClick={load}>Refresh</button></div>
+      <div className="flex gap-8 mt-12"><button className="btn btn-ghost btn-sm" disabled={page<=1} onClick={() => setPage(value => value-1)}>Previous</button><span>Page {page} · {references.saved.total} definitions</span><button className="btn btn-ghost btn-sm" disabled={page*25>=references.saved.total} onClick={() => setPage(value => value+1)}>Next</button><button className="btn btn-ghost btn-sm" onClick={load}>Refresh</button></div>
     </section>
     <form onSubmit={run} className="card">
       <h2 style={{ fontSize: 18 }}>Report Builder{selected ? ` · ${selected.name}` : ''}</h2>

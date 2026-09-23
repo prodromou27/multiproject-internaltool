@@ -39,7 +39,7 @@ function ServiceActivityCard({ stats }) {
   return (
     <section className="card mt-16">
       <div className="section-header"><h2 className="section-title">Service Activity</h2><Link to="/activity-log">Activity Log →</Link></div>
-      <div className="grid-4" style={{ marginBottom: 12 }}>
+      <div className="grid-4 mb-12">
         <div className="stat-card"><strong>{stats.today}</strong><span>Today</span></div>
         <div className="stat-card"><strong>{stats.week}</strong><span>This week</span></div>
         <div className="stat-card"><strong>{stats.hours}h</strong><span>Hours logged</span></div>

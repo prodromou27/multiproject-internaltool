@@ -82,7 +82,7 @@ function AssetFiles({ customerId,asset,onClose,onChanged }) {
   }
   return <Modal title={`Files for ${asset.name}`} onClose={uploading ? () => {} : onClose} wide>
     {error && <div className="error-msg" role="alert">{error}</div>}
-    <p className="text-muted text-sm" style={{ marginBottom:12 }}>Store diagrams, support documents, configuration exports, and warranty records. Do not upload passwords, private keys, or credentials.</p>
+    <p className="text-muted text-sm mb-12">Store diagrams, support documents, configuration exports, and warranty records. Do not upload passwords, private keys, or credentials.</p>
     <label className="btn btn-primary" style={{ display:'inline-flex',cursor:uploading ? 'wait' : 'pointer',marginBottom:16 }}>
       {uploading ? 'Uploading...' : 'Upload files'}
       <input ref={inputRef} type="file" multiple hidden disabled={uploading} onChange={event => uploadFiles([...event.target.files])} />

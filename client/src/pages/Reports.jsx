@@ -388,7 +388,7 @@ export default function Reports() {
               {summary.engineerLoad.length === 0 ? <p className="text-muted text-sm">No engineers</p> : summary.engineerLoad.map(e => (
                 <div key={e.name} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                   <span style={{ width: 110, fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{e.name}</span>
-                  <div className="progress-bar" style={{ flex: 1 }}>
+                  <div className="progress-bar flex-1">
                     <div className="progress-bar-fill" style={{ width: e.task_count ? `${(e.done_count / e.task_count) * 100}%` : '0%' }} />
                   </div>
                   <span className="text-sm text-muted">{e.done_count}/{e.task_count} done</span>
@@ -424,7 +424,7 @@ export default function Reports() {
             <thead><tr><th>Project</th><th>Status</th><th>Priority</th><th>Tasks</th><th>Members</th><th>Deadline</th></tr></thead>
             <tbody>{projects.map(p => (
               <tr key={p.id}>
-                <td><Link to={`/projects/${p.id}`} style={{ fontWeight: 600 }}>{p.title}</Link></td>
+                <td><Link to={`/projects/${p.id}`} className="font-semibold">{p.title}</Link></td>
                 <td><StatusBadge entityType="project" s={p.status} /></td>
                 <td><PriorityBadge p={p.priority} /></td>
                 <td>

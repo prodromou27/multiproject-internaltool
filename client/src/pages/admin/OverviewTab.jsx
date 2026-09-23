@@ -78,7 +78,7 @@ export function OverviewTab() {
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
             <div className="section-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}><TrendingUp size={14} /> System Health</div>
-            <button className="btn btn-ghost btn-sm" onClick={load} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <button className="btn btn-ghost btn-sm inline-flex items-center gap-4" onClick={load}>
               <RefreshCw size={12} /> Refresh
             </button>
           </div>
@@ -88,7 +88,7 @@ export function OverviewTab() {
               return (
                 <div key={label}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
-                    <span style={{ fontWeight: 600 }}>{label}</span>
+                    <span className="font-semibold">{label}</span>
                     <span style={{ color: 'var(--gray-400)' }}>{value}/{total} <strong style={{ color }}>{pct}%</strong></span>
                   </div>
                   <div className="progress-bar">
@@ -118,7 +118,7 @@ export function OverviewTab() {
           <div className="section-title" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Activity size={14} /> Recent Activity</div>
           {activity.length === 0
             ? <p className="text-muted text-sm">No activity recorded yet</p>
-            : <ul style={{ listStyle: 'none' }}>
+            : <ul className="list-none">
                 {activity.slice(0, 7).map((e, i) => (
                   <li key={i} style={{
                     display: 'flex', gap: 10, padding: '8px 0',
@@ -126,7 +126,7 @@ export function OverviewTab() {
                     alignItems: 'flex-start',
                   }}>
                     <span style={{ flexShrink: 0, marginTop: 1 }}>{ACTIVITY_ICONS[e.type] || <Activity size={15} color="var(--gray-400)" />}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="flex-1 min-w-0">
                       <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <strong>{e.actor}</strong>{' '}<span style={{ color: 'var(--gray-600)' }}>{e.description}</span>
                       </div>
@@ -236,8 +236,8 @@ export function ActivityTab() {
   if (!events.length) return <div className="empty"><div className="empty-icon"><ScrollText size={40} strokeWidth={1.2} /></div><p>No activity yet</p></div>;
 
   return (
-    <div className="card" style={{ padding: 0 }}>
-      <ul style={{ listStyle: 'none' }}>
+    <div className="card p-0">
+      <ul className="list-none">
         {events.map((e, i) => (
           <li key={i} style={{
             display: 'flex', gap: 12, padding: '12px 20px',
@@ -245,7 +245,7 @@ export function ActivityTab() {
             alignItems: 'flex-start',
           }}>
             <span style={{ width: 20, display: 'flex', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{ACTIVITY_ICONS[e.type] || <Bell size={15} color="var(--gray-400)" />}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="flex-1 min-w-0">
               <div style={{ fontSize: 13 }}>
                 <strong>{e.actor}</strong>{' '}
                 <span style={{ color: 'var(--gray-600)' }}>{e.description}</span>

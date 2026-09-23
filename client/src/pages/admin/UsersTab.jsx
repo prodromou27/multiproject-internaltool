@@ -76,7 +76,7 @@ export function ResetPasswordForm({ user, onClose }) {
       <div className="flex justify-center mb-12">
         <CheckCircle2 size={48} color="var(--success)" strokeWidth={1.5} />
       </div>
-      <p style={{ fontWeight: 600 }}>Password reset successfully for <strong>{user.name}</strong></p>
+      <p className="font-semibold">Password reset successfully for <strong>{user.name}</strong></p>
       <button className="btn btn-primary mt-16" onClick={onClose}>Done</button>
     </div>
   );
@@ -84,7 +84,7 @@ export function ResetPasswordForm({ user, onClose }) {
   return (
     <form onSubmit={submit}>
       {err && <div className="error-msg">{err}</div>}
-      <p className="text-sm text-muted" style={{ marginBottom: 12 }}>
+      <p className="text-sm text-muted mb-12">
         Set a new password for <strong>{user.name}</strong> ({user.email})
       </p>
       <div className="form-group"><label>New Password <span className="text-muted text-sm">(min 12 chars)</span></label><input type="password" value={pw} onChange={e => setPw(e.target.value)} required minLength={12} autoFocus /></div>
@@ -163,7 +163,7 @@ export function UsersTab({ currentUser }) {
       {loading ? <p className="text-muted">Loading…</p> : filtered.length === 0
         ? <div className="empty"><div className="empty-icon"><UsersIcon size={40} strokeWidth={1.2} /></div><p>No users found</p></div>
         : (
-          <div className="card table-wrap" style={{ padding: 0 }}>
+          <div className="card table-wrap p-0">
             <table>
               <thead>
                 <tr>
@@ -175,7 +175,7 @@ export function UsersTab({ currentUser }) {
                 {filtered.map(u => (
                   <tr key={u.id} style={{ opacity: u.active ? 1 : 0.5 }}>
                     <td>
-                      <div style={{ fontWeight: 600 }}>{u.name}</div>
+                      <div className="font-semibold">{u.name}</div>
                       <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{u.email || '—'}</div>
                     </td>
                     <td><span className={`badge badge-${u.role}`}>{u.role}</span></td>
@@ -196,8 +196,8 @@ export function UsersTab({ currentUser }) {
                     <td className="text-sm text-muted">{fmtDate(u.created_at)}</td>
                     <td>
                       <div className="flex gap-8" style={{ flexWrap: 'nowrap' }}>
-                        <button className="btn btn-sm btn-ghost" onClick={() => setEditing(u)} title="Edit" style={{ display: 'inline-flex', alignItems: 'center' }}><Pencil size={13} /></button>
-                        <button className="btn btn-sm btn-ghost" onClick={() => setResetting(u)} title="Reset password" style={{ display: 'inline-flex', alignItems: 'center' }}><KeyRound size={13} /></button>
+                        <button className="btn btn-sm btn-ghost inline-flex items-center" onClick={() => setEditing(u)} title="Edit"><Pencil size={13} /></button>
+                        <button className="btn btn-sm btn-ghost inline-flex items-center" onClick={() => setResetting(u)} title="Reset password"><KeyRound size={13} /></button>
                         {u.id !== currentUser.id && (
                           <button className={'btn btn-sm ' + (u.active ? 'btn-ghost' : 'btn-success')} onClick={() => toggleActive(u)} title={u.active ? 'Deactivate' : 'Activate'} style={{ display: 'inline-flex', alignItems: 'center' }}>
                             {u.active ? <UserX size={13} /> : <UserCheck size={13} />}
@@ -212,7 +212,7 @@ export function UsersTab({ currentUser }) {
                           <ShieldAlert size={13} />
                         </button>
                         {u.id !== currentUser.id && (
-                          <button className="btn btn-sm btn-danger" onClick={() => deleteUser(u)} title="Delete" style={{ display: 'inline-flex', alignItems: 'center' }}><Trash2 size={13} /></button>
+                          <button className="btn btn-sm btn-danger inline-flex items-center" onClick={() => deleteUser(u)} title="Delete"><Trash2 size={13} /></button>
                         )}
                       </div>
                     </td>

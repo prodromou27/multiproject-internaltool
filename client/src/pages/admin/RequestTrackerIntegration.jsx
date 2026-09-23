@@ -36,7 +36,7 @@ export default function RequestTrackerIntegration({ sectionStyle,labelStyle }) {
       <div style={{ flex:1 }}><div style={{ fontWeight:700,fontSize:15 }}>Request Tracker</div><div className="text-muted text-sm">REST 2.0 ticket and queue integration for Managed Customers</div></div>
       <Toggle checked={form.enabled} onChange={value => set('enabled',value)} label={form.enabled ? 'Enabled' : 'Disabled'} />
     </div>
-    {error && <div className="error-msg" role="alert" style={{ marginBottom:12 }}>{error}</div>}
+    {error && <div className="error-msg mb-12" role="alert">{error}</div>}
     {message && <div className="alert alert-success" role="status" style={{ marginBottom:12,display:'flex',gap:6,alignItems:'center' }}><CheckCircle2 size={14} />{message}</div>}
     <div className="form-group"><label style={labelStyle} htmlFor="rt-base-url">RT Base URL</label><input id="rt-base-url" type="url" value={form.base_url} onChange={event => set('base_url',event.target.value)} placeholder="https://rt.example.com" /></div>
     <div className="form-group"><label style={labelStyle} htmlFor="rt-api-token">REST 2.0 API Token</label><input id="rt-api-token" type="password" autoComplete="new-password" value={form.api_token} onChange={event => set('api_token',event.target.value)} placeholder={form.api_token_set ? 'Leave blank to retain stored token' : 'Paste an RT authentication token'} />

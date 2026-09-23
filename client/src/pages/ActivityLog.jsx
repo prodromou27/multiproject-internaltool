@@ -647,7 +647,7 @@ export default function ActivityLog() {
       <div className="page">
         <div className="empty">
           <div className="empty-icon"><ClipboardList size={40} strokeWidth={1.2} /></div>
-          <p style={{ fontWeight: 600 }}>Service Activity Tracking is not enabled for your team</p>
+          <p className="font-semibold">Service Activity Tracking is not enabled for your team</p>
           <p style={{ fontSize: 13 }}>Ask your manager to enable it for your team if you need access to the Activity Log.</p>
         </div>
       </div>
@@ -690,7 +690,7 @@ export default function ActivityLog() {
         <button className="btn btn-primary" onClick={() => setShowForm(true)} disabled={!meta}>Log activity</button>
       </>} />
 
-      {metaError && <div className="error-msg" style={{ marginBottom: 12 }}>{metaError}</div>}
+      {metaError && <div className="error-msg mb-12">{metaError}</div>}
 
       <div className="al-toolbar">
         <div className="al-segment" role="group" aria-label="Date range">

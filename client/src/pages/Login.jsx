@@ -166,7 +166,7 @@ export default function Login() {
         {/* Error */}
         {error && (
           <div className="error-msg mb-16">
-            <AlertCircle size={14} style={{ flexShrink: 0 }} />
+            <AlertCircle size={14} className="flex-shrink-0" />
             {error}
           </div>
         )}
@@ -176,7 +176,7 @@ export default function Login() {
           <form onSubmit={handleLogin}>
             <div className="form-group">
               <label>Username or Email</label>
-              <div style={{ position: 'relative' }}>
+              <div className="relative">
                 <Mail size={14} style={{
                   position: 'absolute', left: 11, top: '50%',
                   transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none',
@@ -196,7 +196,7 @@ export default function Login() {
 
             <div className="form-group">
               <label>Password</label>
-              <div style={{ position: 'relative' }}>
+              <div className="relative">
                 <Lock size={14} style={{
                   position: 'absolute', left: 11, top: '50%',
                   transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none',
@@ -251,7 +251,7 @@ export default function Login() {
         {/* ── Step 2: TOTP code ── */}
         {step === '2fa' && (
           <form onSubmit={handle2FA}>
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+            <div className="text-center mb-20">
               <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--primary-light)', border: '2px solid #3b82f6',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
                 <ShieldCheck size={26} color="#3b82f6" />
@@ -302,7 +302,7 @@ export default function Login() {
         {/* ── Step 3: Set password on first login ── */}
         {step === 'set_password' && (
           <form onSubmit={handleSetPassword}>
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+            <div className="text-center mb-20">
               <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--success-light)', border: '2px solid #22c55e',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
                 <KeyRound size={26} color="#22c55e" />
@@ -319,7 +319,7 @@ export default function Login() {
 
             <div className="form-group">
               <label>New Password <span style={{ color: '#6b7280', fontWeight: 400, fontSize: 11 }}>(min. 12 characters)</span></label>
-              <div style={{ position: 'relative' }}>
+              <div className="relative">
                 <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
                 <input
                   type={showNewPw ? 'text' : 'password'}
@@ -341,7 +341,7 @@ export default function Login() {
 
             <div className="form-group">
               <label>Confirm Password</label>
-              <div style={{ position: 'relative' }}>
+              <div className="relative">
                 <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
                 <input
                   type={showNewPw ? 'text' : 'password'}
@@ -378,7 +378,7 @@ export default function Login() {
         {/* ── Forgot password: enter email ── */}
         {step === 'forgot_email' && (
           <form onSubmit={handleForgotPassword}>
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+            <div className="text-center mb-20">
               <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--primary-light)', border: '2px solid #3b82f6',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
                 <RotateCcw size={24} color="#3b82f6" />
@@ -390,7 +390,7 @@ export default function Login() {
             </div>
             <div className="form-group">
               <label>Email Address</label>
-              <div style={{ position: 'relative' }}>
+              <div className="relative">
                 <Mail size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
                 <input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
                   placeholder="you@company.com" style={{ paddingLeft: 32 }} required autoFocus />
@@ -421,7 +421,7 @@ export default function Login() {
         {/* ── Reset password: from email link ── */}
         {step === 'reset_password' && (
           <form onSubmit={handleResetPassword}>
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+            <div className="text-center mb-20">
               <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--success-light)', border: '2px solid #22c55e',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
                 <KeyRound size={26} color="#22c55e" />
@@ -431,7 +431,7 @@ export default function Login() {
             </div>
             <div className="form-group">
               <label>New Password</label>
-              <div style={{ position: 'relative' }}>
+              <div className="relative">
                 <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
                 <input type={showResetPw ? 'text' : 'password'} value={resetNewPw} onChange={e => setResetNewPw(e.target.value)}
                   placeholder="••••••••••••" style={{ paddingLeft: 32, paddingRight: 36 }} required minLength={12} autoFocus />
@@ -443,7 +443,7 @@ export default function Login() {
             </div>
             <div className="form-group">
               <label>Confirm Password</label>
-              <div style={{ position: 'relative' }}>
+              <div className="relative">
                 <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
                 <input type={showResetPw ? 'text' : 'password'} value={resetConfirm} onChange={e => setResetConfirm(e.target.value)}
                   placeholder="••••••••••••" style={{ paddingLeft: 32, borderColor: resetConfirm && resetConfirm !== resetNewPw ? '#ef4444' : undefined }} required />

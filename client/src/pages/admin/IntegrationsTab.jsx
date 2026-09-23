@@ -75,7 +75,7 @@ export function IntegrationsTab() {
           <div style={{ width: 40, height: 40, borderRadius: 8, background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="4" fill="#4a6cf7"/><path d="M13 7h5v2h-5V7zm0 3h5v2h-5v-2zm-6 5v-8h4a3 3 0 010 6H9v2H7zm2-4h2a1 1 0 000-2H9v2z" fill="white"/></svg>
           </div>
-          <div style={{ flex: 1 }}>
+          <div className="flex-1">
             <div style={{ fontWeight: 700, fontSize: 15 }}>Microsoft Teams</div>
             <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Post to a channel via a Workflows (or legacy Incoming) webhook</div>
           </div>
@@ -83,13 +83,13 @@ export function IntegrationsTab() {
         </div>
         {cfg.teams.enabled && (
           <>
-            <div className="form-group" style={{ marginBottom: 12 }}>
+            <div className="form-group mb-12">
               <label style={labelStyle}>Incoming Webhook URL</label>
               <input type="password" autoComplete="new-password" value={cfg.teams.webhook_url} onChange={e => setTeams('webhook_url', e.target.value)} placeholder="https://prod-00.westeurope.logic.azure.com/workflows/..." />
               {cfg.teams.webhook_url_set && <p className="text-muted text-sm">{cfg.teams.clear_webhook_url ? 'Stored webhook will be removed when saved.' : 'Webhook configured. Leave blank to retain it.'} <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCfg(c => ({ ...c,teams: { ...c.teams,webhook_url: '',clear_webhook_url: !c.teams.clear_webhook_url } }))}>{cfg.teams.clear_webhook_url ? 'Keep stored webhook' : 'Remove stored webhook'}</button></p>}
               <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>In Teams: channel → ··· → Workflows → "Post to a channel when a webhook request is received". Legacy *.webhook.office.com connector URLs also work.</div>
             </div>
-            <button className="btn btn-ghost btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} disabled={(!cfg.teams.webhook_url && (!cfg.teams.webhook_url_set || cfg.teams.clear_webhook_url)) || testing.teams} onClick={() => test('teams')}>
+            <button className="btn btn-ghost btn-sm inline-flex items-center gap-6" disabled={(!cfg.teams.webhook_url && (!cfg.teams.webhook_url_set || cfg.teams.clear_webhook_url)) || testing.teams} onClick={() => test('teams')}>
               {testing.teams ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Bell size={13} /> Send Test</>}
             </button>
           </>
@@ -101,7 +101,7 @@ export function IntegrationsTab() {
           <div style={{ width: 40, height: 40, borderRadius: 8, background: '#e6f9f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#00BF6F"/><path d="M8 10a4 4 0 108 0" stroke="white" strokeWidth="2" strokeLinecap="round"/><circle cx="12" cy="14" r="1.5" fill="white"/></svg>
           </div>
-          <div style={{ flex: 1 }}>
+          <div className="flex-1">
             <div style={{ fontWeight: 700, fontSize: 15 }}>Cisco Webex</div>
             <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Send notifications via a Webex Bot</div>
           </div>
@@ -109,13 +109,13 @@ export function IntegrationsTab() {
         </div>
         {cfg.webex.enabled && (
           <>
-            <div className="form-group" style={{ marginBottom: 12 }}>
+            <div className="form-group mb-12">
               <label style={labelStyle}>Bot Access Token</label>
               <input type="password" autoComplete="new-password" value={cfg.webex.bot_token} onChange={e => setWebex('bot_token', e.target.value)} placeholder="Your Webex Bot access token" />
               {cfg.webex.bot_token_set && <p className="text-muted text-sm">{cfg.webex.clear_bot_token ? 'Stored token will be removed when saved.' : 'Token configured. Leave blank to retain it.'} <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCfg(c => ({ ...c,webex: { ...c.webex,bot_token: '',clear_bot_token: !c.webex.clear_bot_token } }))}>{cfg.webex.clear_bot_token ? 'Keep stored token' : 'Remove stored token'}</button></p>}
               <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>Create a bot at <strong>developer.webex.com</strong> and paste its Access Token here.</div>
             </div>
-            <div className="form-group" style={{ marginBottom: 12 }}>
+            <div className="form-group mb-12">
               <label style={labelStyle}>Delivery Mode</label>
               <div className="flex gap-8">
                 {[['direct','Direct (email)'],['space','Space (room)'],['both','Both']].map(([v,l]) => (
@@ -124,18 +124,18 @@ export function IntegrationsTab() {
               </div>
             </div>
             {(cfg.webex.mode === 'space' || cfg.webex.mode === 'both') && (
-              <div className="form-group" style={{ marginBottom: 12 }}>
+              <div className="form-group mb-12">
                 <label style={labelStyle}>Webex Space / Room ID</label>
                 <input value={cfg.webex.space_id} onChange={e => setWebex('space_id', e.target.value)} placeholder="Y2lzY29zcGFyazovL3VzL1JPT00v..." />
               </div>
             )}
             {(cfg.webex.mode === 'direct' || cfg.webex.mode === 'both') && (
-              <div className="form-group" style={{ marginBottom: 12 }}>
+              <div className="form-group mb-12">
                 <label style={labelStyle}>Test Email (for test button only)</label>
                 <input type="email" value={cfg.webex.test_email} onChange={e => setWebex('test_email', e.target.value)} placeholder="engineer@yourcompany.com" />
               </div>
             )}
-            <button className="btn btn-ghost btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} disabled={!cfg.webex.bot_token || testing.webex} onClick={() => test('webex')}>
+            <button className="btn btn-ghost btn-sm inline-flex items-center gap-6" disabled={!cfg.webex.bot_token || testing.webex} onClick={() => test('webex')}>
               {testing.webex ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</> : <><Bell size={13} /> Send Test</>}
             </button>
           </>
@@ -156,7 +156,7 @@ export function IntegrationsTab() {
         </div>
       )}
 
-      <button className="btn btn-primary" onClick={save} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <button className="btn btn-primary inline-flex items-center gap-6" onClick={save} disabled={saving}>
         {saving ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving…</> : <><Save size={14} /> Save Integration Settings</>}
       </button>
     </fieldset>

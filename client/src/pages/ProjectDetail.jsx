@@ -206,7 +206,7 @@ export default function ProjectDetail() {
       <div className="page-header">
         <div>
           <p className="text-sm text-muted" style={{ marginBottom: 4 }}>
-            <Link to="/projects" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><ChevronLeft size={14} /> Projects</Link>
+            <Link to="/projects" className="inline-flex items-center gap-4"><ChevronLeft size={14} /> Projects</Link>
           </p>
           <h1 className="page-title">{project.title}</h1>
           <div className="flex-center gap-8 mt-4" style={{ flexWrap: 'wrap' }}>
@@ -220,9 +220,9 @@ export default function ProjectDetail() {
           {/* Export PDF */}
           {isManager && (
             <button
-              className="btn btn-ghost btn-sm print-hide"
+              className="btn btn-ghost btn-sm print-hide inline-flex items-center gap-5"
               onClick={() => window.print()}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+             
               title="Export a PDF summary of this project"
             >
               <Printer size={14} /> Export PDF
@@ -237,24 +237,24 @@ export default function ProjectDetail() {
           )}
           {/* Submit for closure — anyone who can manage and project is still active */}
           {!['closed','cancelled','pending_approval'].includes(project.status) && canManage && (
-            <button className="btn btn-ghost btn-sm" onClick={requestClosure}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            <button className="btn btn-ghost btn-sm inline-flex items-center gap-5" onClick={requestClosure}
+             
               title="Submit this project for closure approval">
               <Lock size={13} /> Submit for Closure
             </button>
           )}
           {/* Engineer: request closure */}
           {!['closed','cancelled','pending_approval'].includes(project.status) && isEngineer && (
-            <button className="btn btn-ghost btn-sm" onClick={requestClosure}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            <button className="btn btn-ghost btn-sm inline-flex items-center gap-5" onClick={requestClosure}
+             
               title="Request manager review before closing">
               <Lock size={13} /> Request Closure
             </button>
           )}
           {/* Manager: reopen a closed project */}
           {project.status === 'closed' && isManager && (
-            <button className="btn btn-ghost btn-sm" onClick={reopenProject}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <button className="btn btn-ghost btn-sm inline-flex items-center gap-5" onClick={reopenProject}
+             >
               <RefreshCw size={13} /> Reopen Project
             </button>
           )}
@@ -283,16 +283,16 @@ export default function ProjectDetail() {
           {isManager && (
             <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
               <button
-                className="btn btn-success btn-sm"
+                className="btn btn-success btn-sm inline-flex items-center gap-5"
                 onClick={approveClosure}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+               
               >
                 <CheckCircle2 size={13} /> Approve &amp; Close
               </button>
               <button
-                className="btn btn-warning btn-sm"
+                className="btn btn-warning btn-sm inline-flex items-center gap-5"
                 onClick={() => setShowRejectDialog(true)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+               
               >
                 ↩ Send Back
               </button>
@@ -321,7 +321,7 @@ export default function ProjectDetail() {
       {project.customer_name && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: 'var(--gray-600)' }}>
           <Building2 size={14} />
-          <span style={{ fontWeight: 600 }}>{project.customer_name}</span>
+          <span className="font-semibold">{project.customer_name}</span>
           {project.customer_contact && <span>· {project.customer_contact}</span>}
           {project.customer_email && <a href={`mailto:${project.customer_email}`} style={{ color: 'var(--primary)' }}>{project.customer_email}</a>}
         </div>
@@ -386,7 +386,7 @@ export default function ProjectDetail() {
               </button>
             </div>
 
-            <div style={{ flex: 1 }} />
+            <div className="flex-1" />
 
             {canManage && (
               <>
@@ -476,7 +476,7 @@ export default function ProjectDetail() {
                 onChange={setStatusMsg}
                 placeholder="Add a status update… (type @name to notify)"
                 users={allUsers}
-                style={{ flex: 1 }}
+                className="flex-1"
               />
               <button type="submit" className="btn btn-primary btn-sm" disabled={!statusMsg.trim()}>Post</button>
             </form>
@@ -502,7 +502,7 @@ export default function ProjectDetail() {
           </div>
           {activity.length === 0
             ? <p className="text-muted text-sm">No activity recorded yet.</p>
-            : <ul style={{ listStyle: 'none' }}>
+            : <ul className="list-none">
                 {activity.map((a, i) => {
                   const iconMap = {
                     task_created:    <Plus         size={13} color="var(--success)" />,
@@ -526,7 +526,7 @@ export default function ProjectDetail() {
                   return (
                     <li key={a.id} style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: i < activity.length - 1 ? '1px solid var(--gray-100)' : 'none', alignItems: 'flex-start' }}>
                       <span style={{ width: 20, display: 'flex', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{icon}</span>
-                      <div style={{ flex: 1 }}>
+                      <div className="flex-1">
                         <span style={{ fontWeight: 600, fontSize: 13 }}>{a.user_name}</span>
                         <span style={{ fontSize: 13, color: 'var(--gray-600)' }}> {labels[a.action] || a.action}</span>
                         {a.detail && <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>: {a.detail}</span>}
@@ -568,7 +568,7 @@ export default function ProjectDetail() {
               <div className="section-title">Add Members</div>
               <div className="chip-list">
                 {addableUsers.filter(u => !project.members?.some(m => m.id === u.id)).map(u => (
-                  <div key={u.id} className="chip" style={{ cursor: 'pointer' }} onClick={() => api.addMembers(id, [u.id]).then(load)}>
+                  <div key={u.id} className="chip cursor-pointer" onClick={() => api.addMembers(id, [u.id]).then(load)}>
                     {u.name}
                     <span style={{ fontSize: 10, marginLeft: 4, opacity: .65 }}>{u.role}</span>
                     <button>+</button>
@@ -730,7 +730,7 @@ export default function ProjectDetail() {
                 Mark as Ad-hoc Task
               </label>
             </div>
-            {addTaskErr && <div className="error-msg" style={{ marginBottom: 8 }}>{addTaskErr}</div>}
+            {addTaskErr && <div className="error-msg mb-8">{addTaskErr}</div>}
             <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
               <button type="button" className="btn btn-ghost" onClick={() => { setShowAddTask(false); setAddTaskErr(''); }}>Cancel</button>
               <button type="submit" className="btn btn-primary">Add Task</button>

@@ -226,7 +226,7 @@ export default function Notes() {
               placeholder="Add a to-do item…"
               style={{ flex: 1, fontSize: 13 }}
             />
-            <button type="submit" className="btn btn-primary btn-sm" disabled={adding || !newTitle.trim()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <button type="submit" className="btn btn-primary btn-sm inline-flex items-center gap-4" disabled={adding || !newTitle.trim()}>
               <Plus size={13} /> Add
             </button>
           </form>
@@ -234,7 +234,7 @@ export default function Notes() {
           {todosLoading ? <p className="text-muted text-sm">Loading…</p> : todos.length === 0 ? (
             <p className="text-muted text-sm">No to-dos yet — add one above!</p>
           ) : (
-            <ul style={{ listStyle: 'none' }}>
+            <ul className="list-none">
               {/* Open todos first */}
               {openTodos.map(t => (
                 <TodoItem key={t.id} todo={t} onToggle={toggleTodo} onDelete={deleteTodo} />

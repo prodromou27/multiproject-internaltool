@@ -188,7 +188,7 @@ export default function Customers() {
       <PageHeader eyebrow="Management" title="Customers" description="Customer records, service coverage, contracts and operational access." actions={
         <div className="flex gap-8 flex-wrap">
           <button className="btn btn-ghost" onClick={() => load()} disabled={loading}><RefreshCw size={14} /> Refresh</button>
-          {canCreate && <button className="btn btn-ghost" onClick={() => setShowImport(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Upload size={14} /> Import</button>}
+          {canCreate && <button className="btn btn-ghost inline-flex items-center gap-6" onClick={() => setShowImport(true)}><Upload size={14} /> Import</button>}
           {canCreate && <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>+ New Customer</button>}
         </div>
       } />

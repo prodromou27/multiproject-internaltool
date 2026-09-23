@@ -109,10 +109,10 @@ function AvatarSection({ user, onRefresh }) {
           </p>
           <div className="flex gap-8 flex-wrap">
             <button
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm inline-flex items-center gap-5"
               onClick={() => fileRef.current?.click()}
               disabled={uploading}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+             
             >
               <Camera size={13} /> {uploading ? 'Uploading…' : 'Upload Photo'}
             </button>
@@ -211,9 +211,9 @@ function PersonalInfoSection({ user, onRefresh }) {
           <div className="flex-center gap-12">
             <button
               type="submit"
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm inline-flex items-center gap-5"
               disabled={saving}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+             
             >
               <Save size={13} /> {saving ? 'Saving…' : 'Save Changes'}
             </button>
@@ -296,9 +296,9 @@ function ChangePasswordSection() {
         </div>
         <button
           type="submit"
-          className="btn btn-primary btn-sm"
+          className="btn btn-primary btn-sm inline-flex items-center gap-5"
           disabled={saving || !form.current_password || !form.new_password || form.new_password !== form.confirm}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+         
         >
           <KeyRound size={13} /> {saving ? 'Saving…' : 'Update Password'}
         </button>
@@ -392,10 +392,10 @@ function TwoFactorSection({ user, onRefresh }) {
         ) : (
           step === 'idle' && (
             <button
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm inline-flex items-center gap-5"
               onClick={startSetup}
               disabled={working}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+             
             >
               {working ? <><Loader2 size={13} style={{ animation: 'spin .9s linear infinite' }} /> Loading…</> : <><ShieldCheck size={13} /> Enable 2FA</>}
             </button>
@@ -440,7 +440,7 @@ function TwoFactorSection({ user, onRefresh }) {
               type="submit"
               className="btn btn-primary btn-sm"
               disabled={working || code.replace(/\s/g,'').length < 6}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+              className="inline-flex items-center gap-5"
             >
               {working ? <><Loader2 size={13} style={{ animation: 'spin .9s linear infinite' }} /> Verifying…</> : <><ShieldCheck size={13} /> Activate</>}
             </button>

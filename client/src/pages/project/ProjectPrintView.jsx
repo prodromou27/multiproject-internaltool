@@ -124,7 +124,7 @@ export function ProjectPrintView({ project, tasks, milestones, members }) {
               <div className="print-section-title">Milestones ({milestones.length})</div>
               {milestones.slice(0, 6).map(m => (
                 <div key={m.id} className="print-task-row">
-                  <svg width={10} height={10} viewBox="0 0 12 12" style={{ flexShrink: 0 }}>
+                  <svg width={10} height={10} viewBox="0 0 12 12" className="flex-shrink-0">
                     <polygon points="6,0 12,6 6,12 0,6" fill={m.completed_at ? '#10b981' : isOverdue(m.due_date) ? '#ef4444' : '#7c3aed'} />
                   </svg>
                   <span style={{ flex: 1, fontSize: 12, textDecoration: m.completed_at ? 'line-through' : 'none', color: m.completed_at ? '#9ca3af' : '#111' }}>{m.title}</span>

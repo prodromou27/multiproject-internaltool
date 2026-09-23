@@ -344,7 +344,7 @@ export default function Scorecards() {
           borderRadius: 10, padding: '12px 16px', marginBottom: 16,
         }}>
           <AlertTriangle size={16} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
-          <div style={{ flex: 1 }}>
+          <div className="flex-1">
             <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--tone-warning-text)', marginBottom: 4 }}>
               Pending KPI scores — {pendingProjects.reduce((s, p) => s + p.unscored_engineers.length, 0)} engineer{pendingProjects.reduce((s, p) => s + p.unscored_engineers.length, 0) !== 1 ? 's' : ''} awaiting evaluation
             </div>
@@ -411,7 +411,7 @@ export default function Scorecards() {
                     <div>Difficulty: {DIFFICULTY_LABELS[sc.difficulty]?.label}</div>
                   </div>
                 </div>
-                <div style={{ marginTop: 12 }}><ScorecardBreakdown sc={sc} /></div>
+                <div className="mt-12"><ScorecardBreakdown sc={sc} /></div>
               </div>
             ))
           }
@@ -470,7 +470,7 @@ export default function Scorecards() {
           </div>
           {displayed.length === 0
             ? <div className="empty"><div className="empty-icon"><BarChart2 size={40} strokeWidth={1.2} /></div><p>No scorecards yet</p></div>
-            : <div className="card table-wrap" style={{ padding: 0 }}>
+            : <div className="card table-wrap p-0">
                 <table>
                   <thead>
                     <tr>
@@ -483,8 +483,8 @@ export default function Scorecards() {
                     {displayed.map(sc => {
                       const r = getRating(sc.adjusted_score);
                       return (
-                        <tr key={sc.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(sc)}>
-                          <td style={{ fontWeight: 600 }}>{sc.engineer_name}</td>
+                        <tr key={sc.id} className="cursor-pointer" onClick={() => setSelected(sc)}>
+                          <td className="font-semibold">{sc.engineer_name}</td>
                           <td><Link to={`/projects/${sc.project_id}`} onClick={e => e.stopPropagation()}>{sc.project_title}</Link></td>
                           <td>
                             <span style={{ fontSize: 12, color: DIFFICULTY_LABELS[sc.difficulty]?.color, fontWeight: 600 }}>
@@ -525,7 +525,7 @@ export default function Scorecards() {
                   return (
                     <div key={eng.id} className="card">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                        <div style={{ flex: 1 }}>
+                        <div className="flex-1">
                           <div style={{ fontWeight: 700, fontSize: 14 }}>{eng.name}</div>
                           <div style={{ fontSize: 11, color: '#9ca3af' }}>{eng.email || '—'} · {eng.scorecards.length} scorecard{eng.scorecards.length !== 1 ? 's' : ''}</div>
                         </div>

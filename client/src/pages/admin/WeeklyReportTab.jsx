@@ -120,11 +120,11 @@ export function WeeklyReportTab() {
           </p>
         </div>
         <div className="flex gap-10">
-          <button className="btn btn-ghost btn-sm" onClick={loadPreview} disabled={previewing} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn btn-ghost btn-sm inline-flex items-center gap-6" onClick={loadPreview} disabled={previewing}>
             {previewing ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <ScrollText size={13} />}
             Preview Report
           </button>
-          <button className="btn btn-primary btn-sm" onClick={sendNow} disabled={sending} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn btn-primary btn-sm inline-flex items-center gap-6" onClick={sendNow} disabled={sending}>
             {sending ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={13} />}
             Send Now
           </button>
@@ -195,10 +195,10 @@ export function WeeklyReportTab() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-              <button type="submit" className="btn btn-primary btn-sm" disabled={smtpSaving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <button type="submit" className="btn btn-primary btn-sm inline-flex items-center gap-6" disabled={smtpSaving}>
                 {smtpSaving ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={13} />} Save SMTP
               </button>
-              <button type="button" className="btn btn-ghost btn-sm" disabled={smtpTesting} onClick={testSmtp} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <button type="button" className="btn btn-ghost btn-sm inline-flex items-center gap-6" disabled={smtpTesting} onClick={testSmtp}>
                 {smtpTesting ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Bell size={13} />} Test Connection
               </button>
             </div>
@@ -222,7 +222,7 @@ export function WeeklyReportTab() {
             <div className="form-group">
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input type="checkbox" checked={!!schedule.enabled} onChange={e => setSchedule(s => ({ ...s, enabled: e.target.checked }))} style={{ width: 'auto' }} />
-                <span style={{ fontWeight: 600 }}>Enable automatic weekly report</span>
+                <span className="font-semibold">Enable automatic weekly report</span>
               </label>
               {!schedule.enabled && (
                 <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 4 }}>Enable to have the report sent automatically on schedule.</p>
@@ -261,7 +261,7 @@ export function WeeklyReportTab() {
                         <input type="checkbox" style={{ width: 'auto' }}
                           checked={schedule.recipients?.includes(m.id) || false}
                           onChange={() => toggleRecipient(m.id)} />
-                        <span style={{ fontWeight: 600 }}>{m.name}</span>
+                        <span className="font-semibold">{m.name}</span>
                         <span style={{ color: 'var(--gray-400)', fontSize: 12 }}>{m.email || '—'}</span>
                       </label>
                     ))}
@@ -269,7 +269,7 @@ export function WeeklyReportTab() {
               }
             </div>
 
-            <button type="submit" className="btn btn-primary btn-sm" disabled={schedSaving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <button type="submit" className="btn btn-primary btn-sm inline-flex items-center gap-6" disabled={schedSaving}>
               {schedSaving ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={13} />} Save Schedule
             </button>
           </form>
@@ -304,7 +304,7 @@ export function WeeklyReportTab() {
       {/* ── Preview Modal ── */}
       {showPreview && preview && (
         <Modal title="Report Preview" onClose={() => setShowPreview(false)} width={780}>
-          <div style={{ marginBottom: 12 }}>
+          <div className="mb-12">
             <div style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 8 }}>
               <strong>Subject:</strong> {preview.subject}
             </div>

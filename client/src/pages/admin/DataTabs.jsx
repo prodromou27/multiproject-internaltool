@@ -59,7 +59,7 @@ export function ProjectsAdminTab() {
       {loading ? <p className="text-muted">Loading…</p> : filtered.length === 0
         ? <div className="empty"><div className="empty-icon"><FolderOpen size={40} strokeWidth={1.2} /></div><p>No projects match</p></div>
         : (
-          <div className="card table-wrap" style={{ padding: 0 }}>
+          <div className="card table-wrap p-0">
             <table>
               <thead>
                 <tr>
@@ -152,7 +152,7 @@ export function MaintenanceAdminTab() {
       {loading ? <p className="text-muted">Loading…</p> : filtered.length === 0
         ? <div className="empty"><div className="empty-icon"><Wrench size={40} strokeWidth={1.2} /></div><p>No visits match</p></div>
         : (
-          <div className="card table-wrap" style={{ padding: 0 }}>
+          <div className="card table-wrap p-0">
             <table>
               <thead>
                 <tr>
@@ -163,7 +163,7 @@ export function MaintenanceAdminTab() {
               <tbody>
                 {filtered.map(v => (
                   <tr key={v.id}>
-                    <td style={{ fontWeight: 600 }}>{v.title}</td>
+                    <td className="font-semibold">{v.title}</td>
                     <td style={{ fontSize: 12, color: 'var(--gray-600)' }}>{v.customer_name}</td>
                     <td className={isOverdue(v.scheduled_date) && v.status === 'scheduled' ? 'overdue' : 'text-sm text-muted'}>{fmtDate(v.scheduled_date)}</td>
                     <td style={{ fontSize: 12, color: 'var(--gray-600)' }}>{v.engineer_names || <span className="text-muted">—</span>}</td>
@@ -269,7 +269,7 @@ export function DataExportTab() {
             <div style={{ width: 44, height: 44, borderRadius: 10, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Icon size={20} color={color} />
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="flex-1 min-w-0">
               <div style={{ fontWeight: 700, fontSize: 14 }}>{label}</div>
               <div style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 1 }}>{desc}</div>
             </div>

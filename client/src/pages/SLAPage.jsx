@@ -55,7 +55,7 @@ function SLACard({ icon: Icon, title, target, metric, renderItems }) {
         }}>
           <Icon size={20} color={breached > 0 ? '#ef4444' : at_risk > 0 ? '#f59e0b' : '#22c55e'} />
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="flex-1 min-w-0">
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{title}</div>
           <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Target: {target}</div>
         </div>
@@ -107,7 +107,7 @@ function SLACard({ icon: Icon, title, target, metric, renderItems }) {
       )}
 
       {expanded && hasIssues && (
-        <div style={{ marginTop: 12 }}>
+        <div className="mt-12">
           {renderItems(metric.items || [])}
         </div>
       )}
@@ -120,7 +120,7 @@ function MVItems({ items }) {
   const show = items.filter(i => i.breached || i.at_risk);
   if (!show.length) return null;
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="overflow-x-auto">
       <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--gray-100)' }}>
@@ -157,7 +157,7 @@ function ProjectItems({ items }) {
   const show = items.filter(i => i.breached || i.at_risk);
   if (!show.length) return null;
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="overflow-x-auto">
       <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--gray-100)' }}>
@@ -192,7 +192,7 @@ function TaskItems({ items }) {
   const show = items.filter(i => i.breached || i.at_risk);
   if (!show.length) return null;
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="overflow-x-auto">
       <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--gray-100)' }}>
@@ -223,7 +223,7 @@ function ClosureItems({ items }) {
   const show = items.filter(i => i.breached || i.at_risk);
   if (!show.length) return null;
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="overflow-x-auto">
       <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--gray-100)' }}>
@@ -256,7 +256,7 @@ function ServiceActivityItems({ items }) {
   const show = items.filter(i => i.breached || i.at_risk || i.response_breached || i.late_complete);
   if (!show.length) return null;
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="overflow-x-auto">
       <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--gray-100)' }}>
@@ -317,7 +317,7 @@ function OverallHealth({ data }) {
   return (
     <div style={{ background: bg, border: `1px solid ${color}33`, borderRadius: 12, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, color }}>
       {icon}
-      <div style={{ flex: 1 }}>
+      <div className="flex-1">
         <div style={{ fontWeight: 700, fontSize: 14 }}>{msg}</div>
         <div style={{ fontSize: 12, marginTop: 2, opacity: .75 }}>
           {counts.filter(c => c.breached > 0 || c.at_risk > 0).map(c =>
@@ -367,10 +367,10 @@ export default function SLAPage() {
           {genTime && <div style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 2 }}>Last updated at {genTime}</div>}
         </div>
         <button
-          className="btn btn-ghost btn-sm"
+          className="btn btn-ghost btn-sm inline-flex items-center gap-5"
           onClick={() => load(true)}
           disabled={refreshing}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+         
         >
           <RefreshCw size={13} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
           Refresh

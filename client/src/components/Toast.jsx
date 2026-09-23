@@ -45,7 +45,7 @@ function ToastItem({ id, message, type, onRemove }) {
       }}
     >
       <Icon size={16} style={{ color: p.icon, flexShrink: 0, marginTop: 1 }} />
-      <span style={{ flex: 1 }}>{message}</span>
+      <span className="flex-1">{message}</span>
       <button
         onClick={() => onRemove(id)}
         aria-label="Dismiss"

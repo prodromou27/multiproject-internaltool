@@ -359,7 +359,7 @@ export default function Tasks() {
     <div className="page">
       <PageHeader eyebrow="Operations" title="Tasks" description="Prioritize assigned work, track progress and manage deadlines." actions={<>
 <div className="flex gap-8 flex-wrap">
-          <button className="btn btn-ghost btn-sm" onClick={exportTasks} disabled={busy || !!loadError || search.trim() !== debouncedSearch} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <button className="btn btn-ghost btn-sm inline-flex items-center gap-5" onClick={exportTasks} disabled={busy || !!loadError || search.trim() !== debouncedSearch}>
             <Download size={13} /> Export all matching
           </button>
           <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { references.current = null; load(); }}>Refresh</button>
@@ -436,17 +436,17 @@ export default function Tasks() {
           {isManager && (
             <>
               {['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','closed','cancelled'].map(s => (
-                <button key={s} className="btn btn-sm btn-ghost" disabled={bulkBusy}
+                <button key={s} className="btn btn-sm btn-ghost inline-flex items-center gap-4" disabled={bulkBusy}
                   onClick={() => applyBulk(s)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                 
                 >
                   {(s === 'waiting_customer' || s === 'waiting_vendor') ? <Clock size={12} /> : <UserCheck size={12} />}
                   → {STATUS_LABELS[s]}
                 </button>
               ))}
-              <button className="btn btn-sm btn-danger" disabled={bulkBusy}
+              <button className="btn btn-sm btn-danger inline-flex items-center gap-4" disabled={bulkBusy}
                 onClick={() => applyBulk('delete')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+               
               >
                 <Trash2 size={12} /> Delete
               </button>
@@ -454,9 +454,9 @@ export default function Tasks() {
           )}
           {!isManager && (
             ['open','in_progress','waiting_customer','waiting_vendor','completed'].map(s => (
-              <button key={s} className="btn btn-sm btn-ghost" disabled={bulkBusy}
+              <button key={s} className="btn btn-sm btn-ghost inline-flex items-center gap-4" disabled={bulkBusy}
                 onClick={() => applyBulk(s)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+               
               >
                 {(s === 'waiting_customer' || s === 'waiting_vendor') ? <Clock size={12} /> : null}
                 → {STATUS_LABELS[s]}
@@ -478,7 +478,7 @@ export default function Tasks() {
           <div className="empty-icon"><CheckSquare size={40} strokeWidth={1.2} /></div>
           <p>{search.trim() ? `No tasks matching "${search}"` : myTasksOnly ? 'No tasks assigned to you in this view' : 'No tasks found'}</p>
           {(search.trim() || myTasksOnly) && (
-            <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => { setSearch(''); setMyTasksOnly(false); setFilter('all'); }}>
+            <button className="btn btn-ghost btn-sm mt-12" onClick={() => { setSearch(''); setMyTasksOnly(false); setFilter('all'); }}>
               Clear filters
             </button>
           )}
@@ -510,7 +510,7 @@ export default function Tasks() {
                       style={{ width: 15, height: 15, cursor: 'pointer' }} />
                   </td>
                   <td>
-                    <span style={{ fontWeight: 500 }}>{t.title}</span>
+                    <span className="font-medium">{t.title}</span>
                     {t.is_adhoc ? <span className="badge badge-adhoc" style={{ marginLeft: 6 }}>adhoc</span> : null}
                     {t.is_blocked ? (
                       <span className="badge badge-blocked" style={{ marginLeft: 6 }} title={`Blocked by ${t.dep_count || 1} unfinished task(s)`}>

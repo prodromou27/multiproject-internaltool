@@ -178,7 +178,7 @@ function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
     <div>
       {!creating ? (
         <div className="flex-center gap-8">
-          <select value={value || ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)} style={{ flex: 1 }}>
+          <select value={value || ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)} className="flex-1">
             <option value="">— No customer —</option>
             {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -193,13 +193,13 @@ function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
             value={newName}
             onChange={e => setNewName(e.target.value)}
             placeholder="Customer name…"
-            style={{ flex: 1 }}
+            className="flex-1"
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createAndSelect(); } if (e.key === 'Escape') setCreating(false); }}
           />
           <button type="button" className="btn btn-primary btn-sm" onClick={createAndSelect} disabled={saving || !newName.trim()}>
             {saving ? '…' : 'Create'}
           </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCreating(false); setNewName(''); }} style={{ display: 'inline-flex', alignItems: 'center' }}><X size={13} /></button>
+          <button type="button" className="btn btn-ghost btn-sm inline-flex items-center" onClick={() => { setCreating(false); setNewName(''); }}><X size={13} /></button>
         </div>
       )}
     </div>
@@ -440,7 +440,7 @@ export default function Projects() {
           <div className="empty-icon"><FolderOpen size={40} strokeWidth={1.2} /></div>
           <p>{search.trim() ? `No projects matching "${search}"` : 'No projects found'}</p>
           {search.trim() && (
-            <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setSearch('')}>
+            <button className="btn btn-ghost btn-sm mt-12" onClick={() => setSearch('')}>
               Clear search
             </button>
           )}
@@ -482,7 +482,7 @@ export default function Projects() {
                           {p.is_pinned ? <Pin size={13} /> : <Pin size={13} />}
                         </button>
                       )}
-                      <Link to={`/projects/${p.id}`} style={{ fontWeight: 600 }}>{p.title}</Link>
+                      <Link to={`/projects/${p.id}`} className="font-semibold">{p.title}</Link>
                     </div>
                   </td>
                   <td>
@@ -523,7 +523,7 @@ export default function Projects() {
                         </div>
                       </div>
                     ) : (
-                      <span className="text-muted" style={{ fontSize: 12 }}>No tasks</span>
+                      <span className="text-muted text-sm">No tasks</span>
                     )}
                   </td>
                   <td className={isOverdue(p.deadline) && !['closed','cancelled'].includes(p.status) ? 'overdue' : ''}>{fmtDate(p.deadline)}</td>

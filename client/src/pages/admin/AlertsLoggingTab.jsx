@@ -73,8 +73,8 @@ export function AdminAlertsTab() {
           <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
             <ShieldAlert size={15} /> System Health Check
           </h3>
-          <button className="btn btn-ghost btn-sm" onClick={runCheck} disabled={checking}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <button className="btn btn-ghost btn-sm inline-flex items-center gap-5" onClick={runCheck} disabled={checking}
+           >
             {checking ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={13} />}
             {checking ? 'Checking…' : 'Run Check Now'}
           </button>
@@ -154,7 +154,7 @@ export function AdminAlertsTab() {
           {recentAlerts.map(n => (
             <div key={n.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '8px 0', borderBottom: '1px solid var(--gray-100)', fontSize: 13 }}>
               <div>
-                <span style={{ fontWeight: 500 }}>{n.title}</span>
+                <span className="font-medium">{n.title}</span>
                 {n.body && <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>{n.body}</div>}
               </div>
               <span style={{ fontSize: 11, color: 'var(--gray-400)', whiteSpace: 'nowrap', marginLeft: 16 }}>{timeSince(n.created_at)}</span>
@@ -164,8 +164,8 @@ export function AdminAlertsTab() {
       )}
 
       <div className="flex gap-10">
-        <button className="btn btn-primary" disabled={!dirty || saving} onClick={save}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <button className="btn btn-primary inline-flex items-center gap-6" disabled={!dirty || saving} onClick={save}
+         >
           {saving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={14} />}
           {saving ? 'Saving…' : 'Save Preferences'}
         </button>
@@ -300,7 +300,7 @@ export function LoggingTab() {
             Download recent application activity as a CSV file (up to last 1 000 entries).
             {cfg.sensitive_data_masking && <strong> Sensitive data masking is active.</strong>}
           </p>
-          <button className="btn btn-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          <button className="btn btn-ghost inline-flex items-center gap-6"
             onClick={() => api.downloadLogs()}>
             <Download size={14} /> Download Log CSV
           </button>
@@ -309,8 +309,8 @@ export function LoggingTab() {
 
       {/* Save */}
       <div className="flex gap-10">
-        <button className="btn btn-primary" disabled={!dirty || saving} onClick={save}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <button className="btn btn-primary inline-flex items-center gap-6" disabled={!dirty || saving} onClick={save}
+         >
           {saving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={14} />}
           {saving ? 'Saving…' : 'Save Settings'}
         </button>

@@ -210,7 +210,7 @@ export function ImportExcelModal({ projectId, onClose, onImported }) {
                   background: selected.has(i) ? '#f0fdf4' : 'white' }}
                   onClick={() => toggleOne(i)}>
                   <input type="checkbox" checked={selected.has(i)} onChange={() => toggleOne(i)}
-                    onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }} />
+                    onClick={e => e.stopPropagation()} className="flex-shrink-0" />
                   <div style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {t.title}
                   </div>

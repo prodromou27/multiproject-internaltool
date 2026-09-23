@@ -78,7 +78,7 @@ export function GanttTab({ project, tasks, milestones = [] }) {
         </span>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
+      <div className="overflow-x-auto">
         <div style={{ minWidth: 520 }}>
           {/* Month labels */}
           <div style={{ position: 'relative', height: 18, marginLeft: 190, marginBottom: 4 }}>
@@ -99,9 +99,9 @@ export function GanttTab({ project, tasks, milestones = [] }) {
             return (
               <div key={task.id} style={{ display: 'flex', alignItems: 'center', marginBottom: 5 }}>
                 <div style={{ width: 190, flexShrink: 0, paddingRight: 10, fontSize: 12, fontWeight: 500, color: 'var(--gray-700)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {(task.status === 'completed' || task.status === 'closed') && <CheckCircle2 size={11} color="var(--success)" style={{ flexShrink: 0 }} />}
-                  {overdue && <AlertTriangle size={11} color="var(--danger)" style={{ flexShrink: 0 }} />}
-                  {!!task.is_blocked && <Lock size={11} color="#6366f1" style={{ flexShrink: 0 }} />}
+                  {(task.status === 'completed' || task.status === 'closed') && <CheckCircle2 size={11} color="var(--success)" className="flex-shrink-0" />}
+                  {overdue && <AlertTriangle size={11} color="var(--danger)" className="flex-shrink-0" />}
+                  {!!task.is_blocked && <Lock size={11} color="#6366f1" className="flex-shrink-0" />}
                   <span title={task.title}>{task.title}</span>
                 </div>
 
@@ -260,7 +260,7 @@ export function MilestonesTab({ projectId, canManage, milestones, onReload }) {
                       fill={done ? '#22c55e' : overdue ? '#ef4444' : '#7c3aed'} />
                   </svg>
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="flex-1 min-w-0">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{
                       fontWeight: 600, fontSize: 14,

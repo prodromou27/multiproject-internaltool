@@ -92,8 +92,8 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
         <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '12px 16px', marginBottom: 20 }}>
           <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 13 }}>Step 1 — Download the template</div>
           <button
-            className="btn btn-ghost btn-sm"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            className="btn btn-ghost btn-sm inline-flex items-center gap-6"
+           
             disabled={downloading}
             onClick={async () => {
               setDownloading(true);
@@ -148,7 +148,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
             {file ? (
               <div>
                 <div style={{ fontSize: 28, marginBottom: 6 }}>📄</div>
-                <div style={{ fontWeight: 600 }}>{file.name}</div>
+                <div className="font-semibold">{file.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
                   {(file.size / 1024).toFixed(1)} KB — click to change
                 </div>
@@ -156,7 +156,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
             ) : (
               <div>
                 <div style={{ fontSize: 28, marginBottom: 6 }}>📂</div>
-                <div style={{ fontWeight: 600 }}>Drop file here or click to browse</div>
+                <div className="font-semibold">Drop file here or click to browse</div>
                 <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
                   Supported: .xlsx, .xlsm, .csv
                 </div>

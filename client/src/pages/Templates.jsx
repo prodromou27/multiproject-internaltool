@@ -35,7 +35,7 @@ function TemplateTaskRow({ task, tplId, onDelete, onUpdate }) {
 
   return (
     <div style={{ padding: '6px 0', borderBottom: '1px solid var(--gray-50)', display: 'flex', alignItems: 'center', gap: 8 }}>
-      <CheckSquare size={13} color="var(--gray-400)" style={{ flexShrink: 0 }} />
+      <CheckSquare size={13} color="var(--gray-400)" className="flex-shrink-0" />
       <span style={{ flex: 1, fontSize: 13, color: 'var(--gray-800)' }}>{task.title}</span>
       <PriorityBadge p={task.priority} />
       <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px' }} onClick={() => setEditing(true)}><Pencil size={12} /></button>
@@ -91,7 +91,7 @@ function TemplateCard({ tpl, onDelete, onRefresh }) {
   return (
     <div className="card" style={{ marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="flex-1 min-w-0">
           {editing ? (
             <form onSubmit={saveEdit} className="flex-center gap-8 flex-wrap">
               <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} required style={{ flex: 2, minWidth: 140 }} placeholder="Template name" />
@@ -113,11 +113,11 @@ function TemplateCard({ tpl, onDelete, onRefresh }) {
         </div>
 
         <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
-          <button className="btn btn-primary btn-sm" onClick={() => setApplying(true)} title="Use this template to create a project" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button className="btn btn-primary btn-sm inline-flex items-center gap-4" onClick={() => setApplying(true)} title="Use this template to create a project">
             <Copy size={12} /> Use
           </button>
           {!editing && <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)} title="Edit template"><Pencil size={12} /></button>}
-          <button className="btn btn-ghost btn-sm" onClick={() => setExpanded(e => !e)} title="Expand tasks" style={{ display: 'inline-flex', alignItems: 'center' }}>
+          <button className="btn btn-ghost btn-sm inline-flex items-center" onClick={() => setExpanded(e => !e)} title="Expand tasks">
             {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
           <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => onDelete(tpl.id)} title="Delete template"><Trash2 size={12} /></button>

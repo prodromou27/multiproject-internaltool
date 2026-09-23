@@ -109,7 +109,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
 
   return (
     <Modal title="Task Details" onClose={onClose}>
-      <div style={{ marginBottom: 12 }}>
+      <div className="mb-12">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
           <span style={{ fontWeight: 700, fontSize: 15 }}>{task.title}</span>
           {!!task.is_adhoc && <span className="badge badge-adhoc">adhoc</span>}
@@ -127,7 +127,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
             padding: '8px 12px', marginBottom: 10, fontSize: 13,
             display: 'flex', gap: 8, alignItems: 'flex-start',
           }}>
-            <span style={{ flexShrink: 0 }}>⏳</span>
+            <span className="flex-shrink-0">⏳</span>
             <div>
               <span style={{ fontWeight: 700, color: '#9a3412' }}>Pending from customer: </span>
               <span style={{ color: '#7c2d12' }}>{task.pending_from_customer}</span>
@@ -284,19 +284,19 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
           {editingCustom ? (
             <div>
               {customFields.map(f => (
-                <div key={f.id} className="form-group" style={{ marginBottom: 8 }}>
-                  <label style={{ fontSize: 12 }}>{f.name}{f.required && <span style={{ color: '#ef4444' }}> *</span>}</label>
+                <div key={f.id} className="form-group mb-8">
+                  <label className="text-sm">{f.name}{f.required && <span style={{ color: '#ef4444' }}> *</span>}</label>
                   {f.field_type === 'select' ? (
-                    <select value={customDraft[f.id] ?? ''} onChange={e => setCustomDraft(d => ({ ...d, [f.id]: e.target.value }))} style={{ fontSize: 12 }}>
+                    <select value={customDraft[f.id] ?? ''} onChange={e => setCustomDraft(d => ({ ...d, [f.id]: e.target.value }))} className="text-sm">
                       <option value="">— Select —</option>
                       {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                   ) : f.field_type === 'date' ? (
-                    <input type="date" value={customDraft[f.id] ?? ''} onChange={e => setCustomDraft(d => ({ ...d, [f.id]: e.target.value }))} style={{ fontSize: 12 }} />
+                    <input type="date" value={customDraft[f.id] ?? ''} onChange={e => setCustomDraft(d => ({ ...d, [f.id]: e.target.value }))} className="text-sm" />
                   ) : f.field_type === 'number' ? (
-                    <input type="number" value={customDraft[f.id] ?? ''} onChange={e => setCustomDraft(d => ({ ...d, [f.id]: e.target.value }))} style={{ fontSize: 12 }} />
+                    <input type="number" value={customDraft[f.id] ?? ''} onChange={e => setCustomDraft(d => ({ ...d, [f.id]: e.target.value }))} className="text-sm" />
                   ) : (
-                    <input type="text" value={customDraft[f.id] ?? ''} onChange={e => setCustomDraft(d => ({ ...d, [f.id]: e.target.value }))} style={{ fontSize: 12 }} />
+                    <input type="text" value={customDraft[f.id] ?? ''} onChange={e => setCustomDraft(d => ({ ...d, [f.id]: e.target.value }))} className="text-sm" />
                   )}
                 </div>
               ))}
@@ -325,7 +325,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
           <MessageSquare size={13} /> Comments ({comments.length})
         </div>
         {comments.length === 0
-          ? <p className="text-muted text-sm" style={{ marginBottom: 8 }}>No comments yet. Be first to add one.</p>
+          ? <p className="text-muted text-sm mb-8">No comments yet. Be first to add one.</p>
           : <ul style={{ listStyle: 'none', marginBottom: 12, maxHeight: 220, overflowY: 'auto' }}>
               {comments.map(c => (
                 <li key={c.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--gray-100)', display: 'flex', gap: 8 }}>
@@ -333,7 +333,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
                     display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
                     {c.user_name?.charAt(0).toUpperCase()}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="flex-1 min-w-0">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                       <span style={{ fontWeight: 600, fontSize: 12 }}>{c.user_name}</span>
                       <span style={{ fontSize: 10, color: 'var(--gray-400)' }} title={fmtDate(c.created_at)}>{fmtRelative(c.created_at)}</span>
@@ -381,9 +381,9 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
 
   return (
     <>
-      <tr style={{ cursor: 'pointer' }} onClick={() => onRowClick(task)}>
-        <td style={{ fontWeight: 500 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <tr className="cursor-pointer" onClick={() => onRowClick(task)}>
+        <td className="font-medium">
+          <span className="inline-flex items-center gap-5">
             {!!task.is_blocked && (
               <span title="Blocked by unfinished dependencies" style={{ color: '#6366f1', display: 'inline-flex', alignItems: 'center' }}>
                 <Lock size={12} />
@@ -523,7 +523,7 @@ export function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, 
                 >
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5 }}>
                     <GripVertical size={12} style={{ flexShrink: 0, marginTop: 1, color: 'var(--gray-300)' }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="flex-1 min-w-0">
                       <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--gray-800)', wordBreak: 'break-word', lineHeight: 1.3 }}>
                         {!!task.is_blocked && <Lock size={10} color="#6366f1" style={{ marginRight: 3, verticalAlign: 'middle' }} />}
                         {task.title}

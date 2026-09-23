@@ -334,7 +334,7 @@ export default function Dashboard() {
         const completed   = visits.filter(v => v.status === 'completed');
         const rptPending  = visits.filter(v => v.status !== 'cancelled' && !v.report_sent);
         return (
-          <div key={id} className="grid-4" style={{ marginBottom:20 }}>
+          <div key={id} className="grid-4 mb-20">
             <div className="card stat">
               <div className="stat-value" style={{ color:'var(--primary)' }}>{upcoming.length}</div>
               <div className="stat-label">Scheduled</div>
@@ -359,10 +359,10 @@ export default function Dashboard() {
         return (
           <div key={id} className="card">
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <Wrench size={15} color="var(--warning)" />
-                <div className="section-title" style={{ margin:0 }}>Upcoming Visits — This Month</div>
-                <span className="badge badge-on_hold" style={{ marginLeft:4 }}>{upcoming.length}</span>
+                <div className="section-title m-0">Upcoming Visits — This Month</div>
+                <span className="badge badge-on_hold ml-4">{upcoming.length}</span>
               </div>
               <Link to="/maintenance-visits" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
             </div>
@@ -374,7 +374,7 @@ export default function Dashboard() {
                     <tbody>
                       {upcoming.map(v => (
                         <tr key={v.id}>
-                          <td style={{ fontWeight:600 }}>{v.customer_name}</td>
+                          <td className="font-semibold">{v.customer_name}</td>
                           <td>{v.title}</td>
                           <td className={isOverdue(v.scheduled_date) ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
                           <td style={{ color:'var(--gray-600)' }}>{v.engineer_names || <span className="text-muted">—</span>}</td>
@@ -400,7 +400,7 @@ export default function Dashboard() {
     switch (id) {
       case 'stat_cards':
         return summary ? (
-          <div key={id} className="grid-4" style={{ marginBottom:20 }}>
+          <div key={id} className="grid-4 mb-20">
             <StatCard icon={FolderOpen}    iconBg="#eff6ff" iconColor="#3b82f6"
               value={summary.total ?? 0} label="Total Projects" to="/projects" />
             <StatCard icon={CheckCircle2}  iconBg="#f0fdf4" iconColor="#22c55e"
@@ -429,11 +429,11 @@ export default function Dashboard() {
           { label:'Green', count:ragGreen, bg:'var(--success-light)', text:'var(--tone-success-text)', dot:'#22c55e' },
         ];
         return (
-          <div key={id} className="card" style={{ marginBottom:20 }}>
+          <div key={id} className="card mb-20">
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <span style={{ width:8, height:8, borderRadius:'50%', background: ragRed ? '#ef4444' : ragAmber ? '#f59e0b' : '#22c55e', display:'inline-block' }} />
-                <div className="section-title" style={{ margin:0 }}>Project Health</div>
+                <div className="section-title m-0">Project Health</div>
                 <span className="text-sm text-muted">({active.length} active)</span>
               </div>
               <Link to="/projects" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
@@ -453,7 +453,7 @@ export default function Dashboard() {
             {atRisk.length > 0 ? (
               <>
                 <div style={{ fontSize:11, fontWeight:700, color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:.5, marginBottom:8 }}>At-Risk Projects</div>
-                <ul style={{ listStyle:'none' }}>
+                <ul className="list-none">
                   {atRisk.slice(0,5).map(p => (
                     <li key={p.id} style={{ padding:'8px 0', borderBottom:'1px solid var(--gray-100)', display:'flex', alignItems:'center', gap:8 }}>
                       <span style={{ width:8, height:8, borderRadius:'50%', background:p.rag_status==='red'?'#ef4444':'#f59e0b', flexShrink:0 }} />
@@ -466,7 +466,7 @@ export default function Dashboard() {
                 {atRisk.length > 5 && <Link to="/projects" style={{ fontSize:12, color:'var(--primary)', display:'block', marginTop:8 }}>+{atRisk.length-5} more at-risk →</Link>}
               </>
             ) : (
-              <p className="text-muted text-sm" style={{ margin:0 }}>✓ All {ragGreen} active project{ragGreen !== 1 ? 's' : ''} are on track</p>
+              <p className="text-muted text-sm m-0">✓ All {ragGreen} active project{ragGreen !== 1 ? 's' : ''} are on track</p>
             )}
           </div>
         );
@@ -474,10 +474,10 @@ export default function Dashboard() {
 
       case 'task_overview':
         return summary ? (
-          <div key={id} className="grid-2" style={{ marginBottom:20 }}>
+          <div key={id} className="grid-2 mb-20">
             <div className="card">
               <div className="section-header">
-                <div className="section-title" style={{ margin:0 }}>Task Overview</div>
+                <div className="section-title m-0">Task Overview</div>
                 <Link to="/tasks" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
               </div>
               {summary.taskStats ? (
@@ -497,7 +497,7 @@ export default function Dashboard() {
             </div>
             <div className="card">
               <div className="section-header">
-                <div className="section-title" style={{ margin:0 }}>Engineer Workload</div>
+                <div className="section-title m-0">Engineer Workload</div>
               </div>
               {summary.engineerLoad?.length > 0
                 ? summary.engineerLoad.slice(0,5).map(e => (
@@ -529,7 +529,7 @@ export default function Dashboard() {
         return pendingClosure.length > 0 ? (
           <div key={id} className="card" style={{ marginBottom:20, borderLeft:'3px solid var(--warning)' }}>
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <Clock size={15} color="var(--warning)" />
                 <div className="section-title" style={{ margin:0, color:'var(--warning)' }}>Pending Closure Approval</div>
               </div>
@@ -540,7 +540,7 @@ export default function Dashboard() {
                 <tbody>
                   {pendingClosure.map(p => (
                     <tr key={p.id}>
-                      <td><Link to={`/projects/${p.id}`} style={{ fontWeight:600 }}>{p.title}</Link></td>
+                      <td><Link to={`/projects/${p.id}`} className="font-semibold">{p.title}</Link></td>
                       <td><PriorityBadge p={p.priority} /></td>
                       <td className={isOverdue(p.deadline) ? 'overdue' : ''}>{fmtDate(p.deadline) || '—'}</td>
                       <td><Link to={`/projects/${p.id}`} className="btn btn-sm btn-success">Review</Link></td>
@@ -556,10 +556,10 @@ export default function Dashboard() {
         return incompleteVisits.length > 0 ? (
           <div key={id} className="card" style={{ marginBottom:20, borderLeft:'3px solid var(--danger)' }}>
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <CalendarX size={15} color="var(--danger)" />
                 <div className="section-title" style={{ margin:0, color:'var(--danger)' }}>Incomplete Maintenance Visits</div>
-                <span className="badge badge-cancelled" style={{ marginLeft:4 }}>{incompleteVisits.length}</span>
+                <span className="badge badge-cancelled ml-4">{incompleteVisits.length}</span>
               </div>
               <Link to="/maintenance-visits?filter=report_pending" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
             </div>
@@ -571,7 +571,7 @@ export default function Dashboard() {
                     const od = isOverdue(v.scheduled_date);
                     return (
                       <tr key={v.id}>
-                        <td style={{ fontWeight:600 }}>{v.customer_name}</td>
+                        <td className="font-semibold">{v.customer_name}</td>
                         <td>{v.title}</td>
                         <td className={od ? 'overdue' : ''}>
                           {fmtDate(v.scheduled_date)}
@@ -592,10 +592,10 @@ export default function Dashboard() {
         return reviewVisits.length > 0 ? (
           <div key={id} className="card" style={{ marginBottom:20, borderLeft:'3px solid var(--primary)' }}>
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <ClipboardCheck size={15} color="var(--primary)" />
                 <div className="section-title" style={{ margin:0, color:'var(--primary)' }}>Reports to Approve for PM</div>
-                <span className="badge badge-active" style={{ marginLeft:4 }}>{reviewVisits.length}</span>
+                <span className="badge badge-active ml-4">{reviewVisits.length}</span>
               </div>
               <Link to="/maintenance-visits?filter=awaiting_review" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
             </div>
@@ -605,7 +605,7 @@ export default function Dashboard() {
                 <tbody>
                   {reviewVisits.map(v => (
                     <tr key={v.id}>
-                      <td style={{ fontWeight:600 }}>{v.customer_name}</td>
+                      <td className="font-semibold">{v.customer_name}</td>
                       <td>{v.title}</td>
                       <td>{fmtDate(v.scheduled_date)}</td>
                       <td style={{ fontSize:12, color:'var(--gray-600)' }}>{v.report_sent_by_name || '—'}</td>
@@ -626,12 +626,12 @@ export default function Dashboard() {
 
       case 'mv_this_month':
         return visits.length > 0 ? (
-          <div key={id} className="card" style={{ marginBottom:20 }}>
+          <div key={id} className="card mb-20">
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <Wrench size={15} color="var(--warning)" />
-                <div className="section-title" style={{ margin:0 }}>Maintenance Visits — This Month</div>
-                <span className="badge badge-on_hold" style={{ marginLeft:4 }}>{visits.length}</span>
+                <div className="section-title m-0">Maintenance Visits — This Month</div>
+                <span className="badge badge-on_hold ml-4">{visits.length}</span>
               </div>
               <Link to="/maintenance-visits" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
             </div>
@@ -641,7 +641,7 @@ export default function Dashboard() {
                 <tbody>
                   {visits.slice(0,5).map(v => (
                     <tr key={v.id}>
-                      <td style={{ fontWeight:600 }}>{v.customer_name}</td>
+                      <td className="font-semibold">{v.customer_name}</td>
                       <td>{v.title}</td>
                       <td className={isOverdue(v.scheduled_date) && v.status === 'scheduled' ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
                       <td style={{ color:'var(--gray-600)' }}>{v.engineer_names || <span className="text-muted">—</span>}</td>
@@ -662,18 +662,18 @@ export default function Dashboard() {
 
       case 'projects':
         return (
-          <div key={id} className="card" style={{ marginBottom:20 }}>
+          <div key={id} className="card mb-20">
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <FolderOpen size={15} color="var(--primary)" />
-                <div className="section-title" style={{ margin:0 }}>Active Projects</div>
+                <div className="section-title m-0">Active Projects</div>
                 <span className="badge badge-active">{active.length}</span>
               </div>
               <Link to="/projects" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
             </div>
             {active.length === 0
               ? <p className="text-muted text-sm">No active projects</p>
-              : <ul style={{ listStyle:'none' }}>
+              : <ul className="list-none">
                   {active.slice(0,6).map(p => (
                     <li key={p.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)',
                       display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -694,11 +694,11 @@ export default function Dashboard() {
       case 'tasks': {
         const overdueCount = myOpen.filter(t => isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status)).length;
         return (
-          <div key={id} className="card" style={{ marginBottom:20 }}>
+          <div key={id} className="card mb-20">
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <ListTodo size={15} color="var(--primary)" />
-                <div className="section-title" style={{ margin:0 }}>Open Tasks</div>
+                <div className="section-title m-0">Open Tasks</div>
                 <span className="badge badge-open">{myOpen.length}</span>
                 {overdueCount > 0 && (
                   <Link to="/tasks?filter=overdue"
@@ -714,7 +714,7 @@ export default function Dashboard() {
             </div>
             {myOpen.length === 0
               ? <p className="text-muted text-sm">No open tasks</p>
-              : <ul style={{ listStyle:'none' }}>
+              : <ul className="list-none">
                   {myOpen.slice(0,6).map(t => (
                     <li key={t.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)',
                       display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -743,7 +743,7 @@ export default function Dashboard() {
     switch (id) {
       case 'stat_cards':
         return (
-          <div key={id} className="grid-5" style={{ marginBottom:20 }}>
+          <div key={id} className="grid-5 mb-20">
             <StatCard icon={FolderOpen}    iconBg="#eff6ff" iconColor="#3b82f6"
               value={active.length} label="Open Projects" valueColor="var(--primary)" to="/projects" />
             <StatCard icon={Wrench}        iconBg="#fef9c3" iconColor="#ca8a04"
@@ -775,18 +775,18 @@ export default function Dashboard() {
           })
           .sort((a, b) => a.deadline < b.deadline ? -1 : 1);
         return (
-          <div key={id} className="card" style={{ marginBottom:20 }}>
+          <div key={id} className="card mb-20">
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <Clock size={15} color="#f59e0b" />
-                <div className="section-title" style={{ margin:0 }}>Due This Week</div>
-                {dueThisWeek.length > 0 && <span className="badge badge-on_hold" style={{ marginLeft:4 }}>{dueThisWeek.length}</span>}
+                <div className="section-title m-0">Due This Week</div>
+                {dueThisWeek.length > 0 && <span className="badge badge-on_hold ml-4">{dueThisWeek.length}</span>}
               </div>
               <Link to="/tasks?filter=due_week" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
             </div>
             {dueThisWeek.length === 0
               ? <p className="text-muted text-sm">No tasks due in the next 7 days ✓</p>
-              : <ul style={{ listStyle:'none' }}>
+              : <ul className="list-none">
                   {dueThisWeek.map(t => {
                     const isToday = t.deadline.slice(0,10) === todayStr;
                     const isTomorrow = t.deadline.slice(0,10) === new Date(now.getTime()+86400000).toISOString().slice(0,10);
@@ -816,7 +816,7 @@ export default function Dashboard() {
           <div key={id} className="card"
             style={{ marginBottom:20, borderLeft:`3px solid ${pendingReports.length ? 'var(--danger)' : 'var(--success)'}` }}>
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <Send size={15} color={pendingReports.length ? 'var(--danger)' : 'var(--success)'} />
                 <div className="section-title"
                   style={{ margin:0, color: pendingReports.length ? 'var(--danger)' : 'var(--success)' }}>
@@ -829,7 +829,7 @@ export default function Dashboard() {
               <Link to="/maintenance-visits?filter=report_pending" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
             </div>
             {pendingReports.length === 0
-              ? <p className="text-muted text-sm" style={{ margin:0 }}>No pending reports — great job! 🎉</p>
+              ? <p className="text-muted text-sm m-0">No pending reports — great job! 🎉</p>
               : (
                 <div className="table-wrap">
                   <table>
@@ -837,7 +837,7 @@ export default function Dashboard() {
                     <tbody>
                       {pendingReports.map(v => (
                         <tr key={v.id}>
-                          <td style={{ fontWeight:600 }}>{v.customer_name}</td>
+                          <td className="font-semibold">{v.customer_name}</td>
                           <td><Link to="/maintenance-visits" style={{ color:'var(--gray-800)', fontWeight:500 }}>{v.title}</Link></td>
                           <td className={isOverdue(v.scheduled_date) ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
                           <td><StatusBadge entityType="visit" s={v.status} /></td>
@@ -860,12 +860,12 @@ export default function Dashboard() {
 
       case 'mv_this_month':
         return visits.length > 0 ? (
-          <div key={id} className="card" style={{ marginBottom:20 }}>
+          <div key={id} className="card mb-20">
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <Wrench size={15} color="var(--warning)" />
-                <div className="section-title" style={{ margin:0 }}>Maintenance Visits — This Month</div>
-                <span className="badge badge-on_hold" style={{ marginLeft:4 }}>{visits.length}</span>
+                <div className="section-title m-0">Maintenance Visits — This Month</div>
+                <span className="badge badge-on_hold ml-4">{visits.length}</span>
               </div>
               <Link to="/maintenance-visits" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
             </div>
@@ -875,7 +875,7 @@ export default function Dashboard() {
                 <tbody>
                   {visits.slice(0,5).map(v => (
                     <tr key={v.id}>
-                      <td style={{ fontWeight:600 }}>{v.customer_name}</td>
+                      <td className="font-semibold">{v.customer_name}</td>
                       <td>{v.title}</td>
                       <td className={isOverdue(v.scheduled_date) && v.status === 'scheduled' ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
                       <td>
@@ -895,18 +895,18 @@ export default function Dashboard() {
 
       case 'projects':
         return (
-          <div key={id} className="card" style={{ marginBottom:20 }}>
+          <div key={id} className="card mb-20">
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <FolderOpen size={15} color="var(--primary)" />
-                <div className="section-title" style={{ margin:0 }}>My Projects</div>
+                <div className="section-title m-0">My Projects</div>
                 <span className="badge badge-active">{active.length}</span>
               </div>
               <Link to="/projects" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
             </div>
             {active.length === 0
               ? <p className="text-muted text-sm">No active projects</p>
-              : <ul style={{ listStyle:'none' }}>
+              : <ul className="list-none">
                   {active.slice(0,6).map(p => (
                     <li key={p.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)',
                       display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -927,11 +927,11 @@ export default function Dashboard() {
       case 'tasks': {
         const engOverdueCount = myOpen.filter(t => isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status)).length;
         return (
-          <div key={id} className="card" style={{ marginBottom:20 }}>
+          <div key={id} className="card mb-20">
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <ListTodo size={15} color="var(--primary)" />
-                <div className="section-title" style={{ margin:0 }}>My Open Tasks</div>
+                <div className="section-title m-0">My Open Tasks</div>
                 <span className="badge badge-open">{myOpen.length}</span>
                 {engOverdueCount > 0 && (
                   <Link to="/tasks?filter=overdue"
@@ -947,7 +947,7 @@ export default function Dashboard() {
             </div>
             {myOpen.length === 0
               ? <p className="text-muted text-sm">No open tasks</p>
-              : <ul style={{ listStyle:'none' }}>
+              : <ul className="list-none">
                   {myOpen.slice(0,6).map(t => (
                     <li key={t.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)',
                       display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -979,7 +979,7 @@ export default function Dashboard() {
         const overdueVisits = incompleteVisits.filter(v => isOverdue(v.scheduled_date));
         const completedThis = visits.filter(v => v.status === 'completed');
         return (
-          <div key={id} className="grid-4" style={{ marginBottom:20 }}>
+          <div key={id} className="grid-4 mb-20">
             <StatCard icon={FolderOpen}    iconBg="#eff6ff" iconColor="#3b82f6"
               value={activeProjects.length} label="Active Projects" to="/projects" />
             <StatCard icon={Wrench}        iconBg="#fef9c3" iconColor="#ca8a04"
@@ -999,17 +999,17 @@ export default function Dashboard() {
           <div key={id} className="card" style={{ marginBottom:20,
             borderLeft: `3px solid ${incompleteVisits.length ? 'var(--warning)' : 'var(--success)'}` }}>
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <Wrench size={15} color={incompleteVisits.length ? 'var(--warning)' : 'var(--success)'} />
-                <div className="section-title" style={{ margin:0 }}>Visits Awaiting Completion</div>
+                <div className="section-title m-0">Visits Awaiting Completion</div>
                 {incompleteVisits.length > 0 && (
-                  <span className="badge badge-on_hold" style={{ marginLeft:4 }}>{incompleteVisits.length}</span>
+                  <span className="badge badge-on_hold ml-4">{incompleteVisits.length}</span>
                 )}
               </div>
               <Link to="/maintenance-visits" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
             </div>
             {incompleteVisits.length === 0
-              ? <p className="text-muted text-sm" style={{ margin:0 }}>All visits are up to date — great! ✓</p>
+              ? <p className="text-muted text-sm m-0">All visits are up to date — great! ✓</p>
               : (
                 <div className="table-wrap">
                   <table>
@@ -1021,7 +1021,7 @@ export default function Dashboard() {
                         const od = isOverdue(v.scheduled_date);
                         return (
                           <tr key={v.id}>
-                            <td style={{ fontWeight:600 }}>{v.customer_name}</td>
+                            <td className="font-semibold">{v.customer_name}</td>
                             <td>{v.title}</td>
                             <td className={od ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
                             <td><StatusBadge entityType="visit" s={v.status} /></td>
@@ -1055,18 +1055,18 @@ export default function Dashboard() {
 
       case 'projects':
         return (
-          <div key={id} className="card" style={{ marginBottom:20 }}>
+          <div key={id} className="card mb-20">
             <div className="section-header">
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div className="flex-center gap-8">
                 <FolderOpen size={15} color="var(--primary)" />
-                <div className="section-title" style={{ margin:0 }}>All Active Projects</div>
+                <div className="section-title m-0">All Active Projects</div>
                 <span className="badge badge-active">{activeProjects.length}</span>
               </div>
               <Link to="/projects" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
             </div>
             {activeProjects.length === 0
               ? <p className="text-muted text-sm">No active projects</p>
-              : <ul style={{ listStyle:'none' }}>
+              : <ul className="list-none">
                   {activeProjects.slice(0, 8).map(p => (
                     <li key={p.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)',
                       display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -1123,7 +1123,7 @@ export default function Dashboard() {
       </div>
 
       {error && (
-        <div className="alert alert-warning" style={{ marginBottom:20 }}>
+        <div className="alert alert-warning mb-20">
           <AlertTriangle size={14} style={{ flexShrink:0 }} /> {error}
         </div>
       )}

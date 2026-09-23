@@ -125,10 +125,10 @@ export function DeploymentHealthTab() {
           </div>
         </div>
         <button
-          className="btn btn-ghost btn-sm"
+          className="btn btn-ghost btn-sm inline-flex items-center gap-6"
           onClick={() => load(true)}
           disabled={refreshing}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+         
         >
           {refreshing ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={13} />}
           Refresh
@@ -269,7 +269,7 @@ export function SystemUpdateTab() {
           }}>
             <Download size={24} color="#fff" />
           </div>
-          <div style={{ flex: 1 }}>
+          <div className="flex-1">
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 3 }}>System Update</div>
             <div style={{ fontSize: 13, color: 'var(--gray-500)', lineHeight: 1.5 }}>
               Installs the latest npm packages for server &amp; client, rebuilds the frontend,
@@ -278,19 +278,19 @@ export function SystemUpdateTab() {
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center', flexWrap: 'wrap' }}>
             <button
-              className="btn btn-ghost btn-sm"
+              className="btn btn-ghost btn-sm inline-flex items-center gap-5"
               onClick={checkUpdates}
               disabled={checking || isRunning || updatesDisabled}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+             
             >
               {checking ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={13} />}
               {checking ? 'Checking…' : 'Check for Updates'}
             </button>
             <button
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm inline-flex items-center gap-5"
               onClick={startUpdate}
               disabled={isRunning || restarting || updatesDisabled}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+             
             >
               {isRunning
                 ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Updating…</>
@@ -436,7 +436,7 @@ export function SystemUpdateTab() {
       {/* ── Restart card ── */}
       {isDone && status?.needs_restart && (
         <div style={{ background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1 }}>
+          <div className="flex-1">
             <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--tone-info-text)', marginBottom: 3 }}>
               🚀 Update complete — restart required
             </div>
@@ -516,12 +516,12 @@ export function AuditLogTab() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
-          <div className="section-title" style={{ margin: 0 }}>Audit Log</div>
+          <div className="section-title m-0">Audit Log</div>
           <p className="text-sm text-muted" style={{ marginTop: 2 }}>
             System-wide record of who changed what and when. {total > 0 && `${total} total entries.`}
           </p>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={() => load(0)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <button className="btn btn-ghost btn-sm inline-flex items-center gap-5" onClick={() => load(0)}>
           <RefreshCw size={13} /> Refresh
         </button>
       </div>
@@ -593,7 +593,7 @@ export function AuditLogTab() {
                       {r.user_role && <span className={`badge badge-${r.user_role}`}>{r.user_role}</span>}
                     </td>
                     <td>
-                      <span style={{ fontSize: 12 }}>
+                      <span className="text-sm">
                         {ENTITY_ICONS[r.entity_type] || '•'} {r.entity_type}
                         {r.entity_id ? <span style={{ color: 'var(--gray-400)', marginLeft: 4 }}>#{r.entity_id}</span> : null}
                       </span>

@@ -367,7 +367,7 @@ function AdvancedFilters({ filters, setFilters, users, customers, isManager }) {
       gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12,
     }}>
       {/* Entity */}
-      <div className="form-group" style={{ margin: 0 }}>
+      <div className="form-group m-0">
         <label style={{ fontSize: 11 }}>Type</label>
         <select value={filters.entity || 'all'} onChange={e => set('entity', e.target.value)}>
           <option value="all">All types</option>
@@ -379,7 +379,7 @@ function AdvancedFilters({ filters, setFilters, users, customers, isManager }) {
       </div>
 
       {/* Status */}
-      <div className="form-group" style={{ margin: 0 }}>
+      <div className="form-group m-0">
         <label style={{ fontSize: 11 }}>Status</label>
         <select value={filters.status || ''} onChange={e => set('status', e.target.value)}>
           <option value="">Any status</option>
@@ -403,7 +403,7 @@ function AdvancedFilters({ filters, setFilters, users, customers, isManager }) {
       </div>
 
       {/* Priority */}
-      <div className="form-group" style={{ margin: 0 }}>
+      <div className="form-group m-0">
         <label style={{ fontSize: 11 }}>Priority</label>
         <select value={filters.priority || ''} onChange={e => set('priority', e.target.value)}>
           <option value="">Any priority</option>
@@ -415,7 +415,7 @@ function AdvancedFilters({ filters, setFilters, users, customers, isManager }) {
 
       {/* Customer */}
       {isManager && customers.length > 0 && (
-        <div className="form-group" style={{ margin: 0 }}>
+        <div className="form-group m-0">
           <label style={{ fontSize: 11 }}>Customer</label>
           <select value={filters.customer_id || ''} onChange={e => set('customer_id', e.target.value)}>
             <option value="">Any customer</option>
@@ -426,7 +426,7 @@ function AdvancedFilters({ filters, setFilters, users, customers, isManager }) {
 
       {/* Engineer */}
       {isManager && engineers.length > 0 && (
-        <div className="form-group" style={{ margin: 0 }}>
+        <div className="form-group m-0">
           <label style={{ fontSize: 11 }}>Assigned to</label>
           <select value={filters.engineer_id || ''} onChange={e => set('engineer_id', e.target.value)}>
             <option value="">Anyone</option>
@@ -436,7 +436,7 @@ function AdvancedFilters({ filters, setFilters, users, customers, isManager }) {
       )}
 
       {/* Report status */}
-      <div className="form-group" style={{ margin: 0 }}>
+      <div className="form-group m-0">
         <label style={{ fontSize: 11 }}>Report Status</label>
         <select value={filters.report_status || ''} onChange={e => set('report_status', e.target.value)}>
           <option value="">Any</option>
@@ -447,11 +447,11 @@ function AdvancedFilters({ filters, setFilters, users, customers, isManager }) {
       </div>
 
       {/* Date range */}
-      <div className="form-group" style={{ margin: 0 }}>
+      <div className="form-group m-0">
         <label style={{ fontSize: 11 }}>From Date</label>
         <input type="date" value={filters.date_from || ''} onChange={e => set('date_from', e.target.value)} />
       </div>
-      <div className="form-group" style={{ margin: 0 }}>
+      <div className="form-group m-0">
         <label style={{ fontSize: 11 }}>To Date</label>
         <input type="date" value={filters.date_to || ''} onChange={e => set('date_to', e.target.value)} />
       </div>
@@ -752,7 +752,7 @@ export default function SearchPage() {
 
       {/* Tabs */}
       {results && total > 0 && (
-        <div className="filter-bar" style={{ marginBottom: 12 }}>
+        <div className="filter-bar mb-12">
           {tabs.map(t => (
             <button
               key={t.key}

@@ -187,7 +187,7 @@ export function ProgressBar({ value, max, showLabel }) {
   const color = pct >= 100 ? 'var(--success)' : pct >= 70 ? 'var(--primary)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)';
   return (
     <div className="flex-center gap-8">
-      <div className="progress-bar" style={{ flex: 1 }}>
+      <div className="progress-bar flex-1">
         <div className="progress-bar-fill" style={{ width: pct + '%', background: color }} />
       </div>
       {showLabel && <span style={{ fontSize: 11, color: 'var(--gray-500)', width: 34, textAlign: 'right', flexShrink: 0 }}>{Math.round(pct)}%</span>}

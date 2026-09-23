@@ -85,7 +85,7 @@ export function CustomFieldsTab({ projectId, canManage }) {
             <tbody>
               {fields.map(f => (
                 <tr key={f.id}>
-                  <td style={{ fontWeight: 600 }}>{f.name}</td>
+                  <td className="font-semibold">{f.name}</td>
                   <td>
                     <span style={{ fontSize: 11, background: 'var(--gray-100)', padding: '2px 8px', borderRadius: 6, fontWeight: 600, color: 'var(--gray-600)' }}>
                       {TYPE_LABELS[f.field_type] || f.field_type}
@@ -135,7 +135,7 @@ export function CustomFieldsTab({ projectId, canManage }) {
                     onChange={e => setOptInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOption(); } }}
                     placeholder="Type an option and press Enter"
-                    style={{ flex: 1 }}
+                    className="flex-1"
                   />
                   <button type="button" className="btn btn-ghost btn-sm" onClick={addOption}>Add</button>
                 </div>

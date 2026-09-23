@@ -175,7 +175,7 @@ function NotificationBell() {
   }
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div ref={ref} className="relative">
       {/* Bell button */}
       <button
         className="topbar-action"
@@ -273,7 +273,7 @@ function NotificationBell() {
                 <div style={{ width: 28, height: 28, borderRadius: 8, background: n.read ? 'var(--gray-100)' : 'var(--highlight-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
                   {NOTIF_ICONS[n.type] || <Bell size={14} color="var(--gray-500)" />}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="flex-1 min-w-0">
                   <div style={{ fontSize: 12, fontWeight: n.read ? 500 : 700, color: 'var(--gray-900)', marginBottom: 2 }}>{n.title}{['high','critical'].includes(n.priority) && <span style={{ marginLeft:6,fontSize:9,textTransform:'uppercase',color:n.priority==='critical'?'#dc2626':'#d97706' }}>{n.priority}</span>}</div>
                   {n.body && <div style={{ fontSize: 11, color: 'var(--gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.body}</div>}
                   <div style={{ fontSize: 10, color: 'var(--gray-400)', marginTop: 3 }}>{timeSinceNotif(n.created_at)}</div>
@@ -339,7 +339,7 @@ function GlobalSearch() {
   const statusDot = { active: '#22c55e', on_hold: '#94a3b8', pending_approval: '#f59e0b', closed: '#6b7280' };
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div ref={ref} className="relative">
       {/* Icon button */}
       <button
         onClick={() => setOpen(o => !o)}
@@ -374,7 +374,7 @@ function GlobalSearch() {
             padding: '10px 12px', borderBottom: '1px solid var(--gray-100)',
             position: 'sticky', top: 0, background: 'var(--surface)',
           }}>
-            <Search size={14} color="var(--gray-400)" style={{ flexShrink: 0 }} />
+            <Search size={14} color="var(--gray-400)" className="flex-shrink-0" />
             <input
               ref={inputRef}
               value={query}
@@ -437,7 +437,7 @@ function GlobalSearch() {
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'}
                       onMouseLeave={e => e.currentTarget.style.background = ''}>
                       <CheckSquare size={13} style={{ color: 'var(--gray-400)', flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="flex-1 min-w-0">
                         <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
                         {t.project_title && <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{t.project_title}</div>}
                       </div>
@@ -541,7 +541,7 @@ function SidebarContent({ user, logout, onNav, pages, compact, onOpenLauncher, o
 
       {/* User info — click to go to profile */}
       <NavLink to="/profile" onClick={onNav} style={{ textDecoration: 'none' }}>
-        <div className="sidebar-user" style={{ cursor: 'pointer' }}>
+        <div className="sidebar-user cursor-pointer">
           <div className="sidebar-user-avatar" style={{ overflow: 'hidden', padding: 0 }}>
             {user.avatar_url
               ? <img src={user.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />

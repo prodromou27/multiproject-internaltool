@@ -23,7 +23,7 @@ function UserTable({ users, loading }) {
             const roleInfo = ROLE_LABELS[u.role] || { label: u.role, cls: '' };
             return (
               <tr key={u.id}>
-                <td style={{ fontWeight: 600 }}>{u.name}</td>
+                <td className="font-semibold">{u.name}</td>
                 <td>
                   {u.email
                     ? <a href={`mailto:${u.email}`} style={{ color: 'var(--gray-700)' }}>{u.email}</a>
@@ -104,7 +104,7 @@ export default function Users() {
         <div className="empty">
           <div className="empty-icon"><UsersIcon size={40} strokeWidth={1.2} /></div>
           <p>No team members match "{search}"</p>
-          <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setSearch('')}>Clear search</button>
+          <button className="btn btn-ghost btn-sm mt-12" onClick={() => setSearch('')}>Clear search</button>
         </div>
       )}
     </div>

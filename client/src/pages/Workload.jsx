@@ -52,7 +52,7 @@ function EngineerCard({ eng }) {
         }}>{initials}</div>
 
         {/* Name + email */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="flex-1 min-w-0">
           <div style={{ fontWeight: 700, fontSize: 15 }}>{eng.name}</div>
           <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>{eng.email || '—'}</div>
         </div>
@@ -83,10 +83,10 @@ function EngineerCard({ eng }) {
             </div>
             {taskCount === 0
               ? <p className="text-muted text-sm">No open tasks 🎉</p>
-              : <ul style={{ listStyle: 'none' }}>
+              : <ul className="list-none">
                   {eng.open_tasks.map(t => (
                     <li key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0', borderBottom: '1px solid var(--gray-50)' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="flex-1 min-w-0">
                         <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {t.project_title && (
                             <span style={{ fontSize: 10, color: 'var(--gray-400)', marginRight: 5 }}>
@@ -121,10 +121,10 @@ function EngineerCard({ eng }) {
             </div>
             {visitCount === 0
               ? <p className="text-muted text-sm">No scheduled visits</p>
-              : <ul style={{ listStyle: 'none' }}>
+              : <ul className="list-none">
                   {eng.visits.map(v => (
                     <li key={v.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0', borderBottom: '1px solid var(--gray-50)' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="flex-1 min-w-0">
                         <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {v.customer_name} · {v.title}
                         </div>
@@ -196,7 +196,7 @@ function WeekCell({ week, engName }) {
             <div key={t.id} style={{ fontSize: 11, padding: '3px 0', borderBottom: '1px solid var(--gray-50)', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
               <CheckSquare size={10} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: 2 }} />
               <div>
-                <div style={{ fontWeight: 500 }}>{t.title}</div>
+                <div className="font-medium">{t.title}</div>
                 {t.project_title && <div style={{ color: 'var(--gray-400)' }}>{t.project_title}</div>}
                 {t.deadline && <div style={{ color: isOverdue(t.deadline) ? 'var(--danger)' : 'var(--gray-400)' }}>Due {fmtDate(t.deadline)}</div>}
               </div>
@@ -206,7 +206,7 @@ function WeekCell({ week, engName }) {
             <div key={v.id} style={{ fontSize: 11, padding: '3px 0', borderBottom: '1px solid var(--gray-50)', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
               <Wrench size={10} style={{ color: 'var(--warning)', flexShrink: 0, marginTop: 2 }} />
               <div>
-                <div style={{ fontWeight: 500 }}>{v.title}</div>
+                <div className="font-medium">{v.title}</div>
                 <div style={{ color: 'var(--gray-400)' }}>{v.customer_name} · {fmtDate(v.scheduled_date)}</div>
               </div>
             </div>
@@ -242,7 +242,7 @@ function ForecastGrid({ forecast, loading }) {
   return (
     <div>
       {/* Legend */}
-      <p className="text-muted text-sm" style={{ marginBottom: 12 }}>This forecast shows scheduled item counts. Use Effort and Availability for estimated task/visit capacity.</p>
+      <p className="text-muted text-sm mb-12">This forecast shows scheduled item counts. Use Effort and Availability for estimated task/visit capacity.</p>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 14, fontSize: 11 }}>
         {[
           { label: 'No items (0)', color: 'var(--success)', bg: '#f0fdf4' },
@@ -259,7 +259,7 @@ function ForecastGrid({ forecast, loading }) {
       </div>
 
       {/* Responsive table-like grid */}
-      <div style={{ overflowX: 'auto' }}>
+      <div className="overflow-x-auto">
         <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 6px', minWidth: 560 }}>
           <thead>
             <tr>
