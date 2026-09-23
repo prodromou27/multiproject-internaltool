@@ -48,3 +48,24 @@ test('only managers can set per-team SLA targets, and invalid values are rejecte
   assert.equal((await h.api(`/api/teams/${teamWithTargets}/sla`, { method: 'PUT', token: manager.token, body: updated })).status, 200);
   assert.deepEqual((await getTeamSlaTargets([teamWithTargets]))[teamWithTargets], updated);
 });
+
+test('team workflow capabilities combine across memberships without changing authorization', async () => {
+  const managed=await h.api('/api/teams',{ method:'POST',token:manager.token,body:{ name:'Managed Operations',service_activity_enabled:true } });
+  assert.equal(managed.status,200);
+  assert.equal((await h.api(`/api/teams/${managed.data.id}`,{ method:'PUT',token:engineer.token,body:{ project_delivery_enabled:true } })).status,403);
+  assert.equal((await h.api(`/api/teams/${managed.data.id}`,{ method:'PUT',token:manager.token,body:{ managed_service_operations:'yes' } })).status,400);
+  await h.api(`/api/teams/${managed.data.id}/members`,{ method:'PUT',token:manager.token,body:{ user_ids:[engineer.id] } });
+  let mine=await h.api('/api/teams/mine',{ token:engineer.token });
+  assert.equal(mine.data.capabilities.profile,'managed_services');
+  assert.equal(mine.data.capabilities.managedServiceOperations,true);
+  assert.equal(mine.data.capabilities.projectDelivery,false);
+  assert.equal(mine.data.capabilities.serviceActivityTracking,true);
+
+  const delivery=await h.api('/api/teams',{ method:'POST',token:manager.token,body:{ name:'Delivery Operations',project_delivery_enabled:true,managed_service_operations:false } });
+  await h.api(`/api/teams/${delivery.data.id}/members`,{ method:'PUT',token:manager.token,body:{ user_ids:[engineer.id] } });
+  mine=await h.api('/api/teams/mine',{ token:engineer.token });
+  assert.equal(mine.data.capabilities.profile,'mixed');
+  assert.equal(mine.data.capabilities.managedServiceOperations,true);
+  assert.equal(mine.data.capabilities.projectDelivery,true);
+  assert.equal(mine.data.teams.length,2);
+});

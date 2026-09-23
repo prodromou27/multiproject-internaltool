@@ -19,6 +19,7 @@ test('navigation and create actions respect existing role and feature boundaries
   assert.equal(canAccessPage(activity, 'unknown', true), false);
   assert.deepEqual(quickCreateActions('engineer').map(action => action.id), ['task']);
   assert.deepEqual(quickCreateActions('engineer', true).map(action => action.id), ['task', 'activity']);
+  assert.deepEqual(quickCreateActions('engineer',true,{ managedServiceOperations:true }).map(action => action.id),['activity','task']);
   assert.deepEqual(quickCreateActions('planner', true).map(action => action.id), ['visit']);
   assert.deepEqual(quickCreateActions('pm', true).map(action => action.id), ['activity']);
   assert.equal(quickCreateActions('manager').length, 4);
@@ -34,8 +35,12 @@ test('primary navigation stays concise and respects role and feature access', ()
   assert.deepEqual(primaryPages(manager, false).map(page => page.id),
     ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'managedCustomers', 'approvals']);
   assert.deepEqual(primaryPages(engineer, false).map(page => page.id),
-    ['dashboard', 'myWork', 'tasks', 'projects', 'visits']);
+    ['dashboard', 'myWork', 'projects', 'tasks', 'visits']);
   assert.ok(primaryPages(engineer, true).some(page => page.id === 'activities'));
+  assert.deepEqual(primaryPages(engineer,true,{ managedServiceOperations:true }).map(page => page.id),
+    ['dashboard','myWork','activities','projects','tasks','visits']);
+  assert.deepEqual(primaryPages(engineer,true,{ managedServiceOperations:false,projectDelivery:true }).map(page => page.id),
+    ['dashboard','myWork','projects','tasks','visits','activities']);
   assert.ok(primaryPages(manager, false).every(page => canAccessPage(page, manager, false)));
 });
 

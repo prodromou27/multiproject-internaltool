@@ -544,6 +544,8 @@ async function init() {
       name                      TEXT NOT NULL UNIQUE,
       description               TEXT,
       service_activity_enabled  INTEGER NOT NULL DEFAULT 0,
+      managed_service_operations INTEGER NOT NULL DEFAULT 0,
+      project_delivery_enabled   INTEGER NOT NULL DEFAULT 1,
       created_at                TEXT DEFAULT ${NOW}
     );
 
@@ -1146,6 +1148,13 @@ async function applyCompatibilityMigrations() {
     -- shared channel, not a specific person, so this only affects Webex
     -- "direct"/"both" mode DMs — see notifications.js.
     ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_external_enabled INTEGER NOT NULL DEFAULT 1;
+  `]);
+
+  migrations.push(['20260923_team_workflow_capabilities', `
+    ALTER TABLE teams ADD COLUMN IF NOT EXISTS managed_service_operations INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE teams ADD COLUMN IF NOT EXISTS project_delivery_enabled INTEGER NOT NULL DEFAULT 1;
+    UPDATE teams SET managed_service_operations=1,project_delivery_enabled=0
+      WHERE service_activity_enabled=1 AND managed_service_operations=0;
   `]);
 
   migrations.push(['20260923_personal_notification_channels', `

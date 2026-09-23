@@ -5,19 +5,38 @@ const { logAudit } = require('../auditLog');
 const { getEnabledTeamIdsForUser } = require('../serviceActivities');
 const { validateSlaTargets, getTeamSlaTargets } = require('../teamSla');
 
+function optionalBoolean(value, label) {
+  if (value === undefined) return { value: null };
+  if (typeof value !== 'boolean') return { error: `${label} must be true or false` };
+  return { value: value ? 1 : 0 };
+}
+
+function workflowCapabilities(rows) {
+  const managedServiceOperations = rows.some(team => !!team.managed_service_operations);
+  const projectDelivery = rows.some(team => !!team.project_delivery_enabled);
+  return {
+    managedServiceOperations,
+    serviceActivityTracking: rows.some(team => !!team.service_activity_enabled),
+    projectDelivery,
+    maintenanceVisits: true,
+    managedCustomerAccess: managedServiceOperations,
+    profile: managedServiceOperations && projectDelivery ? 'mixed' : managedServiceOperations ? 'managed_services' : projectDelivery ? 'project_delivery' : 'shared',
+  };
+}
+
 // Any authenticated user — used by the client to decide whether to show the
 // Activity Log nav item / route. Server-side routes independently re-check
 // team membership + enablement on every request; this endpoint is UX-only.
 router.get('/mine', requireAuth, async (req, res) => {
   const rows = await db.prepare(`
-    SELECT t.id, t.name, t.service_activity_enabled
+    SELECT t.id, t.name, t.service_activity_enabled, t.managed_service_operations, t.project_delivery_enabled
     FROM teams t
     JOIN team_members tm ON tm.team_id = t.id
     WHERE tm.user_id = ?
     ORDER BY t.name
   `).all(req.user.id);
-  const enabled = rows.some(t => t.service_activity_enabled);
-  res.json({ teams: rows, service_activity_enabled: enabled });
+  const capabilities = workflowCapabilities(rows);
+  res.json({ teams: rows, service_activity_enabled: capabilities.serviceActivityTracking, capabilities });
 });
 
 router.use(requireManager);
@@ -69,13 +88,21 @@ router.put('/:id/sla', async (req, res) => {
 router.post('/', async (req, res) => {
   const { name, description, service_activity_enabled } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
+  const tracking=optionalBoolean(service_activity_enabled,'service_activity_enabled');
+  const managed=optionalBoolean(req.body.managed_service_operations,'managed_service_operations');
+  const delivery=optionalBoolean(req.body.project_delivery_enabled,'project_delivery_enabled');
+  const invalid=[tracking,managed,delivery].find(value => value.error);
+  if (invalid) return res.status(400).json({ error:invalid.error });
+  const trackingValue=tracking.value ?? 0;
+  const managedValue=managed.value ?? trackingValue;
+  const deliveryValue=delivery.value ?? (managedValue ? 0 : 1);
   const existing = await db.prepare('SELECT 1 FROM teams WHERE LOWER(name) = LOWER(?)').get(name.trim());
   if (existing) return res.status(409).json({ error: 'A team with this name already exists' });
   const result = await db.prepare(
-    'INSERT INTO teams (name, description, service_activity_enabled) VALUES (?, ?, ?)'
-  ).run(name.trim(), description || null, service_activity_enabled ? 1 : 0);
+    'INSERT INTO teams (name, description, service_activity_enabled, managed_service_operations, project_delivery_enabled) VALUES (?, ?, ?, ?, ?)'
+  ).run(name.trim(), description || null, trackingValue, managedValue, deliveryValue);
   await logAudit(db, req, 'team', result.lastInsertRowid, name.trim(), 'team_created',
-    `service_activity_enabled=${service_activity_enabled ? 1 : 0}`);
+    `service_activity_enabled=${trackingValue}; managed_service_operations=${managedValue}; project_delivery_enabled=${deliveryValue}`);
   res.json({ id: result.lastInsertRowid });
 });
 
@@ -86,17 +113,25 @@ router.put('/:id', async (req, res) => {
   if (!team) return res.status(404).json({ error: 'Not found' });
   const { name, description, service_activity_enabled } = req.body;
   if (name !== undefined && !name?.trim()) return res.status(400).json({ error: 'Name cannot be empty' });
+  const tracking=optionalBoolean(service_activity_enabled,'service_activity_enabled');
+  const managed=optionalBoolean(req.body.managed_service_operations,'managed_service_operations');
+  const delivery=optionalBoolean(req.body.project_delivery_enabled,'project_delivery_enabled');
+  const invalid=[tracking,managed,delivery].find(value => value.error);
+  if (invalid) return res.status(400).json({ error:invalid.error });
   if (name?.trim()) {
     const dupe = await db.prepare('SELECT 1 FROM teams WHERE LOWER(name) = LOWER(?) AND id != ?').get(name.trim(), id);
     if (dupe) return res.status(409).json({ error: 'A team with this name already exists' });
   }
-  await db.prepare(`UPDATE teams SET name=COALESCE(?,name), description=?, service_activity_enabled=COALESCE(?,service_activity_enabled) WHERE id=?`)
+  await db.prepare(`UPDATE teams SET name=COALESCE(?,name), description=?, service_activity_enabled=COALESCE(?,service_activity_enabled),
+    managed_service_operations=COALESCE(?,managed_service_operations),project_delivery_enabled=COALESCE(?,project_delivery_enabled) WHERE id=?`)
     .run(name?.trim() || null, description !== undefined ? description : team.description,
-      service_activity_enabled != null ? (service_activity_enabled ? 1 : 0) : null, id);
+      tracking.value,managed.value,delivery.value,id);
   if (service_activity_enabled != null && !!service_activity_enabled !== !!team.service_activity_enabled) {
     await logAudit(db, req, 'team', id, name?.trim() || team.name, 'team_tracking_toggled',
       `service_activity_enabled ${!!team.service_activity_enabled}->${!!service_activity_enabled}`);
   }
+  if (managed.value!==null || delivery.value!==null) await logAudit(db,req,'team',id,name?.trim() || team.name,'team_workflow_updated',
+    `managed_service_operations=${managed.value ?? Number(team.managed_service_operations)}; project_delivery_enabled=${delivery.value ?? Number(team.project_delivery_enabled)}`);
   res.json({ ok: true });
 });
 

@@ -5,8 +5,8 @@ import { quickCreateActions } from '../navigation';
 
 const icons = { project: FolderOpen, task: CheckSquare, visit: Wrench, activity: ClipboardList };
 
-export default function QuickCreate({ role, serviceActivityEnabled }) {
-  const actions = quickCreateActions(role, serviceActivityEnabled);
+export default function QuickCreate({ role, serviceActivityEnabled, capabilities }) {
+  const actions = quickCreateActions(role, serviceActivityEnabled, capabilities);
   const ref = useRef(null);
   const location = useLocation();
   useEffect(() => { if (ref.current) ref.current.open = false; }, [location.pathname, location.search]);

@@ -45,9 +45,13 @@ const DEFAULT_PRIMARY_PAGES = {
 
 // Keep the persistent navigation intentionally short. Every permitted destination
 // remains available from the module launcher and command palette.
-export function primaryPages(userOrRole, serviceActivityEnabled = false) {
+export function primaryPages(userOrRole, serviceActivityEnabled = false, capabilities = {}) {
   const user = typeof userOrRole === 'string' ? { role: userOrRole, permissions: {} } : userOrRole;
-  const ids = DEFAULT_PRIMARY_PAGES[user?.role] || ['dashboard'];
+  const managed=capabilities.managedServiceOperations===true;
+  const engineerIds=managed
+    ? ['dashboard','myWork','activities','projects','tasks','visits']
+    : ['dashboard','myWork','projects','tasks','visits','activities'];
+  const ids = user?.role==='engineer' ? engineerIds : DEFAULT_PRIMARY_PAGES[user?.role] || ['dashboard'];
   return ids
     .map(id => PAGES.find(page => page.id === id))
     .filter(page => canAccessPage(page, user, serviceActivityEnabled));
@@ -66,8 +70,11 @@ export const QUICK_CREATE = [
   { id: 'activity', page: 'activities', label: 'Log Activity', hint: 'Record customer service work', roles: ['manager', 'engineer', 'pm'] },
 ];
 
-export function quickCreateActions(role, serviceActivityEnabled = false) {
+export function quickCreateActions(role, serviceActivityEnabled = false, capabilities = {}) {
+  const managed=capabilities.managedServiceOperations===true;
+  const order=role==='engineer' && managed ? ['activity','task','project','visit'] : ['task','project','visit','activity'];
   return QUICK_CREATE.filter(action => action.roles.includes(role))
     .map(action => ({ ...action, destination: PAGES.find(page => page.id === action.page) }))
-    .filter(action => canAccessPage(action.destination, role, serviceActivityEnabled));
+    .filter(action => canAccessPage(action.destination, role, serviceActivityEnabled))
+    .sort((left,right) => order.indexOf(left.id)-order.indexOf(right.id));
 }

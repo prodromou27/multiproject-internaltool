@@ -782,7 +782,7 @@ function Layout({ children }) {
   const currentPage = pageForPath(location.pathname);
   const currentTeams = saAccess.teams.map(team => team.name).join(', ');
   const availablePages = useMemo(() => visiblePages(user, saAccess.enabled).filter(page => !page.hidden), [user, saAccess.enabled]);
-  const defaultPinnedIds = useMemo(() => primaryPages(user, saAccess.enabled).map(page => page.id), [user, saAccess.enabled]);
+  const defaultPinnedIds = useMemo(() => primaryPages(user, saAccess.enabled, saAccess.capabilities).map(page => page.id), [user, saAccess.enabled, saAccess.capabilities]);
   const pinnedStorageKey = `hub_nav_pinned_${user.id}`;
   const recentStorageKey = `hub_nav_recent_${user.id}`;
   const pinsInitializedFromStorage = useRef(localStorage.getItem(pinnedStorageKey) !== null);
@@ -903,7 +903,7 @@ function Layout({ children }) {
         <Hamburger open={open} onClick={() => setOpen(o => !o)} />
         <div className="topbar-logo">{PRODUCT_WORDMARK.prefix}<span>{PRODUCT_WORDMARK.suffix}</span></div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
-          <QuickCreate role={user.role} serviceActivityEnabled={saAccess.enabled} />
+          <QuickCreate role={user.role} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
           <GlobalSearch />
           <HelpMenu role={user.role} />
           <NotificationBell />
@@ -926,7 +926,7 @@ function Layout({ children }) {
             <Search size={15} aria-hidden="true" /> Go to a page <kbd>Ctrl K</kbd>
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-            <QuickCreate role={user.role} serviceActivityEnabled={saAccess.enabled} />
+            <QuickCreate role={user.role} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
             <GlobalSearch />
             <HelpMenu role={user.role} />
             <NotificationBell />
@@ -988,7 +988,7 @@ export default function App() {
   // so it's fetched separately from the login payload and re-checked on every mount.
   // This only controls nav/route visibility (UX) — every server route independently
   // re-verifies team membership + enablement on each request.
-  const [saAccess, setSaAccess] = useState({ enabled: false, teams: [], loaded: false });
+  const [saAccess, setSaAccess] = useState({ enabled: false, teams: [], capabilities: {}, loaded: false });
 
   const refreshPermissions=useCallback(async () => {
     const result=await api.myPermissions();
@@ -1019,11 +1019,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user) { setSaAccess({ enabled: false, teams: [], loaded: false }); return; }
+    if (!user) { setSaAccess({ enabled: false, teams: [], capabilities: {}, loaded: false }); return; }
     let mounted = true;
     api.teamsMine().then(d => {
-      if (mounted) setSaAccess({ enabled: !!d.service_activity_enabled, teams: d.teams || [], loaded: true });
-    }).catch(() => { if (mounted) setSaAccess({ enabled: false, teams: [], loaded: true }); });
+      if (mounted) setSaAccess({ enabled: !!d.service_activity_enabled, teams: d.teams || [], capabilities:d.capabilities || {}, loaded: true });
+    }).catch(() => { if (mounted) setSaAccess({ enabled: false, teams: [], capabilities:{}, loaded: true }); });
     return () => { mounted = false; };
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -37,7 +37,7 @@ const calendar = {
   projects: [], visits: [],
 };
 
-export async function mockApi(page, { role = 'engineer', signedIn = true, teams = [{ id: 1, name: 'Security Team', service_activity_enabled: 1 }], permissions } = {}) {
+export async function mockApi(page, { role = 'engineer', signedIn = true, teams = [{ id: 1, name: 'Security Team', service_activity_enabled: 1, managed_service_operations:1, project_delivery_enabled:0 }], permissions } = {}) {
   const calls = [];
   const overrides = new Map();
   const user = { ...ALEX, role, ...(permissions ? { permissions } : {}) };
@@ -48,7 +48,7 @@ export async function mockApi(page, { role = 'engineer', signedIn = true, teams 
     'POST /api/auth/logout': () => ({ body: {} }),
     'GET /api/notifications': () => ({ body: { notifications: [], unread: 0 } }),
     'GET /api/tasks/overdue-counts': () => ({ body: { tasks: 0, visits: 0 } }),
-    'GET /api/teams/mine': () => ({ body: { service_activity_enabled: teams.length > 0, teams } }),
+    'GET /api/teams/mine': () => ({ body: { service_activity_enabled: teams.some(team => team.service_activity_enabled), teams,capabilities:{ serviceActivityTracking:teams.some(team => team.service_activity_enabled),managedServiceOperations:teams.some(team => team.managed_service_operations),projectDelivery:teams.some(team => team.project_delivery_enabled),maintenanceVisits:true,managedCustomerAccess:teams.some(team => team.managed_service_operations),profile:teams.some(team => team.managed_service_operations) && teams.some(team => team.project_delivery_enabled)?'mixed':teams.some(team => team.managed_service_operations)?'managed_services':'project_delivery' } } }),
     'GET /api/statuses': () => ({ body: { project: [], task: [], visit: [], service_activity: statuses } }),
     // The server pages tasks only when asked to (page or page_size in the query).
     'GET /api/tasks': ({ request }) => {

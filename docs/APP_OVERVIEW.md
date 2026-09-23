@@ -146,9 +146,10 @@ client/src/
 - **users** — name, email (unique, optional), bcrypt password, role, active flag,
   avatar, TOTP secret/enabled/exempt, `must_change_password`, `password_changed_at`,
   `token_version` (bumped to invalidate outstanding JWTs on sensitive changes)
-- **teams** / **team_members** — MSP/engineering team grouping with a
-  `service_activity_enabled` flag gating the Service Activity Tracking module per team;
-  many-to-many membership via `team_members`
+- **teams** / **team_members** — engineering team grouping with a
+  `service_activity_enabled` access flag plus `managed_service_operations` and
+  `project_delivery_enabled` workflow-emphasis capabilities; many-to-many membership
+  via `team_members` lets My Work combine both emphases without duplicating modules
 - **projects** — title, description, status (free-text, config-driven), priority,
   deadline, `customer_id`, `completion_pct`, `rag_override`, closure tracking,
   `pending_from_customer`

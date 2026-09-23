@@ -137,6 +137,10 @@ part of the foundation work.
 | 15 | UI, branding and KPI modernization | Shared enterprise UI adoption, centralized product brand and secure configurable KPI administration | In progress; see `UI_KPI_MODERNIZATION_PLAN.md` |
 | 15a | KPI security boundary | Dedicated view/manage capabilities with an invariant engineer denial across APIs, reports, exports and frontend state | Complete; unit, integration and browser coverage included |
 | 15b | Brand foundation | TeamHub across user-facing application, documents, email and calendars while compatibility identifiers remain stable | Complete; centralized client/server product constants |
+| 16 | Team-aware workflow emphasis | One shared application whose navigation, quick actions, My Work and Customer 360 emphasize relevant workflows from combined team capabilities | In progress |
+| 16a | Team capability foundation | Managed Services and Project Delivery emphasis configured per team, combined for multi-team users, with RBAC unchanged | Complete; navigation and quick-create ordering included |
+| 16b | Adaptive My Work | Managed Services, Project Delivery and mixed layouts answer what the engineer should work on now while retaining secondary work | Next |
+| 16c | Adaptive Customer 360 | Reorder shared customer sections and quick actions from workflow emphasis without widening API access | Planned |
 
 ## Reporting design constraints
 

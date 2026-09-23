@@ -30,6 +30,11 @@ export function TeamsAdminSection() {
     catch (e2) { toast.error(e2.message); }
   }
 
+  async function toggleCapability(team,key) {
+    try { await api.updateTeam(team.id,{ [key]:!team[key] });load(); }
+    catch (e2) { toast.error(e2.message); }
+  }
+
   async function remove(team) {
     const ok = await confirm(`Delete team "${team.name}"? This removes all member and customer assignments.`, { title: 'Delete Team' });
     if (!ok) return;
@@ -62,7 +67,7 @@ export function TeamsAdminSection() {
     <div className="card mb-16">
       <div className="section-title">Teams</div>
       <p className="text-sm text-muted" style={{ marginBottom: 10 }}>
-        Enable Service Activity Tracking per team. Engineers only see the Activity Log module if they belong to an enabled team.
+        Configure workflow emphasis independently from access. Engineers keep every module allowed by RBAC; these capabilities only prioritize navigation, quick actions and My Work.
       </p>
       <form onSubmit={create} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="New team name…" />
@@ -70,7 +75,7 @@ export function TeamsAdminSection() {
       </form>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Team</th><th>Members</th><th>Tracking Enabled</th><th>SLA</th><th></th></tr></thead>
+          <thead><tr><th>Team</th><th>Members</th><th>Workflow emphasis</th><th>Activity tracking</th><th>SLA</th><th></th></tr></thead>
           <tbody>
             {teams.map(t => (
               <tr key={t.id}>
@@ -78,12 +83,16 @@ export function TeamsAdminSection() {
                 <td>
                   <button className="btn btn-sm btn-ghost" onClick={() => openMembers(t)}>{t.member_count} member(s)</button>
                 </td>
+                <td><div style={{ display:'grid',gap:5 }}>
+                  <label className="text-sm" style={{ display:'flex',gap:6,alignItems:'center' }}><input type="checkbox" checked={!!t.managed_service_operations} onChange={() => toggleCapability(t,'managed_service_operations')} style={{ width:'auto' }} /> Managed Services</label>
+                  <label className="text-sm" style={{ display:'flex',gap:6,alignItems:'center' }}><input type="checkbox" checked={!!t.project_delivery_enabled} onChange={() => toggleCapability(t,'project_delivery_enabled')} style={{ width:'auto' }} /> Project Delivery</label>
+                </div></td>
                 <td><input type="checkbox" checked={!!t.service_activity_enabled} onChange={() => toggleEnabled(t)} style={{ width: 'auto' }} /></td>
                 <td><button className="btn btn-sm btn-ghost" onClick={() => openSla(t)}><Clock size={12} /> Targets</button></td>
                 <td><button className="btn btn-sm btn-ghost" onClick={() => remove(t)}><Trash2 size={12} /></button></td>
               </tr>
             ))}
-            {teams.length === 0 && <tr><td colSpan={5} className="text-muted">No teams yet.</td></tr>}
+            {teams.length === 0 && <tr><td colSpan={6} className="text-muted">No teams yet.</td></tr>}
           </tbody>
         </table>
       </div>
