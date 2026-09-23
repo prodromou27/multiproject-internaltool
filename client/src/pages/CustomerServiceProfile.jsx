@@ -43,7 +43,7 @@ function CustomerHeader({ customer,operations,user,saAccess,onRecommendation }) 
   const managed=operations?.managed;
   return <header className="card cs-customer-header">
     <div className="cs-identity-avatar" aria-hidden="true">{initialsOf(customer.name)}</div>
-    <div className="cs-customer-heading"><div className="cs-customer-title"><h1>{customer.name}</h1><span className={`badge badge-${customer.active===0?'cancelled':'active'}`}>{customer.active===0?'Inactive':'Active'}</span></div>
+    <div className="cs-customer-heading"><div className="cs-customer-title"><h1>{customer.name}</h1><span className={`badge badge-${customer.active===0?'cancelled':'active'}`}>{customer.active===0?'Inactive':'Active'}</span>{managed?.visible && managed.state!=='unavailable' && <span className={`badge badge-managed-${managed.state}`}>{{ not_enabled:'Managed services off',setup_required:'Managed setup incomplete',sync_attention:'Managed sync attention',active:'Managed services active' }[managed.state]}</span>}</div>
       <div className="cs-customer-meta">
         {contact && <span><Building2 size={13} />{contact}</span>}
         {customer.contact_email && <a href={`mailto:${customer.contact_email}`}><Mail size={13} />{customer.contact_email}</a>}

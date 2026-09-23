@@ -44,20 +44,52 @@
 
 .cs-activities { display: flex; flex-direction: column; gap: 16px; }
 
-.managed-config { display: flex; flex-direction: column; gap: 16px; }
-.managed-config > .alert { display: flex; align-items: center; gap: 6px; margin: 0; }
-.managed-config-section { margin: 0; padding: 20px 24px; }
-.managed-config-heading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
-.managed-config-heading > svg { color: var(--primary); flex: 0 0 auto; margin-top: 2px; }
-.managed-config-heading > div { flex: 1; }
-.managed-config-heading h2 { font-size: 16px; margin: 0 0 4px; }
-.managed-config-heading p { color: var(--gray-500); font-size: 13px; line-height: 1.5; margin: 0; }
-.managed-config-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 16px; }
-.managed-config-grid label { display: flex; flex-direction: column; gap: 6px; color: var(--gray-700); font-size: 12px; font-weight: 650; }
-.managed-config-grid small { color: var(--gray-400); font-weight: 400; line-height: 1.4; }
-.managed-config-grid input[readonly] { background: var(--gray-50); color: var(--gray-600); }
-.managed-config-options { display: flex; flex-wrap: wrap; gap: 14px 24px; margin-top: 20px; }
-.managed-config-actions { flex-wrap: wrap; margin-top: 18px; }
+/* ── Service Configuration (Managed Customer setup) ──────────
+ * One cohesive card, not several unrelated ones: a state banner up top,
+ * then grouped sub-sections separated by a hairline rather than their own
+ * card/shadow, and one save action at the bottom. */
+.msc { display: flex; flex-direction: column; gap: 16px; }
+.msc > .alert { display: flex; align-items: center; gap: 6px; margin: 0; }
+.msc-banner { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: var(--radius-lg); border: 1px solid transparent; }
+.msc-banner > svg { flex: 0 0 auto; margin-top: 1px; }
+.msc-banner-body { flex: 1; min-width: 0; }
+.msc-banner-body strong { display: block; font-size: 14px; }
+.msc-banner-body p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.5; opacity: .9; }
+.msc-banner-body ul { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.7; }
+.msc-banner .btn { flex: 0 0 auto; align-self: center; }
+.msc-banner-neutral  { background: var(--gray-50); border-color: var(--gray-200); color: var(--gray-700); }
+.msc-banner-neutral svg { color: var(--gray-400); }
+.msc-banner-warning   { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.msc-banner-danger    { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.msc-banner-success   { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+
+.msc-shell { padding: 0; overflow: hidden; }
+.msc-shell-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 22px; border-bottom: 1px solid var(--gray-100); }
+.msc-shell-head h2 { font-size: 16px; margin: 0 0 4px; }
+.msc-shell-head p { color: var(--gray-500); font-size: 13px; line-height: 1.5; margin: 0; max-width: 56ch; }
+.msc-group { padding: 20px 22px; border-bottom: 1px solid var(--gray-100); }
+.msc-group-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+.msc-group-head > svg { color: var(--primary); flex: 0 0 auto; margin-top: 2px; }
+.msc-group-head > div:first-of-type { flex: 1; min-width: 0; }
+.msc-group-head h3 { font-size: 13.5px; font-weight: 700; margin: 0 0 3px; color: var(--gray-800); }
+.msc-group-head p { color: var(--gray-500); font-size: 12.5px; line-height: 1.5; margin: 0; }
+.msc-group-body { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 16px; }
+.msc-group-body-tight { margin-top: 12px; }
+.msc-group-body-rows { display: block; }
+.msc-group-body-rows > div:last-child { border-bottom: 0; }
+.msc-field { display: flex; flex-direction: column; gap: 6px; color: var(--gray-700); font-size: 12px; font-weight: 650; }
+.msc-field small { color: var(--gray-400); font-weight: 400; line-height: 1.4; }
+.msc-field-primary { padding: 12px; margin: -12px; background: var(--primary-light); border-radius: var(--radius-md); }
+.msc-hint { color: var(--warning) !important; font-weight: 600 !important; }
+.msc-hint a { color: inherit; text-decoration: underline; }
+.msc-status-pair { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.msc-status-pair > div { display: grid; gap: 3px; padding: 10px 12px; background: var(--gray-50); border-radius: var(--radius-md); }
+.msc-status-pair span { font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--gray-500); letter-spacing: .02em; }
+.msc-status-pair strong { font-size: 12.5px; font-weight: 600; color: var(--gray-800); word-break: break-word; }
+.msc-status-bad { color: var(--danger) !important; }
+.msc-actions { flex-wrap: wrap; margin-top: 16px; }
+.msc-shell-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 18px 22px; background: var(--gray-50); }
+
 /* The app adds a top margin between sibling .cards; layout gaps do that job here. */
 .cs-activities .card { margin: 0; }
 .cs-activities .al-ledger { margin: 0; }
@@ -120,8 +152,10 @@
 .cs-activities .cs-empty p { color: var(--gray-600); font-size: 13px; line-height: 1.6; max-width: 46ch; margin: 0 auto; }
 
 @media (max-width: 800px) {
-  .managed-config-section { padding: 16px; }
-  .managed-config-heading { flex-wrap: wrap; }
+  .msc-shell-head, .msc-group, .msc-shell-foot { padding: 16px; }
+  .msc-group-head { flex-wrap: wrap; }
+  .msc-status-pair { grid-template-columns: 1fr; }
+  .msc-field-primary { margin: -8px; }
   .cs-activities .cs-toolbar input, .cs-activities .cs-toolbar select { min-width: 0; width: 100%; }
   .cs-activities .cs-toolbar > div { flex: 1 1 140px; }
 }
@@ -131,6 +165,10 @@
 .cs-customer-header .cs-identity-avatar { margin:0;width:58px;height:58px; }
 .cs-customer-heading { min-width:0; }
 .cs-customer-title { display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
+.badge-managed-not_enabled     { background: var(--gray-100); color: var(--gray-600); }
+.badge-managed-setup_required  { background: #fffbeb; color: #92400e; }
+.badge-managed-sync_attention  { background: #fef2f2; color: #991b1b; }
+.badge-managed-active          { background: #f0fdf4; color: #166534; }
 .cs-customer-title h1 { margin:0;font-size:24px;line-height:1.2;letter-spacing:-.4px; }
 .cs-customer-meta { display:flex;flex-wrap:wrap;gap:7px 16px;margin-top:9px;color:var(--gray-500);font-size:12.5px; }
 .cs-customer-meta span,.cs-customer-meta a { display:inline-flex;align-items:center;gap:5px;min-width:0;color:inherit;text-decoration:none; }
