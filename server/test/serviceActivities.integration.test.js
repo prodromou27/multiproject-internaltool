@@ -2800,6 +2800,21 @@ test('a managed customer is complete with just a responsible team — ticketing 
   assert.equal('open_tickets' in done, false);
 });
 
+test('customer ticket trend is manager-only and returns 8 zero-filled weekly buckets', async () => {
+  const path = `/api/customers/${ids.customer}/operations/ticket-trend`;
+  assert.equal((await api(path)).status, 401);
+  assert.equal((await api(path, { token: ids.tokenEnabled })).status, 403);
+  const now = new Date().toISOString();
+  await db.prepare("INSERT INTO external_tickets (customer_id,provider_type,external_queue_id,external_queue_name,external_ticket_id,ticket_number,subject,external_status,normalized_status,status_group,created_at_external,closed_at_external) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run(ids.customer, 'request_tracker', '77', 'Trend queue', 'trend-1', '9001', 'Trend ticket', 'resolved', 'Closed', 'closed', now, now);
+  const result = await api(path, { token: ids.tokenManager });
+  assert.equal(result.status, 200);
+  assert.equal(result.data.weeks.length, 8);
+  const last = result.data.weeks[7];
+  assert.ok(last.opened >= 1 && last.closed >= 1); // this week's ticket, opened and closed
+  assert.equal(result.data.weeks[0].opened >= 0, true);
+});
+
 test('customer activity views reject malformed filters and missing customers consistently',async () => {
   const root=`/api/customers/${ids.customer}`;
   for (const query of ['page=0','page_size=201','page=1&page=2','from=bad','from=2026-09-20&to=2026-09-01','engineer_id=nope']) {

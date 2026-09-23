@@ -12,7 +12,7 @@ import CustomerTimeline from '../components/CustomerTimeline';
 import { fmtHours,plural,Ranking } from '../components/ServiceCharts';
 import { fmtDuration,groupByDay,LedgerDay } from '../components/activityLedger';
 import { useAuth } from '../App';
-import { customer360Section,customer360Sections } from './customer360';
+import { customer360Section,customer360Sections,customerHealth,customerHue } from './customer360';
 import './CustomerServiceProfile.css';
 
 const initialsOf=name => (name || '').trim().split(/\s+/).map(word => word[0]).slice(0,2).join('').toUpperCase() || '?';
@@ -38,10 +38,28 @@ function QuickAdd({ customer,user,saAccess,onRecommendation }) {
   </div></details>;
 }
 
+/* Overall health as a ring — the one number a manager scans first. The
+   deductions behind it sit under a disclosure, so it's never a black box. */
+function HealthRing({ health }) {
+  const radius=26,circumference=2*Math.PI*radius;
+  return <details className={`cs-health-ring is-${health.tone}`}>
+    <summary aria-label={`Customer health ${health.score} out of 100, ${health.label}`}>
+      <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r={radius} className="cs-ring-track" />
+        <circle cx="32" cy="32" r={radius} className="cs-ring-value" strokeDasharray={`${(health.score/100)*circumference} ${circumference}`} transform="rotate(-90 32 32)" />
+        <text x="32" y="37" textAnchor="middle" className="cs-ring-score">{health.score}</text>
+      </svg>
+      <span><strong>{health.label}</strong><small>{health.factors.length ? 'See why' : 'Nothing outstanding'}</small></span>
+    </summary>
+    {health.factors.length>0 && <ul className="cs-ring-factors">{health.factors.map(factor => <li key={factor.label}><b>−{factor.points}</b> {factor.label}</li>)}</ul>}
+  </details>;
+}
+
 function CustomerHeader({ customer,operations,user,saAccess,onRecommendation }) {
   const contact=customer.contact_name || customer.primary_contact;
   const managed=operations?.managed;
-  return <header className="card cs-customer-header">
+  const health=user.role==='manager' ? customerHealth(operations) : null;
+  return <header className="card cs-customer-header" style={{ '--cs-hue':customerHue(customer.name) }}>
     <div className="cs-identity-avatar" aria-hidden="true">{initialsOf(customer.name)}</div>
     <div className="cs-customer-heading"><div className="cs-customer-title"><h1>{customer.name}</h1><span className={`badge badge-${customer.active===0?'cancelled':'active'}`}>{customer.active===0?'Inactive':'Active'}</span>{managed?.visible && managed.state!=='unavailable' && <span className={`badge badge-managed-${managed.state}`}>{{ not_enabled:'Managed services off',setup_required:'Managed setup incomplete',sync_attention:'Managed sync attention',active:'Managed services active' }[managed.state]}</span>}</div>
       <div className="cs-customer-meta">
@@ -52,7 +70,7 @@ function CustomerHeader({ customer,operations,user,saAccess,onRecommendation }) 
         {managed?.responsible_team && <span><Layers size={13} />{managed.responsible_team}</span>}
       </div>
     </div>
-    <div className="cs-header-actions"><QuickAdd customer={customer} user={user} saAccess={saAccess} onRecommendation={onRecommendation} />{managed?.state==='active' || managed?.state==='sync_attention' ? <Link className="btn btn-ghost" to={`/managed-customers/${customer.id}`}><ExternalLink size={14} /> Managed Services</Link> : null}</div>
+    <div className="cs-header-actions">{health && <HealthRing health={health} />}<QuickAdd customer={customer} user={user} saAccess={saAccess} onRecommendation={onRecommendation} />{managed?.state==='active' || managed?.state==='sync_attention' ? <Link className="btn btn-ghost" to={`/managed-customers/${customer.id}`}><ExternalLink size={14} /> Managed Services</Link> : null}</div>
   </header>;
 }
 

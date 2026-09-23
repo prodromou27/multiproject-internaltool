@@ -25,3 +25,27 @@ test('Customer 360 accepts available deep links and safely rejects unavailable s
   assert.equal(customer360Sections({ role:'engineer' }).some(section => section.id==='service-configuration'),false);
   assert.equal(customer360Sections({ role:'manager' }).some(section => section.id==='service-configuration'),true);
 });
+
+import { customerHealth, customerHue } from '../src/pages/customer360.js';
+
+test('customer health is 100 with nothing wrong and lists every deduction otherwise', () => {
+  assert.equal(customerHealth(null), null);
+  const clean = { projects: { delayed: 0 }, tasks: { overdue: 0 }, recommendations: { high_risk: 0 }, visits: { reports_pending: 0 }, managed: { state: 'active' } };
+  assert.deepEqual(customerHealth(clean), { score: 100, tone: 'good', label: 'Healthy', factors: [] });
+  const bad = customerHealth({ ...clean, projects: { delayed: 2 }, tasks: { overdue: 3 }, managed: { state: 'sync_attention' } });
+  assert.equal(bad.score, 100 - 20 - 15 - 10);
+  assert.equal(bad.tone, 'warn');
+  assert.deepEqual(bad.factors.map(f => f.label), ['2 delayed projects', '3 overdue tasks', 'ticket sync failing']);
+});
+
+test('each factor is capped so one bad area cannot zero the score alone', () => {
+  const worst = customerHealth({ projects: { delayed: 50 }, tasks: { overdue: 50 }, recommendations: { high_risk: 50 }, visits: { reports_pending: 50 }, managed: { state: 'sync_attention' } });
+  assert.equal(worst.score, 100 - 30 - 25 - 15 - 10 - 10);
+  assert.equal(worst.tone, 'bad');
+});
+
+test('customer hue is stable per name and within 0-359', () => {
+  assert.equal(customerHue('Acme'), customerHue('Acme'));
+  assert.notEqual(customerHue('Acme'), customerHue('Globex'));
+  for (const name of ['', 'x', 'A very long customer name Ltd.']) assert.ok(customerHue(name) >= 0 && customerHue(name) < 360);
+});

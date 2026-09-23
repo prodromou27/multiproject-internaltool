@@ -36,6 +36,8 @@ export default function ManagedCustomerConfiguration({ customerId }) {
   const [form,setForm]=useState(DEFAULTS),[allTeams,setAllTeams]=useState([]),[queues,setQueues]=useState([]),[queueError,setQueueError]=useState(''),[reportTemplates,setReportTemplates]=useState([]);
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState(''),[status,setStatus]=useState('idle'),[saveError,setSaveError]=useState(''),[busy,setBusy]=useState('');
   const [message,setMessage]=useState('');
+  const [creatingTeam,setCreatingTeam]=useState(false),[newTeamName,setNewTeamName]=useState(''),[teamError,setTeamError]=useState('');
+  const [engineers,setEngineers]=useState([]),[members,setMembers]=useState([]);
 
   // Autosave plumbing. The latest form lives in a ref so a save always sends
   // the newest edits; only one save runs at a time and edits made during a
@@ -68,19 +70,47 @@ export default function ManagedCustomerConfiguration({ customerId }) {
 
   useEffect(() => {
     const controller=new AbortController();setLoading(true);setLoadError('');
-    Promise.all([api.managedCustomerConfiguration(customerId,{ signal:controller.signal }),api.customerTeams(customerId),api.teams({ signal:controller.signal }),api.managedReportTemplates({ signal:controller.signal })])
-      .then(([configuration,assigned,teams,templates]) => {
+    Promise.all([api.managedCustomerConfiguration(customerId,{ signal:controller.signal }),api.customerTeams(customerId),api.teams({ signal:controller.signal }),api.managedReportTemplates({ signal:controller.signal }),api.users({ signal:controller.signal })])
+      .then(([configuration,assigned,teams,templates,users]) => {
         if (controller.signal.aborted) return;
         formRef.current={ ...DEFAULTS,...configuration };setForm(formRef.current);
         assignedRef.current=(assigned || []).map(team => team.id);
-        setAllTeams(teams || []);setReportTemplates((templates.rows || []).filter(template => template.active));
+        setAllTeams(teams || []);setEngineers((users || []).filter(user => user.role==='engineer' && user.active!==0));setReportTemplates((templates.rows || []).filter(template => template.active));
       })
       .catch(failure => { if (!controller.signal.aborted) setLoadError(failure.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   },[customerId]);
 
+  // Members of the chosen team, managed right here so setup never needs a
+  // trip to Settings.
+  const teamId=form.responsible_team_id;
+  useEffect(() => {
+    if (!teamId) { setMembers([]); return undefined; }
+    const controller=new AbortController();
+    api.team(teamId).then(team => { if (!controller.signal.aborted) setMembers((team.members || []).map(member => member.id)); }).catch(() => {});
+    return () => controller.abort();
+  },[teamId]);
+
+  async function setTeamMembers(ids) {
+    const previous=members;setMembers(ids);setTeamError('');
+    try { await api.setTeamMembers(teamId,ids); } catch(failure) { setMembers(previous);setTeamError(failure.message); }
+  }
+
+  async function createTeam(event) {
+    event.preventDefault();
+    const name=newTeamName.trim();if (!name) return;
+    setTeamError('');
+    try {
+      const created=await api.createTeam({ name,service_activity_enabled:false });
+      setAllTeams(current => [...current,{ id:created.id,name }]);
+      setCreatingTeam(false);setNewTeamName('');
+      await chooseTeam(String(created.id));
+    } catch(failure) { setTeamError(failure.message); }
+  }
+
   async function chooseTeam(value) {
+    if (value==='__new__') { setCreatingTeam(true);return; }
     const teamId=value ? Number(value) : null;
     try {
       // Picking a team is the whole job: if it isn't yet assigned to this
@@ -141,10 +171,26 @@ export default function ManagedCustomerConfiguration({ customerId }) {
             <select value={form.responsible_team_id || ''} onChange={event => chooseTeam(event.target.value)}>
               <option value="">Select a team…</option>
               {allTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+              <option value="__new__">+ Create a new team…</option>
             </select>
             {!hasTeam && <small className="msc-hint">Choose the team that owns this customer — that's the only required step.</small>}
-            {allTeams.length===0 && <small className="msc-hint">No teams exist yet. <Link to="/settings">Create one in Settings → Teams</Link>.</small>}
           </label>
+          {creatingTeam && <form className="msc-inline-form" onSubmit={createTeam}>
+            <input autoFocus value={newTeamName} onChange={event => setNewTeamName(event.target.value)} placeholder="New team name" maxLength={120} />
+            <button className="btn btn-primary btn-sm" disabled={!newTeamName.trim()}>Create &amp; use</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCreatingTeam(false);setNewTeamName(''); }}>Cancel</button>
+          </form>}
+          {teamError && <p className="msc-hint" role="alert">{teamError}</p>}
+          {hasTeam && <div className="msc-members">
+            <span className="msc-members-label">Team members</span>
+            <div className="flex gap-6 flex-wrap items-center">
+              {members.map(id => <span key={id} className="badge badge-open inline-flex items-center gap-4">{engineers.find(user => user.id===id)?.name || `User ${id}`}<button type="button" aria-label="Remove member" onClick={() => setTeamMembers(members.filter(item => item!==id))}>×</button></span>)}
+              <select value="" aria-label="Add engineer to team" onChange={event => { const id=Number(event.target.value); if (id) setTeamMembers([...members,id]); }}>
+                <option value="">{members.length ? 'Add another engineer…' : 'Add an engineer…'}</option>
+                {engineers.filter(user => !members.includes(user.id)).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+              </select>
+            </div>
+          </div>}
           {hasTeam && !syncBad && <p className="msc-ok"><CheckCircle2 size={14} /> Set up. <Link to={`/managed-customers/${customerId}`}>Open the Managed Customers dashboard <ExternalLink size={12} /></Link></p>}
           {syncBad && <p className="msc-hint"><AlertTriangle size={13} /> The last ticket sync failed — check Request Tracker under Settings → Integrations.</p>}
         </section>

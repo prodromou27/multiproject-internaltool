@@ -175,6 +175,7 @@ export const api = {
   customers: (options) => req('GET', '/customers', undefined, options),
   customer: (id, options) => req('GET', `/customers/${id}`, undefined, options),
   customerOverview: (id, params = {}, options) => req('GET', `/customers/${id}/overview?` + new URLSearchParams(params).toString(), undefined, options),
+  customerTicketTrend: (id,options) => req('GET',`/customers/${id}/operations/ticket-trend`,undefined,options),
   customerOperationsSummary: (id,options) => req('GET',`/customers/${id}/operations/summary`,undefined,options),
   customerOperationProjects: (id,params={},options) => req('GET',`/customers/${id}/operations/projects?${new URLSearchParams(params)}`,undefined,options),
   customerOperationTasks: (id,params={},options) => req('GET',`/customers/${id}/operations/tasks?${new URLSearchParams(params)}`,undefined,options),

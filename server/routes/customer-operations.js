@@ -93,6 +93,26 @@ router.get('/summary',requireAuth,async (req,res) => {
     assets:Number(assets.total || 0),managed });
 });
 
+// Weekly opened vs closed tickets for the Customer 360 Overview chart — last
+// 8 UTC weeks (Monday start), zero-filled. Manager-only, like the rest of the
+// managed-services data. Bucketed in JS so the SQL stays a plain range read.
+router.get('/ticket-trend',requireAuth,async (req,res) => {
+  if (req.user.role!=='manager') return res.status(403).json({ error:'Forbidden' });
+  const customerId=await authorizedCustomer(req,res);if (!customerId) return;
+  const monday=date => { const d=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate())); d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7)); return d; };
+  const first=monday(new Date());first.setUTCDate(first.getUTCDate()-7*7);
+  const weeks=Array.from({ length:8 },(_,index) => { const start=new Date(first);start.setUTCDate(start.getUTCDate()+index*7);return { start:start.toISOString().slice(0,10),label:start.toLocaleDateString('en-US',{ month:'short',day:'numeric',timeZone:'UTC' }),opened:0,closed:0 }; });
+  const cutoff=first.toISOString().slice(0,10);
+  const rows=await db.prepare(`SELECT created_at_external,closed_at_external,resolved_at_external,status_group FROM external_tickets
+    WHERE customer_id=? AND (created_at_external>=? OR closed_at_external>=? OR resolved_at_external>=?)`).all(customerId,cutoff,cutoff,cutoff);
+  const bucket=value => { if (!value) return null; const time=Date.parse(value);if (Number.isNaN(time)) return null; const key=monday(new Date(time)).toISOString().slice(0,10); return weeks.find(week => week.start===key) || null; };
+  for (const row of rows) {
+    const opened=bucket(row.created_at_external);if (opened) opened.opened++;
+    if (row.status_group==='closed') { const closed=bucket(row.closed_at_external || row.resolved_at_external);if (closed) closed.closed++; }
+  }
+  res.json({ weeks });
+});
+
 router.get('/projects',requireAuth,async (req,res) => {
   const customerId=await authorizedCustomer(req,res);if (!customerId) return;
   const paging=validateListQuery(req.query,['all','active','delayed','completed']);if (paging.error) return res.status(400).json({ error:paging.error });
