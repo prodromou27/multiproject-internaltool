@@ -229,10 +229,9 @@
 }
 
 /* ── Dark mode ────────────────────────────────────────────── *
- * Most of this file already rides on the --gray-*/--primary-light
- * tokens that index.css redefines per theme. Only the few tones below
- * are literal hex, matching index.css's own .alert-*/.badge-* dark
- * overrides value-for-value so a "warning" reads the same everywhere. */
+ * Most of this file already uses the gray and primary-light tokens that
+ * index.css redefines per theme. The few literal tones below match the
+ * shared dark alert and badge overrides so warning states stay consistent. */
 [data-theme="dark"] .msc-banner-warning        { background: rgba(217,119,6,.15);  border-color: rgba(217,119,6,.4);  color: #fbbf24; }
 [data-theme="dark"] .msc-banner-danger         { background: rgba(220,38,38,.15);  border-color: rgba(220,38,38,.4);  color: #fca5a5; }
 [data-theme="dark"] .msc-banner-success        { background: rgba(22,163,74,.15);  border-color: rgba(22,163,74,.4);  color: #4ade80; }

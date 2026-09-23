@@ -439,9 +439,8 @@ function TwoFactorSection({ user, onRefresh }) {
             </div>
             <button
               type="submit"
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm inline-flex items-center gap-5"
               disabled={working || code.replace(/\s/g,'').length < 6}
-              className="inline-flex items-center gap-5"
             >
               {working ? <><Loader2 size={13} style={{ animation: 'spin .9s linear infinite' }} /> Verifying…</> : <><ShieldCheck size={13} /> Activate</>}
             </button>
