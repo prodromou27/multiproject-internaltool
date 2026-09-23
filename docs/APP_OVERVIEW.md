@@ -518,8 +518,10 @@ Migration `20260918_customer_recommendations` adds recommendation/history tables
 and indexes without changing existing records. Composite foreign keys prevent
 source visits and converted projects from moving to another customer or being
 deleted while referenced. Customer deletion preserves recommendations; close
-records rather than deleting history. The initial recommendation workflow is
-manager-only; engineer/planner capture and task conversion are subsequent work.
+records rather than deleting history. Managers can convert recommendations to
+projects. Engineers and planners can capture recommendations for customers they can
+access and convert recommendations they authored into tasks in authorized customer
+projects; the server rechecks customer, project, assignee and author scope.
 Multi-engineer scheduled visits with **dual report tracking** (internal `report_sent` +
 `report_sent_to_customer`), each with timestamp and actor. Inputs validate text and
 real calendar dates; visit creation and reassignment
@@ -871,7 +873,7 @@ Run everything locally with `cd server && npm test` and `cd client && npm test`
   and statements built with `${}` are not.
 
 **Client** (`client/test/`, `node --test`): API wrapper behaviour, navigation and
-role visibility, task filters, and the error-message helper.
+role visibility, task filters, list-workspace helpers, and the error-message helper.
 
 **Browser** (`client/e2e/`, Playwright with the installed Chrome): the production build
 is served with the API mocked at the network level (`e2e/support/mockApi.js`), so the
@@ -880,7 +882,9 @@ error boundary, the Activity Log form (the browser sends no `engineer_id`/`team_
 team gating), dark-mode calendar chips, equal calendar columns, the stray-`0` badge
 regression, and that **every Settings section and the Project page open without a
 missing reference** (catches names lost when a large module is split, which the build
-cannot see). `npm run test:e2e` builds to `.e2e-dist`, never `client/dist`. Mocked data
+cannot see). They also cover compact navigation, the operational dashboard, unified
+list workspaces, customer service coverage, managed-customer health and shareable
+report views. `npm run test:e2e` builds to `.e2e-dist`, never `client/dist`. Mocked data
 proves the UI, not the API contract; the server tests own that.
 `scripts/browser-smoke.cjs` is a separate, older headless-Chrome smoke runner for
 the Report Builder and Settings (see PLATFORM_VALIDATION.md).
@@ -898,13 +902,13 @@ testing, and end-to-end runs of the browser against the real API.
 
 Flagged for a reviewer (human or AI) looking to improve functionality, UI, or security:
 
-- **No granular permission system.** All authorization is role checks (`manager`/
-  `planner`/`pm`/`engineer`) plus ad-hoc per-route membership checks
-  (`project_assignments`, `maintenance_visit_engineers`, and now `team_members`/
-  `customer_teams`/`customer_engineers`). This is simple and consistent, but there's no
-  single place to audit "who can do what" — a real RBAC/permission table would be a
-  significant architectural improvement if the app's user base or role complexity
-  grows.
+- **Granular permissions are incremental.** Versioned role and user overrides cover
+  managed-customer access, managed-report generation/review and notification-rule
+  administration. Project, task, visit, customer, asset, reporting and Service Activity
+  permissions still use role checks plus scoped membership checks
+  (`project_assignments`, `maintenance_visit_engineers`, `team_members`,
+  `customer_teams` and `customer_engineers`). Add new keys with server enforcement and
+  route integration tests; client visibility is not authorization.
 - **Service Activity mutation authorization** uses shared ownership and customer
   authorization middleware for completion, duplication, follow-ups and attachments.
   Historical read routes retain ownership checks so users can see their own history.
@@ -928,9 +932,9 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
 - **Service Activity retention is manual, not automatic.** By design (see §7) — an
   automatic background purge was deliberately not added without being asked, but if
   that's wanted, the fields/status endpoint already exist to build on.
-- **No PDF export anywhere in the app** (Excel/`exceljs` and custom-report CSV) — intentional (no PDF
-  library is present), but worth a deliberate decision if PDF reports become a
-  requirement rather than leaving it unaddressed.
+- **PDF export is module-specific.** Managed-customer reports support PDF, Word and
+  Excel. General list and custom-report exports remain Excel/CSV; broad PDF export is
+  still a product decision rather than a platform-wide capability.
 - **Shared UI:** dialogs trap keyboard focus, restore the triggering control on
   close, lock background scrolling, and let Escape dismiss only the top dialog.
   Confirmation dialogs initially focus Cancel. Status badges select configured

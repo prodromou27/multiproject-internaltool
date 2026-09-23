@@ -1,6 +1,6 @@
 # Operations platform validation record
 
-Reviewed on 2026-09-18 on DEV-3. This record covers the staged customer,
+Reviewed through 2026-09-23 on DEV-3. This record covers the staged customer,
 workload, reporting and administration changes; it is not a claim that every
 screen or item in the redesign brief has been completed.
 
@@ -57,6 +57,18 @@ What the newer checks add:
   readers is still pending, and mobile widths were not part of the 2026-09-21 visual
   review.
 
+### Update, 2026-09-23 (DEV-3)
+
+The workspace modernization series through commit `2c987ad` passed CI. Local final
+validation reported 22 client unit tests and 43 Playwright browser tests passing.
+The added browser coverage checks compact navigation, the operational dashboard,
+shared project/task/visit list controls, customer service coverage filtering and
+recovery, managed-customer health filters, report deep links and stale-report recovery.
+The recommendation workflow includes scoped engineer/planner capture and task
+conversion. Versioned role/user permission overrides cover managed services and
+notification-rule administration; core modules retain their established role and
+membership scopes.
+
 ## Reproducible browser smoke checks
 
 The runner uses an installed Chrome/Chromium browser and Node 24's built-in
@@ -111,11 +123,11 @@ Still pending:
 
 - Full manual keyboard, responsive, dark-mode and screen-reader QA across all core
   screens using staging data; the synthetic smoke matrix covers a focused subset.
-- Wider engineer/planner recommendation capture and task conversion; the delivered
-  initial recommendation workflow is management-only and converts to projects.
 - Remaining shared detail/calendar views and pagination of older large lists.
-- Further business/technical feature settings and a broader app-wide permission,
-  performance and deployment acceptance pass.
+- Expansion of granular permission overrides beyond managed services and notification
+  rules, with server enforcement and PostgreSQL route tests for every new capability.
+- Further business/technical feature settings and a broader performance and deployment
+  acceptance pass.
 - Team/selected-user report sharing and relative date scheduling, if required:
   current definitions support private/management visibility and fixed date filters.
 

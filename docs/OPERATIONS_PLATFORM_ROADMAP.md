@@ -110,16 +110,16 @@ part of the foundation work.
 | 6g | Reliable waiting-status saves | Shared dialogs retain failed drafts; atomic bulk updates validate reasons and check current ownership; duplicate IDs count once | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 6h | Maintenance visit reliability | Scoped cancellable month loads, visible retry and unavailable counts; safe action submissions; manager-only submission undo; keyboard detail access | Complete; browser QA pending |
 | 6i | Maintenance filter/export consistency | Shared validated scopes and filters; matching Excel selection/order; literal decrypted customer search; inactive zero flags and month date ranges | Complete; PostgreSQL CI and browser QA tracked per commit |
-| 7 | Customer 360 and recommendations | Scoped customer history; persisted findings and follow-up workflow; safe additive migrations | In progress |
+| 7 | Customer 360 and recommendations | Scoped customer history; persisted findings and follow-up workflow; safe additive migrations | Complete |
 | 7a | Customer 360 overview | Manager-scoped bounded related sections, full counts and paginated recorded timeline; existing service profile preserved | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 7b | Persisted management recommendations | Finding/risk/owner/due/status/notes, visit-source intent, version conflicts, atomic project conversion and mandatory history; cross-customer links constrained | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 7c | Customer asset inventory | Encrypted technical identifiers, technology relationship, Managed / Under support / Neither coverage, lifecycle and support dates, version conflicts, retained history and bounded Customer 360 UI | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 7d | Asset operations | Bounded decrypted inventory search, support/warranty attention counts and filters, formula-safe filtered Excel export, template-driven transactional import capped at 500 rows | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 7e | Scoped recommendation capture and task conversion | Managers and planners access authorized customer recommendations; engineers use assigned customers/visits/projects with self ownership; author edits and versioned conversion to customer-project tasks preserve links | Complete; PostgreSQL CI and browser QA tracked per commit |
-| 8 | Workload model | Estimates/availability and configurable weighting; capacity and pressure shown separately | In progress |
+| 8 | Workload model | Estimates/availability and configurable weighting; capacity and pressure shown separately | Complete |
 | 8a | Recorded effort and availability | Manager-edited versioned remaining estimates and net weekly hours; four-week task/visit capacity with explicit missing/excluded coverage | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 8b | Weighted capacity and operational pressure | Versioned task/visit status factors; separate urgency points for assigned work, pending visit reports and unlinked service follow-ups; bounded manager-only drilldown | Complete; PostgreSQL CI and browser QA tracked per commit |
-| 9 | Custom report engine | Approved source metadata, parameterized filters/grouping/aggregations, bounded preview, permission tests | In progress |
+| 9 | Custom report engine | Approved source metadata, parameterized filters/grouping/aggregations, bounded preview, permission tests | Complete |
 | 9a | Approved-source engine | Manager-only metadata, typed parameterized filters, grouping/numeric aggregations, stable sorts, 100-row previews, 5000-row export cap and 5s read-only execution | Complete; PostgreSQL CI tracked per commit |
 | 10 | Report Builder UI and saved reports | Field selection, typed filters, grouping, sorts, preview, definitions with private/management visibility and Excel/CSV | Complete; browser QA pending |
 | 11 | Report templates and scheduling | Templates use engine; recipient validation; scheduling extends existing jobs after engine is stable | Complete for management scope; browser QA pending |
@@ -131,6 +131,9 @@ part of the foundation work.
 | 12b | Password policy integrity | Malformed values cannot disable expiry; explicit numeric 0 supported; policy and authentication settings persist in one transaction | Complete; CI tracked per commit |
 | 13 | Cross-module quality review | Targeted security/performance tests, responsive and accessibility QA, deployment instructions and final change summary | In progress |
 | 13a | Focused browser and release validation | Real-browser production bundle smoke matrix with synthetic APIs, shared-modal focus fix, validation/remaining-work record and corrected deployment requirements | Complete; full staging QA pending |
+| 14 | Workspace UI modernization | Compact personal navigation, module launcher, operational dashboard and flatter data-focused page foundations | Complete; CI browser coverage tracked per commit |
+| 14a | High-use list workspaces | Shared search/filter/result context across projects, tasks, visits, customers and managed-customer health | Complete; CI browser coverage tracked per commit |
+| 14b | Report workspace resilience | Shareable report views, explicit refresh, stale-data warning and direct service-operations links | Complete; CI browser coverage tracked per commit |
 
 ## Reporting design constraints
 
