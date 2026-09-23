@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { RefreshCw } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { api } from '../api';
@@ -57,7 +59,9 @@ export default function ServiceOperations() {
   return (
     <div className="page service-ops">
       <PageHeader eyebrow="Operations" title="Service Activity Reports"
-        description="Where service time went in the selected period, and who spent it. For a single customer's tickets and history, see Managed Customers." />
+        description="Where service time went in the selected period, and who spent it. For a single customer's tickets and history, see Managed Customers."
+        actions={<><Link to="/reports?view=service_activity" className="btn btn-ghost">Build detailed report</Link>
+          <button className="btn btn-ghost" onClick={retry} disabled={loading}><RefreshCw size={14} /> {loading && data ? 'Refreshing…' : 'Refresh'}</button></>} />
 
       <div className="so-toolbar">
         <div className="so-segment" role="group" aria-label="Period">
@@ -73,8 +77,15 @@ export default function ServiceOperations() {
         )}
       </div>
 
+      <div className="so-period-context" aria-live="polite">
+        <span>Reporting period</span><strong>{range.from || 'Beginning'} – {range.to || iso(new Date())}</strong>
+        {data && <span>{plural(data.total_activities, 'activity', 'activities')} · {fmtHours(data.total_hours)}</span>}
+      </div>
+
+      {error && data && <div className="alert alert-warning" role="alert">{error} Showing the last loaded report. <button className="btn btn-ghost btn-sm" onClick={retry}>Retry</button></div>}
+
       {loading && !data ? <div className="skeleton-table" aria-label="Loading service operations"><span /><span /><span /><span /></div>
-        : error ? (
+        : error && !data ? (
           <div className="error-msg" role="alert">
             <p>{error}</p>
             <button className="btn btn-ghost btn-sm" onClick={retry}>Retry</button>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
@@ -10,6 +10,9 @@ import { fmtDuration, mixOf } from '../components/activityLedger';
 import './ServiceReport.css';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../components/Shared';
 import ReportBuilder from '../components/ReportBuilder';
+import { PageHeader } from '../components/PageLayout';
+
+const REPORT_VIEWS = ['overview', 'builder', 'projects', 'kpis', 'trends', 'service_activity'];
 
 function KpiHealthRow({ k }) {
   const color = k.pct >= 100 ? 'var(--success)' : k.pct >= 70 ? 'var(--primary)' : k.pct >= 40 ? 'var(--warning)' : 'var(--danger)';
@@ -314,12 +317,19 @@ function ServiceActivityReportTab() {
 }
 
 export default function Reports() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [summary, setSummary] = useState(null);
   const [projects, setProjects] = useState([]);
-  const [tab, setTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [loadError,setLoadError] = useState('');
   const [retry,setRetry] = useState(0);
+  const requestedView = searchParams.get('view');
+  const tab = REPORT_VIEWS.includes(requestedView) ? requestedView : 'overview';
+  const setTab = next => setSearchParams(current => {
+    const updated = new URLSearchParams(current);
+    if (next === 'overview') updated.delete('view'); else updated.set('view', next);
+    return updated;
+  }, { replace: true });
 
   useEffect(() => {
     const controller = new AbortController(),options = { signal: controller.signal };
@@ -330,7 +340,7 @@ export default function Reports() {
     return () => controller.abort();
   }, [retry]);
 
-  if (loading || !summary) return <div className="page"><h1>Reports</h1>{tab==='builder' ? <ReportBuilder /> : loading ? <p role="status">Loading reports...</p> : <div className="error-msg" role="alert">{loadError || 'Report summaries unavailable'} <button className="btn btn-ghost" onClick={() => setRetry(value => value+1)}>Retry summaries</button><button className="btn btn-primary" onClick={() => setTab('builder')}>Open Report Builder</button></div>}</div>;
+  if (loading || !summary) return <div className="page"><PageHeader eyebrow="Management" title="Reports" description="Operational analysis, delivery health and reusable report definitions." />{tab==='builder' ? <ReportBuilder /> : loading ? <div className="skeleton-table" aria-label="Loading reports"><span /><span /><span /></div> : <div className="error-msg" role="alert">{loadError || 'Report summaries unavailable'} <button className="btn btn-ghost" onClick={() => setRetry(value => value+1)}>Retry summaries</button><button className="btn btn-primary" onClick={() => setTab('builder')}>Open Report Builder</button></div>}</div>;
 
   const byStatus = Object.fromEntries(summary.byStatus.map(s => [s.status, s.count]));
   // "Active" = everything that isn't closed or cancelled
@@ -340,12 +350,10 @@ export default function Reports() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Reports</h1>
-        <span className="text-sm text-muted">Manager view only</span>
-      </div>
+      <PageHeader eyebrow="Management" title="Reports" description="Operational analysis, delivery health and reusable report definitions."
+        actions={<Link className="btn btn-ghost" to="/service-operations">Service activity overview</Link>} />
 
-      <div className="tabs">
+      <div className="tabs" aria-label="Report sections">
         {[['overview','Overview'],['builder','Report Builder'],['projects','Projects'],['kpis','KPIs'],['trends','Trends'],['service_activity','Service Activity']].map(([k, l]) => (
           <button key={k} className={'tab' + (tab === k ? ' active' : '')} onClick={() => setTab(k)}>{l}</button>
         ))}
@@ -353,11 +361,11 @@ export default function Reports() {
 
       {tab === 'overview' && (
         <>
-          <div className="grid-4" style={{ marginBottom: 24 }}>
-            <div className="card stat"><div className="stat-value">{summary.total}</div><div className="stat-label">Total Projects</div></div>
-            <div className="card stat"><div className="stat-value" style={{ color: 'var(--primary)' }}>{activeCount}</div><div className="stat-label">Active</div></div>
-            <div className="card stat"><div className="stat-value" style={{ color: 'var(--success)' }}>{byStatus.closed || 0}</div><div className="stat-label">Closed</div></div>
-            <div className="card stat"><div className="stat-value" style={{ color: 'var(--danger)' }}>{summary.overdue}</div><div className="stat-label">Overdue</div></div>
+          <div className="operations-metric-strip">
+            <div className="operations-metric"><strong>{summary.total}</strong><span>Total Projects</span></div>
+            <div className="operations-metric is-primary"><strong>{activeCount}</strong><span>Active</span></div>
+            <div className="operations-metric is-success"><strong>{byStatus.closed || 0}</strong><span>Closed</span></div>
+            <div className="operations-metric is-danger"><strong>{summary.overdue}</strong><span>Overdue</span></div>
           </div>
 
           <div className="grid-2" style={{ marginBottom: 24 }}>

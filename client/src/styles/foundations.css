@@ -220,6 +220,7 @@ tbody tr:hover td { background: var(--highlight); }
 .operations-metric.is-warning strong { color: var(--warning); }
 .operations-metric.is-success strong { color: var(--success); }
 .operations-metric.is-primary strong { color: var(--primary); }
+.operations-metric.is-danger strong { color: var(--danger); }
 
 .bulk-action-bar { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; padding: 9px 12px; margin-bottom: 12px; border: 1px solid var(--primary); border-left-width: 3px; border-radius: var(--radius); background: var(--primary-light); font-size: 13px; }
 .bulk-action-bar > strong { color: var(--tone-info-text); }
