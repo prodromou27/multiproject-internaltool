@@ -47,7 +47,7 @@ router.get('/summary',requireAuth,async (req,res) => {
     planner ? Promise.resolve({ open:0,overdue:0,in_progress:0,recently_completed:0 }) : db.prepare(`SELECT COUNT(*) FILTER (WHERE t.status NOT IN ('completed','closed','cancelled')) AS open,
       COUNT(*) FILTER (WHERE t.status NOT IN ('completed','closed','cancelled') AND t.deadline IS NOT NULL AND t.deadline<app_today()) AS overdue,
       COUNT(*) FILTER (WHERE t.status='in_progress') AS in_progress,
-      COUNT(*) FILTER (WHERE t.status IN ('completed','closed') AND t.updated_at>=app_now()-INTERVAL '30 days') AS recently_completed
+      COUNT(*) FILTER (WHERE t.status IN ('completed','closed') AND t.updated_at>=(app_now()::timestamp-INTERVAL '30 days')::text) AS recently_completed
       FROM tasks t JOIN projects p ON p.id=t.project_id WHERE p.customer_id=?${taskScope}`).get(customerId,...(engineer?[userId]:[])),
     db.prepare(`SELECT COUNT(*) FILTER (WHERE ${activeRecommendations}) AS open,
       COUNT(*) FILTER (WHERE ${activeRecommendations} AND r.risk_level IN ('high','critical')) AS high_risk,
