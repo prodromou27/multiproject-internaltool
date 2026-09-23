@@ -713,6 +713,34 @@ test('browser cookies enforce CSRF, required password changes, renewal and logou
   assert.equal((await api('/api/auth/me', { token: profile.data.token })).status, 401);
 });
 
+test('notify() delivers to each recipient\'s own personal Teams webhook, honoring per-person opt-in', async () => {
+  const notifications = require('../notifications');
+  const hash = bcrypt.hashSync('pw', 4);
+  const mk = async (name, role, extra = {}) => (await db.prepare('INSERT INTO users (name, email, password, role, notify_teams_enabled, notify_teams_webhook_url) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(name, `${name.toLowerCase().replace(/\W/g, '')}@test.local`, hash, role, extra.on ? 1 : 0, extra.url || null)).lastInsertRowid;
+  const optedIn = await mk('Notify Manager In', 'manager', { on: true, url: 'https://93.184.216.34/manager-in' });
+  await mk('Notify Manager Off', 'manager', { on: false, url: 'https://93.184.216.34/manager-off' });
+  const engineer = await mk('Notify Engineer', 'engineer', { on: true, url: 'https://93.184.216.34/engineer' });
+  await db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value")
+    .run(JSON.stringify({ teams: { enabled: false }, webex: { enabled: false }, notify_on: {} }));
+  const posted = [];
+  notifications._setTransport(async (u) => { posted.push(u.pathname); return { status: 200, body: '', headers: {} }; });
+  try {
+    const settle = () => new Promise(resolve => setTimeout(resolve, 300)); // notify() is fire-and-forget via setImmediate
+    notifications.notify('report.submitted', { visit_title: 'V', customer_name: 'C', engineer_name: 'E' });
+    await settle();
+    // Every opted-in manager is reached; managers who haven't opted in aren't.
+    assert.equal(posted.includes('/manager-in'), true);
+    assert.equal(posted.includes('/manager-off'), false);
+    assert.equal(posted.includes('/engineer'), false); // not a manager, not the recipient of this event
+    posted.length = 0;
+    notifications.notify('task.assigned', { engineer_id: engineer, engineer_name: 'Notify Engineer', task_title: 'T' });
+    await settle();
+    assert.deepEqual(posted, ['/engineer']); // single-recipient event: only that engineer's own webhook
+  } finally { notifications._setTransport(); }
+  assert.ok(optedIn);
+});
+
 test('notification preferences default correctly, validate their input, and persist without re-issuing a session', async () => {
   const passwordHash = bcrypt.hashSync('pw', 4);
   const target = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')

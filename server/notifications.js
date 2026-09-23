@@ -306,18 +306,25 @@ function notify(event, data) {
       // visit.reminder defaults to enabled unless explicitly disabled
       if (notifyOn[eventKey] === false) return;
 
-      // A submitted report goes to managers, so never DM the submitting engineer,
-      // and there's no single recipient to look up personal channels for.
-      // Otherwise, fetch the recipient's own channel preferences once and use
-      // them for all three: skip the Webex DM if they've opted out, and add
-      // their personal Teams webhook / personal email on top of the org-wide
-      // channels above if they've opted in. In-app (bell icon) notifications
-      // are unaffected by any of this — persisted above, unconditionally.
+      // A submitted report goes to managers, so never DM the submitting
+      // engineer via the org Webex bot. Personal channels (Teams webhook,
+      // email) apply to whoever the event is FOR: the single assigned
+      // engineer for assignment/reminder events, or every active manager for
+      // report.submitted (each with their own preferences). The Webex DM
+      // additionally honors the engineer's opt-out. In-app (bell icon)
+      // notifications are unaffected by any of this — persisted above,
+      // unconditionally.
+      const PREF_COLS = 'id, email, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled';
       let dmEmail = event === 'report.submitted' ? null : data.engineer_email;
-      let recipient = null;
-      if (data.engineer_id) {
-        recipient = await db.prepare('SELECT email, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled FROM users WHERE id = ?').get(data.engineer_id);
-        if (recipient && !recipient.notify_external_enabled) dmEmail = null;
+      let recipients = [];
+      if (event === 'report.submitted') {
+        recipients = await db.prepare(`SELECT ${PREF_COLS} FROM users WHERE role = 'manager' AND active = 1`).all();
+      } else if (data.engineer_id) {
+        const recipient = await db.prepare(`SELECT ${PREF_COLS} FROM users WHERE id = ?`).get(data.engineer_id);
+        if (recipient) {
+          recipients = [recipient];
+          if (!recipient.notify_external_enabled) dmEmail = null;
+        }
       }
 
       const sends = [
@@ -325,13 +332,15 @@ function notify(event, data) {
         sendWebex(settings.webex, msg, dmEmail),
       ];
       const sendLabels = ['Teams', 'Webex'];
-      if (event !== 'report.submitted' && recipient?.notify_teams_enabled && recipient.notify_teams_webhook_url) {
-        sends.push(sendTeams({ enabled: true, webhook_url: recipient.notify_teams_webhook_url }, msg));
-        sendLabels.push('Personal Teams');
-      }
-      if (event !== 'report.submitted' && recipient?.notify_email_enabled && recipient.email) {
-        sends.push(sendEmail({ to: recipient.email, subject: msg.title, html: emailHtml(msg) }));
-        sendLabels.push('Personal email');
+      for (const person of recipients) {
+        if (person.notify_teams_enabled && person.notify_teams_webhook_url) {
+          sends.push(sendTeams({ enabled: true, webhook_url: person.notify_teams_webhook_url }, msg));
+          sendLabels.push(`Personal Teams (user ${person.id})`);
+        }
+        if (person.notify_email_enabled && person.email) {
+          sends.push(sendEmail({ to: person.email, subject: msg.title, html: emailHtml(msg) }));
+          sendLabels.push(`Personal email (user ${person.id})`);
+        }
       }
       const results = await Promise.allSettled(sends);
       results.forEach((r, i) => {
