@@ -1,5 +1,5 @@
 import { useEffect,useState } from 'react';
-import { CheckCircle2,Loader2,RefreshCw,Save,Ticket } from 'lucide-react';
+import { CheckCircle2,Loader2,RefreshCw,Save } from 'lucide-react';
 import { api } from '../../api';
 import { Toggle } from './shared';
 import TicketMappingConfiguration from './TicketMappingConfiguration';
@@ -30,7 +30,9 @@ export default function RequestTrackerIntegration({ sectionStyle,labelStyle }) {
   if (loading) return <div style={sectionStyle}><p role="status" className="text-muted">Loading Request Tracker settings...</p></div>;
   return <div style={sectionStyle}>
     <div style={{ display:'flex',alignItems:'center',gap:14,marginBottom:16 }}>
-      <div style={{ width:40,height:40,borderRadius:8,background:'var(--primary-light)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--primary)' }}><Ticket size={21} /></div>
+      <div style={{ width:40,height:40,borderRadius:8,background:'#f3e8ff',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#7c3aed"/><path d="M5 9a2 2 0 010 4v2a1 1 0 001 1h12a1 1 0 001-1v-2a2 2 0 010-4V7a1 1 0 00-1-1H6a1 1 0 00-1 1v2z" fill="white"/><path d="M12 6.5v1.5M12 11v2M12 15.5V17" stroke="#7c3aed" strokeWidth="1.5" strokeLinecap="round"/></svg>
+      </div>
       <div style={{ flex:1 }}><div style={{ fontWeight:700,fontSize:15 }}>Request Tracker</div><div className="text-muted text-sm">REST 2.0 ticket and queue integration for Managed Customers</div></div>
       <Toggle checked={form.enabled} onChange={value => set('enabled',value)} label={form.enabled ? 'Enabled' : 'Disabled'} />
     </div>
