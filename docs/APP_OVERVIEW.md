@@ -912,6 +912,13 @@ override the default 250 ms threshold. The backup helper integrity-checks each a
 and records its completion, while `deploy/verify-backup.sh` performs a non-destructive
 restore into a temporary database and records the latest successful verification.
 
+Scheduled weekly reports and Request Tracker synchronizations run through the
+PostgreSQL `background_jobs` queue. Workers claim rows with `FOR UPDATE SKIP LOCKED`,
+deduplicate active work, retry transient failures with bounded backoff, recover stale
+locks after a restart and retain thirty days of job history. Queue backlog and recent
+failures appear in the management Deployment Health checklist. Manual ticket sync
+remains synchronous so administrators receive its detailed result immediately.
+
 Not covered: a manual browser and screen-reader pass on real staging data, real-device
 testing, and end-to-end runs of the browser against the real API.
 

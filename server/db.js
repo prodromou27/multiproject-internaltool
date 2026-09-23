@@ -383,6 +383,28 @@ async function init() {
       value TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS background_jobs (
+      id SERIAL PRIMARY KEY,
+      type TEXT NOT NULL,
+      payload TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','completed','failed')),
+      priority INTEGER NOT NULL DEFAULT 100,
+      run_after TEXT NOT NULL DEFAULT ${NOW},
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 3,
+      dedupe_key TEXT UNIQUE,
+      locked_at TEXT,
+      locked_by TEXT,
+      started_at TEXT,
+      completed_at TEXT,
+      result TEXT,
+      error TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_background_jobs_claim ON background_jobs(status,run_after,priority,id);
+    CREATE INDEX IF NOT EXISTS idx_background_jobs_history ON background_jobs(created_at,id);
+
     CREATE TABLE IF NOT EXISTS task_comments (
       id         SERIAL PRIMARY KEY,
       task_id    INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -1157,6 +1179,30 @@ async function applyCompatibilityMigrations() {
     ALTER TABLE teams ADD COLUMN IF NOT EXISTS project_delivery_enabled INTEGER NOT NULL DEFAULT 1;
     UPDATE teams SET managed_service_operations=1,project_delivery_enabled=0
       WHERE service_activity_enabled=1 AND managed_service_operations=0;
+  `]);
+
+  migrations.push(['20260924_background_jobs', `
+    CREATE TABLE IF NOT EXISTS background_jobs (
+      id SERIAL PRIMARY KEY,
+      type TEXT NOT NULL,
+      payload TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','completed','failed')),
+      priority INTEGER NOT NULL DEFAULT 100,
+      run_after TEXT NOT NULL DEFAULT ${NOW},
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 3,
+      dedupe_key TEXT UNIQUE,
+      locked_at TEXT,
+      locked_by TEXT,
+      started_at TEXT,
+      completed_at TEXT,
+      result TEXT,
+      error TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_background_jobs_claim ON background_jobs(status,run_after,priority,id);
+    CREATE INDEX IF NOT EXISTS idx_background_jobs_history ON background_jobs(created_at,id);
   `]);
 
   migrations.push(['20260923_personal_notification_channels', `

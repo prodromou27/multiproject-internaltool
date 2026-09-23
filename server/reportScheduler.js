@@ -5,9 +5,16 @@
  */
 const db = require('./db');
 const { sendWeeklyReport } = require('./weeklyReport');
+const jobs = require('./backgroundJobs');
 
 let _timeout  = null;
 let _interval = null;
+
+function queueWeeklyReport() {
+  const day=new Date().toISOString().slice(0,10);
+  return jobs.enqueue('weekly_report',{}, { dedupeKey:`weekly-report:${day}`,maxAttempts:3 })
+    .catch(error => console.error('[weekly-report] Could not queue delivery:',error.message));
+}
 
 // ── Read config from DB ───────────────────────────────────────────────────────
 async function getConfig() {
@@ -58,9 +65,9 @@ async function reschedule() {
   console.log(`[weekly-report] Next run: ${next.toLocaleString()} (${DAY_NAMES[day]} ${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}) — in ${Math.round(ms/60000)} min`);
 
   _timeout = setTimeout(() => {
-    sendWeeklyReport();
+    queueWeeklyReport();
     // Repeat every 7 days
-    _interval = setInterval(sendWeeklyReport, 7 * 24 * 60 * 60 * 1000);
+    _interval = setInterval(queueWeeklyReport, 7 * 24 * 60 * 60 * 1000);
   }, ms);
 }
 
@@ -79,9 +86,17 @@ async function initScheduler() {
         last_sent:  null,
       }));
   }
+  await jobs.start({
+    weekly_report: async () => { await sendWeeklyReport();return { delivered:true }; },
+    ticket_sync: async payload => {
+      const { syncCustomer }=require('./ticketSync');
+      const result=await syncCustomer(Number(payload.customer_id),{ triggeredBy:payload.triggered_by || null });
+      return { run_id:result.run_id,tickets_found:result.tickets_found,tickets_created:result.tickets_created,tickets_updated:result.tickets_updated };
+    },
+  });
   await reschedule();
   require('./customReportScheduler').start();
   require('./ticketSyncScheduler').start();
 }
 
-module.exports = { initScheduler, reschedule };
+module.exports = { initScheduler, reschedule, queueWeeklyReport };

@@ -8,6 +8,7 @@ const { isInAppUpdateEnabled, requireInAppUpdateEnabled } = require('../../secur
 const { getRuntimeConfigIssues } = require('../../config');
 const { keyStatus } = require('../../fieldCipher');
 const pkg = require('../../package.json');
+const backgroundJobs = require('../../backgroundJobs');
 const { bytes, directoryBytes, customerEncryptionReport, logSettingsChange } = require('./shared');
 
 /* ── System Update ──────────────────────────────────────────── */
@@ -65,6 +66,15 @@ router.get('/deployment-health', requireManager, async (req, res) => {
       restore ? `${restore.file || 'Backup'} restored into a temporary database and passed checks at ${restore.completed_at}.` : 'No non-destructive restore verification has been recorded.');
   } catch {
     add('database_backup', 'Database backup', 'warning', 'Could not inspect backup status.');
+  }
+  let jobQueue=null;
+  try {
+    jobQueue=await backgroundJobs.health();
+    const oldestAge=jobQueue.oldest_queued_at ? Date.now()-Date.parse(jobQueue.oldest_queued_at) : 0;
+    add('background_jobs','Background jobs',jobQueue.recent_failed > 0 || oldestAge > 10*60*1000 ? 'warning' : 'ok',
+      `${jobQueue.queued} queued; ${jobQueue.running} running; ${jobQueue.completed} completed; ${jobQueue.failed} failed in retained history.${jobQueue.latest_failure ? ` Latest failure: ${jobQueue.latest_failure.type}.` : ''}`);
+  } catch {
+    add('background_jobs','Background jobs','warning','Could not inspect the durable job queue.');
   }
 
   add(
@@ -179,6 +189,7 @@ router.get('/deployment-health', requireManager, async (req, res) => {
       pid: process.pid,
     },
     database,
+    job_queue:jobQueue,
     checks,
   });
 });

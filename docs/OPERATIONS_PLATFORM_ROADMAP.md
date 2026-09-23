@@ -143,8 +143,9 @@ part of the foundation work.
 | 16c | Adaptive Customer 360 | Reorder shared customer sections and quick actions from workflow emphasis without widening API access | Complete; unit coverage included |
 | 17 | Performance and reliability | Durable background work, database observability, incremental dashboards, indexed search and recoverability checks | In progress |
 | 17a | Database and recovery visibility | Privacy-safe slow-query metrics, pool pressure, backup freshness and non-destructive restore verification in Deployment Health | Complete |
-| 17b | Durable background jobs | PostgreSQL-backed queue for scheduled reports, ticket synchronization and asynchronous exports | Next |
+| 17b | Durable background jobs | PostgreSQL-backed atomic queue with retries, deduplication and restart recovery for scheduled reports and ticket synchronization | Complete; asynchronous user exports remain in 17d |
 | 17c | Read-path performance | Cached dashboard aggregates, consistent large-list pagination and indexed full-text search | Planned |
+| 17d | Asynchronous export delivery | Queue large user-requested exports, retain authorized artifacts briefly and notify owners when downloads are ready | Planned |
 
 ## Reporting design constraints
 
