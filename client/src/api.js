@@ -414,7 +414,7 @@ export const api = {
 
   // teams (Service Activity Tracking)
   teamsMine: () => req('GET', '/teams/mine'),
-  teams: () => req('GET', '/teams'),
+  teams: (options) => req('GET', '/teams', undefined, options),
   team: (id) => req('GET', `/teams/${id}`),
   createTeam: (data) => req('POST', '/teams', data),
   updateTeam: (id, data) => req('PUT', `/teams/${id}`, data),

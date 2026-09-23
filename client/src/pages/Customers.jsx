@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Building2, Upload } from 'lucide-react';
+import { Building2, RefreshCw, Upload } from 'lucide-react';
 import { api } from '../api';
 import { Modal } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
+import { PageHeader } from '../components/PageLayout';
+import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
 import { useAuth } from '../App';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
@@ -133,10 +135,22 @@ export default function Customers() {
   const [showImport,  setShowImport]  = useState(false);
   const [editing,     setEditing]     = useState(null);
   const [search,      setSearch]      = useState('');
+  const [view,        setView]        = useState('all');
   const [loading,     setLoading]     = useState(true);
+  const [loadError,   setLoadError]   = useState('');
 
-  const load = () => api.customers().then(d => { setCustomers(d ?? []); setLoading(false); });
-  useEffect(() => { load(); if (isManager) api.teams().then(setTeams).catch(() => {}); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(async options => {
+    setLoading(true); setLoadError('');
+    try { setCustomers(await api.customers(options) ?? []); }
+    catch (error) { if (error.name !== 'AbortError') setLoadError(error.message || 'Unable to load customers'); }
+    finally { if (!options?.signal?.aborted) setLoading(false); }
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    load({ signal: controller.signal });
+    if (isManager) api.teams({ signal: controller.signal }).then(setTeams).catch(() => {});
+    return () => controller.abort();
+  }, [isManager, load]);
 
   async function openEdit(customer) {
     setEditing(customer);
@@ -150,12 +164,17 @@ export default function Customers() {
   }
 
   const filtered = customers.filter(c => {
+    if (view === 'active' && !c.active) return false;
+    if (view === 'inactive' && c.active) return false;
+    if (view === 'tracked' && !c.service_activity_enabled) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return c.name.toLowerCase().includes(q) ||
       (c.contact_name  || '').toLowerCase().includes(q) ||
       (c.contact_email || '').toLowerCase().includes(q) ||
-      (c.address       || '').toLowerCase().includes(q);
+      (c.address       || '').toLowerCase().includes(q) ||
+      (c.location      || '').toLowerCase().includes(q) ||
+      (c.customer_code || '').toLowerCase().includes(q);
   });
 
   async function handleDelete(id) {
@@ -166,37 +185,53 @@ export default function Customers() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Customers</h1>
-        <div className="flex gap-8">
+      <PageHeader eyebrow="Management" title="Customers" description="Customer records, service coverage, contracts and operational access." actions={
+        <div className="flex gap-8 flex-wrap">
+          <button className="btn btn-ghost" onClick={() => load()} disabled={loading}><RefreshCw size={14} /> Refresh</button>
           {canCreate && <button className="btn btn-ghost" onClick={() => setShowImport(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Upload size={14} /> Import</button>}
           {canCreate && <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>+ New Customer</button>}
         </div>
-      </div>
+      } />
 
       <div className="card mb-16">
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search customers…" style={{ maxWidth: 320 }} />
+        <ListSearch value={search} onChange={setSearch} label="Search customers" placeholder="Search customers, contacts, email, or location…" />
+        <FilterGroup label="View">
+          {[
+            ['all', 'All', customers.length],
+            ['active', 'Active', customers.filter(customer => !!customer.active).length],
+            ['tracked', 'Service tracking', customers.filter(customer => !!customer.service_activity_enabled).length],
+            ['inactive', 'Inactive', customers.filter(customer => !customer.active).length],
+          ].map(([key, label, count]) => <button key={key} className={`filter-pill${view === key ? ' active' : ''}`} onClick={() => setView(key)}>
+            {label} <span style={{ opacity: .7 }}>({count})</span>
+          </button>)}
+        </FilterGroup>
       </div>
 
-      {loading ? <p className="text-muted">Loading…</p> : filtered.length === 0
-        ? <div className="empty"><div className="empty-icon"><Building2 size={40} strokeWidth={1.2} /></div><p>No customers yet</p></div>
+      {!loading && !loadError && <ResultContext shown={filtered.length} total={customers.length} noun="customers"
+        activeFilters={(search.trim() ? 1 : 0) + (view !== 'all' ? 1 : 0)}
+        onClear={() => { setSearch(''); setView('all'); }} />}
+
+      {loadError ? <div className="error-msg" role="alert">{loadError} <button className="btn btn-ghost btn-sm" onClick={() => load()}>Retry</button></div>
+        : loading ? <div className="skeleton-table" aria-label="Loading customers"><span /><span /><span /></div> : filtered.length === 0
+        ? <div className="empty"><div className="empty-icon"><Building2 size={40} strokeWidth={1.2} /></div><p>{customers.length ? 'No customers match this view' : 'No customers have been added yet'}</p>{customers.length > 0 && <button className="btn btn-ghost btn-sm mt-12" onClick={() => { setSearch(''); setView('all'); }}>Reset view</button>}</div>
         : <div className="card table-wrap">
             <table>
-              <thead><tr><th>Customer</th><th>Contact</th><th>Email</th><th>Phone</th><th>Address</th><th>Visits</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Customer</th><th>Coverage</th><th>Contract</th><th>Primary contact</th><th>Location</th><th>Visits</th><th>Actions</th></tr></thead>
               <tbody>
                 {filtered.map(c => (
                   <tr key={c.id}>
-                    <td style={{ fontWeight: 600 }}>
-                      {c.name}
-                      {c.notes && <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 2, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.notes}>{c.notes}</div>}
+                    <td className="customer-identity">
+                      {isManager ? <Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link> : <strong>{c.name}</strong>}
+                      <span>{c.customer_code || 'No customer code'} · {c.active ? 'Active' : 'Inactive'}</span>
+                      {c.notes && <small title={c.notes}>{c.notes}</small>}
                     </td>
-                    <td>{c.contact_name || '—'}</td>
-                    <td>{c.contact_email ? <a href={`mailto:${c.contact_email}`}>{c.contact_email}</a> : '—'}</td>
-                    <td>{c.contact_phone || '—'}</td>
-                    <td style={{ fontSize: 12, color: 'var(--gray-600)' }}>{c.address || '—'}</td>
+                    <td>{c.service_activity_enabled ? <span className="badge badge-done">Tracked</span> : <span className="badge badge-on_hold">Standard</span>}</td>
+                    <td><strong className="text-sm">{c.contract_type || 'No contract'}</strong>{c.contract_end_date && <div className="text-muted text-sm">Ends {c.contract_end_date}</div>}</td>
+                    <td>{c.contact_name || c.primary_contact || '—'}{c.contact_email && <div><a className="text-sm" href={`mailto:${c.contact_email}`}>{c.contact_email}</a></div>}</td>
+                    <td className="text-sm">{c.location || c.address || '—'}</td>
                     <td><span className="badge badge-active">{c.visit_count}</span></td>
                     <td>
-                      <div className="flex gap-8">
+                      <div className="table-actions">
                         {isManager && (
                           <Link className="btn btn-sm btn-ghost" to={`/customers/${c.id}/service-profile`}>Customer 360</Link>
                         )}

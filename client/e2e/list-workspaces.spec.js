@@ -31,3 +31,26 @@ test('task bulk actions use the shared high-contrast action bar', async ({ page 
   await bulkBar.getByRole('button', { name: 'Deselect all' }).click();
   await expect(bulkBar).toHaveCount(0);
 });
+
+test('customer directory combines service coverage with recoverable loading', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  const customers = [
+    { id: 1, name: 'Northwind Logistics', customer_code: 'NWL', active: 1, service_activity_enabled: 1, contract_type: 'Managed', contact_name: 'Mina Cole', contact_email: 'mina@northwind.example', location: 'Nicosia', visit_count: 3 },
+    { id: 2, name: 'Contoso Retail', customer_code: 'CTR', active: 1, service_activity_enabled: 0, visit_count: 1 },
+    { id: 3, name: 'Legacy Industries', active: 0, service_activity_enabled: 0, visit_count: 0 },
+  ];
+  let fail = true;
+  api.override('GET /api/customers', () => fail
+    ? { status: 503, body: { error: 'Customer directory temporarily unavailable' } }
+    : { body: customers });
+  await page.goto('/customers');
+
+  await expect(page.getByRole('alert')).toContainText('Customer directory temporarily unavailable');
+  fail = false;
+  await page.getByRole('button', { name: 'Retry' }).click();
+  await expect(page.getByText('3 of 3 customers')).toBeVisible();
+  await page.getByRole('button', { name: /Service tracking/ }).click();
+  await expect(page.getByText('1 of 3 customers')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Northwind Logistics' })).toBeVisible();
+  await expect(page.getByText('Contoso Retail')).toHaveCount(0);
+});

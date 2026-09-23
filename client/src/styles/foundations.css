@@ -225,6 +225,12 @@ tbody tr:hover td { background: var(--highlight); }
 .bulk-action-bar > strong { color: var(--tone-info-text); }
 .bulk-action-separator { color: var(--primary); opacity: .45; }
 
+.customer-identity { min-width: 190px; }
+.customer-identity > a, .customer-identity > strong { display: block; color: var(--gray-900); font-size: 13px; font-weight: 700; }
+.customer-identity > span { display: block; margin-top: 2px; color: var(--gray-500); font-size: 11px; }
+.customer-identity > small { display: block; max-width: 260px; margin-top: 3px; overflow: hidden; color: var(--gray-500); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.table-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+
 @media (max-width: 700px) {
   .list-search { width: 100%; }
   .list-filter-group { display: block; }
