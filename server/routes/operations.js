@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getEnabledTeamIdsForUser } = require('../serviceActivities');
 const { decrypt } = require('../fieldCipher');
+const { listManagedCustomersForUser } = require('../managedCustomerService');
 
 const placeholders = values => values.map(() => '?').join(',');
 const numbers = row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, Number(value || 0)]));
@@ -96,6 +97,15 @@ router.get('/overview', requireAuth, async (req, res) => {
     tasks: { ...numbers(taskStats), attention: tasks }, projects: { ...numbers(projectStats), commitments: projects },
     visits: { ...numbers(visitStats), upcoming_items: visits, reports },
     approvals: { managed_reports: Number(reportReviewStats.active || 0), reports: reportReviews.map(report => ({ ...report,customer_name:decrypt(report.customer_name) })) },service });
+});
+
+// The managed customers this user's team(s) are responsible for, scoped down
+// from the manager-only Managed Customers dashboard — see
+// managedCustomerService.listManagedCustomersForUser for why this stays a
+// filtered read rather than granting engineers that full dashboard.
+router.get('/my-managed-customers', requireAuth, async (req, res) => {
+  const rows = await listManagedCustomersForUser(req.user.id);
+  res.json({ rows });
 });
 
 module.exports = router;

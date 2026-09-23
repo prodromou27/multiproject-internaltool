@@ -22,6 +22,21 @@ async function listManagedCustomers(store=db) {
   return rows.map(row => ({ ...row,name:decrypt(row.name),ticketing_enabled:!!row.ticketing_enabled,service_status:row.last_sync_status==='failed'?'attention':row.ticketing_enabled && !row.last_successful_sync_at?'awaiting_sync':row.ticketing_enabled?'healthy':'activity_only',open_tickets:Number(ticketMap.get(row.id)?.open_tickets || 0),pending_tickets:Number(ticketMap.get(row.id)?.pending_tickets || 0),activities_this_month:Number(activityMap.get(row.id)?.activities_this_month || 0),open_tasks:Number(taskMap.get(row.id)?.open_tasks || 0),active_projects:Number(projectMap.get(row.id)?.active_projects || 0),last_maintenance_visit:visitMap.get(row.id)?.last_maintenance_visit || null })).sort((a,b) => a.name.localeCompare(b.name));
 }
 
+/* The managed customers a given user's team(s) are responsible for — the
+   same enriched rows listManagedCustomers() already computes (ticket
+   counts, service status, activity volume), just scoped down to "your
+   team owns this one." Used to give engineers on a managed-services team
+   an operational view without granting them the full Managed Customers
+   dashboard (that stays manager-only — see customer-operations.js and
+   the Customer 360 / Managed Customers product-concept split). */
+async function listManagedCustomersForUser(userId, store=db) {
+  const teamRows = await store.prepare('SELECT team_id FROM team_members WHERE user_id=?').all(userId);
+  const teamIds = new Set(teamRows.map(row => Number(row.team_id)));
+  if (!teamIds.size) return [];
+  const all = await listManagedCustomers(store);
+  return all.filter(row => teamIds.has(Number(row.responsible_team_id)));
+}
+
 async function getOverview(customerId,from,to,store=db) {
   const row=await store.prepare(`SELECT c.*,mc.*,t.name AS responsible_team,u.name AS service_manager,tc.last_successful_sync_at,tc.last_sync_status
     FROM managed_customer_configurations mc JOIN customers c ON c.id=mc.customer_id
@@ -264,4 +279,4 @@ async function getTimeline(customerId,from,to,{ page=1,pageSize=25,offset=0 }={}
   return { rows,total:Number(count.total),page,page_size:pageSize,period:{ from,to } };
 }
 
-module.exports={ listManagedCustomers,getOverview,listTickets,getTicketAnalytics,getActivities,getWork,getServiceReview,getTimeline };
+module.exports={ listManagedCustomers,listManagedCustomersForUser,getOverview,listTickets,getTicketAnalytics,getActivities,getWork,getServiceReview,getTimeline };

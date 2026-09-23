@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   RefreshCw, CheckCircle2, AlertTriangle, Clock, Wrench,
   FolderOpen, ListTodo, Send, ClipboardCheck, CalendarX, X,
-  Settings2, GripVertical, ArrowUp, ArrowDown,
+  Settings2, GripVertical, ArrowUp, ArrowDown, Building2, Ticket,
 } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import OperationalFocus from '../components/OperationalFocus';
@@ -29,6 +29,10 @@ const WIDGET_DEFS = {
   engineer: [
     { id: 'stat_cards',        label: 'Stats Overview'               },
     { id: 'due_week',          label: 'Due This Week'                },
+    // Renders nothing (see engineerWidget's default-null pattern) unless
+    // your team is the responsible team for at least one managed customer —
+    // most engineers won't see this, which is deliberate, not a bug.
+    { id: 'managed_customers', label: 'My Managed Customers'         },
     { id: 'pending_reports',   label: 'Reports Pending (→ Mgmt)'    },
     { id: 'mv_this_month',     label: 'Visits This Month'            },
     { id: 'projects',          label: 'My Projects'                  },
@@ -246,6 +250,7 @@ export default function Dashboard() {
   const [reviewVisits,     setReviewVisits]     = useState([]);
   const [incompleteVisits, setIncompleteVisits] = useState([]);
   const [pendingReports,   setPendingReports]   = useState([]);
+  const [myManagedCustomers, setMyManagedCustomers] = useState([]);
   const [completingVisit,  setCompletingVisit]  = useState(null); // visit id being completed
   const [error,            setError]            = useState('');
   const [loading,          setLoading]          = useState(true);
@@ -275,8 +280,9 @@ export default function Dashboard() {
         (isManager || isPM) ? api.maintenanceVisits({ not_completed:1 }) : Promise.resolve([]),
         isEngineer ? api.maintenanceVisits({ pending_report:1 }) : Promise.resolve([]),
         (isManager || isEngineer) ? api.operationsOverview({ as_of: localDateISO() }) : Promise.resolve(null),
+        isEngineer ? api.myManagedCustomers().then(r => r.rows) : Promise.resolve([]),
       ];
-      const [pR, tR, sR, vR, rR, iR, prR, oR] = await Promise.allSettled(calls);
+      const [pR, tR, sR, vR, rR, iR, prR, oR, mR] = await Promise.allSettled(calls);
       if (request !== overviewRequest.current) return;
       if (oR.status === 'fulfilled') { setOverview(oR.value); setOverviewError(''); }
       else setOverviewError(oR.reason?.message || 'Unable to load the work overview');
@@ -287,6 +293,9 @@ export default function Dashboard() {
       if (rR.status  === 'fulfilled') setReviewVisits(rR.value ?? []);
       if (iR.status  === 'fulfilled') setIncompleteVisits(iR.value ?? []);
       if (prR.status === 'fulfilled') setPendingReports(prR.value ?? []);
+      if (mR.status  === 'fulfilled') setMyManagedCustomers(mR.value ?? []);
+      // Not included in `failed` below: it's a bonus widget, not core dashboard
+      // data, so a failure here shouldn't surface as a page-level error banner.
       const failed = [pR, tR, sR, vR, rR, iR, prR, oR]
         .filter(r => r.status === 'rejected').map(r => r.reason?.message || 'Unknown');
       if (failed.length) setError(`Some data could not be loaded: ${failed.join(' · ')}`);
@@ -963,6 +972,33 @@ export default function Dashboard() {
                   ))}
                 </ul>
             }
+          </div>
+        );
+      }
+
+      case 'managed_customers': {
+        if (!myManagedCustomers.length) return null;
+        return (
+          <div key={id} className="card mb-20">
+            <div className="section-header">
+              <div className="flex-center gap-8">
+                <Building2 size={15} color="var(--primary)" />
+                <div className="section-title m-0">My Managed Customers</div>
+                <span className="badge badge-open">{myManagedCustomers.length}</span>
+              </div>
+              <span className="text-sm text-muted">Your team is the responsible team</span>
+            </div>
+            <ul className="list-none">
+              {myManagedCustomers.map(c => (
+                <li key={c.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                  <Link to={`/customers/${c.id}/service-profile`} className="font-semibold" style={{ flex:1, minWidth:120 }}>{c.name}</Link>
+                  {c.ticketing_enabled
+                    ? <span className={'badge ' + (c.open_tickets ? 'badge-open' : 'badge-done')} title="Open tickets"><Ticket size={11} /> {c.open_tickets}</span>
+                    : <span className="badge badge-on_hold">No ticketing</span>}
+                  {c.activities_this_month > 0 && <span className="text-sm text-muted">{c.activities_this_month} activities this month</span>}
+                </li>
+              ))}
+            </ul>
           </div>
         );
       }

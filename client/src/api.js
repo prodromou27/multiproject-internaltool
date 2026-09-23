@@ -142,6 +142,7 @@ export const api = {
   // reports
   reportSummary: (options) => req('GET', '/reports/summary', undefined, options),
   operationsOverview: (params = {}, options) => req('GET', '/operations/overview?' + new URLSearchParams(params), undefined, options),
+  myManagedCustomers: (options) => req('GET', '/operations/my-managed-customers', undefined, options),
   reportProjects: (options) => req('GET', '/reports/projects', undefined, options),
   reportMonthly: () => req('GET', '/reports/monthly'),
 

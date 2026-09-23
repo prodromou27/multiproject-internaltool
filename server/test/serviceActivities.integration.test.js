@@ -1651,6 +1651,23 @@ test('managed customer dashboard separates current state from period metrics',as
   assert.equal(typeof overview.data.activities.hours,'number');assert.equal(overview.data.period.from,'2026-09-01');
 });
 
+test('my-managed-customers scopes to the requesting user\'s own team, not the full managed customer list',async () => {
+  await db.prepare('UPDATE managed_customer_configurations SET responsible_team_id=? WHERE customer_id=?').run(ids.teamEnabled,ids.customer);
+  const owned=await api('/api/operations/my-managed-customers',{ token:ids.tokenEnabled }); // engineerEnabled is on teamEnabled
+  assert.equal(owned.status,200);
+  assert.equal(owned.data.rows.some(row => row.id===ids.customer),true);
+  const ownedRow=owned.data.rows.find(row => row.id===ids.customer);
+  assert.equal(ownedRow.responsible_team,'Security Team');
+  assert.equal(typeof ownedRow.open_tickets,'number');
+  const unowned=await api('/api/operations/my-managed-customers',{ token:ids.tokenDisabled }); // engineerDisabled is on teamDisabled, not teamEnabled
+  assert.equal(unowned.status,200);
+  assert.equal(unowned.data.rows.some(row => row.id===ids.customer),false);
+  const manager=await api('/api/operations/my-managed-customers',{ token:ids.tokenManager }); // not on any team at all
+  assert.equal(manager.status,200);
+  assert.deepEqual(manager.data.rows,[]);
+  assert.equal((await api('/api/operations/my-managed-customers')).status,401);
+});
+
 test('managed customer tickets enforce access, validate filters and paginate local results',async () => {
   const path=`/api/managed-customers/${ids.customer}/tickets`;
   assert.equal((await api(path,{ token:ids.tokenEnabled })).status,403);
