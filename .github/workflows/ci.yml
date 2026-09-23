@@ -50,6 +50,15 @@ jobs:
           TEST_DATABASE_URL: postgres://app:test_password@localhost:5432/solutionshub_test
         run: node --test test/serviceActivities.integration.test.js
 
+      # Several route tests skip themselves on pg-mem (correlated subqueries,
+      # join lookups, an internal pg-mem crash) and are meant to run here.
+      # They share one database, so run them one file at a time.
+      - name: Run PostgreSQL-only route tests
+        working-directory: server
+        env:
+          TEST_DATABASE_URL: postgres://app:test_password@localhost:5432/solutionshub_test
+        run: node --test --test-concurrency=1 test/templates.test.js test/notificationsSearch.integration.test.js test/scorecardsSla.test.js test/settingsAndFeeds.test.js
+
       - name: Check schema and every SQL statement against PostgreSQL
         working-directory: server
         env:
