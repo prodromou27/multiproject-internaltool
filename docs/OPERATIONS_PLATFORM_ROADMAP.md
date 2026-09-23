@@ -1,7 +1,7 @@
 # Engineering Operations platform: discovery and delivery
 
 Reviewed on 2026-09-17 against DEV-3. This document tracks the requested extension
-of SolutionsHub. It complements `APP_OVERVIEW.md`; it does not replace the existing
+of TeamHub. It complements `APP_OVERVIEW.md`; it does not replace the existing
 application or promise that every listed gap has already been resolved.
 
 ## Architecture to preserve
@@ -134,9 +134,9 @@ part of the foundation work.
 | 14 | Workspace UI modernization | Compact personal navigation, module launcher, operational dashboard and flatter data-focused page foundations | Complete; CI browser coverage tracked per commit |
 | 14a | High-use list workspaces | Shared search/filter/result context across projects, tasks, visits, customers and managed-customer health | Complete; CI browser coverage tracked per commit |
 | 14b | Report workspace resilience | Shareable report views, explicit refresh, stale-data warning and direct service-operations links | Complete; CI browser coverage tracked per commit |
-| 15 | UI, branding and KPI modernization | Shared enterprise UI adoption, centralized product brand and secure configurable KPI administration | Planned; see `UI_KPI_MODERNIZATION_PLAN.md` |
+| 15 | UI, branding and KPI modernization | Shared enterprise UI adoption, centralized product brand and secure configurable KPI administration | In progress; see `UI_KPI_MODERNIZATION_PLAN.md` |
 | 15a | KPI security boundary | Dedicated view/manage capabilities with an invariant engineer denial across APIs, reports, exports and frontend state | Complete; unit, integration and browser coverage included |
-| 15b | Brand foundation | Confirmed product name across user-facing application, documents, email and calendars while compatibility identifiers remain stable | Awaiting name confirmation |
+| 15b | Brand foundation | TeamHub across user-facing application, documents, email and calendars while compatibility identifiers remain stable | Complete; centralized client/server product constants |
 
 ## Reporting design constraints
 

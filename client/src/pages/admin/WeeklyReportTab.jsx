@@ -4,6 +4,7 @@ import { api } from '../../api';
 import { Modal, fmtDateTime } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
+import { PRODUCT_NAME } from '../../product';
 
 /* ══════════════════════════════════════════════════════════ */
 /* ══════════════════════════════════════════════════════════ */
@@ -18,7 +19,7 @@ export function WeeklyReportTab() {
   const toast   = useToast();
   const confirm = useConfirm();
   // ── SMTP state ────────────────────────────────────────────
-  const [smtp,        setSmtp]        = useState({ host:'', port:587, secure:false, user:'', password:'', from_name:'Solutions Hub', from_email:'' });
+  const [smtp,        setSmtp]        = useState({ host:'', port:587, secure:false, user:'', password:'', from_name:PRODUCT_NAME, from_email:'' });
   const [smtpSaving,  setSmtpSaving]  = useState(false);
   const [smtpTesting, setSmtpTesting] = useState(false);
   const [smtpMsg,     setSmtpMsg]     = useState(null);
@@ -186,7 +187,7 @@ export function WeeklyReportTab() {
             <div className="form-row">
               <div className="form-group">
                 <label>From Name</label>
-                <input value={smtp.from_name || ''} onChange={set('from_name')} placeholder="Solutions Hub" />
+                <input value={smtp.from_name || ''} onChange={set('from_name')} placeholder={PRODUCT_NAME} />
               </div>
               <div className="form-group">
                 <label>From Email</label>

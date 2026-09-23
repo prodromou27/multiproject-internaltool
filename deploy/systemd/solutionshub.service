@@ -13,7 +13,7 @@
 # config changes) and gives you a single service to start/stop the whole stack.
 
 [Unit]
-Description=SolutionsHub (Docker Compose stack)
+Description=TeamHub (Docker Compose stack)
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target

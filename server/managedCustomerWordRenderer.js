@@ -1,4 +1,5 @@
 const { AlignmentType,Document,Footer,HeadingLevel,PageBreak,PageNumber,Packer,Paragraph,Table,TableCell,TableRow,TextRun,WidthType }=require('docx');
+const { PRODUCT_NAME }=require('./product');
 
 const text=value => value===null || value===undefined || value==='' ? '—' : String(value);
 const title=value => new Paragraph({ text:value,heading:HeadingLevel.HEADING_1,spacing:{ before:260,after:140 } });
@@ -34,7 +35,7 @@ function buildDocument(model) {
     management_notes:() => children.push(title('Management Notes'),paragraph(n.management_notes || 'No management notes provided.')),
   };
   for (const section of model.sections) builders[section]?.();
-  return new Document({ creator:'SolutionsHub',title:`Managed Services Report - ${model.customer.name}`,description:`${model.period.from} to ${model.period.to}`,styles:{ default:{ document:{ run:{ font:'Aptos',size:20 },paragraph:{ spacing:{ line:276 } } } },paragraphStyles:[{ id:'Heading1',name:'Heading 1',basedOn:'Normal',next:'Normal',quickFormat:true,run:{ size:30,bold:true,color:'1E3A8A' } },{ id:'Heading2',name:'Heading 2',basedOn:'Normal',next:'Normal',quickFormat:true,run:{ size:24,bold:true,color:'334155' } }] },sections:[{ footers:{ default:new Footer({ children:[new Paragraph({ alignment:AlignmentType.CENTER,children:[new TextRun({ text:'Confidential · Page ',color:'64748B' }),new TextRun({ children:[PageNumber.CURRENT],color:'64748B' })] })] }) },children }] });
+  return new Document({ creator:PRODUCT_NAME,title:`Managed Services Report - ${model.customer.name}`,description:`${model.period.from} to ${model.period.to}`,styles:{ default:{ document:{ run:{ font:'Aptos',size:20 },paragraph:{ spacing:{ line:276 } } } },paragraphStyles:[{ id:'Heading1',name:'Heading 1',basedOn:'Normal',next:'Normal',quickFormat:true,run:{ size:30,bold:true,color:'1E3A8A' } },{ id:'Heading2',name:'Heading 2',basedOn:'Normal',next:'Normal',quickFormat:true,run:{ size:24,bold:true,color:'334155' } }] },sections:[{ footers:{ default:new Footer({ children:[new Paragraph({ alignment:AlignmentType.CENTER,children:[new TextRun({ text:'Confidential · Page ',color:'64748B' }),new TextRun({ children:[PageNumber.CURRENT],color:'64748B' })] })] }) },children }] });
 }
 
 async function renderWord(model) { return Packer.toBuffer(buildDocument(model)); }

@@ -5,6 +5,8 @@ test('a signed-out visitor is sent to the login form', async ({ page }) => {
   await mockApi(page, { signedIn: false });
   await page.goto('/tasks');
   await expect(page).toHaveURL(/\/login$/);
+  await expect(page).toHaveTitle('TeamHub');
+  await expect(page.getByRole('heading', { name: 'TeamHub' })).toBeVisible();
   await expect(page.getByPlaceholder(/admin or you@/)).toBeVisible();
 });
 

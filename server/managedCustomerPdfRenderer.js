@@ -1,11 +1,12 @@
 const PDFDocument=require('pdfkit');
+const { PRODUCT_NAME }=require('./product');
 
 const COLORS={ primary:'#1e3a8a',accent:'#2563eb',text:'#172033',muted:'#64748b',line:'#cbd5e1',header:'#e2e8f0',danger:'#b91c1c' };
 const display=value => value===null || value===undefined || value==='' ? '-' : String(value);
 
 function renderPdf(model) {
   return new Promise((resolve,reject) => {
-    const doc=new PDFDocument({ size:'A4',layout:'landscape',margin:40,bufferPages:true,info:{ Title:`Managed Services Report - ${model.customer.name}`,Author:'SolutionsHub',Subject:`${model.period.from} to ${model.period.to}` } });
+    const doc=new PDFDocument({ size:'A4',layout:'landscape',margin:40,bufferPages:true,info:{ Title:`Managed Services Report - ${model.customer.name}`,Author:PRODUCT_NAME,Subject:`${model.period.from} to ${model.period.to}` } });
     const chunks=[];doc.on('data',chunk => chunks.push(chunk));doc.on('error',reject);doc.on('end',() => resolve(Buffer.concat(chunks)));
     const pageWidth=doc.page.width-doc.page.margins.left-doc.page.margins.right;
     const ensureSpace=height => { if (doc.y+height>doc.page.height-doc.page.margins.bottom-18) doc.addPage(); };

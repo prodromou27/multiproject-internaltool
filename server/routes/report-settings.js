@@ -4,6 +4,7 @@ const { requireManager } = require('../middleware/auth');
 const { testSmtp, getSmtpSettings } = require('../email');
 const { gatherReportData, buildReportHtml, buildSubject, sendWeeklyReport } = require('../weeklyReport');
 const { reschedule } = require('../reportScheduler');
+const { PRODUCT_NAME } = require('../product');
 
 // ── SMTP settings ─────────────────────────────────────────────────────────────
 router.get('/smtp', requireManager, async (req, res) => {
@@ -37,11 +38,11 @@ router.post('/smtp/test', requireManager, async (req, res) => {
       const { sendEmail } = require('../email');
       await sendEmail({
         to,
-        subject: '[Solutions Hub] SMTP Test — Connection Successful ✅',
+        subject: `[${PRODUCT_NAME}] SMTP Test — Connection Successful ✅`,
         html: `<div style="font-family:sans-serif;padding:24px;max-width:480px">
           <h2 style="color:#1e40af">✅ SMTP Connection Successful</h2>
-          <p>Your email settings are working correctly. Solutions Hub can now send weekly reports.</p>
-          <p style="color:#64748b;font-size:13px;margin-top:16px">Sent from Solutions Hub at ${new Date().toLocaleString()}</p>
+          <p>Your email settings are working correctly. ${PRODUCT_NAME} can now send weekly reports.</p>
+          <p style="color:#64748b;font-size:13px;margin-top:16px">Sent from ${PRODUCT_NAME} at ${new Date().toLocaleString()}</p>
         </div>`,
       });
     }

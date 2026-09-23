@@ -212,9 +212,8 @@ Changing them provides no user benefit and could invalidate sessions, duplicate
 calendar events or complicate upgrades. They can be migrated separately only if there
 is a concrete operational requirement.
 
-Recommended product name: **OpsCore**. It is concise and covers projects, customer
-service, managed operations, workload, reporting and KPIs without tying the product to
-one module. Confirm the final name before the branding commit.
+Confirmed product name: **TeamHub**. Client and server product constants provide the
+canonical user-facing name while established compatibility identifiers remain stable.
 
 ## Incremental delivery
 
@@ -229,10 +228,9 @@ one module. Confirm the final name before the branding commit.
 | 15g | Core screen adoption | Migrate dashboard, reports, projects/tasks/visits, calendar and admin in small page-specific commits |
 | 15h | Release validation | PostgreSQL route/security tests; 390/768/1440 light/dark matrix; keyboard and manual staging record |
 
-Stage 15a comes first because the current assigned-engineer KPI read violates the new
-security rule. Stage 15b can follow as soon as the product name is confirmed. Stages
-15c–15g should migrate one coherent screen family per commit rather than rewriting the
-application shell and all feature pages at once.
+Stages 15a and 15b establish the security and brand foundations. Stages 15c–15g should
+migrate one coherent screen family per commit rather than rewriting the application
+shell and all feature pages at once.
 
 ## Definition of done
 

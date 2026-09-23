@@ -16,6 +16,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import QuickCreate from './components/QuickCreate';
 import HelpMenu from './components/HelpMenu';
 import { loadLocaleConfig } from './utils/locale';
+import { PRODUCT_NAME, PRODUCT_WORDMARK } from './product';
 import { StatusProvider } from './hooks/useStatuses';
 import { ToastProvider, useToast } from './components/Toast';
 import { ConfirmProvider } from './components/Confirm';
@@ -535,7 +536,7 @@ function SidebarContent({ user, logout, onNav, pages, compact, onOpenLauncher, o
         <div className="sidebar-logo-mark">
           <img src="/logo.png" alt="Odyssey" style={{ height: 19, width: 'auto', objectFit: 'contain', display: 'block' }} />
         </div>
-        <span className="sidebar-brand-name">Solutions<strong>Hub</strong></span>
+        <span className="sidebar-brand-name">{PRODUCT_WORDMARK.prefix}<strong>{PRODUCT_WORDMARK.suffix}</strong></span>
       </div>
 
       {/* User info — click to go to profile */}
@@ -898,7 +899,7 @@ function Layout({ children }) {
       {/* Mobile topbar */}
       <header className="topbar" inert={mobile && open ? '' : undefined}>
         <Hamburger open={open} onClick={() => setOpen(o => !o)} />
-        <div className="topbar-logo">Solutions<span>Hub</span></div>
+        <div className="topbar-logo">{PRODUCT_WORDMARK.prefix}<span>{PRODUCT_WORDMARK.suffix}</span></div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
           <QuickCreate role={user.role} serviceActivityEnabled={saAccess.enabled} />
           <GlobalSearch />
@@ -916,7 +917,7 @@ function Layout({ children }) {
         <div className="desktop-topbar">
           <div className="workspace-context">
             <span className="workspace-section">{currentPage?.section || 'Workspace'}</span>
-            <span className="workspace-page">{currentPage?.label || 'SolutionsHub'}</span>
+            <span className="workspace-page">{currentPage?.label || PRODUCT_NAME}</span>
           </div>
           {currentTeams && <span className="workspace-team" title={currentTeams}>{currentTeams}</span>}
           <button type="button" className="workspace-command" onClick={() => setPaletteOpen(true)} aria-label="Open page navigation">

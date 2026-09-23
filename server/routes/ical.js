@@ -2,6 +2,7 @@ const router = require('express').Router();
 const crypto = require('crypto');
 const db     = require('../db');
 const { decrypt } = require('../fieldCipher');
+const { PRODUCT_NAME } = require('../product');
 
 // Escape special iCal text characters
 function icalEsc(str) {
@@ -62,10 +63,10 @@ router.get('/', async (req, res) => {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//SolutionsHub//EN',
+    `PRODID:-//${PRODUCT_NAME}//EN`,
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    `X-WR-CALNAME:SolutionsHub – ${icalEsc(user.name)}`,
+    `X-WR-CALNAME:${PRODUCT_NAME} – ${icalEsc(user.name)}`,
     'X-WR-TIMEZONE:UTC',
   ];
 

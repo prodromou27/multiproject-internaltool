@@ -1,4 +1,5 @@
 import { fmtDate, isOverdue } from '../../components/Shared';
+import { PRODUCT_NAME } from '../../product';
 
 /* ── PDF Print View ───────────────────────────────────────── */
 export function ProjectPrintView({ project, tasks, milestones, members }) {
@@ -150,7 +151,7 @@ export function ProjectPrintView({ project, tasks, milestones, members }) {
 
       {/* Footer */}
       <div style={{ marginTop: 20, paddingTop: 10, borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#9ca3af' }}>
-        <span>SolutionsHub — Confidential</span>
+        <span>{PRODUCT_NAME} — Confidential</span>
         <span>Exported {today}</span>
       </div>
     </div>

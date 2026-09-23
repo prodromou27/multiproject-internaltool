@@ -7,6 +7,7 @@ const https = require('https');
 const http  = require('http');
 const db    = require('./db');
 const { assertPublicHttpUrl } = require('./security');
+const { PRODUCT_NAME } = require('./product');
 
 // ── Fetch settings from DB ───────────────────────────────────────────────────
 async function getSettings() {
@@ -311,7 +312,7 @@ function notify(event, data) {
 async function sendTest(platform, settings) {
   const msg = {
     title:    '🔔 Test Notification',
-    subtitle: 'Solutions Hub integration test',
+    subtitle: `${PRODUCT_NAME} integration test`,
     body:     'If you see this, your notification integration is working correctly.',
     facts:    [
       { name: 'Platform', value: platform === 'teams' ? 'Microsoft Teams' : 'Cisco Webex' },

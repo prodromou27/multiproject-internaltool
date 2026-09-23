@@ -13,6 +13,7 @@ import { fmtDate, isOverdue, Modal } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
+import { PRODUCT_NAME } from '../product';
 
 /* ── Report-pending urgency helper ──────────────────────────
    Returns null | 'orange' | 'red'
@@ -189,7 +190,7 @@ function generatePDF(visit, onError) {
 </style>
 </head><body>
   <div class="hdr">
-    <div><div class="logo">Solutions Hub</div><div class="doc-type">Maintenance Visit Report</div></div>
+    <div><div class="logo">${PRODUCT_NAME}</div><div class="doc-type">Maintenance Visit Report</div></div>
     <div style="font-size:11px;color:#94a3b8;text-align:right">Generated ${new Date().toLocaleDateString([], { year:'numeric', month:'long', day:'numeric' })}</div>
   </div>
 
@@ -209,7 +210,7 @@ function generatePDF(visit, onError) {
   <div class="report-box"><strong>Report Status:</strong> ${reportLine}</div>
 
   <div class="footer">
-    <span>Solutions Hub &mdash; Internal Project Management</span>
+    <span>${PRODUCT_NAME} &mdash; Internal Project Management</span>
     <span>${esc(visit.customer_name)} &middot; ${esc(visit.title)}</span>
   </div>
 </body></html>`;

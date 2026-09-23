@@ -1,4 +1,5 @@
 const ExcelJS=require('exceljs');
+const { PRODUCT_NAME }=require('./product');
 
 const safe=value => typeof value==='string' && /^[=+\-@]/.test(value) ? `'${value}` : value ?? '';
 const included=(model,key) => model.sections.includes(key);
@@ -24,7 +25,7 @@ function addChartSheet(workbook,analytics) {
 }
 
 async function renderExcel(model) {
-  const workbook=new ExcelJS.Workbook();workbook.creator='SolutionsHub';workbook.created=new Date(model.generated_at);workbook.title=`Managed Services Report - ${model.customer.name}`;
+  const workbook=new ExcelJS.Workbook();workbook.creator=PRODUCT_NAME;workbook.created=new Date(model.generated_at);workbook.title=`Managed Services Report - ${model.customer.name}`;
   const summary=[
     { measure:'Customer',value:model.customer.name },{ measure:'Period',value:`${model.period.from} to ${model.period.to}` },{ measure:'Open tickets now',value:model.overview.tickets?.open_now ?? 'Excluded' },{ measure:'Pending tickets now',value:model.overview.tickets?.pending_now ?? 'Excluded' },{ measure:'Tickets created during period',value:model.overview.tickets?.created_period ?? 'Excluded' },{ measure:'Tickets resolved during period',value:model.overview.tickets?.resolved_period ?? 'Excluded' },{ measure:'Service activities',value:model.overview.activities.activities },{ measure:'Service hours',value:model.overview.activities.hours },{ measure:'Open tasks now',value:model.overview.tasks.open_now },{ measure:'Active projects now',value:model.overview.projects.active_now },{ measure:'Maintenance Visits during period',value:model.overview.visits.visits_period },{ measure:'Open recommendations now',value:model.overview.recommendations.open_now },
   ];

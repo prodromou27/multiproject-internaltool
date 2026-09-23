@@ -1,0 +1,1 @@
+import{f as a}from"./vendor-react-NspP1A8c.js";function u(t,r){const[e,c]=a.useState(()=>{try{const o=localStorage.getItem("hub_filter_"+t);return o!==null?o:r}catch{return r}});return a.useEffect(()=>{try{localStorage.setItem("hub_filter_"+t,e)}catch{}},[t,e]),[e,c]}export{u};

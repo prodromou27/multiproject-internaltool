@@ -1,4 +1,4 @@
-# SolutionsHub
+# TeamHub
 
 An operations-management platform for engineering-services and MSP teams: projects,
 tasks, maintenance visits, **service activity logging**, customer records (PII

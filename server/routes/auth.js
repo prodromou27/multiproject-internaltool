@@ -11,6 +11,7 @@ const { signJwt, verifyJwt, requireAuth } = require('../middleware/auth');
 const { requestToken, setSessionCookie, clearSessionCookie } = require('../middleware/session');
 const { sendEmail } = require('../email');
 const { effectivePermissions } = require('../permissions');
+const { PRODUCT_NAME } = require('../product');
 
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('not-the-real-password', 12);
 
@@ -282,8 +283,8 @@ router.get('/2fa/setup', requireAuth, async (req, res) => {
   if (user.totp_enabled) return res.status(400).json({ error: '2FA is already enabled' });
 
   const secret = speakeasy.generateSecret({
-    name: `SolutionsHub (${user.email})`,
-    issuer: 'SolutionsHub',
+    name: `${PRODUCT_NAME} (${user.email})`,
+    issuer: PRODUCT_NAME,
     length: 20,
   });
   (await db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?').run(secret.base32, req.user.id));
@@ -443,19 +444,19 @@ router.post('/forgot-password', async (req, res) => {
   try {
     await sendEmail({
       to: email.trim(),
-      subject: '[SolutionsHub] Password Reset Request',
+      subject: `[${PRODUCT_NAME}] Password Reset Request`,
       html: `
         <div style="font-family:sans-serif;max-width:480px;padding:24px">
           <h2 style="color:#1e40af;margin-bottom:8px">Password Reset</h2>
           <p>Hi ${escHtml(user.name)},</p>
-          <p>Someone requested a password reset for your SolutionsHub account. If this was you, click the button below:</p>
+          <p>Someone requested a password reset for your ${PRODUCT_NAME} account. If this was you, click the button below:</p>
           <div style="margin:24px 0">
             <a href="${resetUrl}" style="background:#1e40af;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;display:inline-block">
               Reset My Password
             </a>
           </div>
           <p style="color:#64748b;font-size:13px">This link expires in <strong>1 hour</strong>. If you didn't request a reset, you can safely ignore this email.</p>
-          <p style="color:#94a3b8;font-size:11px;margin-top:24px">SolutionsHub — ${new Date().toLocaleString()}</p>
+          <p style="color:#94a3b8;font-size:11px;margin-top:24px">${PRODUCT_NAME} — ${new Date().toLocaleString()}</p>
         </div>
       `,
     });

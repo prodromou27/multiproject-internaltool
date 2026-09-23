@@ -1,4 +1,4 @@
-# SolutionsHub — Application Overview
+# TeamHub — Application Overview
 
 A code-grounded description of the application: architecture, data model, security,
 and every feature module with notes on how each is handled.
@@ -9,7 +9,7 @@ and every feature module with notes on how each is handled.
 
 ## 1. What it is
 
-**SolutionsHub** is a full-stack operations-management platform for an engineering
+**TeamHub** is a full-stack operations-management platform for an engineering
 services organization, including MSP (managed services provider) teams. It runs the
 full lifecycle of client **projects**, field **maintenance visits**, **task**
 execution, day-to-day **service activity logging** for MSP engineers, engineer

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, ArrowRight, Loader2, ShieldCheck, Eye, EyeOff, KeyRound, CheckCircle2, RotateCcw } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
+import { PRODUCT_WORDMARK } from '../product';
 
 export default function Login() {
   const { login, passwordChangeUser } = useAuth();
@@ -156,7 +157,7 @@ export default function Login() {
         </div>
 
         {/* Brand title */}
-        <h1 className="login-app-title">Solutions<span>Hub</span></h1>
+        <h1 className="login-app-title">{PRODUCT_WORDMARK.prefix}<span>{PRODUCT_WORDMARK.suffix}</span></h1>
         <p className="login-app-sub">Project &amp; Operations Management Platform</p>
 
         {/* Red rule */}

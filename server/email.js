@@ -3,12 +3,16 @@
  */
 const nodemailer = require('nodemailer');
 const db = require('./db');
+const { currentProductName } = require('./product');
 
 // ── Read SMTP settings from DB ───────────────────────────────────────────────
 async function getSmtpSettings() {
   const row = await db.prepare("SELECT value FROM settings WHERE key = 'email_smtp'").get();
   if (!row) return null;
-  try { return JSON.parse(row.value); } catch { return null; }
+  try {
+    const smtp = JSON.parse(row.value);
+    return { ...smtp,from_name:currentProductName(smtp.from_name) };
+  } catch { return null; }
 }
 
 // ── Build a nodemailer transporter from smtp config ──────────────────────────
