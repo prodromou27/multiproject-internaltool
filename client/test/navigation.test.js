@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PAGES, canAccessPage, visiblePages, quickCreateActions, pageForPath } from '../src/navigation.js';
+import { PAGES, canAccessPage, visiblePages, primaryPages, quickCreateActions, pageForPath } from '../src/navigation.js';
 
 test('navigation and create actions respect existing role and feature boundaries', () => {
   const ids = role => visiblePages(role).map(page => page.id);
@@ -25,6 +25,18 @@ test('navigation and create actions respect existing role and feature boundaries
   const delegatedReviewer={ role:'planner',permissions:{ 'managed_reports.review':true,'managed_customers.view':false } };
   assert.equal(visiblePages(delegatedReviewer).some(page => page.id==='approvals'),true);
   assert.equal(visiblePages(delegatedReviewer).some(page => page.id==='managedCustomers'),false);
+});
+
+test('primary navigation stays concise and respects role and feature access', () => {
+  const manager = { role: 'manager', permissions: {} };
+  const engineer = { role: 'engineer', permissions: {} };
+
+  assert.deepEqual(primaryPages(manager, false).map(page => page.id),
+    ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'managedCustomers', 'approvals']);
+  assert.deepEqual(primaryPages(engineer, false).map(page => page.id),
+    ['dashboard', 'myWork', 'tasks', 'projects', 'visits']);
+  assert.ok(primaryPages(engineer, true).some(page => page.id === 'activities'));
+  assert.ok(primaryPages(manager, false).every(page => canAccessPage(page, manager, false)));
 });
 
 test('detail paths inherit the parent page while unknown paths remain unknown', () => {

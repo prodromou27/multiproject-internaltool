@@ -5,11 +5,12 @@ import {
   Building2, Award, BarChart2, Users as UsersIcon, Settings, LogOut, Search, X,
   MessageSquare, Ticket, Database, Bell, CheckCheck, Trash2,
   ClipboardList, Briefcase, Wrench as WrenchIcon, FileText, StickyNote, UserCircle,
-  Moon, Sun, AtSign, ShieldCheck, Zap, Activity,
+  Moon, Sun, AtSign, ShieldCheck, Zap, Activity, Grid3X3, Pin, PinOff,
+  PanelLeftClose, PanelLeftOpen, Clock3,
 } from 'lucide-react';
 import Login from './pages/Login';
 import { api } from './api';
-import { PAGES, visiblePages, pageForPath, canAccessPage } from './navigation';
+import { PAGES, visiblePages, primaryPages, pageForPath, canAccessPage } from './navigation';
 import { PageState } from './components/PageLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 import QuickCreate from './components/QuickCreate';
@@ -502,7 +503,7 @@ const PAGE_ICONS = { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wre
 function OverdueDot({ count }) {
   if (!count) return null;
   return (
-    <span style={{
+    <span className="sidebar-overdue-count" style={{
       marginLeft: 'auto', background: '#ef4444', color: '#fff',
       fontSize: 9, fontWeight: 800, lineHeight: 1, borderRadius: 10,
       minWidth: 16, height: 16, display: 'flex', alignItems: 'center',
@@ -511,9 +512,9 @@ function OverdueDot({ count }) {
   );
 }
 
-function SidebarContent({ user, logout, onNav }) {
+function SidebarContent({ user, logout, onNav, pages, compact, onOpenLauncher, onToggleCompact }) {
   const toast = useToast();
-  const { dark, toggleDark, saAccess } = useAuth();
+  const { dark, toggleDark } = useAuth();
   const initials = user.name?.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
   const [overdue, setOverdue] = useState({ tasks: 0, visits: 0 });
@@ -527,17 +528,14 @@ function SidebarContent({ user, logout, onNav }) {
     return () => { mounted = false; clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, []);
 
-  const pages = visiblePages(user, saAccess.enabled).filter(page => !page.hidden);
-  const sections = [...new Set(pages.map(page => page.section))];
-
   return (
     <>
       {/* Logo */}
       <div className="sidebar-logo">
-        <div style={{ background: '#fff', borderRadius: 6, padding: '2px 7px', display: 'flex', alignItems: 'center', flexShrink: 0, height: 28 }}>
+        <div className="sidebar-logo-mark">
           <img src="/logo.png" alt="Odyssey" style={{ height: 19, width: 'auto', objectFit: 'contain', display: 'block' }} />
         </div>
-        Solutions<span>Hub</span>
+        <span className="sidebar-brand-name">Solutions<strong>Hub</strong></span>
       </div>
 
       {/* User info — click to go to profile */}
@@ -556,18 +554,20 @@ function SidebarContent({ user, logout, onNav }) {
       </NavLink>
 
       {/* Main nav */}
-      <nav style={{ flex: 1, padding: '8px 10px' }}>
-        {sections.map(section => <React.Fragment key={section}>
-          <div className="sidebar-section-label">{section}</div>
-          {pages.filter(page => page.section === section).map(page => {
-            const Icon = PAGE_ICONS[page.icon];
-            return <NavLink key={page.id} to={page.path} end={page.path === '/'} onClick={onNav}>
-              <Icon size={17} aria-hidden="true" /> <span>{page.label}</span>
-              <OverdueDot count={overdue[page.badge]} />
-            </NavLink>;
-          })}
-        </React.Fragment>)}
-
+      <nav className="sidebar-primary-nav" aria-label="Pinned modules">
+        <div className="sidebar-section-label">Workspace</div>
+        {pages.map(page => {
+          const Icon = PAGE_ICONS[page.icon];
+          return <NavLink key={page.id} to={page.path} end={page.path === '/'} onClick={onNav}
+            title={compact ? page.label : undefined} aria-label={compact ? page.label : undefined}>
+            <Icon size={18} aria-hidden="true" /> <span>{page.label}</span>
+            <OverdueDot count={overdue[page.badge]} />
+          </NavLink>;
+        })}
+        <button type="button" className="sidebar-launcher" onClick={onOpenLauncher}
+          title={compact ? 'All modules' : undefined} aria-label={compact ? 'All modules' : undefined}>
+          <Grid3X3 size={18} aria-hidden="true" /><span>All modules</span>
+        </button>
       </nav>
 
       {/* Footer — external tools live here as compact links, out of the way of
@@ -581,16 +581,108 @@ function SidebarContent({ user, logout, onNav }) {
             <Database size={14} /> Netsuite
           </a>
         </div>
-        <button onClick={toggleDark} style={{ marginBottom: 6 }}>
-          {dark ? <Sun size={14} /> : <Moon size={14} />}
-          {dark ? 'Light Mode' : 'Dark Mode'}
+        <button onClick={onToggleCompact} className="sidebar-collapse" title={compact ? 'Expand navigation' : 'Collapse navigation'}>
+          {compact ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+          <span>{compact ? 'Expand' : 'Collapse'}</span>
         </button>
-        <button onClick={async () => { try { await logout(); onNav(); } catch (e) { toast.error(e.message || 'Unable to sign out'); } }}>
+        <button onClick={toggleDark} style={{ marginBottom: 6 }} title={dark ? 'Use light mode' : 'Use dark mode'}>
+          {dark ? <Sun size={14} /> : <Moon size={14} />}
+          <span>{dark ? 'Light Mode' : 'Dark Mode'}</span>
+        </button>
+        <button title="Sign out" onClick={async () => { try { await logout(); onNav(); } catch (e) { toast.error(e.message || 'Unable to sign out'); } }}>
           <LogOut size={14} />
-          Sign Out
+          <span>Sign Out</span>
         </button>
       </div>
     </>
+  );
+}
+
+function ModuleLauncher({ open, pages, pinnedIds, recentIds, onTogglePin, onClose }) {
+  const inputRef = useRef(null);
+  const dialogRef = useRef(null);
+  const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    setQuery('');
+    requestAnimationFrame(() => inputRef.current?.focus());
+    const trapFocus = event => {
+      if (event.key !== 'Tab') return;
+      const controls = [...dialogRef.current.querySelectorAll('a[href], button:not([disabled]), input:not([disabled])')];
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', trapFocus);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', trapFocus);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [open]);
+
+  if (!open) return null;
+  const normalizedQuery = query.trim().toLowerCase();
+  const matches = pages.filter(page => !normalizedQuery ||
+    `${page.label} ${page.section} ${page.description || ''}`.toLowerCase().includes(normalizedQuery));
+  const sections = [...new Set(matches.map(page => page.section))];
+  const recent = recentIds.map(id => pages.find(page => page.id === id)).filter(Boolean);
+
+  return (
+    <div className="module-launcher-backdrop" role="presentation" onMouseDown={onClose}>
+      <section ref={dialogRef} className="module-launcher" role="dialog" aria-modal="true" aria-labelledby="module-launcher-title"
+        onMouseDown={event => event.stopPropagation()}>
+        <header className="module-launcher-header">
+          <div>
+            <div className="module-launcher-kicker">Workspace directory</div>
+            <h2 id="module-launcher-title">All modules</h2>
+            <p>Open any area you can access. Pin the modules you use most to the navigation.</p>
+          </div>
+          <button type="button" className="btn-icon" onClick={onClose} aria-label="Close module launcher"><X size={19} /></button>
+        </header>
+        <label className="module-launcher-search">
+          <Search size={17} aria-hidden="true" />
+          <span className="sr-only">Find a module</span>
+          <input ref={inputRef} value={query} onChange={event => setQuery(event.target.value)}
+            placeholder="Find a module by name or purpose" />
+        </label>
+        {!normalizedQuery && recent.length > 0 && (
+          <div className="module-recent">
+            <span><Clock3 size={14} /> Recently opened</span>
+            {recent.map(page => <NavLink key={page.id} to={page.path} onClick={onClose}>{page.label}</NavLink>)}
+          </div>
+        )}
+        <div className="module-launcher-body">
+          {sections.map(section => (
+            <section className="module-group" key={section} aria-labelledby={`module-${section.toLowerCase().replaceAll(' ', '-')}`}>
+              <h3 id={`module-${section.toLowerCase().replaceAll(' ', '-')}`}>{section}</h3>
+              <div className="module-grid">
+                {matches.filter(page => page.section === section).map(page => {
+                  const Icon = PAGE_ICONS[page.icon];
+                  const pinned = pinnedIds.includes(page.id);
+                  return <article className="module-item" key={page.id}>
+                    <NavLink to={page.path} onClick={onClose}>
+                      <span className="module-icon"><Icon size={18} /></span>
+                      <span><strong>{page.label}</strong><small>{page.description}</small></span>
+                    </NavLink>
+                    {page.id !== 'dashboard' && <button type="button" onClick={() => onTogglePin(page.id)}
+                      aria-label={pinned ? `Unpin ${page.label}` : `Pin ${page.label}`}
+                      title={pinned ? 'Remove from navigation' : 'Pin to navigation'}>
+                      {pinned ? <PinOff size={15} /> : <Pin size={15} />}
+                    </button>}
+                  </article>;
+                })}
+              </div>
+            </section>
+          ))}
+          {matches.length === 0 && <div className="module-launcher-empty">No modules match “{query.trim()}”.</div>}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -674,13 +766,62 @@ function Layout({ children }) {
   const { user, logout, saAccess } = useAuth();
   const [open, setOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [launcherOpen, setLauncherOpen] = useState(false);
+  const [compactNav, setCompactNav] = useState(() => localStorage.getItem(`hub_nav_compact_${user.id}`) === '1');
   const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 900px)').matches);
   const drawerRef = useRef(null);
   const location = useLocation();
   const currentPage = pageForPath(location.pathname);
   const currentTeams = saAccess.teams.map(team => team.name).join(', ');
+  const availablePages = useMemo(() => visiblePages(user, saAccess.enabled).filter(page => !page.hidden), [user, saAccess.enabled]);
+  const defaultPinnedIds = useMemo(() => primaryPages(user, saAccess.enabled).map(page => page.id), [user, saAccess.enabled]);
+  const pinnedStorageKey = `hub_nav_pinned_${user.id}`;
+  const recentStorageKey = `hub_nav_recent_${user.id}`;
+  const pinsInitializedFromStorage = useRef(localStorage.getItem(pinnedStorageKey) !== null);
+  const [pinnedIds, setPinnedIds] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(pinnedStorageKey) || 'null');
+      return Array.isArray(saved) ? saved : defaultPinnedIds;
+    } catch { return defaultPinnedIds; }
+  });
+  const [recentIds, setRecentIds] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(recentStorageKey) || '[]');
+      return Array.isArray(saved) ? saved : [];
+    } catch { return []; }
+  });
+  const validPinnedIds = pinnedIds.filter(id => availablePages.some(page => page.id === id));
+  const sidebarPages = validPinnedIds.map(id => availablePages.find(page => page.id === id)).filter(Boolean);
+
+  const togglePinnedPage = id => {
+    setPinnedIds(current => {
+      const valid = current.filter(pageId => availablePages.some(page => page.id === pageId));
+      const next = valid.includes(id) ? valid.filter(pageId => pageId !== id) : [...valid, id];
+      localStorage.setItem(pinnedStorageKey, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const toggleCompactNav = () => {
+    setCompactNav(current => {
+      localStorage.setItem(`hub_nav_compact_${user.id}`, current ? '0' : '1');
+      return !current;
+    });
+  };
 
   useEffect(() => { setOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    if (pinsInitializedFromStorage.current || !saAccess.loaded) return;
+    setPinnedIds(defaultPinnedIds);
+  }, [defaultPinnedIds, saAccess.loaded]);
+  useEffect(() => {
+    if (!currentPage || currentPage.hidden) return;
+    setRecentIds(current => {
+      const next = [currentPage.id, ...current.filter(id => id !== currentPage.id)].slice(0, 4);
+      localStorage.setItem(recentStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }, [currentPage?.id, recentStorageKey]);
   useEffect(() => {
     const media = window.matchMedia('(max-width: 900px)');
     const change = () => { setMobile(media.matches); if (!media.matches) setOpen(false); };
@@ -710,9 +851,10 @@ function Layout({ children }) {
   }, [open, mobile]);
   useEffect(() => {
     const handler = e => {
-      if (e.key === 'Escape') { setOpen(false); setPaletteOpen(false); return; }
+      if (e.key === 'Escape') { setOpen(false); setPaletteOpen(false); setLauncherOpen(false); return; }
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
+        setLauncherOpen(false);
         setPaletteOpen(value => !value);
       }
     };
@@ -723,15 +865,18 @@ function Layout({ children }) {
   const initials = user.name?.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
   return (
-    <div className="layout operations-shell">
+    <div className={`layout operations-shell${compactNav ? ' nav-compact' : ''}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <ModuleLauncher open={launcherOpen} pages={availablePages} pinnedIds={validPinnedIds}
+        recentIds={recentIds} onTogglePin={togglePinnedPage} onClose={() => setLauncherOpen(false)} />
       {/* Desktop sidebar */}
       <aside ref={drawerRef} id="primary-navigation" className={`sidebar${open ? ' open' : ''}`} aria-label="Primary navigation"
         role={mobile && open ? 'dialog' : undefined} aria-modal={mobile && open ? true : undefined}
         aria-hidden={mobile && !open ? true : undefined} inert={mobile && !open ? '' : undefined}>
         {mobile && open && <button className="drawer-close" type="button" onClick={() => setOpen(false)}><X size={18} /> Close navigation</button>}
-        <SidebarContent user={user} logout={logout} onNav={() => setOpen(false)} />
+        <SidebarContent user={user} logout={logout} onNav={() => setOpen(false)} pages={sidebarPages}
+          compact={compactNav && !mobile} onOpenLauncher={() => { setOpen(false); setPaletteOpen(false); setLauncherOpen(true); }} onToggleCompact={toggleCompactNav} />
       </aside>
 
       {/* Mobile overlay */}

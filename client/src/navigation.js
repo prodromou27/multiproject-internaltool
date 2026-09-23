@@ -36,6 +36,23 @@ export function visiblePages(userOrRole, serviceActivityEnabled = false) {
   return PAGES.filter(page => canAccessPage(page, userOrRole, serviceActivityEnabled));
 }
 
+const DEFAULT_PRIMARY_PAGES = {
+  manager: ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'managedCustomers', 'approvals'],
+  engineer: ['dashboard', 'myWork', 'tasks', 'activities', 'projects', 'visits'],
+  planner: ['dashboard', 'calendar', 'visits'],
+  pm: ['dashboard', 'projects', 'activities', 'visits'],
+};
+
+// Keep the persistent navigation intentionally short. Every permitted destination
+// remains available from the module launcher and command palette.
+export function primaryPages(userOrRole, serviceActivityEnabled = false) {
+  const user = typeof userOrRole === 'string' ? { role: userOrRole, permissions: {} } : userOrRole;
+  const ids = DEFAULT_PRIMARY_PAGES[user?.role] || ['dashboard'];
+  return ids
+    .map(id => PAGES.find(page => page.id === id))
+    .filter(page => canAccessPage(page, user, serviceActivityEnabled));
+}
+
 export function pageForPath(pathname) {
   return PAGES.filter(page => pathname === page.path ||
     (page.path !== '/' && pathname.startsWith(`${page.path}/`)))
