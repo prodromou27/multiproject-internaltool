@@ -233,7 +233,10 @@ async function init() {
       ical_token_hash      TEXT,
       ical_token_created_at TEXT,
       token_version        INTEGER NOT NULL DEFAULT 0,
-      notify_external_enabled INTEGER NOT NULL DEFAULT 1
+      notify_external_enabled INTEGER NOT NULL DEFAULT 1,
+      notify_teams_enabled INTEGER NOT NULL DEFAULT 0,
+      notify_teams_webhook_url TEXT,
+      notify_email_enabled INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS customers (
@@ -1143,6 +1146,19 @@ async function applyCompatibilityMigrations() {
     -- shared channel, not a specific person, so this only affects Webex
     -- "direct"/"both" mode DMs — see notifications.js.
     ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_external_enabled INTEGER NOT NULL DEFAULT 1;
+  `]);
+
+  migrations.push(['20260923_personal_notification_channels', `
+    -- Each engineer can additionally point their own notifications at a
+    -- personal Teams channel (an incoming-webhook URL they own — Teams has
+    -- no per-user DM concept the way Webex does) and/or their own inbox
+    -- (via the SMTP the admin already configured for reports). Both default
+    -- off: unlike notify_external_enabled above, these are brand-new
+    -- channels nobody has opted into yet, not an opt-out of something that
+    -- already existed. See notifications.js.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_teams_enabled INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_teams_webhook_url TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_email_enabled INTEGER NOT NULL DEFAULT 0;
   `]);
 
   for (const [id, sql] of migrations) {

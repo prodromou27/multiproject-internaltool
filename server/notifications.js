@@ -1,13 +1,14 @@
 /**
- * Notification dispatcher — Teams (Workflows / legacy connector webhook) and
- * Cisco Webex (Bot API). All sends are fire-and-forget so they never block
- * request handlers.
+ * Notification dispatcher — Teams (Workflows / legacy connector webhook),
+ * Cisco Webex (Bot API), and email (the admin-configured SMTP). All sends
+ * are fire-and-forget so they never block request handlers.
  */
 const https = require('https');
 const http  = require('http');
 const db    = require('./db');
 const { assertPublicHttpUrl } = require('./security');
 const { PRODUCT_NAME } = require('./product');
+const { sendEmail } = require('./email');
 
 // ── Fetch settings from DB ───────────────────────────────────────────────────
 async function getSettings() {
@@ -120,6 +121,18 @@ function webexMarkdown(msg) {
   return `## ${msg.title}\n${msg.body}${msg.facts?.length
     ? '\n\n' + msg.facts.map(f => `**${f.name}:** ${f.value}`).join('  \n')
     : ''}`;
+}
+
+// ── Personal email alerts ────────────────────────────────────────────────────
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+function emailHtml(msg) {
+  const facts = (msg.facts || []).filter(f => f.value != null && f.value !== '');
+  return `<div style="font-family:sans-serif;font-size:14px;color:#1f2937;max-width:480px">
+    <h2 style="margin:0 0 4px;font-size:16px">${escapeHtml(msg.title)}</h2>
+    ${msg.subtitle ? `<p style="margin:0 0 10px;color:#6b7280;font-size:13px">${escapeHtml(msg.subtitle)}</p>` : ''}
+    <p style="margin:0 0 10px">${escapeHtml(msg.body)}</p>
+    ${facts.length ? `<table style="border-collapse:collapse;font-size:13px">${facts.map(f => `<tr><td style="padding:2px 10px 2px 0;color:#6b7280">${escapeHtml(f.name)}</td><td>${escapeHtml(String(f.value))}</td></tr>`).join('')}</table>` : ''}
+  </div>`;
 }
 
 async function sendWebex(cfg, msg, engineerEmail) {
@@ -293,20 +306,36 @@ function notify(event, data) {
       // visit.reminder defaults to enabled unless explicitly disabled
       if (notifyOn[eventKey] === false) return;
 
-      // A submitted report goes to managers, so never DM the submitting engineer.
-      // Otherwise respect the recipient's own opt-out of direct chat notifications
-      // (in-app notifications above are unaffected — this only governs the Webex DM).
+      // A submitted report goes to managers, so never DM the submitting engineer,
+      // and there's no single recipient to look up personal channels for.
+      // Otherwise, fetch the recipient's own channel preferences once and use
+      // them for all three: skip the Webex DM if they've opted out, and add
+      // their personal Teams webhook / personal email on top of the org-wide
+      // channels above if they've opted in. In-app (bell icon) notifications
+      // are unaffected by any of this — persisted above, unconditionally.
       let dmEmail = event === 'report.submitted' ? null : data.engineer_email;
-      if (dmEmail && data.engineer_id) {
-        const recipient = await db.prepare('SELECT notify_external_enabled FROM users WHERE id = ?').get(data.engineer_id);
+      let recipient = null;
+      if (data.engineer_id) {
+        recipient = await db.prepare('SELECT email, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled FROM users WHERE id = ?').get(data.engineer_id);
         if (recipient && !recipient.notify_external_enabled) dmEmail = null;
       }
-      const results = await Promise.allSettled([
+
+      const sends = [
         sendTeams(settings.teams, msg),
         sendWebex(settings.webex, msg, dmEmail),
-      ]);
+      ];
+      const sendLabels = ['Teams', 'Webex'];
+      if (event !== 'report.submitted' && recipient?.notify_teams_enabled && recipient.notify_teams_webhook_url) {
+        sends.push(sendTeams({ enabled: true, webhook_url: recipient.notify_teams_webhook_url }, msg));
+        sendLabels.push('Personal Teams');
+      }
+      if (event !== 'report.submitted' && recipient?.notify_email_enabled && recipient.email) {
+        sends.push(sendEmail({ to: recipient.email, subject: msg.title, html: emailHtml(msg) }));
+        sendLabels.push('Personal email');
+      }
+      const results = await Promise.allSettled(sends);
       results.forEach((r, i) => {
-        if (r.status === 'rejected') console.error(`[${i ? 'Webex' : 'Teams'} notify]`, r.reason?.message);
+        if (r.status === 'rejected') console.error(`[${sendLabels[i]} notify]`, r.reason?.message);
       });
     } catch (e) {
       console.error('[notify]', e.message);
@@ -342,4 +371,4 @@ async function sendTest(platform, settings) {
   throw new Error('Unknown platform');
 }
 
-module.exports = { notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, postJSON, _setTransport };
+module.exports = { notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, _setTransport };

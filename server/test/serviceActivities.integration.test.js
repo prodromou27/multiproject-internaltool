@@ -713,25 +713,51 @@ test('browser cookies enforce CSRF, required password changes, renewal and logou
   assert.equal((await api('/api/auth/me', { token: profile.data.token })).status, 401);
 });
 
-test('notification preferences default on, validate their input, and persist without re-issuing a session', async () => {
+test('notification preferences default correctly, validate their input, and persist without re-issuing a session', async () => {
   const passwordHash = bcrypt.hashSync('pw', 4);
   const target = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
     .run('Notification prefs user', 'notify-prefs@test.local', passwordHash, 'engineer')).lastInsertRowid;
   const token = signJwt({ id: target });
   const initial = await api('/api/auth/me', { token });
-  assert.equal(initial.data.notify_external_enabled, 1); // on by default — unchanged behavior until the user opts out
-  for (const bad of [{}, { notify_external_enabled: 'yes' }, { notify_external_enabled: 1 }, { notify_external_enabled: null }]) {
+  // Webex DM is an opt-out of something that already existed — on by default.
+  // Personal Teams/email are brand-new channels nobody has opted into — off by default.
+  assert.equal(initial.data.notify_external_enabled, 1);
+  assert.equal(initial.data.notify_teams_enabled, 0);
+  assert.equal(initial.data.notify_teams_webhook_url, null);
+  assert.equal(initial.data.notify_email_enabled, 0);
+  // An empty body is a valid no-op (partial-update design: send only what you're changing).
+  const noop = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: {} });
+  assert.equal(noop.status, 200);
+  assert.deepEqual(noop.data, { notify_external_enabled: true, notify_teams_enabled: false, notify_teams_webhook_url: '', notify_email_enabled: false });
+  for (const bad of [{ notify_external_enabled: 'yes' }, { notify_external_enabled: 1 }, { notify_external_enabled: null },
+    { notify_teams_enabled: 'yes' }, { notify_email_enabled: 'yes' }, { notify_teams_webhook_url: 123 }]) {
     assert.equal((await api('/api/auth/notification-preferences', { method: 'PUT', token, body: bad })).status, 400);
   }
+  // Can't enable the personal Teams channel with no URL set — same "enabled needs a destination" rule as the admin integration.
+  assert.equal((await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_teams_enabled: true } })).status, 400);
+  // The webhook URL is validated the same way the admin's org-wide one is (SSRF protection) — a private-network target is rejected.
+  assert.equal((await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_teams_webhook_url: 'http://127.0.0.1/hook' } })).status, 400);
+  const withUrl = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_teams_webhook_url: 'https://93.184.216.34/hook' } });
+  assert.equal(withUrl.status, 200);
+  assert.equal(withUrl.data.notify_teams_webhook_url, 'https://93.184.216.34/hook');
+  // Now that a URL is on file, enabling it in the same request (or a later one) works.
+  const teamsOn = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_teams_enabled: true } });
+  assert.equal(teamsOn.status, 200);
+  assert.equal(teamsOn.data.notify_teams_enabled, true);
+  const emailOn = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_email_enabled: true } });
+  assert.equal(emailOn.status, 200);
+  assert.equal(emailOn.data.notify_email_enabled, true);
   const off = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_external_enabled: false } });
   assert.equal(off.status, 200);
-  assert.deepEqual(off.data, { notify_external_enabled: false });
+  assert.deepEqual(off.data, { notify_external_enabled: false, notify_teams_enabled: true, notify_teams_webhook_url: 'https://93.184.216.34/hook', notify_email_enabled: true });
   assert.equal((await db.prepare('SELECT notify_external_enabled FROM users WHERE id=?').get(target)).notify_external_enabled, 0);
   // Unlike PUT /profile, this doesn't touch token_version or issue a new token — the same token keeps working.
   assert.equal((await api('/api/auth/me', { token })).status, 200);
-  const on = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_external_enabled: true } });
-  assert.equal(on.status, 200);
-  assert.equal((await db.prepare('SELECT notify_external_enabled FROM users WHERE id=?').get(target)).notify_external_enabled, 1);
+  // Clearing the URL also turns the toggle back off server-side — an empty destination can't stay "enabled".
+  const cleared = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: { notify_teams_webhook_url: '' } });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.data.notify_teams_webhook_url, '');
+  assert.equal(cleared.data.notify_teams_enabled, false);
 });
 
 test('2FA partial tokens do not grant cookie-based access', async () => {

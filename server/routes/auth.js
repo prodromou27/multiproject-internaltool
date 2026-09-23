@@ -10,6 +10,7 @@ const db        = require('../db');
 const { signJwt, verifyJwt, requireAuth } = require('../middleware/auth');
 const { requestToken, setSessionCookie, clearSessionCookie } = require('../middleware/session');
 const { sendEmail } = require('../email');
+const { assertPublicHttpUrl } = require('../security');
 const { effectivePermissions } = require('../permissions');
 const { PRODUCT_NAME } = require('../product');
 
@@ -344,21 +345,55 @@ router.get('/users', requireAuth, async (req, res) => {
 
 // GET /api/auth/me — current user profile
 router.get('/me', requireAuth, async (req, res) => {
-  const u = (await db.prepare('SELECT id, name, email, role, avatar_url, created_at, last_login, totp_enabled, must_change_password, notify_external_enabled FROM users WHERE id = ?').get(req.user.id));
+  const u = (await db.prepare('SELECT id, name, email, role, avatar_url, created_at, last_login, totp_enabled, must_change_password, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled FROM users WHERE id = ?').get(req.user.id));
   if (!u) return res.status(404).json({ error: 'User not found' });
   res.setHeader('Cache-Control', 'no-store');
   res.json({ ...u, permissions: await effectivePermissions(u) });
 });
 
-// PUT /api/auth/notification-preferences — self-service opt-out of direct
-// chat notifications. Deliberately separate from PUT /profile: it isn't an
-// identity field, doesn't belong in the JWT, and shouldn't force a re-issued
-// session the way a name/email change does.
+// PUT /api/auth/notification-preferences — self-service configuration of how
+// (and whether) this user is pinged outside the app. Deliberately separate
+// from PUT /profile: none of this is an identity field, none of it belongs
+// in the JWT, and none of it should force a re-issued session the way a
+// name/email change does. Every field is optional in the request — send
+// only the ones you're changing — but each one present must be valid, and
+// the response always reflects the row's actual current state.
 router.put('/notification-preferences', requireAuth, async (req, res) => {
-  const { notify_external_enabled } = req.body;
-  if (typeof notify_external_enabled !== 'boolean') return res.status(400).json({ error: 'notify_external_enabled must be true or false' });
-  await db.prepare('UPDATE users SET notify_external_enabled = ? WHERE id = ?').run(notify_external_enabled ? 1 : 0, req.user.id);
-  res.json({ notify_external_enabled });
+  const { notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url } = req.body;
+  const has = (key) => Object.prototype.hasOwnProperty.call(req.body, key);
+  for (const [key, value] of [['notify_external_enabled', notify_external_enabled], ['notify_teams_enabled', notify_teams_enabled], ['notify_email_enabled', req.body.notify_email_enabled]]) {
+    if (has(key) && typeof value !== 'boolean') return res.status(400).json({ error: `${key} must be true or false` });
+  }
+  if (has('notify_teams_webhook_url') && notify_teams_webhook_url !== null && typeof notify_teams_webhook_url !== 'string')
+    return res.status(400).json({ error: 'notify_teams_webhook_url must be text or null' });
+  const url = has('notify_teams_webhook_url') ? (notify_teams_webhook_url || '').trim() : undefined;
+  if (url) {
+    try { await assertPublicHttpUrl(url, { label: 'Teams webhook URL' }); }
+    catch (e) { return res.status(400).json({ error: e.message }); }
+  }
+  // A webhook can't be "enabled" with nothing to post to — mirrors the admin
+  // integration's own enabled+webhook_url pairing (settings/integrations.js).
+  // Same rule either direction: enabling with no URL on file is rejected,
+  // and clearing the URL while enabled auto-disables rather than leaving an
+  // inconsistent "on, but nothing to post to" state.
+  const requestedTeamsEnabled = has('notify_teams_enabled') ? notify_teams_enabled : undefined;
+  let effectiveTeamsEnabled = requestedTeamsEnabled;
+  if (url !== undefined && !url && requestedTeamsEnabled !== true) effectiveTeamsEnabled = false;
+  if (requestedTeamsEnabled === true) {
+    const current = url !== undefined ? url : (await db.prepare('SELECT notify_teams_webhook_url FROM users WHERE id=?').get(req.user.id))?.notify_teams_webhook_url;
+    if (!current) return res.status(400).json({ error: 'Set a Teams webhook URL before enabling Teams notifications' });
+  }
+  const sets = [], params = [];
+  if (has('notify_external_enabled'))    { sets.push('notify_external_enabled = ?');    params.push(notify_external_enabled ? 1 : 0); }
+  if (effectiveTeamsEnabled !== undefined) { sets.push('notify_teams_enabled = ?');      params.push(effectiveTeamsEnabled ? 1 : 0); }
+  if (url !== undefined)                 { sets.push('notify_teams_webhook_url = ?');    params.push(url || null); }
+  if (has('notify_email_enabled'))       { sets.push('notify_email_enabled = ?');        params.push(req.body.notify_email_enabled ? 1 : 0); }
+  if (sets.length) {
+    params.push(req.user.id);
+    await db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  }
+  const row = await db.prepare('SELECT notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled FROM users WHERE id = ?').get(req.user.id);
+  res.json({ notify_external_enabled: !!row.notify_external_enabled, notify_teams_enabled: !!row.notify_teams_enabled, notify_teams_webhook_url: row.notify_teams_webhook_url || '', notify_email_enabled: !!row.notify_email_enabled });
 });
 
 // Lightweight capability snapshot for active sessions after an administrator changes overrides.

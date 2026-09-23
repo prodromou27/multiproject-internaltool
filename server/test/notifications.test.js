@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const notifications = require('../notifications');
 const { safeSettings, mergeSettings } = require('../integrationSettings');
 
-const { teamsPayload, isLegacyTeamsUrl, webexMarkdown, postJSON, sendTest, _setTransport } = notifications;
+const { teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, sendTest, _setTransport } = notifications;
 const msg = { title: 'T', subtitle: 'S', body: 'B', facts: [{ name: 'Task', value: 'X' }, { name: 'Empty', value: null }] };
 
 test.afterEach(() => _setTransport());
@@ -24,6 +24,18 @@ test('Webex markdown lists every fact', () => {
   const text = webexMarkdown(msg);
   assert.match(text, /^## T\nB/);
   assert.match(text, /\*\*Task:\*\* X/);
+});
+
+test('personal email HTML escapes stored content and omits empty facts', () => {
+  const html = emailHtml(msg);
+  assert.match(html, /<h2[^>]*>T<\/h2>/);
+  assert.match(html, /<p[^>]*>S<\/p>/);
+  assert.match(html, />Task</); // fact name rendered
+  assert.doesNotMatch(html, />Empty</); // null-valued fact dropped, matching the Teams/Webex behavior
+  const hostile = { title: '<img src=x onerror=alert(1)>', body: 'B', facts: [{ name: 'X', value: '<script>1</script>' }] };
+  const escaped = emailHtml(hostile);
+  assert.doesNotMatch(escaped, /<img|<script/);
+  assert.match(escaped, /&lt;img/);
 });
 
 test('non-2xx responses reject with the status and body instead of passing silently', async () => {

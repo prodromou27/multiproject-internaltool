@@ -461,32 +461,74 @@ function TwoFactorSection({ user, onRefresh }) {
 }
 
 function NotificationPreferencesSection({ user, onRefresh }) {
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState('');
   const [msg, setMsg] = useState({ type: '', text: '' });
-  const enabled = user.notify_external_enabled !== false; // treat unset (older sessions) as the default: on
+  const [webhookDraft, setWebhookDraft] = useState(user.notify_teams_webhook_url || '');
+  // The profile page loads a fresh /auth/me after mount (see Profile()'s own
+  // effect); sync the draft once that lands, since useState's initializer
+  // only runs on first render and ctxUser may not have carried this field.
+  useEffect(() => { setWebhookDraft(user.notify_teams_webhook_url || ''); }, [user.notify_teams_webhook_url]);
 
-  async function toggle(value) {
-    setSaving(true); setMsg({ type: '', text: '' });
+  const webexOn = user.notify_external_enabled !== false; // treat unset (older sessions) as the default: on
+  const teamsOn = !!user.notify_teams_enabled;
+  const emailOn = !!user.notify_email_enabled;
+
+  async function save(channel, changes, successText) {
+    setSaving(channel); setMsg({ type: '', text: '' });
     try {
-      const result = await api.updateNotificationPreferences(value);
+      const result = await api.updateNotificationPreferences(changes);
       onRefresh(result);
-      setMsg({ type: 'success', text: value ? 'Direct chat notifications turned on.' : 'Direct chat notifications turned off.' });
+      setMsg({ type: 'success', text: successText });
     } catch (err) {
       setMsg({ type: 'error', text: err.message });
-    } finally { setSaving(false); }
+    } finally { setSaving(''); }
   }
 
   return (
     <div className="card mb-20">
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
         <Bell size={15} color="var(--primary)" /> Notifications
       </div>
-      <Alert type={msg.type} msg={msg.text} />
-      <Toggle checked={enabled} disabled={saving} onChange={toggle} label="Direct chat notifications (Webex)" />
-      <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '8px 0 0' }}>
-        When this is on and Webex is configured for your organization, you may receive a direct Webex message for things assigned to you.
-        This never affects the notifications you see in this app (the bell icon), or messages posted to a shared Teams/Webex channel.
+      <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '0 0 16px' }}>
+        Choose where you personally hear about things assigned to you, on top of the notifications you already see in this app (the bell icon).
       </p>
+      <Alert type={msg.type} msg={msg.text} />
+
+      <div style={{ display: 'grid', gap: 18 }}>
+        <div>
+          <Toggle checked={webexOn} disabled={!!saving}
+            onChange={value => save('webex', { notify_external_enabled: value }, value ? 'Webex direct messages turned on.' : 'Webex direct messages turned off.')}
+            label="Webex direct messages" />
+          <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '4px 0 0 50px' }}>
+            Only available if your organization has Webex configured. Uses the org bot — there's no separate account to connect.
+          </p>
+        </div>
+
+        <div>
+          <Toggle checked={teamsOn} disabled={!!saving || !user.notify_teams_webhook_url}
+            onChange={value => save('teams', { notify_teams_enabled: value }, value ? 'Personal Teams notifications turned on.' : 'Personal Teams notifications turned off.')}
+            label="Personal Teams channel" />
+          <div style={{ margin: '6px 0 0 50px', display: 'flex', gap: 8, maxWidth: 440 }}>
+            <input value={webhookDraft} onChange={e => setWebhookDraft(e.target.value)} placeholder="Your Teams incoming webhook URL" style={{ flex: 1 }} />
+            <button type="button" className="btn btn-ghost btn-sm" disabled={saving === 'teams-url' || webhookDraft.trim() === (user.notify_teams_webhook_url || '')}
+              onClick={() => save('teams-url', { notify_teams_webhook_url: webhookDraft.trim() }, 'Teams webhook saved.')}>
+              {saving === 'teams-url' ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '4px 0 0 50px' }}>
+            Teams has no per-person inbox the way Webex does — paste a webhook URL for a channel only you (or your team) can see, from that channel's ··· menu → Workflows.
+          </p>
+        </div>
+
+        <div>
+          <Toggle checked={emailOn} disabled={!!saving}
+            onChange={value => save('email', { notify_email_enabled: value }, value ? 'Email alerts turned on.' : 'Email alerts turned off.')}
+            label={`Email alerts${user.email ? ` (${user.email})` : ''}`} />
+          <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '4px 0 0 50px' }}>
+            Sent to your account email above. Only available once an administrator has configured email delivery for this organization.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
