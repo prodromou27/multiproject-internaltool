@@ -2788,6 +2788,18 @@ test('customer service summary includes a zero-filled 6-month trend for the Cust
   assert.equal(engineerResult.data.monthly[5].hours,2);
 });
 
+test('a managed customer is complete with just a responsible team — ticketing is optional', async () => {
+  const customer = (await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Optional ticketing fixture')).lastInsertRowid;
+  const state = async () => (await api(`/api/customers/${customer}/operations/summary`, { token: ids.tokenManager })).data.managed;
+  await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(customer, ids.teamEnabled);
+  await db.prepare('INSERT INTO managed_customer_configurations (customer_id, managed_services_enabled, version, updated_by) VALUES (?,1,1,?)').run(customer, ids.manager);
+  assert.equal((await state()).state, 'setup_required'); // enabled but no team yet
+  await db.prepare('UPDATE managed_customer_configurations SET responsible_team_id=? WHERE customer_id=?').run(ids.teamEnabled, customer);
+  const done = await state();
+  assert.equal(done.state, 'active'); // no ticketing configured, and that's fine
+  assert.equal('open_tickets' in done, false);
+});
+
 test('customer activity views reject malformed filters and missing customers consistently',async () => {
   const root=`/api/customers/${ids.customer}`;
   for (const query of ['page=0','page_size=201','page=1&page=2','from=bad','from=2026-09-20&to=2026-09-01','engineer_id=nope']) {

@@ -50,7 +50,6 @@ function CustomerHeader({ customer,operations,user,saAccess,onRecommendation }) 
         {customer.contact_phone && <a href={`tel:${customer.contact_phone}`}><Phone size={13} />{customer.contact_phone}</a>}
         {(customer.location || customer.address) && <span><MapPin size={13} />{customer.location || customer.address}</span>}
         {managed?.responsible_team && <span><Layers size={13} />{managed.responsible_team}</span>}
-        {managed?.service_manager && <span><BriefcaseBusiness size={13} />{managed.service_manager}</span>}
       </div>
     </div>
     <div className="cs-header-actions"><QuickAdd customer={customer} user={user} saAccess={saAccess} onRecommendation={onRecommendation} />{managed?.state==='active' || managed?.state==='sync_attention' ? <Link className="btn btn-ghost" to={`/managed-customers/${customer.id}`}><ExternalLink size={14} /> Managed Services</Link> : null}</div>
@@ -60,7 +59,7 @@ function CustomerHeader({ customer,operations,user,saAccess,onRecommendation }) 
 function CustomerHealthStrip({ customerId,data,error,onSelectTab }) {
   if (error) return <div className="cs-module-warning" role="status">Operational summary unavailable. Detailed sections remain available.</div>;
   if (!data) return <div className="cs-health-strip" aria-label="Loading customer summary">{Array.from({ length:5 },(_,index) => <div className="card cs-health-card cs-health-skeleton" key={index} />)}</div>;
-  const managedLabels={ not_enabled:['Not enabled','Configure Managed Services'],setup_required:['Setup required','Ticketing is not configured'],active:['Active','Open Managed Services dashboard'],sync_attention:['Needs attention','Last ticket sync failed'],unavailable:['Unavailable','Configuration could not be loaded'] };
+  const managedLabels={ not_enabled:['Not enabled','Configure Managed Services'],setup_required:['Setup required','Choose a responsible team'],active:['Active','Open Managed Services dashboard'],sync_attention:['Needs attention','Last ticket sync failed'],unavailable:['Unavailable','Configuration could not be loaded'] };
   const ticketsKnown=['active','sync_attention'].includes(data.managed?.state) && data.managed?.open_tickets!=null;
   const managed=managedLabels[data.managed?.state] || managedLabels.unavailable;
   const managedValue=ticketsKnown ? `${data.managed.open_tickets} open` : managed[0];

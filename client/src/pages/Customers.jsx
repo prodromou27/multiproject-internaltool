@@ -65,12 +65,22 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onClose }) {
             </label>
           </div>
           {teams && (
-            <div className="form-group"><label>Assigned Team(s)</label>
-              <select multiple value={selectedTeams.map(String)}
-                onChange={e => setSelectedTeams([...e.target.selectedOptions].map(o => Number(o.value)))}
-                style={{ minHeight: 80 }}>
-                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            <div className="form-group"><label htmlFor="customer-team-add">Assigned Team(s)</label>
+              <select id="customer-team-add" value="" onChange={e => { const id = Number(e.target.value); if (id && !selectedTeams.includes(id)) setSelectedTeams([...selectedTeams, id]); }}>
+                <option value="">{selectedTeams.length ? 'Add another team…' : 'Select a team…'}</option>
+                {teams.filter(t => !selectedTeams.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
+              {selectedTeams.length > 0 && (
+                <div className="flex gap-6 flex-wrap mt-8">
+                  {selectedTeams.map(id => (
+                    <span key={id} className="badge badge-open inline-flex items-center gap-4">
+                      {teams.find(t => t.id === id)?.name || `Team ${id}`}
+                      <button type="button" aria-label="Remove team" onClick={() => setSelectedTeams(selectedTeams.filter(x => x !== id))}
+                        style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'inherit', lineHeight: 1 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <div className="form-row">

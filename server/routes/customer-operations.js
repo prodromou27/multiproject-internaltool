@@ -68,7 +68,7 @@ router.get('/summary',requireAuth,async (req,res) => {
       WHERE sa.customer_id=?${activityScope} ORDER BY sa.activity_date DESC,sa.id DESC LIMIT 6`).all(customerId,...(engineer?[userId]:[])),
     req.user.role==='manager' ? db.prepare(`SELECT mc.managed_services_enabled,mc.reporting_frequency,
       tc.enabled AS ticket_integration_enabled,tc.last_successful_sync_at,tc.last_sync_status,
-      t.name AS responsible_team,u.name AS service_manager
+      mc.responsible_team_id,t.name AS responsible_team,u.name AS service_manager
       FROM managed_customer_configurations mc LEFT JOIN teams t ON t.id=mc.responsible_team_id LEFT JOIN users u ON u.id=mc.service_manager_id
       LEFT JOIN customer_ticketing_configurations tc ON tc.customer_id=mc.customer_id
       WHERE mc.customer_id=?`).get(customerId) : Promise.resolve(null),
@@ -79,10 +79,13 @@ router.get('/summary',requireAuth,async (req,res) => {
   const numbers=row => Object.fromEntries(Object.entries(row || {}).map(([key,value]) => [key,Number(value || 0)]));
   let managed={ visible:req.user.role==='manager',state:'unavailable' };
   if (req.user.role==='manager') {
-    const ticketCounts={ open_tickets:Number(tickets_ext.open || 0),closed_tickets:Number(tickets_ext.closed || 0) };
+    // Ticketing is optional. A managed customer is complete once it has a
+    // responsible team; a failed ticket sync only matters if ticketing is on.
+    const ticketing=!!configuration?.ticket_integration_enabled;
+    const ticketCounts=ticketing ? { open_tickets:Number(tickets_ext.open || 0),closed_tickets:Number(tickets_ext.closed || 0) } : {};
     if (!configuration?.managed_services_enabled) managed={ visible:true,state:'not_enabled' };
-    else if (!configuration.ticket_integration_enabled) managed={ visible:true,state:'setup_required',...configuration };
-    else if (configuration.last_sync_status && configuration.last_sync_status!=='success') managed={ visible:true,state:'sync_attention',...configuration,...ticketCounts };
+    else if (!configuration.responsible_team_id) managed={ visible:true,state:'setup_required',...configuration,...ticketCounts };
+    else if (ticketing && configuration.last_sync_status && configuration.last_sync_status!=='success') managed={ visible:true,state:'sync_attention',...configuration,...ticketCounts };
     else managed={ visible:true,state:'active',...configuration,...ticketCounts };
   }
   res.json({ projects:numbers(projects),tasks:{ ...numbers(tasks),visible:!planner },recommendations:numbers(recommendations),

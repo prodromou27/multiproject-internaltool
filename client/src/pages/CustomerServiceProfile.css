@@ -239,3 +239,23 @@
 [data-theme="dark"] .badge-managed-setup_required { background: rgba(146,64,14,.25); color: #fcd34d; }
 [data-theme="dark"] .badge-managed-sync_attention { background: rgba(153,27,27,.25); color: #fca5a5; }
 [data-theme="dark"] .badge-managed-active         { background: rgba(22,101,52,.25); color: #86efac; }
+
+/* ── Service Configuration: simple, autosaving ─────────────── */
+.msc-head-side { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
+.msc-save { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--gray-500); min-height: 18px; }
+.msc-save.is-saved { color: var(--success); }
+.msc-save.is-error { color: var(--danger); font-weight: 600; }
+.msc-save.is-error button { background: none; border: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
+.msc-save .spin { animation: spin 1s linear infinite; }
+.msc-ok { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; font-size: 12.5px; color: var(--success); }
+.msc-ok a { display: inline-flex; align-items: center; gap: 3px; color: inherit; text-decoration: underline; }
+.msc-optional { border-bottom: 1px solid var(--gray-100); }
+.msc-optional:last-child { border-bottom: 0; }
+.msc-optional-head { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 22px; background: none; border: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.msc-optional-head:hover { background: var(--gray-50); }
+.msc-optional-head strong { display: block; font-size: 13.5px; color: var(--gray-800); }
+.msc-optional-head small { display: block; margin-top: 2px; font-size: 12px; color: var(--gray-500); }
+.msc-optional-head svg { flex: 0 0 auto; color: var(--gray-400); transition: transform .15s ease; }
+.msc-optional-head svg.is-open { transform: rotate(180deg); }
+.msc-optional-body { display: grid; gap: 14px; padding: 4px 22px 20px; }
+@media (max-width: 800px) { .msc-optional-head { padding: 14px 16px; } .msc-optional-body { padding: 4px 16px 16px; } }

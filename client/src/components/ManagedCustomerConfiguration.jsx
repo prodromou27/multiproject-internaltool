@@ -1,212 +1,197 @@
-import { useEffect,useState } from 'react';
-import { AlertTriangle,Building2,CheckCircle2,ExternalLink,FileText,RefreshCw,Save,Settings2,ShieldCheck,Ticket } from 'lucide-react';
+import { useCallback,useEffect,useRef,useState } from 'react';
+import { AlertTriangle,CheckCircle2,ChevronDown,ExternalLink,Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { Toggle,ToggleRow } from '../pages/admin/shared';
 
 const DEFAULTS={ managed_services_enabled:false,service_activity_tracking_enabled:false,task_reporting_enabled:true,project_reporting_enabled:true,maintenance_visit_reporting_enabled:true,recommendation_tracking_enabled:true,include_in_managed_services_reports:true,responsible_team_id:null,service_manager_id:null,reporting_frequency:'',default_report_template_id:null,ticket_integration_enabled:false,ticket_include_in_reporting:true,ticket_write_back_enabled:false,ticket_write_back_status:'',external_queue_id:'',external_queue_name:'',version:0 };
-const DELIVERY=[
+const TRACKING=[
   ['service_activity_tracking_enabled','Service activity tracking','Log engineer time and work against this customer.'],
-  ['maintenance_visit_reporting_enabled','Maintenance visits','Include scheduled and completed visits in managed reporting.'],
-  ['project_reporting_enabled','Projects','Include project delivery status in managed reporting.'],
-  ['task_reporting_enabled','Tasks','Include task progress in managed reporting.'],
-  ['recommendation_tracking_enabled','Recommendations','Include open and resolved recommendations in managed reporting.'],
+  ['maintenance_visit_reporting_enabled','Maintenance visits','Include visits in reports.'],
+  ['project_reporting_enabled','Projects','Include project status in reports.'],
+  ['task_reporting_enabled','Tasks','Include task progress in reports.'],
+  ['recommendation_tracking_enabled','Recommendations','Include recommendations in reports.'],
 ];
 
-/* Mirrors the state vocabulary the server already uses for the health-strip
-   card (not_enabled / setup_required / sync_attention / active), computed
-   here against the live, unsaved form so the banner updates as the manager
-   edits — and lists exactly what's missing, which the server-side state
-   alone doesn't need to. */
-function configState(form) {
-  if (!form.managed_services_enabled) return { state:'not_enabled',missing:[] };
-  const missing=[];
-  if (!form.responsible_team_id) missing.push('No responsible team is assigned');
-  if (!form.service_manager_id) missing.push('No service manager is assigned');
-  if (!form.ticket_integration_enabled) missing.push('Ticketing integration is not enabled');
-  else if (!form.external_queue_id) missing.push('No Request Tracker queue is selected');
-  const syncFailed=form.ticket_integration_enabled && !!form.external_queue_id && form.last_sync_status && form.last_sync_status!=='success';
-  if (syncFailed) missing.push('The last ticket synchronization failed');
-  if (!missing.length) return { state:'active',missing:[] };
-  return { state: syncFailed && missing.length===1 ? 'sync_attention' : 'setup_required',missing };
+/* Collapsed by default: only the master switch and the team are needed to
+   run a managed customer. Everything else is optional and out of the way. */
+function Optional({ title,hint,children,defaultOpen=false }) {
+  const [open,setOpen]=useState(defaultOpen);
+  return <section className="msc-optional">
+    <button type="button" className="msc-optional-head" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+      <span><strong>{title}</strong><small>{hint}</small></span><ChevronDown size={16} className={open ? 'is-open' : ''} aria-hidden="true" />
+    </button>
+    {open && <div className="msc-optional-body">{children}</div>}
+  </section>;
 }
 
-const BANNER_COPY={
-  not_enabled:{ icon:Settings2,tone:'neutral',title:'Managed Services is not enabled',body:'Turn it on below to assign a responsible team, connect ticketing and include this customer in managed-service reporting.' },
-  setup_required:{ icon:AlertTriangle,tone:'warning',title:'Managed Services is enabled, but setup is incomplete',body:'This customer won’t report correctly until the following is finished:' },
-  sync_attention:{ icon:AlertTriangle,tone:'danger',title:'Managed Services needs attention',body:'Everything is configured, but the ticket connection needs a check.' },
-  active:{ icon:CheckCircle2,tone:'success',title:'Managed Services is fully configured',body:'This customer is enrolled, ticketing is connected and reporting is set up.' },
-};
-
-function ConfigStateBanner({ config,customerId }) {
-  const copy=BANNER_COPY[config.state];
-  return <div className={`msc-banner msc-banner-${copy.tone}`} role="status">
-    <copy.icon size={18} aria-hidden="true" />
-    <div className="msc-banner-body">
-      <strong>{copy.title}</strong>
-      <p>{copy.body}</p>
-      {config.missing.length>0 && <ul>{config.missing.map(item => <li key={item}>{item}</li>)}</ul>}
-    </div>
-    {config.state==='active' && <Link className="btn btn-primary btn-sm" to={`/managed-customers/${customerId}`}><ExternalLink size={13} /> Open Managed Services Dashboard</Link>}
-  </div>;
+function SaveStatus({ status,message,onRetry }) {
+  if (status==='saving') return <span className="msc-save is-saving"><Loader2 size={13} className="spin" /> Saving…</span>;
+  if (status==='error') return <span className="msc-save is-error" role="alert"><AlertTriangle size={13} /> {message} <button type="button" onClick={onRetry}>Retry</button></span>;
+  if (status==='saved') return <span className="msc-save is-saved"><CheckCircle2 size={13} /> All changes saved</span>;
+  return <span className="msc-save" />;
 }
 
 export default function ManagedCustomerConfiguration({ customerId }) {
-  const [form,setForm]=useState(DEFAULTS),[teams,setTeams]=useState([]),[managers,setManagers]=useState([]),[queues,setQueues]=useState([]),[reportTemplates,setReportTemplates]=useState([]);
-  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(''),[error,setError]=useState(''),[message,setMessage]=useState(''),[savedMapping,setSavedMapping]=useState({ enabled:false,queueId:'' });
-  const set=(key,value) => setForm(current => ({ ...current,[key]:value }));
+  const [form,setForm]=useState(DEFAULTS),[allTeams,setAllTeams]=useState([]),[queues,setQueues]=useState([]),[queueError,setQueueError]=useState(''),[reportTemplates,setReportTemplates]=useState([]);
+  const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState(''),[status,setStatus]=useState('idle'),[saveError,setSaveError]=useState(''),[busy,setBusy]=useState('');
+  const [message,setMessage]=useState('');
+
+  // Autosave plumbing. The latest form lives in a ref so a save always sends
+  // the newest edits; only one save runs at a time and edits made during a
+  // save trigger exactly one follow-up save (each success bumps `version`).
+  const formRef=useRef(DEFAULTS),timer=useRef(null),running=useRef(false),again=useRef(false),assignedRef=useRef([]);
+
+  const flush=useCallback(async () => {
+    if (running.current) { again.current=true; return; }
+    running.current=true;setStatus('saving');setSaveError('');
+    try {
+      do {
+        again.current=false;
+        const sent=formRef.current;
+        const saved=await api.saveManagedCustomerConfiguration(customerId,sent);
+        // Adopt server-owned fields only; never overwrite what's being typed.
+        formRef.current={ ...formRef.current,version:saved.version,last_successful_sync_at:saved.last_successful_sync_at,last_sync_status:saved.last_sync_status };
+        setForm(formRef.current);
+      } while (again.current);
+      setStatus('saved');
+    } catch(failure) { setStatus('error');setSaveError(failure.message); }
+    finally { running.current=false; }
+  },[customerId]);
+
+  const update=useCallback((changes,{ delay=350 }={}) => {
+    formRef.current={ ...formRef.current,...changes };
+    setForm(formRef.current);setStatus('saving');
+    clearTimeout(timer.current);timer.current=setTimeout(flush,delay);
+  },[flush]);
+  useEffect(() => () => clearTimeout(timer.current),[]);
 
   useEffect(() => {
-    const controller=new AbortController();setLoading(true);setError('');
-    Promise.all([api.managedCustomerConfiguration(customerId,{ signal:controller.signal }),api.customerTeams(customerId),api.users({ signal:controller.signal }),api.managedReportTemplates({ signal:controller.signal })])
-      .then(([configuration,assignedTeams,users,templates]) => { if (!controller.signal.aborted) { setForm({ ...DEFAULTS,...configuration });setSavedMapping({ enabled:!!configuration.ticket_integration_enabled,queueId:String(configuration.external_queue_id || '') });setTeams(assignedTeams || []);setManagers((users || []).filter(user => user.role==='manager' && user.active!==0));setReportTemplates((templates.rows || []).filter(template => template.active)); } })
-      .catch(failure => { if (!controller.signal.aborted) setError(failure.message); })
+    const controller=new AbortController();setLoading(true);setLoadError('');
+    Promise.all([api.managedCustomerConfiguration(customerId,{ signal:controller.signal }),api.customerTeams(customerId),api.teams({ signal:controller.signal }),api.managedReportTemplates({ signal:controller.signal })])
+      .then(([configuration,assigned,teams,templates]) => {
+        if (controller.signal.aborted) return;
+        formRef.current={ ...DEFAULTS,...configuration };setForm(formRef.current);
+        assignedRef.current=(assigned || []).map(team => team.id);
+        setAllTeams(teams || []);setReportTemplates((templates.rows || []).filter(template => template.active));
+      })
+      .catch(failure => { if (!controller.signal.aborted) setLoadError(failure.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   },[customerId]);
 
-  async function discoverQueues() {
-    setBusy('queues');setError('');setMessage('');
-    try { const result=await api.ticketingQueues();setQueues(result.rows || []);setMessage(`${result.rows?.length || 0} RT queue(s) discovered.`); }
-    catch(failure) { setError(failure.message); } finally { setBusy(''); }
+  async function chooseTeam(value) {
+    const teamId=value ? Number(value) : null;
+    try {
+      // Picking a team is the whole job: if it isn't yet assigned to this
+      // customer, assign it here instead of sending the manager elsewhere.
+      if (teamId && !assignedRef.current.includes(teamId)) {
+        assignedRef.current=[...assignedRef.current,teamId];
+        await api.setCustomerTeams(customerId,assignedRef.current);
+      }
+      update({ responsible_team_id:teamId },{ delay:0 });
+    } catch(failure) { setStatus('error');setSaveError(failure.message); }
   }
 
-  async function save() {
-    setBusy('save');setError('');setMessage('');
-    try { const saved=await api.saveManagedCustomerConfiguration(customerId,form);setForm({ ...DEFAULTS,...saved });setSavedMapping({ enabled:!!saved.ticket_integration_enabled,queueId:String(saved.external_queue_id || '') });setMessage('Service configuration saved.'); }
-    catch(failure) { setError(failure.message); } finally { setBusy(''); }
+  async function loadQueues() {
+    setBusy('queues');setQueueError('');
+    try { const result=await api.ticketingQueues();setQueues(result.rows || []); }
+    catch(failure) { setQueueError(failure.message); } finally { setBusy(''); }
   }
 
-  async function testMapping() {
-    setBusy('test');setError('');setMessage('');
-    try { const result=await api.testManagedCustomerMapping(customerId);setMessage(result.message); }
-    catch(failure) { setError(failure.message); } finally { setBusy(''); }
+  function chooseQueue(value) {
+    const queue=queues.find(item => String(item.id)===value);
+    // A queue IS the ticketing connection: choosing one turns it on, clearing turns it off.
+    update(value
+      ? { external_queue_id:value,external_queue_name:queue?.name || formRef.current.external_queue_name,ticket_integration_enabled:true }
+      : { external_queue_id:'',external_queue_name:'',ticket_integration_enabled:false,ticket_write_back_enabled:false },{ delay:0 });
   }
 
   async function syncTickets() {
-    setBusy('sync');setError('');setMessage('');
-    try {
-      const result=await api.syncManagedCustomerTickets(customerId);
-      setForm(current => ({ ...current,last_successful_sync_at:result.completed_at || current.last_successful_sync_at,last_sync_status:'success' }));
-      setMessage(`Ticket sync completed: ${result.tickets_created} created and ${result.tickets_updated} updated.`);
-    } catch(failure) { setError(failure.message); } finally { setBusy(''); }
+    setBusy('sync');setMessage('');
+    try { const result=await api.syncManagedCustomerTickets(customerId);setMessage(`Synced: ${result.tickets_created} new, ${result.tickets_updated} updated.`); }
+    catch(failure) { setMessage(failure.message); } finally { setBusy(''); }
   }
 
-  function selectQueue(value) {
-    const queue=queues.find(item => String(item.id)===value);
-    setForm(current => ({ ...current,external_queue_id:value,external_queue_name:queue?.name || (value===String(current.external_queue_id) ? current.external_queue_name : ''),...(value ? {} : { ticket_integration_enabled:false }) }));
-  }
+  if (loading) return <div className="card msc-shell"><p role="status" className="text-muted">Loading…</p></div>;
+  if (loadError) return <div className="error-msg" role="alert">{loadError}</div>;
 
-  if (loading) return <div className="card msc-shell"><p role="status" className="text-muted">Loading service configuration...</p></div>;
+  const enabled=form.managed_services_enabled;
+  const hasTeam=!!form.responsible_team_id;
   const storedQueueMissing=form.external_queue_id && !queues.some(queue => String(queue.id)===String(form.external_queue_id));
-  const config=configState(form);
-  const mappingUnsaved=savedMapping.queueId!==String(form.external_queue_id);
+  const syncBad=form.ticket_integration_enabled && form.last_sync_status && form.last_sync_status!=='success';
 
   return <div className="msc">
-    {error && <div className="error-msg" role="alert">{error}</div>}
-    {message && <div className="alert alert-success" role="status"><CheckCircle2 size={15} /> {message}</div>}
-    <ConfigStateBanner config={config} customerId={customerId} />
-
     <div className="card msc-shell">
       <header className="msc-shell-head">
-        <div><h2>Service Configuration</h2><p>Managed Services enrollment, ticketing integration and reporting for this customer — one save applies everything below.</p></div>
-        <Toggle checked={form.managed_services_enabled} onChange={value => setForm(current => ({ ...current,managed_services_enabled:value,ticket_integration_enabled:value ? current.ticket_integration_enabled : false,ticket_write_back_enabled:value ? current.ticket_write_back_enabled : false }))} label={form.managed_services_enabled ? 'Enabled' : 'Disabled'} />
+        <div>
+          <h2>Managed Services</h2>
+          <p>{enabled ? 'This customer is a managed customer.' : 'Turn on to track this customer as a managed customer.'}</p>
+        </div>
+        <div className="msc-head-side">
+          <SaveStatus status={status} message={saveError} onRetry={flush} />
+          <Toggle checked={enabled} onChange={value => update({ managed_services_enabled:value,...(value ? {} : { ticket_integration_enabled:false,ticket_write_back_enabled:false }) },{ delay:0 })} label={enabled ? 'On' : 'Off'} />
+        </div>
       </header>
 
-      <section className="msc-group">
-        <div className="msc-group-head"><Building2 size={16} aria-hidden="true" /><div><h3>Ownership</h3><p>Who is responsible for delivering managed service to this customer.</p></div></div>
-        <div className="msc-group-body">
+      {enabled && <>
+        <section className="msc-group">
           <label className="msc-field msc-field-primary">
             <span>Responsible team</span>
-            <select value={form.responsible_team_id || ''} onChange={event => set('responsible_team_id',event.target.value ? Number(event.target.value) : null)}>
-              <option value="">Not assigned</option>
-              {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+            <select value={form.responsible_team_id || ''} onChange={event => chooseTeam(event.target.value)}>
+              <option value="">Select a team…</option>
+              {allTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
             </select>
-            {teams.length===0
-              ? <small className="msc-hint">No team is assigned to this customer yet. <Link to="/customers">Assign one from Customers</Link>, then choose it here.</small>
-              : <small>Only teams already assigned to this customer are available.</small>}
+            {!hasTeam && <small className="msc-hint">Choose the team that owns this customer — that's the only required step.</small>}
+            {allTeams.length===0 && <small className="msc-hint">No teams exist yet. <Link to="/settings">Create one in Settings → Teams</Link>.</small>}
           </label>
-          <label className="msc-field">
-            <span>Service manager</span>
-            <select value={form.service_manager_id || ''} onChange={event => set('service_manager_id',event.target.value ? Number(event.target.value) : null)}>
-              <option value="">Not assigned</option>
-              {managers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}</option>)}
-            </select>
-          </label>
-        </div>
-      </section>
+          {hasTeam && !syncBad && <p className="msc-ok"><CheckCircle2 size={14} /> Set up. <Link to={`/managed-customers/${customerId}`}>Open the Managed Customers dashboard <ExternalLink size={12} /></Link></p>}
+          {syncBad && <p className="msc-hint"><AlertTriangle size={13} /> The last ticket sync failed — check Request Tracker under Settings → Integrations.</p>}
+        </section>
 
-      <section className="msc-group">
-        <div className="msc-group-head"><Ticket size={16} aria-hidden="true" /><div><h3>Ticketing integration</h3><p>Connect a Request Tracker queue so tickets sync automatically. Each queue can only be mapped to one customer.</p></div>
-          <Toggle checked={form.ticket_integration_enabled} onChange={value => setForm(current => ({ ...current,ticket_integration_enabled:value,managed_services_enabled:value ? true : current.managed_services_enabled,ticket_write_back_enabled:value ? current.ticket_write_back_enabled : false }))} label={form.ticket_integration_enabled ? 'Enabled' : 'Disabled'} />
-        </div>
-        <div className="msc-group-body">
+        <Optional title="Ticketing" hint="Optional — connect a Request Tracker queue to see this customer's tickets" defaultOpen={!!form.external_queue_id}>
           <label className="msc-field">
-            <span>RT queue</span>
-            <select value={form.external_queue_id} onChange={event => selectQueue(event.target.value)}>
-              <option value="">No queue mapped</option>
+            <span>Request Tracker queue</span>
+            <select value={form.external_queue_id} onFocus={() => { if (!queues.length && !busy) loadQueues(); }} onChange={event => chooseQueue(event.target.value)}>
+              <option value="">No ticketing</option>
               {storedQueueMissing && <option value={form.external_queue_id}>{form.external_queue_name} ({form.external_queue_id})</option>}
-              {queues.map(queue => <option key={queue.id} value={queue.id} disabled={!!queue.mapping && Number(queue.mapping.customer_id)!==Number(customerId)}>{queue.name} ({queue.id}){queue.mapping ? ` — mapped to ${queue.mapping.customer_name}` : ''}</option>)}
+              {queues.map(queue => <option key={queue.id} value={queue.id} disabled={!!queue.mapping && Number(queue.mapping.customer_id)!==Number(customerId)}>{queue.name} ({queue.id}){queue.mapping && Number(queue.mapping.customer_id)!==Number(customerId) ? ` — used by ${queue.mapping.customer_name}` : ''}</option>)}
             </select>
+            {busy==='queues' && <small>Loading queues…</small>}
+            {queueError && <small className="msc-hint">{queueError}</small>}
           </label>
-          <div className="msc-status-pair">
-            <div><span>Last successful sync</span><strong>{form.last_successful_sync_at || 'No successful sync yet'}</strong></div>
-            <div><span>Last sync status</span><strong className={form.last_sync_status && form.last_sync_status!=='success' ? 'msc-status-bad' : ''}>{form.last_sync_status || 'No sync recorded'}</strong></div>
+          {form.external_queue_id && <>
+            <p className="text-sm text-muted">Last sync: {form.last_successful_sync_at || 'not yet'}{form.last_sync_status ? ` (${form.last_sync_status})` : ''}</p>
+            <ToggleRow label="Include tickets in reports" value={form.ticket_include_in_reporting} onChange={value => update({ ticket_include_in_reporting:value })} />
+            <ToggleRow label="Update the RT ticket when an activity is completed" description="Set the matched ticket to the status below." value={form.ticket_write_back_enabled} onChange={value => update({ ticket_write_back_enabled:value })} />
+            {form.ticket_write_back_enabled && <label className="msc-field"><span>RT status to set</span><input value={form.ticket_write_back_status} maxLength={100} placeholder="e.g. resolved" onChange={event => update({ ticket_write_back_status:event.target.value },{ delay:900 })} /></label>}
+            <div className="flex gap-8 msc-actions">
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || status==='saving'} onClick={syncTickets}>{busy==='sync' ? 'Syncing…' : 'Sync tickets now'}</button>
+              {message && <span className="text-sm text-muted">{message}</span>}
+            </div>
+          </>}
+        </Optional>
+
+        <Optional title="Reporting" hint="Optional — how often and in what format reports are prepared">
+          <div className="msc-group-body">
+            <label className="msc-field"><span>Frequency</span>
+              <select value={form.reporting_frequency} onChange={event => update({ reporting_frequency:event.target.value },{ delay:0 })}>
+                <option value="">Not scheduled</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="semiannual">Twice yearly</option><option value="annual">Annual</option>
+              </select>
+            </label>
+            <label className="msc-field"><span>Default template</span>
+              <select value={form.default_report_template_id || ''} onChange={event => update({ default_report_template_id:event.target.value ? Number(event.target.value) : null },{ delay:0 })}>
+                <option value="">No default</option>{reportTemplates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}
+              </select>
+            </label>
           </div>
-        </div>
-        <ToggleRow label="Include tickets in reports" description="Managed-service reports include this customer's ticket activity." value={form.ticket_include_in_reporting} onChange={value => set('ticket_include_in_reporting',value)} />
-        <ToggleRow label="Update the RT ticket on completion" description="When a matching service activity is marked Completed, set its RT ticket to the status below." value={form.ticket_write_back_enabled} onChange={value => set('ticket_write_back_enabled',value)} />
-        {form.ticket_write_back_enabled && <div className="msc-group-body msc-group-body-tight">
-          <label className="msc-field">
-            <span>RT status to set on completion</span>
-            <input value={form.ticket_write_back_status} onChange={event => set('ticket_write_back_status',event.target.value)} placeholder="e.g. resolved" maxLength={100} />
-            <small>Matched by an activity's Ticket Reference against this customer's synced RT tickets (by number, ignoring any "RT#"/"#" prefix).</small>
-          </label>
-        </div>}
-        <div className="flex gap-8 msc-actions">
-          <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={discoverQueues}><RefreshCw size={13} /> {busy==='queues' ? 'Discovering...' : 'Discover queues'}</button>
-          <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || !savedMapping.enabled || !savedMapping.queueId || mappingUnsaved} onClick={testMapping} title={mappingUnsaved ? 'Save this queue mapping first' : undefined}>{busy==='test' ? 'Testing...' : 'Test saved mapping'}</button>
-          <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || !savedMapping.enabled || !savedMapping.queueId || mappingUnsaved} onClick={syncTickets} title={mappingUnsaved ? 'Save this queue mapping first' : undefined}>{busy==='sync' ? 'Synchronizing...' : 'Sync tickets now'}</button>
-        </div>
-      </section>
+          <ToggleRow label="Include this customer in managed reports" value={form.include_in_managed_services_reports} onChange={value => update({ include_in_managed_services_reports:value })} />
+        </Optional>
 
-      <section className="msc-group">
-        <div className="msc-group-head"><ShieldCheck size={16} aria-hidden="true" /><div><h3>Service delivery</h3><p>What operational activity is tracked and reported for this customer.</p></div></div>
-        <div className="msc-group-body msc-group-body-rows">
-          {DELIVERY.map(([key,label,description]) => <ToggleRow key={key} label={label} description={description} value={form[key]} onChange={value => set(key,value)} />)}
-        </div>
-      </section>
-
-      <section className="msc-group">
-        <div className="msc-group-head"><FileText size={16} aria-hidden="true" /><div><h3>Reporting</h3><p>How and how often this customer's managed report is prepared.</p></div></div>
-        <div className="msc-group-body">
-          <label className="msc-field">
-            <span>Reporting frequency</span>
-            <select value={form.reporting_frequency} onChange={event => set('reporting_frequency',event.target.value)}>
-              <option value="">Not scheduled</option>
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
-              <option value="semiannual">Twice yearly</option>
-              <option value="annual">Annual</option>
-            </select>
-          </label>
-          <label className="msc-field">
-            <span>Default report template</span>
-            <select value={form.default_report_template_id || ''} onChange={event => set('default_report_template_id',event.target.value?Number(event.target.value):null)}>
-              <option value="">No default</option>
-              {reportTemplates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="msc-group-body msc-group-body-rows">
-          <ToggleRow label="Customer reporting enabled" description="Include this customer when managed-service reports are generated." value={form.include_in_managed_services_reports} onChange={value => set('include_in_managed_services_reports',value)} />
-        </div>
-      </section>
-
-      <footer className="msc-shell-foot">
-        <button type="button" className="btn btn-primary" disabled={!!busy} onClick={save}><Save size={14} /> {busy==='save' ? 'Saving...' : 'Save Service Configuration'}</button>
-        {config.state==='active' && <Link className="btn btn-ghost" to={`/managed-customers/${customerId}`}><ExternalLink size={14} /> Open Managed Services Dashboard</Link>}
-      </footer>
+        <Optional title="What is tracked" hint="Optional — all on by default except service activity">
+          {TRACKING.map(([key,label,description]) => <ToggleRow key={key} label={label} description={description} value={form[key]} onChange={value => update({ [key]:value })} />)}
+        </Optional>
+      </>}
     </div>
   </div>;
 }
