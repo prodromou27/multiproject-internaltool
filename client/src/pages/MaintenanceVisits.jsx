@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Upload, X, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle, Search } from 'lucide-react';
+import { Upload, X, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { PageHeader } from '../components/PageLayout';
+import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { localDateISO } from '../utils/dates';
@@ -544,46 +545,32 @@ export default function MaintenanceVisits() {
       </>} />
 
       {/* Quick stats */}
-      <div className="grid-4 mb-20">
-        <div className="card stat">
-          <div className="stat-value">{unavailable ? '...' : visits.filter(v => v.status === 'scheduled').length}</div>
-          <div className="stat-label">Scheduled</div>
+      <div className="operations-metric-strip">
+        <div className="operations-metric">
+          <strong>{unavailable ? '...' : visits.filter(v => v.status === 'scheduled').length}</strong>
+          <span>Scheduled</span>
         </div>
-        <div className="card stat">
-          <div className="stat-value" style={{ color: 'var(--success)' }}>{unavailable ? '...' : visits.filter(v => v.status === 'completed').length}</div>
-          <div className="stat-label">Completed</div>
+        <div className="operations-metric is-success">
+          <strong>{unavailable ? '...' : visits.filter(v => v.status === 'completed').length}</strong>
+          <span>Completed</span>
         </div>
-        <div className="card stat">
-          <div className="stat-value" style={{ color: reportPendingCount > 0 ? 'var(--warning)' : 'var(--success)' }}>{unavailable ? '...' : reportPendingCount}</div>
-          <div className="stat-label">Reports Pending</div>
+        <div className={`operations-metric ${reportPendingCount > 0 ? 'is-warning' : 'is-success'}`}>
+          <strong>{unavailable ? '...' : reportPendingCount}</strong>
+          <span>Reports Pending</span>
         </div>
-        <div className="card stat">
-          <div className="stat-value" style={{ color: 'var(--primary)' }}>{unavailable ? '...' : visits.filter(v => v.report_sent_to_customer).length}</div>
-          <div className="stat-label">Sent to PM</div>
+        <div className="operations-metric is-primary">
+          <strong>{unavailable ? '...' : visits.filter(v => v.report_sent_to_customer).length}</strong>
+          <span>Sent to PM</span>
         </div>
       </div>
 
       {/* Search + Filters */}
       <div className="card mb-16">
-        {/* Search bar */}
-        <div style={{ position: 'relative', marginBottom: 10 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
-          <input
-            value={search}
-            maxLength={500}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by customer, visit title, or engineer…"
-            style={{ paddingLeft: 32, width: '100%', maxWidth: 420 }}
-          />
-          {search && (
-            <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', display: 'flex', padding: 2 }}>
-              <X size={13} />
-            </button>
-          )}
-        </div>
+        <ListSearch value={search} onChange={setSearch} label="Search maintenance visits" maxLength={500}
+          placeholder="Search customers, visit titles, or engineers…" />
         {/* Status tabs + month picker */}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div className="filter-bar" style={{ flex: 1 }}>
+          <FilterGroup label="View" className="list-filter-grow">
             {[
               ['upcoming',        'Upcoming'],
               ['past',            'Past / Completed'],
@@ -594,11 +581,15 @@ export default function MaintenanceVisits() {
             ].map(([k, l]) => (
               <button key={k} className={'filter-pill' + (filter === k ? ' active' : '')} onClick={() => setFilter(k)}>{l}</button>
             ))}
-          </div>
+          </FilterGroup>
           <input type="month" value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={{ width: 'auto', padding: '5px 10px' }} title="Filter by month" />
           {monthFilter && <button className="btn btn-sm btn-ghost" onClick={() => setMonthFilter('')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><X size={12} /> Clear month</button>}
         </div>
       </div>
+
+      {!unavailable && <ResultContext shown={filtered.length} total={visits.length} noun="visits"
+        activeFilters={(search.trim() ? 1 : 0) + (filter !== 'all' ? 1 : 0) + (monthFilter ? 1 : 0)}
+        onClear={() => { setSearch(''); setMonthFilter(''); setFilter('all'); }} />}
 
       {loadError ? <div className="error-msg" role="alert">
         <p>{loadError}</p><button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckSquare, Download, Trash2, UserCheck, Clock, Search, X, Pencil, LockKeyhole, Columns3, ArrowUpDown } from 'lucide-react';
+import { CheckSquare, Download, Trash2, UserCheck, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PageHeader } from '../components/PageLayout';
+import { FilterGroup, ListSearch } from '../components/ListWorkspace';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import WaitingReasonDialog from '../components/WaitingReasonDialog';
@@ -390,20 +391,7 @@ export default function Tasks() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 340 }}>
-            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search tasks…"
-              style={{ paddingLeft: 32, paddingRight: search ? 28 : undefined }}
-            />
-            {search && (
-              <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', display: 'flex', alignItems: 'center', padding: 0 }}>
-                <X size={13} />
-              </button>
-            )}
-          </div>
+          <ListSearch value={search} onChange={setSearch} label="Search tasks" placeholder="Search tasks, projects, or assignees…" />
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: myTasksOnly ? 'var(--primary)' : 'var(--gray-600)', fontWeight: myTasksOnly ? 600 : 400, userSelect: 'none' }}>
             <input type="checkbox" checked={myTasksOnly} onChange={e => setMyTasksOnly(e.target.checked)} style={{ width: 'auto' }} />
             My Tasks
@@ -426,7 +414,7 @@ export default function Tasks() {
             </button>
           )}
         </div>
-        <div className="filter-bar">
+        <FilterGroup label="View">
           {[
             ['all', 'All'], ['open', 'Open / In Progress'],
             ['waiting_customer', 'Waiting on Customer/Vendor'],
@@ -436,19 +424,15 @@ export default function Tasks() {
           ].map(([key, label]) => <button key={key} className={'filter-pill' + (activeFilter === key ? ' active' : '') + (key === 'overdue' && counts[key] > 0 ? ' overdue-pill' : '')} onClick={() => setFilter(key)}>
             {label} <span style={{ opacity: .65 }}>({busy ? '...' : counts[key] || 0})</span>
           </button>)}
-        </div>
+        </FilterGroup>
       </div>
 
       {/* Bulk action bar */}
       {selected.size > 0 && !busy && !loadError && (
         <>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-          padding: '10px 16px', background: 'var(--primary-light)', border: '1px solid #bfdbfe',
-          borderRadius: 8, marginBottom: 12, fontSize: 13,
-        }}>
-          <span style={{ fontWeight: 600, color: 'var(--tone-info-text)' }}>{selected.size} selected</span>
-          <span style={{ color: '#93c5fd' }}>·</span>
+        <div className="bulk-action-bar">
+          <strong>{selected.size} selected</strong>
+          <span className="bulk-action-separator">·</span>
           {isManager && (
             <>
               {['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','closed','cancelled'].map(s => (

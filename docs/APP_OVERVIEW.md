@@ -106,6 +106,7 @@ client/src/
     project/         parts of the Project page (TaskViews list + Kanban, GanttMilestones,
                      ScorecardTab, CustomFieldsTab, ProjectPrintView, Dialogs, ...)
   components/        Shared (Modal, badges, dates), PageLayout (PageHeader, PageState),
+                     ListWorkspace (search, filter groups, result context),
                      ErrorBoundary, Toast, Confirm, ServiceCharts, activityLedger,
                      OperationalFocus, ReportBuilder, ...
   hooks/             useStatuses, useLatestRequest (cancels superseded loads), ...

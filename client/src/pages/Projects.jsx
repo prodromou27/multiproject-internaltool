@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Building2, FolderOpen, X, Bell, Pin, Search } from 'lucide-react';
+import { Building2, FolderOpen, X, Bell, Pin } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
+import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import WaitingReasonDialog from '../components/WaitingReasonDialog';
@@ -381,21 +382,8 @@ export default function Projects() {
       </>} />
 
       <div className="card mb-16">
-        <div style={{ position: 'relative', marginBottom: 10, maxWidth: 340 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search projects…"
-            style={{ paddingLeft: 32, paddingRight: search ? 28 : undefined }}
-          />
-          {search && (
-            <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', display: 'flex', alignItems: 'center', padding: 0 }}>
-              <X size={13} />
-            </button>
-          )}
-        </div>
-        <div className="filter-bar">
+        <ListSearch value={search} onChange={setSearch} label="Search projects" placeholder="Search projects, customers, or owners…" />
+        <FilterGroup label="Status">
           {[
             ['open',              'Open'],
             ['all',               'All'],
@@ -420,38 +408,29 @@ export default function Projects() {
               })</span>
             </button>
           ))}
-        </div>
+        </FilterGroup>
         {/* RAG health filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 500, marginRight: 2 }}>Health:</span>
+        <FilterGroup label="Health">
           {[
-            { key: 'all',   label: 'All',   dot: null,      activeBg: '#e0e7ff', activeText: '#3730a3' },
-            { key: 'red',   label: 'Red',   dot: '#ef4444', activeBg: '#fef2f2', activeText: '#b91c1c' },
-            { key: 'amber', label: 'Amber', dot: '#f59e0b', activeBg: '#fffbeb', activeText: '#92400e' },
-            { key: 'green', label: 'Green', dot: '#22c55e', activeBg: '#f0fdf4', activeText: '#166534' },
-          ].map(({ key, label, dot, activeBg, activeText }) => {
+            { key: 'all', label: 'All' }, { key: 'red', label: 'Red' },
+            { key: 'amber', label: 'Amber' }, { key: 'green', label: 'Green' },
+          ].map(({ key, label }) => {
             const count = key === 'all' ? statusFiltered.length : statusFiltered.filter(p => p.rag_status === key).length;
             const isActive = ragFilter === key;
             return (
-              <button
-                key={key}
-                onClick={() => setRagFilter(key)}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                  border: isActive ? `1.5px solid ${activeText}` : '1.5px solid var(--gray-200)',
-                  background: isActive ? activeBg : 'var(--gray-50)',
-                  color: isActive ? activeText : 'var(--gray-500)',
-                  transition: 'all .15s',
-                }}
-              >
-                {dot && <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }} />}
+              <button key={key} onClick={() => setRagFilter(key)}
+                className={`health-filter health-${key}${isActive ? ' active' : ''}`}>
+                {key !== 'all' && <i aria-hidden="true" />}
                 {label} <span style={{ opacity: .7 }}>({count})</span>
               </button>
             );
           })}
-        </div>
+        </FilterGroup>
       </div>
+
+      {!loading && !loadError && <ResultContext shown={filtered.length} total={projects.length} noun="projects"
+        activeFilters={(search.trim() ? 1 : 0) + (activeFilter !== 'all' ? 1 : 0) + (ragFilter !== 'all' ? 1 : 0)}
+        onClear={() => { setSearch(''); setFilter('all'); setRagFilter('all'); }} />}
 
       {loadError && <div className="error-msg mb-16" role="alert">
         {loadError} <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
