@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Building2, FolderOpen, X, Bell, Pin } from 'lucide-react';
+import { Building2, X, Bell, Pin } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
-import { Pagination } from '../components/EnterpriseUI';
+import { DataTable, MetricStrip, Pagination, Surface } from '../components/EnterpriseUI';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import WaitingReasonDialog from '../components/WaitingReasonDialog';
@@ -304,6 +304,30 @@ export default function Projects() {
   // Treat unknown saved filter values as 'open' so stale localStorage doesn't blank the list
   const activeFilter = VALID_FILTERS.includes(filter) ? filter : 'open';
   const filtered = projects;
+  const columns = [
+    { key:'title',label:'Title',render:p => <div className="flex-center gap-6">
+      {isManager && <button onClick={event => handlePin(p,event)} title={p.is_pinned?'Unpin project':'Pin to dashboard'}
+        className={`project-pin${p.is_pinned?' is-pinned':''}`} aria-pressed={!!p.is_pinned}><Pin size={13} /></button>}
+      <Link to={`/projects/${p.id}`} className="font-semibold">{p.title}</Link>
+    </div> },
+    { key:'customer',label:'Customer',render:p => p.customer_name
+      ? <span className="project-customer"><Building2 size={12} /> {p.customer_name}</span>
+      : <span className="text-muted">—</span> },
+    { key:'status',label:'Status',render:p => canManage && p.status==='pending_approval'
+      ? <Link to="/approvals">Review closure</Link>
+      : canManage ? <InlineStatusSelect project={p} onUpdate={handleStatusUpdate} /> : <StatusBadge entityType="project" s={p.status} /> },
+    { key:'priority',label:'Priority',render:p => canManage
+      ? <InlinePrioritySelect project={p} onUpdate={handlePriorityUpdate} /> : <PriorityBadge p={p.priority} /> },
+    { key:'health',label:'Health',render:p => <RagBadge rag={p.rag_status} /> },
+    { key:'tasks',label:'Tasks',render:p => p.task_count>0 ? <div className="project-progress">
+      <div><strong>{p.completion_pct}%</strong><span>{p.done_count}/{p.task_count}</span></div>
+      <div className="progress-bar"><div className="progress-bar-fill" style={{ width:`${p.completion_pct}%` }} /></div>
+    </div> : <span className="text-muted text-sm">No tasks</span> },
+    { key:'deadline',label:'Deadline',className:p => isOverdue(p.deadline) && !TERMINAL.includes(p.status)?'overdue':'',render:p => fmtDate(p.deadline) },
+    { key:'owner',label:'Created By',render:p => p.created_by_name },
+    ...(isManager ? [{ key:'action',label:'Action',render:p => p.status==='pending_approval'
+      ? <Link to={`/projects/${p.id}`} className="btn btn-sm btn-warning project-review"><Bell size={11} /> Review</Link> : '—' }] : []),
+  ];
 
   return (
     <div className="page">
@@ -311,7 +335,14 @@ export default function Projects() {
 {isManager && <button className="btn btn-primary" onClick={() => { setCreateInitial(null);setShowCreate(true); }} disabled={loading || !!loadError}>+ New Project</button>}
       </>} />
 
-      <div className="card mb-16">
+      <MetricStrip items={[
+        { key:'open',label:'Open projects',value:counts.open || 0,note:'Active delivery portfolio',tone:'info' },
+        { key:'overdue',label:'Overdue',value:counts.overdue || 0,note:'Past deadline and still open',tone:(counts.overdue || 0)>0?'danger':'success' },
+        { key:'approval',label:'Pending closure',value:counts.pending_approval || 0,note:'Awaiting management review',tone:(counts.pending_approval || 0)>0?'warning':'success' },
+        { key:'risk',label:'Red health',value:counts.rag_red || 0,note:'Within the selected status scope',tone:(counts.rag_red || 0)>0?'danger':'success' },
+      ]} />
+
+      <Surface title="Portfolio filters" description="Search the permitted portfolio and narrow it by delivery state or health.">
         <ListSearch value={search} onChange={setSearch} label="Search projects" placeholder="Search projects, customers, or owners…" />
         <FilterGroup label="Status">
           {[
@@ -353,127 +384,18 @@ export default function Projects() {
             );
           })}
         </FilterGroup>
-      </div>
+      </Surface>
 
       {!loading && !loadError && <ResultContext shown={filtered.length} total={total} noun="projects"
         activeFilters={(search.trim() ? 1 : 0) + (activeFilter !== 'all' ? 1 : 0) + (ragFilter !== 'all' ? 1 : 0)}
         onClear={() => { setSearch(''); setFilter('all'); setRagFilter('all'); }} />}
 
-      {loadError && <div className="error-msg mb-16" role="alert">
-        {loadError} <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
-      </div>}
-      {loadError && !loading ? <p role="status">This view is unavailable until it reloads successfully.</p> : loading ? <p className="text-muted">Loading…</p> : filtered.length === 0 ? (
-        <div className="empty">
-          <div className="empty-icon"><FolderOpen size={40} strokeWidth={1.2} /></div>
-          <p>{search.trim() ? `No projects matching "${search}"` : 'No projects found'}</p>
-          {search.trim() && (
-            <button className="btn btn-ghost btn-sm mt-12" onClick={() => setSearch('')}>
-              Clear search
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="card table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Customer</th>
-                <th>Status</th>
-                <th>Priority</th>
-                <th>Health</th>
-                <th>Tasks</th>
-                <th>Deadline</th>
-                <th>Created By</th>
-                {isManager && <th>Action</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(p => (
-                <tr key={p.id}>
-                  <td>
-                    <div className="flex-center gap-6">
-                      {isManager && (
-                        <button
-                          onClick={e => handlePin(p, e)}
-                          title={p.is_pinned ? 'Unpin project' : 'Pin to dashboard'}
-                          style={{
-                            background: 'none', border: 'none', cursor: 'pointer', padding: 2, borderRadius: 4,
-                            color: p.is_pinned ? '#f59e0b' : 'var(--gray-300)',
-                            flexShrink: 0, display: 'flex', alignItems: 'center',
-                            transition: 'color .15s',
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.color = p.is_pinned ? '#d97706' : 'var(--gray-500)'}
-                          onMouseLeave={e => e.currentTarget.style.color = p.is_pinned ? '#f59e0b' : 'var(--gray-300)'}
-                        >
-                          {p.is_pinned ? <Pin size={13} /> : <Pin size={13} />}
-                        </button>
-                      )}
-                      <Link to={`/projects/${p.id}`} className="font-semibold">{p.title}</Link>
-                    </div>
-                  </td>
-                  <td>
-                    {p.customer_name
-                      ? <span style={{ fontSize: 12, color: 'var(--gray-600)', display: 'flex', alignItems: 'center', gap: 4 }}><Building2 size={12} /> {p.customer_name}</span>
-                      : <span className="text-muted">—</span>}
-                  </td>
-                  <td>
-                    {canManage && p.status === 'pending_approval'
-                      ? <Link to="/approvals">Review closure</Link>
-                      : canManage
-                      ? <InlineStatusSelect project={p} onUpdate={handleStatusUpdate} />
-                      : <StatusBadge entityType="project" s={p.status} />}
-                  </td>
-                  <td>
-                    {canManage
-                      ? <InlinePrioritySelect project={p} onUpdate={handlePriorityUpdate} />
-                      : <PriorityBadge p={p.priority} />}
-                  </td>
-                  <td><RagBadge rag={p.rag_status} /></td>
-                  <td>
-                    {p.task_count > 0 ? (
-                      <div className="flex-center gap-6">
-                        <div>
-                          <div className="flex-center gap-5">
-                            <span style={{
-                              fontSize: 11, fontWeight: 700,
-                              color: p.completion_pct >= 100 ? '#10b981' : p.completion_pct >= 50 ? '#3b82f6' : 'var(--gray-600)',
-                            }}>{p.completion_pct}%</span>
-                            <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>{p.done_count}/{p.task_count}</span>
-                          </div>
-                          <div className="progress-bar" style={{ width: 64, marginTop: 3 }}>
-                            <div className="progress-bar-fill" style={{
-                              width: `${p.completion_pct}%`,
-                              background: p.completion_pct >= 100 ? '#10b981' : p.completion_pct >= 50 ? '#3b82f6' : undefined,
-                            }} />
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-muted text-sm">No tasks</span>
-                    )}
-                  </td>
-                  <td className={isOverdue(p.deadline) && !['closed','cancelled'].includes(p.status) ? 'overdue' : ''}>{fmtDate(p.deadline)}</td>
-                  <td>{p.created_by_name}</td>
-                  {isManager && (
-                    <td>
-                      {p.status === 'pending_approval' && (
-                        <Link to={`/projects/${p.id}`}
-                          className="btn btn-sm btn-warning"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
-                          title="Closure approval required"
-                        >
-                          <Bell size={11} /> Review
-                        </Link>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable columns={columns} rows={filtered} loading={loading} error={loadError} onRetry={load}
+        caption="Projects in the selected portfolio view"
+        empty={search.trim()?`No projects matching "${search}"`:'No projects found'}
+        emptyAction={(search.trim() || activeFilter!=='all' || ragFilter!=='all')
+          ? <button className="btn btn-ghost btn-sm" onClick={() => { setSearch('');setFilter('all');setRagFilter('all'); }}>Reset filters</button>
+          : isManager ? <button className="btn btn-primary btn-sm" onClick={() => { setCreateInitial(null);setShowCreate(true); }}>Create the first project</button> : null} />
       <Pagination page={page} total={total} pageSize={25} loading={loading} onPageChange={setPage} label="Project pages" />
 
       {/* Waiting dialog for inline status change */}
