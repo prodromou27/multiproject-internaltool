@@ -29,6 +29,7 @@ const Projects          = lazy(() => import('./pages/Projects'));
 const ProjectDetail     = lazy(() => import('./pages/ProjectDetail'));
 const Tasks             = lazy(() => import('./pages/Tasks'));
 const Reports           = lazy(() => import('./pages/Reports'));
+const KpiManagement     = lazy(() => import('./pages/KpiManagement'));
 const UsersPage         = lazy(() => import('./pages/Users'));
 const CalendarPage      = lazy(() => import('./pages/CalendarPage'));
 const MaintenanceVisits = lazy(() => import('./pages/MaintenanceVisits'));
@@ -1074,6 +1075,7 @@ export default function App() {
           <Route path="/managed-customers/:id" element={<PrivateRoute page="managedCustomers"><ManagedCustomers /></PrivateRoute>} />
           <Route path="/scorecards"          element={<PrivateRoute page="scorecards"><Scorecards /></PrivateRoute>} />
           <Route path="/reports"             element={<PrivateRoute page="reports"><Reports /></PrivateRoute>} />
+          <Route path="/kpis"                element={<PrivateRoute page="kpiManagement"><KpiManagement /></PrivateRoute>} />
           <Route path="/approvals"           element={<PrivateRoute page="approvals"><Approvals /></PrivateRoute>} />
           <Route path="/users"               element={<PrivateRoute page="users"><UsersPage /></PrivateRoute>} />
           <Route path="/settings"            element={<PrivateRoute page="settings"><AdminPanel /></PrivateRoute>} />

@@ -141,6 +141,15 @@ export const api = {
   createKpi: (project_id, data) => req('POST', `/kpis/${project_id}`, data),
   updateKpi: (project_id, id, data) => req('PUT', `/kpis/${project_id}/${id}`, data),
   deleteKpi: (project_id, id) => req('DELETE', `/kpis/${project_id}/${id}`),
+  kpiDefinitionMeta: (options) => req('GET', '/kpis/definitions/meta', undefined, options),
+  kpiDefinitions: (params = {}, options) => req('GET', `/kpis/definitions?${new URLSearchParams(params)}`, undefined, options),
+  createKpiDefinition: data => req('POST', '/kpis/definitions', data),
+  updateKpiDefinition: (id, data) => req('PUT', `/kpis/definitions/${id}`, data),
+  previewKpiDefinition: data => req('POST', '/kpis/definitions/preview', data),
+  testKpiDefinition: id => req('POST', `/kpis/definitions/${id}/test`, {}),
+  calculateKpiDefinition: id => req('POST', `/kpis/definitions/${id}/calculate`, {}),
+  setKpiDefinitionState: (id, enabled, version) => req('POST', `/kpis/definitions/${id}/state`, { enabled, version }),
+  kpiDefinitionValues: (id, params = {}, options) => req('GET', `/kpis/definitions/${id}/values?${new URLSearchParams(params)}`, undefined, options),
 
   // reports
   reportSummary: (options) => req('GET', '/reports/summary', undefined, options),

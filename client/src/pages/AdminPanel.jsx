@@ -122,7 +122,7 @@ export default function AdminPanel() {
 
   const activeTab = TABS.find(t => t.key === tab) || TABS[0];
   const activeGroup = TAB_GROUPS.find(g => g.key === activeTab.group);
-  const businessLinks = visiblePages(user.role).filter(page => ['customers','templates','workload','approvals','reports'].includes(page.id));
+  const businessLinks = visiblePages(user).filter(page => ['customers','templates','workload','approvals','reports','kpiManagement'].includes(page.id));
   const q = tabSearch.trim().toLowerCase();
   const filteredTabs = TABS.filter(t => !q || t.label.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q));
   const ActiveIcon = activeTab.Icon;

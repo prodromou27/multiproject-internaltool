@@ -398,6 +398,16 @@ KPI reads require `kpis.view` and mutations require `kpis.manage`. These permiss
 are limited to eligible management roles. Engineers cannot receive KPI data or be
 granted KPI permissions through role or user overrides.
 
+The permission-aware **KPI Management** workspace at `/kpis` manages versioned KPI
+definitions independently from the legacy project KPI rows. Definitions include name,
+description, category, an approved calculation source, target/warning/critical values,
+direction, organization/team/project scope, enabled state, display order and
+visualization type. Authorized users can preview a draft, test a saved calculation
+without storing it, record an immutable value snapshot, activate/deactivate the KPI
+and inspect paged history with a compact trend. Migration
+`20260924_kpi_administration` creates `kpi_definitions` and `kpi_values`; mutations are
+audited and stale edits return HTTP 409 `KPI_CONFLICT`.
+
 Project creation saves memberships in the same transaction. Closure requests and
 approvals save their status and update message atomically, and conditional writes
 prevent duplicate lifecycle updates from concurrent requests. Project dates and

@@ -32,6 +32,11 @@ test('navigation and create actions respect existing role and feature boundaries
   assert.equal(visiblePages({ role:'planner',permissions:{ 'reports.access':true } }).some(page => page.id==='reports'),true);
   assert.equal(canAccessPage(activity,{ role:'engineer',permissions:{ 'service_activities.access':false } },true),false);
   assert.deepEqual(quickCreateActions({ role:'engineer',permissions:{ 'service_activities.access':false } },true).map(action => action.id),['task']);
+  const kpiManagement=PAGES.find(page => page.id==='kpiManagement');
+  assert.equal(canAccessPage(kpiManagement,{ role:'manager',permissions:{ 'kpis.manage':true } }),true);
+  assert.equal(canAccessPage(kpiManagement,{ role:'manager',permissions:{ 'kpis.manage':false } }),false);
+  assert.equal(canAccessPage(kpiManagement,{ role:'planner',permissions:{ 'kpis.manage':true } }),true);
+  assert.equal(canAccessPage(kpiManagement,{ role:'planner',permissions:{ 'kpis.manage':false } }),false);
 });
 
 test('primary navigation stays concise and respects role and feature access', () => {
