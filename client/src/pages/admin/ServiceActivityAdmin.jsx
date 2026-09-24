@@ -276,6 +276,13 @@ export function ServiceActivityAdminTab() {
                 onChange={async () => { await api.updateActivityCategory(item.id, { require_attachment: !item.require_attachment }); load(); }} />
             ),
           },
+          {
+            label: 'Require Asset',
+            render: item => (
+              <input type="checkbox" checked={!!item.require_asset} style={{ width: 'auto' }} title="Activities in this category must name the customer asset worked on (when the customer has assets)"
+                onChange={async () => { await api.updateActivityCategory(item.id, { require_asset: !item.require_asset }); load(); }} />
+            ),
+          },
         ]}
       />
 

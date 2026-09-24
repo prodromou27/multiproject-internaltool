@@ -89,3 +89,11 @@
 @media (max-width: 600px) {
   .activity-log .af-grid, .activity-log .ad-facts { grid-template-columns: 1fr; }
 }
+
+/* Optional per-asset version, shown under the asset chips once an asset is picked. */
+.activity-log .al-asset-versions { display: grid; gap: 8px; margin-top: 10px; padding: 12px; background: var(--gray-50); border-radius: var(--radius-md); }
+.activity-log .al-asset-versions-title { font-size: 12px; font-weight: 650; color: var(--gray-700); }
+.activity-log .al-asset-versions-title em { font-weight: 400; font-style: normal; color: var(--gray-500); }
+.activity-log .al-asset-version { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(140px, 220px); gap: 10px; align-items: center; font-size: 13px; }
+.activity-log .al-asset-version input { min-width: 0; }
+@media (max-width: 600px) { .activity-log .al-asset-version { grid-template-columns: 1fr; gap: 4px; } }

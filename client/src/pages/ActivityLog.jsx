@@ -82,6 +82,7 @@ function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
     description: initial?.description || '',
     technology_ids: initial?.technologies?.map(t => t.id) || [],
     asset_ids: initial?.assets?.map(asset => asset.id) || [],
+    asset_versions: Object.fromEntries((initial?.assets || []).filter(asset => asset.version).map(asset => [asset.id, asset.version])),
     start_time: initial?.start_time || '',
     end_time: initial?.end_time || '',
     work_location: initial?.work_location || '',
@@ -132,6 +133,7 @@ function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
     if (!form.category_id) return 'Category is required';
     if (!form.title.trim()) return 'Title is required';
     if (form.duration_minutes !== '' && Number(form.duration_minutes) <= 0) return 'Duration must be greater than zero';
+    if (category?.require_asset && assets.length > 0 && form.asset_ids.length === 0) return 'Select the asset that was worked on';
     if (form.start_time && form.end_time && form.end_time < form.start_time) return 'End time cannot be before start time';
     if (form.follow_up_required && !form.follow_up_date) return 'Follow-up date is required when follow-up is required';
     if (customer?.require_duration && form.duration_minutes === '') return 'Duration is required for this customer';
@@ -154,6 +156,8 @@ function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
         category_id: Number(form.category_id),
         subcategory_id: form.subcategory_id ? Number(form.subcategory_id) : null,
         duration_minutes: form.duration_minutes !== '' ? Number(form.duration_minutes) : null,
+        // Version is optional; only for the assets actually selected, blank clears it.
+        asset_versions: Object.fromEntries(form.asset_ids.map(id => [id, String(form.asset_versions?.[id] || '').trim()])),
       };
       await onSave(payload);
     } catch (ex) { setConflict(ex.code === 'ACTIVITY_CONFLICT'); setErr(ex.message || 'Failed to save activity'); }
@@ -175,7 +179,7 @@ function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
       <div className="af-grid">
         <Field label="Customer" required className="af-wide">
           <select value={form.customer_id} required
-            onChange={e => setForm(f => ({ ...f, customer_id: e.target.value, asset_ids: String(e.target.value) === String(initial?.customer_id || '') ? initial?.assets?.map(asset => asset.id) || [] : [] }))}>
+            onChange={e => setForm(f => ({ ...f, customer_id: e.target.value, asset_ids: String(e.target.value) === String(initial?.customer_id || '') ? initial?.assets?.map(asset => asset.id) || [] : [], asset_versions: String(e.target.value) === String(initial?.customer_id || '') ? Object.fromEntries((initial?.assets || []).filter(asset => asset.version).map(asset => [asset.id, asset.version])) : {} }))}>
             <option value="">Select a customer</option>
             {meta.customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -270,7 +274,7 @@ function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
             <Field label="Customer impact"><input value={form.customer_impact} onChange={set('customer_impact')} /></Field>
           </div>
           {form.customer_id && (
-            <ChipGroup legend="Customer assets" scroll
+            <ChipGroup legend={category?.require_asset ? 'Customer assets (required for this category)' : 'Customer assets'} scroll
               options={assets.map(asset => ({
                 id: asset.id,
                 label: asset.name,
@@ -281,6 +285,21 @@ function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
               disabled={assetsLoading || !!assetsError}
               status={assetsLoading ? 'Loading assets…' : assetsError || (!assets.length ? 'No active assets recorded for this customer.' : '')}
               statusIsError={!!assetsError} />
+          )}
+          {form.customer_id && form.asset_ids.length > 0 && (
+            <div className="al-asset-versions">
+              <span className="al-asset-versions-title">Version <em>(optional — e.g. the version an upgrade left it on)</em></span>
+              {form.asset_ids.map(id => {
+                const asset = assets.find(item => item.id === id);
+                return (
+                  <label key={id} className="al-asset-version">
+                    <span>{asset?.name || `Asset ${id}`}</span>
+                    <input value={form.asset_versions?.[id] || ''} maxLength={100} placeholder="e.g. 12.4.1"
+                      onChange={e => setForm(f => ({ ...f, asset_versions: { ...f.asset_versions, [id]: e.target.value } }))} />
+                  </label>
+                );
+              })}
+            </div>
           )}
         </fieldset>
 
@@ -420,7 +439,7 @@ function ActivityDetailModal({ id, allowAttachments, onClose, onChanged }) {
               <><h4>Technology</h4><ul className="ad-chips">{activity.technologies.map(t => <li key={t.id}>{t.name}</li>)}</ul></>
             )}
             {activity.assets?.length > 0 && (
-              <><h4>Customer assets</h4><ul className="ad-chips">{activity.assets.map(asset => <li key={asset.id}>{asset.name}{asset.hostname ? `, ${asset.hostname}` : ''}</li>)}</ul></>
+              <><h4>Customer assets</h4><ul className="ad-chips">{activity.assets.map(asset => <li key={asset.id}>{asset.name}{asset.hostname ? `, ${asset.hostname}` : ''}{asset.version ? ` — version ${asset.version}` : ''}</li>)}</ul></>
             )}
           </section>
         )}

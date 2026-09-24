@@ -56,3 +56,18 @@ test('customer hue is stable per name and within 0-359', () => {
   assert.notEqual(customerHue('Acme'), customerHue('Globex'));
   for (const name of ['', 'x', 'A very long customer name Ltd.']) assert.ok(customerHue(name) >= 0 && customerHue(name) < 360);
 });
+
+test('an engineer on a managed-services team gets the Assets tab for that customer only when the server grants it', () => {
+  const engineer = { role: 'engineer', permissions: { 'assets.access': false } };
+  const ids = (grant, capabilities = {}) => customer360Sections(engineer, capabilities, grant).map(section => section.id);
+  assert.equal(ids(false).includes('assets'), false);
+  assert.equal(ids(true).includes('assets'), true);
+  // Also present in the managed-services ordering, next to the activities they mainly track.
+  assert.deepEqual(ids(true, { managedServiceOperations: true }).slice(0, 3), ['activities', 'assets', 'timeline']);
+  assert.equal(ids(false, { managedServiceOperations: true }).includes('assets'), false);
+  // A deep link to Assets falls back to a safe tab without the grant, and works with it.
+  assert.equal(customer360Section(engineer, 'assets', {}, false) === 'assets', false);
+  assert.equal(customer360Section(engineer, 'assets', {}, true), 'assets');
+  // Managers are unaffected.
+  assert.equal(customer360Sections({ role: 'manager', permissions: {} }).some(section => section.id === 'assets'), true);
+});

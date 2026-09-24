@@ -10,21 +10,24 @@ export const CUSTOMER_360_SECTIONS=Object.freeze([
   { id:'service-configuration',label:'Service Configuration',roles:['manager'] },
 ]);
 
-export function customer360Sections(user,capabilities={}) {
-  const assetAllowed=Object.prototype.hasOwnProperty.call(user?.permissions || {},'assets.access') ? user.permissions['assets.access']===true : user?.role==='manager';
+/* `assetsGrant`: the server says this engineer is on a managed-services team
+   serving this customer, which earns the Assets tab (view + add) without the
+   assets.access permission. */
+export function customer360Sections(user,capabilities={},assetsGrant=false) {
+  const assetAllowed=assetsGrant===true || (Object.prototype.hasOwnProperty.call(user?.permissions || {},'assets.access') ? user.permissions['assets.access']===true : user?.role==='manager');
   const available=CUSTOMER_360_SECTIONS.filter(section => !section.pending && (section.id==='assets' ? assetAllowed : section.roles.includes(user?.role)));
   if (user?.role!=='engineer' || (capabilities.managedServiceOperations===undefined && capabilities.projectDelivery===undefined)) return available;
   const managed=capabilities.managedServiceOperations===true;
   const delivery=capabilities.projectDelivery===true;
   if (!managed && !delivery) return available;
   const order=managed
-    ? delivery ? ['activities','projects','tasks','maintenance-visits','recommendations','timeline'] : ['activities','timeline','recommendations','projects','tasks','maintenance-visits']
+    ? delivery ? ['activities','projects','tasks','maintenance-visits','recommendations','assets','timeline'] : ['activities','assets','timeline','recommendations','projects','tasks','maintenance-visits']
     : ['projects','tasks','maintenance-visits','recommendations','activities','timeline'];
   return order.map(id => available.find(section => section.id===id)).filter(Boolean);
 }
 
-export function customer360Section(user,requested,capabilities={}) {
-  const available=customer360Sections(user,capabilities);
+export function customer360Section(user,requested,capabilities={},assetsGrant=false) {
+  const available=customer360Sections(user,capabilities,assetsGrant);
   const aliases={ 'managed-services':'service-configuration' };
   const normalized=aliases[requested] || requested;
   return available.some(section => section.id===normalized) ? normalized : available[0]?.id || 'overview';

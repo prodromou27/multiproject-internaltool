@@ -14,16 +14,18 @@ async function canAccessCustomer(user,customerId,store=db) {
   ) allowed LIMIT 1`).get(user.id,customerId,user.id,customerId,user.id,customerId,user.id,customerId);
 }
 
-/* An engineer on the responsible team of a managed customer works that
-   customer's estate day to day, so they may see its assets and add new ones
-   (nothing more — editing, deleting, importing and files stay with asset
-   managers). Checked against the live managed-services configuration, not a
-   role, so it follows the team assignment as it changes. */
+/* Engineers on a managed-services team (the teams.managed_service_operations
+   capability) work the estates of the customers their team is assigned to, so
+   they may see those customers' assets and add new ones — nothing more:
+   editing, deleting, importing and files stay with assets.access. Checked live
+   against team membership, the team's capability and the customer assignment,
+   so it follows those as they change. */
 async function isManagedServicesEngineer(user,customerId,store=db) {
   if (!positiveId(customerId) || user?.role!=='engineer') return false;
-  return !!await store.prepare(`SELECT 1 FROM managed_customer_configurations mc
-    JOIN team_members tm ON tm.team_id=mc.responsible_team_id
-    WHERE mc.customer_id=? AND mc.managed_services_enabled=1 AND tm.user_id=?`).get(customerId,user.id);
+  return !!await store.prepare(`SELECT 1 FROM team_members tm
+    JOIN teams t ON t.id=tm.team_id AND t.managed_service_operations=1
+    JOIN customer_teams ct ON ct.team_id=t.id
+    WHERE tm.user_id=? AND ct.customer_id=?`).get(user.id,customerId);
 }
 
 module.exports={ positiveId,canAccessCustomer,isManagedServicesEngineer };

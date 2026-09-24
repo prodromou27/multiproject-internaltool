@@ -1,7 +1,7 @@
 const router=require('express').Router({ mergeParams:true });
 const db=require('../db');
 const { requireAuth }=require('../middleware/auth');
-const { positiveId,canAccessCustomer }=require('../customerAccess');
+const { positiveId,canAccessCustomer,isManagedServicesEngineer }=require('../customerAccess');
 
 const parsePage=query => {
   for (const key of ['page','page_size']) if (query[key]!==undefined && (typeof query[key]!=='string' || !positiveId(query[key]))) return null;
@@ -39,6 +39,8 @@ router.get('/summary',requireAuth,async (req,res) => {
   const taskScope=engineer ? ' AND t.assigned_to=?' : '';
   const visitJoin=engineer ? ' JOIN maintenance_visit_engineers mve_scope ON mve_scope.visit_id=mv.id AND mve_scope.user_id=?' : '';
   const activityScope=engineer ? ' AND sa.engineer_id=?' : '';
+  // 'full' = manage assets; 'team' = an engineer on this customer's managed-services team (view + add).
+  const assetsAccess=req.user.role==='manager' ? 'full' : await isManagedServicesEngineer(req.user,customerId) ? 'team' : null;
   const activeRecommendations="r.status NOT IN ('implemented','rejected','closed','converted_to_project')";
   const [projects,tasks,recommendations,visits,lastVisit,nextVisit,activities,configuration,assets,tickets_ext]=await Promise.all([
     db.prepare(`SELECT COUNT(*) FILTER (WHERE p.status NOT IN ('closed','cancelled')) AS active,
@@ -72,7 +74,7 @@ router.get('/summary',requireAuth,async (req,res) => {
       FROM managed_customer_configurations mc LEFT JOIN teams t ON t.id=mc.responsible_team_id LEFT JOIN users u ON u.id=mc.service_manager_id
       LEFT JOIN customer_ticketing_configurations tc ON tc.customer_id=mc.customer_id
       WHERE mc.customer_id=?`).get(customerId) : Promise.resolve(null),
-    req.user.role==='manager' ? db.prepare('SELECT COUNT(*) AS total FROM customer_assets WHERE customer_id=?').get(customerId) : Promise.resolve({ total:0 }),
+    assetsAccess ? db.prepare('SELECT COUNT(*) AS total FROM customer_assets WHERE customer_id=?').get(customerId) : Promise.resolve({ total:0 }),
     req.user.role==='manager' ? db.prepare(`SELECT COUNT(*) FILTER (WHERE status_group='open') AS open,
       COUNT(*) FILTER (WHERE status_group='closed') AS closed FROM external_tickets WHERE customer_id=?`).get(customerId) : Promise.resolve({ open:0,closed:0 }),
   ]);
@@ -90,7 +92,7 @@ router.get('/summary',requireAuth,async (req,res) => {
   }
   res.json({ projects:numbers(projects),tasks:{ ...numbers(tasks),visible:!planner },recommendations:numbers(recommendations),
     visits:{ ...numbers(visits),last:lastVisit || null,next:nextVisit || null },activities:{ recent:activities },
-    assets:Number(assets.total || 0),managed });
+    assets:Number(assets.total || 0),assets_access:assetsAccess,managed });
 });
 
 // Weekly opened vs closed tickets for the Customer 360 Overview chart — last

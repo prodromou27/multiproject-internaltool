@@ -359,32 +359,39 @@ test('activities link only authorized same-customer assets and preserve asset hi
   assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets/${otherAsset.data.id}`,{ method:'DELETE',token:ids.tokenManager,body:{ version:1 } })).status,200);
 });
 
-test('managed-services team engineers can list and add assets for their managed customer, and nothing else', async () => {
+test('managed-services team engineers can list and add assets for customers their team serves, and nothing else', async () => {
   const customer = (await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Managed assets fixture')).lastInsertRowid;
-  await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(customer, ids.teamEnabled);
   const path = `/api/customers/${customer}/assets`;
   const body = { name: 'Edge firewall', asset_type: 'Firewall', environment: 'production', criticality: 'high', lifecycle_status: 'active', coverage_type: 'managed' };
-  // Before the customer is managed by their team, an engineer has no asset access at all.
-  assert.equal((await api(path, { token: ids.tokenEnabled })).status, 403);
-  await db.prepare('INSERT INTO managed_customer_configurations (customer_id, managed_services_enabled, responsible_team_id, version, updated_by) VALUES (?,1,?,1,?)').run(customer, ids.teamEnabled, ids.manager);
-  const added = await api(path, { method: 'POST', token: ids.tokenEnabled, body });
-  assert.equal(added.status, 201);
-  const listed = await api(path, { token: ids.tokenEnabled });
-  assert.equal(listed.status, 200);
-  assert.ok(listed.data.rows.some(row => row.id === added.data.id));
-  const assetPath = `${path}/${added.data.id}`;
-  // Adding is all they get: no edit, delete, import/export or files.
-  assert.equal((await api(assetPath, { method: 'PUT', token: ids.tokenEnabled, body: { ...body, name: 'Renamed', version: 1 } })).status, 403);
-  assert.equal((await api(assetPath, { method: 'DELETE', token: ids.tokenEnabled, body: { version: 1 } })).status, 403);
-  assert.equal((await api(`${path}/export`, { token: ids.tokenEnabled })).status, 403);
-  assert.equal((await api(`${path}/${added.data.id}/attachments`, { token: ids.tokenEnabled })).status, 403);
-  // Scope follows the responsible team: an engineer on a different team, or a different customer, is refused.
-  assert.equal((await api(path, { token: ids.tokenDisabled })).status, 403);
-  assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets`, { token: ids.tokenEnabled })).status, 403);
-  await db.prepare('UPDATE managed_customer_configurations SET managed_services_enabled=0 WHERE customer_id=?').run(customer);
-  assert.equal((await api(path, { token: ids.tokenEnabled })).status, 403); // no longer managed
-  // Managers keep full control throughout.
-  assert.equal((await api(assetPath, { method: 'DELETE', token: ids.tokenManager, body: { version: 1 } })).status, 200);
+  const setCapability = value => db.prepare('UPDATE teams SET managed_service_operations=? WHERE id=?').run(value, ids.teamEnabled);
+  try {
+    await setCapability(1);
+    // The team isn't assigned to this customer yet: no access to its assets.
+    assert.equal((await api(path, { token: ids.tokenEnabled })).status, 403);
+    await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(customer, ids.teamEnabled);
+    const added = await api(path, { method: 'POST', token: ids.tokenEnabled, body });
+    assert.equal(added.status, 201);
+    const listed = await api(path, { token: ids.tokenEnabled });
+    assert.equal(listed.status, 200);
+    assert.ok(listed.data.rows.some(row => row.id === added.data.id));
+    const assetPath = `${path}/${added.data.id}`;
+    // Adding is all they get: no edit, delete, import/export or files.
+    assert.equal((await api(assetPath, { method: 'PUT', token: ids.tokenEnabled, body: { ...body, name: 'Renamed', version: 1 } })).status, 403);
+    assert.equal((await api(assetPath, { method: 'DELETE', token: ids.tokenEnabled, body: { version: 1 } })).status, 403);
+    assert.equal((await api(`${path}/export`, { token: ids.tokenEnabled })).status, 403);
+    assert.equal((await api(`${path}/${added.data.id}/attachments`, { token: ids.tokenEnabled })).status, 403);
+    // The Customer 360 summary tells the page which asset access this viewer has.
+    assert.equal((await api(`/api/customers/${customer}/operations/summary`, { token: ids.tokenEnabled })).data.assets_access, 'team');
+    assert.equal((await api(`/api/customers/${customer}/operations/summary`, { token: ids.tokenManager })).data.assets_access, 'full');
+    // Other teams and other customers are refused.
+    assert.equal((await api(path, { token: ids.tokenDisabled })).status, 403);
+    assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets`, { token: ids.tokenEnabled })).status, 403);
+    // Without the managed-services capability the same team member has no asset access.
+    await setCapability(0);
+    assert.equal((await api(path, { token: ids.tokenEnabled })).status, 403);
+    // Managers keep full control throughout.
+    assert.equal((await api(assetPath, { method: 'DELETE', token: ids.tokenManager, body: { version: 1 } })).status, 200);
+  } finally { await setCapability(0); }
 });
 
 test('upgrade-style categories require naming the asset, and an optional version is recorded per asset', async () => {
