@@ -59,6 +59,12 @@ function keyStatus() {
   };
 }
 
+function searchTokenHash(value) {
+  const key=getKey();
+  if (!key || typeof value!=='string' || !value) return null;
+  return crypto.createHmac('sha256',key).update('customer-search-v1\0').update(value).digest('hex');
+}
+
 /**
  * Encrypt a plain text string.
  * @param {string|null} plaintext
@@ -150,4 +156,4 @@ function decryptCustomer(row) {
   };
 }
 
-module.exports = { isConfigured, isEncrypted, keyStatus, encrypt, decrypt, encryptCustomer, decryptCustomer };
+module.exports = { isConfigured, isEncrypted, keyStatus, searchTokenHash, encrypt, decrypt, encryptCustomer, decryptCustomer };

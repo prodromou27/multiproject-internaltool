@@ -42,7 +42,7 @@ const pool = new Pool({
 pool.on('error', (err) => console.error('[pg pool]', err.message));
 
 // Tables with no `id` column — never append RETURNING id to inserts into these.
-const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|maintenance_visit_assets|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|managed_customer_configurations|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams|role_permission_overrides|user_permission_overrides)\b/i;
+const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|maintenance_visit_assets|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|customer_search_documents|customer_search_tokens|managed_customer_configurations|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams|role_permission_overrides|user_permission_overrides)\b/i;
 
 // ── Placeholders: `?` -> `$1, $2, ...`, memoized per unique SQL string ───────
 const _cache = new Map();
@@ -382,7 +382,6 @@ async function init() {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
-
     CREATE TABLE IF NOT EXISTS background_jobs (
       id SERIAL PRIMARY KEY,
       type TEXT NOT NULL,
@@ -695,6 +694,7 @@ async function init() {
   `);
 
   await applyCompatibilityMigrations();
+  await require('./customerSearchIndex').ensureCustomerSearchIndex({ ...poolApi,transaction });
 
   // Indexes (mirror the SQLite set)
   await pool.query(`
@@ -1224,6 +1224,19 @@ async function applyCompatibilityMigrations() {
     ALTER TABLE background_jobs ADD COLUMN IF NOT EXISTS artifact_tag TEXT;
     ALTER TABLE background_jobs ADD COLUMN IF NOT EXISTS artifact_expires_at TEXT;
     ALTER TABLE background_jobs ADD COLUMN IF NOT EXISTS artifact_downloaded_at TEXT;
+  `]);
+  migrations.push(['20260924_customer_search_index', `
+    CREATE TABLE IF NOT EXISTS customer_search_documents (
+      customer_id INTEGER PRIMARY KEY REFERENCES customers(id) ON DELETE CASCADE,
+      key_fingerprint TEXT NOT NULL,
+      updated_at TEXT DEFAULT ${NOW}
+    );
+    CREATE TABLE IF NOT EXISTS customer_search_tokens (
+      customer_id INTEGER NOT NULL REFERENCES customer_search_documents(customer_id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL,
+      PRIMARY KEY(customer_id,token_hash)
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_search_token ON customer_search_tokens(token_hash,customer_id);
   `]);
 
   migrations.push(['20260923_personal_notification_channels', `

@@ -953,11 +953,13 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
 - **Service Activity mutation authorization** uses shared ownership and customer
   authorization middleware for completion, duplication, follow-ups and attachments.
   Historical read routes retain ownership checks so users can see their own history.
-- **Encrypted-field search doesn't scale.** Because `customers.name` (and other PII)
-  is encrypted, every duplicate-name check and every name-based search decrypts *every*
-  customer row in memory (AES-GCM per row) rather than using an index. Fine at current
-  scale; would need a blind-index/hash column (or moving uniqueness enforcement off
-  the encrypted column) if the customer table grows large.
+- **Encrypted-field search uses a blind candidate index.** Customer writes maintain
+  HMAC-protected trigrams and an exact-name token derived from `CUSTOMER_FIELD_KEY`.
+  Searches of three or more characters and duplicate-name checks query those hashes
+  before decrypting candidates, then verify the literal plaintext match to prevent
+  false positives. One- and two-character searches deliberately retain the full-scan
+  fallback because a useful substring index at that length would leak too much
+  information. Key rotation automatically rebuilds documents with a new fingerprint.
 - **Attachments aren't cleanly polymorphic.** The `attachments` table has two nullable
   owner columns (`project_id`, `service_activity_id`) instead of a generic
   `entity_type`/`entity_id` pair. Works for two owners; a third would make this
@@ -986,13 +988,12 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
   form components, consistent spacing tokens, etc.) could reduce duplication —
   the largest pages were split into per-section files under `pages/admin/` and
   `pages/project/`, but many pages still rely on inline `style={{}}` objects.
-- **Encrypted directory search still has a bounded-response/full-scan tradeoff.**
-  Projects and Customers now expose validated server-filtered 25-row pages with
-  full-result counts, debounced requests and legacy array compatibility. Their API
-  response and browser work are bounded, but customer names and other PII must be
-  decrypted before literal search and sorting, so these handlers still scan the
-  authorized result set. A blind index or searchable encryption design is needed
-  before database-level pagination can preserve the same encrypted-field behavior.
+- **Encrypted directory sorting still decrypts the authorized result set.** Projects
+  and Customers expose validated server-filtered 25-row pages with full-result counts,
+  debounced requests and legacy array compatibility. The blind candidate index bounds
+  decryption for normal searches, but unfiltered customer sorting still decrypts the
+  authorized names before locale ordering. Database-level ordering cannot preserve
+  that behavior without exposing deterministic sortable customer data.
 
 
 ### Service activity editing and export safeguards

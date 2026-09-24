@@ -151,6 +151,7 @@ part of the foundation work.
 | 17b | Durable background jobs | PostgreSQL-backed atomic queue with retries, deduplication and restart recovery for scheduled reports and ticket synchronization | Complete |
 | 17c | Read-path performance | Authorization-scoped operational cache, progressive dashboard loading, paginated Smart Search and PostgreSQL trigram indexes | Complete; performance health checks included |
 | 17d | Asynchronous export delivery | Queue large user-requested exports, retain authorized artifacts briefly and notify owners when downloads are ready | Complete; encrypted custom-report artifacts expire after 24 hours |
+| 17e | Encrypted customer search index | Keyed trigram candidates and exact-name tokens reduce decryption work while final plaintext verification preserves literal-match behavior | Complete; additive backfill migration and key-rotation recovery included |
 
 ## Reporting design constraints
 

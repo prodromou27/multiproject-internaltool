@@ -6,6 +6,7 @@ const { requireAuth, requireManager, requireManagerOrPlanner } = require('../mid
 const { encryptCustomer, decryptCustomer } = require('../fieldCipher');
 const { canAccessCustomer,positiveId }=require('../customerAccess');
 const { parseCustomerListQuery,customerListPage }=require('../customerDirectory');
+const { candidateCustomerIds,candidateCustomerNameIds,replaceCustomerSearchDocument }=require('../customerSearchIndex');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 router.use('/:id/overview', require('./customer-overview'));
@@ -46,6 +47,7 @@ function sheetToJson(worksheet) {
 router.get('/', requireAuth, async (req, res) => {
   const listQuery=parseCustomerListQuery(req.query);
   if (listQuery.error) return res.status(400).json({ error:listQuery.error });
+  const candidates=listQuery.paged && listQuery.search ? await candidateCustomerIds(db,listQuery.search) : null;
   // Engineers only see customers from their own visits/projects
   if (req.user.role === 'engineer') {
     const rows = (await db.prepare(`
@@ -63,13 +65,13 @@ router.get('/', requireAuth, async (req, res) => {
       )
       ORDER BY c.name
     `).all(req.user.id, req.user.id));
-    const visible=rows.map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name));
+    const visible=(candidates ? rows.filter(row => candidates.has(Number(row.id))) : rows).map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name));
     return res.json(listQuery.paged ? customerListPage(visible,listQuery) : visible);
   }
   const rows = (await db.prepare(`SELECT c.*, u.name as created_by_name,
     (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = c.id) as visit_count
     FROM customers c LEFT JOIN users u ON c.created_by = u.id ORDER BY c.name`).all());
-  const visible=rows.map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name));
+  const visible=(candidates ? rows.filter(row => candidates.has(Number(row.id))) : rows).map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name));
   return res.json(listQuery.paged ? customerListPage(visible,listQuery) : visible);
 });
 
@@ -140,25 +142,31 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
   if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
   if (contract_hour_period && !VALID_CONTRACT_HOUR_PERIODS.has(contract_hour_period))
     return res.status(400).json({ error: 'Invalid contract_hour_period' });
-  const existing = (await db.prepare('SELECT id, name FROM customers').all()).map(decryptCustomer);
+  const duplicateCandidates=await candidateCustomerNameIds(db,name);
+  const existing = (await db.prepare('SELECT id, name FROM customers').all())
+    .filter(row => !duplicateCandidates || duplicateCandidates.has(Number(row.id))).map(decryptCustomer);
   if (existing.some(c => c.name?.toLowerCase() === name.trim().toLowerCase())) {
     return res.status(409).json({ error: 'Customer already exists' });
   }
   const enc = encryptCustomer({ name: name.trim(), contact_name, contact_email, contact_phone, address, notes, primary_contact, location, service_notes });
-  const result = (await db.prepare(`INSERT INTO customers
-    (name, contact_name, contact_email, contact_phone, address, notes, created_by,
-     customer_code, active, service_activity_enabled, primary_contact, location,
-     contract_type, contract_start_date, contract_end_date, reporting_frequency,
-     included_hours, contract_hour_period, service_notes,
-     require_duration, require_ticket_reference, require_technology,
-     require_category, require_notes, require_billable_classification)
-    VALUES (?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?,?)`)
-    .run(enc.name, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, req.user.id,
-      customer_code || null, active === false ? 0 : 1, service_activity_enabled ? 1 : 0, enc.primary_contact, enc.location,
-      contract_type || null, contract_start_date || null, contract_end_date || null, reporting_frequency || null,
-      included_hours != null && included_hours !== '' ? Number(included_hours) : null, contract_hour_period || null, enc.service_notes,
-      require_duration ? 1 : 0, require_ticket_reference ? 1 : 0, require_technology ? 1 : 0,
-      require_category ? 1 : 0, require_notes ? 1 : 0, require_billable_classification ? 1 : 0));
+  const result = await db.transaction(async tx => {
+    const created=await tx.prepare(`INSERT INTO customers
+      (name, contact_name, contact_email, contact_phone, address, notes, created_by,
+       customer_code, active, service_activity_enabled, primary_contact, location,
+       contract_type, contract_start_date, contract_end_date, reporting_frequency,
+       included_hours, contract_hour_period, service_notes,
+       require_duration, require_ticket_reference, require_technology,
+       require_category, require_notes, require_billable_classification)
+      VALUES (?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?,?)`)
+      .run(enc.name, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, req.user.id,
+        customer_code || null, active === false ? 0 : 1, service_activity_enabled ? 1 : 0, enc.primary_contact, enc.location,
+        contract_type || null, contract_start_date || null, contract_end_date || null, reporting_frequency || null,
+        included_hours != null && included_hours !== '' ? Number(included_hours) : null, contract_hour_period || null, enc.service_notes,
+        require_duration ? 1 : 0, require_ticket_reference ? 1 : 0, require_technology ? 1 : 0,
+        require_category ? 1 : 0, require_notes ? 1 : 0, require_billable_classification ? 1 : 0);
+    await replaceCustomerSearchDocument(tx,{ id:created.lastInsertRowid,name:name.trim(),contact_name,contact_email,address,location,customer_code });
+    return created;
+  });
   res.json({ id: result.lastInsertRowid });
 });
 
@@ -190,7 +198,6 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
   // Per-row autocommit (not one big transaction): this import is partial-success
   // by design — invalid rows are skipped and reported. A single Postgres
   // transaction would abort entirely on the first failing row.
-  const insertStmt = db.prepare('INSERT INTO customers (name, contact_name, contact_email, contact_phone, address, notes, created_by) VALUES (?,?,?,?,?,?,?)');
   const existingNames = new Set((await db.prepare('SELECT name FROM customers').all())
     .map(decryptCustomer)
     .map(c => c.name?.toLowerCase())
@@ -220,10 +227,12 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
         address:       row.address       || null,
         notes:         row.notes         || null,
       });
-      await insertStmt.run(
-        enc.name, enc.contact_name, enc.contact_email, enc.contact_phone,
-        enc.address, enc.notes, req.user.id
-      );
+      await db.transaction(async tx => {
+        const created=await tx.prepare('INSERT INTO customers (name, contact_name, contact_email, contact_phone, address, notes, created_by) VALUES (?,?,?,?,?,?,?)').run(
+          enc.name, enc.contact_name, enc.contact_email, enc.contact_phone,enc.address, enc.notes, req.user.id
+        );
+        await replaceCustomerSearchDocument(tx,{ id:created.lastInsertRowid,name:row.name,contact_name:row.contact_name,contact_email:row.contact_email,address:row.address });
+      });
       existingNames.add(normalizedName);
       imported++;
     } catch (e) {
@@ -253,7 +262,9 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
   if (contract_hour_period && !VALID_CONTRACT_HOUR_PERIODS.has(contract_hour_period))
     return res.status(400).json({ error: 'Invalid contract_hour_period' });
   if (name?.trim()) {
-    const allCustomers = (await db.prepare('SELECT id, name FROM customers').all()).map(decryptCustomer);
+    const duplicateCandidates=await candidateCustomerNameIds(db,name);
+    const allCustomers = (await db.prepare('SELECT id, name FROM customers').all())
+      .filter(row => !duplicateCandidates || duplicateCandidates.has(Number(row.id))).map(decryptCustomer);
     if (allCustomers.some(c => c.id !== id && c.name?.toLowerCase() === name.trim().toLowerCase())) {
       return res.status(409).json({ error: 'Customer already exists' });
     }
@@ -271,7 +282,8 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
     location:        location        !== undefined ? (location        || null) : dec.location,
     service_notes:   service_notes   !== undefined ? (service_notes   || null) : dec.service_notes,
   });
-  (await db.prepare(`UPDATE customers SET
+  await db.transaction(async tx => {
+    await tx.prepare(`UPDATE customers SET
       name=COALESCE(?,name), contact_name=?, contact_email=?, contact_phone=?, address=?, notes=?,
       customer_code=?, active=COALESCE(?,active),
       service_activity_enabled=COALESCE(?,service_activity_enabled),
@@ -301,8 +313,16 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
       require_technology != null ? (require_technology ? 1 : 0) : null,
       require_category != null ? (require_category ? 1 : 0) : null,
       require_notes != null ? (require_notes ? 1 : 0) : null,
-      require_billable_classification != null ? (require_billable_classification ? 1 : 0) : null,
-      id));
+      require_billable_classification != null ? (require_billable_classification ? 1 : 0) : null,id);
+    await replaceCustomerSearchDocument(tx,{ id,
+      name:name!==undefined ? name.trim() : dec.name,
+      contact_name:contact_name!==undefined ? contact_name : dec.contact_name,
+      contact_email:contact_email!==undefined ? contact_email : dec.contact_email,
+      address:address!==undefined ? address : dec.address,
+      location:location!==undefined ? location : dec.location,
+      customer_code:customer_code!==undefined ? customer_code : existing.customer_code,
+    });
+  });
   res.json({ ok: true });
 });
 

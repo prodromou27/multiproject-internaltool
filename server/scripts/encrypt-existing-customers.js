@@ -19,7 +19,8 @@ if (fs.existsSync(envPath)) {
 }
 
 const db = require('../db');
-const { isConfigured, isEncrypted, encrypt, keyStatus } = require('../fieldCipher');
+const { isConfigured, isEncrypted, encrypt, decryptCustomer, keyStatus } = require('../fieldCipher');
+const { replaceCustomerSearchDocument } = require('../customerSearchIndex');
 
 const DRY = process.argv.includes('--dry');
 // Must match fieldCipher.js's encryptCustomer/decryptCustomer field list exactly.
@@ -31,7 +32,7 @@ async function main() {
     process.exit(1);
   }
 
-  const rows = await db.prepare(`SELECT id, ${CUSTOMER_FIELDS.join(', ')} FROM customers`).all();
+  const rows = await db.prepare(`SELECT id, customer_code, ${CUSTOMER_FIELDS.join(', ')} FROM customers`).all();
 
   let rowsChanged = 0;
   let fieldsEncrypted = 0;
@@ -58,6 +59,7 @@ async function main() {
           await txUpdate.run(...CUSTOMER_FIELDS.map(f => next[f]), row.id);
         }
       }
+      if (!DRY) await replaceCustomerSearchDocument(tx,decryptCustomer(next));
     }
   });
 
