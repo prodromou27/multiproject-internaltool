@@ -3,7 +3,7 @@ const db = require('../db');
 const ExcelJS = require('exceljs');
 const fs = require('node:fs');
 const path = require('node:path');
-const { requireManager } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/auth');
 const { metadata,compileReport } = require('../customReports');
 const { logAudit } = require('../auditLog');
 const { reportTemplates } = require('../reportTemplates');
@@ -13,7 +13,7 @@ const { ACCESS_SQL,validateShares,replaceShares,reportShares } = require('../rep
 const backgroundJobs = require('../backgroundJobs');
 const fileCipher = require('../cipher');
 const { exportRoot } = require('../customReportExport');
-router.use(requireManager);
+router.use(requirePermission('reports.access'));
 router.get('/sources',async (req,res) => {
   const row = await db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
   let config = {};

@@ -939,17 +939,17 @@ testing, and end-to-end runs of the browser against the real API.
 
 Flagged for a reviewer (human or AI) looking to improve functionality, UI, or security:
 
-- **Granular permissions are incremental.** Versioned role and user overrides cover
+- **Granular permissions use one server-enforced model.** Versioned role and user overrides cover
   managed-customer access, managed-report generation/review, notification-rule
   administration, KPI view/manage access and access to the project, task, visit,
-  customer and asset modules. These module permissions are enforced centrally on API
-  and download requests; navigation mirrors them only for usability. KPI and asset
-  permissions also enforce role eligibility so engineer overrides cannot expose
-  management KPI data or customer asset inventories. Reporting and Service Activity
-  permissions still use role checks plus scoped membership checks
-  (`project_assignments`, `maintenance_visit_engineers`, `team_members`,
-  `customer_teams` and `customer_engineers`). Add new keys with server enforcement and
-  route integration tests; client visibility is not authorization.
+  customer, asset, reporting, and Service Activity modules. These module permissions
+  are enforced centrally on API and download requests; navigation mirrors them only
+  for usability. KPI and asset permissions also enforce role eligibility so engineer
+  overrides cannot expose management KPI data or customer asset inventories. Service
+  Activity permission checks retain the existing team, customer, and record-ownership
+  scope (`team_members`, `customer_teams`, and `customer_engineers`) after module
+  admission. Add new keys with server enforcement and route integration tests; client
+  visibility is not authorization.
 - **Service Activity mutation authorization** uses shared ownership and customer
   authorization middleware for completion, duplication, follow-ups and attachments.
   Historical read routes retain ownership checks so users can see their own history.

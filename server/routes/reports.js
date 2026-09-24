@@ -1,12 +1,14 @@
 const router = require('express').Router();
 const ExcelJS = require('exceljs');
 const db = require('../db');
-const { requireManager, requireDownloadManager } = require('../middleware/auth');
+const { requirePermission, requireDownloadPermission } = require('../middleware/auth');
 const { hasPermission } = require('../permissions');
 const { decrypt: decryptField } = require('../fieldCipher');
 router.use('/custom', require('./custom-reports'));
+const requireReports = requirePermission('reports.access');
+const requireReportsDownload = requireDownloadPermission('reports.access');
 
-router.get('/summary', requireManager, async (req, res) => {
+router.get('/summary', requireReports, async (req, res) => {
   const canViewKpis = await hasPermission(req.user,'kpis.view');
   const total = (await db.prepare('SELECT COUNT(*) as c FROM projects').get()).c;
   const byStatus = (await db.prepare('SELECT status, COUNT(*) as count FROM projects GROUP BY status').all());
@@ -29,7 +31,7 @@ router.get('/summary', requireManager, async (req, res) => {
   res.json({ total, byStatus, overdue, taskStats, engineerLoad, pendingClosure, ...(canViewKpis ? { kpiHealth } : {}) });
 });
 
-router.get('/projects', requireManager, async (req, res) => {
+router.get('/projects', requireReports, async (req, res) => {
   const rows = (await db.prepare(`SELECT p.*, u.name as created_by_name,
     (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status != 'cancelled') as task_count,
     (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status IN ('completed','closed')) as done_count,
@@ -38,7 +40,7 @@ router.get('/projects', requireManager, async (req, res) => {
   res.json(rows);
 });
 
-router.get('/monthly', requireManager, async (req, res) => {
+router.get('/monthly', requireReports, async (req, res) => {
   const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const now = new Date();
   const months = [];
@@ -174,7 +176,7 @@ async function activityReportSummary(query) {
 }
 
 // Management dashboard: month-to-date (or custom range) aggregate, no entity filter required.
-router.get('/service-activity/overview', requireManager, async (req, res) => {
+router.get('/service-activity/overview', requireReports, async (req, res) => {
   const now = new Date();
   const defaultFrom = req.query.from || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
   const query = { ...req.query, from: defaultFrom };
@@ -206,25 +208,25 @@ router.get('/service-activity/overview', requireManager, async (req, res) => {
 });
 
 // Customer / Engineer / Team activity reports share the same filter+summary shape.
-router.get('/service-activity/customer', requireManager, async (req, res) => {
+router.get('/service-activity/customer', requireReports, async (req, res) => {
   if (!req.query.customer_id) return res.status(400).json({ error: 'customer_id is required' });
   const [rows, summary] = await Promise.all([activityReportRows(req.query), activityReportSummary(req.query)]);
   res.json({ rows, summary });
 });
 
-router.get('/service-activity/engineer', requireManager, async (req, res) => {
+router.get('/service-activity/engineer', requireReports, async (req, res) => {
   if (!req.query.engineer_id) return res.status(400).json({ error: 'engineer_id is required' });
   const [rows, summary] = await Promise.all([activityReportRows(req.query), activityReportSummary(req.query)]);
   res.json({ rows, summary });
 });
 
-router.get('/service-activity/team', requireManager, async (req, res) => {
+router.get('/service-activity/team', requireReports, async (req, res) => {
   if (!req.query.team_id) return res.status(400).json({ error: 'team_id is required' });
   const [rows, summary] = await Promise.all([activityReportRows(req.query), activityReportSummary(req.query)]);
   res.json({ rows, summary });
 });
 
-router.get('/service-activity/export', requireDownloadManager, async (req, res) => {
+router.get('/service-activity/export', requireReportsDownload, async (req, res) => {
   const rows = await activityReportRows(req.query);
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Service Activity Report');

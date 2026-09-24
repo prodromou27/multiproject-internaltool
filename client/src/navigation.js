@@ -7,14 +7,14 @@ export const PAGES = [
   { id: 'projects', path: '/projects', label: 'Projects', section: 'Operations', icon: 'FolderOpen', roles: ['manager', 'engineer', 'pm'], permission:'projects.access', description: 'Delivery progress, ownership and project commitments' },
   { id: 'tasks', path: '/tasks', label: 'Tasks', section: 'Operations', icon: 'CheckSquare', roles: ['manager', 'engineer'], permission:'tasks.access', badge: 'tasks', description: 'Assigned tasks and operational follow-ups' },
   { id: 'visits', path: '/maintenance-visits', label: 'Maintenance Visits', section: 'Operations', icon: 'Wrench', roles: everyone, permission:'visits.access', badge: 'visits', description: 'Customer visits, engineer assignments and reports' },
-  { id: 'activities', path: '/activity-log', label: 'Activity Log', section: 'Operations', icon: 'ClipboardList', roles: ['manager', 'engineer', 'pm'], feature: 'serviceActivity', description: 'Customer service work, evidence and follow-ups' },
+  { id: 'activities', path: '/activity-log', label: 'Activity Log', section: 'Operations', icon: 'ClipboardList', roles: ['manager', 'engineer', 'pm'], permission:'service_activities.access', feature: 'serviceActivity', description: 'Customer service work, evidence and follow-ups' },
   { id: 'customers', path: '/customers', label: 'Customers', section: 'Management', icon: 'Building2', roles: ['manager'], permission:'customers.access', description: 'Customer profiles, service contracts and team access' },
   { id: 'managedCustomers', path: '/managed-customers', label: 'Managed Customers', section: 'Management', icon: 'Building2', roles: ['manager'], permission: 'managed_customers.view', description: 'Customer-centric managed-service health, tickets and reporting' },
   { id: 'workload', path: '/workload', label: 'Workload', section: 'Management', icon: 'UsersIcon', roles: ['manager'], description: 'Engineer commitments and upcoming demand' },
-  { id: 'reports', path: '/reports', label: 'Reports', section: 'Management', icon: 'BarChart2', roles: ['manager'], description: 'Operational summaries, delivery trends and reporting' },
+  { id: 'reports', path: '/reports', label: 'Reports', section: 'Management', icon: 'BarChart2', roles: ['manager'], permission:'reports.access', description: 'Operational summaries, delivery trends and reporting' },
   { id: 'approvals', path: '/approvals', label: 'Approvals', section: 'Management', icon: 'CheckCheck', roles: ['manager'], permission: 'managed_reports.review', description: 'Review project closures and managed-service reports' },
   { id: 'scorecards', path: '/scorecards', label: 'Scorecards', section: 'Management', icon: 'Award', roles: ['manager'], description: 'Project delivery evaluations and engineer performance' },
-  { id: 'serviceOperations', path: '/service-operations', label: 'Service Activity Reports', section: 'Management', icon: 'Activity', roles: ['manager'], description: 'Aggregated reporting over logged service activity — see Managed Customers for per-customer detail' },
+  { id: 'serviceOperations', path: '/service-operations', label: 'Service Activity Reports', section: 'Management', icon: 'Activity', roles: ['manager'], permission:'reports.access', description: 'Aggregated reporting over logged service activity — see Managed Customers for per-customer detail' },
   { id: 'sla', path: '/sla', label: 'SLA', section: 'Management', icon: 'ShieldCheck', roles: ['manager'], description: 'Service commitments and exceptions requiring attention' },
   { id: 'templates', path: '/templates', label: 'Templates', section: 'Administration', icon: 'FileText', roles: ['manager'], description: 'Reusable project structures and default tasks' },
   { id: 'users', path: '/users', label: 'Users', section: 'Administration', icon: 'UsersIcon', roles: ['manager'], description: 'User accounts and operational roles' },
@@ -72,11 +72,13 @@ export const QUICK_CREATE = [
   { id: 'activity', page: 'activities', label: 'Log Activity', hint: 'Record customer service work', roles: ['manager', 'engineer', 'pm'] },
 ];
 
-export function quickCreateActions(role, serviceActivityEnabled = false, capabilities = {}) {
+export function quickCreateActions(userOrRole, serviceActivityEnabled = false, capabilities = {}) {
+  const user=typeof userOrRole==='string' ? { role:userOrRole,permissions:{} } : userOrRole;
+  const role=user?.role;
   const managed=capabilities.managedServiceOperations===true;
   const order=role==='engineer' && managed ? ['activity','task','project','visit'] : ['task','project','visit','activity'];
   return QUICK_CREATE.filter(action => action.roles.includes(role))
     .map(action => ({ ...action, destination: PAGES.find(page => page.id === action.page) }))
-    .filter(action => canAccessPage(action.destination, role, serviceActivityEnabled))
+    .filter(action => canAccessPage(action.destination, user, serviceActivityEnabled))
     .sort((left,right) => order.indexOf(left.id)-order.indexOf(right.id));
 }

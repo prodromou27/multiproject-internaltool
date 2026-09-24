@@ -2,7 +2,7 @@ const router  = require('express').Router();
 const multer  = require('multer');
 const ExcelJS = require('exceljs');
 const db = require('../db');
-const { requireAuth, requireManager, requireManagerOrPlanner } = require('../middleware/auth');
+const { requireAuth, requireManager, requireManagerOrPlanner, requirePermission } = require('../middleware/auth');
 const { encryptCustomer, decryptCustomer } = require('../fieldCipher');
 const { canAccessCustomer,positiveId }=require('../customerAccess');
 const { parseCustomerListQuery,customerListPage }=require('../customerDirectory');
@@ -383,7 +383,7 @@ router.put('/:id/engineers', requireManagerOrPlanner, async (req, res) => {
 });
 
 /* ── Customer Service Profile: activity timeline + summary ────────────── */
-router.get('/:id/service-activities', requireAuth, async (req, res) => {
+router.get('/:id/service-activities', requirePermission('service_activities.access'), async (req, res) => {
   if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid customer ID' });
   const id=Number(req.params.id);
   if (!await db.prepare('SELECT id FROM customers WHERE id=?').get(id)) return res.status(404).json({ error:'Customer not found' });

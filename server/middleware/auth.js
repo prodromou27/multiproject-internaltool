@@ -45,6 +45,8 @@ function modulePermission(req) {
   if (base.startsWith('/api/projects')) return 'projects.access';
   if (base.startsWith('/api/tasks')) return 'tasks.access';
   if (base.startsWith('/api/maintenance-visits')) return 'visits.access';
+  if (base.startsWith('/api/service-activities')) return 'service_activities.access';
+  if (base.startsWith('/api/reports')) return 'reports.access';
   if (base.startsWith('/api/customers') && /\/assets(?:\/|$)/.test(base + (req.path || ''))) return 'assets.access';
   if (base.startsWith('/api/customers')) return 'customers.access';
   return null;
@@ -147,4 +149,18 @@ function requirePermission(permissionKey) {
   };
 }
 
-module.exports = { requireAuth, requireDownloadAuth, requireManager, requireManagerOrPlanner, requireDownloadManager, requireDownloadManagerOrPlanner, requirePermission, signJwt, verifyJwt };
+function requireDownloadPermission(permissionKey) {
+  return function requireDownloadPermissionMiddleware(req, res, next) {
+    return requireDownloadAuth(req, res, async () => {
+      try {
+        if (!await hasPermission(req.user, permissionKey))
+          return res.status(403).json({ error: 'You do not have permission to perform this action' });
+        next();
+      } catch (error) {
+        next(error);
+      }
+    });
+  };
+}
+
+module.exports = { requireAuth, requireDownloadAuth, requireManager, requireManagerOrPlanner, requireDownloadManager, requireDownloadManagerOrPlanner, requirePermission, requireDownloadPermission, signJwt, verifyJwt };

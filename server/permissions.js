@@ -7,6 +7,8 @@ const DEFINITIONS=Object.freeze([
   { key:'kpis.view',group:'KPI Management',label:'View management KPIs',description:'View KPI dashboards, current values, and history.',eligible_roles:['manager','planner','pm'] },
   { key:'kpis.manage',group:'KPI Management',label:'Manage KPI definitions',description:'Create, edit, test, activate, and calculate management KPIs.',eligible_roles:['manager','planner','pm'] },
   { key:'notifications.manage',group:'Administration',label:'Manage notification rules',description:'Configure organization-wide notification delivery and escalation rules.' },
+  { key:'reports.access',group:'Core Modules',label:'Access management reporting',description:'Open operational reports, service activity analytics, and custom report tools.',eligible_roles:['manager','planner','pm'],default_roles:['manager'] },
+  { key:'service_activities.access',group:'Core Modules',label:'Access service activity tracking',description:'Open and use Service Activity Tracking within existing team and customer scope.',eligible_roles:['manager','pm','engineer'],default_roles:['manager','pm','engineer'] },
   { key:'projects.access',group:'Core Modules',label:'Access projects',description:'Open project lists and assigned project records.',default_roles:['manager','planner','pm','engineer'] },
   { key:'tasks.access',group:'Core Modules',label:'Access tasks',description:'Open task lists and assigned task records.',default_roles:['manager','planner','pm','engineer'] },
   { key:'visits.access',group:'Core Modules',label:'Access maintenance visits',description:'Open maintenance visit schedules and permitted visit records.',default_roles:['manager','planner','pm','engineer'] },

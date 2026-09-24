@@ -904,7 +904,7 @@ function Layout({ children }) {
         <Hamburger open={open} onClick={() => setOpen(o => !o)} />
         <div className="topbar-logo">{PRODUCT_WORDMARK.prefix}<span>{PRODUCT_WORDMARK.suffix}</span></div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
-          <QuickCreate role={user.role} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
+          <QuickCreate user={user} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
           <GlobalSearch />
           <HelpMenu role={user.role} />
           <NotificationBell />
@@ -927,7 +927,7 @@ function Layout({ children }) {
             <Search size={15} aria-hidden="true" /> Go to a page <kbd>Ctrl K</kbd>
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-            <QuickCreate role={user.role} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
+            <QuickCreate user={user} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
             <GlobalSearch />
             <HelpMenu role={user.role} />
             <NotificationBell />

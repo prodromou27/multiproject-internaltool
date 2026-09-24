@@ -1934,6 +1934,8 @@ test('permission administration supports versioned role and user overrides',asyn
   assert.equal((await api(path,{ token:ids.tokenPlanner })).status,403);
   const matrix=await api(path,{ token:ids.tokenManager });assert.equal(matrix.status,200);assert.equal(matrix.data.definitions.some(item => item.key===permission_key),true);
   assert.equal(matrix.data.definitions.some(item => item.key==='kpis.view' && item.eligible_roles?.includes('manager')),true);
+  assert.equal(matrix.data.definitions.some(item => item.key==='reports.access' && item.eligible_roles?.includes('planner')),true);
+  assert.equal(matrix.data.definitions.some(item => item.key==='service_activities.access' && item.eligible_roles?.includes('engineer')),true);
   const engineerKpiRule={ scope:'user',user_id:ids.engineerEnabled,permission_key:'kpis.view',allowed:true,version:0 };
   const rejectedEngineerKpi=await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:engineerKpiRule });
   assert.equal(rejectedEngineerKpi.status,400);assert.match(rejectedEngineerKpi.data.error,/not eligible/i);
@@ -1965,6 +1967,20 @@ test('permission administration supports versioned role and user overrides',asyn
   assert.equal((await api(`/api/customers/${ids.customer}/assets`,{ token:ids.tokenPlanner })).status,200);
   assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...assetRule,allowed:null,version:1 } })).status,200);
   assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ scope:'user',user_id:ids.engineerEnabled,permission_key:'assets.access',allowed:true,version:0 } })).status,400);
+  const reportsRule={ scope:'user',user_id:ids.planner,permission_key:'reports.access',allowed:true,version:0 };
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:reportsRule })).status,200);
+  assert.equal((await api('/api/reports/summary',{ token:ids.tokenPlanner })).status,200);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...reportsRule,allowed:null,version:1 } })).status,200);
+  const reportsDeny={ scope:'user',user_id:ids.manager,permission_key:'reports.access',allowed:false,version:0 };
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:reportsDeny })).status,200);
+  assert.equal((await api('/api/reports/summary',{ token:ids.tokenManager })).status,403);
+  assert.equal((await api('/api/reports/service-activity/export',{ token:ids.tokenManager })).status,403);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...reportsDeny,allowed:null,version:1 } })).status,200);
+  const activityRule={ scope:'user',user_id:ids.engineerEnabled,permission_key:'service_activities.access',allowed:false,version:0 };
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:activityRule })).status,200);
+  assert.equal((await api('/api/service-activities/meta',{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...activityRule,allowed:null,version:1 } })).status,200);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ scope:'user',user_id:ids.planner,permission_key:'service_activities.access',allowed:true,version:0 } })).status,400);
 });
 
 test('concurrent report exports allocate unique versions on PostgreSQL', { skip:!process.env.TEST_DATABASE_URL },async () => {
