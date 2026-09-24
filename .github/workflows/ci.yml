@@ -85,6 +85,12 @@ jobs:
         working-directory: client
         run: npm ci
 
+      # Correctness rules only (undefined variables, hook rules): errors fail the
+      # build, unused-import warnings don't. See client/eslint.config.js.
+      - name: Lint client
+        working-directory: client
+        run: npm run lint
+
       - name: Run client tests
         working-directory: client
         run: npm test
