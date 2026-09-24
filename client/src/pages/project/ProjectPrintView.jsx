@@ -7,7 +7,6 @@ export function ProjectPrintView({ project, tasks, milestones, members }) {
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
   const taskCount  = tasks.filter(t => t.status !== 'cancelled').length;
   const doneCount  = tasks.filter(t => ['completed','closed'].includes(t.status)).length;
-  const openCount  = tasks.filter(t => t.status === 'open').length;
   const overCount  = tasks.filter(t => isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status)).length;
   const pct        = taskCount > 0 ? Math.round(doneCount / taskCount * 100) : 0;
   const pctDisplay = project.completion_pct != null ? project.completion_pct : pct;

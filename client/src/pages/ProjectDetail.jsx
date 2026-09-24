@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Building2, ChevronLeft, MessageSquare, ClipboardList, Plus, RefreshCw, Trash2, FolderOpen, GitBranch, FileText, UserPlus, UserX, Lock, CheckCircle2, X, Upload, LayoutGrid, List as ListIcon, Printer } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PageState } from '../components/PageLayout';
@@ -20,7 +20,6 @@ import { CustomFieldsTab } from './project/CustomFieldsTab';
 export default function ProjectDetail() {
   const { id } = useParams();
   const { user } = useAuth();
-  const navigate  = useNavigate();
   const toast     = useToast();
   const confirm   = useConfirm();
   const isManager  = user.role === 'manager';

@@ -85,14 +85,6 @@ export default function ActivityLog() {
     api.serviceActivityMeta().then(setMeta).catch(e => setMetaError(e.message || 'Failed to load form data'));
   }, []);
 
-  function dateRange() {
-    if (datePreset === 'today') return todayRange();
-    if (datePreset === 'this_week') return weekRange();
-    if (datePreset === 'this_month') return monthRange();
-    if (datePreset === 'custom') return [customFrom, customTo];
-    return [null, null];
-  }
-
   const load = useCallback(() => {
     listRequest.current?.abort();
     const controller = new AbortController();

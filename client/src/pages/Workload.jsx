@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   Users, CheckSquare, Wrench, Clock, ChevronDown, ChevronUp,
   RefreshCw, AlertTriangle, CalendarDays,
@@ -359,7 +358,6 @@ export default function Workload() {
 
   const totalOpenTasks  = engineers.reduce((s, e) => s + e.open_tasks.length, 0);
   const totalVisits     = engineers.reduce((s, e) => s + e.visits.length, 0);
-  const totalHours      = engineers.reduce((s, e) => s + e.hours_this_month, 0);
   const overdueCount    = engineers.reduce((s, e) => s + e.open_tasks.filter(t => isOverdue(t.deadline)).length, 0);
 
   return (

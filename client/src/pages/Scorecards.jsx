@@ -171,7 +171,6 @@ function ScorecardForm({ initial, pendingProjects, engineers, onSave, onClose })
 
 /* ── Detail Modal ─────────────────────────────────────────── */
 function ScorecardDetail({ sc, isManager, onClose, onEdit, onDelete }) {
-  const r = getRating(sc.adjusted_score);
   return (
     <Modal title="Project Quality Scorecard" onClose={onClose}>
       {/* Header */}
@@ -218,7 +217,6 @@ function ScorecardDetail({ sc, isManager, onClose, onEdit, onDelete }) {
 
 /* ── Engineer Summary Card ────────────────────────────────── */
 function EngineerSummaryCard({ eng }) {
-  const r = getRating(eng.avg_adjusted);
   const TARGET = 80;
   const pct = eng.avg_adjusted ?? 0;
   return (

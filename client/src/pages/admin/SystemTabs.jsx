@@ -31,7 +31,6 @@ export function StepDot({ phase, stepKey }) {
   const stepIdx = phases.indexOf(stepKey);
   const isDone  = current > stepIdx || phase === 'done';
   const isActive = phase === stepKey;
-  const isError  = phase === 'error' && isActive;
   const color = isDone ? 'var(--success)' : isActive ? 'var(--primary)' : 'var(--gray-200)';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>

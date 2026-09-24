@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api';
-import { useAuth } from '../../App';
 import { Modal } from '../../components/Shared';
 import { DIFFICULTY_LABELS, getRating, ScoreBadge, ScoreGauge, DimPicker, ScorecardBreakdown, WEIGHTS } from '../../components/ScorecardUtils';
 import { useToast } from '../../components/Toast';
@@ -8,7 +7,6 @@ import { useConfirm } from '../../components/Confirm';
 
 /* ── Inline Scorecard Tab ─────────────────────────────────── */
 export function ScorecardTab({ projectId, members }) {
-  const { user }  = useAuth();
   const toast     = useToast();
   const confirm   = useConfirm();
   const [cards, setCards]     = useState([]);

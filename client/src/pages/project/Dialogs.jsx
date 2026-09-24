@@ -135,7 +135,6 @@ export function ImportExcelModal({ projectId, onClose, onImported }) {
   }
 
   const ROW = { display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--gray-100)' };
-  const selectedTasks = preview ? [...selected].map(i => preview.tasks[i]) : [];
 
   return (
     <Modal title="Import Tasks from Excel" onClose={onClose} width={780}>

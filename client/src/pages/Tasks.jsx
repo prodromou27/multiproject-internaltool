@@ -174,7 +174,6 @@ export default function Tasks() {
 
   /* ── Bulk selection ───────────────────────────────────── */
   const [selected, setSelected]   = useState(new Set());
-  const [bulkStatus, setBulkStatus] = useState('');
   const [bulkBusy, setBulkBusy]   = useState(false);
 
   const [loadError, setLoadError] = useState('');
