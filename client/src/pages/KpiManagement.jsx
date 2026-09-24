@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, History, Play, Plus, RefreshCw, Settings2 } from 'lucide-react';
+import { BarChart3, History, Play, Plus, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { DataTable, Field, MetricStrip, Pagination, Surface, ToneBadge } from '../components/EnterpriseUI';
 import { Modal, fmtDateTime, fmtNumber } from '../components/Shared';

@@ -190,7 +190,7 @@ export function StatusManagementTab() {
     if (statusCtx?.config && !draft) {
       setDraft(JSON.parse(JSON.stringify(statusCtx.config)));
     }
-  }, [statusCtx?.config]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [statusCtx?.config]);  
 
   async function save() {
     if (!draft) return;

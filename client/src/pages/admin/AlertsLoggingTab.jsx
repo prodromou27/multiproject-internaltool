@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Zap, ScrollText, Bell, Save, Loader2, Settings, RefreshCw, Download, ShieldAlert, Database } from 'lucide-react';
+import { AlertTriangle, Zap, ScrollText, Bell, Save, Loader2, RefreshCw, Download, ShieldAlert } from 'lucide-react';
 import { api } from '../../api';
 import { useToast } from '../../components/Toast';
 import { timeSince, ToggleRow } from './shared';

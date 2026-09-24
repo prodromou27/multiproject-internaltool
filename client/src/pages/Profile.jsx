@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Camera, KeyRound, User, Save, Trash2, CheckCircle, AlertCircle, Lock, ShieldCheck, ShieldOff, QrCode, Loader2, Bell } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Camera, KeyRound, User, Save, Trash2, CheckCircle, AlertCircle, ShieldCheck, ShieldOff, Loader2, Bell } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { useConfirm } from '../components/Confirm';
@@ -569,7 +569,7 @@ export default function Profile() {
         login({ ...ctxUser, ...fresh });
       }
     }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, []);
 
   function refresh(updated) {

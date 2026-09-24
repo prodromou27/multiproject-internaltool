@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import Login from './pages/Login';
 import { api } from './api';
@@ -119,7 +119,7 @@ export default function App() {
       if (mounted) setSaAccess({ enabled: !!d.service_activity_enabled, teams: d.teams || [], capabilities:d.capabilities || {}, loaded: true });
     }).catch(() => { if (mounted) setSaAccess({ enabled: false, teams: [], capabilities:{}, loaded: true }); });
     return () => { mounted = false; };
-  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id]);  
 
   useEffect(() => {
     if (!user) return undefined;

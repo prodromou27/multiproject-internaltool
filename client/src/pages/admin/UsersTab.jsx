@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users as UsersIcon, UserX, CheckCircle2, Pencil, KeyRound, UserCheck, Trash2, Save, ShieldAlert, LogOut } from 'lucide-react';
+import { Users as UsersIcon, UserX, CheckCircle2, Pencil, KeyRound, UserCheck, Trash2, ShieldAlert, LogOut } from 'lucide-react';
 import { api } from '../../api';
 import { fmtDate, Modal } from '../../components/Shared';
 import { useToast } from '../../components/Toast';

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Building2, CalendarDays, CheckCircle2, Clock, ClipboardList, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
@@ -117,7 +117,7 @@ export default function EngineerHub() {
       }).finally(() => { if (request === loadRequest.current) setLoading(false); });
   };
 
-  useEffect(() => { if (!saAccess.loaded) return undefined;load();return () => { loadRequest.current++; }; }, [saAccess.loaded,workflowProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!saAccess.loaded) return undefined;load();return () => { loadRequest.current++; }; }, [saAccess.loaded,workflowProfile]);  
   useEffect(() => {
     if (!timer) return undefined;
     const id = setInterval(() => setTick(Date.now()), 1000);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, AlertTriangle, Send, Bell, Save, Loader2, Settings } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Bell, Save, Loader2 } from 'lucide-react';
 import { api } from '../../api';
 import { Toggle } from './shared';
 import RequestTrackerIntegration from './RequestTrackerIntegration';

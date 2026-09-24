@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileText, Paperclip, File, Image, Archive, Upload } from 'lucide-react';
+import { FileText, Paperclip, File, Image, Archive } from 'lucide-react';
 import { api } from '../../api';
 import { useAuth } from '../../App';
 import { fmtDate, Modal, ProgressBar } from '../../components/Shared';

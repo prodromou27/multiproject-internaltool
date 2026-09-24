@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Save, Loader2, Settings, Globe, Clock } from 'lucide-react';
+import { Save, Loader2, Globe, Clock } from 'lucide-react';
 import { api } from '../../api';
 import { useToast } from '../../components/Toast';
 import { setLocaleConfig } from '../../utils/locale';

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Search, X, Pin, PinOff, Clock3 } from 'lucide-react';
 import { PAGE_ICONS } from './Sidebar';

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { X, GripVertical, ArrowUp, ArrowDown } from 'lucide-react';
 
 /* ── Widget Customizer Modal ──────────────────────────────── */

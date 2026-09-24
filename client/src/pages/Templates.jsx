@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Pencil, ChevronDown, ChevronUp, Copy, FolderOpen, CheckSquare, X } from 'lucide-react';
+import { Plus, Trash2, Pencil, ChevronDown, ChevronUp, Copy, FolderOpen, CheckSquare } from 'lucide-react';
 import { api } from '../api';
 import { Modal, PriorityBadge } from '../components/Shared';
 import { useToast } from '../components/Toast';

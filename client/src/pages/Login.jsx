@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, ArrowRight, Loader2, ShieldCheck, Eye, EyeOff, KeyRound, CheckCircle2, RotateCcw } from 'lucide-react';
 import { api } from '../api';
@@ -41,7 +41,7 @@ export default function Login() {
   useEffect(() => {
     const token = searchParams.get('reset_token');
     if (token) { setResetToken(token); setStep('reset_password'); }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -58,7 +58,7 @@ export default function Login() {
 
   useEffect(() => {
     if (passwordChangeUser) finishLogin(passwordChangeUser, true, false);
-  }, [passwordChangeUser]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [passwordChangeUser]);  
 
   async function handleLogin(e) {
     e.preventDefault();

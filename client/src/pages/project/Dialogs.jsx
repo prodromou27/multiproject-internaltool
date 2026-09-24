@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { File, Upload } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import { api } from '../../api';
 import { Modal } from '../../components/Shared';
 

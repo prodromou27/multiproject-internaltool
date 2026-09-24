@@ -1,4 +1,3 @@
-import React from 'react';
 
 export const WEIGHTS = {
   timeline_rating:         { label: 'Timeline Rating',          pct: 15, color: '#3b82f6' },

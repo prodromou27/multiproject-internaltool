@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Paperclip, Upload, Trash2, Flag } from 'lucide-react';
 import { fmtDuration, mixOf } from '../../components/activityLedger';
 import { api } from '../../api';

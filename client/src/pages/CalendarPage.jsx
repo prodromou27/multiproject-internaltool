@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Wrench, ChevronLeft, ChevronRight, Check, Plus } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';

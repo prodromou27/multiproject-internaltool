@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Users as UsersIcon, FolderOpen, CheckCircle2, Lock, ClipboardList, Trash2, MessageSquare, Activity, Plus } from 'lucide-react';
+import { Users as UsersIcon, FolderOpen, CheckCircle2, Lock, ClipboardList, Trash2, MessageSquare, Plus } from 'lucide-react';
 import { fmtDate } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 

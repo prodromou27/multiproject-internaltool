@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import {
-  StickyNote, CheckSquare, Plus, Trash2, Save, RefreshCw,
+  StickyNote, CheckSquare, Plus, Trash2, Save, 
 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';

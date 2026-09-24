@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../api';
 import { iso, BILLABLE_LABELS, WORK_LOCATION_LABELS } from './helpers';
 import { Field, ChipGroup } from './formParts';

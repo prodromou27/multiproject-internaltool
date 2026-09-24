@@ -1,4 +1,3 @@
-import React from 'react';
 import { TYPE_STYLE } from './constants';
 
 /* ── Event chip ──────────────────────────────────────────── */

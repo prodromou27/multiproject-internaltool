@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link2, Copy } from 'lucide-react';
 import { api } from '../../api';
 

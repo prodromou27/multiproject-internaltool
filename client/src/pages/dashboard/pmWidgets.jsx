@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, AlertTriangle, Wrench, FolderOpen } from 'lucide-react';
 import { StatusBadge, fmtDate, isOverdue } from '../../components/Shared';

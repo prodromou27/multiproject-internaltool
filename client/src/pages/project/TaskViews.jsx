@@ -48,7 +48,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
   const loadComments = () => api.taskComments(task.id).then(setComments).catch(() => {});
   const loadDeps     = () => api.taskDependencies(task.id).then(setDeps).catch(() => {});
   const loadTimeLogs = () => api.timeLogs({ task_id: task.id }).then(setTimeLogs).catch(() => {});
-  useEffect(() => { loadComments(); loadDeps(); loadTimeLogs(); loadCustom(); }, [task.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadComments(); loadDeps(); loadTimeLogs(); loadCustom(); }, [task.id]);  
 
   async function saveCustomFields() {
     if (!task.project_id) return;

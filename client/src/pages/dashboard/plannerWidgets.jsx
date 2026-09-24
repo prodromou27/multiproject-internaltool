@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
 import { Wrench } from 'lucide-react';
 import { fmtDate, isOverdue } from '../../components/Shared';

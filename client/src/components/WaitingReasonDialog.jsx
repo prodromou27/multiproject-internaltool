@@ -1,4 +1,4 @@
-import React, { useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Modal } from './Shared';
 
 export default function WaitingReasonDialog({ onConfirm, onCancel, initial = '', title = 'Waiting for Customer' }) {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Shield, CheckCircle2, Lock, AlertTriangle, Zap, HardDrive, Save, Loader2, Activity, Settings, RefreshCw, Download, ShieldAlert } from 'lucide-react';
+import { Shield, CheckCircle2, Lock, AlertTriangle, Zap, HardDrive, Save, Loader2, Activity, RefreshCw, Download, ShieldAlert } from 'lucide-react';
 import { api } from '../../api';
 import { fmtDate, fmtDateTime } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
@@ -515,7 +515,7 @@ export function AuditLogTab() {
   useEffect(() => {
     api.auditLogUsers().then(setAuditUsers).catch(() => {});
     load(0);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   function applyFilter(e) { e.preventDefault(); load(0); }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckSquare, Building2, Search, X, Zap } from 'lucide-react';
 import { api } from '../api';

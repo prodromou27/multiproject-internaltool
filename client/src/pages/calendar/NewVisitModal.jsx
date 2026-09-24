@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Wrench } from 'lucide-react';
 import { api } from '../../api';
 import { Modal } from '../../components/Shared';

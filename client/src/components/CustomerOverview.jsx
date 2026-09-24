@@ -1,4 +1,4 @@
-import React,{ useEffect,useState } from 'react';
+import { useEffect,useState } from 'react';
 import { Activity,BriefcaseBusiness,CalendarDays,CheckSquare,ClipboardList,ArrowRight,TrendingUp,PieChart as PieIcon,Ticket } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { BarChart,Bar,CartesianGrid,XAxis,YAxis,Tooltip,Legend,ResponsiveContainer,PieChart,Pie,Cell } from 'recharts';

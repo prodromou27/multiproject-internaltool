@@ -1,5 +1,5 @@
-import React, { useContext, useRef, useState, useEffect, useId } from 'react';
-import { X, AtSign } from 'lucide-react';
+import { useContext, useRef, useState, useEffect, useId } from 'react';
+import { X } from 'lucide-react';
 import { StatusContext, getStatusDef } from '../hooks/useStatuses';
 import { formatDate, formatDateTime, formatNumber } from '../utils/locale';
 

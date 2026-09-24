@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { visiblePages, primaryPages, pageForPath } from '../navigation';

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { Upload } from 'lucide-react';
 import { Modal } from './Shared';
 

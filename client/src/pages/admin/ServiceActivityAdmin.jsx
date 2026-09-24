@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Trash2, Save, Activity, Settings, Plus, Clock } from 'lucide-react';
+import { Trash2, Save, Plus, Clock } from 'lucide-react';
 import { api } from '../../api';
 import { Modal } from '../../components/Shared';
 import { useToast } from '../../components/Toast';

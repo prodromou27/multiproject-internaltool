@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Plus, FolderOpen, CheckSquare, Wrench, ClipboardList } from 'lucide-react';
 import { quickCreateActions } from '../navigation';

@@ -1,4 +1,3 @@
-import React from 'react';
 
 /* ── Engineer multi-picker ───────────────────────────────── */
 export default function EngineerPicker({ engineers, selected, onChange }) {
