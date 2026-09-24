@@ -36,7 +36,12 @@ and not a rotation feature" below before deciding when to do this.
    `fieldCipher.js`) to copy from — this is a rotation pass of the same
    shape as that initial backfill, not new logic to design from scratch.
 3. Set `CUSTOMER_FIELD_KEY` to the new value in the environment.
-4. Restart the app and spot-check a handful of customers (names, contact
+4. Restart the app. The customer search index (`customer_search_tokens`) is
+   keyed by `CUSTOMER_FIELD_KEY` too; it records the key fingerprint it was
+   built with and `ensureCustomerSearchIndex()` rebuilds any customer whose
+   fingerprint no longer matches, so no manual step is needed — but search
+   results will be incomplete until that finishes, so check it after the
+   restart. Then spot-check a handful of customers (names, contact
    info) render correctly — a wrong key doesn't error, it just returns
    garbage or throws inside `decrypt()`, so check actual values, not just
    "no crash."
