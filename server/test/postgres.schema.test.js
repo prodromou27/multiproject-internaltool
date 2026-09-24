@@ -42,7 +42,8 @@ test('init() is safe to run repeatedly', { skip }, async () => {
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")).rows.map(r => r.table_name));
   for (const name of ['users', 'customers', 'projects', 'tasks', 'maintenance_visits', 'settings', 'audit_log',
     'teams', 'team_members', 'customer_teams', 'customer_search_documents', 'customer_search_tokens',
-    'managed_customer_configurations', 'customer_ticketing_configurations', 'external_tickets', 'ticket_sync_runs', 'service_activities', 'activity_categories', 'technologies']) {
+    'managed_customer_configurations', 'customer_ticketing_configurations', 'external_tickets', 'ticket_sync_runs', 'service_activities', 'activity_categories', 'technologies',
+    'kpi_definitions', 'kpi_values']) {
     assert.ok(tables.has(name), `table ${name} exists`);
   }
 

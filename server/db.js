@@ -1239,6 +1239,45 @@ async function applyCompatibilityMigrations() {
     CREATE INDEX IF NOT EXISTS idx_customer_search_token ON customer_search_tokens(token_hash,customer_id);
   `]);
 
+  migrations.push(['20260924_kpi_administration', `
+    CREATE TABLE IF NOT EXISTS kpi_definitions (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      category TEXT NOT NULL,
+      data_source TEXT NOT NULL CHECK(data_source IN ('manual','project_completion','task_completion','overdue_tasks','service_hours')),
+      calculation_config TEXT NOT NULL DEFAULT '{}',
+      target_value REAL NOT NULL,
+      warning_threshold REAL NOT NULL,
+      critical_threshold REAL NOT NULL,
+      direction TEXT NOT NULL CHECK(direction IN ('higher','lower')),
+      scope_type TEXT NOT NULL CHECK(scope_type IN ('organization','team','project')),
+      team_id INTEGER REFERENCES teams(id) ON DELETE RESTRICT,
+      project_id INTEGER REFERENCES projects(id) ON DELETE RESTRICT,
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+      display_order INTEGER NOT NULL DEFAULT 0,
+      visualization_type TEXT NOT NULL DEFAULT 'number' CHECK(visualization_type IN ('number','gauge','progress','trend','bar')),
+      version INTEGER NOT NULL DEFAULT 1,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT ${NOW},
+      updated_at TEXT DEFAULT ${NOW}
+    );
+    CREATE TABLE IF NOT EXISTS kpi_values (
+      id SERIAL PRIMARY KEY,
+      definition_id INTEGER NOT NULL REFERENCES kpi_definitions(id) ON DELETE CASCADE,
+      value REAL NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('healthy','warning','critical')),
+      period_start TEXT,
+      period_end TEXT,
+      calculated_at TEXT DEFAULT ${NOW},
+      calculated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      source_summary TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_kpi_definitions_order ON kpi_definitions(enabled,display_order,id);
+    CREATE INDEX IF NOT EXISTS idx_kpi_values_history ON kpi_values(definition_id,calculated_at DESC,id DESC);
+  `]);
+
   migrations.push(['20260923_personal_notification_channels', `
     -- Each engineer can additionally point their own notifications at a
     -- personal Teams channel (an incoming-webhook URL they own — Teams has
