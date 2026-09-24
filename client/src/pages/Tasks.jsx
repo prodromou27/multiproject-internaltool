@@ -14,6 +14,7 @@ import { TASK_FILTERS } from '../utils/taskFilters';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
+import { Pagination,Surface } from '../components/EnterpriseUI';
 
 const STATUS_LABELS = {
   open: 'Open', in_progress: 'In Progress', completed: 'Completed',
@@ -374,7 +375,7 @@ export default function Tasks() {
       </>} />
 
       {/* Filters */}
-      <div className="card mb-16">
+      <Surface title="Task filters" description="Apply saved views, assignment scope, priority, and due-date filters.">
         <div className="filter-presets">
           <select defaultValue="" onChange={e => { const preset = presets.find(p => p.name === e.target.value); if (preset) applyPreset(preset); e.target.value = ''; }}>
             <option value="">Apply saved preset…</option>
@@ -425,7 +426,7 @@ export default function Tasks() {
             {label} <span style={{ opacity: .65 }}>({busy ? '...' : counts[key] || 0})</span>
           </button>)}
         </FilterGroup>
-      </div>
+      </Surface>
 
       {/* Bulk action bar */}
       {selected.size > 0 && !busy && !loadError && (
@@ -560,14 +561,9 @@ export default function Tasks() {
         </div>
       )}
 
-      {!loadError && <nav aria-label="Task pages" className="flex gap-8" style={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 16 }}>
-        <p role="status">{busy ? 'Loading tasks...' : total ? `${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, total)} of ${total} matching tasks` : '0 matching tasks'} - Bulk selection applies to this page.</p>
-        <div className="flex gap-8">
-          <button className="btn btn-ghost btn-sm" disabled={busy || page <= 1 || bulkBusy} onClick={() => setPaging({ key: queryKey, page: page - 1 })}>Previous</button>
-          <span>Page {page} of {Math.max(1, Math.ceil(total / pageSize))}</span>
-          <button className="btn btn-ghost btn-sm" disabled={busy || page * pageSize >= total || bulkBusy} onClick={() => setPaging({ key: queryKey, page: page + 1 })}>Next</button>
-        </div>
-      </nav>}
+      {!loadError && <Pagination page={page} total={total} pageSize={pageSize} loading={busy || bulkBusy}
+        onPageChange={nextPage => setPaging({ key:queryKey,page:nextPage })} label="Task pages"
+        summary={busy ? 'Loading tasks…' : total ? `${(page-1)*pageSize+1}-${Math.min(page*pageSize,total)} of ${total} matching tasks · Bulk selection applies to this page.` : '0 matching tasks'} />}
       {/* Waiting for Customer dialog (single task) */}
       {waitingDialog && (
         <WaitingReasonDialog

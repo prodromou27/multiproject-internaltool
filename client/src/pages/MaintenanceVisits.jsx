@@ -14,6 +14,7 @@ import ImportModal from '../components/ImportModal';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { PRODUCT_NAME } from '../product';
+import { MetricStrip,Surface } from '../components/EnterpriseUI';
 
 /* ── Report-pending urgency helper ──────────────────────────
    Returns null | 'orange' | 'red'
@@ -545,28 +546,15 @@ export default function MaintenanceVisits() {
         )}
       </>} />
 
-      {/* Quick stats */}
-      <div className="operations-metric-strip">
-        <div className="operations-metric">
-          <strong>{unavailable ? '...' : visits.filter(v => v.status === 'scheduled').length}</strong>
-          <span>Scheduled</span>
-        </div>
-        <div className="operations-metric is-success">
-          <strong>{unavailable ? '...' : visits.filter(v => v.status === 'completed').length}</strong>
-          <span>Completed</span>
-        </div>
-        <div className={`operations-metric ${reportPendingCount > 0 ? 'is-warning' : 'is-success'}`}>
-          <strong>{unavailable ? '...' : reportPendingCount}</strong>
-          <span>Reports Pending</span>
-        </div>
-        <div className="operations-metric is-primary">
-          <strong>{unavailable ? '...' : visits.filter(v => v.report_sent_to_customer).length}</strong>
-          <span>Sent to PM</span>
-        </div>
-      </div>
+      <MetricStrip items={[
+        { key:'scheduled',label:'Scheduled',value:unavailable ? '…' : visits.filter(v => v.status === 'scheduled').length,note:'Upcoming planned visits' },
+        { key:'completed',label:'Completed',value:unavailable ? '…' : visits.filter(v => v.status === 'completed').length,tone:'success',note:'Completed in the loaded period' },
+        { key:'reports',label:'Reports pending',value:unavailable ? '…' : reportPendingCount,tone:reportPendingCount > 0 ? 'warning' : 'success',note:'Completed work awaiting evidence' },
+        { key:'sent',label:'Sent to PM',value:unavailable ? '…' : visits.filter(v => v.report_sent_to_customer).length,tone:'info',note:'Approved report deliveries' },
+      ]} />
 
       {/* Search + Filters */}
-      <div className="card mb-16">
+      <Surface title="Visit filters" description="Search scheduled work and focus the report-delivery workflow.">
         <ListSearch value={search} onChange={setSearch} label="Search maintenance visits" maxLength={500}
           placeholder="Search customers, visit titles, or engineers…" />
         {/* Status tabs + month picker */}
@@ -586,7 +574,7 @@ export default function MaintenanceVisits() {
           <input type="month" value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={{ width: 'auto', padding: '5px 10px' }} title="Filter by month" />
           {monthFilter && <button className="btn btn-sm btn-ghost inline-flex items-center gap-4" onClick={() => setMonthFilter('')}><X size={12} /> Clear month</button>}
         </div>
-      </div>
+      </Surface>
 
       {!unavailable && <ResultContext shown={filtered.length} total={visits.length} noun="visits"
         activeFilters={(search.trim() ? 1 : 0) + (filter !== 'all' ? 1 : 0) + (monthFilter ? 1 : 0)}

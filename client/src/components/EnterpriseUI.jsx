@@ -30,10 +30,10 @@ export function Tabs({ items,value,onChange,label='Sections' }) {
   return <div className="ui-tabs" role="tablist" aria-label={label}>{items.map(item => <button key={item.key} type="button" role="tab" aria-selected={value===item.key} className={value===item.key?'is-active':''} onClick={() => onChange(item.key)}>{item.label}{item.count!==undefined && <span>{item.count}</span>}</button>)}</div>;
 }
 
-export function Pagination({ page,total,pageSize,onPageChange,loading=false,label='Result pages' }) {
+export function Pagination({ page,total,pageSize,onPageChange,loading=false,label='Result pages',summary }) {
   const pages=Math.max(1,Math.ceil(total/pageSize));
   if (pages===1 && total<=pageSize) return null;
-  return <nav className="ui-pagination" aria-label={label}><span>{total} total · Page {page} of {pages}</span><div><button className="btn btn-ghost btn-sm" disabled={loading || page<=1} onClick={() => onPageChange(page-1)}>Previous</button><button className="btn btn-ghost btn-sm" disabled={loading || page>=pages} onClick={() => onPageChange(page+1)}>Next</button></div></nav>;
+  return <nav className="ui-pagination" aria-label={label}><span>{summary || `${total} total · Page ${page} of ${pages}`}</span><div><button className="btn btn-ghost btn-sm" disabled={loading || page<=1} onClick={() => onPageChange(page-1)}>Previous</button><button className="btn btn-ghost btn-sm" disabled={loading || page>=pages} onClick={() => onPageChange(page+1)}>Next</button></div></nav>;
 }
 
 export function Field({ label,help,error,required,children,className='' }) {
