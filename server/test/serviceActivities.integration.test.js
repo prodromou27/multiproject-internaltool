@@ -359,6 +359,73 @@ test('activities link only authorized same-customer assets and preserve asset hi
   assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets/${otherAsset.data.id}`,{ method:'DELETE',token:ids.tokenManager,body:{ version:1 } })).status,200);
 });
 
+test('managed-services team engineers can list and add assets for their managed customer, and nothing else', async () => {
+  const customer = (await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Managed assets fixture')).lastInsertRowid;
+  await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(customer, ids.teamEnabled);
+  const path = `/api/customers/${customer}/assets`;
+  const body = { name: 'Edge firewall', asset_type: 'Firewall', environment: 'production', criticality: 'high', lifecycle_status: 'active', coverage_type: 'managed' };
+  // Before the customer is managed by their team, an engineer has no asset access at all.
+  assert.equal((await api(path, { token: ids.tokenEnabled })).status, 403);
+  await db.prepare('INSERT INTO managed_customer_configurations (customer_id, managed_services_enabled, responsible_team_id, version, updated_by) VALUES (?,1,?,1,?)').run(customer, ids.teamEnabled, ids.manager);
+  const added = await api(path, { method: 'POST', token: ids.tokenEnabled, body });
+  assert.equal(added.status, 201);
+  const listed = await api(path, { token: ids.tokenEnabled });
+  assert.equal(listed.status, 200);
+  assert.ok(listed.data.rows.some(row => row.id === added.data.id));
+  const assetPath = `${path}/${added.data.id}`;
+  // Adding is all they get: no edit, delete, import/export or files.
+  assert.equal((await api(assetPath, { method: 'PUT', token: ids.tokenEnabled, body: { ...body, name: 'Renamed', version: 1 } })).status, 403);
+  assert.equal((await api(assetPath, { method: 'DELETE', token: ids.tokenEnabled, body: { version: 1 } })).status, 403);
+  assert.equal((await api(`${path}/export`, { token: ids.tokenEnabled })).status, 403);
+  assert.equal((await api(`${path}/${added.data.id}/attachments`, { token: ids.tokenEnabled })).status, 403);
+  // Scope follows the responsible team: an engineer on a different team, or a different customer, is refused.
+  assert.equal((await api(path, { token: ids.tokenDisabled })).status, 403);
+  assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets`, { token: ids.tokenEnabled })).status, 403);
+  await db.prepare('UPDATE managed_customer_configurations SET managed_services_enabled=0 WHERE customer_id=?').run(customer);
+  assert.equal((await api(path, { token: ids.tokenEnabled })).status, 403); // no longer managed
+  // Managers keep full control throughout.
+  assert.equal((await api(assetPath, { method: 'DELETE', token: ids.tokenManager, body: { version: 1 } })).status, 200);
+});
+
+test('upgrade-style categories require naming the asset, and an optional version is recorded per asset', async () => {
+  const category = (await db.prepare('INSERT INTO activity_categories (name, require_asset) VALUES (?, 1)').run('Upgrade fixture')).lastInsertRowid;
+  const today = new Date().toISOString().slice(0, 10);
+  const create = extra => api('/api/service-activities', { method: 'POST', token: ids.tokenEnabled,
+    body: { customer_id: ids.customer, activity_date: today, category_id: category, title: 'Firmware upgrade', status: 'planned', ...extra } });
+  const asset = await api(`/api/customers/${ids.customer}/assets`, { method: 'POST', token: ids.tokenManager,
+    body: { name: 'Upgrade target', asset_tag: 'UPG-1', asset_type: 'Switch', environment: 'production', criticality: 'medium', lifecycle_status: 'active', coverage_type: 'managed' } });
+  assert.equal(asset.status, 201);
+  const other = await api(`/api/customers/${ids.customer}/assets`, { method: 'POST', token: ids.tokenManager,
+    body: { name: 'Not selected', asset_tag: 'UPG-2', asset_type: 'Switch', environment: 'production', criticality: 'medium', lifecycle_status: 'active', coverage_type: 'managed' } });
+
+  const missing = await create({});
+  assert.equal(missing.status, 400);
+  assert.match(missing.data.error, /select the asset/);
+  assert.equal((await create({ asset_ids: [asset.data.id], asset_versions: { [other.data.id]: '1.0' } })).status, 400); // version for an unselected asset
+  assert.equal((await create({ asset_ids: [asset.data.id], asset_versions: { [asset.data.id]: 'x'.repeat(101) } })).status, 400);
+  assert.equal((await create({ asset_ids: [asset.data.id], asset_versions: [] })).status, 400);
+
+  const made = await create({ asset_ids: [asset.data.id], asset_versions: { [asset.data.id]: ' 12.4.1 ' } });
+  assert.equal(made.status, 200);
+  const detail = await api(`/api/service-activities/${made.data.id}`, { token: ids.tokenEnabled });
+  assert.equal(detail.data.assets[0].version, '12.4.1'); // trimmed
+  // The version is optional: an upgrade with the asset but no version is fine.
+  const noVersion = await create({ asset_ids: [asset.data.id] });
+  assert.equal(noVersion.status, 200);
+  assert.equal((await api(`/api/service-activities/${noVersion.data.id}`, { token: ids.tokenEnabled })).data.assets[0].version, null);
+  // Editing without resending versions keeps the recorded one; sending a new one replaces it.
+  assert.equal((await api(`/api/service-activities/${made.data.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { asset_ids: [asset.data.id], version: detail.data.version } })).status, 200);
+  const kept = await api(`/api/service-activities/${made.data.id}`, { token: ids.tokenEnabled });
+  assert.equal(kept.data.assets[0].version, '12.4.1');
+  assert.equal((await api(`/api/service-activities/${made.data.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { asset_ids: [asset.data.id], asset_versions: { [asset.data.id]: '12.5.0' }, version: kept.data.version } })).status, 200);
+  assert.equal((await api(`/api/service-activities/${made.data.id}`, { token: ids.tokenEnabled })).data.assets[0].version, '12.5.0');
+
+  // A customer with no assets yet isn't a dead end: the rule only bites when there is something to choose.
+  const bare = (await db.prepare('INSERT INTO customers (name, active, service_activity_enabled) VALUES (?, 1, 1)').run('No assets yet')).lastInsertRowid;
+  await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(bare, ids.teamEnabled);
+  assert.equal((await create({ customer_id: bare })).status, 200);
+});
+
 test('engineer can create an activity for an authorized customer, and server derives engineer_id/team_id itself', async () => {
   const { status, data } = await api('/api/service-activities', {
     method: 'POST',

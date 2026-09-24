@@ -16,6 +16,8 @@ const AUTH_NAMES = new Set([
   'requireAuth', 'requireDownloadAuth', 'requireManager', 'requireManagerOrPlanner',
   'requireDownloadManager', 'requireDownloadManagerOrPlanner',
   'requirePermissionMiddleware', 'requireDownloadPermissionMiddleware',
+  // assets.access, or (list/add only) an engineer on the customer's managed-services team
+  'requireAssetAccessMiddleware',
 ]);
 
 // "<file> <METHOD> <path>" — endpoints that are public by design.

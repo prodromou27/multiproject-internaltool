@@ -52,9 +52,20 @@ function modulePermission(req) {
   return null;
 }
 
+// An engineer on a managed customer's responsible team may list and add that
+// customer's assets (only those two calls) without holding assets.access; the
+// asset router applies the same rule. See customerAccess.isManagedServicesEngineer.
+async function isManagedTeamAssetCall(req,user) {
+  if (user?.role!=='engineer' || !['GET','POST'].includes(req.method)) return false;
+  const match=/^\/api\/customers\/(\d+)\/assets$/.exec((req.baseUrl || '') + (req.path && req.path!=='/' ? req.path : ''));
+  return !!match && require('../customerAccess').isManagedServicesEngineer(user,Number(match[1]));
+}
+
 async function enforceModulePermission(req,res,user) {
   const key=modulePermission(req);
-  if (key && !await hasPermission(user,key)) { res.status(403).json({ error:'You do not have permission to access this module' });return false; }
+  if (key && !await hasPermission(user,key) && !(key==='assets.access' && await isManagedTeamAssetCall(req,user))) {
+    res.status(403).json({ error:'You do not have permission to access this module' });return false;
+  }
   return true;
 }
 

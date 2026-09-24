@@ -61,9 +61,10 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
   }
 
   if (!body.category_id) return { error: 'Category is required' };
+  let category = null;
   if (body.category_id) {
-    const cat = await db.prepare('SELECT 1 FROM activity_categories WHERE id = ? AND active = 1').get(body.category_id);
-    if (!cat) return { error: 'Invalid category' };
+    category = await db.prepare('SELECT require_asset FROM activity_categories WHERE id = ? AND active = 1').get(body.category_id);
+    if (!category) return { error: 'Invalid category' };
   }
   if (body.subcategory_id) {
     const sub = await db.prepare('SELECT 1 FROM activity_subcategories WHERE id = ? AND category_id = ?').get(body.subcategory_id, body.category_id);
@@ -103,6 +104,23 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
       const rows = await db.prepare(`SELECT id FROM customer_assets WHERE customer_id=? AND id IN (${body.asset_ids.map(() => '?').join(',')})`).all(Number(customerId),...body.asset_ids);
       if (rows.length !== body.asset_ids.length) return { error: 'Every selected asset must belong to the activity customer' };
     }
+  }
+  // Optional per-asset version: {"<assetId>": "1.2.3"}. Only for assets on this activity.
+  if (body.asset_versions !== undefined && body.asset_versions !== null) {
+    const versions = body.asset_versions;
+    if (typeof versions !== 'object' || Array.isArray(versions)) return { error: 'Asset versions must be an object keyed by asset ID' };
+    const selected = new Set((body.asset_ids || []).map(String));
+    for (const [assetId, version] of Object.entries(versions)) {
+      if (!selected.has(assetId)) return { error: 'A version can only be recorded for an asset selected on this activity' };
+      if (version != null && (typeof version !== 'string' || version.trim().length > 100)) return { error: 'Asset version must be text of at most 100 characters' };
+    }
+  }
+  // Categories that describe changing a specific device (Upgrade, Patch / Firmware
+  // Update by default) require the asset to be named — but only when the customer
+  // has assets to choose from, so a customer with no inventory yet isn't a dead end.
+  if (category?.require_asset && !(body.asset_ids || []).length) {
+    const { c } = await db.prepare("SELECT COUNT(*) AS c FROM customer_assets WHERE customer_id=? AND lifecycle_status NOT IN ('retired','decommissioned')").get(Number(customerId));
+    if (Number(c) > 0) return { error: 'This category requires you to select the asset that was worked on' };
   }
 
   if (body.follow_up_required && !body.follow_up_date)

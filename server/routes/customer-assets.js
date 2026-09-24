@@ -6,7 +6,9 @@ const path = require('path');
 const multer = require('multer');
 const ExcelJS = require('exceljs');
 const db = require('../db');
-const { requirePermission } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
+const { hasPermission } = require('../permissions');
+const { isManagedServicesEngineer } = require('../customerAccess');
 const { encrypt,decrypt } = require('../fieldCipher');
 const { logAudit } = require('../auditLog');
 const fileCipher = require('../cipher');
@@ -29,7 +31,21 @@ const hashTag = value => value ? crypto.createHash('sha256').update(value.trim()
 const excelText=value => value==null ? '' : value instanceof Date ? value.toISOString().slice(0,10) : typeof value==='object' && value.richText ? value.richText.map(part => part.text || '').join('') : typeof value==='object' && value.formula!==undefined ? excelText(value.result) : String(value);
 const safeCell=value => /^[=+\-@]/.test(String(value ?? '')) ? `'${value}` : value;
 
-router.use(requirePermission('assets.access'), async (req,res,next) => {
+// Full asset access is the assets.access permission. Separately, an engineer on
+// a managed customer's responsible team may list that customer's assets and add
+// new ones — those two routes only.
+function requireAssetAccessMiddleware(req,res,next) {
+  return requireAuth(req,res,async () => {
+    try {
+      if (await hasPermission(req.user,'assets.access')) return next();
+      const teamRoute=req.path==='/' && ['GET','POST'].includes(req.method);
+      if (teamRoute && positiveId(req.params.id) && await isManagedServicesEngineer(req.user,Number(req.params.id))) return next();
+      return res.status(403).json({ error: 'You do not have permission to perform this action' });
+    } catch (error) { next(error); }
+  });
+}
+router.use(requireAssetAccessMiddleware);
+router.use(async (req,res,next) => {
   const isFileUpload=req.method==='POST' && /^\/\d+\/attachments$/.test(req.path) && req.is('multipart/form-data');
   if (req.path!=='/import' && !isFileUpload && ['POST','PUT','DELETE'].includes(req.method) && (!req.body || typeof req.body!=='object' || Array.isArray(req.body))) return res.status(400).json({ error: 'A JSON object is required' });
   if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid customer ID' });

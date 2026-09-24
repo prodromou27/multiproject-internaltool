@@ -62,6 +62,12 @@ router.get('/meta', requireAuth, requireServiceActivityAccess, async (req, res) 
   });
 });
 
+// Optional version recorded against one asset on an activity (e.g. what it was upgraded to).
+const assetVersion = (versions, assetId) => {
+  const value = versions && versions[String(assetId)];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+};
+
 /* Scoped asset choices for activity capture. Asset administration remains manager-only. */
 router.get('/assets',requireAuth,requireServiceActivityAccess,async (req,res) => {
   const value=req.query.customer_id;
@@ -125,7 +131,7 @@ router.get('/:id(\\d+)', requireAuth, requireServiceActivityAccess, async (req, 
     JOIN technologies tech ON tech.id = sat.technology_id WHERE sat.service_activity_id = ?
   `).all(id);
 
-  const assets = (await db.prepare(`SELECT a.id,a.name,a.asset_tag,a.asset_type,a.hostname,a.lifecycle_status
+  const assets = (await db.prepare(`SELECT a.id,a.name,a.asset_tag,a.asset_type,a.hostname,a.lifecycle_status,saa.version
     FROM service_activity_assets saa JOIN customer_assets a ON a.id=saa.asset_id
     WHERE saa.service_activity_id=? ORDER BY a.id`).all(id)).map(row => ({ ...row,name:decryptField(row.name),asset_tag:decryptField(row.asset_tag),hostname:decryptField(row.hostname) }));
 
@@ -202,8 +208,8 @@ router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => 
       }
     }
     if (Array.isArray(body.asset_ids)) {
-      const insAsset=tx.prepare('INSERT INTO service_activity_assets (service_activity_id,asset_id,customer_id) VALUES (?,?,?)');
-      for (const assetId of body.asset_ids) await insAsset.run(id,assetId,Number(customerId));
+      const insAsset=tx.prepare('INSERT INTO service_activity_assets (service_activity_id,asset_id,customer_id,version) VALUES (?,?,?,?)');
+      for (const assetId of body.asset_ids) await insAsset.run(id,assetId,Number(customerId),assetVersion(body.asset_versions,assetId));
     }
     return { id, reference };
   });
@@ -320,9 +326,14 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
       for (const techId of body.technology_ids) await insTech.run(id, techId);
     }
     if (Array.isArray(body.asset_ids)) {
+      // Keep a recorded version for assets that stay selected unless a new one is sent.
+      const previous=new Map((await tx.prepare('SELECT asset_id,version FROM service_activity_assets WHERE service_activity_id=?').all(id)).map(row => [row.asset_id,row.version]));
       await tx.prepare('DELETE FROM service_activity_assets WHERE service_activity_id=?').run(id);
-      const insAsset=tx.prepare('INSERT INTO service_activity_assets (service_activity_id,asset_id,customer_id) VALUES (?,?,?)');
-      for (const assetId of body.asset_ids) await insAsset.run(id,assetId,Number(customerId));
+      const insAsset=tx.prepare('INSERT INTO service_activity_assets (service_activity_id,asset_id,customer_id,version) VALUES (?,?,?,?)');
+      for (const assetId of body.asset_ids) {
+        const sent=body.asset_versions && Object.prototype.hasOwnProperty.call(body.asset_versions,String(assetId));
+        await insAsset.run(id,assetId,Number(customerId),sent ? assetVersion(body.asset_versions,assetId) : previous.get(assetId) ?? null);
+      }
     }
     return true;
   });
@@ -398,9 +409,9 @@ router.post('/:id/duplicate', requireAuth, requireServiceActivityAccess, require
     const techs = await tx.prepare('SELECT technology_id FROM service_activity_technologies WHERE service_activity_id = ?').all(id);
     const insTech = tx.prepare('INSERT INTO service_activity_technologies (service_activity_id, technology_id) VALUES (?, ?)');
     for (const t of techs) await insTech.run(newId, t.technology_id);
-    const assets=await tx.prepare('SELECT asset_id,customer_id FROM service_activity_assets WHERE service_activity_id=?').all(id);
-    const insAsset=tx.prepare('INSERT INTO service_activity_assets (service_activity_id,asset_id,customer_id) VALUES (?,?,?)');
-    for (const asset of assets) await insAsset.run(newId,asset.asset_id,asset.customer_id);
+    const assets=await tx.prepare('SELECT asset_id,customer_id,version FROM service_activity_assets WHERE service_activity_id=?').all(id);
+    const insAsset=tx.prepare('INSERT INTO service_activity_assets (service_activity_id,asset_id,customer_id,version) VALUES (?,?,?,?)');
+    for (const asset of assets) await insAsset.run(newId,asset.asset_id,asset.customer_id,asset.version ?? null);
     return { id: newId, reference };
   });
 

@@ -97,8 +97,8 @@ async function seedServiceActivityLookups(pool) {
   if (catRows[0].c === 0) {
     for (let i = 0; i < DEFAULT_ACTIVITY_CATEGORIES.length; i++) {
       await pool.query(
-        'INSERT INTO activity_categories (name, sort_order) VALUES ($1, $2)',
-        [DEFAULT_ACTIVITY_CATEGORIES[i], i]
+        'INSERT INTO activity_categories (name, sort_order, require_asset) VALUES ($1, $2, $3)',
+        [DEFAULT_ACTIVITY_CATEGORIES[i], i, ['Upgrade', 'Patch / Firmware Update'].includes(DEFAULT_ACTIVITY_CATEGORIES[i]) ? 1 : 0]
       );
     }
   }

@@ -614,6 +614,15 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_email_enabled INTEGER NOT NULL DEFAULT 0;
   `]);
 
+  migrations.push(['20260924_upgrade_asset_tracking', `
+    -- Which asset an activity worked on, and (optionally) the version it was left
+    -- at. The category flag mirrors require_attachment: categories that describe
+    -- changing a specific device can require that an asset be selected.
+    ALTER TABLE service_activity_assets ADD COLUMN IF NOT EXISTS version TEXT;
+    ALTER TABLE activity_categories ADD COLUMN IF NOT EXISTS require_asset INTEGER NOT NULL DEFAULT 0;
+    UPDATE activity_categories SET require_asset = 1 WHERE name IN ('Upgrade', 'Patch / Firmware Update');
+  `]);
+
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

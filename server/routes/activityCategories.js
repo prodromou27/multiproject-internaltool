@@ -48,13 +48,13 @@ async function nameTaken(name, teamId, excludeId) {
 }
 
 router.post('/', async (req, res) => {
-  const { name, sort_order, require_attachment } = req.body;
+  const { name, sort_order, require_attachment, require_asset } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
   const team = await resolveTeamId(req.body.team_id);
   if (team.error) return res.status(400).json({ error: team.error });
   if (await nameTaken(name.trim(), team.value)) return res.status(409).json({ error: 'Category already exists' });
-  const result = await db.prepare('INSERT INTO activity_categories (name, team_id, sort_order, require_attachment) VALUES (?, ?, ?, ?)')
-    .run(name.trim(), team.value, sort_order || 0, require_attachment ? 1 : 0);
+  const result = await db.prepare('INSERT INTO activity_categories (name, team_id, sort_order, require_attachment, require_asset) VALUES (?, ?, ?, ?, ?)')
+    .run(name.trim(), team.value, sort_order || 0, require_attachment ? 1 : 0, require_asset ? 1 : 0);
   res.json({ id: result.lastInsertRowid });
 });
 
@@ -63,7 +63,7 @@ router.put('/:id', async (req, res) => {
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
   const existing = await db.prepare('SELECT * FROM activity_categories WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Category not found' });
-  const { name, active, sort_order, require_attachment } = req.body;
+  const { name, active, sort_order, require_attachment, require_asset } = req.body;
 
   let teamId = existing.team_id;
   if (req.body.team_id !== undefined) {
@@ -75,8 +75,8 @@ router.put('/:id', async (req, res) => {
   if ((name?.trim() || teamId !== existing.team_id) && await nameTaken(nextName, teamId, id))
     return res.status(409).json({ error: 'Category already exists' });
 
-  await db.prepare(`UPDATE activity_categories SET name=?, team_id=?, active=COALESCE(?,active), sort_order=COALESCE(?,sort_order), require_attachment=COALESCE(?,require_attachment) WHERE id=?`)
-    .run(nextName, teamId, active != null ? (active ? 1 : 0) : null, sort_order ?? null, require_attachment != null ? (require_attachment ? 1 : 0) : null, id);
+  await db.prepare(`UPDATE activity_categories SET name=?, team_id=?, active=COALESCE(?,active), sort_order=COALESCE(?,sort_order), require_attachment=COALESCE(?,require_attachment), require_asset=COALESCE(?,require_asset) WHERE id=?`)
+    .run(nextName, teamId, active != null ? (active ? 1 : 0) : null, sort_order ?? null, require_attachment != null ? (require_attachment ? 1 : 0) : null, require_asset != null ? (require_asset ? 1 : 0) : null, id);
   res.json({ ok: true });
 });
 
