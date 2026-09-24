@@ -6,7 +6,7 @@
 const https = require('https');
 const http  = require('http');
 const db    = require('./db');
-const { assertPublicHttpUrl } = require('./security');
+const { assertPublicHttpUrl, pinnedLookup } = require('./security');
 const { PRODUCT_NAME } = require('./product');
 const { sendEmail } = require('./email');
 const { decrypt: decryptField } = require('./fieldCipher');
@@ -28,6 +28,7 @@ function rawPost(u, data, extraHeaders) {
       port:     u.port || (u.protocol === 'https:' ? 443 : 80),
       path:     u.pathname + u.search,
       method:   'POST',
+      lookup:   pinnedLookup(u),
       headers:  {
         'Content-Type':   'application/json',
         'Content-Length': Buffer.byteLength(data),

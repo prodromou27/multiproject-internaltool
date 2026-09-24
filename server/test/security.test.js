@@ -46,3 +46,15 @@ test('private integration destinations require an explicit opt-in while localhos
   await assert.doesNotReject(() => assertPublicHttpUrl('https://10.0.0.20/rt',{ label:'RT base URL',allowPrivate:true }));
   await assert.rejects(() => assertPublicHttpUrl('https://localhost/rt',{ label:'RT base URL',allowPrivate:true }),/local\/internal/);
 });
+
+test('validated addresses are pinned so a later DNS answer cannot redirect the connection', async () => {
+  const { assertPublicHttpUrl, pinnedLookup } = require('../security');
+  const url = await assertPublicHttpUrl('https://8.8.8.8/hook');
+  assert.deepEqual(url.validatedAddresses, ['8.8.8.8']);
+  const lookup = pinnedLookup(url);
+  const single = await new Promise(resolve => lookup('evil.example', {}, (err, address, family) => resolve({ address, family })));
+  assert.deepEqual(single, { address: '8.8.8.8', family: 4 });
+  const all = await new Promise(resolve => lookup('evil.example', { all: true }, (err, list) => resolve(list)));
+  assert.deepEqual(all, [{ address: '8.8.8.8', family: 4 }]);
+  assert.equal(pinnedLookup(new URL('https://example.com')), undefined);
+});

@@ -67,7 +67,25 @@ async function assertPublicHttpUrl(rawUrl, options = {}) {
     throw new Error(`${label} resolves to a private/internal address`);
   }
 
+  // The address(es) that passed the check. Callers that connect should pin to
+  // these (see pinnedLookup) so a second DNS answer can't swap in an internal host.
+  url.validatedAddresses = addresses.map(a => a.address);
   return url;
+}
+
+/* `lookup` option for http(s).request that only ever answers with the addresses
+   assertPublicHttpUrl validated, closing the DNS-rebinding window between the
+   check and the connection. Without validated addresses it resolves normally. */
+function pinnedLookup(url) {
+  const pinned = url.validatedAddresses;
+  if (!pinned || !pinned.length) return undefined;
+  return (hostname, options, callback) => {
+    const cb = typeof options === 'function' ? options : callback;
+    const wantsAll = typeof options === 'object' && options && options.all;
+    const entries = pinned.map(address => ({ address, family: net.isIPv6(address) ? 6 : 4 }));
+    if (wantsAll) cb(null, entries);
+    else cb(null, entries[0].address, entries[0].family);
+  };
 }
 
 function isInAppUpdateEnabled() {
@@ -83,4 +101,4 @@ function requireInAppUpdateEnabled(req, res, next) {
   next();
 }
 
-module.exports = { assertPublicHttpUrl, isPrivateIp, isInAppUpdateEnabled, requireInAppUpdateEnabled };
+module.exports = { assertPublicHttpUrl, pinnedLookup, isPrivateIp, isInAppUpdateEnabled, requireInAppUpdateEnabled };
