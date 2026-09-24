@@ -3,19 +3,28 @@ const { decryptCustomer,decrypt }=require('./fieldCipher');
 
 const numbers=row => Object.fromEntries(Object.entries(row || {}).map(([key,value]) => [key,Number(value || 0)]));
 
-async function listManagedCustomers(store=db) {
+/* `teamIds`, when given, limits the list to customers whose responsible team is
+   one of them — applied in SQL, and the per-customer aggregates below are then
+   restricted to just those customers, so a caller that only needs a few
+   customers doesn't pay for computing every managed customer's numbers. */
+async function listManagedCustomers(store=db,{ teamIds }={}) {
+  const scoped=Array.isArray(teamIds);
+  if (scoped && !teamIds.length) return [];
+  const teamFilter=scoped ? ` AND mc.responsible_team_id IN (${teamIds.map(() => '?').join(',')})` : '';
   const rows=await store.prepare(`SELECT c.id,c.name,mc.reporting_frequency,mc.responsible_team_id,t.name AS responsible_team,
     mc.service_manager_id,u.name AS service_manager,tc.enabled AS ticketing_enabled,tc.last_successful_sync_at,tc.last_sync_status
     FROM managed_customer_configurations mc JOIN customers c ON c.id=mc.customer_id
     LEFT JOIN teams t ON t.id=mc.responsible_team_id LEFT JOIN users u ON u.id=mc.service_manager_id
     LEFT JOIN customer_ticketing_configurations tc ON tc.customer_id=c.id AND tc.provider_type='request_tracker'
-    WHERE mc.managed_services_enabled=1 AND c.active=1 ORDER BY c.name`).all();
+    WHERE mc.managed_services_enabled=1 AND c.active=1${teamFilter} ORDER BY c.name`).all(...(scoped ? teamIds : []));
+  if (!rows.length) return [];
+  const ids=rows.map(row => row.id),only=scoped ? ` WHERE customer_id IN (${ids.map(() => '?').join(',')})` : '',andOnly=scoped ? ` AND customer_id IN (${ids.map(() => '?').join(',')})` : '',args=scoped ? ids : [];
   const [tickets,activities,tasks,projects,visits]=await Promise.all([
-    store.prepare("SELECT customer_id,COUNT(*) FILTER (WHERE status_group='open') AS open_tickets,COUNT(*) FILTER (WHERE normalized_status='Pending') AS pending_tickets FROM external_tickets GROUP BY customer_id").all(),
-    store.prepare("SELECT customer_id,COUNT(*) AS activities_this_month FROM service_activities WHERE activity_date>=substr(app_today(),1,7)||'-01' GROUP BY customer_id").all(),
-    store.prepare("SELECT p.customer_id,COUNT(*) AS open_tasks FROM tasks tk JOIN projects p ON p.id=tk.project_id WHERE tk.status!='completed' AND tk.status!='closed' AND tk.status!='cancelled' GROUP BY p.customer_id").all(),
-    store.prepare("SELECT customer_id,COUNT(*) AS active_projects FROM projects WHERE status!='closed' AND status!='cancelled' GROUP BY customer_id").all(),
-    store.prepare("SELECT customer_id,MAX(scheduled_date) AS last_maintenance_visit FROM maintenance_visits WHERE status='completed' GROUP BY customer_id").all(),
+    store.prepare(`SELECT customer_id,COUNT(*) FILTER (WHERE status_group='open') AS open_tickets,COUNT(*) FILTER (WHERE normalized_status='Pending') AS pending_tickets FROM external_tickets${only} GROUP BY customer_id`).all(...args),
+    store.prepare(`SELECT customer_id,COUNT(*) AS activities_this_month FROM service_activities WHERE activity_date>=substr(app_today(),1,7)||'-01'${andOnly} GROUP BY customer_id`).all(...args),
+    store.prepare(`SELECT p.customer_id,COUNT(*) AS open_tasks FROM tasks tk JOIN projects p ON p.id=tk.project_id WHERE tk.status!='completed' AND tk.status!='closed' AND tk.status!='cancelled'${andOnly.replace('customer_id','p.customer_id')} GROUP BY p.customer_id`).all(...args),
+    store.prepare(`SELECT customer_id,COUNT(*) AS active_projects FROM projects WHERE status!='closed' AND status!='cancelled'${andOnly} GROUP BY customer_id`).all(...args),
+    store.prepare(`SELECT customer_id,MAX(scheduled_date) AS last_maintenance_visit FROM maintenance_visits WHERE status='completed'${andOnly} GROUP BY customer_id`).all(...args),
   ]);
   const map=values => new Map(values.map(value => [Number(value.customer_id),value]));
   const ticketMap=map(tickets),activityMap=map(activities),taskMap=map(tasks),projectMap=map(projects),visitMap=map(visits);
@@ -31,10 +40,7 @@ async function listManagedCustomers(store=db) {
    the Customer 360 / Managed Customers product-concept split). */
 async function listManagedCustomersForUser(userId, store=db) {
   const teamRows = await store.prepare('SELECT team_id FROM team_members WHERE user_id=?').all(userId);
-  const teamIds = new Set(teamRows.map(row => Number(row.team_id)));
-  if (!teamIds.size) return [];
-  const all = await listManagedCustomers(store);
-  return all.filter(row => teamIds.has(Number(row.responsible_team_id)));
+  return listManagedCustomers(store,{ teamIds:teamRows.map(row => Number(row.team_id)) });
 }
 
 async function getOverview(customerId,from,to,store=db) {
