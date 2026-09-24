@@ -11,7 +11,8 @@ export const CUSTOMER_360_SECTIONS=Object.freeze([
 ]);
 
 export function customer360Sections(user,capabilities={}) {
-  const available=CUSTOMER_360_SECTIONS.filter(section => !section.pending && section.roles.includes(user?.role));
+  const assetAllowed=Object.prototype.hasOwnProperty.call(user?.permissions || {},'assets.access') ? user.permissions['assets.access']===true : user?.role==='manager';
+  const available=CUSTOMER_360_SECTIONS.filter(section => !section.pending && (section.id==='assets' ? assetAllowed : section.roles.includes(user?.role)));
   if (user?.role!=='engineer' || (capabilities.managedServiceOperations===undefined && capabilities.projectDelivery===undefined)) return available;
   const managed=capabilities.managedServiceOperations===true;
   const delivery=capabilities.projectDelivery===true;

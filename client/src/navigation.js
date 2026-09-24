@@ -4,11 +4,11 @@ export const PAGES = [
   { id: 'dashboard', path: '/', label: 'Dashboard', section: 'Workspace', icon: 'LayoutDashboard', roles: everyone, description: 'Operational overview and work that needs attention' },
   { id: 'myWork', path: '/my-day', label: 'My Work', section: 'Workspace', icon: 'Zap', roles: ['engineer'], description: 'Your assignments, upcoming work and time tracking' },
   { id: 'calendar', path: '/calendar', label: 'Calendar', section: 'Workspace', icon: 'CalendarDays', roles: everyone, description: 'Plan project deadlines, tasks and maintenance visits' },
-  { id: 'projects', path: '/projects', label: 'Projects', section: 'Operations', icon: 'FolderOpen', roles: ['manager', 'engineer', 'pm'], description: 'Delivery progress, ownership and project commitments' },
-  { id: 'tasks', path: '/tasks', label: 'Tasks', section: 'Operations', icon: 'CheckSquare', roles: ['manager', 'engineer'], badge: 'tasks', description: 'Assigned tasks and operational follow-ups' },
-  { id: 'visits', path: '/maintenance-visits', label: 'Maintenance Visits', section: 'Operations', icon: 'Wrench', roles: everyone, badge: 'visits', description: 'Customer visits, engineer assignments and reports' },
+  { id: 'projects', path: '/projects', label: 'Projects', section: 'Operations', icon: 'FolderOpen', roles: ['manager', 'engineer', 'pm'], permission:'projects.access', description: 'Delivery progress, ownership and project commitments' },
+  { id: 'tasks', path: '/tasks', label: 'Tasks', section: 'Operations', icon: 'CheckSquare', roles: ['manager', 'engineer'], permission:'tasks.access', badge: 'tasks', description: 'Assigned tasks and operational follow-ups' },
+  { id: 'visits', path: '/maintenance-visits', label: 'Maintenance Visits', section: 'Operations', icon: 'Wrench', roles: everyone, permission:'visits.access', badge: 'visits', description: 'Customer visits, engineer assignments and reports' },
   { id: 'activities', path: '/activity-log', label: 'Activity Log', section: 'Operations', icon: 'ClipboardList', roles: ['manager', 'engineer', 'pm'], feature: 'serviceActivity', description: 'Customer service work, evidence and follow-ups' },
-  { id: 'customers', path: '/customers', label: 'Customers', section: 'Management', icon: 'Building2', roles: ['manager'], description: 'Customer profiles, service contracts and team access' },
+  { id: 'customers', path: '/customers', label: 'Customers', section: 'Management', icon: 'Building2', roles: ['manager'], permission:'customers.access', description: 'Customer profiles, service contracts and team access' },
   { id: 'managedCustomers', path: '/managed-customers', label: 'Managed Customers', section: 'Management', icon: 'Building2', roles: ['manager'], permission: 'managed_customers.view', description: 'Customer-centric managed-service health, tickets and reporting' },
   { id: 'workload', path: '/workload', label: 'Workload', section: 'Management', icon: 'UsersIcon', roles: ['manager'], description: 'Engineer commitments and upcoming demand' },
   { id: 'reports', path: '/reports', label: 'Reports', section: 'Management', icon: 'BarChart2', roles: ['manager'], description: 'Operational summaries, delivery trends and reporting' },
@@ -28,7 +28,9 @@ export const PAGES = [
 
 export function canAccessPage(page, userOrRole, serviceActivityEnabled = false) {
   const user=typeof userOrRole==='string' ? { role:userOrRole,permissions:{} } : userOrRole;
-  return !!page && !!user && (page.roles.includes(user.role) || !!user.permissions?.[page.permission]) &&
+  const explicitlyConfigured=page?.permission && Object.prototype.hasOwnProperty.call(user?.permissions || {},page.permission);
+  const roleOrPermission=explicitlyConfigured ? !!user.permissions[page.permission] : page?.roles.includes(user?.role);
+  return !!page && !!user && roleOrPermission &&
     (!page.feature || user.role === 'manager' || serviceActivityEnabled);
 }
 

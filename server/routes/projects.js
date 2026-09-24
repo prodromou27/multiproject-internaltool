@@ -133,16 +133,30 @@ router.get('/', requireAuth, async (req, res) => {
       WHERE pa.user_id = ? ORDER BY is_pinned DESC, p.created_at DESC
     `).all(req.user.id, req.user.id));
   }
-  // Attach computed RAG + live completion %
-  // Use manually stored completion_pct when set; otherwise derive from task counts
-  res.json(rows.map(r => ({
+  // Attach computed RAG + live completion %.
+  rows=rows.map(r => ({
     ...r,
     customer_name: decrypt(r.customer_name),
     rag_status:     computeRag(r),
     completion_pct: r.completion_pct != null
       ? r.completion_pct
       : (r.task_count > 0 ? Math.round((r.done_count / r.task_count) * 100) : 0),
-  })));
+  }));
+  if (req.query.paged === undefined) return res.json(rows);
+  if (req.query.paged!=='1' || Object.values(req.query).some(value => typeof value!=='string')) return res.status(400).json({ error:'Invalid project list parameters' });
+  const page=Number(req.query.page || 1),pageSize=Number(req.query.page_size || 25),search=(req.query.search || '').trim().toLowerCase();
+  const status=req.query.status || 'open',rag=req.query.rag || 'all';
+  const statuses=new Set(['open','all','overdue',...VALID_PROJECT_STATUSES]);
+  if (!Number.isSafeInteger(page) || page<1 || page>10_000 || !Number.isSafeInteger(pageSize) || pageSize<1 || pageSize>100 || search.length>200 || !statuses.has(status) || !['all','red','amber','green'].includes(rag)) return res.status(400).json({ error:'Invalid project filters or pagination' });
+  const terminal=new Set(['closed','cancelled']);
+  const searched=search ? rows.filter(row => [row.title,row.customer_name,row.created_by_name].some(value => String(value || '').toLowerCase().includes(search))) : rows;
+  const counts={ all:searched.length,open:searched.filter(row => !terminal.has(row.status)).length,overdue:searched.filter(row => !terminal.has(row.status) && row.status!=='pending_approval' && row.deadline && row.deadline<new Date().toISOString().slice(0,10)).length };
+  for (const value of VALID_PROJECT_STATUSES) counts[value]=searched.filter(row => row.status===value).length;
+  let filtered=status==='all' ? searched : status==='open' ? searched.filter(row => !terminal.has(row.status)) : status==='overdue' ? searched.filter(row => !terminal.has(row.status) && row.status!=='pending_approval' && row.deadline && row.deadline<new Date().toISOString().slice(0,10)) : searched.filter(row => row.status===status);
+  counts.rag_all=filtered.length;for (const value of ['red','amber','green']) counts[`rag_${value}`]=filtered.filter(row => row.rag_status===value).length;
+  if (rag!=='all') filtered=filtered.filter(row => row.rag_status===rag);
+  const offset=(page-1)*pageSize;
+  res.json({ rows:filtered.slice(offset,offset+pageSize),total:filtered.length,page,page_size:pageSize,counts });
 });
 
 /* ── Pin / unpin a project ─────────────────────────────────── */

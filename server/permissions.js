@@ -7,14 +7,19 @@ const DEFINITIONS=Object.freeze([
   { key:'kpis.view',group:'KPI Management',label:'View management KPIs',description:'View KPI dashboards, current values, and history.',eligible_roles:['manager','planner','pm'] },
   { key:'kpis.manage',group:'KPI Management',label:'Manage KPI definitions',description:'Create, edit, test, activate, and calculate management KPIs.',eligible_roles:['manager','planner','pm'] },
   { key:'notifications.manage',group:'Administration',label:'Manage notification rules',description:'Configure organization-wide notification delivery and escalation rules.' },
+  { key:'projects.access',group:'Core Modules',label:'Access projects',description:'Open project lists and assigned project records.',default_roles:['manager','planner','pm','engineer'] },
+  { key:'tasks.access',group:'Core Modules',label:'Access tasks',description:'Open task lists and assigned task records.',default_roles:['manager','planner','pm','engineer'] },
+  { key:'visits.access',group:'Core Modules',label:'Access maintenance visits',description:'Open maintenance visit schedules and permitted visit records.',default_roles:['manager','planner','pm','engineer'] },
+  { key:'customers.access',group:'Core Modules',label:'Access customers',description:'Open the customer directory and permitted customer profiles.',default_roles:['manager','planner','pm','engineer'] },
+  { key:'assets.access',group:'Core Modules',label:'Manage customer assets',description:'View and maintain encrypted customer asset inventories.',eligible_roles:['manager','planner','pm'],default_roles:['manager'] },
 ]);
 const KEYS=new Set(DEFINITIONS.map(item => item.key));
 const ROLES=Object.freeze(['manager','planner','pm','engineer']);
 const DEFAULTS=Object.freeze({
-  manager:Object.freeze(Object.fromEntries(DEFINITIONS.map(item => [item.key,true]))),
-  planner:Object.freeze(Object.fromEntries(DEFINITIONS.map(item => [item.key,false]))),
-  pm:Object.freeze(Object.fromEntries(DEFINITIONS.map(item => [item.key,false]))),
-  engineer:Object.freeze(Object.fromEntries(DEFINITIONS.map(item => [item.key,false]))),
+  manager:Object.freeze(Object.fromEntries(DEFINITIONS.map(item => [item.key,(item.default_roles || ['manager']).includes('manager')]))),
+  planner:Object.freeze(Object.fromEntries(DEFINITIONS.map(item => [item.key,(item.default_roles || ['manager']).includes('planner')]))),
+  pm:Object.freeze(Object.fromEntries(DEFINITIONS.map(item => [item.key,(item.default_roles || ['manager']).includes('pm')]))),
+  engineer:Object.freeze(Object.fromEntries(DEFINITIONS.map(item => [item.key,(item.default_roles || ['manager']).includes('engineer')]))),
 });
 
 function validPermission(key) { return typeof key==='string' && KEYS.has(key); }

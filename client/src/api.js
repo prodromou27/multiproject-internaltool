@@ -96,6 +96,7 @@ export const api = {
 
   // projects
   projects: (options) => req('GET', '/projects', undefined, options),
+  pagedProjects: (params = {},options) => req('GET','/projects?' + new URLSearchParams({ ...params,paged:1 }).toString(),undefined,options),
   project: (id, options) => req('GET', `/projects/${id}`, undefined, options),
   createProject: (data) => req('POST', '/projects', data),
   updateProject: (id, data) => req('PUT', `/projects/${id}`, data),
@@ -173,6 +174,7 @@ export const api = {
 
   // customers
   customers: (options) => req('GET', '/customers', undefined, options),
+  pagedCustomers: (params = {},options) => req('GET','/customers?' + new URLSearchParams({ ...params,paged:1 }).toString(),undefined,options),
   customer: (id, options) => req('GET', `/customers/${id}`, undefined, options),
   customerOverview: (id, params = {}, options) => req('GET', `/customers/${id}/overview?` + new URLSearchParams(params).toString(), undefined, options),
   customerTicketTrend: (id,options) => req('GET',`/customers/${id}/operations/ticket-trend`,undefined,options),

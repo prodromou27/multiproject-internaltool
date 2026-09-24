@@ -60,13 +60,25 @@ router.get('/', requireAuth, async (req, res) => {
       )
       ORDER BY c.name
     `).all(req.user.id, req.user.id));
-    return res.json(rows.map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name)));
+    return customerListResponse(req,res,rows.map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name)));
   }
   const rows = (await db.prepare(`SELECT c.*, u.name as created_by_name,
     (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = c.id) as visit_count
     FROM customers c LEFT JOIN users u ON c.created_by = u.id ORDER BY c.name`).all());
-  res.json(rows.map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name)));
+  return customerListResponse(req,res,rows.map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name)));
 });
+
+function customerListResponse(req,res,rows) {
+  if (req.query.paged === undefined) return res.json(rows);
+  if (req.query.paged!=='1' || Object.values(req.query).some(value => typeof value!=='string')) return res.status(400).json({ error:'Invalid customer list parameters' });
+  const page=Number(req.query.page || 1),pageSize=Number(req.query.page_size || 25),search=(req.query.search || '').trim().toLowerCase(),view=req.query.view || 'all';
+  if (!Number.isSafeInteger(page) || page<1 || page>10_000 || !Number.isSafeInteger(pageSize) || pageSize<1 || pageSize>100 || search.length>200 || !['all','active','inactive','tracked'].includes(view)) return res.status(400).json({ error:'Invalid customer filters or pagination' });
+  const searched=search ? rows.filter(row => [row.name,row.contact_name,row.contact_email,row.address,row.location,row.customer_code].some(value => String(value || '').toLowerCase().includes(search))) : rows;
+  const counts={ all:searched.length,active:searched.filter(row => !!row.active).length,inactive:searched.filter(row => !row.active).length,tracked:searched.filter(row => !!row.service_activity_enabled).length };
+  const filtered=view==='active' ? searched.filter(row => !!row.active) : view==='inactive' ? searched.filter(row => !row.active) : view==='tracked' ? searched.filter(row => !!row.service_activity_enabled) : searched;
+  const offset=(page-1)*pageSize;
+  return res.json({ rows:filtered.slice(offset,offset+pageSize),total:filtered.length,page,page_size:pageSize,counts });
+}
 
 // ── Template download — MUST be before /:id ─────────────────────────────────
 router.get('/template/download', requireManagerOrPlanner, async (req, res) => {

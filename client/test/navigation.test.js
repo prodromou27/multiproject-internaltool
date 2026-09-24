@@ -26,6 +26,8 @@ test('navigation and create actions respect existing role and feature boundaries
   const delegatedReviewer={ role:'planner',permissions:{ 'managed_reports.review':true,'managed_customers.view':false } };
   assert.equal(visiblePages(delegatedReviewer).some(page => page.id==='approvals'),true);
   assert.equal(visiblePages(delegatedReviewer).some(page => page.id==='managedCustomers'),false);
+  assert.equal(visiblePages({ role:'manager',permissions:{ 'projects.access':false } }).some(page => page.id==='projects'),false);
+  assert.equal(visiblePages({ role:'planner',permissions:{ 'customers.access':true } }).some(page => page.id==='customers'),true);
 });
 
 test('primary navigation stays concise and respects role and feature access', () => {

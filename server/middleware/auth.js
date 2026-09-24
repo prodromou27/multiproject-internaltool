@@ -40,6 +40,22 @@ async function freshActiveUser(payload) {
   };
 }
 
+function modulePermission(req) {
+  const base=req.baseUrl || '';
+  if (base.startsWith('/api/projects')) return 'projects.access';
+  if (base.startsWith('/api/tasks')) return 'tasks.access';
+  if (base.startsWith('/api/maintenance-visits')) return 'visits.access';
+  if (base.startsWith('/api/customers') && /\/assets(?:\/|$)/.test(base + (req.path || ''))) return 'assets.access';
+  if (base.startsWith('/api/customers')) return 'customers.access';
+  return null;
+}
+
+async function enforceModulePermission(req,res,user) {
+  const key=modulePermission(req);
+  if (key && !await hasPermission(user,key)) { res.status(403).json({ error:'You do not have permission to access this module' });return false; }
+  return true;
+}
+
 async function requireAuth(req, res, next) {
   const token = requestToken(req);
   if (!token) return res.status(401).json({ error: 'No token' });
@@ -56,6 +72,7 @@ async function requireAuth(req, res, next) {
     && ['/me', '/change-password-first', '/change-password', '/logout'].includes(req.path)))
     return res.status(403).json({ error: 'Change your password before continuing', code: 'PASSWORD_CHANGE_REQUIRED' });
   req.user = result.user;
+  if (!await enforceModulePermission(req,res,req.user)) return;
   next();
 }
 
@@ -82,6 +99,7 @@ async function requireDownloadAuth(req, res, next) {
   if (result.errorStatus) return res.status(result.errorStatus).json({ error: result.error });
   if (result.user.must_change_password) return res.status(403).json({ error: 'Change your password before continuing', code: 'PASSWORD_CHANGE_REQUIRED' });
   req.user = result.user;
+  if (!await enforceModulePermission(req,res,req.user)) return;
   next();
 }
 

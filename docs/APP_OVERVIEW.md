@@ -941,9 +941,11 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
 
 - **Granular permissions are incremental.** Versioned role and user overrides cover
   managed-customer access, managed-report generation/review, notification-rule
-  administration and KPI view/manage access. KPI permissions also enforce role
-  eligibility so engineer overrides cannot expose management KPI data. Project, task,
-  visit, customer, asset, reporting and Service Activity
+  administration, KPI view/manage access and access to the project, task, visit,
+  customer and asset modules. These module permissions are enforced centrally on API
+  and download requests; navigation mirrors them only for usability. KPI and asset
+  permissions also enforce role eligibility so engineer overrides cannot expose
+  management KPI data or customer asset inventories. Reporting and Service Activity
   permissions still use role checks plus scoped membership checks
   (`project_assignments`, `maintenance_visit_engineers`, `team_members`,
   `customer_teams` and `customer_engineers`). Add new keys with server enforcement and
@@ -984,10 +986,13 @@ Flagged for a reviewer (human or AI) looking to improve functionality, UI, or se
   form components, consistent spacing tokens, etc.) could reduce duplication —
   the largest pages were split into per-section files under `pages/admin/` and
   `pages/project/`, but many pages still rely on inline `style={{}}` objects.
-- **List pagination is inconsistent across the app.** Service Activity Tracking and Tasks use
-  real server-side `LIMIT`/`OFFSET` pagination; older modules (Projects, Customers)
-  fetch the full table and filter/paginate client-side. Fine at current
-  data volumes; a scaling risk if any of those tables grow large.
+- **Encrypted directory search still has a bounded-response/full-scan tradeoff.**
+  Projects and Customers now expose validated server-filtered 25-row pages with
+  full-result counts, debounced requests and legacy array compatibility. Their API
+  response and browser work are bounded, but customer names and other PII must be
+  decrypted before literal search and sorting, so these handlers still scan the
+  authorized result set. A blind index or searchable encryption design is needed
+  before database-level pagination can preserve the same encrypted-field behavior.
 
 
 ### Service activity editing and export safeguards

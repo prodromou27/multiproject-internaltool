@@ -6,6 +6,7 @@ import { Modal } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
 import { PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
+import { Pagination } from '../components/EnterpriseUI';
 import { useAuth } from '../App';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
@@ -159,19 +160,28 @@ export default function Customers() {
   const [view,        setView]        = useState('all');
   const [loading,     setLoading]     = useState(true);
   const [loadError,   setLoadError]   = useState('');
+  const [page,        setPage]        = useState(1);
+  const [total,       setTotal]       = useState(0);
+  const [counts,      setCounts]      = useState({ all:0,active:0,tracked:0,inactive:0 });
 
   const load = useCallback(async options => {
     setLoading(true); setLoadError('');
-    try { setCustomers(await api.customers(options) ?? []); }
+    try { const result=await api.pagedCustomers({ page,page_size:25,search,view },options);setCustomers(result.rows ?? []);setTotal(result.total || 0);setCounts(result.counts || {}); }
     catch (error) { if (error.name !== 'AbortError') setLoadError(error.message || 'Unable to load customers'); }
     finally { if (!options?.signal?.aborted) setLoading(false); }
-  }, []);
+  }, [page,search,view]);
   useEffect(() => {
     const controller = new AbortController();
-    load({ signal: controller.signal });
-    if (isManager) api.teams({ signal: controller.signal }).then(setTeams).catch(() => {});
+    const timer=setTimeout(() => load({ signal: controller.signal }),250);
+    return () => { clearTimeout(timer);controller.abort(); };
+  }, [load]);
+  useEffect(() => {
+    if (!isManager) return;
+    const controller = new AbortController();
+    api.teams({ signal: controller.signal }).then(setTeams).catch(() => {});
     return () => controller.abort();
-  }, [isManager, load]);
+  }, [isManager]);
+  useEffect(() => setPage(1),[search,view]);
 
   async function openEdit(customer) {
     setEditing(customer);
@@ -184,19 +194,7 @@ export default function Customers() {
     setShowForm(true);
   }
 
-  const filtered = customers.filter(c => {
-    if (view === 'active' && !c.active) return false;
-    if (view === 'inactive' && c.active) return false;
-    if (view === 'tracked' && !c.service_activity_enabled) return false;
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return c.name.toLowerCase().includes(q) ||
-      (c.contact_name  || '').toLowerCase().includes(q) ||
-      (c.contact_email || '').toLowerCase().includes(q) ||
-      (c.address       || '').toLowerCase().includes(q) ||
-      (c.location      || '').toLowerCase().includes(q) ||
-      (c.customer_code || '').toLowerCase().includes(q);
-  });
+  const filtered = customers;
 
   async function handleDelete(id) {
     const ok = await confirm('Delete this customer and all their maintenance visits?', { title: 'Delete Customer' });
@@ -218,23 +216,23 @@ export default function Customers() {
         <ListSearch value={search} onChange={setSearch} label="Search customers" placeholder="Search customers, contacts, email, or location…" />
         <FilterGroup label="View">
           {[
-            ['all', 'All', customers.length],
-            ['active', 'Active', customers.filter(customer => !!customer.active).length],
-            ['tracked', 'Service tracking', customers.filter(customer => !!customer.service_activity_enabled).length],
-            ['inactive', 'Inactive', customers.filter(customer => !customer.active).length],
+            ['all', 'All', counts.all || 0],
+            ['active', 'Active', counts.active || 0],
+            ['tracked', 'Service tracking', counts.tracked || 0],
+            ['inactive', 'Inactive', counts.inactive || 0],
           ].map(([key, label, count]) => <button key={key} className={`filter-pill${view === key ? ' active' : ''}`} onClick={() => setView(key)}>
             {label} <span style={{ opacity: .7 }}>({count})</span>
           </button>)}
         </FilterGroup>
       </div>
 
-      {!loading && !loadError && <ResultContext shown={filtered.length} total={customers.length} noun="customers"
+      {!loading && !loadError && <ResultContext shown={filtered.length} total={total} noun="customers"
         activeFilters={(search.trim() ? 1 : 0) + (view !== 'all' ? 1 : 0)}
         onClear={() => { setSearch(''); setView('all'); }} />}
 
       {loadError ? <div className="error-msg" role="alert">{loadError} <button className="btn btn-ghost btn-sm" onClick={() => load()}>Retry</button></div>
         : loading ? <div className="skeleton-table" aria-label="Loading customers"><span /><span /><span /></div> : filtered.length === 0
-        ? <div className="empty"><div className="empty-icon"><Building2 size={40} strokeWidth={1.2} /></div><p>{customers.length ? 'No customers match this view' : 'No customers have been added yet'}</p>{customers.length > 0 && <button className="btn btn-ghost btn-sm mt-12" onClick={() => { setSearch(''); setView('all'); }}>Reset view</button>}</div>
+        ? <div className="empty"><div className="empty-icon"><Building2 size={40} strokeWidth={1.2} /></div><p>{search.trim() || view!=='all' ? 'No customers match this view' : 'No customers have been added yet'}</p>{(search.trim() || view!=='all') && <button className="btn btn-ghost btn-sm mt-12" onClick={() => { setSearch(''); setView('all'); }}>Reset view</button>}</div>
         : <div className="card table-wrap">
             <table>
               <thead><tr><th>Customer</th><th>Coverage</th><th>Contract</th><th>Primary contact</th><th>Location</th><th>Visits</th><th>Actions</th></tr></thead>
@@ -266,6 +264,7 @@ export default function Customers() {
             </table>
           </div>
       }
+      <Pagination page={page} total={total} pageSize={25} loading={loading} onPageChange={setPage} label="Customer pages" />
 
       {showForm && (
         <Modal title={editing ? 'Edit Customer' : 'New Customer'} onClose={() => setShowForm(false)}>

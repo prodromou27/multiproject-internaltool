@@ -6,7 +6,7 @@ const path = require('path');
 const multer = require('multer');
 const ExcelJS = require('exceljs');
 const db = require('../db');
-const { requireManager } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/auth');
 const { encrypt,decrypt } = require('../fieldCipher');
 const { logAudit } = require('../auditLog');
 const fileCipher = require('../cipher');
@@ -29,7 +29,7 @@ const hashTag = value => value ? crypto.createHash('sha256').update(value.trim()
 const excelText=value => value==null ? '' : value instanceof Date ? value.toISOString().slice(0,10) : typeof value==='object' && value.richText ? value.richText.map(part => part.text || '').join('') : typeof value==='object' && value.formula!==undefined ? excelText(value.result) : String(value);
 const safeCell=value => /^[=+\-@]/.test(String(value ?? '')) ? `'${value}` : value;
 
-router.use(requireManager, async (req,res,next) => {
+router.use(requirePermission('assets.access'), async (req,res,next) => {
   const isFileUpload=req.method==='POST' && /^\/\d+\/attachments$/.test(req.path) && req.is('multipart/form-data');
   if (req.path!=='/import' && !isFileUpload && ['POST','PUT','DELETE'].includes(req.method) && (!req.body || typeof req.body!=='object' || Array.isArray(req.body))) return res.status(400).json({ error: 'A JSON object is required' });
   if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid customer ID' });

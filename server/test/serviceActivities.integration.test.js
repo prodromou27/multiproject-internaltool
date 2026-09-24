@@ -1033,6 +1033,11 @@ test('customer contracts validate merged dates and allow clearing optional field
     body: { customer_code: '', contract_type: null, contract_start_date: '', contract_end_date: null, included_hours: '' } })).status, 200);
   stored = await db.prepare('SELECT customer_code, contract_type, contract_start_date, contract_end_date, included_hours FROM customers WHERE id=?').get(created.data.id);
   assert.ok(Object.values(stored).every(value => value === null));
+  if (process.env.TEST_DATABASE_URL) {
+    const page=await api('/api/customers?paged=1&page=1&page_size=1&search=Contract%20edit&view=all',{ token:ids.tokenManager });
+    assert.equal(page.status,200);assert.equal(page.data.rows.length,1);assert.ok(page.data.total>=1);assert.ok(page.data.counts.all>=1);
+    assert.equal((await api('/api/customers?paged=1&page=0',{ token:ids.tokenManager })).status,400);
+  }
   assert.equal((await api('/api/customers', { method: 'POST', token: ids.tokenManager, body: { name: [] } })).status, 400);
 });
 
@@ -1045,6 +1050,11 @@ test('projects validate memberships, calendar dates, status updates and pin acce
     body: { title: 'Project review', deadline: '2026-12-01', member_ids: [ids.engineerEnabled] } });
   assert.equal(created.status, 200);
   const endpoint = `/api/projects/${created.data.id}`;
+  if (process.env.TEST_DATABASE_URL) {
+    const page=await api('/api/projects?paged=1&page=1&page_size=1&search=Project%20review&status=open&rag=all',{ token:ids.tokenManager });
+    assert.equal(page.status,200);assert.equal(page.data.rows[0].id,created.data.id);assert.equal(page.data.total,1);assert.equal(page.data.counts.open,1);
+    assert.equal((await api('/api/projects?paged=1&page_size=101',{ token:ids.tokenManager })).status,400);
+  }
   assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenManager, body: { deadline: null } })).status, 200);
   assert.equal((await db.prepare('SELECT deadline FROM projects WHERE id=?').get(created.data.id)).deadline, null);
   assert.equal((await api(`${endpoint}/pin`, { method: 'POST', token: ids.tokenDisabled })).status, 403);
@@ -1945,6 +1955,16 @@ test('permission administration supports versioned role and user overrides',asyn
   assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...roleBody,allowed:null,version:1 } })).status,200);
   assert.equal(await permissionService.hasPermission({ id:ids.planner,role:'planner' },permission_key),false);
   assert.equal((await api('/api/auth/permissions',{ token:ids.tokenPlanner })).data.permissions[permission_key],false);
+  const customerRule={ scope:'user',user_id:ids.planner,permission_key:'customers.access',allowed:false,version:0 };
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:customerRule })).status,200);
+  assert.equal((await api(`/api/customers/${ids.customer}`,{ token:ids.tokenPlanner })).status,403);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...customerRule,allowed:null,version:1 } })).status,200);
+  assert.notEqual((await api(`/api/customers/${ids.customer}`,{ token:ids.tokenPlanner })).status,403);
+  const assetRule={ scope:'user',user_id:ids.planner,permission_key:'assets.access',allowed:true,version:0 };
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:assetRule })).status,200);
+  assert.equal((await api(`/api/customers/${ids.customer}/assets`,{ token:ids.tokenPlanner })).status,200);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...assetRule,allowed:null,version:1 } })).status,200);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ scope:'user',user_id:ids.engineerEnabled,permission_key:'assets.access',allowed:true,version:0 } })).status,400);
 });
 
 test('concurrent report exports allocate unique versions on PostgreSQL', { skip:!process.env.TEST_DATABASE_URL },async () => {

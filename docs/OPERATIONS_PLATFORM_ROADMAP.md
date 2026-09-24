@@ -110,6 +110,7 @@ part of the foundation work.
 | 6g | Reliable waiting-status saves | Shared dialogs retain failed drafts; atomic bulk updates validate reasons and check current ownership; duplicate IDs count once | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 6h | Maintenance visit reliability | Scoped cancellable month loads, visible retry and unavailable counts; safe action submissions; manager-only submission undo; keyboard detail access | Complete; browser QA pending |
 | 6i | Maintenance filter/export consistency | Shared validated scopes and filters; matching Excel selection/order; literal decrypted customer search; inactive zero flags and month date ranges | Complete; PostgreSQL CI and browser QA tracked per commit |
+| 6j | Server-paged project and customer directories | Validated 25-row pages, server-applied search/views, full-result counts, debounced stale-safe loads and legacy array compatibility | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 7 | Customer 360 and recommendations | Scoped customer history; persisted findings and follow-up workflow; safe additive migrations | Complete |
 | 7a | Customer 360 overview | Manager-scoped bounded related sections, full counts and paginated recorded timeline; existing service profile preserved | Complete; PostgreSQL CI and browser QA tracked per commit |
 | 7b | Persisted management recommendations | Finding/risk/owner/due/status/notes, visit-source intent, version conflicts, atomic project conversion and mandatory history; cross-customer links constrained | Complete; PostgreSQL CI and browser QA tracked per commit |
@@ -129,6 +130,7 @@ part of the foundation work.
 | 12 | Admin organization and feature settings | Business/technical sections; capability-based visibility; secrets remain protected | In progress |
 | 12a | Administration navigation and credentials | Business/technical areas, shared-capability business links, preserved deep links, keyboard switches and write-only integration credentials with explicit removal | Complete; browser QA pending |
 | 12b | Password policy integrity | Malformed values cannot disable expiry; explicit numeric 0 supported; policy and authentication settings persist in one transaction | Complete; CI tracked per commit |
+| 12c | Core module access permissions | Versioned role/user overrides gate project, task, visit, customer and asset APIs, downloads and navigation; asset eligibility excludes engineers | Complete; integration coverage included |
 | 13 | Cross-module quality review | Targeted security/performance tests, responsive and accessibility QA, deployment instructions and final change summary | In progress |
 | 13a | Focused browser and release validation | Real-browser production bundle smoke matrix with synthetic APIs, shared-modal focus fix, validation/remaining-work record and corrected deployment requirements | Complete; full staging QA pending |
 | 14 | Workspace UI modernization | Compact personal navigation, module launcher, operational dashboard and flatter data-focused page foundations | Complete; CI browser coverage tracked per commit |

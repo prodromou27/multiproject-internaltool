@@ -4,6 +4,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Building2, FolderOpen, X, Bell, Pin } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
+import { Pagination } from '../components/EnterpriseUI';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import WaitingReasonDialog from '../components/WaitingReasonDialog';
@@ -232,8 +233,11 @@ export default function Projects() {
   const [createInitial,setCreateInitial]=useState(null);
   const [loading,    setLoading]    = useState(true);
   const [waitingDialog, setWaitingDialog] = useState(null);
+  const [page,setPage]=useState(1);
+  const [total,setTotal]=useState(0);
+  const [counts,setCounts]=useState({});
 
-  const loadCustomers = () => load();
+  const loadCustomers = () => api.customers().then(setCustomers);
   const [loadError, setLoadError] = useState('');
   useCreateIntent({ allowed: isManager, ready: !loading && !loadError, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateInitial(customerId?{ customer_id:customerId }:null);setShowCreate(true); } });
 
@@ -243,17 +247,20 @@ export default function Projects() {
     if (request.signal.aborted) return Promise.resolve();
     setLoading(true); setLoadError('');
     const options = { signal: request.signal };
-    return Promise.all([
-      api.projects(options),
-      canManage ? api.users(options) : Promise.resolve([]),
-      canManage ? api.customers(options) : Promise.resolve([]),
-    ]).then(([p, u, c]) => {
+    return api.pagedProjects({ page,page_size:25,search,status:activeFilter,rag:ragFilter },options).then(result => {
       if (!isCurrent(request)) return;
-      setProjects(p); setUsers(u); setCustomers(c);
+      setProjects(result.rows || []);setTotal(result.total || 0);setCounts(result.counts || {});
     }).catch(error => {
       if (isCurrent(request)) setLoadError(error.message || 'Could not load this page');
     }).finally(() => { if (isCurrent(request)) setLoading(false); });
-  }, [canManage, begin, isCurrent]);
+  }, [page,search,filter,ragFilter,begin,isCurrent]);
+
+  useEffect(() => {
+    if (!canManage) return;
+    const controller=new AbortController(),options={ signal:controller.signal };
+    Promise.all([api.users(options),api.customers(options)]).then(([u,c]) => { setUsers(u);setCustomers(c); }).catch(() => {});
+    return () => controller.abort();
+  },[canManage]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -261,7 +268,11 @@ export default function Projects() {
     if (urlFilter) setFilter(urlFilter);
   }, [location.search, setFilter]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timer=setTimeout(load,250);
+    return () => clearTimeout(timer);
+  }, [load]);
+  useEffect(() => setPage(1),[search,filter,ragFilter]);
 
   /* ── Inline update handlers ─────────────────────────────────── */
   function handleStatusUpdate(project, newStatus) {
@@ -290,25 +301,9 @@ export default function Projects() {
 
   const TERMINAL = ['closed', 'cancelled'];
   const VALID_FILTERS = ['open','all','in_progress','not_started','on_hold','waiting_customer','waiting_vendor','delayed','pending_approval','overdue','closed','cancelled','reopened'];
-  const openProjects = projects.filter(p => !TERMINAL.includes(p.status));
   // Treat unknown saved filter values as 'open' so stale localStorage doesn't blank the list
   const activeFilter = VALID_FILTERS.includes(filter) ? filter : 'open';
-  const overdueProjects = openProjects.filter(p => p.status !== 'pending_approval' && isOverdue(p.deadline));
-  const statusFiltered = activeFilter === 'all'  ? projects
-                       : activeFilter === 'overdue' ? overdueProjects
-                       : activeFilter === 'open' ? openProjects
-                       : projects.filter(p => p.status === activeFilter);
-  const searchFiltered = search.trim()
-    ? statusFiltered.filter(p => {
-        const q = search.toLowerCase();
-        return (p.title || '').toLowerCase().includes(q) ||
-               (p.customer_name || '').toLowerCase().includes(q) ||
-               (p.created_by_name || '').toLowerCase().includes(q);
-      })
-    : statusFiltered;
-  const filtered = ragFilter === 'all'
-    ? searchFiltered
-    : searchFiltered.filter(p => p.rag_status === ragFilter);
+  const filtered = projects;
 
   return (
     <div className="page">
@@ -336,10 +331,7 @@ export default function Projects() {
           ].map(([s, l]) => (
             <button key={s} className={'filter-pill' + (activeFilter === s ? ' active' : '')} onClick={() => setFilter(s)}>
               {l} <span style={{ opacity: .65 }}>({
-                s === 'all'  ? projects.length :
-                s === 'open' ? openProjects.length :
-                s === 'overdue' ? overdueProjects.length :
-                projects.filter(p => p.status === s).length
+                counts[s] || 0
               })</span>
             </button>
           ))}
@@ -350,7 +342,7 @@ export default function Projects() {
             { key: 'all', label: 'All' }, { key: 'red', label: 'Red' },
             { key: 'amber', label: 'Amber' }, { key: 'green', label: 'Green' },
           ].map(({ key, label }) => {
-            const count = key === 'all' ? statusFiltered.length : statusFiltered.filter(p => p.rag_status === key).length;
+            const count = counts[`rag_${key}`] || 0;
             const isActive = ragFilter === key;
             return (
               <button key={key} onClick={() => setRagFilter(key)}
@@ -363,7 +355,7 @@ export default function Projects() {
         </FilterGroup>
       </div>
 
-      {!loading && !loadError && <ResultContext shown={filtered.length} total={projects.length} noun="projects"
+      {!loading && !loadError && <ResultContext shown={filtered.length} total={total} noun="projects"
         activeFilters={(search.trim() ? 1 : 0) + (activeFilter !== 'all' ? 1 : 0) + (ragFilter !== 'all' ? 1 : 0)}
         onClear={() => { setSearch(''); setFilter('all'); setRagFilter('all'); }} />}
 
@@ -482,6 +474,7 @@ export default function Projects() {
           </table>
         </div>
       )}
+      <Pagination page={page} total={total} pageSize={25} loading={loading} onPageChange={setPage} label="Project pages" />
 
       {/* Waiting dialog for inline status change */}
       {waitingDialog && (
