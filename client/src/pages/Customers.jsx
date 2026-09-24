@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Building2, RefreshCw, Upload } from 'lucide-react';
+import { RefreshCw, Upload } from 'lucide-react';
 import { api } from '../api';
 import { Modal } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
 import { PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
-import { Pagination } from '../components/EnterpriseUI';
+import { DataTable,Pagination,Surface,ToneBadge } from '../components/EnterpriseUI';
 import { useAuth } from '../App';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
@@ -202,6 +202,24 @@ export default function Customers() {
     try { await api.deleteCustomer(id); toast.success('Customer deleted'); load(); } catch (e) { toast.error(e.message); }
   }
 
+  const columns = [
+    { key:'customer',label:'Customer',render:c => <div className="customer-identity">
+      {isManager ? <Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link> : <strong>{c.name}</strong>}
+      <span>{c.customer_code || 'No customer code'} · {c.active ? 'Active' : 'Inactive'}</span>
+      {c.notes && <small title={c.notes}>{c.notes}</small>}
+    </div> },
+    { key:'coverage',label:'Coverage',render:c => c.service_activity_enabled ? <ToneBadge tone="success">Tracked</ToneBadge> : <ToneBadge>Standard</ToneBadge> },
+    { key:'contract',label:'Contract',render:c => <><strong className="text-sm">{c.contract_type || 'No contract'}</strong>{c.contract_end_date && <div className="text-muted text-sm">Ends {c.contract_end_date}</div>}</> },
+    { key:'contact',label:'Primary contact',render:c => <>{c.contact_name || c.primary_contact || '—'}{c.contact_email && <div><a className="text-sm" href={`mailto:${c.contact_email}`}>{c.contact_email}</a></div>}</> },
+    { key:'location',label:'Location',className:'text-sm',render:c => c.location || c.address || '—' },
+    { key:'visits',label:'Visits',numeric:true,render:c => c.visit_count ?? 0 },
+    { key:'actions',label:'Actions',render:c => <div className="table-actions">
+      {isManager && <Link className="btn btn-sm btn-ghost" to={`/customers/${c.id}/service-profile`}>Customer 360</Link>}
+      {canCreate && <button className="btn btn-sm btn-ghost" onClick={() => openEdit(c)}>Edit</button>}
+      {canCreate && <button className="btn btn-sm btn-danger" onClick={() => handleDelete(c.id)}>Delete</button>}
+    </div> },
+  ];
+
   return (
     <div className="page">
       <PageHeader eyebrow="Management" title="Customers" description="Customer records, service coverage, contracts and operational access." actions={
@@ -212,7 +230,7 @@ export default function Customers() {
         </div>
       } />
 
-      <div className="card mb-16">
+      <Surface title="Directory filters" description="Search customer records and narrow the operational coverage view.">
         <ListSearch value={search} onChange={setSearch} label="Search customers" placeholder="Search customers, contacts, email, or location…" />
         <FilterGroup label="View">
           {[
@@ -224,46 +242,15 @@ export default function Customers() {
             {label} <span style={{ opacity: .7 }}>({count})</span>
           </button>)}
         </FilterGroup>
-      </div>
+      </Surface>
 
       {!loading && !loadError && <ResultContext shown={filtered.length} total={total} noun="customers"
         activeFilters={(search.trim() ? 1 : 0) + (view !== 'all' ? 1 : 0)}
         onClear={() => { setSearch(''); setView('all'); }} />}
 
-      {loadError ? <div className="error-msg" role="alert">{loadError} <button className="btn btn-ghost btn-sm" onClick={() => load()}>Retry</button></div>
-        : loading ? <div className="skeleton-table" aria-label="Loading customers"><span /><span /><span /></div> : filtered.length === 0
-        ? <div className="empty"><div className="empty-icon"><Building2 size={40} strokeWidth={1.2} /></div><p>{search.trim() || view!=='all' ? 'No customers match this view' : 'No customers have been added yet'}</p>{(search.trim() || view!=='all') && <button className="btn btn-ghost btn-sm mt-12" onClick={() => { setSearch(''); setView('all'); }}>Reset view</button>}</div>
-        : <div className="card table-wrap">
-            <table>
-              <thead><tr><th>Customer</th><th>Coverage</th><th>Contract</th><th>Primary contact</th><th>Location</th><th>Visits</th><th>Actions</th></tr></thead>
-              <tbody>
-                {filtered.map(c => (
-                  <tr key={c.id}>
-                    <td className="customer-identity">
-                      {isManager ? <Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link> : <strong>{c.name}</strong>}
-                      <span>{c.customer_code || 'No customer code'} · {c.active ? 'Active' : 'Inactive'}</span>
-                      {c.notes && <small title={c.notes}>{c.notes}</small>}
-                    </td>
-                    <td>{c.service_activity_enabled ? <span className="badge badge-done">Tracked</span> : <span className="badge badge-on_hold">Standard</span>}</td>
-                    <td><strong className="text-sm">{c.contract_type || 'No contract'}</strong>{c.contract_end_date && <div className="text-muted text-sm">Ends {c.contract_end_date}</div>}</td>
-                    <td>{c.contact_name || c.primary_contact || '—'}{c.contact_email && <div><a className="text-sm" href={`mailto:${c.contact_email}`}>{c.contact_email}</a></div>}</td>
-                    <td className="text-sm">{c.location || c.address || '—'}</td>
-                    <td><span className="badge badge-active">{c.visit_count}</span></td>
-                    <td>
-                      <div className="table-actions">
-                        {isManager && (
-                          <Link className="btn btn-sm btn-ghost" to={`/customers/${c.id}/service-profile`}>Customer 360</Link>
-                        )}
-                        {canCreate && <button className="btn btn-sm btn-ghost" onClick={() => openEdit(c)}>Edit</button>}
-                        {canCreate && <button className="btn btn-sm btn-danger" onClick={() => handleDelete(c.id)}>Delete</button>}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-      }
+      <DataTable columns={columns} rows={filtered} loading={loading} error={loadError} onRetry={() => load()}
+        caption="Customer directory" empty={search.trim() || view!=='all' ? 'No customers match this view' : 'No customers have been added yet'}
+        emptyAction={(search.trim() || view!=='all') && <button className="btn btn-ghost btn-sm" onClick={() => { setSearch('');setView('all'); }}>Reset view</button>} />
       <Pagination page={page} total={total} pageSize={25} loading={loading} onPageChange={setPage} label="Customer pages" />
 
       {showForm && (
