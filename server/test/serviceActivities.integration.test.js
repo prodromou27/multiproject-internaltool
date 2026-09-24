@@ -433,6 +433,25 @@ test('upgrade-style categories require naming the asset, and an optional version
   assert.equal((await create({ customer_id: bare })).status, 200);
 });
 
+test('a completed upgrade keeps the asset inventory version current, and never rolls it backwards', async () => {
+  const { decrypt } = require('../fieldCipher');
+  const category = (await db.prepare('INSERT INTO activity_categories (name, require_asset) VALUES (?, 1)').run('Upgrade sync fixture')).lastInsertRowid;
+  const asset = await api(`/api/customers/${ids.customer}/assets`, { method: 'POST', token: ids.tokenManager,
+    body: { name: 'Sync target', asset_tag: 'SYNC-1', asset_type: 'Firewall', software_version: '1.0', environment: 'production', criticality: 'medium', lifecycle_status: 'active', coverage_type: 'managed' } });
+  assert.equal(asset.status, 201);
+  const inventory = async () => decrypt((await db.prepare('SELECT software_version FROM customer_assets WHERE id=?').get(asset.data.id)).software_version);
+  const log = (date, status, version) => api('/api/service-activities', { method: 'POST', token: ids.tokenEnabled,
+    body: { customer_id: ids.customer, activity_date: date, category_id: category, title: 'Upgrade', status, asset_ids: [asset.data.id], asset_versions: { [asset.data.id]: version } } });
+  const day = offset => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+
+  assert.equal((await log(day(0), 'planned', '2.0')).status, 200);
+  assert.equal(await inventory(), '1.0', 'a planned upgrade does not change the inventory');
+  assert.equal((await log(day(0), 'completed', '2.0')).status, 200);
+  assert.equal(await inventory(), '2.0');
+  assert.equal((await log(day(-30), 'completed', '1.5')).status, 200);
+  assert.equal(await inventory(), '2.0', 'back-filling an older upgrade must not roll the inventory back');
+});
+
 test('engineer can create an activity for an authorized customer, and server derives engineer_id/team_id itself', async () => {
   const { status, data } = await api('/api/service-activities', {
     method: 'POST',

@@ -13,7 +13,7 @@ const { uploadDir, upload, safeStoredName, safeDownloadName, hasAllowedMagic } =
 const fs = require('fs');
 const path = require('path');
 const cipher = require('../cipher');
-const { decrypt: decryptField } = require('../fieldCipher');
+const { decrypt: decryptField, encrypt: encryptField } = require('../fieldCipher');
 const { getServiceActivitySettings } = require('./serviceActivitySettings');
 const { getStatusConfig, terminalCompletedValue } = require('../serviceActivityStatus');
 const { validateActivityPayload, assertCategoryUsableByTeam, assertAttachmentRuleSatisfied } = require('../serviceActivityValidation');
@@ -67,6 +67,23 @@ const assetVersion = (versions, assetId) => {
   const value = versions && versions[String(assetId)];
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 };
+
+/* A completed activity that records a version for an asset keeps the inventory
+   current: the asset's software_version follows it. Skipped when a later-dated
+   activity already recorded a version for that asset, so back-filling an old
+   upgrade never rolls the inventory backwards. */
+async function syncAssetVersions(tx, { activityId, customerId, activityDate, userId }) {
+  const recorded = await tx.prepare('SELECT asset_id,version FROM service_activity_assets WHERE service_activity_id=? AND version IS NOT NULL').all(activityId);
+  for (const { asset_id: assetId, version } of recorded) {
+    const later = await tx.prepare(`SELECT 1 FROM service_activity_assets saa JOIN service_activities sa ON sa.id=saa.service_activity_id
+      WHERE saa.asset_id=? AND saa.version IS NOT NULL AND sa.id!=? AND sa.activity_date>?`).get(assetId, activityId, activityDate);
+    if (later) continue;
+    const asset = await tx.prepare('SELECT software_version FROM customer_assets WHERE id=? AND customer_id=?').get(assetId, customerId);
+    if (!asset || decryptField(asset.software_version) === version) continue;
+    await tx.prepare('UPDATE customer_assets SET software_version=?,updated_by=?,updated_at=app_now(),version=version+1 WHERE id=? AND customer_id=?')
+      .run(encryptField(version), userId, assetId, customerId);
+  }
+}
 
 /* Scoped asset choices for activity capture. Asset administration remains manager-only. */
 router.get('/assets',requireAuth,requireServiceActivityAccess,async (req,res) => {
@@ -210,6 +227,7 @@ router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => 
     if (Array.isArray(body.asset_ids)) {
       const insAsset=tx.prepare('INSERT INTO service_activity_assets (service_activity_id,asset_id,customer_id,version) VALUES (?,?,?,?)');
       for (const assetId of body.asset_ids) await insAsset.run(id,assetId,Number(customerId),assetVersion(body.asset_versions,assetId));
+      if (status === completedValue) await syncAssetVersions(tx, { activityId:id, customerId:Number(customerId), activityDate:body.activity_date, userId:engineerId });
     }
     return { id, reference };
   });
@@ -334,6 +352,7 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
         const sent=body.asset_versions && Object.prototype.hasOwnProperty.call(body.asset_versions,String(assetId));
         await insAsset.run(id,assetId,Number(customerId),sent ? assetVersion(body.asset_versions,assetId) : previous.get(assetId) ?? null);
       }
+      if (newStatus === completedValue) await syncAssetVersions(tx, { activityId:id, customerId:Number(customerId), activityDate:body.activity_date || existing.activity_date, userId:req.user.id });
     }
     return true;
   });
