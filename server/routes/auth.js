@@ -1,4 +1,5 @@
 const router    = require('express').Router();
+const rateLimit = require('express-rate-limit');
 const bcrypt    = require('bcryptjs');
 const crypto    = require('crypto');
 const path      = require('path');
@@ -440,7 +441,11 @@ router.put('/notification-preferences', requireAuth, async (req, res) => {
 // POST /api/auth/notification-preferences/test — send a real test message
 // through the caller's OWN saved channel and report the real delivery error,
 // like the admin Integrations 'Send Test' button does for the org channels.
-router.post('/notification-preferences/test', requireAuth, async (req, res) => {
+// Each call sends a real email/webhook post, so cap it per signed-in user.
+const personalTestLimiter = rateLimit({ windowMs: 60_000, max: 6, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: req => `user:${req.user?.id ?? 'anon'}`, validate: { keyGeneratorIpFallback: false },
+  message: { error: 'Too many test messages — wait a minute and try again.' } });
+router.post('/notification-preferences/test', requireAuth, personalTestLimiter, async (req, res) => {
   const { channel } = req.body;
   if (!['teams', 'email'].includes(channel)) return res.status(400).json({ error: 'channel must be "teams" or "email"' });
   const row = await db.prepare('SELECT email, notify_teams_webhook_url FROM users WHERE id = ?').get(req.user.id);

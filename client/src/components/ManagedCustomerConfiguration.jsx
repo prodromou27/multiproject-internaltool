@@ -64,9 +64,12 @@ export default function ManagedCustomerConfiguration({ customerId }) {
   const update=useCallback((changes,{ delay=350 }={}) => {
     formRef.current={ ...formRef.current,...changes };
     setForm(formRef.current);setStatus('saving');
-    clearTimeout(timer.current);timer.current=setTimeout(flush,delay);
+    clearTimeout(timer.current);timer.current=setTimeout(() => { timer.current=null;flush(); },delay);
   },[flush]);
-  useEffect(() => () => clearTimeout(timer.current),[]);
+  // Leaving the tab with an edit still waiting on its debounce must not lose it:
+  // flush whatever is pending on the way out instead of just cancelling the timer.
+  const flushRef=useRef(flush);flushRef.current=flush;
+  useEffect(() => () => { if (timer.current) { clearTimeout(timer.current);flushRef.current(); } },[]);
 
   useEffect(() => {
     const controller=new AbortController();setLoading(true);setLoadError('');
