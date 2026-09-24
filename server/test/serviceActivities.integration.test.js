@@ -1983,6 +1983,21 @@ test('permission administration supports versioned role and user overrides',asyn
   assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ scope:'user',user_id:ids.planner,permission_key:'service_activities.access',allowed:true,version:0 } })).status,400);
 });
 
+test('team directory paging validates filters while preserving the legacy roster',async () => {
+  const legacy=await api('/api/auth/users',{ token:ids.tokenManager });
+  assert.equal(legacy.status,200);assert.equal(Array.isArray(legacy.data),true);
+  const paged=await api('/api/auth/users?paged=1&page=1&page_size=2&role=engineer&search=Engineer',{ token:ids.tokenManager });
+  assert.equal(paged.status,200);assert.equal(paged.data.page,1);assert.equal(paged.data.page_size,2);
+  assert.equal(paged.data.rows.length<=2,true);assert.equal(paged.data.rows.every(user => user.role==='engineer'),true);
+  assert.equal(paged.data.total,paged.data.counts.engineer);assert.equal(paged.data.counts.all>=paged.data.total,true);
+  const engineerView=await api('/api/auth/users?paged=1&page_size=2',{ token:ids.tokenEnabled });
+  assert.equal(engineerView.status,200);assert.equal(engineerView.data.rows.every(user => !Object.hasOwn(user,'email') && !Object.hasOwn(user,'last_login')),true);
+  assert.equal((await api('/api/auth/users?paged=1&search=%25',{ token:ids.tokenManager })).data.total,0,'wildcards are searched literally');
+  for (const query of ['page=0','page=1&page=2','page_size=101','role=owner','unknown=1']) {
+    assert.equal((await api(`/api/auth/users?paged=1&${query}`,{ token:ids.tokenManager })).status,400,query);
+  }
+});
+
 test('concurrent report exports allocate unique versions on PostgreSQL', { skip:!process.env.TEST_DATABASE_URL },async () => {
   const endpoint=`${baseUrl}/api/managed-customers/${ids.customer}/report.docx`,body={ from:'2026-08-01',to:'2026-08-31',sections:['executive_summary'],narratives:{ executive_summary:'Concurrent version allocation test.' },status:'draft' };
   const responses=await Promise.all(Array.from({ length:4 },() => fetch(endpoint,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) })));

@@ -88,3 +88,26 @@ test('managed customer landing filters service health with visible result contex
   await page.getByRole('button', { name: 'Reset view' }).click();
   await expect(page.getByText('2 of 2 managed customers')).toBeVisible();
 });
+
+test('team directory requests bounded pages and keeps role counts',async ({ page }) => {
+  const api=await mockApi(page,{ role:'manager' });
+  const users=Array.from({ length:28 },(_,index) => ({ id:index+1,name:`Engineer ${String(index+1).padStart(2,'0')}`,
+    email:`engineer${index+1}@example.com`,role:'engineer',active:1,created_at:'2026-01-01',last_login:null }));
+  api.override('GET /api/auth/users',({ request }) => {
+    const params=new URL(request.url()).searchParams,pageNumber=Number(params.get('page') || 1),pageSize=Number(params.get('page_size') || 25);
+    const role=params.get('role') || 'all',search=(params.get('search') || '').toLowerCase();
+    const searched=users.filter(user => !search || user.name.toLowerCase().includes(search) || user.email.includes(search));
+    const filtered=role==='all' ? searched : searched.filter(user => user.role===role);
+    const start=(pageNumber-1)*pageSize;
+    return { body:{ rows:filtered.slice(start,start+pageSize),total:filtered.length,page:pageNumber,page_size:pageSize,
+      counts:{ all:searched.length,manager:0,planner:0,pm:0,engineer:searched.length } } };
+  });
+  await page.goto('/users');
+  await expect(page.getByText('1–25 of 28 accounts')).toBeVisible();
+  await expect(page.getByText('Engineer 01')).toBeVisible();
+  await page.getByRole('button',{ name:'Next' }).click();
+  await expect(page.getByText('26–28 of 28 accounts')).toBeVisible();
+  await expect(page.getByText('Engineer 28')).toBeVisible();
+  const directoryCalls=api.calls.filter(call => call.method==='GET' && call.path==='/api/auth/users');
+  expect(directoryCalls.some(call => call.query.includes('page=2') && call.query.includes('page_size=25'))).toBeTruthy();
+});

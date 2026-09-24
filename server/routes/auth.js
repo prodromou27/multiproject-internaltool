@@ -13,6 +13,7 @@ const { sendEmail, getSmtpSettings } = require('../email');
 const { encrypt: encryptField, decrypt: decryptField } = require('../fieldCipher');
 const { assertPublicHttpUrl } = require('../security');
 const { effectivePermissions } = require('../permissions');
+const { parseUserDirectoryQuery,escapeLike } = require('../userDirectory');
 const { PRODUCT_NAME } = require('../product');
 const { sendPersonalTest } = require('../notifications');
 
@@ -330,6 +331,30 @@ router.delete('/2fa', requireAuth, async (req, res) => {
    Managers and PMs receive the full set including emails.
    ──────────────────────────────────────────────────────────── */
 router.get('/users', requireAuth, async (req, res) => {
+  if (req.query.paged!==undefined) {
+    const query=parseUserDirectoryQuery(req.query);
+    if (query.error) return res.status(400).json({ error:query.error });
+    const minimal=req.user.role==='engineer';
+    const where=minimal ? ['active = 1'] : [];
+    const params=[];
+    if (query.search) {
+      const term=`%${escapeLike(query.search)}%`;
+      where.push(minimal
+        ? '(name ILIKE ? OR role ILIKE ?)'
+        : "(name ILIKE ? OR COALESCE(email,'') ILIKE ? OR role ILIKE ?)");
+      params.push(term,term,...(minimal?[]:[term]));
+    }
+    const base=where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const grouped=await db.prepare(`SELECT role,COUNT(*) AS count FROM users ${base} GROUP BY role`).all(...params);
+    const counts={ all:grouped.reduce((sum,row) => sum+Number(row.count),0),manager:0,planner:0,pm:0,engineer:0 };
+    for (const row of grouped) counts[row.role]=Number(row.count);
+    const roleWhere=query.role==='all' ? base : `${base ? `${base} AND` : 'WHERE'} role=?`;
+    const rowParams=query.role==='all' ? params : [...params,query.role];
+    const fields=minimal ? 'id,name,role,avatar_url' : 'id,name,email,role,active,avatar_url,created_at,last_login';
+    const rows=await db.prepare(`SELECT ${fields} FROM users ${roleWhere} ORDER BY name,id LIMIT ? OFFSET ?`)
+      .all(...rowParams,query.page_size,query.offset);
+    return res.json({ rows,total:query.role==='all'?counts.all:counts[query.role],counts,page:query.page,page_size:query.page_size });
+  }
   if (req.user.role === 'engineer') {
     // Minimal roster — no emails, no last_login, no inactive accounts
     const users = (await db.prepare(

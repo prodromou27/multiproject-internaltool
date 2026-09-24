@@ -74,6 +74,7 @@ export const api = {
   enable2fa: (code) => req('POST', '/auth/2fa/enable', { code }),
   disable2fa: (password) => req('DELETE', '/auth/2fa', { password }),
   users: (options) => req('GET', '/auth/users', undefined, options),
+  pagedUsers: (params = {},options) => req('GET','/auth/users?' + new URLSearchParams({ ...params,paged:1 }).toString(),undefined,options),
   me: (options) => req('GET', '/auth/me', undefined, options),
   myPermissions: (options) => req('GET','/auth/permissions',undefined,options),
   updateProfile: (data) => req('PUT', '/auth/profile', data),
