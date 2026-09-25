@@ -877,7 +877,7 @@ Run everything locally with `cd server && npm test` and `cd client && npm test`
   magic bytes, JWT scope and session checks, activity-reference formatting, workload
   model and policy, report schedule and weekly digest, integration-setting redaction.
 - `nativeSql.test.js` fails if SQLite-only SQL is written back into the source.
-- `serviceActivities.integration.test.js` — route-level tests that mount the real route
+- `activityCore`, `activityValidation`, `authNotificationsTasks`, `trackingAndReports`, `managedCustomers`, `recommendationsAndCalendar` and `operationsAndCustomer360` `.integration.test.js` (sharing `test/lib/activityFixture.js`) — route-level tests that mount the real route
   modules on a minimal Express app (`server/index.js` is not booted; its TLS/rate-limit
   bootstrap is not importable). Without `TEST_DATABASE_URL` it runs on an in-memory
   Postgres (`pg-mem`, with a few rewrites for what pg-mem lacks, such as `app_now()`);

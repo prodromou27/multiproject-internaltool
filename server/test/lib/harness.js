@@ -16,7 +16,7 @@ memDb.public.registerFunction({ name: 'substr', args: [DataType.text, DataType.i
 const { Pool: RealPool } = memDb.adapters.createPg();
 
 // pg-mem lacks round() overloads, to_char()/AT TIME ZONE and NULL-vs-CHECK semantics;
-// see serviceActivities.integration.test.js for the full rationale.
+// see lib/activityFixture.js for the full rationale.
 function pgMemCompatible(sql) {
   if (/CREATE OR REPLACE FUNCTION (round|app_now|app_today)/i.test(sql)) return null;
   const now = new Date().toISOString();

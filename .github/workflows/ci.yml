@@ -48,7 +48,13 @@ jobs:
         working-directory: server
         env:
           TEST_DATABASE_URL: postgres://app:test_password@localhost:5432/solutionshub_test
-        run: node --test test/serviceActivities.integration.test.js
+        # Each suite seeds the same fixed cast (users, teams, customers), so it
+        # gets a freshly created database rather than sharing one.
+        run: |
+          for suite in activityCore activityValidation authNotificationsTasks trackingAndReports managedCustomers recommendationsAndCalendar operationsAndCustomer360; do
+            PGPASSWORD=test_password psql -h localhost -U app -d postgres -v ON_ERROR_STOP=1               -c 'DROP DATABASE IF EXISTS solutionshub_test WITH (FORCE)' -c 'CREATE DATABASE solutionshub_test'
+            node --test "test/$suite.integration.test.js"
+          done
 
       # Several route tests skip themselves on pg-mem (correlated subqueries,
       # join lookups, an internal pg-mem crash) and are meant to run here.
