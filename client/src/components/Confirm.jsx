@@ -21,19 +21,15 @@ export function ConfirmProvider({ children }) {
       {children}
       {req && (
         <Modal title={req.title ?? 'Are you sure?'} onClose={() => done(false)}>
-          <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 20 }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-              background: req.danger === false ? '#eff6ff' : '#fef2f2',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
+          <div className="u-89d573f">
+            <div className="u-90ffd0a" style={{ background: req.danger === false ? '#eff6ff' : '#fef2f2' }}>
               <AlertTriangle size={20} color={req.danger === false ? '#3b82f6' : '#ef4444'} />
             </div>
-            <p style={{ fontSize: 14, color: 'var(--gray-700)', lineHeight: 1.6, margin: 0, paddingTop: 8 }}>
+            <p className="u-bea31f6">
               {req.message}
             </p>
           </div>
-          <div className="modal-footer" style={{ padding: 0, border: 'none' }}>
+          <div className="modal-footer u-75cb963">
             <button autoFocus className="btn btn-ghost" onClick={() => done(false)}>Cancel</button>
             <button
               className={req.danger === false ? 'btn btn-primary' : 'btn btn-danger'}

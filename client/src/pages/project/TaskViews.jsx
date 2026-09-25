@@ -110,32 +110,28 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
   return (
     <Modal title="Task Details" onClose={onClose}>
       <div className="mb-12">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-          <span style={{ fontWeight: 700, fontSize: 15 }}>{task.title}</span>
+        <div className="u-1380104">
+          <span className="u-0c7a14e">{task.title}</span>
           {!!task.is_adhoc && <span className="badge badge-adhoc">adhoc</span>}
         </div>
-        {task.description && <p style={{ color: 'var(--gray-600)', fontSize: 13, marginBottom: 8 }}>{task.description}</p>}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: 13, marginBottom: 8 }}>
-          <div><span style={{ color: 'var(--gray-400)' }}>Status:</span> <StatusBadge entityType="task" s={task.status} /></div>
-          <div><span style={{ color: 'var(--gray-400)' }}>Priority:</span> <PriorityBadge p={task.priority} /></div>
-          <div><span style={{ color: 'var(--gray-400)' }}>Assigned:</span> {task.assigned_to_name || '—'}</div>
-          <div><span style={{ color: 'var(--gray-400)' }}>Deadline:</span> <span className={isOverdue(task.deadline) && !['completed','closed','cancelled'].includes(task.status) ? 'overdue' : ''}>{fmtDate(task.deadline) || '—'}</span></div>
+        {task.description && <p className="u-901ac01">{task.description}</p>}
+        <div className="u-b7ebf49">
+          <div><span className="u-1e2ea2c">Status:</span> <StatusBadge entityType="task" s={task.status} /></div>
+          <div><span className="u-1e2ea2c">Priority:</span> <PriorityBadge p={task.priority} /></div>
+          <div><span className="u-1e2ea2c">Assigned:</span> {task.assigned_to_name || '—'}</div>
+          <div><span className="u-1e2ea2c">Deadline:</span> <span className={isOverdue(task.deadline) && !['completed','closed','cancelled'].includes(task.status) ? 'overdue' : ''}>{fmtDate(task.deadline) || '—'}</span></div>
         </div>
         {task.status === 'waiting_customer' && task.pending_from_customer && (
-          <div style={{
-            background: 'var(--warning-light)', border: '1px solid #fed7aa', borderRadius: 8,
-            padding: '8px 12px', marginBottom: 10, fontSize: 13,
-            display: 'flex', gap: 8, alignItems: 'flex-start',
-          }}>
+          <div className="u-6ea4f51">
             <span className="flex-shrink-0">⏳</span>
             <div>
-              <span style={{ fontWeight: 700, color: '#9a3412' }}>Pending from customer: </span>
-              <span style={{ color: '#7c2d12' }}>{task.pending_from_customer}</span>
+              <span className="u-7a40868">Pending from customer: </span>
+              <span className="u-2110b49">{task.pending_from_customer}</span>
             </div>
           </div>
         )}
         <div className="flex-center gap-8">
-          <span style={{ fontSize: 12, color: 'var(--gray-400)' }}>Quick status:</span>
+          <span className="u-d65cb71">Quick status:</span>
           <select
             value={task.status}
             onChange={async e => {
@@ -143,8 +139,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
               if (s === 'waiting_customer' || s === 'waiting_vendor') { setWaitingStatus(s); setWaitingDialog(true); return; }
               try { await onUpdate(task.id, { status: s }); onClose(); } catch (_) { /* onUpdate shows alert */ }
             }}
-            style={{ width: 'auto', padding: '3px 8px', fontSize: 12,
-              borderColor: task.status === 'waiting_customer' ? '#f97316' : undefined }}
+            className="u-257f103" style={{ borderColor: task.status === 'waiting_customer' ? '#f97316' : undefined }}
           >
             {statuses.map(s => (
               <option key={s} value={s}>
@@ -170,27 +165,27 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
       </div>
 
       {/* Time Tracking */}
-      <div style={{ borderTop: '1px solid var(--gray-100)', paddingTop: 12, marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          <div className="section-title" style={{ margin: 0, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+      <div className="u-1e1ab6a">
+        <div className="u-f03a7bd">
+          <div className="section-title u-64e67c9">
             <Clock size={13} /> Time Logged
           </div>
           {totalHours > 0 && (
-            <span style={{ background: 'var(--primary-light)', color: '#0891b2', fontSize: 11, fontWeight: 700, borderRadius: 8, padding: '2px 8px' }}>
+            <span className="u-d1f32c4">
               {Math.round(totalHours * 10) / 10}h total
             </span>
           )}
         </div>
 
         {timeLogs.length > 0 && (
-          <ul style={{ listStyle: 'none', marginBottom: 10, maxHeight: 130, overflowY: 'auto' }}>
+          <ul className="u-bd381ea">
             {timeLogs.map(l => (
-              <li key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: '1px solid var(--gray-50)', fontSize: 12 }}>
-                <span style={{ fontWeight: 700, color: '#0891b2', flexShrink: 0 }}>{l.hours}h</span>
-                <span style={{ flex: 1, color: 'var(--gray-600)' }}>{l.description || <em style={{ color: 'var(--gray-400)' }}>no description</em>}</span>
-                <span style={{ fontSize: 10, color: 'var(--gray-400)', flexShrink: 0 }}>{l.user_name}</span>
+              <li key={l.id} className="u-23589b3">
+                <span className="u-311dc7a">{l.hours}h</span>
+                <span className="u-e0f5d28">{l.description || <em className="u-1e2ea2c">no description</em>}</span>
+                <span className="u-8e27ea3">{l.user_name}</span>
                 {(isManager || l.user_id === user.id) && (
-                  <button onClick={() => deleteTimeLog(l.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-300)', display: 'flex', alignItems: 'center', padding: '1px 3px' }}
+                  <button onClick={() => deleteTimeLog(l.id)} className="u-6f432e4"
                     onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
                     onMouseLeave={e => e.currentTarget.style.color = 'var(--gray-300)'}><Trash2 size={11} /></button>
                 )}
@@ -205,13 +200,13 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
             value={timeForm.hours}
             onChange={e => setTimeForm(f => ({ ...f, hours: e.target.value }))}
             placeholder="Hours (e.g. 1.5)"
-            style={{ width: 130, fontSize: 12 }}
+            className="u-5a5bc97"
           />
           <input
             value={timeForm.description}
             onChange={e => setTimeForm(f => ({ ...f, description: e.target.value }))}
             placeholder="What did you work on?"
-            style={{ flex: 1, minWidth: 150, fontSize: 12 }}
+            className="u-210f1d1"
           />
           <button type="submit" className="btn btn-primary btn-sm" disabled={loggingTime || !timeForm.hours}>
             + Log
@@ -220,28 +215,28 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
       </div>
 
       {/* Dependencies */}
-      <div style={{ borderTop: '1px solid var(--gray-100)', paddingTop: 12, marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <div className="section-title" style={{ margin: 0, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+      <div className="u-1e1ab6a">
+        <div className="u-3daa038">
+          <div className="section-title u-64e67c9">
             <LinkIcon size={13} /> Blocked by ({deps.length})
           </div>
           {canManageTask && !addingDep && (
-            <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => setAddingDep(true)}>+ Add</button>
+            <button className="btn btn-ghost btn-sm u-11a5081" onClick={() => setAddingDep(true)}>+ Add</button>
           )}
         </div>
 
         {deps.length === 0 && !addingDep && (
-          <p className="text-muted text-sm" style={{ marginBottom: 4 }}>No dependencies — this task is not blocked by anything</p>
+          <p className="text-muted text-sm u-c81ce4b">No dependencies — this task is not blocked by anything</p>
         )}
 
         {deps.map(d => (
-          <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--gray-50)' }}>
+          <div key={d.id} className="u-d474331">
             {!d.restricted && <StatusBadge entityType="task" s={d.status} />}
-            <span style={{ flex: 1, fontSize: 12 }}>{d.title}</span>
-            {(d.restricted ? d.is_blocking : !['completed','closed','cancelled'].includes(d.status)) && <span style={{ fontSize: 10, color: '#6366f1', fontWeight: 700 }}>BLOCKING</span>}
+            <span className="u-5a95af4">{d.title}</span>
+            {(d.restricted ? d.is_blocking : !['completed','closed','cancelled'].includes(d.status)) && <span className="u-bd8c9f3">BLOCKING</span>}
             {canManageTask && (
               <button onClick={() => removeDep(d.id)} title="Remove dependency"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-300)', display: 'flex', alignItems: 'center', padding: '1px 3px' }}
+                className="u-6f432e4"
                 onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
                 onMouseLeave={e => e.currentTarget.style.color = 'var(--gray-300)'}>
                 <Unlink size={12} />
@@ -251,8 +246,8 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
         ))}
 
         {addingDep && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <select value={depPickId} onChange={e => setDepPickId(e.target.value)} style={{ flex: 1, fontSize: 12 }}>
+          <div className="u-1a6be0e">
+            <select value={depPickId} onChange={e => setDepPickId(e.target.value)} className="u-5a95af4">
               <option value="">Pick a task…</option>
               {(projectTasks || [])
                 .filter(t => t.id !== task.id && !deps.some(d => d.id === t.id))
@@ -266,13 +261,13 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
 
       {/* Custom Fields */}
       {customFields.length > 0 && (
-        <div style={{ borderTop: '1px solid var(--gray-100)', paddingTop: 12, marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div className="section-title" style={{ margin: 0, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+        <div className="u-1e1ab6a">
+          <div className="u-3daa038">
+            <div className="section-title u-64e67c9">
               <SlidersHorizontal size={13} /> Custom Fields
             </div>
             {!editingCustom && (
-              <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} disabled={!customLoaded} onClick={() => {
+              <button className="btn btn-ghost btn-sm u-11a5081" disabled={!customLoaded} onClick={() => {
                 const draft = {};
                 customFields.forEach(f => { draft[f.id] = customValues[f.id] ?? ''; });
                 setCustomDraft(draft);
@@ -285,7 +280,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
             <div>
               {customFields.map(f => (
                 <div key={f.id} className="form-group mb-8">
-                  <label className="text-sm">{f.name}{f.required && <span style={{ color: '#ef4444' }}> *</span>}</label>
+                  <label className="text-sm">{f.name}{f.required && <span className="u-b0eb59c"> *</span>}</label>
                   {f.field_type === 'select' ? (
                     <select value={customDraft[f.id] ?? ''} onChange={e => setCustomDraft(d => ({ ...d, [f.id]: e.target.value }))} className="text-sm">
                       <option value="">— Select —</option>
@@ -306,10 +301,10 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
               </div>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+            <div className="u-d276a53">
               {customFields.map(f => (
-                <div key={f.id} style={{ fontSize: 13 }}>
-                  <span style={{ color: 'var(--gray-400)', fontSize: 11 }}>{f.name}: </span>
+                <div key={f.id} className="u-5e0faad">
+                  <span className="u-33ea7bc">{f.name}: </span>
                   <span style={{ fontWeight: customValues[f.id] ? 600 : 400, color: customValues[f.id] ? 'var(--gray-800)' : 'var(--gray-400)' }}>
                     {customValues[f.id] || '—'}
                   </span>
@@ -320,34 +315,33 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
         </div>
       )}
 
-      <div style={{ borderTop: '1px solid var(--gray-100)', paddingTop: 12 }}>
-        <div className="section-title" style={{ marginBottom: 8, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+      <div className="u-27cd81a">
+        <div className="section-title u-64a3821">
           <MessageSquare size={13} /> Comments ({comments.length})
         </div>
         {comments.length === 0
           ? <p className="text-muted text-sm mb-8">No comments yet. Be first to add one.</p>
-          : <ul style={{ listStyle: 'none', marginBottom: 12, maxHeight: 220, overflowY: 'auto' }}>
+          : <ul className="u-13e71f9">
               {comments.map(c => (
-                <li key={c.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--gray-100)', display: 'flex', gap: 8 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--primary)', color: '#fff',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                <li key={c.id} className="u-96f1002">
+                  <div className="u-f98e311">
                     {c.user_name?.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                      <span style={{ fontWeight: 600, fontSize: 12 }}>{c.user_name}</span>
-                      <span style={{ fontSize: 10, color: 'var(--gray-400)' }} title={fmtDate(c.created_at)}>{fmtRelative(c.created_at)}</span>
+                    <div className="u-2551796">
+                      <span className="u-55babdd">{c.user_name}</span>
+                      <span className="u-19dc6a2" title={fmtDate(c.created_at)}>{fmtRelative(c.created_at)}</span>
                       {(isManager || c.user_id === user.id) && (
-                        <button onClick={() => deleteComment(c.id)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--gray-300)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 2px' }} title="Delete"><X size={13} /></button>
+                        <button onClick={() => deleteComment(c.id)} className="u-6efede9" title="Delete"><X size={13} /></button>
                       )}
                     </div>
-                    <div style={{ fontSize: 13, color: 'var(--gray-700)', wordBreak: 'break-word' }}>{renderMentions(c.message)}</div>
+                    <div className="u-79ec38e">{renderMentions(c.message)}</div>
                   </div>
                 </li>
               ))}
             </ul>
         }
-        <form onSubmit={submitComment} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <form onSubmit={submitComment} className="u-b559c2d">
           <MentionInput
             value={commentText}
             onChange={setCommentText}
@@ -385,16 +379,16 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
         <td className="font-medium">
           <span className="inline-flex items-center gap-5">
             {!!task.is_blocked && (
-              <span title="Blocked by unfinished dependencies" style={{ color: '#6366f1', display: 'inline-flex', alignItems: 'center' }}>
+              <span title="Blocked by unfinished dependencies" className="u-a115383">
                 <Lock size={12} />
               </span>
             )}
             {task.title}
-            {task.is_adhoc ? <span className="badge badge-adhoc" style={{ marginLeft: 6 }}>adhoc</span> : null}
+            {task.is_adhoc ? <span className="badge badge-adhoc u-391ef12">adhoc</span> : null}
             {task.dep_count > 0 && !task.is_blocked && <LinkIcon size={11} color="var(--gray-400)" title={`${task.dep_count} dependenc${task.dep_count !== 1 ? 'ies' : 'y'}`} />}
           </span>
           {(task.status === 'waiting_customer' || task.status === 'waiting_vendor') && task.pending_from_customer && (
-            <div style={{ fontSize: 11, color: task.status === 'waiting_vendor' ? '#6b21a8' : '#9a3412', marginTop: 2, lineHeight: 1.3 }}>
+            <div className="u-9cfc075" style={{ color: task.status === 'waiting_vendor' ? '#6b21a8' : '#9a3412' }}>
               ⏳ {task.pending_from_customer}
             </div>
           )}
@@ -403,7 +397,7 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
         <td><PriorityBadge p={task.priority} /></td>
         <td>{task.assigned_to_name || '—'}</td>
         <td className={isOverdue(task.deadline) && !['completed','closed','cancelled'].includes(task.status) ? 'overdue' : ''}>{fmtDate(task.deadline)}</td>
-        <td style={{ fontSize: 11, color: '#0891b2', fontWeight: task.logged_hours > 0 ? 700 : 400 }}>
+        <td className="u-7690bd8" style={{ fontWeight: task.logged_hours > 0 ? 700 : 400 }}>
           {task.logged_hours > 0 ? `${task.logged_hours}h` : '—'}
         </td>
         <td onClick={e => e.stopPropagation()} className="flex-center gap-6">
@@ -414,8 +408,7 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
               if (s === 'waiting_customer' || s === 'waiting_vendor') { setWaitingStatus(s); setWaitingDialog(true); return; }
               onUpdate(task.id, { status: s });
             }}
-            style={{ width: 'auto', padding: '3px 6px', fontSize: 12,
-              borderColor: task.status === 'waiting_customer' ? '#f97316' : undefined }}
+            className="u-33842f4" style={{ borderColor: task.status === 'waiting_customer' ? '#f97316' : undefined }}
           >
             {statuses.map(s => <option key={s} value={s}>{TASK_STATUS_LABELS[s] || s}</option>)}
           </select>
@@ -423,8 +416,7 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
             <button
               onClick={e => { e.stopPropagation(); onDuplicate(task.id); }}
               title="Duplicate task"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 4,
-                color: 'var(--gray-400)', display: 'flex', alignItems: 'center' }}
+              className="u-9a650b0"
               onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
               onMouseLeave={e => e.currentTarget.style.color = 'var(--gray-400)'}
             >
@@ -475,7 +467,7 @@ export function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, 
   const byStatus = col => tasks.filter(t => t.status === col.key);
 
   return (
-    <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8, minHeight: 360 }}>
+    <div className="u-9c9789c">
       {KANBAN_COLS.map(col => {
         const colTasks = byStatus(col);
         const isOver   = overCol === col.key;
@@ -484,19 +476,13 @@ export function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, 
             key={col.key}
             onDragOver={e => handleDragOver(e, col.key)}
             onDrop={e => handleDrop(e, col.key)}
-            style={{
-              minWidth: 210, flex: '1 1 210px',
-              background: isOver ? col.bg : 'var(--gray-50)',
-              border: `2px solid ${isOver ? col.color : 'var(--gray-200)'}`,
-              borderRadius: 10, padding: '10px 8px',
-              transition: 'border-color .15s, background .15s',
-            }}
+            className="u-6e15fb3" style={{ background: isOver ? col.bg : 'var(--gray-50)', border: `2px solid ${isOver ? col.color : 'var(--gray-200)'}` }}
           >
             {/* Column header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: col.color, flexShrink: 0 }} />
-              <span style={{ fontWeight: 700, fontSize: 12, color: col.color, flex: 1 }}>{col.label}</span>
-              <span style={{ fontSize: 11, fontWeight: 700, background: col.color + '22', color: col.color, borderRadius: 8, padding: '1px 7px' }}>
+            <div className="u-4caa6d3">
+              <span className="u-2dcdba7" style={{ background: col.color }} />
+              <span className="u-2a85b68" style={{ color: col.color }}>{col.label}</span>
+              <span className="u-3380886" style={{ background: col.color + '22', color: col.color }}>
                 {colTasks.length}
               </span>
             </div>
@@ -510,41 +496,34 @@ export function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, 
                   onDragStart={() => handleDragStart(task.id)}
                   onDragEnd={handleDragEnd}
                   onClick={() => onRowClick(task)}
-                  style={{
-                    background: '#fff', borderRadius: 8, padding: '8px 10px',
-                    border: dragging === task.id ? `2px dashed ${col.color}` : '1px solid var(--gray-200)',
-                    cursor: 'grab', opacity: dragging === task.id ? 0.5 : 1,
-                    boxShadow: '0 1px 3px rgba(0,0,0,.06)',
-                    transition: 'box-shadow .1s',
-                    userSelect: 'none',
-                  }}
+                  className="u-06d578c" style={{ border: dragging === task.id ? `2px dashed ${col.color}` : '1px solid var(--gray-200)', opacity: dragging === task.id ? 0.5 : 1 }}
                   onMouseEnter={e => { if (dragging !== task.id) e.currentTarget.style.boxShadow = '0 3px 10px rgba(0,0,0,.1)'; }}
                   onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,.06)'}
                 >
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+                  <div className="u-42ca785">
                     <GripVertical size={12} style={{ flexShrink: 0, marginTop: 1, color: 'var(--gray-300)' }} />
                     <div className="flex-1 min-w-0">
-                      <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--gray-800)', wordBreak: 'break-word', lineHeight: 1.3 }}>
+                      <div className="u-496d82a">
                         {!!task.is_blocked && <Lock size={10} color="#6366f1" style={{ marginRight: 3, verticalAlign: 'middle' }} />}
                         {task.title}
-                        {!!task.is_adhoc && <span className="badge badge-adhoc" style={{ marginLeft: 5 }}>adhoc</span>}
+                        {!!task.is_adhoc && <span className="badge badge-adhoc u-9813a0d">adhoc</span>}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+                      <div className="u-2bcd2ea">
                         <PriorityBadge p={task.priority} />
                         {task.deadline && (
-                          <span style={{ fontSize: 10, color: isOverdue(task.deadline) ? '#ef4444' : 'var(--gray-400)', fontWeight: isOverdue(task.deadline) ? 700 : 400 }}>
+                          <span className="u-0d5be05" style={{ color: isOverdue(task.deadline) ? '#ef4444' : 'var(--gray-400)', fontWeight: isOverdue(task.deadline) ? 700 : 400 }}>
                             {fmtDate(task.deadline)}
                           </span>
                         )}
                       </div>
                       {task.assigned_to_name && (
-                        <div style={{ fontSize: 10, color: 'var(--gray-400)', marginTop: 4 }}>{task.assigned_to_name}</div>
+                        <div className="u-1dd7834">{task.assigned_to_name}</div>
                       )}
                     </div>
                     <button
                       onClick={e => { e.stopPropagation(); onDuplicate(task.id); }}
                       title="Duplicate task"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '1px 2px', color: 'var(--gray-300)', flexShrink: 0 }}
+                      className="u-823cd7b"
                       onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
                       onMouseLeave={e => e.currentTarget.style.color = 'var(--gray-300)'}
                     >
@@ -554,7 +533,7 @@ export function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, 
                 </div>
               ))}
               {colTasks.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '20px 8px', color: 'var(--gray-300)', fontSize: 12 }}>
+                <div className="u-707fb99">
                   Drop here
                 </div>
               )}

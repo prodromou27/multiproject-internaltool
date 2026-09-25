@@ -22,7 +22,7 @@ export function OverviewTab() {
   useEffect(() => { load(); }, [load]);
 
   if (loading || !stats) return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--gray-400)', padding: '24px 0' }}>
+    <div className="u-a8973f8">
       <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Loading overview…
     </div>
   );
@@ -51,12 +51,11 @@ export function OverviewTab() {
       {/* ── Alert banner ──────────────────────────────────── */}
       <div className="mb-20">
         {alerts.length === 0
-          ? <div className="alert alert-success" style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          ? <div className="alert alert-success u-97bc8b4">
               <CheckCircle2 size={14} /> All systems healthy — no outstanding issues detected
             </div>
           : alerts.map((a, i) => (
-              <div key={i} className={`alert alert-${a.level === 'info' ? 'warning' : a.level}`}
-                   style={{ marginBottom: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div key={i} className={`alert alert-${a.level === 'info' ? 'warning' : a.level} u-45b5ac7`}>
                 {a.icon}{a.msg}
               </div>
             ))
@@ -76,38 +75,38 @@ export function OverviewTab() {
 
         {/* System health bars */}
         <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-            <div className="section-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}><TrendingUp size={14} /> System Health</div>
+          <div className="u-99f74a6">
+            <div className="section-title u-564c453"><TrendingUp size={14} /> System Health</div>
             <button className="btn btn-ghost btn-sm inline-flex items-center gap-4" onClick={load}>
               <RefreshCw size={12} /> Refresh
             </button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="u-2b1e4d1">
             {healthBars.map(({ label, value, total, color }) => {
               const pct = Math.min(100, Math.round((value / total) * 100));
               return (
                 <div key={label}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
+                  <div className="u-189fef4">
                     <span className="font-semibold">{label}</span>
-                    <span style={{ color: 'var(--gray-400)' }}>{value}/{total} <strong style={{ color }}>{pct}%</strong></span>
+                    <span className="u-1e2ea2c">{value}/{total} <strong style={{ color }}>{pct}%</strong></span>
                   </div>
                   <div className="progress-bar">
-                    <div className="progress-bar-fill" style={{ width: `${pct}%`, background: color, transition: 'width .6s ease' }} />
+                    <div className="progress-bar-fill u-7f8ceac" style={{ width: `${pct}%`, background: color }} />
                   </div>
                 </div>
               );
             })}
           </div>
           {/* Quick counters */}
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--gray-100)', display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, textAlign: 'center' }}>
+          <div className="u-e5c1aed">
             {[
               { label: 'Customers',       value: stats.customers,         color: '#0891b2' },
               { label: 'Pending Closure', value: projects.pending_closure, color: 'var(--warning)' },
               { label: 'Storage',         value: fileSize(stats.attachments.total_size), color: 'var(--gray-600)' },
             ].map(({ label, value, color }) => (
               <div key={label}>
-                <div style={{ fontSize: 17, fontWeight: 800, color }}>{value}</div>
-                <div style={{ fontSize: 10, color: 'var(--gray-400)', marginTop: 1, textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
+                <div className="u-3d57896" style={{ color }}>{value}</div>
+                <div className="u-8e62657">{label}</div>
               </div>
             ))}
           </div>
@@ -115,22 +114,18 @@ export function OverviewTab() {
 
         {/* Recent activity */}
         <div className="card">
-          <div className="section-title" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Activity size={14} /> Recent Activity</div>
+          <div className="section-title u-2cc326d"><Activity size={14} /> Recent Activity</div>
           {activity.length === 0
             ? <p className="text-muted text-sm">No activity recorded yet</p>
             : <ul className="list-none">
                 {activity.slice(0, 7).map((e, i) => (
-                  <li key={i} style={{
-                    display: 'flex', gap: 10, padding: '8px 0',
-                    borderBottom: i < Math.min(6, activity.length - 1) ? '1px solid var(--gray-100)' : 'none',
-                    alignItems: 'flex-start',
-                  }}>
-                    <span style={{ flexShrink: 0, marginTop: 1 }}>{ACTIVITY_ICONS[e.type] || <Activity size={15} color="var(--gray-400)" />}</span>
+                  <li key={i} className="u-d57244e" style={{ borderBottom: i < Math.min(6, activity.length - 1) ? '1px solid var(--gray-100)' : 'none' }}>
+                    <span className="u-82d341f">{ACTIVITY_ICONS[e.type] || <Activity size={15} color="var(--gray-400)" />}</span>
                     <div className="flex-1 min-w-0">
-                      <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <strong>{e.actor}</strong>{' '}<span style={{ color: 'var(--gray-600)' }}>{e.description}</span>
+                      <div className="u-b360f43">
+                        <strong>{e.actor}</strong>{' '}<span className="u-31d6430">{e.description}</span>
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 1 }} title={fmtDateTime(e.created_at)}>{timeSince(e.created_at)}</div>
+                      <div className="u-ed87168" title={fmtDateTime(e.created_at)}>{timeSince(e.created_at)}</div>
                     </div>
                   </li>
                 ))}
@@ -141,8 +136,8 @@ export function OverviewTab() {
 
       {/* ── Role breakdown ────────────────────────────────── */}
       <div className="card">
-        <div className="section-title" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}><UsersIcon size={14} /> Team Breakdown</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+        <div className="section-title u-8cac894"><UsersIcon size={14} /> Team Breakdown</div>
+        <div className="u-aa8878b">
           {[
             { role: 'manager',  label: 'Managers',  count: users.managers,         color: '#7c3aed',          Icon: Shield },
             { role: 'engineer', label: 'Engineers', count: users.engineers,        color: '#0891b2',          Icon: Cog },
@@ -150,13 +145,13 @@ export function OverviewTab() {
             { role: 'pm',       label: 'PMs',       count: users.pms || 0,         color: '#0ea5e9',          Icon: ClipboardList },
             { role: 'inactive', label: 'Inactive',  count: users.total - users.active, color: 'var(--gray-400)', Icon: UserX },
           ].map(({ label, count, color, Icon }) => (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--gray-50)', borderRadius: 8 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 8, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div key={label} className="u-a3b5c73">
+              <div className="u-433b31a" style={{ background: color + '18' }}>
                 <Icon size={18} color={color} />
               </div>
               <div>
-                <div style={{ fontSize: 22, fontWeight: 800, color, lineHeight: 1 }}>{count}</div>
-                <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 2 }}>{label}</div>
+                <div className="u-76bc9ef" style={{ color }}>{count}</div>
+                <div className="u-c945d44">{label}</div>
               </div>
             </div>
           ))}
@@ -176,7 +171,7 @@ export function StatsTab() {
   const { users, projects, tasks, maintenance, customers, attachments } = stats;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="u-f22e0e6">
       <div>
         <div className="section-title flex-center gap-6"><UsersIcon size={14} /> Users</div>
         <div className="grid-4">
@@ -239,18 +234,14 @@ export function ActivityTab() {
     <div className="card p-0">
       <ul className="list-none">
         {events.map((e, i) => (
-          <li key={i} style={{
-            display: 'flex', gap: 12, padding: '12px 20px',
-            borderBottom: i < events.length - 1 ? '1px solid var(--gray-100)' : 'none',
-            alignItems: 'flex-start',
-          }}>
-            <span style={{ width: 20, display: 'flex', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{ACTIVITY_ICONS[e.type] || <Bell size={15} color="var(--gray-400)" />}</span>
+          <li key={i} className="u-5796aaa" style={{ borderBottom: i < events.length - 1 ? '1px solid var(--gray-100)' : 'none' }}>
+            <span className="u-12ece22">{ACTIVITY_ICONS[e.type] || <Bell size={15} color="var(--gray-400)" />}</span>
             <div className="flex-1 min-w-0">
-              <div style={{ fontSize: 13 }}>
+              <div className="u-5e0faad">
                 <strong>{e.actor}</strong>{' '}
-                <span style={{ color: 'var(--gray-600)' }}>{e.description}</span>
+                <span className="u-31d6430">{e.description}</span>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 2 }}>
+              <div className="u-f6e5233">
                 {timeSince(e.created_at)} · {e.created_at ? fmtDateTime(e.created_at) : ''}
               </div>
             </div>

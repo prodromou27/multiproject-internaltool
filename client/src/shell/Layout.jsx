@@ -147,14 +147,14 @@ export function Layout({ children }) {
       <header className="topbar" inert={mobile && open ? '' : undefined}>
         <Hamburger open={open} onClick={() => setOpen(o => !o)} />
         <div className="topbar-logo">{PRODUCT_WORDMARK.prefix}<span>{PRODUCT_WORDMARK.suffix}</span></div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
+        <div className="u-6bb9e7a">
           <QuickCreate user={user} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
           <GlobalSearch />
           <HelpMenu role={user.role} />
           <NotificationBell />
           <NavLink to="/profile" className="topbar-user" style={{ textDecoration: 'none', color: 'inherit' }}>
             <strong>{initials}</strong><br />
-            <span style={{ fontSize: 10 }}>{user.role}</span>
+            <span className="u-0d5be05">{user.role}</span>
           </NavLink>
         </div>
       </header>
@@ -170,20 +170,20 @@ export function Layout({ children }) {
           <button type="button" className="workspace-command" onClick={() => setPaletteOpen(true)} aria-label="Open page navigation">
             <Search size={15} aria-hidden="true" /> Go to a page <kbd>Ctrl K</kbd>
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <div className="u-2f5dfa5">
             <QuickCreate user={user} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
             <GlobalSearch />
             <HelpMenu role={user.role} />
             <NotificationBell />
             <NavLink to="/profile" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', marginLeft: 6 }}>
-              <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#3b82f6,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', overflow: 'hidden', flexShrink: 0 }}>
+              <div className="u-34cd4d9">
                 {user.avatar_url
-                  ? <img src={user.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ? <img src={user.avatar_url} alt="avatar" className="u-618aa59" />
                   : initials}
               </div>
-              <div style={{ lineHeight: 1.3 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--gray-800)' }}>{user.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--gray-400)', textTransform: 'capitalize' }}>{user.role}</div>
+              <div className="u-ac03116">
+                <div className="u-c04424d">{user.name}</div>
+                <div className="u-e149246">{user.role}</div>
               </div>
             </NavLink>
           </div>

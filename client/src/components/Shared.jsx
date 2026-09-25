@@ -29,12 +29,8 @@ export function StatusBadge({ s, entityType }) {
 
   if (def) {
     return (
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600,
-        background: def.bg, color: def.text, whiteSpace: 'nowrap',
-      }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: def.dot, flexShrink: 0 }} />
+      <span className="u-d2215a4" style={{ background: def.bg, color: def.text }}>
+        <span className="u-19c4840" style={{ background: def.dot }} />
         {def.label}
       </span>
     );
@@ -60,12 +56,8 @@ export function RagBadge({ rag }) {
   const c = RAG_CONFIG[rag];
   if (!c) return null;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700,
-      background: c.bg, color: c.text, whiteSpace: 'nowrap',
-    }}>
-      <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.dot, flexShrink: 0 }} />
+    <span className="u-e590460" style={{ background: c.bg, color: c.text }}>
+      <span className="u-68bde25" style={{ background: c.dot }} />
       {c.label}
     </span>
   );
@@ -190,7 +182,7 @@ export function ProgressBar({ value, max, showLabel }) {
       <div className="progress-bar flex-1">
         <div className="progress-bar-fill" style={{ width: pct + '%', background: color }} />
       </div>
-      {showLabel && <span style={{ fontSize: 11, color: 'var(--gray-500)', width: 34, textAlign: 'right', flexShrink: 0 }}>{Math.round(pct)}%</span>}
+      {showLabel && <span className="u-158e2b6">{Math.round(pct)}%</span>}
     </div>
   );
 }
@@ -214,13 +206,13 @@ export function useConfirm() {
   };
 
   const ConfirmDialogNode = state ? (
-    <div className="modal-overlay" style={{ zIndex: 10000 }}>
-      <div className="modal" style={{ maxWidth: 420 }}>
+    <div className="modal-overlay u-1d34ca9">
+      <div className="modal u-0fd8744">
         <div className="modal-header">
           <span className="modal-title">{state.title}</span>
         </div>
         <div className="modal-body">
-          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6 }}>{state.message}</p>
+          <p className="u-5a8cd12">{state.message}</p>
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={() => handleChoice(false)} autoFocus>Cancel</button>
@@ -239,7 +231,7 @@ export function renderMentions(text) {
   const parts = text.split(/(@\w[\w\s]*?\w(?=\s|$|[^a-zA-Z]))/g);
   return parts.map((p, i) =>
     p.startsWith('@')
-      ? <span key={i} style={{ background: 'var(--primary-light)', color: 'var(--tone-info-text)', borderRadius: 4, padding: '0 3px', fontWeight: 600, fontSize: '0.92em' }}>{p}</span>
+      ? <span key={i} className="u-fb345ca">{p}</span>
       : p
   );
 }
@@ -312,7 +304,7 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
   const Tag = rows ? 'textarea' : 'input';
 
   return (
-    <div style={{ position: 'relative', flex: style?.flex ?? 1 }}>
+    <div className="u-d461c96" style={{ flex: style?.flex ?? 1 }}>
       <Tag
         ref={inputRef}
         value={value}
@@ -324,29 +316,19 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
         style={{ width: '100%', fontSize: 13, boxSizing: 'border-box', ...style }}
       />
       {mentionOpen && filtered.length > 0 && (
-        <div style={{
-          position: 'absolute', bottom: '100%', left: 0, zIndex: 100,
-          background: 'var(--surface)', border: '1px solid var(--gray-200)', borderRadius: 8,
-          boxShadow: '0 4px 16px rgba(0,0,0,.12)', minWidth: 200, marginBottom: 2,
-          overflow: 'hidden',
-        }}>
+        <div className="u-33c5e02">
           {filtered.map((u, i) => (
             <div
               key={u.id}
               onMouseDown={e => { e.preventDefault(); insertMention(u.name); }}
-              style={{
-                padding: '7px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-                background: i === mentionIndex ? 'var(--primary-light)' : 'var(--surface)',
-                borderBottom: i < filtered.length - 1 ? '1px solid var(--gray-100)' : 'none',
-              }}
+              className="u-5f16e65" style={{ background: i === mentionIndex ? 'var(--primary-light)' : 'var(--surface)', borderBottom: i < filtered.length - 1 ? '1px solid var(--gray-100)' : 'none' }}
             >
-              <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--primary)', color: '#fff',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+              <div className="u-6c6e327">
                 {u.name.charAt(0).toUpperCase()}
               </div>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600 }}>{u.name}</div>
-                <div style={{ fontSize: 10, color: 'var(--gray-400)' }}>{u.role}</div>
+                <div className="u-eb5cb58">{u.name}</div>
+                <div className="u-19dc6a2">{u.role}</div>
               </div>
             </div>
           ))}
@@ -360,8 +342,8 @@ export function EmptyState({ icon, title, description, action }) {
   return (
     <div className="empty">
       {icon && <div className="empty-icon">{icon}</div>}
-      <p style={{ fontWeight: 600, color: 'var(--gray-600)', marginBottom: 4 }}>{title}</p>
-      {description && <p style={{ fontSize: 13 }}>{description}</p>}
+      <p className="u-c6a4692">{title}</p>
+      {description && <p className="u-5e0faad">{description}</p>}
       {action && <div className="mt-16">{action}</div>}
     </div>
   );

@@ -74,7 +74,7 @@ export function CustomFieldsTab({ projectId, canManage }) {
       )}
 
       {fields.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--gray-400)' }}>
+        <div className="u-c0ee35e">
           <SlidersHorizontal size={32} style={{ marginBottom: 8, opacity: .3 }} />
           <p className="text-sm">No custom fields yet. Add project-specific fields like "Device Type" or "Ticket ID".</p>
         </div>
@@ -87,16 +87,16 @@ export function CustomFieldsTab({ projectId, canManage }) {
                 <tr key={f.id}>
                   <td className="font-semibold">{f.name}</td>
                   <td>
-                    <span style={{ fontSize: 11, background: 'var(--gray-100)', padding: '2px 8px', borderRadius: 6, fontWeight: 600, color: 'var(--gray-600)' }}>
+                    <span className="u-fc3ef5c">
                       {TYPE_LABELS[f.field_type] || f.field_type}
                     </span>
                     {f.field_type === 'select' && f.options?.length > 0 && (
-                      <span style={{ fontSize: 11, color: 'var(--gray-400)', marginLeft: 6 }}>
+                      <span className="u-b1235e7">
                         ({f.options.join(', ')})
                       </span>
                     )}
                   </td>
-                  <td>{f.required ? <span style={{ color: '#ef4444', fontWeight: 700 }}>Required</span> : <span className="text-muted">Optional</span>}</td>
+                  <td>{f.required ? <span className="u-bdb581f">Required</span> : <span className="text-muted">Optional</span>}</td>
                   {canManage && (
                     <td className="flex gap-6">
                       <button className="btn btn-sm btn-ghost" onClick={() => openEdit(f)}>Edit</button>
@@ -129,7 +129,7 @@ export function CustomFieldsTab({ projectId, canManage }) {
             {form.field_type === 'select' && (
               <div className="form-group">
                 <label>Options</label>
-                <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                <div className="u-c4059b0">
                   <input
                     value={optInput}
                     onChange={e => setOptInput(e.target.value)}
@@ -139,14 +139,11 @@ export function CustomFieldsTab({ projectId, canManage }) {
                   />
                   <button type="button" className="btn btn-ghost btn-sm" onClick={addOption}>Add</button>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <div className="u-8baf0a1">
                   {form.options.map(opt => (
-                    <span key={opt} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px',
-                      background: 'var(--primary-light)', color: 'var(--tone-info-text)', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                    }}>
+                    <span key={opt} className="u-c65cc0a">
                       {opt}
-                      <button type="button" onClick={() => removeOption(opt)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3b82f6', padding: 0, display: 'flex', alignItems: 'center' }}>
+                      <button type="button" onClick={() => removeOption(opt)} className="u-736a351">
                         <X size={11} />
                       </button>
                     </span>
@@ -155,12 +152,12 @@ export function CustomFieldsTab({ projectId, canManage }) {
               </div>
             )}
             <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, textTransform: 'none', letterSpacing: 0, cursor: 'pointer' }}>
-                <input type="checkbox" checked={form.required} onChange={e => setForm(f => ({ ...f, required: e.target.checked }))} style={{ width: 'auto' }} />
+              <label className="u-c856e78">
+                <input type="checkbox" checked={form.required} onChange={e => setForm(f => ({ ...f, required: e.target.checked }))} className="u-30e741d" />
                 Required field
               </label>
             </div>
-            <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+            <div className="modal-footer u-cc45258">
               <button type="button" className="btn btn-ghost" onClick={() => { setShowAdd(false); setEditing(null); }}>Cancel</button>
               <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : (editing ? 'Save Changes' : 'Add Field')}</button>
             </div>

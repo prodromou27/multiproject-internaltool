@@ -133,16 +133,14 @@ export default function Dashboard() {
         actions={<>
           {isManager && <Link to="/approvals" className="btn btn-primary">Review approvals</Link>}
           {isEngineer && <Link to="/my-day" className="btn btn-primary">Open My Work</Link>}
-          <div style={{ display:'flex', gap:8 }}>
+          <div className="u-a76d597">
           <button
-            className="btn btn-ghost btn-sm"
+            className="btn btn-ghost btn-sm u-f2f12e0"
             onClick={() => setShowCustomizer(true)}
-            style={{ display:'inline-flex', alignItems:'center', gap:5 }}
           >
             <Settings2 size={13} /> Customize
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={load} disabled={refreshing}
-            style={{ display:'inline-flex', alignItems:'center', gap:5 }}>
+          <button className="btn btn-ghost btn-sm u-f2f12e0" onClick={load} disabled={refreshing}>
             <RefreshCw size={13} className={refreshing ? 'dashboard-spin' : ''} /> {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>

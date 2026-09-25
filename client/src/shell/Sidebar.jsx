@@ -25,12 +25,7 @@ export const PAGE_ICONS = { LayoutDashboard, CalendarDays, FolderOpen, CheckSqua
 function OverdueDot({ count }) {
   if (!count) return null;
   return (
-    <span className="sidebar-overdue-count" style={{
-      marginLeft: 'auto', background: '#ef4444', color: '#fff',
-      fontSize: 9, fontWeight: 800, lineHeight: 1, borderRadius: 10,
-      minWidth: 16, height: 16, display: 'flex', alignItems: 'center',
-      justifyContent: 'center', padding: '0 4px', flexShrink: 0,
-    }}>{count > 99 ? '99+' : count}</span>
+    <span className="sidebar-overdue-count u-ffa914c">{count > 99 ? '99+' : count}</span>
   );
 }
 
@@ -55,7 +50,7 @@ export function SidebarContent({ user, logout, onNav, pages, compact, onOpenLaun
       {/* Logo */}
       <div className="sidebar-logo">
         <div className="sidebar-logo-mark">
-          <img src="/logo.png" alt="Odyssey" style={{ height: 19, width: 'auto', objectFit: 'contain', display: 'block' }} />
+          <img src="/logo.png" alt="Odyssey" className="u-94aaddb" />
         </div>
         <span className="sidebar-brand-name">{PRODUCT_WORDMARK.prefix}<strong>{PRODUCT_WORDMARK.suffix}</strong></span>
       </div>
@@ -63,9 +58,9 @@ export function SidebarContent({ user, logout, onNav, pages, compact, onOpenLaun
       {/* User info — click to go to profile */}
       <NavLink to="/profile" onClick={onNav} style={{ textDecoration: 'none' }}>
         <div className="sidebar-user cursor-pointer">
-          <div className="sidebar-user-avatar" style={{ overflow: 'hidden', padding: 0 }}>
+          <div className="sidebar-user-avatar u-d18c502">
             {user.avatar_url
-              ? <img src={user.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+              ? <img src={user.avatar_url} alt="avatar" className="u-2410f0a" />
               : initials}
           </div>
           <div className="sidebar-user-info">
@@ -103,7 +98,7 @@ export function SidebarContent({ user, logout, onNav, pages, compact, onOpenLaun
             <Database size={14} /> Netsuite
           </a>
         </div>
-        <button onClick={onToggleDensity} style={{ marginBottom: 6 }} title={dense ? 'Use comfortable spacing' : 'Use compact spacing'}>
+        <button onClick={onToggleDensity} className="u-4e420af" title={dense ? 'Use comfortable spacing' : 'Use compact spacing'}>
           <Rows3 size={15} />
           <span>{dense ? 'Comfortable spacing' : 'Compact spacing'}</span>
         </button>
@@ -111,7 +106,7 @@ export function SidebarContent({ user, logout, onNav, pages, compact, onOpenLaun
           {compact ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
           <span>{compact ? 'Expand' : 'Collapse'}</span>
         </button>
-        <button onClick={toggleDark} style={{ marginBottom: 6 }} title={dark ? 'Use light mode' : 'Use dark mode'}>
+        <button onClick={toggleDark} className="u-4e420af" title={dark ? 'Use light mode' : 'Use dark mode'}>
           {dark ? <Sun size={14} /> : <Moon size={14} />}
           <span>{dark ? 'Light Mode' : 'Dark Mode'}</span>
         </button>

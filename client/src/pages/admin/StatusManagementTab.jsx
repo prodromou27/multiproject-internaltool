@@ -37,32 +37,20 @@ export function StatusRow({ status, onUpdate, onDelete, onMoveUp, onMoveDown, is
   }
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-      background: 'var(--gray-50)', borderRadius: 8, border: '1px solid var(--gray-200)',
-      flexWrap: 'wrap',
-    }}>
+    <div className="u-c37cc13">
       {/* Color preview */}
-      <span style={{
-        width: 26, height: 26, borderRadius: 6, flexShrink: 0,
-        background: status.bg, border: `2px solid ${status.dot}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-      }} onClick={() => setShowColors(v => !v)} title="Change colour">
-        <span style={{ width: 8, height: 8, borderRadius: '50%', background: status.dot }} />
+      <span className="u-959a32e" style={{ background: status.bg, border: `2px solid ${status.dot}` }} onClick={() => setShowColors(v => !v)} title="Change colour">
+        <span className="u-81390c9" style={{ background: status.dot }} />
       </span>
 
       {/* Color picker popup */}
       {showColors && (
-        <div style={{
-          position: 'absolute', zIndex: 100, background: '#fff', border: '1px solid var(--gray-200)',
-          borderRadius: 10, padding: 10, boxShadow: '0 8px 24px rgba(0,0,0,.12)',
-          display: 'flex', flexWrap: 'wrap', gap: 6, width: 200,
-        }}>
+        <div className="u-f7f1472">
           {COLOR_PRESETS.map(p => (
             <span key={p.name} title={p.name}
               onClick={() => { onUpdate({ ...status, bg: p.bg, text: p.text, dot: p.dot }); setShowColors(false); }}
-              style={{ width: 28, height: 28, borderRadius: 6, cursor: 'pointer', background: p.bg, border: `2px solid ${p.dot}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.dot }} />
+              className="u-b553cd0" style={{ background: p.bg, border: `2px solid ${p.dot}` }}>
+              <span className="u-81390c9" style={{ background: p.dot }} />
             </span>
           ))}
         </div>
@@ -76,7 +64,7 @@ export function StatusRow({ status, onUpdate, onDelete, onMoveUp, onMoveDown, is
               value={editLabel}
               onChange={e => setEditLabel(e.target.value)}
               placeholder="Label"
-              style={{ flex: 1, minWidth: 120, fontSize: 13, padding: '4px 8px' }}
+              className="u-cd05ad0"
               onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
               autoFocus
             />
@@ -84,42 +72,42 @@ export function StatusRow({ status, onUpdate, onDelete, onMoveUp, onMoveDown, is
               value={editValue}
               onChange={e => setEditValue(e.target.value)}
               placeholder="value_slug"
-              style={{ width: 130, fontSize: 12, padding: '4px 8px', fontFamily: 'monospace', color: 'var(--gray-500)' }}
+              className="u-28005f1"
             />
           </div>
         ) : (
           <div className="flex-center gap-8">
-            <span style={{ fontWeight: 600, fontSize: 13 }}>{status.label}</span>
-            <code style={{ fontSize: 11, color: 'var(--gray-400)', background: 'var(--gray-100)', padding: '1px 5px', borderRadius: 4 }}>{status.value}</code>
+            <span className="u-160b067">{status.label}</span>
+            <code className="u-4a65d85">{status.value}</code>
           </div>
         )}
       </div>
 
       {/* Toggles */}
-      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 11, color: 'var(--gray-500)', whiteSpace: 'nowrap', userSelect: 'none' }}>
-        <input type="checkbox" checked={!!status.requires_reason} style={{ width: 'auto' }}
+      <label className="u-8030903">
+        <input type="checkbox" checked={!!status.requires_reason} className="u-30e741d"
           onChange={e => onUpdate({ ...status, requires_reason: e.target.checked })} />
         Requires reason
       </label>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 11, color: 'var(--gray-500)', whiteSpace: 'nowrap', userSelect: 'none' }}>
-        <input type="checkbox" checked={!!status.is_terminal} style={{ width: 'auto' }}
+      <label className="u-8030903">
+        <input type="checkbox" checked={!!status.is_terminal} className="u-30e741d"
           onChange={e => onUpdate({ ...status, is_terminal: e.target.checked })} />
         Terminal
       </label>
 
       {/* Actions */}
-      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-        {!isFirst && <button className="btn btn-sm btn-ghost" onClick={onMoveUp} style={{ padding: '3px 5px' }}><ChevronUp size={12} /></button>}
-        {!isLast  && <button className="btn btn-sm btn-ghost" onClick={onMoveDown} style={{ padding: '3px 5px' }}><ChevronDown size={12} /></button>}
+      <div className="u-0ddf6fa">
+        {!isFirst && <button className="btn btn-sm btn-ghost u-717e62a" onClick={onMoveUp}><ChevronUp size={12} /></button>}
+        {!isLast  && <button className="btn btn-sm btn-ghost u-717e62a" onClick={onMoveDown}><ChevronDown size={12} /></button>}
         {editing ? (
           <>
-            <button className="btn btn-sm btn-primary" onClick={save} style={{ padding: '3px 8px', fontSize: 11 }}>Save</button>
-            <button className="btn btn-sm btn-ghost" onClick={() => { setEditing(false); setEditLabel(status.label); setEditValue(status.value); }} style={{ padding: '3px 6px' }}>✕</button>
+            <button className="btn btn-sm btn-primary u-e053a92" onClick={save}>Save</button>
+            <button className="btn btn-sm btn-ghost u-159b3ac" onClick={() => { setEditing(false); setEditLabel(status.label); setEditValue(status.value); }}>✕</button>
           </>
         ) : (
-          <button className="btn btn-sm btn-ghost" onClick={() => setEditing(true)} style={{ padding: '3px 5px' }}><Pencil size={12} /></button>
+          <button className="btn btn-sm btn-ghost u-717e62a" onClick={() => setEditing(true)}><Pencil size={12} /></button>
         )}
-        <button className="btn btn-sm btn-danger" onClick={onDelete} style={{ padding: '3px 5px' }}><Trash2 size={12} /></button>
+        <button className="btn btn-sm btn-danger u-717e62a" onClick={onDelete}><Trash2 size={12} /></button>
       </div>
     </div>
   );
@@ -151,14 +139,14 @@ export function StatusSection({ title, statuses, onChange }) {
   }
 
   return (
-    <div style={{ marginBottom: 28 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--gray-800)' }}>{title}</h3>
+    <div className="u-c071b4a">
+      <div className="u-7f5b67c">
+        <h3 className="u-233d0e5">{title}</h3>
         <button className="btn btn-sm btn-ghost inline-flex items-center gap-4" onClick={addNew}>
           <Plus size={12} /> Add Status
         </button>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
+      <div className="u-d6a249b">
         {statuses.map((s, i) => (
           <StatusRow
             key={s.value + i}
@@ -172,7 +160,7 @@ export function StatusSection({ title, statuses, onChange }) {
           />
         ))}
         {statuses.length === 0 && (
-          <p className="text-muted text-sm" style={{ padding: '12px 0' }}>No statuses defined. Click "+ Add Status" to add one.</p>
+          <p className="text-muted text-sm u-2156831">No statuses defined. Click "+ Add Status" to add one.</p>
         )}
       </div>
     </div>
@@ -204,18 +192,18 @@ export function StatusManagementTab() {
   }
 
   if (!draft) return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--gray-400)', padding: '24px 0' }}>
+    <div className="u-a8973f8">
       <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Loading status config…
     </div>
   );
 
   return (
-    <div style={{ maxWidth: 740 }}>
+    <div className="u-6f42545">
       {/* Info banner */}
-      <div className="card" style={{ marginBottom: 24, background: 'var(--primary-light)', border: '1px solid #bfdbfe' }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <div className="card u-2024ade">
+        <div className="u-e2e5d77">
           <Tag size={16} color="#2563eb" style={{ flexShrink: 0, marginTop: 1 }} />
-          <div style={{ fontSize: 13, color: 'var(--tone-info-text)' }}>
+          <div className="u-45801e5">
             Customise the statuses available for Projects, Tasks, and Maintenance Visits.
             Changes take effect immediately for all users. Click the colour dot to change the badge colour.
             Check <strong>Requires reason</strong> to prompt users for a note when selecting that status.
@@ -224,8 +212,8 @@ export function StatusManagementTab() {
         </div>
       </div>
 
-      {msg && <div className="alert alert-success" style={{ marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={14} /> {msg}</div>}
-      {err && <div className="alert alert-danger"  style={{ marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} /> {err}</div>}
+      {msg && <div className="alert alert-success u-01eae41"><CheckCircle2 size={14} /> {msg}</div>}
+      {err && <div className="alert alert-danger u-01eae41"><AlertTriangle size={14} /> {err}</div>}
 
       <StatusSection
         title="Project Statuses"
@@ -243,7 +231,7 @@ export function StatusManagementTab() {
         onChange={list => setDraft(d => ({ ...d, visit: list }))}
       />
 
-      <div style={{ display: 'flex', gap: 10, paddingTop: 8 }}>
+      <div className="u-795f9d0">
         <button className="btn btn-primary inline-flex items-center gap-6" onClick={save} disabled={saving}>
           {saving ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving…</> : <><Save size={14} /> Save All Changes</>}
         </button>

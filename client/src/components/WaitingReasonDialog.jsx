@@ -24,13 +24,13 @@ export default function WaitingReasonDialog({ onConfirm, onCancel, initial = '',
   }
   return <Modal title={title} onClose={saving ? () => {} : onCancel}>
     <form onSubmit={submit}>
-      <p className="text-muted text-sm" style={{ marginBottom: 14 }}>Describe what is needed before work can continue.</p>
+      <p className="text-muted text-sm u-2b583d7">Describe what is needed before work can continue.</p>
       {error && <div className="error-msg" role="alert">{error}</div>}
       <div className="form-group">
         <label htmlFor={reasonId}>Reason *</label>
         <textarea id={reasonId} value={reason} onChange={event => setReason(event.target.value)} rows={3} maxLength={10000} required autoFocus disabled={saving} />
       </div>
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+      <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" disabled={saving} onClick={onCancel}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving || !reason.trim()}>{saving ? 'Saving...' : 'Set Status'}</button>
       </div>

@@ -32,29 +32,16 @@ export default function ContextMenu({ x, y, date, onNewVisit, onClose }) {
   return (
     <div ref={ref} style={style}>
       {/* header */}
-      <div style={{
-        padding: '7px 12px', fontSize: 11, fontWeight: 700,
-        color: 'var(--gray-500)', borderBottom: '1px solid var(--gray-100)',
-        background: 'var(--gray-50)', letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-      }}>
+      <div className="u-5d414d2">
         {fmtDate(date)}
       </div>
       <button
         onClick={() => { onClose(); onNewVisit(); }}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-          padding: '10px 14px', background: 'none', border: 'none',
-          cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tone-warning-text)',
-          textAlign: 'left',
-        }}
+        className="u-693c0fa"
         onMouseEnter={e => e.currentTarget.style.background = '#fef3c7'}
         onMouseLeave={e => e.currentTarget.style.background = 'none'}
       >
-        <span style={{
-          width: 24, height: 24, borderRadius: 6,
-          background: 'var(--warning-light)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
+        <span className="u-cdb0e53">
           <Wrench size={13} color="#b45309" />
         </span>
         New Maintenance Visit

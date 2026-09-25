@@ -23,14 +23,10 @@ export function AdvancedFilters({ filters, setFilters, users, customers, isManag
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v }));
 
   return (
-    <div style={{
-      background: 'var(--gray-50)', border: '1px solid var(--gray-200)',
-      borderRadius: 10, padding: 16, display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12,
-    }}>
+    <div className="u-4e40d28">
       {/* Entity */}
       <div className="form-group m-0">
-        <label style={{ fontSize: 11 }}>Type</label>
+        <label className="u-11a5081">Type</label>
         <select value={filters.entity || 'all'} onChange={e => set('entity', e.target.value)}>
           <option value="all">All types</option>
           <option value="projects">Projects</option>
@@ -42,7 +38,7 @@ export function AdvancedFilters({ filters, setFilters, users, customers, isManag
 
       {/* Status */}
       <div className="form-group m-0">
-        <label style={{ fontSize: 11 }}>Status</label>
+        <label className="u-11a5081">Status</label>
         <select value={filters.status || ''} onChange={e => set('status', e.target.value)}>
           <option value="">Any status</option>
           <optgroup label="Projects">
@@ -66,7 +62,7 @@ export function AdvancedFilters({ filters, setFilters, users, customers, isManag
 
       {/* Priority */}
       <div className="form-group m-0">
-        <label style={{ fontSize: 11 }}>Priority</label>
+        <label className="u-11a5081">Priority</label>
         <select value={filters.priority || ''} onChange={e => set('priority', e.target.value)}>
           <option value="">Any priority</option>
           <option value="high">High</option>
@@ -78,7 +74,7 @@ export function AdvancedFilters({ filters, setFilters, users, customers, isManag
       {/* Customer */}
       {isManager && customers.length > 0 && (
         <div className="form-group m-0">
-          <label style={{ fontSize: 11 }}>Customer</label>
+          <label className="u-11a5081">Customer</label>
           <select value={filters.customer_id || ''} onChange={e => set('customer_id', e.target.value)}>
             <option value="">Any customer</option>
             {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -89,7 +85,7 @@ export function AdvancedFilters({ filters, setFilters, users, customers, isManag
       {/* Engineer */}
       {isManager && engineers.length > 0 && (
         <div className="form-group m-0">
-          <label style={{ fontSize: 11 }}>Assigned to</label>
+          <label className="u-11a5081">Assigned to</label>
           <select value={filters.engineer_id || ''} onChange={e => set('engineer_id', e.target.value)}>
             <option value="">Anyone</option>
             {engineers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -99,7 +95,7 @@ export function AdvancedFilters({ filters, setFilters, users, customers, isManag
 
       {/* Report status */}
       <div className="form-group m-0">
-        <label style={{ fontSize: 11 }}>Report Status</label>
+        <label className="u-11a5081">Report Status</label>
         <select value={filters.report_status || ''} onChange={e => set('report_status', e.target.value)}>
           <option value="">Any</option>
           <option value="pending">Report Pending</option>
@@ -110,27 +106,27 @@ export function AdvancedFilters({ filters, setFilters, users, customers, isManag
 
       {/* Date range */}
       <div className="form-group m-0">
-        <label style={{ fontSize: 11 }}>From Date</label>
+        <label className="u-11a5081">From Date</label>
         <input type="date" value={filters.date_from || ''} onChange={e => set('date_from', e.target.value)} />
       </div>
       <div className="form-group m-0">
-        <label style={{ fontSize: 11 }}>To Date</label>
+        <label className="u-11a5081">To Date</label>
         <input type="date" value={filters.date_to || ''} onChange={e => set('date_to', e.target.value)} />
       </div>
 
       {/* Boolean toggles */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'flex-end' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', userSelect: 'none' }}>
-          <input type="checkbox" checked={!!filters.overdue} onChange={e => set('overdue', e.target.checked ? '1' : '')} style={{ width: 'auto' }} />
+      <div className="u-40dd1a7">
+        <label className="u-2c7d7c4">
+          <input type="checkbox" checked={!!filters.overdue} onChange={e => set('overdue', e.target.checked ? '1' : '')} className="u-30e741d" />
           Overdue only
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', userSelect: 'none' }}>
-          <input type="checkbox" checked={!!filters.unassigned} onChange={e => set('unassigned', e.target.checked ? '1' : '')} style={{ width: 'auto' }} />
+        <label className="u-2c7d7c4">
+          <input type="checkbox" checked={!!filters.unassigned} onChange={e => set('unassigned', e.target.checked ? '1' : '')} className="u-30e741d" />
           Unassigned only
         </label>
         {isManager && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', userSelect: 'none' }}>
-            <input type="checkbox" checked={!!filters.my_tasks} onChange={e => set('my_tasks', e.target.checked ? '1' : '')} style={{ width: 'auto' }} />
+          <label className="u-2c7d7c4">
+            <input type="checkbox" checked={!!filters.my_tasks} onChange={e => set('my_tasks', e.target.checked ? '1' : '')} className="u-30e741d" />
             My items only
           </label>
         )}

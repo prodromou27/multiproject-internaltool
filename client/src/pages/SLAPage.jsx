@@ -14,12 +14,12 @@ function pct(num, den) {
 
 function StatusPill({ ok, atRisk, breached, total }) {
   if (total === 0)
-    return <span style={{ fontSize: 12, color: 'var(--gray-400)', fontStyle: 'italic' }}>No items</span>;
+    return <span className="u-d0f2cbf">No items</span>;
   if (breached > 0)
-    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--danger-light)', color: 'var(--tone-danger-text)', border: '1px solid #fecaca', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}><XCircle size={12} /> {breached} breached</span>;
+    return <span className="u-adf3ce7"><XCircle size={12} /> {breached} breached</span>;
   if (atRisk > 0)
-    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--warning-light)', color: 'var(--tone-warning-text)', border: '1px solid #fde68a', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}><AlertTriangle size={12} /> {atRisk} at risk</span>;
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--success-light)', color: 'var(--tone-success-text)', border: '1px solid #bbf7d0', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}><CheckCircle size={12} /> All compliant</span>;
+    return <span className="u-b070131"><AlertTriangle size={12} /> {atRisk} at risk</span>;
+  return <span className="u-09d944d"><CheckCircle size={12} /> All compliant</span>;
 }
 
 function ComplianceBar({ value }) {
@@ -27,10 +27,10 @@ function ComplianceBar({ value }) {
   const color = value >= 90 ? '#22c55e' : value >= 70 ? '#f59e0b' : '#ef4444';
   return (
     <div className="flex-center gap-8">
-      <div style={{ flex: 1, height: 6, background: 'var(--gray-100)', borderRadius: 4, overflow: 'hidden' }}>
-        <div style={{ width: `${value}%`, height: '100%', background: color, borderRadius: 4, transition: 'width .4s ease' }} />
+      <div className="u-eda03e0">
+        <div className="u-b8c11ab" style={{ width: `${value}%`, background: color }} />
       </div>
-      <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 32, textAlign: 'right' }}>{value}%</span>
+      <span className="u-ab410bc" style={{ color }}>{value}%</span>
     </div>
   );
 }
@@ -45,45 +45,41 @@ function SLACard({ icon: Icon, title, target, metric, renderItems }) {
   const hasIssues = breached > 0 || at_risk > 0;
 
   return (
-    <div className="card" style={{ padding: 20 }}>
+    <div className="card u-769fed3">
       {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: 10,
-          background: breached > 0 ? '#fef2f2' : at_risk > 0 ? '#fffbeb' : '#f0fdf4',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}>
+      <div className="u-d771e38">
+        <div className="u-4030aa7" style={{ background: breached > 0 ? '#fef2f2' : at_risk > 0 ? '#fffbeb' : '#f0fdf4' }}>
           <Icon size={20} color={breached > 0 ? '#ef4444' : at_risk > 0 ? '#f59e0b' : '#22c55e'} />
         </div>
         <div className="flex-1 min-w-0">
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{title}</div>
-          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Target: {target}</div>
+          <div className="u-dfe9a73">{title}</div>
+          <div className="u-1a57d8f">Target: {target}</div>
         </div>
         <StatusPill ok={good} atRisk={at_risk} breached={breached} total={total} />
       </div>
 
       {/* Stats row */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
+      <div className="u-9ed45fb">
         <div className="text-center">
-          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--gray-900)' }}>{total}</div>
-          <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Total</div>
+          <div className="u-d7a888e">{total}</div>
+          <div className="u-0bc90e3">Total</div>
         </div>
         {good > 0 && (
           <div className="text-center">
-            <div style={{ fontSize: 22, fontWeight: 800, color: '#22c55e' }}>{good}</div>
-            <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>On Time</div>
+            <div className="u-18cbb50">{good}</div>
+            <div className="u-0bc90e3">On Time</div>
           </div>
         )}
         {at_risk > 0 && (
           <div className="text-center">
-            <div style={{ fontSize: 22, fontWeight: 800, color: '#f59e0b' }}>{at_risk}</div>
-            <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>At Risk</div>
+            <div className="u-bda7b6b">{at_risk}</div>
+            <div className="u-0bc90e3">At Risk</div>
           </div>
         )}
         {breached > 0 && (
           <div className="text-center">
-            <div style={{ fontSize: 22, fontWeight: 800, color: '#ef4444' }}>{breached}</div>
-            <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>Breached</div>
+            <div className="u-bdcb49e">{breached}</div>
+            <div className="u-0bc90e3">Breached</div>
           </div>
         )}
       </div>
@@ -95,11 +91,7 @@ function SLACard({ icon: Icon, title, target, metric, renderItems }) {
       {hasIssues && (
         <button
           onClick={() => setExpanded(e => !e)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 4,
-            background: 'none', border: 'none', cursor: 'pointer',
-            fontSize: 12, color: 'var(--primary)', marginTop: 10, padding: 0, fontWeight: 600,
-          }}
+          className="u-cc10427"
         >
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           {expanded ? 'Hide details' : 'Show details'}
@@ -121,29 +113,29 @@ function MVItems({ items }) {
   if (!show.length) return null;
   return (
     <div className="overflow-x-auto">
-      <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+      <table className="u-2cff907">
         <thead>
-          <tr style={{ borderBottom: '1px solid var(--gray-100)' }}>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Visit</th>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Customer</th>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Engineers</th>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Scheduled</th>
-            <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Working Days</th>
-            <th style={{ padding: '6px 8px' }} />
+          <tr className="u-02c1276">
+            <th className="u-6282c46">Visit</th>
+            <th className="u-6282c46">Customer</th>
+            <th className="u-6282c46">Engineers</th>
+            <th className="u-6282c46">Scheduled</th>
+            <th className="u-856eb7b">Working Days</th>
+            <th className="u-8c20179" />
           </tr>
         </thead>
         <tbody>
           {show.map(item => (
-            <tr key={item.id} style={{ borderBottom: '1px solid var(--gray-50)' }}>
-              <td style={{ padding: '6px 8px', fontWeight: 600 }}>{item.title}</td>
-              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{item.customer_name}</td>
-              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{item.engineer_names || '—'}</td>
-              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{fmtDate(item.scheduled_date)}</td>
-              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.working_days}</td>
-              <td style={{ padding: '6px 8px' }}>
+            <tr key={item.id} className="u-6e42c53">
+              <td className="u-d33fadf">{item.title}</td>
+              <td className="u-beae6cf">{item.customer_name}</td>
+              <td className="u-beae6cf">{item.engineer_names || '—'}</td>
+              <td className="u-beae6cf">{fmtDate(item.scheduled_date)}</td>
+              <td className="u-aa06794" style={{ color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.working_days}</td>
+              <td className="u-8c20179">
                 {item.breached
-                  ? <span style={{ color: '#ef4444', fontSize: 11, fontWeight: 700 }}>BREACHED</span>
-                  : <span style={{ color: '#f59e0b', fontSize: 11, fontWeight: 700 }}>AT RISK</span>}
+                  ? <span className="u-cd50164">BREACHED</span>
+                  : <span className="u-5ed8284">AT RISK</span>}
               </td>
             </tr>
           ))}
@@ -158,27 +150,27 @@ function ProjectItems({ items }) {
   if (!show.length) return null;
   return (
     <div className="overflow-x-auto">
-      <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+      <table className="u-2cff907">
         <thead>
-          <tr style={{ borderBottom: '1px solid var(--gray-100)' }}>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Project</th>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Status</th>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Last Update</th>
-            <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Days Since</th>
-            <th style={{ padding: '6px 8px' }} />
+          <tr className="u-02c1276">
+            <th className="u-6282c46">Project</th>
+            <th className="u-6282c46">Status</th>
+            <th className="u-6282c46">Last Update</th>
+            <th className="u-856eb7b">Days Since</th>
+            <th className="u-8c20179" />
           </tr>
         </thead>
         <tbody>
           {show.map(item => (
-            <tr key={item.id} style={{ borderBottom: '1px solid var(--gray-50)' }}>
-              <td style={{ padding: '6px 8px', fontWeight: 600 }}>{item.title}</td>
-              <td style={{ padding: '6px 8px', color: 'var(--gray-600)', textTransform: 'capitalize' }}>{item.status.replace('_', ' ')}</td>
-              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{fmtDate(item.last_update)}</td>
-              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.days_since}d</td>
-              <td style={{ padding: '6px 8px' }}>
+            <tr key={item.id} className="u-6e42c53">
+              <td className="u-d33fadf">{item.title}</td>
+              <td className="u-da7c2af">{item.status.replace('_', ' ')}</td>
+              <td className="u-beae6cf">{fmtDate(item.last_update)}</td>
+              <td className="u-aa06794" style={{ color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.days_since}d</td>
+              <td className="u-8c20179">
                 {item.breached
-                  ? <span style={{ color: '#ef4444', fontSize: 11, fontWeight: 700 }}>OVERDUE</span>
-                  : <span style={{ color: '#f59e0b', fontSize: 11, fontWeight: 700 }}>AT RISK</span>}
+                  ? <span className="u-cd50164">OVERDUE</span>
+                  : <span className="u-5ed8284">AT RISK</span>}
               </td>
             </tr>
           ))}
@@ -193,24 +185,24 @@ function TaskItems({ items }) {
   if (!show.length) return null;
   return (
     <div className="overflow-x-auto">
-      <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+      <table className="u-2cff907">
         <thead>
-          <tr style={{ borderBottom: '1px solid var(--gray-100)' }}>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Task</th>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Project</th>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Assigned To</th>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Created</th>
-            <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Working Days Open</th>
+          <tr className="u-02c1276">
+            <th className="u-6282c46">Task</th>
+            <th className="u-6282c46">Project</th>
+            <th className="u-6282c46">Assigned To</th>
+            <th className="u-6282c46">Created</th>
+            <th className="u-856eb7b">Working Days Open</th>
           </tr>
         </thead>
         <tbody>
           {show.map(item => (
-            <tr key={item.id} style={{ borderBottom: '1px solid var(--gray-50)' }}>
-              <td style={{ padding: '6px 8px', fontWeight: 600 }}>{item.title}</td>
-              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{item.project_title || '—'}</td>
-              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{item.assigned_to_name || 'Unassigned'}</td>
-              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{fmtDate(item.created_at)}</td>
-              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.working_days}</td>
+            <tr key={item.id} className="u-6e42c53">
+              <td className="u-d33fadf">{item.title}</td>
+              <td className="u-beae6cf">{item.project_title || '—'}</td>
+              <td className="u-beae6cf">{item.assigned_to_name || 'Unassigned'}</td>
+              <td className="u-beae6cf">{fmtDate(item.created_at)}</td>
+              <td className="u-aa06794" style={{ color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.working_days}</td>
             </tr>
           ))}
         </tbody>
@@ -224,25 +216,25 @@ function ClosureItems({ items }) {
   if (!show.length) return null;
   return (
     <div className="overflow-x-auto">
-      <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+      <table className="u-2cff907">
         <thead>
-          <tr style={{ borderBottom: '1px solid var(--gray-100)' }}>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Project</th>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Requested At</th>
-            <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Working Days</th>
-            <th style={{ padding: '6px 8px' }} />
+          <tr className="u-02c1276">
+            <th className="u-6282c46">Project</th>
+            <th className="u-6282c46">Requested At</th>
+            <th className="u-856eb7b">Working Days</th>
+            <th className="u-8c20179" />
           </tr>
         </thead>
         <tbody>
           {show.map(item => (
-            <tr key={item.id} style={{ borderBottom: '1px solid var(--gray-50)' }}>
-              <td style={{ padding: '6px 8px', fontWeight: 600 }}>{item.title}</td>
-              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{fmtDate(item.closure_requested_at)}</td>
-              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.working_days}</td>
-              <td style={{ padding: '6px 8px' }}>
+            <tr key={item.id} className="u-6e42c53">
+              <td className="u-d33fadf">{item.title}</td>
+              <td className="u-beae6cf">{fmtDate(item.closure_requested_at)}</td>
+              <td className="u-aa06794" style={{ color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.working_days}</td>
+              <td className="u-8c20179">
                 {item.breached
-                  ? <span style={{ color: '#ef4444', fontSize: 11, fontWeight: 700 }}>OVERDUE</span>
-                  : <span style={{ color: '#f59e0b', fontSize: 11, fontWeight: 700 }}>AT RISK</span>}
+                  ? <span className="u-cd50164">OVERDUE</span>
+                  : <span className="u-5ed8284">AT RISK</span>}
               </td>
             </tr>
           ))}
@@ -257,30 +249,30 @@ function ServiceActivityItems({ items }) {
   if (!show.length) return null;
   return (
     <div className="overflow-x-auto">
-      <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+      <table className="u-2cff907">
         <thead>
-          <tr style={{ borderBottom: '1px solid var(--gray-100)' }}>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Activity</th>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Team</th>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Customer</th>
-            <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Created</th>
-            <th style={{ textAlign: 'right', padding: '6px 8px', color: 'var(--gray-500)', fontWeight: 600 }}>Elapsed</th>
-            <th style={{ padding: '6px 8px' }} />
+          <tr className="u-02c1276">
+            <th className="u-6282c46">Activity</th>
+            <th className="u-6282c46">Team</th>
+            <th className="u-6282c46">Customer</th>
+            <th className="u-6282c46">Created</th>
+            <th className="u-856eb7b">Elapsed</th>
+            <th className="u-8c20179" />
           </tr>
         </thead>
         <tbody>
           {show.map(item => (
-            <tr key={item.id} style={{ borderBottom: '1px solid var(--gray-50)' }}>
-              <td style={{ padding: '6px 8px', fontWeight: 600 }}>{item.reference} — {item.title}</td>
-              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{item.team_name}</td>
-              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{item.customer_name}</td>
-              <td style={{ padding: '6px 8px', color: 'var(--gray-600)' }}>{fmtDateTime(item.created_at)}</td>
-              <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: (item.breached || item.response_breached) ? '#ef4444' : '#f59e0b' }}>{item.elapsed_hours}h</td>
-              <td style={{ padding: '6px 8px' }}>
-                {item.breached && <span style={{ color: '#ef4444', fontSize: 11, fontWeight: 700 }}>BREACHED</span>}
-                {!item.breached && item.late_complete && <span style={{ color: '#ef4444', fontSize: 11, fontWeight: 700 }}>LATE</span>}
-                {!item.breached && !item.late_complete && item.response_breached && <span style={{ color: '#ef4444', fontSize: 11, fontWeight: 700 }}>NO RESPONSE</span>}
-                {!item.breached && !item.late_complete && !item.response_breached && item.at_risk && <span style={{ color: '#f59e0b', fontSize: 11, fontWeight: 700 }}>AT RISK</span>}
+            <tr key={item.id} className="u-6e42c53">
+              <td className="u-d33fadf">{item.reference} — {item.title}</td>
+              <td className="u-beae6cf">{item.team_name}</td>
+              <td className="u-beae6cf">{item.customer_name}</td>
+              <td className="u-beae6cf">{fmtDateTime(item.created_at)}</td>
+              <td className="u-aa06794" style={{ color: (item.breached || item.response_breached) ? '#ef4444' : '#f59e0b' }}>{item.elapsed_hours}h</td>
+              <td className="u-8c20179">
+                {item.breached && <span className="u-cd50164">BREACHED</span>}
+                {!item.breached && item.late_complete && <span className="u-cd50164">LATE</span>}
+                {!item.breached && !item.late_complete && item.response_breached && <span className="u-cd50164">NO RESPONSE</span>}
+                {!item.breached && !item.late_complete && !item.response_breached && item.at_risk && <span className="u-5ed8284">AT RISK</span>}
               </td>
             </tr>
           ))}
@@ -315,11 +307,11 @@ function OverallHealth({ data }) {
   const msg   = { green: 'All SLA metrics are on track', yellow: `${totalAtRisk} item${totalAtRisk !== 1 ? 's' : ''} approaching SLA deadline`, red: `${totalBreached} item${totalBreached !== 1 ? 's' : ''} have breached SLA` }[health];
 
   return (
-    <div style={{ background: bg, border: `1px solid ${color}33`, borderRadius: 12, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, color }}>
+    <div className="u-ac05f01" style={{ background: bg, border: `1px solid ${color}33`, color }}>
       {icon}
       <div className="flex-1">
-        <div style={{ fontWeight: 700, fontSize: 14 }}>{msg}</div>
-        <div style={{ fontSize: 12, marginTop: 2, opacity: .75 }}>
+        <div className="u-4aaa243">{msg}</div>
+        <div className="u-58adcf3">
           {counts.filter(c => c.breached > 0 || c.at_risk > 0).map(c =>
             `${c.label}: ${c.breached > 0 ? `${c.breached} breached` : ''}${c.breached > 0 && c.at_risk > 0 ? ', ' : ''}${c.at_risk > 0 ? `${c.at_risk} at risk` : ''}`
           ).join(' · ')}
@@ -364,7 +356,7 @@ export default function SLAPage() {
           <h1 className="page-title flex-center gap-8">
             <ShieldCheck size={22} /> SLA Compliance
           </h1>
-          {genTime && <div style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 2 }}>Last updated at {genTime}</div>}
+          {genTime && <div className="u-f48fc2c">Last updated at {genTime}</div>}
         </div>
         <button
           className="btn btn-ghost btn-sm inline-flex items-center gap-5"
@@ -384,18 +376,18 @@ export default function SLAPage() {
         <>
           <OverallHealth data={data} />
 
-          <div className={`alert ${data.forecast?.current_breaches ? 'alert-danger' : data.forecast?.predicted_breaches_next_working_day ? 'alert-warning' : 'alert-success'}`} style={{ marginBottom: 18 }}>
+          <div className={`alert ${data.forecast?.current_breaches ? 'alert-danger' : data.forecast?.predicted_breaches_next_working_day ? 'alert-warning' : 'alert-success'} u-905d8b3`}>
             <strong>SLA forecast:</strong>{' '}
             {data.forecast?.predicted_breaches_next_working_day || 0} predicted breach(es) next working day · {data.forecast?.current_breaches || 0} active breach(es).
             {data.forecast?.escalation_recommended?.length > 0 && (
-              <div style={{ marginTop: 5, fontSize: 12 }}>
+              <div className="u-c5f8168">
                 Escalation recommended: {data.forecast.escalation_recommended.slice(0, 5).map(item => item.title).join(', ')}
                 {data.forecast.escalation_recommended.length > 5 ? ` +${data.forecast.escalation_recommended.length - 5} more` : ''}
               </div>
             )}
           </div>
 
-          <div className="grid-2" style={{ gap: 16 }}>
+          <div className="grid-2 u-f6ce4d1">
             <SLACard
               icon={Clock}
               title="MV Report Completed"
@@ -438,29 +430,29 @@ export default function SLAPage() {
           </div>
 
           {!!data.service_activities?.by_team?.length && (
-            <div className="card" style={{ marginTop: 16, padding: 16 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Service Activity SLA by team</div>
+            <div className="card u-55481ae">
+              <div className="u-7441529">Service Activity SLA by team</div>
               <div className="table-wrap">
-                <table style={{ width: '100%', fontSize: 12 }}>
+                <table className="u-a1fa259">
                   <thead><tr>
-                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Team</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Response target</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Resolution target</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Open</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Breached</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>At risk</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>No response</th>
+                    <th className="u-b7efded">Team</th>
+                    <th className="u-150502c">Response target</th>
+                    <th className="u-150502c">Resolution target</th>
+                    <th className="u-150502c">Open</th>
+                    <th className="u-150502c">Breached</th>
+                    <th className="u-150502c">At risk</th>
+                    <th className="u-150502c">No response</th>
                   </tr></thead>
                   <tbody>
                     {data.service_activities.by_team.map(t => (
-                      <tr key={t.team_id} style={{ borderTop: '1px solid var(--gray-100)' }}>
-                        <td style={{ padding: '4px 8px', fontWeight: 600 }}>{t.team_name}</td>
-                        <td style={{ padding: '4px 8px', textAlign: 'right' }}>{t.response_hours}h</td>
-                        <td style={{ padding: '4px 8px', textAlign: 'right' }}>{t.resolution_hours}h</td>
-                        <td style={{ padding: '4px 8px', textAlign: 'right' }}>{t.total}</td>
-                        <td style={{ padding: '4px 8px', textAlign: 'right', color: t.breached ? '#ef4444' : undefined, fontWeight: t.breached ? 700 : 400 }}>{t.breached}</td>
-                        <td style={{ padding: '4px 8px', textAlign: 'right', color: t.at_risk ? '#f59e0b' : undefined, fontWeight: t.at_risk ? 700 : 400 }}>{t.at_risk}</td>
-                        <td style={{ padding: '4px 8px', textAlign: 'right', color: t.response_breached ? '#ef4444' : undefined, fontWeight: t.response_breached ? 700 : 400 }}>{t.response_breached}</td>
+                      <tr key={t.team_id} className="u-5e0211f">
+                        <td className="u-670e933">{t.team_name}</td>
+                        <td className="u-f09f8d4">{t.response_hours}h</td>
+                        <td className="u-f09f8d4">{t.resolution_hours}h</td>
+                        <td className="u-f09f8d4">{t.total}</td>
+                        <td className="u-f09f8d4" style={{ color: t.breached ? '#ef4444' : undefined, fontWeight: t.breached ? 700 : 400 }}>{t.breached}</td>
+                        <td className="u-f09f8d4" style={{ color: t.at_risk ? '#f59e0b' : undefined, fontWeight: t.at_risk ? 700 : 400 }}>{t.at_risk}</td>
+                        <td className="u-f09f8d4" style={{ color: t.response_breached ? '#ef4444' : undefined, fontWeight: t.response_breached ? 700 : 400 }}>{t.response_breached}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -470,11 +462,11 @@ export default function SLAPage() {
           )}
 
           {/* Legend */}
-          <div style={{ marginTop: 24, padding: '12px 16px', background: 'var(--gray-50)', borderRadius: 8, fontSize: 12, color: 'var(--gray-500)' }}>
-            <strong style={{ color: 'var(--gray-700)' }}>How SLA is calculated:</strong>
+          <div className="u-9b25793">
+            <strong className="u-3a065eb">How SLA is calculated:</strong>
             {' '}Working days = Mon–Fri only. &nbsp;
-            <span style={{ color: '#ef4444', fontWeight: 600 }}>Breached</span> = past the deadline. &nbsp;
-            <span style={{ color: '#f59e0b', fontWeight: 600 }}>At risk</span> = 1 working day remaining. &nbsp;
+            <span className="u-7ed4c86">Breached</span> = past the deadline. &nbsp;
+            <span className="u-71b98aa">At risk</span> = 1 working day remaining. &nbsp;
             Service activity targets (response/resolution, in hours) are set per team in Settings → Teams → Targets.
           </div>
         </>

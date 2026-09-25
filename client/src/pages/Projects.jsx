@@ -31,7 +31,7 @@ function InlineStatusSelect({ project, onUpdate }) {
       <DropdownMenu.Trigger asChild>
         <button type="button" className="inline-dropdown-trigger" title="Click to change status">
           <StatusBadge entityType="project" s={project.status} />
-          <span style={{ fontSize: 9, color: 'var(--gray-400)', lineHeight: 1, marginTop: 1 }}>▾</span>
+          <span className="u-13f6d14">▾</span>
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -62,7 +62,7 @@ function InlinePrioritySelect({ project, onUpdate }) {
       <DropdownMenu.Trigger asChild>
         <button type="button" className="inline-dropdown-trigger" title="Click to change priority">
           <PriorityBadge p={project.priority} />
-          <span style={{ fontSize: 9, color: 'var(--gray-400)', lineHeight: 1, marginTop: 1 }}>▾</span>
+          <span className="u-13f6d14">▾</span>
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -70,12 +70,8 @@ function InlinePrioritySelect({ project, onUpdate }) {
           {PRIORITY_OPTIONS.map(p => (
             <DropdownMenu.Item key={p.value} className={`inline-dropdown-item${p.value === project.priority ? ' active' : ''}`}
               onSelect={() => onUpdate(project, p.value)}>
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600,
-                background: p.bg, color: p.text,
-              }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: p.dot, flexShrink: 0 }} />
+              <span className="u-7dc1f6e" style={{ background: p.bg, color: p.text }}>
+                <span className="u-19c4840" style={{ background: p.dot }} />
                 {p.label}
               </span>
               {p.value === project.priority && <span className="inline-dropdown-check">✓</span>}
@@ -118,7 +114,7 @@ function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
             <option value="">— No customer —</option>
             {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <button type="button" className="btn btn-ghost btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => setCreating(true)}>
+          <button type="button" className="btn btn-ghost btn-sm u-86abdab" onClick={() => setCreating(true)}>
             + New
           </button>
         </div>
@@ -189,17 +185,13 @@ function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCre
         />
       </div>
       <div className="form-group">
-        <label>Assign Engineers <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>Assign Engineers <span className="u-497726e">*</span></label>
         {engineers.length === 0
-          ? <p className="text-sm text-muted" style={{ marginTop: 4 }}>No engineers registered yet.</p>
+          ? <p className="text-sm text-muted u-96ad609">No engineers registered yet.</p>
           : <div className="flex flex-wrap gap-6 mt-4">
               {engineers.map(u => (
-                <label key={u.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '4px 8px',
-                  background: form.member_ids.includes(u.id) ? '#dbeafe' : 'var(--gray-100)', borderRadius: 6, fontSize: 12,
-                  border: form.member_ids.includes(u.id) ? '1px solid #93c5fd' : '1px solid transparent', userSelect: 'none',
-                }}>
-                  <input type="checkbox" checked={form.member_ids.includes(u.id)} onChange={() => { toggleMember(u.id); setMemberError(''); }} style={{ width: 'auto' }} />
+                <label key={u.id} className="u-5a4e487" style={{ background: form.member_ids.includes(u.id) ? '#dbeafe' : 'var(--gray-100)', border: form.member_ids.includes(u.id) ? '1px solid #93c5fd' : '1px solid transparent' }}>
+                  <input type="checkbox" checked={form.member_ids.includes(u.id)} onChange={() => { toggleMember(u.id); setMemberError(''); }} className="u-30e741d" />
                   {u.name}
                 </label>
               ))}
@@ -207,7 +199,7 @@ function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCre
         }
         {memberError && <p className="text-danger text-sm mt-4">{memberError}</p>}
       </div>
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+      <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
       </div>
@@ -361,7 +353,7 @@ export default function Projects() {
             ['cancelled',         'Cancelled'],
           ].map(([s, l]) => (
             <button key={s} className={'filter-pill' + (activeFilter === s ? ' active' : '')} onClick={() => setFilter(s)}>
-              {l} <span style={{ opacity: .65 }}>({
+              {l} <span className="u-a697a8f">({
                 counts[s] || 0
               })</span>
             </button>
@@ -379,7 +371,7 @@ export default function Projects() {
               <button key={key} onClick={() => setRagFilter(key)}
                 className={`health-filter health-${key}${isActive ? ' active' : ''}`}>
                 {key !== 'all' && <i aria-hidden="true" />}
-                {label} <span style={{ opacity: .7 }}>({count})</span>
+                {label} <span className="u-383082b">({count})</span>
               </button>
             );
           })}

@@ -204,11 +204,11 @@ export default function ProjectDetail() {
       <div className="print-body-hide">
       <div className="page-header">
         <div>
-          <p className="text-sm text-muted" style={{ marginBottom: 4 }}>
+          <p className="text-sm text-muted u-c81ce4b">
             <Link to="/projects" className="inline-flex items-center gap-4"><ChevronLeft size={14} /> Projects</Link>
           </p>
           <h1 className="page-title">{project.title}</h1>
-          <div className="flex-center gap-8 mt-4" style={{ flexWrap: 'wrap' }}>
+          <div className="flex-center gap-8 mt-4 u-62da067">
             <StatusBadge entityType="project" s={project.status} />
             <PriorityBadge p={project.priority} />
             {project.rag_status && <RagBadge rag={project.rag_status} />}
@@ -262,25 +262,20 @@ export default function ProjectDetail() {
 
       {/* ── Workflow action banner ─────────────────────────── */}
       {project.status === 'pending_approval' && (
-        <div style={{
-          background: isManager ? '#fffbeb' : '#f0f9ff',
-          border: `1px solid ${isManager ? '#fde68a' : '#bae6fd'}`,
-          borderRadius: 10, padding: '14px 20px', marginBottom: 16,
-          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-        }}>
-          <span style={{ fontSize: 22, flexShrink: 0 }}>⏳</span>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: isManager ? '#92400e' : '#0369a1', marginBottom: 2 }}>
+        <div className="u-f5c5bf0" style={{ background: isManager ? '#fffbeb' : '#f0f9ff', border: `1px solid ${isManager ? '#fde68a' : '#bae6fd'}` }}>
+          <span className="u-a7c04d4">⏳</span>
+          <div className="u-7b1dd1f">
+            <div className="u-dfe9a73" style={{ color: isManager ? '#92400e' : '#0369a1' }}>
               {isManager ? 'Closure Approval Required' : 'Awaiting Management Approval'}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+            <div className="u-1a57d8f">
               {isManager
                 ? 'This project has been submitted for closure. Review and approve or send back for revision.'
                 : 'A manager will review this project before it is closed. You will be notified of the decision.'}
             </div>
           </div>
           {isManager && (
-            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <div className="u-0762f1f">
               <button
                 className="btn btn-success btn-sm inline-flex items-center gap-5"
                 onClick={approveClosure}
@@ -302,41 +297,38 @@ export default function ProjectDetail() {
 
       {/* Waiting for Customer banner */}
       {project.status === 'waiting_customer' && (
-        <div style={{
-          background: 'var(--warning-light)', border: '1px solid #fed7aa', borderRadius: 10,
-          padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'flex-start',
-        }}>
-          <span style={{ fontSize: 20, flexShrink: 0 }}>⏳</span>
+        <div className="u-a10b6c3">
+          <span className="u-5f5422b">⏳</span>
           <div>
-            <div style={{ fontWeight: 700, color: '#9a3412', marginBottom: 2 }}>Waiting for Customer</div>
+            <div className="u-831722e">Waiting for Customer</div>
             {project.pending_from_customer
-              ? <p style={{ margin: 0, fontSize: 13, color: '#7c2d12' }}>{project.pending_from_customer}</p>
-              : <p style={{ margin: 0, fontSize: 13, color: '#c2410c' }}>No details provided. Edit the project to add what is needed from the customer.</p>
+              ? <p className="u-94469eb">{project.pending_from_customer}</p>
+              : <p className="u-5036d6e">No details provided. Edit the project to add what is needed from the customer.</p>
             }
           </div>
         </div>
       )}
 
       {project.customer_name && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: 'var(--gray-600)' }}>
+        <div className="u-c711fd2">
           <Building2 size={14} />
           <span className="font-semibold">{project.customer_name}</span>
           {project.customer_contact && <span>· {project.customer_contact}</span>}
-          {project.customer_email && <a href={`mailto:${project.customer_email}`} style={{ color: 'var(--primary)' }}>{project.customer_email}</a>}
+          {project.customer_email && <a href={`mailto:${project.customer_email}`} className="u-dc2e428">{project.customer_email}</a>}
         </div>
       )}
 
-      {project.description && <p style={{ color: 'var(--gray-600)', marginBottom: 16 }}>{project.description}</p>}
+      {project.description && <p className="u-0540e7b">{project.description}</p>}
 
       <div className="grid-4 mb-20">
-        <div className="card stat"><div className="stat-value" style={{ fontSize: 24 }}>{taskCount}</div><div className="stat-label">Total Tasks</div></div>
-        <div className="card stat"><div className="stat-value" style={{ fontSize: 24, color: 'var(--success)' }}>{doneCount}</div><div className="stat-label">Completed</div></div>
-        <div className="card stat"><div className="stat-value" style={{ fontSize: 24 }}>{project.members?.length || 0}</div><div className="stat-label">Members</div></div>
-        <div className="card stat"><div className="stat-value" style={{ fontSize: 24, color: 'var(--primary)' }}>{project.completion_pct != null ? project.completion_pct : (taskCount > 0 ? Math.round(doneCount / taskCount * 100) : 0)}%</div><div className="stat-label">Progress{project.completion_pct != null ? ' (manual)' : ''}</div></div>
+        <div className="card stat"><div className="stat-value u-81351bd">{taskCount}</div><div className="stat-label">Total Tasks</div></div>
+        <div className="card stat"><div className="stat-value u-508ce2e">{doneCount}</div><div className="stat-label">Completed</div></div>
+        <div className="card stat"><div className="stat-value u-81351bd">{project.members?.length || 0}</div><div className="stat-label">Members</div></div>
+        <div className="card stat"><div className="stat-value u-fb31aa3">{project.completion_pct != null ? project.completion_pct : (taskCount > 0 ? Math.round(doneCount / taskCount * 100) : 0)}%</div><div className="stat-label">Progress{project.completion_pct != null ? ' (manual)' : ''}</div></div>
       </div>
 
-      <div className="card" style={{ marginBottom: 4 }}>
-        <div className="progress-bar" style={{ height: 12 }}>
+      <div className="card u-c81ce4b">
+        <div className="progress-bar u-06c0747">
           <div className="progress-bar-fill" style={{ width: taskCount > 0 ? `${(doneCount / taskCount) * 100}%` : '0%' }} />
         </div>
       </div>
@@ -362,24 +354,20 @@ export default function ProjectDetail() {
 
       {tab === 'tasks' && !isPM && (
         <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div className="u-1427d29">
             {/* View toggle */}
-            <div style={{ display: 'flex', borderRadius: 6, border: '1px solid var(--gray-200)', overflow: 'hidden', flexShrink: 0 }}>
+            <div className="u-1d0f4ee">
               <button
                 onClick={() => setTaskViewMode('list')}
                 title="List view"
-                style={{ padding: '4px 10px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12,
-                  background: taskViewMode === 'list' ? 'var(--primary)' : '#fff',
-                  color: taskViewMode === 'list' ? '#fff' : 'var(--gray-500)' }}
+                className="u-b787bd9" style={{ background: taskViewMode === 'list' ? 'var(--primary)' : '#fff', color: taskViewMode === 'list' ? '#fff' : 'var(--gray-500)' }}
               >
                 <ListIcon size={14} /> List
               </button>
               <button
                 onClick={() => setTaskViewMode('kanban')}
                 title="Kanban view"
-                style={{ padding: '4px 10px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12,
-                  background: taskViewMode === 'kanban' ? 'var(--primary)' : '#fff',
-                  color: taskViewMode === 'kanban' ? '#fff' : 'var(--gray-500)' }}
+                className="u-b787bd9" style={{ background: taskViewMode === 'kanban' ? 'var(--primary)' : '#fff', color: taskViewMode === 'kanban' ? '#fff' : 'var(--gray-500)' }}
               >
                 <LayoutGrid size={14} /> Kanban
               </button>
@@ -399,23 +387,23 @@ export default function ProjectDetail() {
 
           {/* Task search */}
           {tasks.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <div style={{ position: 'relative', flex: 1, maxWidth: 300 }}>
+            <div className="u-f03a7bd">
+              <div className="u-c8a61d0">
                 <input
                   value={taskSearch}
                   onChange={e => setTaskSearch(e.target.value)}
                   placeholder="Search tasks…"
-                  style={{ width: '100%', paddingLeft: 30, paddingRight: taskSearch ? 28 : 10, fontSize: 13 }}
+                  className="u-f433196" style={{ paddingRight: taskSearch ? 28 : 10 }}
                 />
-                <svg style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', opacity: .4 }} width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
+                <svg className="u-a818dd6" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
                 {taskSearch && (
-                  <button onClick={() => setTaskSearch('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', display: 'flex', alignItems: 'center', padding: 2 }}>
+                  <button onClick={() => setTaskSearch('')} className="u-e26d5af">
                     <X size={13} />
                   </button>
                 )}
               </div>
               {taskSearch && (
-                <span style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                <span className="u-1a57d8f">
                   {filteredTasks.length} of {tasks.length}
                 </span>
               )}
@@ -425,9 +413,9 @@ export default function ProjectDetail() {
           {tasks.length === 0 ? (
             <p className="text-muted text-sm">No tasks yet</p>
           ) : filteredTasks.length === 0 ? (
-            <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--gray-400)' }}>
+            <div className="u-968d015">
               <p className="text-sm">No tasks matching &ldquo;{taskSearch}&rdquo;</p>
-              <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setTaskSearch('')}>Clear search</button>
+              <button className="btn btn-ghost btn-sm u-8a77e5a" onClick={() => setTaskSearch('')}>Clear search</button>
             </div>
           ) : taskViewMode === 'kanban' ? (
             <KanbanView
@@ -469,7 +457,7 @@ export default function ProjectDetail() {
       {tab === 'updates' && (
         <div className="card">
           {!isPM && (
-            <form onSubmit={submitStatusUpdate} style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'flex-end' }}>
+            <form onSubmit={submitStatusUpdate} className="u-e3a30ff">
               <MentionInput
                 value={statusMsg}
                 onChange={setStatusMsg}
@@ -496,7 +484,7 @@ export default function ProjectDetail() {
 
       {tab === 'activity' && (
         <div className="card">
-          <div className="section-title" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="section-title u-2cc326d">
             <ClipboardList size={15} /> Activity Feed
           </div>
           {activity.length === 0
@@ -516,21 +504,21 @@ export default function ProjectDetail() {
                     closure_requested: <Lock       size={13} color="var(--warning)" />,
                     project_closed:  <CheckCircle2 size={13} color="var(--success)" />,
                   };
-                  const icon = iconMap[a.action] || <span style={{ width: 13, height: 13 }}>·</span>;
+                  const icon = iconMap[a.action] || <span className="u-723ec8d">·</span>;
                   const labels = {
                     task_created: 'Created task', task_status: 'Updated task status', task_deleted: 'Deleted task', task_comment: 'Commented on task',
                     project_created: 'Created project', status_changed: 'Changed project status', status_update: 'Posted update',
                     member_added: 'Added member', member_removed: 'Removed member', closure_requested: 'Requested closure', project_closed: 'Closed project',
                   };
                   return (
-                    <li key={a.id} style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: i < activity.length - 1 ? '1px solid var(--gray-100)' : 'none', alignItems: 'flex-start' }}>
-                      <span style={{ width: 20, display: 'flex', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{icon}</span>
+                    <li key={a.id} className="u-d57244e" style={{ borderBottom: i < activity.length - 1 ? '1px solid var(--gray-100)' : 'none' }}>
+                      <span className="u-12ece22">{icon}</span>
                       <div className="flex-1">
-                        <span style={{ fontWeight: 600, fontSize: 13 }}>{a.user_name}</span>
-                        <span style={{ fontSize: 13, color: 'var(--gray-600)' }}> {labels[a.action] || a.action}</span>
-                        {a.detail && <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>: {a.detail}</span>}
+                        <span className="u-160b067">{a.user_name}</span>
+                        <span className="u-b8aa5ab"> {labels[a.action] || a.action}</span>
+                        {a.detail && <span className="u-af50806">: {a.detail}</span>}
                       </div>
-                      <span style={{ fontSize: 11, color: 'var(--gray-400)', flexShrink: 0, marginTop: 2 }} title={fmtDate(a.created_at)}>{fmtRelative(a.created_at)}</span>
+                      <span className="u-a04fc72" title={fmtDate(a.created_at)}>{fmtRelative(a.created_at)}</span>
                     </li>
                   );
                 })}
@@ -569,7 +557,7 @@ export default function ProjectDetail() {
                 {addableUsers.filter(u => !project.members?.some(m => m.id === u.id)).map(u => (
                   <div key={u.id} className="chip cursor-pointer" onClick={() => api.addMembers(id, [u.id]).then(load)}>
                     {u.name}
-                    <span style={{ fontSize: 10, marginLeft: 4, opacity: .65 }}>{u.role}</span>
+                    <span className="u-f4d6e49">{u.role}</span>
                     <button>+</button>
                   </div>
                 ))}
@@ -640,7 +628,7 @@ export default function ProjectDetail() {
             {(editForm.status === 'waiting_customer' || editForm.status === 'waiting_vendor') && (
               <div className="form-group">
                 <label className="flex-center gap-6">
-                  ⏳ {editForm.status === 'waiting_vendor' ? 'Pending From Vendor' : 'Pending From Customer'} <span style={{ color: 'var(--danger)' }}>*</span>
+                  ⏳ {editForm.status === 'waiting_vendor' ? 'Pending From Vendor' : 'Pending From Customer'} <span className="u-497726e">*</span>
                 </label>
                 <textarea
                   value={editForm.pending_from_customer || ''}
@@ -648,7 +636,7 @@ export default function ProjectDetail() {
                   placeholder={editForm.status === 'waiting_vendor' ? 'Describe what is needed from the vendor…' : 'Describe what is needed from the customer…'}
                   rows={3}
   required
-                  style={{ borderColor: '#f97316' }}
+                  className="u-ec3ed4f"
                 />
               </div>
             )}
@@ -669,7 +657,7 @@ export default function ProjectDetail() {
                 {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+            <div className="modal-footer u-cc45258">
               <button type="button" className="btn btn-ghost" onClick={() => setShowEdit(false)}>Cancel</button>
               <button type="submit" className="btn btn-primary">Save</button>
             </div>
@@ -724,13 +712,13 @@ export default function ProjectDetail() {
               </select>
             </div>}
             <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
-                <input type="checkbox" checked={taskForm.is_adhoc} onChange={e => setTaskForm(f => ({ ...f, is_adhoc: e.target.checked }))} style={{ width: 'auto' }} />
+              <label className="u-ea06b0c">
+                <input type="checkbox" checked={taskForm.is_adhoc} onChange={e => setTaskForm(f => ({ ...f, is_adhoc: e.target.checked }))} className="u-30e741d" />
                 Mark as Ad-hoc Task
               </label>
             </div>
             {addTaskErr && <div className="error-msg mb-8">{addTaskErr}</div>}
-            <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+            <div className="modal-footer u-cc45258">
               <button type="button" className="btn btn-ghost" onClick={() => { setShowAddTask(false); setAddTaskErr(''); }}>Cancel</button>
               <button type="submit" className="btn btn-primary">Add Task</button>
             </div>

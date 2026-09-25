@@ -92,39 +92,21 @@ function TemplateCard({ tpl }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 16, borderLeft: `3px solid ${tpl.color}` }}>
+    <div className="card u-87c136d" style={{ borderLeft: `3px solid ${tpl.color}` }}>
       <div className="flex items-center justify-between mb-12">
         <div className="flex-center gap-10">
-          <div style={{ width: 10, height: 10, borderRadius: '50%', background: tpl.color, flexShrink: 0 }} />
-          <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--gray-900)' }}>{tpl.title}</span>
+          <div className="u-2dcdba7" style={{ background: tpl.color }} />
+          <span className="u-e6cd714">{tpl.title}</span>
         </div>
         <button
           onClick={copy}
-          className="btn btn-sm"
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            background: copied ? '#f0fdf4' : 'var(--gray-50)',
-            color: copied ? '#16a34a' : 'var(--gray-600)',
-            border: `1px solid ${copied ? '#bbf7d0' : 'var(--gray-200)'}`,
-            transition: 'all .15s',
-          }}
+          className="btn btn-sm u-145410d"
+          style={{ background: copied ? '#f0fdf4' : 'var(--gray-50)', color: copied ? '#16a34a' : 'var(--gray-600)', border: `1px solid ${copied ? '#bbf7d0' : 'var(--gray-200)'}` }}
         >
           {copied ? <><Check size={13} /> Copied!</> : <><Copy size={13} /> Copy</>}
         </button>
       </div>
-      <pre style={{
-        background: tpl.bg,
-        border: `1px solid ${tpl.color}22`,
-        borderRadius: 8,
-        padding: '12px 14px',
-        fontSize: 13,
-        color: 'var(--gray-700)',
-        lineHeight: 1.65,
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
-        fontFamily: 'inherit',
-        margin: 0,
-      }}>
+      <pre className="u-1465002" style={{ background: tpl.bg, border: `1px solid ${tpl.color}22` }}>
         {tpl.body}
       </pre>
     </div>
@@ -141,7 +123,7 @@ export default function CustomerResponses() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 720 }}>
+      <div className="u-b12974c">
         {TEMPLATES.map(tpl => <TemplateCard key={tpl.id} tpl={tpl} />)}
       </div>
     </div>

@@ -27,7 +27,7 @@ export function UserForm({ initial, onSave, onClose }) {
       {err && <div className="error-msg">{err}</div>}
       <div className="form-group"><label>Full Name *</label><input value={form.name} onChange={set('name')} required /></div>
       <div className="form-group">
-        <label>Email Address <span style={{ fontWeight: 400, color: 'var(--gray-400)', fontSize: 12 }}>(optional)</span></label>
+        <label>Email Address <span className="u-596026b">(optional)</span></label>
         <input type="email" value={form.email || ''} onChange={set('email')} placeholder="user@example.com" />
       </div>
       {!initial && (
@@ -45,7 +45,7 @@ export function UserForm({ initial, onSave, onClose }) {
           <option value="manager">Manager</option>
         </select>
       </div>
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+      <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : initial ? 'Save Changes' : 'Create User'}</button>
       </div>
@@ -72,7 +72,7 @@ export function ResetPasswordForm({ user, onClose }) {
   }
 
   if (done) return (
-    <div style={{ textAlign: 'center', padding: '20px 0' }}>
+    <div className="u-57ea022">
       <div className="flex justify-center mb-12">
         <CheckCircle2 size={48} color="var(--success)" strokeWidth={1.5} />
       </div>
@@ -89,7 +89,7 @@ export function ResetPasswordForm({ user, onClose }) {
       </p>
       <div className="form-group"><label>New Password <span className="text-muted text-sm">(min 12 chars)</span></label><input type="password" value={pw} onChange={e => setPw(e.target.value)} required minLength={12} autoFocus /></div>
       <div className="form-group"><label>Confirm Password</label><input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required /></div>
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+      <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Resetting…' : 'Reset Password'}</button>
       </div>
@@ -148,8 +148,8 @@ export function UsersTab({ currentUser }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email…" style={{ flex: 1, minWidth: 200, maxWidth: 320 }} />
+      <div className="u-b473718">
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email…" className="u-3ef471c" />
         <div className="flex gap-6 flex-wrap">
           {[
             { value: 'all',      label: 'All' },
@@ -163,7 +163,7 @@ export function UsersTab({ currentUser }) {
             </button>
           ))}
         </div>
-        <button className="btn btn-primary btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setShowCreate(true)}>+ Create User</button>
+        <button className="btn btn-primary btn-sm u-6d00061" onClick={() => setShowCreate(true)}>+ Create User</button>
       </div>
 
       {loading ? <p className="text-muted">Loading…</p> : filtered.length === 0
@@ -182,17 +182,13 @@ export function UsersTab({ currentUser }) {
                   <tr key={u.id} style={{ opacity: u.active ? 1 : 0.5 }}>
                     <td>
                       <div className="font-semibold">{u.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{u.email || '—'}</div>
+                      <div className="u-5be3ef4">{u.email || '—'}</div>
                     </td>
                     <td><span className={`badge badge-${u.role}`}>{u.role}</span></td>
                     <td>
                       {u.active ? <span className="badge badge-done">Active</span> : <span className="badge badge-cancelled">Inactive</span>}
                       {u.must_change_password ? (
-                        <span title="Must set password on first login" style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 6,
-                          fontSize: 10, fontWeight: 700, color: 'var(--tone-warning-text)', background: 'var(--warning-light)',
-                          border: '1px solid #fcd34d', borderRadius: 4, padding: '1px 5px',
-                        }}>⚠ Awaiting setup</span>
+                        <span title="Must set password on first login" className="u-17e3b54">⚠ Awaiting setup</span>
                       ) : null}
                     </td>
                     <td className="text-center">{u.project_count}</td>
@@ -201,22 +197,22 @@ export function UsersTab({ currentUser }) {
                     <td className="text-sm text-muted">{timeSince(u.last_login)}</td>
                     <td className="text-sm text-muted">{fmtDate(u.created_at)}</td>
                     <td>
-                      <div className="flex gap-8" style={{ flexWrap: 'nowrap' }}>
+                      <div className="flex gap-8 u-2aca6da">
                         <button className="btn btn-sm btn-ghost inline-flex items-center" onClick={() => setEditing(u)} title="Edit"><Pencil size={13} /></button>
                         <button className="btn btn-sm btn-ghost inline-flex items-center" onClick={() => setResetting(u)} title="Reset password"><KeyRound size={13} /></button>
                         {u.id !== currentUser.id && (
                           <button className="btn btn-sm btn-ghost inline-flex items-center" onClick={() => revokeSessions(u)} title="Revoke active sessions — sign them out everywhere"><LogOut size={13} /></button>
                         )}
                         {u.id !== currentUser.id && (
-                          <button className={'btn btn-sm ' + (u.active ? 'btn-ghost' : 'btn-success')} onClick={() => toggleActive(u)} title={u.active ? 'Deactivate' : 'Activate'} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          <button className={`${'btn btn-sm ' + (u.active ? 'btn-ghost' : 'btn-success') || ''} u-f1fab47`} onClick={() => toggleActive(u)} title={u.active ? 'Deactivate' : 'Activate'}>
                             {u.active ? <UserX size={13} /> : <UserCheck size={13} />}
                           </button>
                         )}
                         <button
-                          className={'btn btn-sm ' + (u.totp_exempt ? 'btn-warning' : 'btn-ghost')}
+                          className={`${'btn btn-sm ' + (u.totp_exempt ? 'btn-warning' : 'btn-ghost') || ''} u-f1fab47`}
                           onClick={() => toggle2faExempt(u)}
                           title={u.totp_exempt ? '2FA Exempt (click to revoke)' : u.totp_enabled ? 'Exempt from 2FA' : '2FA not enabled'}
-                          style={{ display: 'inline-flex', alignItems: 'center', opacity: u.totp_enabled || u.totp_exempt ? 1 : 0.4 }}
+                          style={{ opacity: u.totp_enabled || u.totp_exempt ? 1 : 0.4 }}
                         >
                           <ShieldAlert size={13} />
                         </button>

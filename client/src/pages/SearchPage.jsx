@@ -124,10 +124,10 @@ export default function SearchPage() {
     if (!results) return null;
     if (total === 0) {
       return (
-        <div className="empty" style={{ marginTop: 40 }}>
+        <div className="empty u-d9f1497">
           <div className="empty-icon"><Search size={36} strokeWidth={1.2} /></div>
-          <p style={{ fontWeight: 600, marginBottom: 4 }}>No results found</p>
-          <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>Try adjusting your search or removing some filters</p>
+          <p className="u-a27006d">No results found</p>
+          <p className="u-af50806">Try adjusting your search or removing some filters</p>
         </div>
       );
     }
@@ -166,20 +166,20 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="page" style={{ maxWidth: 860, margin: '0 auto' }}>
+    <div className="page u-13a1119">
       {/* Page header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+      <div className="u-8677744">
+        <h1 className="page-title u-143e030">
           <Zap size={20} color="var(--primary)" /> Smart Search
         </h1>
-        <p style={{ fontSize: 13, color: 'var(--gray-500)', margin: 0 }}>
+        <p className="u-b5e2607">
           Search in plain English — by status, customer, engineer, date and more.
-          <span style={{ marginLeft: 8, background: 'var(--gray-100)', border: '1px solid var(--gray-200)', borderRadius: 4, padding: '1px 5px', fontSize: 11, fontFamily: 'monospace', color: 'var(--gray-600)' }}>Ctrl K</span>
+          <span className="u-a17e12d">Ctrl K</span>
         </p>
       </div>
 
       {/* Search box */}
-      <div style={{ position: 'relative', marginBottom: 12 }}>
+      <div className="u-456c927">
         <Search size={17} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
         <input
           ref={inputRef}
@@ -187,10 +187,10 @@ export default function SearchPage() {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Escape' && clearAll()}
           placeholder='Try: "open projects for Acme", "overdue tasks assigned to John", "reports not sent"…'
-          style={{ paddingLeft: 42, paddingRight: query ? 40 : 16, height: 48, fontSize: 15, borderRadius: 12, fontWeight: 400 }}
+          className="u-4b75f79" style={{ paddingRight: query ? 40 : 16 }}
         />
         {query && (
-          <button onClick={clearAll} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 4 }}>
+          <button onClick={clearAll} className="u-f2f961b">
             <X size={15} />
           </button>
         )}
@@ -198,17 +198,12 @@ export default function SearchPage() {
 
       {/* Interpretation chips */}
       {chips.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12, alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 600, marginRight: 2 }}>INTERPRETED AS</span>
+        <div className="u-e99eec0">
+          <span className="u-e5d01c2">INTERPRETED AS</span>
           {chips.map(chip => (
-            <span key={chip.key} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              background: chip.bg, color: chip.color,
-              border: `1px solid ${chip.color}33`,
-              borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 600,
-            }}>
+            <span key={chip.key} className="u-7f9f13d" style={{ background: chip.bg, color: chip.color, border: `1px solid ${chip.color}33` }}>
               {chip.label}
-              <button onClick={() => removeChip(chip.key)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: chip.color, padding: 0, display: 'flex', lineHeight: 1, opacity: 0.6 }}>
+              <button onClick={() => removeChip(chip.key)} className="u-6c4515b" style={{ color: chip.color }}>
                 <X size={11} />
               </button>
             </span>
@@ -217,20 +212,20 @@ export default function SearchPage() {
       )}
 
       {/* Advanced filters toggle */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+      <div className="u-a522af5">
         <button
           onClick={() => setShowAdvanced(v => !v)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: showAdvanced ? 'var(--primary)' : 'none', color: showAdvanced ? '#fff' : 'var(--gray-600)', border: '1px solid ' + (showAdvanced ? 'var(--primary)' : 'var(--gray-200)'), borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+          className="u-6351d21" style={{ background: showAdvanced ? 'var(--primary)' : 'none', color: showAdvanced ? '#fff' : 'var(--gray-600)', border: '1px solid ' + (showAdvanced ? 'var(--primary)' : 'var(--gray-200)') }}
         >
           <Search size={13} /> Filters {showAdvanced ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
         </button>
         {hasQuery && (
-          <button onClick={clearAll} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--gray-400)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button onClick={clearAll} className="u-b6d5234">
             <X size={12} /> Clear all
           </button>
         )}
-        {loading && <span style={{ fontSize: 12, color: 'var(--gray-400)' }}>Searching…</span>}
-        {!loading && results && <span style={{ fontSize: 12, color: 'var(--gray-500)', marginLeft: 'auto' }}>{total} result{total !== 1 ? 's' : ''} on page {page}</span>}
+        {loading && <span className="u-d65cb71">Searching…</span>}
+        {!loading && results && <span className="u-a834a3b">{total} result{total !== 1 ? 's' : ''} on page {page}</span>}
       </div>
 
       {showAdvanced && (
@@ -241,22 +236,16 @@ export default function SearchPage() {
 
       {/* Examples (shown when no query) */}
       {!hasQuery && !results && (
-        <div className="card" style={{ padding: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>
+        <div className="card u-769fed3">
+          <div className="u-cd249b4">
             Example searches
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div className="u-c21c70e">
             {EXAMPLES.map(ex => (
               <button
                 key={ex.q}
                 onClick={() => setQuery(ex.q)}
-                style={{
-                  background: 'var(--gray-50)', border: '1px solid var(--gray-200)',
-                  borderRadius: 20, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
-                  color: 'var(--gray-700)', fontWeight: 500,
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  transition: 'all .15s',
-                }}
+                className="u-2c6c123"
                 onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)'; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--gray-200)'; e.currentTarget.style.color = 'var(--gray-700)'; }}
               >
@@ -266,9 +255,9 @@ export default function SearchPage() {
           </div>
 
           {/* Tips */}
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--gray-100)' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>Tips</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: 12, color: 'var(--gray-600)' }}>
+          <div className="u-8008da8">
+            <div className="u-3b97ed3">Tips</div>
+            <div className="u-557c799">
               {[
                 ['"open projects for Acme"',         'Filter by customer + status'],
                 ['"overdue tasks assigned to John"',  'Filter by engineer + overdue'],
@@ -278,8 +267,8 @@ export default function SearchPage() {
                 ['"my tasks"',                        'Show your own items'],
               ].map(([ex, desc]) => (
                 <div key={ex} className="flex gap-6">
-                  <code style={{ background: 'var(--gray-100)', borderRadius: 4, padding: '1px 5px', fontSize: 11, flexShrink: 0, cursor: 'pointer', color: 'var(--gray-700)' }} onClick={() => setQuery(ex.replace(/"/g, ''))}>{ex}</code>
-                  <span style={{ color: 'var(--gray-400)', fontSize: 11 }}>{desc}</span>
+                  <code className="u-7a90ff0" onClick={() => setQuery(ex.replace(/"/g, ''))}>{ex}</code>
+                  <span className="u-33ea7bc">{desc}</span>
                 </div>
               ))}
             </div>

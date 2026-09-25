@@ -64,51 +64,50 @@ export default function ICalSubscribe() {
   const btnPrimary = { display: 'inline-flex', alignItems: 'center', gap: 5, background: '#0284c7', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 600, flexShrink: 0 };
 
   return (
-    <div style={{ marginTop: 20, padding: '14px 18px', background: 'var(--primary-light)', border: '1px solid #bae6fd', borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+    <div className="u-7a5dec8">
       <Link2 size={18} color="#0284c7" style={{ flexShrink: 0, marginTop: 2 }} />
       <div className="flex-1 min-w-0">
-        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--tone-info-text)', marginBottom: 4 }}>
+        <div className="u-fd60ce2">
           Subscribe to your calendar (iCal)
         </div>
-        <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--tone-info-text)' }}>
+        <p className="u-fa2a4d1">
           Add this URL to Google Calendar, Outlook, Apple Calendar or any iCal-compatible app to see your tasks and visits automatically update.
         </p>
 
         {err && <div className="error-msg mb-8">{err}</div>}
 
         {status === null ? (
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--tone-info-text)' }}>Loading…</p>
+          <p className="u-5bfd35f">Loading…</p>
         ) : url ? (
           <>
             <div className="flex gap-8 items-center flex-wrap">
               <input
                 readOnly
                 value={url}
-                style={{ flex: 1, minWidth: 200, fontSize: 11, padding: '4px 8px', border: '1px solid #bae6fd', borderRadius: 4, background: 'var(--surface)', color: 'var(--tone-info-text)', fontFamily: 'monospace' }}
+                className="u-460d01f"
                 onClick={e => e.target.select()}
               />
               <button
-                className="btn btn-sm"
+                className="btn btn-sm u-08ffd64"
                 onClick={copyUrl}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: copied ? '#10b981' : '#0284c7', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600, transition: 'background .2s', flexShrink: 0 }}
+                style={{ background: copied ? '#10b981' : '#0284c7' }}
               >
                 <Copy size={12} /> {copied ? 'Copied!' : 'Copy URL'}
               </button>
             </div>
-            <p style={{ margin: '6px 0 0', fontSize: 11, color: '#0284c7', fontWeight: 600 }}>
+            <p className="u-6777e74">
               ⚠️ Copy this URL now — for security it won't be shown again. It is read-only (calendar events only) and can be revoked at any time.
             </p>
           </>
         ) : status.enabled ? (
           <div className="flex gap-8 items-center flex-wrap">
-            <span style={{ fontSize: 12, color: 'var(--tone-info-text)', flex: 1, minWidth: 200 }}>
+            <span className="u-14096d2">
               You have an active subscription URL. For your security it can't be displayed again — regenerate to get a fresh URL (this invalidates the old one).
             </span>
             <button className="btn btn-sm" disabled={busy} onClick={generate} style={btnPrimary}>
               {busy ? '…' : 'Regenerate URL'}
             </button>
-            <button className="btn btn-sm" disabled={busy} onClick={revoke}
-              style={{ background: '#fff', color: 'var(--tone-danger-text)', border: '1px solid #fecaca', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+            <button className="btn btn-sm u-26d9401" disabled={busy} onClick={revoke}>
               Revoke
             </button>
           </div>

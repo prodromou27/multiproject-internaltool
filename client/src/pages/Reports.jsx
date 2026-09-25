@@ -24,10 +24,10 @@ function KpiHealthRow({ k }) {
       <td>{k.current_value}{k.unit || ''} / {k.target_value}{k.unit || ''}</td>
       <td>
         <div className="flex-center gap-8">
-          <div className="progress-bar" style={{ width: 80 }}>
-            <div style={{ height: '100%', borderRadius: 99, background: color, width: Math.min(k.pct, 100) + '%' }} />
+          <div className="progress-bar u-8573bae">
+            <div className="u-8b5fdc9" style={{ background: color, width: Math.min(k.pct, 100) + '%' }} />
           </div>
-          <span style={{ fontSize: 12, color, fontWeight: 600 }}>{k.pct}%</span>
+          <span className="u-eb5cb58" style={{ color }}>{k.pct}%</span>
         </div>
       </td>
     </tr>
@@ -47,7 +47,7 @@ const CHART_COLORS = {
 function ChartCard({ title, children }) {
   return (
     <div className="card mb-20">
-      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 14, color: 'var(--gray-700)' }}>{title}</div>
+      <div className="u-d0c0174">{title}</div>
       {children}
     </div>
   );
@@ -130,7 +130,7 @@ function TrendsTab() {
         </ResponsiveContainer>
       </ChartCard>
 
-      <div className="grid-2" style={{ gap: 20 }}>
+      <div className="grid-2 u-cd289ae">
         {/* Hours logged */}
         <ChartCard title="Hours Logged per Month">
           <ResponsiveContainer width="100%" height={200}>
@@ -246,7 +246,7 @@ function ServiceActivityReportTab() {
           </div>
         </div>
         {isMonthly ? (
-          <div className="form-group" style={{ maxWidth: 220 }}><label htmlFor="sr-month">Month</label>
+          <div className="form-group u-27af898"><label htmlFor="sr-month">Month</label>
             <input id="sr-month" type="month" value={month} onChange={e => setMonth(e.target.value)} />
           </div>
         ) : (
@@ -308,7 +308,7 @@ function ServiceActivityReportTab() {
                   ))}
                 </tbody>
               </table>
-              {result.rows.length === 0 && <p className="text-muted" style={{ padding: 16 }}>No activities were logged for these dates.</p>}
+              {result.rows.length === 0 && <p className="text-muted u-287f770">No activities were logged for these dates.</p>}
             </div>
           </div>
         );
@@ -372,13 +372,13 @@ export default function Reports() {
             <div className="operations-metric is-danger"><strong>{summary.overdue}</strong><span>Overdue</span></div>
           </div>
 
-          <div className="grid-2" style={{ marginBottom: 24 }}>
+          <div className="grid-2 u-8677744">
             <div className="card">
               <div className="section-title">Task Breakdown</div>
               <div className="grid-3">
-                <div className="stat"><div className="stat-value" style={{ fontSize: 24 }}>{summary.taskStats?.open || 0}</div><div className="stat-label">Open</div></div>
-                <div className="stat"><div className="stat-value" style={{ fontSize: 24, color: 'var(--warning)' }}>{summary.taskStats?.in_progress || 0}</div><div className="stat-label">In Progress</div></div>
-                <div className="stat"><div className="stat-value" style={{ fontSize: 24, color: 'var(--success)' }}>{summary.taskStats?.done || 0}</div><div className="stat-label">Done</div></div>
+                <div className="stat"><div className="stat-value u-81351bd">{summary.taskStats?.open || 0}</div><div className="stat-label">Open</div></div>
+                <div className="stat"><div className="stat-value u-c903459">{summary.taskStats?.in_progress || 0}</div><div className="stat-label">In Progress</div></div>
+                <div className="stat"><div className="stat-value u-508ce2e">{summary.taskStats?.done || 0}</div><div className="stat-label">Done</div></div>
               </div>
               {summary.taskStats && <p className="text-sm text-muted mt-8">{summary.taskStats.adhoc} ad-hoc tasks total</p>}
             </div>
@@ -386,8 +386,8 @@ export default function Reports() {
             <div className="card">
               <div className="section-title">Engineer Workload</div>
               {summary.engineerLoad.length === 0 ? <p className="text-muted text-sm">No engineers</p> : summary.engineerLoad.map(e => (
-                <div key={e.name} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                  <span style={{ width: 110, fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{e.name}</span>
+                <div key={e.name} className="u-8d44620">
+                  <span className="u-e2624e2">{e.name}</span>
                   <div className="progress-bar flex-1">
                     <div className="progress-bar-fill" style={{ width: e.task_count ? `${(e.done_count / e.task_count) * 100}%` : '0%' }} />
                   </div>
@@ -399,7 +399,7 @@ export default function Reports() {
 
           {summary.pendingClosure.length > 0 && (
             <div className="card">
-              <div className="section-title" style={{ color: 'var(--warning)' }}>Pending Closure ({summary.pendingClosure.length})</div>
+              <div className="section-title u-52df2b0">Pending Closure ({summary.pendingClosure.length})</div>
               <div className="table-wrap">
                 <table>
                   <thead><tr><th>Project</th><th>Created By</th><th>Deadline</th><th>Action</th></tr></thead>
@@ -429,7 +429,7 @@ export default function Reports() {
                 <td><PriorityBadge p={p.priority} /></td>
                 <td>
                   <span className="text-sm">{p.done_count}/{p.task_count}</span>
-                  {p.task_count > 0 && <div className="progress-bar" style={{ width: 60, marginTop: 3 }}>
+                  {p.task_count > 0 && <div className="progress-bar u-00e3e8a">
                     <div className="progress-bar-fill" style={{ width: `${(p.done_count / p.task_count) * 100}%` }} />
                   </div>}
                 </td>

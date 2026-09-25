@@ -58,14 +58,10 @@ export function engineerWidget(id, ctx) {
                   const isTomorrow = t.deadline.slice(0,10) === new Date(now.getTime()+86400000).toISOString().slice(0,10);
                   const label = isToday ? 'Due today' : isTomorrow ? 'Tomorrow' : fmtDate(t.deadline);
                   return (
-                    <li key={t.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                    <li key={t.id} className="u-710b0ff">
                       <PriorityBadge p={t.priority} />
-                      <span style={{ flex:1, minWidth:120, color:'var(--gray-800)', fontSize:13 }}>{t.title}</span>
-                      <span style={{
-                        fontSize:11, fontWeight:700, flexShrink:0, borderRadius:99, padding:'2px 8px',
-                        color: isToday ? '#b91c1c' : isTomorrow ? '#92400e' : '#78716c',
-                        background: isToday ? '#fef2f2' : isTomorrow ? '#fffbeb' : 'var(--gray-100)',
-                      }}>
+                      <span className="u-06d0741">{t.title}</span>
+                      <span className="u-2bde71f" style={{ color: isToday ? '#b91c1c' : isTomorrow ? '#92400e' : '#78716c', background: isToday ? '#fef2f2' : isTomorrow ? '#fffbeb' : 'var(--gray-100)' }}>
                         {label}
                       </span>
                     </li>
@@ -79,16 +75,16 @@ export function engineerWidget(id, ctx) {
 
     case 'pending_reports':
       return (
-        <div key={id} className="card"
-          style={{ marginBottom:20, borderLeft:`3px solid ${pendingReports.length ? 'var(--danger)' : 'var(--success)'}` }}>
+        <div key={id} className="card u-49f14f8"
+          style={{ borderLeft:`3px solid ${pendingReports.length ? 'var(--danger)' : 'var(--success)'}` }}>
           <div className="section-header">
             <div className="flex-center gap-8">
               <Send size={15} color={pendingReports.length ? 'var(--danger)' : 'var(--success)'} />
-              <div className="section-title"
-                style={{ margin:0, color: pendingReports.length ? 'var(--danger)' : 'var(--success)' }}>
+              <div className="section-title u-1169661"
+                style={{ color: pendingReports.length ? 'var(--danger)' : 'var(--success)' }}>
                 Reports Pending — Send to Management
               </div>
-              <span className={`badge ${pendingReports.length ? 'badge-cancelled' : 'badge-done'}`} style={{ marginLeft:4 }}>
+              <span className={`badge ${pendingReports.length ? 'badge-cancelled' : 'badge-done'} u-46cec89`}>
                 {pendingReports.length === 0 ? 'All sent ✓' : pendingReports.length}
               </span>
             </div>
@@ -108,8 +104,7 @@ export function engineerWidget(id, ctx) {
                         <td className={isOverdue(v.scheduled_date) ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
                         <td><StatusBadge entityType="visit" s={v.status} /></td>
                         <td>
-                          <button className="btn btn-sm btn-primary"
-                            style={{ display:'inline-flex', alignItems:'center', gap:4 }}
+                          <button className="btn btn-sm btn-primary u-122b3a0"
                             onClick={async () => { await api.markReportSent(v.id); load(); }}>
                             <Send size={11} /> Mark Sent
                           </button>
@@ -174,8 +169,7 @@ export function engineerWidget(id, ctx) {
             ? <p className="text-muted text-sm">No active projects</p>
             : <ul className="list-none">
                 {active.slice(0,6).map(p => (
-                  <li key={p.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)',
-                    display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                  <li key={p.id} className="u-710b0ff">
                     <Link to={`/projects/${p.id}`} style={{ flex:1, fontWeight:600, minWidth:120, color:'var(--gray-900)' }}>{p.title}</Link>
                     <StatusBadge entityType="project" s={p.status} />
                     {p.deadline && (
@@ -215,9 +209,8 @@ export function engineerWidget(id, ctx) {
             ? <p className="text-muted text-sm">No open tasks</p>
             : <ul className="list-none">
                 {myOpen.slice(0,6).map(t => (
-                  <li key={t.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)',
-                    display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                    <span style={{ flex:1, minWidth:120, color:'var(--gray-800)' }}>{t.title}</span>
+                  <li key={t.id} className="u-710b0ff">
+                    <span className="u-036d7cd">{t.title}</span>
                     {t.is_adhoc ? <span className="badge badge-adhoc">adhoc</span> : null}
                     <StatusBadge entityType="task" s={t.status} />
                     {t.deadline && (
@@ -247,7 +240,7 @@ export function engineerWidget(id, ctx) {
           </div>
           <ul className="list-none">
             {myManagedCustomers.map(c => (
-              <li key={c.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              <li key={c.id} className="u-710b0ff">
                 <Link to={`/customers/${c.id}/service-profile`} className="font-semibold" style={{ flex:1, minWidth:120 }}>{c.name}</Link>
                 {c.ticketing_enabled
                   ? <span className={'badge ' + (c.open_tickets ? 'badge-open' : 'badge-done')} title="Open tickets"><Ticket size={11} /> {c.open_tickets}</span>

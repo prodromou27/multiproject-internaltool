@@ -76,7 +76,7 @@ function ScorecardForm({ initial, pendingProjects, engineers, onSave, onClose })
       {!initial && (
         <div className="form-row">
           <div className="form-group">
-            <label>Project * <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400 }}>(closed / completed only)</span></label>
+            <label>Project * <span className="u-24b09c3">(closed / completed only)</span></label>
             <select value={form.project_id} onChange={handleProjectChange} required>
               <option value="">Select project…</option>
               {pendingProjects.map(p => (
@@ -86,13 +86,13 @@ function ScorecardForm({ initial, pendingProjects, engineers, onSave, onClose })
               ))}
             </select>
             {pendingProjects.length === 0 && (
-              <div style={{ fontSize: 12, color: 'var(--success)', marginTop: 4 }}>
+              <div className="u-7d92a3e">
                 ✅ All engineers have been scored on every closed/completed project.
               </div>
             )}
           </div>
           <div className="form-group">
-            <label>Engineer * <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400 }}>(unscored only)</span></label>
+            <label>Engineer * <span className="u-24b09c3">(unscored only)</span></label>
             <select value={form.engineer_id} onChange={set('engineer_id')} required disabled={!form.project_id}>
               <option value="">{form.project_id ? 'Select engineer…' : 'Select a project first'}</option>
               {availableEngineers.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
@@ -102,16 +102,14 @@ function ScorecardForm({ initial, pendingProjects, engineers, onSave, onClose })
       )}
 
       {/* Live score preview */}
-      <div style={{ background: 'var(--gray-50)', borderRadius: 10, padding: '14px 16px', marginBottom: 16,
-        display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-        border: `2px solid ${r.color}20` }}>
+      <div className="u-d112f2c" style={{ border: `2px solid ${r.color}20` }}>
         <ScoreGauge score={adjP} size={72} />
         <div>
-          <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Live Preview</div>
-          <div style={{ fontWeight: 800, fontSize: 22, color: r.color }}>{adjP}%</div>
+          <div className="u-5eb8a4b">Live Preview</div>
+          <div className="u-975b878" style={{ color: r.color }}>{adjP}%</div>
           <ScoreBadge score={adjP} size="lg" />
         </div>
-        <div style={{ marginLeft: 'auto', fontSize: 12, color: '#6b7280', lineHeight: 1.8 }}>
+        <div className="u-77af0ee">
           Base: <strong>{baseP}%</strong><br />
           Difficulty adj: <strong>{DIFFICULTY_LABELS[form.difficulty]?.mult}</strong><br />
           Target: <strong>80%</strong>
@@ -119,19 +117,16 @@ function ScorecardForm({ initial, pendingProjects, engineers, onSave, onClose })
       </div>
 
       {/* Dimension pickers */}
-      <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase',
-          letterSpacing: '.05em', marginBottom: 10 }}>Scoring Dimensions</div>
+      <div className="u-e574c16">
+        <div className="u-616011a">Scoring Dimensions</div>
         {Object.entries(WEIGHTS).map(([key, meta]) => (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-            <div style={{ width: 195, flexShrink: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{meta.label}</div>
-              <div style={{ fontSize: 10, color: '#9ca3af' }}>Weight: {meta.pct}%</div>
+          <div key={key} className="u-0aae325">
+            <div className="u-3aed09a">
+              <div className="u-15e5b7f">{meta.label}</div>
+              <div className="u-8993047">Weight: {meta.pct}%</div>
             </div>
             <DimPicker value={form[key]} onChange={setDim(key)} />
-            <div style={{ width: 26, height: 26, borderRadius: '50%', background: meta.color,
-              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{form[key]}</div>
+            <div className="u-33f8222" style={{ background: meta.color }}>{form[key]}</div>
           </div>
         ))}
       </div>
@@ -139,17 +134,15 @@ function ScorecardForm({ initial, pendingProjects, engineers, onSave, onClose })
       {/* Difficulty */}
       <div className="form-group">
         <label>Project Difficulty</label>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+        <div className="u-8af0ed0">
           {[1,2,3,4,5].map(d => {
             const dl = DIFFICULTY_LABELS[d];
             const active = form.difficulty === d;
             return (
               <button key={d} type="button" onClick={() => setForm(f => ({ ...f, difficulty: d }))}
-                style={{ padding: '5px 12px', borderRadius: 6, border: `2px solid ${active ? dl.color : 'var(--gray-200)'}`,
-                  background: active ? dl.color + '15' : '#fff', color: active ? dl.color : '#6b7280',
-                  cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400, transition: 'all .1s' }}>
+                className="u-a07aded" style={{ border: `2px solid ${active ? dl.color : 'var(--gray-200)'}`, background: active ? dl.color + '15' : '#fff', color: active ? dl.color : '#6b7280', fontWeight: active ? 700 : 400 }}>
                 D{d} — {dl.label}<br/>
-                <span style={{ fontSize: 10, opacity: .7 }}>{dl.mult}</span>
+                <span className="u-ea7eea0">{dl.mult}</span>
               </button>
             );
           })}
@@ -161,7 +154,7 @@ function ScorecardForm({ initial, pendingProjects, engineers, onSave, onClose })
         <textarea value={form.notes} onChange={set('notes')} rows={2} placeholder="Additional observations…" />
       </div>
 
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+      <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : initial ? 'Update Scorecard' : 'Save Scorecard'}</button>
       </div>
@@ -174,11 +167,11 @@ function ScorecardDetail({ sc, isManager, onClose, onEdit, onDelete }) {
   return (
     <Modal title="Project Quality Scorecard" onClose={onClose}>
       {/* Header */}
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap' }}>
+      <div className="u-8af67e8">
         <ScoreGauge score={sc.adjusted_score} size={88} />
-        <div style={{ flex: 1, minWidth: 180 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{sc.engineer_name}</div>
-          <div className="text-sm text-muted" style={{ marginBottom: 6 }}>
+        <div className="u-2f7ab6d">
+          <div className="u-08bdae6">{sc.engineer_name}</div>
+          <div className="text-sm text-muted u-4e420af">
             <Link to={`/projects/${sc.project_id}`} onClick={onClose}>{sc.project_title}</Link>
           </div>
           <ScoreBadge score={sc.adjusted_score} size="lg" />
@@ -186,10 +179,10 @@ function ScorecardDetail({ sc, isManager, onClose, onEdit, onDelete }) {
             Evaluated by {sc.evaluated_by_name} · {fmtDate(sc.updated_at || sc.created_at)}
           </div>
         </div>
-        <div style={{ textAlign: 'center', background: 'var(--gray-50)', borderRadius: 8, padding: '8px 16px' }}>
-          <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.05em' }}>Target</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: sc.adjusted_score >= 80 ? 'var(--success)' : 'var(--danger)' }}>80%</div>
-          <div style={{ fontSize: 11, color: sc.adjusted_score >= 80 ? 'var(--success)' : 'var(--danger)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+        <div className="u-71c92c6">
+          <div className="u-39de0bb">Target</div>
+          <div className="u-028ee8c" style={{ color: sc.adjusted_score >= 80 ? 'var(--success)' : 'var(--danger)' }}>80%</div>
+          <div className="u-5a45a25" style={{ color: sc.adjusted_score >= 80 ? 'var(--success)' : 'var(--danger)' }}>
             {sc.adjusted_score >= 80 ? <><CheckCircle2 size={11} /> Met</> : <><XCircle size={11} /> Not met</>}
           </div>
         </div>
@@ -201,8 +194,8 @@ function ScorecardDetail({ sc, isManager, onClose, onEdit, onDelete }) {
       {sc.notes && <>
         <div className="divider" />
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>Evaluator Notes</div>
-          <p style={{ fontSize: 13, color: '#374151' }}>{sc.notes}</p>
+          <div className="u-2083c69">Evaluator Notes</div>
+          <p className="u-a478e95">{sc.notes}</p>
         </div>
       </>}
 
@@ -220,16 +213,16 @@ function EngineerSummaryCard({ eng }) {
   const TARGET = 80;
   const pct = eng.avg_adjusted ?? 0;
   return (
-    <div className="card" style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+    <div className="card u-6015106">
       <ScoreGauge score={eng.avg_adjusted} size={76} />
-      <div style={{ flex: 1, minWidth: 140 }}>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>{eng.name}</div>
-        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>{eng.email || '—'}</div>
+      <div className="u-aae0403">
+        <div className="u-4aaa243">{eng.name}</div>
+        <div className="u-44d91a7">{eng.email || '—'}</div>
         <ScoreBadge score={eng.avg_adjusted} />
-        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>{eng.scorecard_count} project{eng.scorecard_count !== 1 ? 's' : ''} evaluated</div>
+        <div className="u-9f047cd">{eng.scorecard_count} project{eng.scorecard_count !== 1 ? 's' : ''} evaluated</div>
       </div>
       {eng.scorecard_count > 0 && (
-        <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 2, minWidth: 100 }}>
+        <div className="u-f5fb2fe">
           <div>High: <strong>{eng.max_score}%</strong></div>
           <div>Low:  <strong>{eng.min_score}%</strong></div>
           <div>vs target: <strong style={{ color: pct >= TARGET ? 'var(--success)' : 'var(--danger)' }}>
@@ -244,7 +237,7 @@ function EngineerSummaryCard({ eng }) {
 /* ── Performance Trend Chart (one engineer) ───────────────── */
 function EngineerTrendChart({ eng }) {
   if (!eng.scorecards.length) return (
-    <div className="text-sm text-muted" style={{ padding: '8px 0' }}>No data yet</div>
+    <div className="text-sm text-muted u-d8c0226">No data yet</div>
   );
   const data = eng.scorecards.map(sc => ({
     name: sc.project_title.length > 18 ? sc.project_title.slice(0, 16) + '…' : sc.project_title,
@@ -336,17 +329,13 @@ export default function Scorecards() {
 
       {/* Pending-scores banner (manager only) */}
       {isManager && !loading && pendingProjects.length > 0 && (
-        <div style={{
-          display: 'flex', alignItems: 'flex-start', gap: 12,
-          background: 'var(--warning-light)', border: '1px solid #fcd34d',
-          borderRadius: 10, padding: '12px 16px', marginBottom: 16,
-        }}>
+        <div className="u-ccda4f8">
           <AlertTriangle size={16} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
           <div className="flex-1">
-            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--tone-warning-text)', marginBottom: 4 }}>
+            <div className="u-4c84c5f">
               Pending KPI scores — {pendingProjects.reduce((s, p) => s + p.unscored_engineers.length, 0)} engineer{pendingProjects.reduce((s, p) => s + p.unscored_engineers.length, 0) !== 1 ? 's' : ''} awaiting evaluation
             </div>
-            <div style={{ fontSize: 12, color: 'var(--tone-warning-text)', lineHeight: 1.6 }}>
+            <div className="u-59bbb8c">
               {pendingProjects.map(p => (
                 <div key={p.id} className="flex-center gap-6">
                   <Clock size={11} />
@@ -376,15 +365,15 @@ export default function Scorecards() {
       {!isManager && !loading && tab === 'mine' && (
         <>
           {myAvg != null && (
-            <div className="card" style={{ marginBottom: 20, display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="card u-dbb528b">
               <ScoreGauge score={myAvg} size={96} />
               <div>
-                <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>My Overall Average</div>
-                <div style={{ fontSize: 28, fontWeight: 800, marginTop: 2 }}>{myAvg}%</div>
+                <div className="u-ae764bb">My Overall Average</div>
+                <div className="u-6bc6c7a">{myAvg}%</div>
                 <ScoreBadge score={myAvg} size="lg" />
-                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>
+                <div className="u-308c91b">
                   Target: 80% &nbsp;·&nbsp;
-                  <span style={{ color: myAvg >= 80 ? 'var(--success)' : 'var(--danger)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                  <span className="u-e30bd2e" style={{ color: myAvg >= 80 ? 'var(--success)' : 'var(--danger)' }}>
                     {myAvg >= 80 ? <><CheckCircle2 size={12} /> On target</> : `${Math.abs(Math.round((myAvg - 80) * 10) / 10)}% below target`}
                   </span>
                 </div>
@@ -394,17 +383,17 @@ export default function Scorecards() {
           {scorecards.length === 0
             ? <div className="empty"><div className="empty-icon"><BarChart2 size={40} strokeWidth={1.2} /></div><p>No scorecards yet for your projects</p></div>
             : scorecards.map(sc => (
-              <div key={sc.id} className="card" style={{ marginBottom: 12, cursor: 'pointer' }} onClick={() => setSelected(sc)}>
-                <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div key={sc.id} className="card u-588c5a9" onClick={() => setSelected(sc)}>
+                <div className="u-6015106">
                   <ScoreGauge score={sc.adjusted_score} size={64} />
-                  <div style={{ flex: 1, minWidth: 150 }}>
-                    <div style={{ fontWeight: 700 }}>
+                  <div className="u-4ad81db">
+                    <div className="u-e3ec02a">
                       <Link to={`/projects/${sc.project_id}`} onClick={e => e.stopPropagation()}>{sc.project_title}</Link>
                     </div>
                     <div className="text-sm text-muted">{fmtDate(sc.updated_at || sc.created_at)}</div>
-                    <div style={{ marginTop: 6 }}><ScoreBadge score={sc.adjusted_score} /></div>
+                    <div className="u-fe7b497"><ScoreBadge score={sc.adjusted_score} /></div>
                   </div>
-                  <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 2 }}>
+                  <div className="u-54d9df5">
                     <div>Base: {sc.base_score}%</div>
                     <div>Difficulty: {DIFFICULTY_LABELS[sc.difficulty]?.label}</div>
                   </div>
@@ -422,7 +411,7 @@ export default function Scorecards() {
           {/* Performance distribution */}
           {summary.length > 0 && (
             <>
-              <div style={{ marginBottom: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 12 }}>
+              <div className="u-49fb0f5">
                 {summary.map(eng => <EngineerSummaryCard key={eng.id} eng={eng} />)}
               </div>
               {/* Target attainment bar */}
@@ -431,18 +420,16 @@ export default function Scorecards() {
                 {summary.filter(e => e.scorecard_count > 0).map(eng => {
                   const r = getRating(eng.avg_adjusted);
                   return (
-                    <div key={eng.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                      <span style={{ width: 130, fontSize: 12, fontWeight: 600, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{eng.name}</span>
-                      <div style={{ flex: 1, background: 'var(--gray-200)', borderRadius: 99, height: 10, overflow: 'hidden' }}>
-                        <div style={{ width: `${eng.avg_adjusted ?? 0}%`, height: '100%',
-                          background: r.color, borderRadius: 99, transition: 'width .4s',
-                          position: 'relative' }}>
+                    <div key={eng.id} className="u-4a1b20e">
+                      <span className="u-501de05">{eng.name}</span>
+                      <div className="u-7ffff5e">
+                        <div className="u-ebb76f9" style={{ width: `${eng.avg_adjusted ?? 0}%`, background: r.color }}>
                           {/* 80% target line marker */}
                         </div>
                       </div>
                       {/* 80% marker */}
-                      <div style={{ position: 'relative', marginLeft: -60, width: 0, height: 10, borderLeft: '2px dashed #f59e0b', flexShrink: 0, alignSelf: 'stretch' }} />
-                      <span style={{ width: 48, fontSize: 12, fontWeight: 700, color: r.color, textAlign: 'right', flexShrink: 0 }}>
+                      <div className="u-e68d8c0" />
+                      <span className="u-e628251" style={{ color: r.color }}>
                         {eng.avg_adjusted ?? '—'}%
                       </span>
                     </div>
@@ -459,8 +446,8 @@ export default function Scorecards() {
       {/* ── Manager: All Scorecards ── */}
       {isManager && !loading && tab === 'all' && (
         <>
-          <div style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <select value={filterEng} onChange={e => setFilterEng(e.target.value)} style={{ width: 'auto', minWidth: 180 }}>
+          <div className="u-60a1f93">
+            <select value={filterEng} onChange={e => setFilterEng(e.target.value)} className="u-1833b73">
               <option value="">All Engineers</option>
               {engineers.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
@@ -485,13 +472,13 @@ export default function Scorecards() {
                           <td className="font-semibold">{sc.engineer_name}</td>
                           <td><Link to={`/projects/${sc.project_id}`} onClick={e => e.stopPropagation()}>{sc.project_title}</Link></td>
                           <td>
-                            <span style={{ fontSize: 12, color: DIFFICULTY_LABELS[sc.difficulty]?.color, fontWeight: 600 }}>
+                            <span className="u-eb5cb58" style={{ color: DIFFICULTY_LABELS[sc.difficulty]?.color }}>
                               D{sc.difficulty} — {DIFFICULTY_LABELS[sc.difficulty]?.label}
                             </span>
                           </td>
                           <td className="text-muted text-sm">{sc.base_score}%</td>
                           <td><strong style={{ color: r.color }}>{sc.adjusted_score}%</strong></td>
-                          <td><span style={{ background: r.bg, color: r.color, borderRadius: 99, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{r.label}</span></td>
+                          <td><span className="u-f7dac5e" style={{ background: r.bg, color: r.color }}>{r.label}</span></td>
                           <td className="text-sm text-muted">{fmtDate(sc.updated_at || sc.created_at)}</td>
                           <td onClick={e => e.stopPropagation()}>
                             <div className="flex gap-8">
@@ -515,23 +502,23 @@ export default function Scorecards() {
           {trends.length === 0
             ? <div className="empty"><div className="empty-icon"><TrendingUp size={40} strokeWidth={1.2} /></div><p>No scorecard data to trend yet</p></div>
             : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+              <div className="u-59b0c89">
                 {trends.map(eng => {
                   const latest = eng.scorecards[eng.scorecards.length - 1];
                   const prev   = eng.scorecards[eng.scorecards.length - 2];
                   const delta  = latest && prev ? Math.round((latest.adjusted_score - prev.adjusted_score) * 10) / 10 : null;
                   return (
                     <div key={eng.id} className="card">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                      <div className="u-8d44620">
                         <div className="flex-1">
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>{eng.name}</div>
-                          <div style={{ fontSize: 11, color: '#9ca3af' }}>{eng.email || '—'} · {eng.scorecards.length} scorecard{eng.scorecards.length !== 1 ? 's' : ''}</div>
+                          <div className="u-4aaa243">{eng.name}</div>
+                          <div className="u-0bc6ca3">{eng.email || '—'} · {eng.scorecards.length} scorecard{eng.scorecards.length !== 1 ? 's' : ''}</div>
                         </div>
                         {latest && (
-                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                            <div style={{ fontSize: 18, fontWeight: 800, color: getRating(latest.adjusted_score).color }}>{latest.adjusted_score}%</div>
+                          <div className="u-1d6bcfa">
+                            <div className="u-80b90e3" style={{ color: getRating(latest.adjusted_score).color }}>{latest.adjusted_score}%</div>
                             {delta !== null && (
-                              <div style={{ fontSize: 11, fontWeight: 600, color: delta >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                              <div className="u-0907ca8" style={{ color: delta >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                                 {delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}% vs prev
                               </div>
                             )}

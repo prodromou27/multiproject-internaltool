@@ -48,13 +48,13 @@ export default function NewVisitModal({ prefillDate, onClose, onCreated }) {
   return (
     <Modal title="New Maintenance Visit" onClose={onClose} wide>
       {loading ? (
-        <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--gray-400)' }}>Loading…</div>
+        <div className="u-968d015">Loading…</div>
       ) : (
         <form onSubmit={submit}>
           {err && <div className="error-msg mb-12">{err}</div>}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+          <div className="u-9c34d8c">
+            <div className="form-group u-4ddcfbe">
               <label>Customer *</label>
               <select value={form.customer_id} onChange={set('customer_id')} required>
                 <option value="">Select customer…</option>
@@ -62,7 +62,7 @@ export default function NewVisitModal({ prefillDate, onClose, onCreated }) {
               </select>
             </div>
 
-            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <div className="form-group u-4ddcfbe">
               <label>Visit Title *</label>
               <input value={form.title} onChange={set('title')} required placeholder="e.g. Q3 Health Check" autoFocus />
             </div>
@@ -90,10 +90,10 @@ export default function NewVisitModal({ prefillDate, onClose, onCreated }) {
           <div className="form-group">
             <label>Notes</label>
             <textarea value={form.notes || ''} onChange={set('notes')} rows={2}
-              placeholder="Any additional notes…" style={{ resize: 'vertical' }} />
+              placeholder="Any additional notes…" className="u-9d0af0f" />
           </div>
 
-          <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+          <div className="modal-footer u-cc45258">
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary inline-flex items-center gap-6"
              

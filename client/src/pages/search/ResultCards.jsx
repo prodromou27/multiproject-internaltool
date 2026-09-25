@@ -9,7 +9,7 @@ export function ProjectCard({ item, navigate }) {
 
   return (
     <div className="result-card" onClick={() => navigate(`/projects/${item.id}`)}>
-      <div className="result-card-icon" style={{ background: 'var(--tone-purple-bg)', color: '#7c3aed' }}>
+      <div className="result-card-icon u-1a14e2a">
         <FolderOpen size={16} />
       </div>
       <div className="result-card-body">
@@ -38,7 +38,7 @@ export function TaskCard({ item, navigate }) {
 
   return (
     <div className="result-card" onClick={() => item.project_id && navigate(`/projects/${item.project_id}`)}>
-      <div className="result-card-icon" style={{ background: 'var(--primary-light)', color: '#2563eb' }}>
+      <div className="result-card-icon u-d487759">
         <CheckSquare size={16} />
       </div>
       <div className="result-card-body">
@@ -48,13 +48,13 @@ export function TaskCard({ item, navigate }) {
           {item.customer_name && <span><Building2 size={11} /> {item.customer_name}</span>}
           {item.assigned_to_name
             ? <span><User size={11} /> {item.assigned_to_name}</span>
-            : <span style={{ color: '#9ca3af' }}>Unassigned</span>}
+            : <span className="u-bc63aff">Unassigned</span>}
           {item.deadline && (
             <span style={{ color: od ? '#dc2626' : 'inherit' }}>
               <Clock size={11} /> {fmtDate(item.deadline)}{od ? ' · Overdue' : ''}
             </span>
           )}
-          {item.is_adhoc ? <span style={{ color: '#7c3aed', fontSize: 10, fontWeight: 700 }}>AD-HOC</span> : null}
+          {item.is_adhoc ? <span className="u-c240d18">AD-HOC</span> : null}
         </div>
       </div>
       <div className="result-card-badges">
@@ -75,7 +75,7 @@ export function MVCard({ item, navigate }) {
 
   return (
     <div className="result-card" onClick={() => navigate('/maintenance-visits')}>
-      <div className="result-card-icon" style={{ background: 'var(--warning-light)', color: '#d97706' }}>
+      <div className="result-card-icon u-cfa7d18">
         <Wrench size={16} />
       </div>
       <div className="result-card-body">
@@ -90,7 +90,7 @@ export function MVCard({ item, navigate }) {
       </div>
       <div className="result-card-badges">
         <SBadge s={item.status} />
-        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: item.report_sent_to_customer ? '#ecfdf5' : item.report_sent ? '#eff6ff' : '#fef3c7', color: reportColor }}>{reportLabel}</span>
+        <span className="u-db8a14c" style={{ background: item.report_sent_to_customer ? '#ecfdf5' : item.report_sent ? '#eff6ff' : '#fef3c7', color: reportColor }}>{reportLabel}</span>
       </div>
     </div>
   );
@@ -99,7 +99,7 @@ export function MVCard({ item, navigate }) {
 export function CustomerCard({ item, navigate }) {
   return (
     <div className="result-card" onClick={() => navigate('/customers')}>
-      <div className="result-card-icon" style={{ background: 'var(--success-light)', color: '#059669' }}>
+      <div className="result-card-icon u-d962444">
         <Building2 size={16} />
       </div>
       <div className="result-card-body">

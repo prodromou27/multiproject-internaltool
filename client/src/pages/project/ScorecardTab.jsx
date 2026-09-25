@@ -53,19 +53,17 @@ export function ScorecardTab({ projectId, members }) {
     <div>
       {/* Summary strip */}
       {cards.length > 0 && (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div className="u-b3c85ca">
           {cards.map(sc => (
             <div key={sc.id} onClick={() => setSel(sc)}
-              style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'var(--gray-50)',
-                border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 14px', cursor: 'pointer',
-                flex: '1 1 220px', minWidth: 0 }}>
+              className="u-484c985">
               <ScoreGauge score={sc.adjusted_score} size={56} />
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sc.engineer_name}</div>
+              <div className="u-3922d32">
+                <div className="u-b31844f">{sc.engineer_name}</div>
                 <ScoreBadge score={sc.adjusted_score} />
-                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>D{sc.difficulty} · {DIFFICULTY_LABELS[sc.difficulty]?.label}</div>
+                <div className="u-219927d">D{sc.difficulty} · {DIFFICULTY_LABELS[sc.difficulty]?.label}</div>
               </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div className="u-16074f3">
                 <button className="btn btn-sm btn-ghost" onClick={e => { e.stopPropagation(); setEditing(sc); setShow(true); }}>Edit</button>
                 <button className="btn btn-sm btn-danger" onClick={e => { e.stopPropagation(); del(sc.id); }}>Del</button>
               </div>
@@ -85,16 +83,16 @@ export function ScorecardTab({ projectId, members }) {
       {/* Inline scorecard detail */}
       {selected && (
         <Modal title="Scorecard Detail" onClose={() => setSel(null)}>
-          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
+          <div className="u-f134c4d">
             <ScoreGauge score={selected.adjusted_score} size={80} />
             <div>
-              <div style={{ fontWeight: 700 }}>{selected.engineer_name}</div>
+              <div className="u-e3ec02a">{selected.engineer_name}</div>
               <ScoreBadge score={selected.adjusted_score} size="lg" />
               <div className="text-sm text-muted mt-4">Evaluated by {selected.evaluated_by_name}</div>
             </div>
           </div>
           <ScorecardBreakdown sc={selected} />
-          {selected.notes && <p style={{ marginTop: 12, fontSize: 13, color: '#374151' }}>{selected.notes}</p>}
+          {selected.notes && <p className="u-0f48d1c">{selected.notes}</p>}
           <div className="modal-footer"><button className="btn btn-primary" onClick={() => setSel(null)}>Close</button></div>
         </Modal>
       )}
@@ -115,24 +113,23 @@ export function ScorecardTab({ projectId, members }) {
               </div>
             )}
             {/* Live preview */}
-            <div style={{ background:'var(--gray-50)', borderRadius:8, padding:'10px 14px', marginBottom:14,
-              display:'flex', alignItems:'center', gap:14, flexWrap:'wrap', border:`2px solid ${r.color}20` }}>
+            <div className="u-a6e90d1" style={{ border:`2px solid ${r.color}20` }}>
               <ScoreGauge score={adjP} size={64} />
               <div>
-                <div style={{ fontWeight:800, fontSize:20, color:r.color }}>{adjP}%</div>
+                <div className="u-ffbe152" style={{ color:r.color }}>{adjP}%</div>
                 <ScoreBadge score={adjP} size="lg" />
               </div>
-              <div style={{ fontSize:11, color:'#9ca3af', lineHeight:1.8 }}>
+              <div className="u-e8e898a">
                 Base: {baseP}% &nbsp;·&nbsp; Adj: {DIFFICULTY_LABELS[form.difficulty]?.mult}
               </div>
             </div>
             {/* Dimensions */}
-            <div style={{ background:'var(--gray-50)', borderRadius:8, padding:'10px 14px', marginBottom:12 }}>
+            <div className="u-c63aa5f">
               {Object.entries(WEIGHTS).map(([key, meta]) => (
-                <div key={key} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8, flexWrap:'wrap' }}>
-                  <div style={{ width:180, flexShrink:0 }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:'#374151' }}>{meta.label}</div>
-                    <div style={{ fontSize:10, color:'#9ca3af' }}>{meta.pct}% weight</div>
+                <div key={key} className="u-c7daf4f">
+                  <div className="u-7951ed8">
+                    <div className="u-15e5b7f">{meta.label}</div>
+                    <div className="u-8993047">{meta.pct}% weight</div>
                   </div>
                   <DimPicker value={form[key]||3} onChange={setDim(key)} />
                 </div>
@@ -141,22 +138,20 @@ export function ScorecardTab({ projectId, members }) {
             {/* Difficulty */}
             <div className="form-group">
               <label>Project Difficulty</label>
-              <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:4 }}>
+              <div className="u-8af0ed0">
                 {[1,2,3,4,5].map(d => {
                   const dl = DIFFICULTY_LABELS[d]; const active = form.difficulty === d;
                   return (
                     <button key={d} type="button" onClick={() => setForm(f => ({ ...f, difficulty: d }))}
-                      style={{ padding:'4px 10px', borderRadius:6, border:`2px solid ${active?dl.color:'var(--gray-200)'}`,
-                        background:active?dl.color+'15':'#fff', color:active?dl.color:'#6b7280',
-                        cursor:'pointer', fontSize:11, fontWeight:active?700:400 }}>
-                      D{d} {dl.label}<br/><span style={{ fontSize:10, opacity:.7 }}>{dl.mult}</span>
+                      className="u-c55ee52" style={{ border:`2px solid ${active?dl.color:'var(--gray-200)'}`, background:active?dl.color+'15':'#fff', color:active?dl.color:'#6b7280', fontWeight:active?700:400 }}>
+                      D{d} {dl.label}<br/><span className="u-ea7eea0">{dl.mult}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
             <div className="form-group"><label>Notes</label><textarea value={form.notes||''} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
-            <div className="modal-footer" style={{ padding:'12px 0 0', border:'none' }}>
+            <div className="modal-footer u-cc45258">
               <button type="button" className="btn btn-ghost" onClick={() => { setShow(false); setEditing(null); }}>Cancel</button>
               <button type="submit" className="btn btn-primary">{editing ? 'Update' : 'Save Scorecard'}</button>
             </div>

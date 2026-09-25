@@ -29,7 +29,7 @@ function ActivityTrendCard({ trend }) {
   return <section className="card cs-command-module cs-span-2 cs-trend">
     <header><div><TrendingUp size={17} aria-hidden="true" /><h2>Service activity — last 6 months</h2></div></header>
     {trend.error ? <div className="cs-module-local-error">Unavailable. <button onClick={trend.retry}>Retry</button></div>
-      : !trend.data ? <div className="cs-module-skeleton"><span style={{ height:150 }} /></div>
+      : !trend.data ? <div className="cs-module-skeleton"><span className="u-a2ed472" /></div>
       : total===0 ? <p className="cs-command-empty">No service activity logged in the last 6 months.</p>
       : <div className="cs-trend-body">
           <ResponsiveContainer width="100%" height={170}>
@@ -61,7 +61,7 @@ function WorkMixCard({ summary }) {
   const total=slices.reduce((sum,slice) => sum+slice.value,0);
   return <section className="card cs-command-module cs-mix">
     <header><div><PieIcon size={17} aria-hidden="true" /><h2>Open work</h2><span>{total}</span></div></header>
-    {!summary ? <div className="cs-module-skeleton"><span style={{ height:120 }} /></div>
+    {!summary ? <div className="cs-module-skeleton"><span className="u-231645a" /></div>
       : total===0 ? <p className="cs-command-empty">Nothing open for this customer.</p>
       : <div className="cs-mix-body">
           <div className="cs-mix-chart" role="img" aria-label={shown.map(slice => `${slice.value} ${slice.name}`).join(', ')}>
@@ -85,7 +85,7 @@ function TicketTrendCard({ trend }) {
   return <section className="card cs-command-module cs-mix">
     <header><div><Ticket size={17} aria-hidden="true" /><h2>Tickets, last 8 weeks</h2></div></header>
     {trend.error ? <div className="cs-module-local-error">Unavailable. <button onClick={trend.retry}>Retry</button></div>
-      : !trend.data ? <div className="cs-module-skeleton"><span style={{ height:120 }} /></div>
+      : !trend.data ? <div className="cs-module-skeleton"><span className="u-231645a" /></div>
       : !busy ? <p className="cs-command-empty">No tickets opened or closed in the last 8 weeks.</p>
       : <div className="cs-trend-body">
           <ResponsiveContainer width="100%" height={170}>

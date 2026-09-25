@@ -108,18 +108,18 @@ export default function CustomerRecommendations({ customerId, sourceVisitId, cre
   return <section>
     {data?.summary && <div className="cs-recommendation-summary"><div><span>Open</span><strong>{data.summary.open}</strong></div><div><span>High risk</span><strong>{data.summary.high_risk}</strong></div><div><span>In progress</span><strong>{data.summary.in_progress}</strong></div><div><span>Implemented</span><strong>{data.summary.implemented}</strong></div></div>}
     <div className="flex gap-8 mb-16 flex-wrap">
-      <label htmlFor="recommendation-list-status">Status</label><select id="recommendation-list-status" value={status} onChange={event => { setStatus(event.target.value); setPage(1); }} style={{ width: 'auto' }}><option value="">All statuses</option>{STATUSES.map(value => <option key={value} value={value}>{label(value)}</option>)}</select>
+      <label htmlFor="recommendation-list-status">Status</label><select id="recommendation-list-status" value={status} onChange={event => { setStatus(event.target.value); setPage(1); }} className="u-30e741d"><option value="">All statuses</option>{STATUSES.map(value => <option key={value} value={value}>{label(value)}</option>)}</select>
       {data?.capabilities?.can_create !== false && <button className="btn btn-primary" disabled={busy || !!error} onClick={() => setEditing({ initial: null })}>Record recommendation</button>}
       <button className="btn btn-ghost" disabled={busy} onClick={load}>Refresh</button>
     </div>
     {error ? <div className="error-msg" role="alert">{error} <button className="btn btn-ghost" onClick={load}>Retry</button></div> : busy ? <p role="status">Loading recommendations...</p> : <>
       {data.rows.length === 0 && <p className="text-muted">No recommendations in this view.</p>}
       {data.rows.map(row => <article className="card mb-16" key={row.id}>
-        <h2 style={{ fontSize: 17, whiteSpace: 'pre-wrap' }}>{row.finding}</h2>
-        <p style={{ whiteSpace: 'pre-wrap' }}>{row.recommendation}</p>
+        <h2 className="u-de13e91">{row.finding}</h2>
+        <p className="u-a548ea7">{row.recommendation}</p>
         <p className="text-muted">{label(row.status)} · {row.risk_level} risk · {row.owner_name || 'Unassigned'} · Due {fmtDate(row.due_date)}</p>
         {row.source_visit_title && <p className="text-muted text-sm">Source: {row.source_visit_title}</p>}
-        {row.follow_up_notes && <p style={{ whiteSpace: 'pre-wrap' }}>{row.follow_up_notes}</p>}
+        {row.follow_up_notes && <p className="u-a548ea7">{row.follow_up_notes}</p>}
         <div className="flex gap-8">
           {row.can_edit && <button className="btn btn-ghost" onClick={() => setEditing({ initial: row })}>Edit</button>}
           {row.related_project_id ? <Link className="btn btn-ghost" to={`/projects/${row.related_project_id}`}>Open converted project</Link> : row.related_task_id ? <Link className="btn btn-ghost" to={`/projects/${row.related_task_project_id}`}>Open converted task project</Link> : row.can_edit && <>{data.capabilities.can_convert_task && data.projects.length>0 && <button className="btn btn-primary" onClick={() => setEditing({ initial: row, convertingTask: true })}>Convert to task</button>}{data.capabilities.can_convert_project && <button className="btn btn-primary" onClick={() => setEditing({ initial: row, converting: true })}>Convert to project</button>}</>}

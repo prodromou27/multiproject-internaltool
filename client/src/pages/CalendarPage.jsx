@@ -143,7 +143,7 @@ export default function CalendarPage() {
   return (
     <div className="page">
       <PageHeader title="Calendar & Planner" description="Plan deadlines, visits, pending reports and service follow-ups." actions={<>
-        <div className="flex gap-8" style={{ alignItems: 'center' }}>
+        <div className="flex gap-8 u-7c61974">
           {isManagerOrPlanner && (
             <button
               className="btn btn-primary btn-sm inline-flex items-center gap-6"
@@ -155,34 +155,34 @@ export default function CalendarPage() {
           )}
           <button className="btn btn-ghost btn-sm" onClick={goToday} disabled={rescheduling}>Today</button>
           <button className="btn btn-ghost btn-sm inline-flex items-center" onClick={prevMonth} aria-label="Previous month" disabled={rescheduling || year === 1900 && month === 0}><ChevronLeft size={16} /></button>
-          <span style={{ fontWeight: 700, minWidth: 160, textAlign: 'center', fontSize: 15 }}>{MONTHS[month]} {year}</span>
+          <span className="u-0a19537">{MONTHS[month]} {year}</span>
           <button className="btn btn-ghost btn-sm inline-flex items-center" onClick={nextMonth} aria-label="Next month" disabled={rescheduling || year === 9998 && month === 11}><ChevronRight size={16} /></button>
         </div>
       </>} />
 
       {/* Legend / filters */}
-      <div className="card" style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="card u-0027766">
         <div className="flex gap-8" aria-label="Calendar view">
           <button className="btn btn-ghost btn-sm" aria-pressed={view === 'month'} onClick={() => setView('month')}>Month</button>
           <button className="btn btn-ghost btn-sm" aria-pressed={view === 'agenda'} onClick={() => setView('agenda')}>Agenda</button>
         </div>
         {Object.entries(TYPE_STYLE).filter(([type]) => type !== 'follow_up' || data.service_enabled).map(([type, s]) => (
-          <label key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+          <label key={type} className="u-833078c">
             <input type="checkbox" checked={filters[type]}
               onChange={() => setFilters(f => ({ ...f, [type]: !f[type] }))}
-              style={{ width: 'auto' }} />
+              className="u-30e741d" />
             <span className="flex-center gap-4">
-              <span style={{ width: 12, height: 12, borderRadius: 3, background: s.bg, border: `2px solid ${s.color}`, display: 'inline-block' }} />
+              <span className="u-e88c2cd" style={{ background: s.bg, border: `2px solid ${s.color}` }} />
               {s.label}
             </span>
           </label>
         ))}
         {isManagerOrPlanner && (
-          <span style={{ fontSize: 11, color: 'var(--gray-400)', marginLeft: 4 }}>
+          <span className="u-d54cbbe">
             Double-click or right-click a day to add a visit
           </span>
         )}
-        <span className="text-sm text-muted" style={{ marginLeft: 'auto' }}>
+        <span className="text-sm text-muted u-6d00061">
           {loading ? 'Loading…' : `${allEvents.length} event${allEvents.length !== 1 ? 's' : ''}`}
         </span>
       </div>
@@ -192,8 +192,8 @@ export default function CalendarPage() {
       </div>}
       {rescheduling && <p role="status">Saving schedule change...</p>}
       {/* Grid + sidebar */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 280px', gap: 16, alignItems: 'start' }}
-           className="calendar-layout">
+      <div
+           className="calendar-layout u-9ffa1bc">
 
         {view === 'agenda' ? <section className="card" aria-label="Month agenda">
           <h2 className="section-title">{MONTHS[month]} agenda</h2>
@@ -209,19 +209,19 @@ export default function CalendarPage() {
                 </li>;
               })}
             </ul>}
-        </section> : <div className="card" style={{ padding: 0, overflow: 'hidden', minWidth: 0 }}>
-          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-            <div style={{ minWidth: 420 }}>
+        </section> : <div className="card u-d9a680c">
+          <div className="u-54fa031">
+            <div className="u-dd18a4b">
 
               {/* Day headers */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', background: 'var(--gray-50)', borderBottom: '1px solid var(--gray-200)' }}>
+              <div className="u-bde406d">
                 {DAYS.map(d => (
-                  <div key={d} style={{ textAlign: 'center', padding: '8px 4px', fontSize: 11, fontWeight: 700, color: 'var(--gray-600)', textTransform: 'uppercase' }}>{d}</div>
+                  <div key={d} className="u-36b0f90">{d}</div>
                 ))}
               </div>
 
               {/* Day cells */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))' }}>
+              <div className="u-bb6ec00">
                 {cells.map((day, idx) => {
                   const dateStr  = day ? `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : null;
                   const events   = dateStr ? (byDay[dateStr] || []) : [];
@@ -238,21 +238,13 @@ export default function CalendarPage() {
                       onDragOver={dateStr ? e => { e.preventDefault(); setDragOverDate(dateStr); } : undefined}
                       onDragLeave={() => setDragOverDate(null)}
                       onDrop={dateStr ? e => { e.preventDefault(); reschedule(draggedEvent, dateStr); } : undefined}
-                      style={{
-                        minHeight: 80, padding: '4px 4px 4px 6px',
-                        borderRight: '1px solid var(--gray-100)',
-                        borderBottom: '1px solid var(--gray-100)',
-                        background: dragOverDate === dateStr
+                      className="u-5aec1b0" style={{ background: dragOverDate === dateStr
                           ? 'var(--primary-light)'
                           : !day
                           ? 'var(--gray-50)'
                           : isWeekend
                             ? 'var(--gray-50)'
-                            : 'var(--surface)',
-                        cursor: canCreate ? 'default' : undefined,
-                        transition: 'background 0.1s',
-                        position: 'relative',
-                      }}
+                            : 'var(--surface)', cursor: canCreate ? 'default' : undefined }}
                       // Hover hint for managers/planners on active days
                       onMouseEnter={canCreate ? e => {
                         const addBtn = e.currentTarget.querySelector('.cal-add-btn');
@@ -265,28 +257,15 @@ export default function CalendarPage() {
                     >
                       {day && (
                         <>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                            <div style={{
-                              fontSize: 12, fontWeight: isToday ? 800 : 500,
-                              color: isToday ? '#fff' : isWeekend ? 'var(--gray-400)' : isPast ? 'var(--gray-400)' : 'var(--gray-700)',
-                              background: isToday ? 'var(--primary)' : 'transparent',
-                              width: 22, height: 22, borderRadius: '50%',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}>{day}</div>
+                          <div className="u-41edc4d">
+                            <div className="u-3d88300" style={{ fontWeight: isToday ? 800 : 500, color: isToday ? '#fff' : isWeekend ? 'var(--gray-400)' : isPast ? 'var(--gray-400)' : 'var(--gray-700)', background: isToday ? 'var(--primary)' : 'transparent' }}>{day}</div>
 
                             {/* Hover quick-add button */}
                             {canCreate && (
                               <button
-                                className="cal-add-btn"
+                                className="cal-add-btn u-2ffb3da"
                                 onClick={e => { e.stopPropagation(); openNewVisit(dateStr); }}
                                 title={`Add visit on ${fmtDate(dateStr)}`}
-                                style={{
-                                  opacity: 0, transition: 'opacity 0.15s',
-                                  width: 18, height: 18, borderRadius: 4,
-                                  background: 'var(--warning-light)', border: '1px solid #fcd34d',
-                                  cursor: 'pointer', display: 'flex', alignItems: 'center',
-                                  justifyContent: 'center', padding: 0, flexShrink: 0,
-                                }}
                               >
                                 <Plus size={10} color="#b45309" />
                               </button>
@@ -303,7 +282,7 @@ export default function CalendarPage() {
                               }} />
                           ))}
                           {events.length > 3 && (
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setView('agenda')} style={{ fontSize: 10, color: 'var(--gray-400)', fontWeight: 600, paddingLeft: 4 }}>
+                            <button type="button" className="btn btn-ghost btn-sm u-93c3810" onClick={() => setView('agenda')}>
                               +{events.length - 3} more
                             </button>
                           )}
@@ -328,29 +307,20 @@ export default function CalendarPage() {
                   {upcoming.map((e, i) => {
                     const s = TYPE_STYLE[e.type];
                     return (
-                      <li key={i} role="button" tabIndex={0} onKeyDown={key => { if (key.key === 'Enter' || key.key === ' ') { key.preventDefault(); setSelected(e); } }} onClick={() => setSelected(e)} style={{
-                        display: 'flex', gap: 10, padding: '9px 0',
-                        borderBottom: i < upcoming.length - 1 ? '1px solid var(--gray-100)' : 'none',
-                        cursor: 'pointer', alignItems: 'flex-start',
-                      }}>
-                        <div style={{ width: 4, borderRadius: 2, background: s.color, flexShrink: 0, alignSelf: 'stretch', minHeight: 20 }} />
+                      <li key={i} role="button" tabIndex={0} onKeyDown={key => { if (key.key === 'Enter' || key.key === ' ') { key.preventDefault(); setSelected(e); } }} onClick={() => setSelected(e)} className="u-edd5c49" style={{ borderBottom: i < upcoming.length - 1 ? '1px solid var(--gray-100)' : 'none' }}>
+                        <div className="u-a49b816" style={{ background: s.color }} />
                         <div className="flex-1 min-w-0">
-                          <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <div className="u-7cf7897">
                             <s.Icon size={12} color={s.color} /> {e.title || e.customer_name}
                           </div>
-                          <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 1 }}>
+                          <div className="u-ed87168">
                             {fmtDate(e.date)} · <span style={{ color: s.color }}>{s.label}</span>
                             {e.type === 'maintenance' && e.engineer_names && ` · ${e.engineer_names}`}
                             {e.type === 'task'        && e.assigned_to_name && ` · ${e.assigned_to_name}`}
                           </div>
                         </div>
                         {e.type === 'maintenance' && (
-                          <span style={{
-                            fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 99,
-                            background: e.report_sent ? '#dcfce7' : '#fef3c7',
-                            color: e.report_sent ? '#166534' : '#92400e',
-                            flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3,
-                          }}>
+                          <span className="u-453609b" style={{ background: e.report_sent ? '#dcfce7' : '#fef3c7', color: e.report_sent ? '#166534' : '#92400e' }}>
                             {e.report_sent ? <><Check size={9} /> Sent</> : 'Report pending'}
                           </span>
                         )}
@@ -369,19 +339,16 @@ export default function CalendarPage() {
                 const count = allEvents.filter(e => e.type === type).length;
                 return (
                   <div key={type} className="flex-center gap-8">
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-                    <span style={{ fontSize: 13, flex: 1 }}>{s.label}s</span>
-                    <span style={{ fontWeight: 700, fontSize: 14 }}>{count}</span>
+                    <span className="u-68bde25" style={{ background: s.color }} />
+                    <span className="u-b2c58d1">{s.label}s</span>
+                    <span className="u-4aaa243">{count}</span>
                   </div>
                 );
               })}
-              <div style={{ borderTop: '1px solid var(--gray-100)', paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+              <div className="u-8a5ad38">
                 <span>MV Reports Pending</span>
-                <span style={{
-                  fontWeight: 700,
-                  color: (data.reports || []).length > 0
-                    ? 'var(--warning)' : 'var(--success)',
-                }}>
+                <span className="u-e3ec02a" style={{ color: (data.reports || []).length > 0
+                    ? 'var(--warning)' : 'var(--success)' }}>
                   {(data.reports || []).length}
                 </span>
               </div>
@@ -390,11 +357,11 @@ export default function CalendarPage() {
 
           {/* Quick-add hint for managers/planners */}
           {isManagerOrPlanner && (
-            <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--warning-light)', borderRadius: 8, border: '1px solid #fcd34d' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--tone-warning-text)', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div className="u-3283afa">
+              <div className="u-564a954">
                 <Wrench size={12} /> Quick-add visits
               </div>
-              <div style={{ fontSize: 11, color: 'var(--tone-warning-text)', lineHeight: 1.5 }}>
+              <div className="u-4cbb9b1">
                 <strong>Double-click</strong> any day, or <strong>right-click</strong> for a context menu. The date is pre-filled automatically.
               </div>
             </div>

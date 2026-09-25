@@ -12,17 +12,13 @@ export default function OverdueBanner({ overdueProjects, overdueTasks }) {
   const dismiss = () => { sessionStorage.setItem(KEY, '1'); setDismissed(true); };
 
   return (
-    <div style={{
-      background:'var(--danger-light)', border:'1px solid #fecaca', borderRadius:10,
-      padding:'12px 16px', marginBottom:20,
-      display:'flex', alignItems:'flex-start', gap:12,
-    }}>
+    <div className="u-f14bc91">
       <AlertTriangle size={16} color="#ef4444" style={{ flexShrink:0, marginTop:2 }} />
-      <div style={{ flex:1 }}>
-        <div style={{ fontWeight:700, fontSize:13, color:'var(--tone-danger-text)', marginBottom:4 }}>
+      <div className="u-97445a8">
+        <div className="u-63897c2">
           Overdue items need attention
         </div>
-        <div style={{ fontSize:12, color:'var(--tone-danger-text)', display:'flex', gap:16, flexWrap:'wrap' }}>
+        <div className="u-30243af">
           {overdueProjects.length > 0 && (
             <span>
               <strong>{overdueProjects.length}</strong> overdue project{overdueProjects.length !== 1 ? 's' : ''}:{' '}
@@ -40,7 +36,7 @@ export default function OverdueBanner({ overdueProjects, overdueTasks }) {
         </div>
       </div>
       <button onClick={dismiss}
-        style={{ background:'none', border:'none', cursor:'pointer', color:'#ef4444', padding:2, flexShrink:0 }}>
+        className="u-9c8574c">
         <X size={14} />
       </button>
     </div>

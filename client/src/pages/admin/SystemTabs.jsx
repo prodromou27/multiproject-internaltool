@@ -33,14 +33,8 @@ export function StepDot({ phase, stepKey }) {
   const isActive = phase === stepKey;
   const color = isDone ? 'var(--success)' : isActive ? 'var(--primary)' : 'var(--gray-200)';
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-      <div style={{
-        width: 28, height: 28, borderRadius: '50%', background: color,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 13, color: '#fff', fontWeight: 700,
-        border: `2px solid ${color}`,
-        transition: 'all .3s',
-      }}>
+    <div className="u-08d6c17">
+      <div className="u-3fb8655" style={{ background: color, border: `2px solid ${color}` }}>
         {isDone ? '✓' : isActive ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : ''}
       </div>
     </div>
@@ -62,7 +56,7 @@ export function SystemHealthTab() {
   const [section, setSection] = useState('stats');
   return (
     <div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 18 }} role="tablist" aria-label="System health section">
+      <div className="u-cb21afb" role="tablist" aria-label="System health section">
         {SYSTEM_HEALTH_SECTIONS.map(s => (
           <button key={s.key} type="button" role="tab" aria-selected={section === s.key}
             className={'btn btn-sm ' + (section === s.key ? 'btn-primary' : 'btn-ghost')}
@@ -112,14 +106,14 @@ export function DeploymentHealthTab() {
   const TopIcon = top.Icon;
 
   return (
-    <div style={{ maxWidth: 880 }}>
-      <div className="card" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ width: 48, height: 48, borderRadius: 8, background: top.bg, color: top.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+    <div className="u-7af2e82">
+      <div className="card u-d8d5ce6">
+        <div className="u-de506d0" style={{ background: top.bg, color: top.color }}>
           <TopIcon size={24} />
         </div>
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontSize: 16, fontWeight: 800 }}>{top.label}</div>
-          <div style={{ fontSize: 13, color: 'var(--gray-500)', marginTop: 3 }}>
+        <div className="u-6c0d09d">
+          <div className="u-266e2f3">{top.label}</div>
+          <div className="u-2973aa1">
             Last checked {fmtDate(data.checked_at)}
           </div>
         </div>
@@ -134,36 +128,36 @@ export function DeploymentHealthTab() {
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+      <div className="u-b159448">
         {[
           ['Environment', data.app?.node_env],
           ['Version', data.app?.version],
           ['Uptime', `${Math.floor((data.app?.uptime_seconds || 0) / 60)} min`],
           ['Process', data.app?.pid],
         ].map(([label, value]) => (
-          <div key={label} className="card" style={{ padding: '14px 16px' }}>
-            <div style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
-            <div style={{ fontSize: 15, fontWeight: 800, marginTop: 4 }}>{value || '-'}</div>
+          <div key={label} className="card u-b622587">
+            <div className="u-ca42a9a">{label}</div>
+            <div className="u-13ce2a4">{value || '-'}</div>
           </div>
         ))}
       </div>
 
       <div className="card">
         <div className="card-header">
-          <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <h3 className="u-334fee5">
             <HardDrive size={15} /> Deployment Checklist
           </h3>
         </div>
-        <div style={{ padding: '6px 20px 14px' }}>
+        <div className="u-1746797">
           {(data.checks || []).map(check => {
             const m = meta[check.status] || meta.warning;
             const Icon = m.Icon;
             return (
-              <div key={check.key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 0', borderBottom: '1px solid var(--gray-100)' }}>
+              <div key={check.key} className="u-ed783b2">
                 <Icon size={16} color={m.color} style={{ flexShrink: 0, marginTop: 1 }} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{check.label}</div>
-                  <div style={{ color: 'var(--gray-500)', fontSize: 12, marginTop: 2, lineHeight: 1.45 }}>{check.detail}</div>
+                <div className="u-3922d32">
+                  <div className="u-88697ae">{check.label}</div>
+                  <div className="u-b9fff97">{check.detail}</div>
                 </div>
               </div>
             );
@@ -171,8 +165,8 @@ export function DeploymentHealthTab() {
         </div>
       </div>
       <div className="card mt-16">
-        <div className="card-header"><h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}><Activity size={15} /> Database Query Activity</h3></div>
-        <div style={{ padding: '14px 20px 18px' }}>
+        <div className="card-header"><h3 className="u-334fee5"><Activity size={15} /> Database Query Activity</h3></div>
+        <div className="u-b6f8408">
           <div className="grid-4 mb-12">
             <div className="stat-card"><strong>{data.database?.count || 0}</strong><span>Observed</span></div>
             <div className="stat-card"><strong>{data.database?.average_ms || 0}ms</strong><span>Average</span></div>
@@ -269,26 +263,22 @@ export function SystemUpdateTab() {
   if (loading) return <p className="text-muted">Loading…</p>;
 
   return (
-    <div style={{ maxWidth: 780 }}>
+    <div className="u-eccdaaf">
 
       {/* ── Header card ── */}
       <div className="card mb-16">
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 12, flexShrink: 0,
-            background: 'linear-gradient(135deg, #1d4ed8, #6366f1)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
+        <div className="u-0dda9e1">
+          <div className="u-16a1fe0">
             <Download size={24} color="#fff" />
           </div>
           <div className="flex-1">
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 3 }}>System Update</div>
-            <div style={{ fontSize: 13, color: 'var(--gray-500)', lineHeight: 1.5 }}>
+            <div className="u-43b65ef">System Update</div>
+            <div className="u-5378421">
               Installs the latest npm packages for server &amp; client, rebuilds the frontend,
               and restarts the application.
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="u-1e0f2f4">
             <button
               className="btn btn-ghost btn-sm inline-flex items-center gap-5"
               onClick={checkUpdates}
@@ -316,19 +306,10 @@ export function SystemUpdateTab() {
       {/* ── Outdated packages ── */}
       {updatesDisabled && (
         <div
-          className="card"
-          style={{
-            marginBottom: 16,
-            borderColor: '#fde68a',
-            background: 'var(--warning-light)',
-            color: 'var(--tone-warning-text)',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 10,
-          }}
+          className="card u-ff5cd8b"
         >
           <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-          <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+          <div className="u-0b422b6">
             In-app updates are disabled in this environment. Use the approved Docker and branch deployment pipeline.
           </div>
         </div>
@@ -336,43 +317,43 @@ export function SystemUpdateTab() {
 
       {status?.outdated !== null && status?.outdated !== undefined && (
         <div className="card mb-16">
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div className="u-d18b41d">
             <Activity size={14} />
             Package Status
             {totalOutdated > 0
-              ? <span style={{ background: 'var(--warning-light)', color: 'var(--tone-warning-text)', borderRadius: 99, padding: '1px 8px', fontSize: 11, fontWeight: 700, marginLeft: 4 }}>
+              ? <span className="u-42cefc6">
                   {totalOutdated} outdated
                 </span>
-              : <span style={{ background: 'var(--success-light)', color: 'var(--tone-success-text)', borderRadius: 99, padding: '1px 8px', fontSize: 11, fontWeight: 700, marginLeft: 4 }}>
+              : <span className="u-d0dbc9c">
                   All up to date
                 </span>
             }
           </div>
           {totalOutdated === 0 ? (
-            <p style={{ fontSize: 13, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <p className="u-d024ba9">
               <CheckCircle2 size={14} /> All packages are current.
             </p>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="u-8aed95a">
               {[['server', status.outdated.server], ['client', status.outdated.client]].map(([scope, pkgs]) => (
                 Object.keys(pkgs).length > 0 && (
                   <div key={scope}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>
+                    <div className="u-d9e85d4">
                       {scope} ({Object.keys(pkgs).length})
                     </div>
                     <div className="flex-col gap-4">
                       {Object.entries(pkgs).slice(0, 10).map(([name, info]) => (
-                        <div key={name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, padding: '4px 8px', background: 'var(--gray-50)', borderRadius: 6 }}>
-                          <span style={{ fontWeight: 600, color: '#374151' }}>{name}</span>
-                          <span style={{ color: 'var(--gray-400)' }}>
-                            <span style={{ color: 'var(--danger)' }}>{info.current}</span>
+                        <div key={name} className="u-017da7d">
+                          <span className="u-a82e7d9">{name}</span>
+                          <span className="u-1e2ea2c">
+                            <span className="u-497726e">{info.current}</span>
                             {' → '}
-                            <span style={{ color: 'var(--success)', fontWeight: 700 }}>{info.latest}</span>
+                            <span className="u-dce355a">{info.latest}</span>
                           </span>
                         </div>
                       ))}
                       {Object.keys(pkgs).length > 10 && (
-                        <div style={{ fontSize: 11, color: 'var(--gray-400)', paddingLeft: 8 }}>
+                        <div className="u-058930d">
                           +{Object.keys(pkgs).length - 10} more…
                         </div>
                       )}
@@ -388,37 +369,33 @@ export function SystemUpdateTab() {
       {/* ── Progress steps ── */}
       {(isRunning || isDone || isError || logLines.length > 0) && (
         <div className="card mb-16">
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div className="u-1fb4840">
             <Zap size={14} />
             Update Progress
-            <span style={{ marginLeft: 'auto', fontSize: 12, color: phMeta.color, fontWeight: 600 }}>
+            <span className="u-91580a3" style={{ color: phMeta.color }}>
               {phMeta.label}
             </span>
           </div>
 
           {/* Step indicators */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+          <div className="u-fdd1a13">
             {STEPS.map((step, i) => (
               <React.Fragment key={step.key}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+                <div className="u-08d6c17">
                   <StepDot phase={isError && phase !== step.key ? phase : phase} stepKey={step.key} />
-                  <div style={{ fontSize: 10, color: 'var(--gray-500)', marginTop: 4, textAlign: 'center' }}>{step.label}</div>
+                  <div className="u-8129b9e">{step.label}</div>
                 </div>
                 {i < STEPS.length - 1 && (
-                  <div style={{ height: 2, flex: 0.5, background: 'var(--gray-100)', marginBottom: 14, borderRadius: 1 }} />
+                  <div className="u-2cfd204" />
                 )}
               </React.Fragment>
             ))}
           </div>
 
           {/* Log output */}
-          <div style={{
-            background: '#0f172a', borderRadius: 8, padding: '12px 14px',
-            maxHeight: 280, overflowY: 'auto', fontFamily: 'monospace',
-            fontSize: 12, lineHeight: 1.6,
-          }}>
+          <div className="u-19d86af">
             {logLines.length === 0
-              ? <span style={{ color: '#64748b' }}>Waiting for output…</span>
+              ? <span className="u-064028e">Waiting for output…</span>
               : logLines.map((l, i) => {
                   const col = l.level === 'ok' ? '#4ade80' : l.level === 'error' ? '#f87171' : l.level === 'warn' ? '#fbbf24' : '#94a3b8';
                   return <div key={i} style={{ color: col }}>{l.msg}</div>;
@@ -429,7 +406,7 @@ export function SystemUpdateTab() {
 
           {/* Timestamps */}
           {status?.started_at && (
-            <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 8 }}>
+            <div className="u-78c79f1">
               Started: {fmtDateTime(status.started_at)}
               {status.done_at && ` · Completed: ${fmtDateTime(status.done_at)}`}
             </div>
@@ -439,7 +416,7 @@ export function SystemUpdateTab() {
 
       {/* ── Error banner ── */}
       {isError && status?.error && (
-        <div style={{ background: 'var(--danger-light)', border: '1px solid #fecaca', borderRadius: 8, padding: '12px 16px', marginBottom: 16, color: 'var(--tone-danger-text)', fontSize: 13, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <div className="u-230a533">
           <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
           <div><strong>Update failed:</strong> {status.error}</div>
         </div>
@@ -447,20 +424,19 @@ export function SystemUpdateTab() {
 
       {/* ── Restart card ── */}
       {isDone && status?.needs_restart && (
-        <div style={{ background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div className="u-d2b4194">
           <div className="flex-1">
-            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--tone-info-text)', marginBottom: 3 }}>
+            <div className="u-fe6e546">
               🚀 Update complete — restart required
             </div>
-            <div style={{ fontSize: 13, color: '#3b82f6' }}>
+            <div className="u-db94630">
               The new client build is ready. Restart the server to serve the updated application to all users.
             </div>
           </div>
           <button
-            className="btn btn-primary"
+            className="btn btn-primary u-a1e050f"
             onClick={restartServer}
             disabled={restarting || updatesDisabled}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
           >
             {restarting
               ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Restarting…</>
@@ -471,7 +447,7 @@ export function SystemUpdateTab() {
       )}
 
       {restarting && (
-        <div style={{ background: 'var(--warning-light)', border: '1px solid #fde68a', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: 'var(--tone-warning-text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="u-c5d7841">
           <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
           Server is restarting… the page will reload automatically in a few seconds.
         </div>
@@ -526,10 +502,10 @@ export function AuditLogTab() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div className="u-aba76af">
         <div>
           <div className="section-title m-0">Audit Log</div>
-          <p className="text-sm text-muted" style={{ marginTop: 2 }}>
+          <p className="text-sm text-muted u-7a21c6a">
             System-wide record of who changed what and when. {total > 0 && `${total} total entries.`}
           </p>
         </div>
@@ -539,42 +515,42 @@ export function AuditLogTab() {
       </div>
 
       {/* Filters */}
-      <form onSubmit={applyFilter} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'flex-end' }}>
+      <form onSubmit={applyFilter} className="u-bda3218">
         <div className="flex-col gap-3">
-          <label style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>Entity Type</label>
-          <select value={filter.entity_type} onChange={e => setFilter(f => ({ ...f, entity_type: e.target.value }))} style={{ width: 130, fontSize: 12 }}>
+          <label className="u-bdcd12d">Entity Type</label>
+          <select value={filter.entity_type} onChange={e => setFilter(f => ({ ...f, entity_type: e.target.value }))} className="u-5a5bc97">
             <option value="">All</option>
             {ENTITY_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
           </select>
         </div>
         <div className="flex-col gap-3">
-          <label style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>Action</label>
-          <select value={filter.action} onChange={e => setFilter(f => ({ ...f, action: e.target.value }))} style={{ width: 130, fontSize: 12 }}>
+          <label className="u-bdcd12d">Action</label>
+          <select value={filter.action} onChange={e => setFilter(f => ({ ...f, action: e.target.value }))} className="u-5a5bc97">
             <option value="">All</option>
             {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
         <div className="flex-col gap-3">
-          <label style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>User</label>
-          <select value={filter.user_id} onChange={e => setFilter(f => ({ ...f, user_id: e.target.value }))} style={{ width: 150, fontSize: 12 }}>
+          <label className="u-bdcd12d">User</label>
+          <select value={filter.user_id} onChange={e => setFilter(f => ({ ...f, user_id: e.target.value }))} className="u-3575e56">
             <option value="">All users</option>
             {auditUsers.map(u => <option key={u.user_id} value={u.user_id}>{u.user_name}</option>)}
           </select>
         </div>
         <div className="flex-col gap-3">
-          <label style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>From</label>
-          <input type="date" value={filter.date_from} onChange={e => setFilter(f => ({ ...f, date_from: e.target.value }))} style={{ width: 140, fontSize: 12 }} />
+          <label className="u-bdcd12d">From</label>
+          <input type="date" value={filter.date_from} onChange={e => setFilter(f => ({ ...f, date_from: e.target.value }))} className="u-e6f862a" />
         </div>
         <div className="flex-col gap-3">
-          <label style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>To</label>
-          <input type="date" value={filter.date_to} onChange={e => setFilter(f => ({ ...f, date_to: e.target.value }))} style={{ width: 140, fontSize: 12 }} />
+          <label className="u-bdcd12d">To</label>
+          <input type="date" value={filter.date_to} onChange={e => setFilter(f => ({ ...f, date_to: e.target.value }))} className="u-e6f862a" />
         </div>
         <button type="submit" className="btn btn-primary btn-sm">Apply</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => { const cleared = { entity_type: '', user_id: '', action: '', date_from: '', date_to: '' }; setFilter(cleared); load(0, cleared); }}>Clear</button>
       </form>
 
       {loading ? (
-        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--gray-400)' }}>
+        <div className="u-9320eb7">
           <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
         </div>
       ) : rows.length === 0 ? (
@@ -585,7 +561,7 @@ export function AuditLogTab() {
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: 150 }}>Date</th>
+                  <th className="u-7c07cdf">Date</th>
                   <th>User</th>
                   <th>Role</th>
                   <th>Entity</th>
@@ -597,33 +573,28 @@ export function AuditLogTab() {
               <tbody>
                 {rows.map(r => (
                   <tr key={r.id}>
-                    <td style={{ fontSize: 11, color: 'var(--gray-500)', whiteSpace: 'nowrap' }}>
+                    <td className="u-23713e2">
                       {fmtDate(r.created_at)}
                     </td>
-                    <td style={{ fontWeight: 600, fontSize: 13 }}>{r.user_name || '—'}</td>
+                    <td className="u-160b067">{r.user_name || '—'}</td>
                     <td>
                       {r.user_role && <span className={`badge badge-${r.user_role}`}>{r.user_role}</span>}
                     </td>
                     <td>
                       <span className="text-sm">
                         {ENTITY_ICONS[r.entity_type] || '•'} {r.entity_type}
-                        {r.entity_id ? <span style={{ color: 'var(--gray-400)', marginLeft: 4 }}>#{r.entity_id}</span> : null}
+                        {r.entity_id ? <span className="u-74919f5">#{r.entity_id}</span> : null}
                       </span>
                     </td>
                     <td>
-                      <span style={{
-                        display: 'inline-block', padding: '1px 8px', borderRadius: 8,
-                        fontSize: 11, fontWeight: 700,
-                        background: (ACTION_COLORS[r.action] || '#6b7280') + '18',
-                        color: ACTION_COLORS[r.action] || '#6b7280',
-                      }}>
+                      <span className="u-3a02a12" style={{ background: (ACTION_COLORS[r.action] || '#6b7280') + '18', color: ACTION_COLORS[r.action] || '#6b7280' }}>
                         {r.action}
                       </span>
                     </td>
-                    <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}>
+                    <td className="u-f46b0f0">
                       {r.entity_title || '—'}
                     </td>
-                    <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--gray-500)' }}>
+                    <td className="u-a96e237">
                       {r.detail || '—'}
                     </td>
                   </tr>
@@ -633,7 +604,7 @@ export function AuditLogTab() {
           </div>
           {/* Pagination */}
           {total > LIMIT && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, justifyContent: 'flex-end', fontSize: 12, color: 'var(--gray-500)' }}>
+            <div className="u-48db00f">
               <span>{offset + 1}–{Math.min(offset + LIMIT, total)} of {total}</span>
               <button className="btn btn-ghost btn-sm" disabled={offset === 0} onClick={() => load(Math.max(0, offset - LIMIT))}>← Prev</button>
               <button className="btn btn-ghost btn-sm" disabled={offset + LIMIT >= total} onClick={() => load(offset + LIMIT)}>Next →</button>
@@ -672,20 +643,20 @@ export function SecurityTab() {
   if (loading) return <p className="text-muted">Loading…</p>;
 
   return (
-    <div style={{ maxWidth: 600 }}>
+    <div className="u-cd90f7a">
       <div className="card mb-16">
         <div className="card-header">
-          <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <h3 className="u-334fee5">
             <Lock size={15} /> Password Policy
           </h3>
         </div>
-        <div style={{ padding: '16px 20px' }}>
+        <div className="u-01b9273">
           <div className="form-group">
             <label>Password Expiry</label>
             <select
               value={cfg.password_expiry_days}
               onChange={e => setCfg(c => ({ ...c, password_expiry_days: Number(e.target.value) }))}
-              style={{ maxWidth: 240 }}
+              className="u-a5d7a03"
             >
               <option value={0}>Never expires</option>
               <option value={30}>30 days</option>
@@ -704,11 +675,11 @@ export function SecurityTab() {
 
       <div className="card mb-16">
         <div className="card-header">
-          <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <h3 className="u-334fee5">
             <Shield size={15} /> Self-Service Reset
           </h3>
         </div>
-        <div style={{ padding: '16px 20px' }}>
+        <div className="u-01b9273">
           <p className="text-sm text-muted">
             Users can reset their own password via the <em>Forgot your password?</em> link on the login
             page. A time-limited link (1 hour) is sent to their registered email address.
@@ -717,7 +688,7 @@ export function SecurityTab() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div className="u-b5c9733">
         <button className="btn btn-primary flex-center gap-6" onClick={save} disabled={saving || !dirty}
          >
           <Save size={13} /> {saving ? 'Saving…' : 'Save Settings'}

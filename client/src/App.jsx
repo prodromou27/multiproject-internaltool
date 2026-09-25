@@ -46,8 +46,8 @@ export { AuthContext, useAuth } from './auth';
 /* ── Route guard ─────────────────────────────────────────── */
 function PageLoader() {
   return (
-    <div className="page" style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--gray-400)', paddingTop: 48 }}>
-      <span style={{ width: 16, height: 16, border: '2px solid var(--gray-200)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin .7s linear infinite', display: 'inline-block' }} />
+    <div className="page u-59155a5">
+      <span className="u-ef6649d" />
       Loading…
     </div>
   );

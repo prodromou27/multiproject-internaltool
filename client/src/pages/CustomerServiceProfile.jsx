@@ -87,8 +87,8 @@ function CustomerHealthStrip({ customerId,data,error,onSelectTab }) {
   const managedNote=ticketsKnown ? `${data.managed.closed_tickets} closed${data.managed.state==='sync_attention' ? ' · Last sync failed' : ' · Open Managed Services dashboard'}` : managed[1];
   const managedBar=ticketsKnown && (data.managed.open_tickets+data.managed.closed_tickets)>0
     ? <div className="cs-health-bar" role="img" aria-label={`${data.managed.open_tickets} open, ${data.managed.closed_tickets} closed`}>
-        {data.managed.open_tickets>0 && <span style={{ flexGrow:data.managed.open_tickets,background:'var(--warning)' }} />}
-        {data.managed.closed_tickets>0 && <span style={{ flexGrow:data.managed.closed_tickets,background:'var(--success)' }} />}
+        {data.managed.open_tickets>0 && <span className="u-15dd949" style={{ flexGrow:data.managed.open_tickets }} />}
+        {data.managed.closed_tickets>0 && <span className="u-1f8d1eb" style={{ flexGrow:data.managed.closed_tickets }} />}
       </div>
     : null;
   return <div className="cs-health-strip">

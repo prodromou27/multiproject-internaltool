@@ -79,20 +79,15 @@ export function AttachmentsSection({ projectId }) {
         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
-        style={{
-          border: `2px dashed ${dragOver ? 'var(--primary)' : 'var(--gray-200)'}`,
-          borderRadius: 8, padding: '24px 16px', textAlign: 'center',
-          background: dragOver ? '#eff6ff' : 'var(--gray-50)',
-          marginBottom: 16, transition: 'all .15s'
-        }}
+        className="u-7b8ae0b" style={{ border: `2px dashed ${dragOver ? 'var(--primary)' : 'var(--gray-200)'}`, background: dragOver ? '#eff6ff' : 'var(--gray-50)' }}
       >
-        <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'center' }}><Paperclip size={28} color="var(--gray-400)" /></div>
+        <div className="u-1f2b992"><Paperclip size={28} color="var(--gray-400)" /></div>
         <p className="text-sm text-muted mb-8">
           {uploading ? 'Uploading…' : 'Drag & drop files here, or'}
         </p>
         <label className="btn btn-ghost btn-sm cursor-pointer">
           Browse Files
-          <input type="file" multiple style={{ display: 'none' }} onChange={onInputChange} disabled={uploading} />
+          <input type="file" multiple className="u-6b99de8" onChange={onInputChange} disabled={uploading} />
         </label>
         <p className="text-sm text-muted mt-4">Max 20 MB per file</p>
       </div>
@@ -106,20 +101,12 @@ export function AttachmentsSection({ projectId }) {
                 {attachments.map(a => (
                   <tr key={a.id}>
                     <td>
-                      <span style={{ marginRight: 6 }}>{getIcon(a.mime_type)}</span>
+                      <span className="u-db2f629">{getIcon(a.mime_type)}</span>
                       <button
                         type="button"
                         onClick={() => downloadAttachment(a)}
                         disabled={downloadingId === a.id}
-                        style={{
-                          border: 0,
-                          padding: 0,
-                          background: 'transparent',
-                          color: 'var(--primary)',
-                          cursor: downloadingId === a.id ? 'wait' : 'pointer',
-                          font: 'inherit',
-                          textAlign: 'left',
-                        }}
+                        className="u-e54acda" style={{ cursor: downloadingId === a.id ? 'wait' : 'pointer' }}
                       >
                         {downloadingId === a.id ? 'Preparing...' : a.original_name}
                       </button>
@@ -182,7 +169,7 @@ export function KpiSection({ projectId, canManage = false }) {
               <div className="form-group"><label>Current</label><input type="number" step="any" value={form.current_value} onChange={set('current_value')} /></div>
             </div>
             <div className="form-group"><label>Unit (optional, e.g. %, hrs)</label><input value={form.unit} onChange={set('unit')} /></div>
-            <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+            <div className="modal-footer u-cc45258">
               <button type="button" className="btn btn-ghost" onClick={() => { setShowAdd(false); setEditing(null); }}>Cancel</button>
               <button type="submit" className="btn btn-primary">Save</button>
             </div>

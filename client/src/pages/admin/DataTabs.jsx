@@ -29,7 +29,7 @@ export function ProjectsAdminTab() {
   return (
     <div>
       {/* summary stat row */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div className="u-ec9a95b">
         {[
           { label: 'Total',   count: counts.all,             color: 'var(--primary)' },
           { label: 'Active',  count: counts.active,          color: 'var(--success)' },
@@ -38,15 +38,15 @@ export function ProjectsAdminTab() {
           { label: 'Closed',  count: counts.closed,          color: 'var(--gray-400)' },
           { label: 'Overdue', count: projects.filter(p => isOverdue(p.deadline) && !['closed','cancelled','completed_engineer'].includes(p.status)).length, color: 'var(--danger)' },
         ].map(({ label, count, color }) => (
-          <div key={label} className="card" style={{ padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <span style={{ fontSize: 22, fontWeight: 800, color }}>{count}</span>
-            <span style={{ fontSize: 12, color: 'var(--gray-500)', fontWeight: 500 }}>{label}</span>
+          <div key={label} className="card u-897cebd">
+            <span className="u-238e820" style={{ color }}>{count}</span>
+            <span className="u-1e5680a">{label}</span>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by title or customer…" style={{ flex: 1, minWidth: 200, maxWidth: 320 }} />
+      <div className="u-b473718">
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by title or customer…" className="u-3ef471c" />
         <div className="flex gap-6 flex-wrap">
           {[['all','All'],['in_progress','In Progress'],['not_started','Not Started'],['on_hold','On Hold'],['pending_approval','Pending'],['closed','Closed'],['cancelled','Cancelled']].map(([k,l]) => (
             <button key={k} className={'btn btn-sm ' + (filter === k ? 'btn-primary' : 'btn-ghost')} onClick={() => setFilter(k)}>
@@ -72,15 +72,15 @@ export function ProjectsAdminTab() {
                   const overdue = isOverdue(p.deadline) && !['closed','cancelled'].includes(p.status);
                   return (
                     <tr key={p.id}>
-                      <td style={{ fontWeight: 600, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</td>
-                      <td style={{ color: 'var(--gray-600)', fontSize: 12 }}>{p.customer_name || '—'}</td>
+                      <td className="u-370b274">{p.title}</td>
+                      <td className="u-1ef55d5">{p.customer_name || '—'}</td>
                       <td><StatusBadge entityType="project" s={p.status} /></td>
                       <td><PriorityBadge p={p.priority} /></td>
                       <td>
                         <span className={overdue ? 'overdue' : 'text-sm text-muted'}>
                           {p.deadline ? fmtDate(p.deadline) : '—'}
                         </span>
-                        {overdue && <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: 'var(--danger)' }}>OVERDUE</span>}
+                        {overdue && <span className="u-26ed79e">OVERDUE</span>}
                       </td>
                       <td className="text-sm text-muted">{p.created_by_name || '—'}</td>
                       <td className="text-sm text-muted">{fmtDate(p.created_at)}</td>
@@ -123,7 +123,7 @@ export function MaintenanceAdminTab() {
   return (
     <div>
       {/* summary */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div className="u-ec9a95b">
         {[
           { label: 'Total',           count: counts.all,       color: 'var(--primary)' },
           { label: 'Scheduled',       count: counts.scheduled, color: 'var(--warning)' },
@@ -131,15 +131,15 @@ export function MaintenanceAdminTab() {
           { label: 'Completed',       count: counts.completed, color: 'var(--success)' },
           { label: 'Reports Pending', count: pendingReports,   color: pendingReports > 0 ? 'var(--danger)' : 'var(--gray-400)' },
         ].map(({ label, count, color }) => (
-          <div key={label} className="card" style={{ padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <span style={{ fontSize: 22, fontWeight: 800, color }}>{count}</span>
-            <span style={{ fontSize: 12, color: 'var(--gray-500)', fontWeight: 500 }}>{label}</span>
+          <div key={label} className="card u-897cebd">
+            <span className="u-238e820" style={{ color }}>{count}</span>
+            <span className="u-1e5680a">{label}</span>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by visit, customer or engineer…" style={{ flex: 1, minWidth: 200, maxWidth: 340 }} />
+      <div className="u-b473718">
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by visit, customer or engineer…" className="u-bb9a3fa" />
         <div className="flex gap-6 flex-wrap">
           {[['all','All'],['scheduled','Scheduled'],['in_progress','In Progress'],['completed','Completed'],['cancelled','Cancelled']].map(([k,l]) => (
             <button key={k} className={'btn btn-sm ' + (filter === k ? 'btn-primary' : 'btn-ghost')} onClick={() => setFilter(k)}>
@@ -164,9 +164,9 @@ export function MaintenanceAdminTab() {
                 {filtered.map(v => (
                   <tr key={v.id}>
                     <td className="font-semibold">{v.title}</td>
-                    <td style={{ fontSize: 12, color: 'var(--gray-600)' }}>{v.customer_name}</td>
+                    <td className="u-cf19a43">{v.customer_name}</td>
                     <td className={isOverdue(v.scheduled_date) && v.status === 'scheduled' ? 'overdue' : 'text-sm text-muted'}>{fmtDate(v.scheduled_date)}</td>
-                    <td style={{ fontSize: 12, color: 'var(--gray-600)' }}>{v.engineer_names || <span className="text-muted">—</span>}</td>
+                    <td className="u-cf19a43">{v.engineer_names || <span className="text-muted">—</span>}</td>
                     <td><StatusBadge entityType="visit" s={v.status} /></td>
                     <td>
                       {v.report_sent_to_customer
@@ -253,11 +253,11 @@ export function DataExportTab() {
   ];
 
   return (
-    <div style={{ maxWidth: 680 }}>
-      <div className="card" style={{ marginBottom: 20, background: 'var(--primary-light)', border: '1px solid #bfdbfe' }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+    <div className="u-48a0d2f">
+      <div className="card u-1e20361">
+        <div className="u-e2e5d77">
           <Database size={16} color="#2563eb" style={{ flexShrink: 0, marginTop: 1 }} />
-          <div style={{ fontSize: 13, color: 'var(--tone-info-text)' }}>
+          <div className="u-45801e5">
             All exports are generated client-side as CSV files. Every record currently in the database is included. Data is not filtered by date or status.
           </div>
         </div>
@@ -265,17 +265,16 @@ export function DataExportTab() {
 
       <div className="flex-col gap-12">
         {EXPORTS.map(({ name, label, Icon, color, desc, fn, cols }) => (
-          <div key={name} className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px' }}>
-            <div style={{ width: 44, height: 44, borderRadius: 10, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div key={name} className="card u-ad96c58">
+            <div className="u-f40993d" style={{ background: color + '18' }}>
               <Icon size={20} color={color} />
             </div>
             <div className="flex-1 min-w-0">
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{label}</div>
-              <div style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 1 }}>{desc}</div>
+              <div className="u-4aaa243">{label}</div>
+              <div className="u-f64ffdd">{desc}</div>
             </div>
             <button
-              className={'btn btn-sm ' + (done[name] ? 'btn-success' : 'btn-ghost')}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, minWidth: 120, justifyContent: 'center' }}
+              className={`${'btn btn-sm ' + (done[name] ? 'btn-success' : 'btn-ghost') || ''} u-bddbdd7`}
               onClick={() => exportCSV(name, fn, cols)}
               disabled={exporting[name]}
             >

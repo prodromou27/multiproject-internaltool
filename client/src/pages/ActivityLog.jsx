@@ -170,7 +170,7 @@ export default function ActivityLog() {
         <div className="empty">
           <div className="empty-icon"><ClipboardList size={40} strokeWidth={1.2} /></div>
           <p className="font-semibold">Service Activity Tracking is not enabled for your team</p>
-          <p style={{ fontSize: 13 }}>Ask your manager to enable it for your team if you need access to the Activity Log.</p>
+          <p className="u-5e0faad">Ask your manager to enable it for your team if you need access to the Activity Log.</p>
         </div>
       </div>
     );
@@ -246,7 +246,7 @@ export default function ActivityLog() {
       </div>
 
       {datePreset === 'custom' && (
-        <div className="form-row" style={{ marginBottom: 12, maxWidth: 520 }}>
+        <div className="form-row u-eed7598">
           <div className="form-group"><label htmlFor="al-from">From</label><input id="al-from" type="date" value={customFrom} onChange={e => { setCustomFrom(e.target.value); setPage(1); }} /></div>
           <div className="form-group"><label htmlFor="al-to">To</label><input id="al-to" type="date" value={customTo} onChange={e => { setCustomTo(e.target.value); setPage(1); }} /></div>
         </div>

@@ -123,29 +123,16 @@ export function NotificationBell() {
     <div ref={ref} className="relative">
       {/* Bell button */}
       <button
-        className="topbar-action"
+        className="topbar-action u-83eb2d8"
         onClick={() => setOpen(o => !o)}
-        style={{
-          position: 'relative', background: 'none', border: 'none',
-          cursor: 'pointer', padding: 6, borderRadius: 8,
-          color: open ? 'var(--primary)' : 'var(--gray-500)',
-          display: 'flex', alignItems: 'center',
-          transition: 'color .15s',
-        }}
+        style={{ color: open ? 'var(--primary)' : 'var(--gray-500)' }}
         aria-label="Notifications"
         aria-expanded={open}
         aria-haspopup="menu"
       >
         <Bell size={18} />
         {unread > 0 && (
-          <span style={{
-            position: 'absolute', top: 2, right: 2,
-            background: '#ef4444', color: '#fff',
-            fontSize: 9, fontWeight: 800, lineHeight: 1,
-            borderRadius: 10, minWidth: 15, height: 15,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '0 3px', border: '2px solid var(--surface)',
-          }}>
+          <span className="u-1c0e4a4">
             {unread > 9 ? '9+' : unread}
           </span>
         )}
@@ -153,49 +140,39 @@ export function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="topbar-popover notification-popover" role="menu" aria-label="Notifications" style={{
-          position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-          width: 340, maxHeight: 480, overflowY: 'auto',
-          background: 'var(--surface)', borderRadius: 12,
-          boxShadow: '0 12px 40px rgba(0,0,0,.15)',
-          border: '1px solid var(--gray-100)', zIndex: 2000,
-        }}>
+        <div className="topbar-popover notification-popover u-1d4fe15" role="menu" aria-label="Notifications">
           {/* Header */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 14px', borderBottom: '1px solid var(--gray-100)',
-            position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1,
-          }}>
-            <span style={{ fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="u-4a42a84">
+            <span className="u-af08a6d">
               <Bell size={13} /> Notifications
               {unread > 0 && (
-                <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 10, padding: '1px 6px' }}>
+                <span className="u-64a9ece">
                   {unread} new
                 </span>
               )}
             </span>
             <div className="flex gap-6">
               {unread > 0 && (
-                <button onClick={markAllRead} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 3, padding: '2px 6px', borderRadius: 4 }}>
+                <button onClick={markAllRead} className="u-059aecf">
                   <CheckCheck size={12} /> Mark all read
                 </button>
               )}
               {notifs.length > 0 && (
-                <button onClick={clearAll} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--gray-400)', display: 'flex', alignItems: 'center', gap: 3, padding: '2px 6px', borderRadius: 4 }}>
+                <button onClick={clearAll} className="u-3bcf89e">
                   <Trash2 size={12} /> Dismiss all
                 </button>
               )}
             </div>
           </div>
 
-          <div style={{ display:'flex',gap:6,padding:'8px 12px',borderBottom:'1px solid var(--gray-100)',position:'sticky',top:45,background:'var(--surface)',zIndex:1 }}>
-            {[['all','All'],['unread',`Unread (${unread})`],['action_required',`Action (${actionRequired})`]].map(([value,label]) => <button key={value} type="button" onClick={() => setFilter(value)} className={`btn btn-sm ${filter===value?'btn-primary':'btn-ghost'}`} style={{ flex:1 }}>{label}</button>)}
+          <div className="u-23d8d35">
+            {[['all','All'],['unread',`Unread (${unread})`],['action_required',`Action (${actionRequired})`]].map(([value,label]) => <button key={value} type="button" onClick={() => setFilter(value)} className={`btn btn-sm ${filter===value?'btn-primary':'btn-ghost'} u-97445a8`}>{label}</button>)}
           </div>
 
           {/* List */}
           {notifs.length === 0
             ? (
-              <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--gray-400)', fontSize: 13 }}>
+              <div className="u-76d08c4">
                 <Bell size={28} style={{ marginBottom: 8, opacity: .3 }} />
                 <div>No notifications yet</div>
               </div>
@@ -204,27 +181,20 @@ export function NotificationBell() {
               <div
                 key={n.id}
                 onClick={() => clickNotif(n)}
-                style={{
-                  display: 'flex', gap: 10, padding: '10px 14px',
-                  cursor: n.link ? 'pointer' : 'default',
-                  background: n.read ? 'var(--surface)' : 'var(--highlight)',
-                  borderBottom: '1px solid var(--gray-50)',
-                  transition: 'background .1s',
-                  alignItems: 'flex-start',
-                }}
+                className="u-eede90f" style={{ cursor: n.link ? 'pointer' : 'default', background: n.read ? 'var(--surface)' : 'var(--highlight)' }}
                 onMouseEnter={e => { if (n.link) e.currentTarget.style.background = n.read ? 'var(--gray-50)' : 'var(--highlight-strong)'; }}
                 onMouseLeave={e => e.currentTarget.style.background = n.read ? 'var(--surface)' : 'var(--highlight)'}
               >
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: n.read ? 'var(--gray-100)' : 'var(--highlight-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+                <div className="u-fc3d83c" style={{ background: n.read ? 'var(--gray-100)' : 'var(--highlight-strong)' }}>
                   {NOTIF_ICONS[n.type] || <Bell size={14} color="var(--gray-500)" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div style={{ fontSize: 12, fontWeight: n.read ? 500 : 700, color: 'var(--gray-900)', marginBottom: 2 }}>{n.title}{['high','critical'].includes(n.priority) && <span style={{ marginLeft:6,fontSize:9,textTransform:'uppercase',color:n.priority==='critical'?'#dc2626':'#d97706' }}>{n.priority}</span>}</div>
-                  {n.body && <div style={{ fontSize: 11, color: 'var(--gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.body}</div>}
-                  <div style={{ fontSize: 10, color: 'var(--gray-400)', marginTop: 3 }}>{timeSinceNotif(n.created_at)}</div>
-                  {['high','critical'].includes(n.priority) && !n.acknowledged_at && <button type="button" onClick={e => acknowledge(n,e)} style={{ background:'none',border:0,padding:'4px 0 0',fontSize:10,color:'var(--primary)',cursor:'pointer',fontWeight:700 }}><CheckCheck size={11} style={{ verticalAlign:'middle',marginRight:3 }} />Acknowledge</button>}
+                  <div className="u-1cdd083" style={{ fontWeight: n.read ? 500 : 700 }}>{n.title}{['high','critical'].includes(n.priority) && <span className="u-887bf25" style={{ color:n.priority==='critical'?'#dc2626':'#d97706' }}>{n.priority}</span>}</div>
+                  {n.body && <div className="u-2bb9ee0">{n.body}</div>}
+                  <div className="u-8459551">{timeSinceNotif(n.created_at)}</div>
+                  {['high','critical'].includes(n.priority) && !n.acknowledged_at && <button type="button" onClick={e => acknowledge(n,e)} className="u-0a9b857"><CheckCheck size={11} style={{ verticalAlign:'middle',marginRight:3 }} />Acknowledge</button>}
                 </div>
-                <button onClick={e => dismiss(n.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-300)', padding: 2, borderRadius: 4, flexShrink: 0 }}
+                <button onClick={e => dismiss(n.id, e)} className="u-7044ba7"
                   onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
                   onMouseLeave={e => e.currentTarget.style.color = 'var(--gray-300)'}
                 >
@@ -233,7 +203,7 @@ export function NotificationBell() {
               </div>
             ))
           }
-          {page<pages && <div style={{ padding:10,textAlign:'center' }}><button type="button" className="btn btn-ghost btn-sm" onClick={() => load(page+1,true)}>Load older notifications</button></div>}
+          {page<pages && <div className="u-b203686"><button type="button" className="btn btn-ghost btn-sm" onClick={() => load(page+1,true)}>Load older notifications</button></div>}
         </div>
       )}
     </div>

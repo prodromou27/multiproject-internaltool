@@ -51,14 +51,8 @@ export function GlobalSearch() {
       {/* Icon button */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="topbar-action"
-        style={{
-          position: 'relative', background: 'none', border: 'none',
-          cursor: 'pointer', padding: 6, borderRadius: 8,
-          color: open ? 'var(--primary)' : 'var(--gray-500)',
-          display: 'flex', alignItems: 'center',
-          transition: 'color .15s',
-        }}
+        className="topbar-action u-83eb2d8"
+        style={{ color: open ? 'var(--primary)' : 'var(--gray-500)' }}
         aria-label="Search"
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -69,19 +63,9 @@ export function GlobalSearch() {
 
       {/* Dropdown panel */}
       {open && (
-        <div className="topbar-popover search-popover" role="search" aria-label="Global search" style={{
-          position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-          width: 'min(380px, calc(100vw - 20px))',
-          background: 'var(--surface)', borderRadius: 12,
-          boxShadow: '0 12px 40px rgba(0,0,0,.15)',
-          border: '1px solid var(--gray-100)', zIndex: 2000,
-        }}>
+        <div className="topbar-popover search-popover u-debc61a" role="search" aria-label="Global search">
           {/* Search input row */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '10px 12px', borderBottom: '1px solid var(--gray-100)',
-            position: 'sticky', top: 0, background: 'var(--surface)',
-          }}>
+          <div className="u-dab4e63">
             <Search size={14} color="var(--gray-400)" className="flex-shrink-0" />
             <input
               ref={inputRef}
@@ -90,21 +74,19 @@ export function GlobalSearch() {
               onKeyDown={e => { if (e.key === 'Enter' && query.length >= 2) go(`/search?q=${encodeURIComponent(query)}`); if (e.key === 'Escape') setOpen(false); }}
               placeholder="Search projects, tasks, customers…"
               aria-label="Search projects, tasks, and customers"
-              style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13,
-                padding: 0, background: 'none', color: 'var(--gray-900)' }}
+              className="u-7d13a5b"
             />
             {query && (
               <button onClick={() => { setQuery(''); setResults(null); inputRef.current?.focus(); }}
                 aria-label="Clear search"
-                style={{ background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'var(--gray-400)', padding: 2, display: 'flex', flexShrink: 0 }}>
+                className="u-baf3a42">
                 <X size={13} />
               </button>
             )}
           </div>
 
           {/* Results */}
-          <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          <div className="u-98a7e0c">
             {query.length < 2 && (
               <div className="search-empty-state">
                 <Search size={22} aria-hidden="true" />
@@ -113,59 +95,59 @@ export function GlobalSearch() {
               </div>
             )}
             {query.length >= 2 && loading && (
-              <div style={{ padding: '14px 16px', color: 'var(--gray-400)', fontSize: 13 }}>Searching…</div>
+              <div className="u-d9e5a65">Searching…</div>
             )}
             {query.length >= 2 && !loading && !hasResults && (
-              <div style={{ padding: '14px 16px', color: 'var(--gray-400)', fontSize: 13 }}>
+              <div className="u-d9e5a65">
                 No results for "{query}"
               </div>
             )}
             {!loading && hasResults && <>
               {results.projects?.length > 0 && (
                 <div>
-                  <div style={{ padding: '10px 14px 4px', fontSize: 10, fontWeight: 700, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: 1 }}>Projects</div>
+                  <div className="u-be64ca3">Projects</div>
                   {results.projects.map(p => (
                     <div key={p.id} onClick={() => go(`/projects/${p.id}`)}
-                      style={{ padding: '9px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+                      className="u-c7fdd81"
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'}
                       onMouseLeave={e => e.currentTarget.style.background = ''}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusDot[p.status] || '#9ca3af', flexShrink: 0 }} />
-                      <span style={{ fontWeight: 600, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
-                      {p.customer_name && <span style={{ fontSize: 11, color: 'var(--gray-400)', flexShrink: 0 }}>{p.customer_name}</span>}
+                      <span className="u-68bde25" style={{ background: statusDot[p.status] || '#9ca3af' }} />
+                      <span className="u-b4a7719">{p.title}</span>
+                      {p.customer_name && <span className="u-45c5f78">{p.customer_name}</span>}
                     </div>
                   ))}
                 </div>
               )}
               {results.tasks?.length > 0 && (
                 <div>
-                  <div style={{ padding: '10px 14px 4px', fontSize: 10, fontWeight: 700, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: 1 }}>Tasks</div>
+                  <div className="u-be64ca3">Tasks</div>
                   {results.tasks.map(t => (
                     <div key={t.id} onClick={() => go(t.project_id ? `/projects/${t.project_id}` : '/tasks')}
-                      style={{ padding: '9px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+                      className="u-c7fdd81"
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'}
                       onMouseLeave={e => e.currentTarget.style.background = ''}>
                       <CheckSquare size={13} style={{ color: 'var(--gray-400)', flexShrink: 0 }} />
                       <div className="flex-1 min-w-0">
-                        <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
-                        {t.project_title && <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{t.project_title}</div>}
+                        <div className="u-b644c50">{t.title}</div>
+                        {t.project_title && <div className="u-5be3ef4">{t.project_title}</div>}
                       </div>
-                      <span style={{ fontSize: 11, color: 'var(--gray-400)', flexShrink: 0 }}>{t.assigned_to_name || '—'}</span>
+                      <span className="u-45c5f78">{t.assigned_to_name || '—'}</span>
                     </div>
                   ))}
                 </div>
               )}
               {results.customers?.length > 0 && (
                 <div>
-                  <div style={{ padding: '10px 14px 4px', fontSize: 10, fontWeight: 700, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: 1 }}>Customers</div>
+                  <div className="u-be64ca3">Customers</div>
                   {results.customers.map(c => (
                     <div key={c.id}
                       onClick={() => go(`/search?q=${encodeURIComponent(c.name)}&entity=customers`)}
-                      style={{ padding: '9px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+                      className="u-c7fdd81"
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'}
                       onMouseLeave={e => e.currentTarget.style.background = ''}>
                       <Building2 size={13} style={{ color: 'var(--gray-400)', flexShrink: 0 }} />
-                      <span style={{ fontWeight: 500, fontSize: 13 }}>{c.name}</span>
-                      {c.contact_name && <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>{c.contact_name}</span>}
+                      <span className="u-b192d9f">{c.name}</span>
+                      {c.contact_name && <span className="u-5be3ef4">{c.contact_name}</span>}
                     </div>
                   ))}
                 </div>
@@ -176,11 +158,8 @@ export function GlobalSearch() {
           {/* Smart Search footer */}
           <button
             type="button"
-            className="search-footer"
+            className="search-footer u-06d622a"
             onClick={() => go(`/search?q=${encodeURIComponent(query)}`)}
-            style={{ padding: '10px 14px', borderTop: '1px solid var(--gray-100)', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 8,
-              color: 'var(--primary)', fontSize: 12, fontWeight: 600 }}
             onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'}
             onMouseLeave={e => e.currentTarget.style.background = ''}
           >

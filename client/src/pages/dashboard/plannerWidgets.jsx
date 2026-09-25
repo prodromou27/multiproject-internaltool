@@ -12,11 +12,11 @@ export function plannerWidget(id, ctx) {
       return (
         <div key={id} className="grid-4 mb-20">
           <div className="card stat">
-            <div className="stat-value" style={{ color:'var(--primary)' }}>{upcoming.length}</div>
+            <div className="stat-value u-dc2e428">{upcoming.length}</div>
             <div className="stat-label">Scheduled</div>
           </div>
           <div className="card stat">
-            <div className="stat-value" style={{ color:'var(--success)' }}>{completed.length}</div>
+            <div className="stat-value u-5a45298">{completed.length}</div>
             <div className="stat-label">Completed (this month)</div>
           </div>
           <div className="card stat">
@@ -53,7 +53,7 @@ export function plannerWidget(id, ctx) {
                         <td className="font-semibold">{v.customer_name}</td>
                         <td>{v.title}</td>
                         <td className={isOverdue(v.scheduled_date) ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
-                        <td style={{ color:'var(--gray-600)' }}>{v.engineer_names || <span className="text-muted">—</span>}</td>
+                        <td className="u-31d6430">{v.engineer_names || <span className="text-muted">—</span>}</td>
                         <td>{v.report_sent
                           ? <span className="badge badge-done">Sent</span>
                           : <span className="badge badge-open">Pending</span>}

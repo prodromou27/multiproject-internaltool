@@ -44,17 +44,12 @@ function EngineerPicker({ engineers, selected, onChange }) {
       {engineers.map(e => {
         const active = selected.includes(e.id);
         return (
-          <label key={e.id} style={{
-            display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
-            padding: '4px 10px', borderRadius: 6, fontSize: 12, userSelect: 'none',
-            background: active ? '#dbeafe' : 'var(--gray-100)',
-            border: active ? '1px solid #93c5fd' : '1px solid transparent',
-          }}>
+          <label key={e.id} className="u-7ed4f50" style={{ background: active ? '#dbeafe' : 'var(--gray-100)', border: active ? '1px solid #93c5fd' : '1px solid transparent' }}>
             <input
               type="checkbox"
               checked={active}
               onChange={() => onChange(active ? selected.filter(x => x !== e.id) : [...selected, e.id])}
-              style={{ width: 'auto' }}
+              className="u-30e741d"
             />
             {e.name}
           </label>
@@ -135,13 +130,13 @@ function VisitForm({ initial, defaults, customers, engineers, onSave, onClose })
           onChange={ids => setForm(f => ({ ...f, engineer_ids: ids }))}
         />
       </div>
-      <div className="form-group"><label>Assets in scope</label><select multiple value={(form.asset_ids || []).map(String)} disabled={assetsLoading} onChange={event => setForm(old => ({ ...old,asset_ids:[...event.target.selectedOptions].map(option => Number(option.value)) }))} style={{ minHeight:80 }}>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name} · {asset.asset_type}{asset.hostname ? ` · ${asset.hostname}` : ''}</option>)}</select>{assetsLoading && <span className="text-muted text-sm" role="status">Loading assets…</span>}</div>
+      <div className="form-group"><label>Assets in scope</label><select multiple value={(form.asset_ids || []).map(String)} disabled={assetsLoading} onChange={event => setForm(old => ({ ...old,asset_ids:[...event.target.selectedOptions].map(option => Number(option.value)) }))} className="u-f15b2e8">{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name} · {asset.asset_type}{asset.hostname ? ` · ${asset.hostname}` : ''}</option>)}</select>{assetsLoading && <span className="text-muted text-sm" role="status">Loading assets…</span>}</div>
       <div className="form-group">
         <label>Notes</label>
         <textarea value={form.notes || ''} onChange={set('notes')} placeholder="Any additional notes…" />
       </div>
       {formErr && <div className="error-msg mb-8">{formErr}</div>}
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+      <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
       </div>
@@ -253,16 +248,16 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
 
   const reportBadge = {
     pending:          <span className="badge badge-open">Pending</span>,
-    report_complete:  <span className="badge badge-active" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Check size={10} /> Report Complete</span>,
-    sent_to_pm:       <span className="badge badge-done"   style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Send size={10} /> Sent to PM</span>,
+    report_complete:  <span className="badge badge-active u-4d9efe7"><Check size={10} /> Report Complete</span>,
+    sent_to_pm:       <span className="badge badge-done u-4d9efe7"><Send size={10} /> Sent to PM</span>,
   }[reportState];
 
   return (
     <Modal title="Maintenance Visit Details" onClose={saving ? () => {} : onClose}>
       <div className="flex-col gap-12">
         <div>
-          <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>Customer</div>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>{visit.customer_name}</div>
+          <div className="text-sm text-muted u-fce9611">Customer</div>
+          <div className="u-0c7a14e">{visit.customer_name}</div>
           {visit.contact_name && <div className="text-sm text-muted">{visit.contact_name}{visit.contact_email ? ` · ${visit.contact_email}` : ''}</div>}
         </div>
         <div className="divider" />
@@ -278,27 +273,19 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
             { label: 'Approved & Sent',   done: step3, active: step2 && !step3 },
           ];
           return (
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, marginBottom: 4 }}>
+            <div className="u-8e74c5a">
               {steps.map((s, i) => (
                 <React.Fragment key={i}>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <div style={{
-                      width: 30, height: 30, borderRadius: '50%',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: s.done ? 'var(--success)' : s.active ? 'var(--primary)' : 'var(--gray-100)',
-                      color: s.done || s.active ? '#fff' : 'var(--gray-400)',
-                      fontWeight: 700, fontSize: 12, flexShrink: 0,
-                      boxShadow: s.active ? '0 0 0 3px rgba(37,99,235,.2)' : 'none',
-                      transition: 'all .2s',
-                    }}>
+                  <div className="u-5ff150e">
+                    <div className="u-10e2a54" style={{ background: s.done ? 'var(--success)' : s.active ? 'var(--primary)' : 'var(--gray-100)', color: s.done || s.active ? '#fff' : 'var(--gray-400)', boxShadow: s.active ? '0 0 0 3px rgba(37,99,235,.2)' : 'none' }}>
                       {s.done ? <Check size={13} /> : i + 1}
                     </div>
-                    <span style={{ fontSize: 10, fontWeight: s.done || s.active ? 600 : 400, color: s.done ? 'var(--success)' : s.active ? 'var(--primary)' : 'var(--gray-400)', textAlign: 'center', lineHeight: 1.3 }}>
+                    <span className="u-d37de03" style={{ fontWeight: s.done || s.active ? 600 : 400, color: s.done ? 'var(--success)' : s.active ? 'var(--primary)' : 'var(--gray-400)' }}>
                       {s.label}
                     </span>
                   </div>
                   {i < steps.length - 1 && (
-                    <div style={{ flex: 0.4, height: 2, marginTop: 14, background: steps[i + 1].done || s.done ? 'var(--success)' : 'var(--gray-200)', transition: 'background .2s' }} />
+                    <div className="u-5ac0919" style={{ background: steps[i + 1].done || s.done ? 'var(--success)' : 'var(--gray-200)' }} />
                   )}
                 </React.Fragment>
               ))}
@@ -309,22 +296,22 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
         <div className="divider" />
         <div className="grid-2">
           <div>
-            <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>Scheduled Date</div>
+            <div className="text-sm text-muted u-fce9611">Scheduled Date</div>
             <div className={isOverdue(visit.scheduled_date) && visit.status === 'scheduled' ? 'overdue font-bold' : 'font-bold'}>{fmtDate(visit.scheduled_date)}</div>
           </div>
           <div>
-            <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>Status</div>
+            <div className="text-sm text-muted u-fce9611">Status</div>
             <span className={`badge ${STATUS_COLORS[visit.status]}`}>{visit.status.replace('_', ' ')}</span>
           </div>
           <div>
-            <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>
+            <div className="text-sm text-muted u-fce9611">
               Engineer{visit.engineer_ids?.length !== 1 ? 's' : ''}
             </div>
             <div>{visit.engineer_names || <span className="text-muted">Unassigned</span>}</div>
           </div>
-          <div><div className="text-sm text-muted" style={{ textTransform:'uppercase',letterSpacing:'.05em',fontWeight:700,marginBottom:2 }}>Assets in scope</div><div>{visit.asset_ids?.length ? `${visit.asset_ids.length} linked customer ${visit.asset_ids.length===1 ? 'asset' : 'assets'}` : <span className="text-muted">None selected</span>}</div></div>
+          <div><div className="text-sm text-muted u-fce9611">Assets in scope</div><div>{visit.asset_ids?.length ? `${visit.asset_ids.length} linked customer ${visit.asset_ids.length===1 ? 'asset' : 'assets'}` : <span className="text-muted">None selected</span>}</div></div>
           <div>
-            <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>Report Status</div>
+            <div className="text-sm text-muted u-fce9611">Report Status</div>
             <div className="flex-col gap-4">
               {reportBadge}
               {!!visit.report_sent && (
@@ -343,8 +330,8 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
         {visit.description && <>
           <div className="divider" />
           <div>
-            <div className="text-sm text-muted" style={{ fontWeight: 700, marginBottom: 4 }}>DESCRIPTION</div>
-            <p style={{ fontSize: 13 }}>{visit.description}</p>
+            <div className="text-sm text-muted u-a848666">DESCRIPTION</div>
+            <p className="u-5e0faad">{visit.description}</p>
           </div>
         </>}
         <div className="divider" />
@@ -353,12 +340,12 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
           <textarea id={`visit-notes-${visit.id}`} disabled={saving} value={notes} onChange={e => !isPM && setNotes(e.target.value)} rows={3} readOnly={isPM} style={isPM ? { background: 'var(--gray-50)', color: 'var(--gray-500)' } : {}} />
         </div>
         {!isPM && (
-          <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-end' }} onClick={saveNotes} disabled={saving}>
+          <button className="btn btn-ghost btn-sm u-ffd20f1" onClick={saveNotes} disabled={saving}>
             {saving ? 'Saving…' : 'Save Notes'}
           </button>
         )}
       </div>
-      <div className="modal-footer" style={{ flexWrap: 'wrap', gap: 8 }}>
+      <div className="modal-footer u-1bdcdd1">
         {isManager && !saving && <Link className="btn btn-ghost btn-sm" to={`/customers/${visit.customer_id}/service-profile?section=recommendations&source_visit=${visit.id}`}>Record finding</Link>}
         {/* PM: mark complete */}
         {isPM && visit.status !== 'completed' && visit.status !== 'cancelled' && (
@@ -386,9 +373,8 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
           <button className="btn btn-ghost btn-sm" onClick={markUnsent} disabled={saving} title="Undo — move back to report pending">↩ Undo Submission</button>
         )}
         <button
-          className="btn btn-ghost btn-sm"
+          className="btn btn-ghost btn-sm u-e4d240f"
           onClick={() => generatePDF(visit, msg => toast.warning(msg))}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}
           title="Open print-friendly report"
         >
           <Printer size={13} /> Print Report
@@ -558,7 +544,7 @@ export default function MaintenanceVisits() {
         <ListSearch value={search} onChange={setSearch} label="Search maintenance visits" maxLength={500}
           placeholder="Search customers, visit titles, or engineers…" />
         {/* Status tabs + month picker */}
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="u-009cb13">
           <FilterGroup label="View" className="list-filter-grow">
             {[
               ['upcoming',        'Upcoming'],
@@ -571,7 +557,7 @@ export default function MaintenanceVisits() {
               <button key={k} className={'filter-pill' + (filter === k ? ' active' : '')} onClick={() => setFilter(k)}>{l}</button>
             ))}
           </FilterGroup>
-          <input type="month" value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={{ width: 'auto', padding: '5px 10px' }} title="Filter by month" />
+          <input type="month" value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="u-19324d0" title="Filter by month" />
           {monthFilter && <button className="btn btn-sm btn-ghost inline-flex items-center gap-4" onClick={() => setMonthFilter('')}><X size={12} /> Clear month</button>}
         </div>
       </Surface>
@@ -629,15 +615,15 @@ export default function MaintenanceVisits() {
                     <td><span className={`badge ${STATUS_COLORS[v.status]}`}>{v.status.replace('_', ' ')}</span></td>
                     <td>
                       {v.report_sent_to_customer
-                        ? <span className="badge badge-done" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Send size={10} /> Sent to PM</span>
+                        ? <span className="badge badge-done u-4d9efe7"><Send size={10} /> Sent to PM</span>
                         : v.report_sent
-                          ? <span className="badge badge-active" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Check size={10} /> Report Complete</span>
+                          ? <span className="badge badge-active u-4d9efe7"><Check size={10} /> Report Complete</span>
                           : urgency === 'red'
-                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--tone-danger-text)', fontWeight: 700, fontSize: 12 }}>
+                            ? <span className="u-e765e21">
                                 <AlertCircle size={13} /> Overdue 7d+
                               </span>
                             : urgency === 'orange'
-                              ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#ea580c', fontWeight: 600, fontSize: 12 }}>
+                              ? <span className="u-5dea795">
                                   <AlertTriangle size={13} /> Pending
                                 </span>
                               : <span className="badge badge-open">Pending</span>}

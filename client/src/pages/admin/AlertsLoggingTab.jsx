@@ -66,11 +66,11 @@ export function AdminAlertsTab() {
   const LEVEL_COLORS = { warning: { bg: '#fef3c7', text: '#92400e', dot: '#f59e0b' }, error: { bg: '#fee2e2', text: '#991b1b', dot: '#ef4444' }, ok: { bg: '#dcfce7', text: '#166534', dot: '#22c55e' } };
 
   return (
-    <div style={{ maxWidth: 800 }}>
+    <div className="u-3f7efa5">
       {/* Live check card */}
       <div className="card mb-16">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
+        <div className="u-8f42c5f">
+          <h3 className="u-334fee5">
             <ShieldAlert size={15} /> System Health Check
           </h3>
           <button className="btn btn-ghost btn-sm inline-flex items-center gap-5" onClick={runCheck} disabled={checking}
@@ -82,60 +82,60 @@ export function AdminAlertsTab() {
 
         {lastCheck ? (
           <div>
-            <p style={{ fontSize: 12, color: 'var(--gray-400)', marginBottom: 10 }}>
+            <p className="u-c55c866">
               Last checked: {fmtDateTime(lastCheck.checked_at)}
             </p>
             {lastCheck.alerts.length === 0
-              ? <div style={{ padding: '10px 14px', background: 'var(--success-light)', borderRadius: 8, color: 'var(--tone-success-text)', fontSize: 13 }}>✅ All systems healthy — no issues detected.</div>
+              ? <div className="u-d3cc753">✅ All systems healthy — no issues detected.</div>
               : lastCheck.alerts.map((a, i) => {
                   const c = LEVEL_COLORS[a.level] || LEVEL_COLORS.warning;
                   return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 12px', background: c.bg, borderRadius: 8, color: c.text, fontSize: 13, marginBottom: 6 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.dot, flexShrink: 0, marginTop: 4 }} />
-                      <div><strong>{a.type.replace(/_/g, ' ')}</strong><br /><span style={{ opacity: .85 }}>{a.message}</span></div>
+                    <div key={i} className="u-3341873" style={{ background: c.bg, color: c.text }}>
+                      <span className="u-1c642fd" style={{ background: c.dot }} />
+                      <div><strong>{a.type.replace(/_/g, ' ')}</strong><br /><span className="u-f6411e3">{a.message}</span></div>
                     </div>
                   );
                 })
             }
           </div>
         ) : (
-          <p style={{ fontSize: 13, color: 'var(--gray-400)' }}>Click "Run Check Now" to scan for issues.</p>
+          <p className="u-dd8016b">Click "Run Check Now" to scan for issues.</p>
         )}
       </div>
 
       {/* Alert preferences */}
       <div className="card mb-16">
         <div className="card-header">
-          <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <h3 className="u-334fee5">
             <Bell size={15} /> Alert Preferences
           </h3>
-          <span style={{ fontSize: 12, color: 'var(--gray-400)' }}>In-App / Email</span>
+          <span className="u-d65cb71">In-App / Email</span>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table className="u-a55f31d">
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', padding: '6px 0', fontSize: 11, color: 'var(--gray-400)', fontWeight: 600, borderBottom: '1px solid var(--gray-100)' }}>Alert</th>
-              <th style={{ textAlign: 'center', padding: '6px 8px', fontSize: 11, color: 'var(--gray-400)', fontWeight: 600, borderBottom: '1px solid var(--gray-100)', width: 80 }}>Enabled</th>
-              <th style={{ textAlign: 'center', padding: '6px 8px', fontSize: 11, color: 'var(--gray-400)', fontWeight: 600, borderBottom: '1px solid var(--gray-100)', width: 80 }}>Email</th>
+              <th className="u-a295c4b">Alert</th>
+              <th className="u-0fb8233">Enabled</th>
+              <th className="u-0fb8233">Email</th>
             </tr>
           </thead>
           <tbody>
             {ALERT_TYPES.map(a => (
-              <tr key={a.key} style={{ borderBottom: '1px solid var(--gray-100)' }}>
-                <td style={{ padding: '10px 0' }}>
-                  <div style={{ fontWeight: 500, fontSize: 13 }}>{a.label}</div>
-                  <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 1 }}>{a.desc}</div>
+              <tr key={a.key} className="u-02c1276">
+                <td className="u-4c62985">
+                  <div className="u-b192d9f">{a.label}</div>
+                  <div className="u-6755ac8">{a.desc}</div>
                 </td>
-                <td style={{ textAlign: 'center', padding: '10px 8px' }}>
+                <td className="u-3c31141">
                   <input type="checkbox" checked={prefs[a.key]?.enabled ?? true}
                     onChange={e => setToggle(a.key, 'enabled', e.target.checked)}
-                    style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--primary)' }} />
+                    className="u-0a83c50" />
                 </td>
-                <td style={{ textAlign: 'center', padding: '10px 8px' }}>
+                <td className="u-3c31141">
                   <input type="checkbox" checked={prefs[a.key]?.email ?? false}
                     onChange={e => setToggle(a.key, 'email', e.target.checked)}
                     disabled={!prefs[a.key]?.enabled}
-                    style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--primary)', opacity: prefs[a.key]?.enabled ? 1 : 0.4 }} />
+                    className="u-0a83c50" style={{ opacity: prefs[a.key]?.enabled ? 1 : 0.4 }} />
                 </td>
               </tr>
             ))}
@@ -147,17 +147,17 @@ export function AdminAlertsTab() {
       {recentAlerts.length > 0 && (
         <div className="card mb-16">
           <div className="card-header">
-            <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
+            <h3 className="u-334fee5">
               <AlertTriangle size={15} /> Recent System Alerts
             </h3>
           </div>
           {recentAlerts.map(n => (
-            <div key={n.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '8px 0', borderBottom: '1px solid var(--gray-100)', fontSize: 13 }}>
+            <div key={n.id} className="u-4775937">
               <div>
                 <span className="font-medium">{n.title}</span>
-                {n.body && <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>{n.body}</div>}
+                {n.body && <div className="u-711e404">{n.body}</div>}
               </div>
-              <span style={{ fontSize: 11, color: 'var(--gray-400)', whiteSpace: 'nowrap', marginLeft: 16 }}>{timeSince(n.created_at)}</span>
+              <span className="u-0895817">{timeSince(n.created_at)}</span>
             </div>
           ))}
         </div>
@@ -206,11 +206,11 @@ export function LoggingTab() {
   if (loading) return <p className="text-muted">Loading…</p>;
 
   return (
-    <div style={{ maxWidth: 720 }}>
+    <div className="u-b12974c">
       {/* Log Configuration */}
       <div className="card mb-16">
         <div className="card-header">
-          <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <h3 className="u-334fee5">
             <ScrollText size={15} /> Log Configuration
           </h3>
         </div>
@@ -240,7 +240,7 @@ export function LoggingTab() {
 
         <div className="form-group">
           <label>Log Retention</label>
-          <select value={cfg.log_retention_days} onChange={e => set('log_retention_days', Number(e.target.value))} style={{ maxWidth: 200 }}>
+          <select value={cfg.log_retention_days} onChange={e => set('log_retention_days', Number(e.target.value))} className="u-a828909">
             <option value={30}>30 days</option>
             <option value={90}>90 days</option>
             <option value={180}>180 days</option>
@@ -252,7 +252,7 @@ export function LoggingTab() {
       {/* Feature toggles */}
       <div className="card mb-16">
         <div className="card-header">
-          <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <h3 className="u-334fee5">
             <Zap size={15} /> Logging Features
           </h3>
         </div>
@@ -292,11 +292,11 @@ export function LoggingTab() {
       {cfg.log_download_enabled && saved?.log_download_enabled && (
         <div className="card mb-16">
           <div className="card-header">
-            <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
+            <h3 className="u-334fee5">
               <Download size={15} /> Export Logs
             </h3>
           </div>
-          <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 14 }}>
+          <p className="u-2f19faf">
             Download recent application activity as a CSV file (up to last 1 000 entries).
             {cfg.sensitive_data_masking && <strong> Sensitive data masking is active.</strong>}
           </p>

@@ -37,24 +37,24 @@ export default function HelpMenu({ role }) {
         <Modal title="Help" onClose={() => setOpen(false)} wide>
           {role === 'manager' && (
             <div className="mb-20">
-              <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>First-time setup</h3>
-              <ol style={{ paddingLeft: 18, fontSize: 13, color: 'var(--gray-600)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <h3 className="u-e9f6309">First-time setup</h3>
+              <ol className="u-2db2016">
                 {MANAGER_STEPS.map(step => <li key={step}>{step}</li>)}
               </ol>
             </div>
           )}
           <div>
-            <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>What's the difference between…</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <h3 className="u-e9f6309">What's the difference between…</h3>
+            <div className="u-a56c85e">
               {GLOSSARY.map(({ term, desc }) => (
                 <div key={term}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{term}</div>
-                  <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>{desc}</div>
+                  <div className="u-eb673ec">{term}</div>
+                  <div className="u-1a57d8f">{desc}</div>
                 </div>
               ))}
             </div>
           </div>
-          <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 18, marginBottom: 0 }}>
+          <p className="u-e77c7b6">
             Press <kbd>Ctrl</kbd> <kbd>K</kbd> anywhere to jump to a page by name.
           </p>
         </Modal>

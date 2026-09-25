@@ -29,7 +29,7 @@ test('calendar day columns stay equal width with a long event title', async ({ p
   await expect(page.getByText(/Renew firewall support contract with a deliberately/).first()).toBeVisible();
   // The header row has its own grid, so measure the day cells in the body grid.
   const widths = await page.evaluate(() => {
-    const grids = [...document.querySelectorAll('div')].filter(el => el.style.gridTemplateColumns.startsWith('repeat(7'));
+    const grids = [...document.querySelectorAll('div')].filter(el => { const cs = getComputedStyle(el); return cs.display === 'grid' && cs.gridTemplateColumns.split(' ').length === 7; });
     const body = grids[grids.length - 1];
     return [...body.children].slice(0, 7).map(cell => Math.round(cell.getBoundingClientRect().width));
   });

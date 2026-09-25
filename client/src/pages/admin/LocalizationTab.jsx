@@ -58,33 +58,28 @@ export function LocalizationTab() {
   if (loading) return <p className="text-muted">Loading…</p>;
 
   return (
-    <div style={{ maxWidth: 720 }}>
+    <div className="u-b12974c">
       {/* Language */}
       <div className="card mb-16">
         <div className="card-header">
-          <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <h3 className="u-334fee5">
             <Globe size={15} /> Language &amp; Region
           </h3>
         </div>
         <div className="form-group">
           <label>Default Language</label>
-          <select value={cfg.default_language} onChange={e => set('default_language', e.target.value)} style={{ maxWidth: 240 }}>
+          <select value={cfg.default_language} onChange={e => set('default_language', e.target.value)} className="u-a5d7a03">
             {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
           </select>
         </div>
         <div className="form-group">
           <label>Supported Languages</label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+          <div className="u-650b1c9">
             {LANGUAGES.map(l => {
               const on = cfg.supported_languages.includes(l.code);
               return (
-                <label key={l.code} style={{
-                  display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer',
-                  padding: '4px 10px', borderRadius: 6, fontSize: 13,
-                  background: on ? '#dbeafe' : 'var(--gray-100)',
-                  border: on ? '1px solid #93c5fd' : '1px solid transparent', userSelect: 'none',
-                }}>
-                  <input type="checkbox" checked={on} onChange={() => toggleLang(l.code)} style={{ width: 'auto' }} />
+                <label key={l.code} className="u-f3842ee" style={{ background: on ? '#dbeafe' : 'var(--gray-100)', border: on ? '1px solid #93c5fd' : '1px solid transparent' }}>
+                  <input type="checkbox" checked={on} onChange={() => toggleLang(l.code)} className="u-30e741d" />
                   {l.label}
                 </label>
               );
@@ -94,7 +89,7 @@ export function LocalizationTab() {
         </div>
         <div className="form-group">
           <label>Time Zone</label>
-          <select value={cfg.timezone} onChange={e => set('timezone', e.target.value)} style={{ maxWidth: 280 }}>
+          <select value={cfg.timezone} onChange={e => set('timezone', e.target.value)} className="u-2f3f7d7">
             {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
           </select>
         </div>
@@ -103,7 +98,7 @@ export function LocalizationTab() {
       {/* Date & Time */}
       <div className="card mb-16">
         <div className="card-header">
-          <h3 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <h3 className="u-334fee5">
             <Clock size={15} /> Date, Time &amp; Numbers
           </h3>
         </div>
@@ -124,7 +119,7 @@ export function LocalizationTab() {
         </div>
         <div className="form-group">
           <label>Number Format</label>
-          <select value={cfg.number_format} onChange={e => set('number_format', e.target.value)} style={{ maxWidth: 200 }}>
+          <select value={cfg.number_format} onChange={e => set('number_format', e.target.value)} className="u-a828909">
             {NUMBER_FORMATS.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
           <p className="text-sm text-muted mt-4">Example: {cfg.number_format === '1.000,00' ? '1.234,56' : cfg.number_format === '1 000.00' ? '1 234.56' : cfg.number_format === '1000.00' ? '1234.56' : '1,234.56'}</p>

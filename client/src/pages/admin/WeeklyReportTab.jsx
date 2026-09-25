@@ -112,10 +112,10 @@ export function WeeklyReportTab() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+      <div className="u-828bb81">
         <div>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--gray-900)', marginBottom: 4 }}>Weekly Status Report</h2>
-          <p style={{ fontSize: 13, color: 'var(--gray-500)' }}>
+          <h2 className="u-c458441">Weekly Status Report</h2>
+          <p className="u-af50806">
             Automatically email a comprehensive status report to management each week.
           </p>
         </div>
@@ -132,28 +132,28 @@ export function WeeklyReportTab() {
       </div>
 
       {sendMsg && (
-        <div className={`alert ${sendMsg.ok ? 'alert-success' : 'alert-warning'}`} style={{ marginBottom: 16 }}>
+        <div className={`alert ${sendMsg.ok ? 'alert-success' : 'alert-warning'} u-87c136d`}>
           {sendMsg.ok ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />} {sendMsg.text}
         </div>
       )}
 
       {/* ── Last sent info ── */}
       {schedule.last_sent && (
-        <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontSize: 13, color: 'var(--gray-600)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="u-bbe7a43">
           <CheckCircle2 size={14} color="var(--success)" />
           Last report sent: <strong>{fmtDateTime(schedule.last_sent)}</strong>
         </div>
       )}
 
-      <div className="grid-2" style={{ gap: 20, alignItems: 'start' }}>
+      <div className="grid-2 u-7cce4cc">
 
         {/* ── Left: SMTP config ── */}
-        <div className="card" style={{ padding: '20px 24px' }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="card u-969a912">
+          <h3 className="u-1fb1cdf">
             <AtSign size={15} color="var(--primary)" /> Email SMTP Configuration
           </h3>
           {smtpMsg && (
-            <div className={`alert ${smtpMsg.ok ? 'alert-success' : 'alert-warning'}`} style={{ marginBottom: 12 }}>
+            <div className={`alert ${smtpMsg.ok ? 'alert-success' : 'alert-warning'} u-da12f28`}>
               {smtpMsg.ok ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />} {smtpMsg.text}
             </div>
           )}
@@ -163,14 +163,14 @@ export function WeeklyReportTab() {
                 <label>SMTP Host</label>
                 <input value={smtp.host || ''} onChange={set('host')} placeholder="smtp.gmail.com" required />
               </div>
-              <div className="form-group" style={{ maxWidth: 100 }}>
+              <div className="form-group u-d579dc3">
                 <label>Port</label>
                 <input type="number" value={smtp.port || 587} onChange={set('port')} />
               </div>
             </div>
             <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                <input type="checkbox" checked={!!smtp.secure} onChange={e => setSmtp(s => ({ ...s, secure: e.target.checked }))} style={{ width: 'auto' }} />
+              <label className="u-c92fd94">
+                <input type="checkbox" checked={!!smtp.secure} onChange={e => setSmtp(s => ({ ...s, secure: e.target.checked }))} className="u-30e741d" />
                 Use SSL/TLS (port 465)
               </label>
             </div>
@@ -194,7 +194,7 @@ export function WeeklyReportTab() {
                 <input value={smtp.from_email || ''} onChange={set('from_email')} placeholder="noreply@company.com" />
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <div className="u-1161952">
               <button type="submit" className="btn btn-primary btn-sm inline-flex items-center gap-6" disabled={smtpSaving}>
                 {smtpSaving ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={13} />} Save SMTP
               </button>
@@ -202,30 +202,30 @@ export function WeeklyReportTab() {
                 {smtpTesting ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Bell size={13} />} Test Connection
               </button>
             </div>
-            <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="Send test email to…" style={{ flex: 1, fontSize: 13 }} />
+            <div className="u-012c803">
+              <input value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="Send test email to…" className="u-7829123" />
             </div>
           </form>
         </div>
 
         {/* ── Right: Schedule config ── */}
-        <div className="card" style={{ padding: '20px 24px' }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="card u-969a912">
+          <h3 className="u-1fb1cdf">
             <Settings size={15} color="var(--primary)" /> Report Schedule
           </h3>
           {schedMsg && (
-            <div className={`alert ${schedMsg.ok ? 'alert-success' : 'alert-warning'}`} style={{ marginBottom: 12 }}>
+            <div className={`alert ${schedMsg.ok ? 'alert-success' : 'alert-warning'} u-da12f28`}>
               {schedMsg.ok ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />} {schedMsg.text}
             </div>
           )}
           <form onSubmit={saveSchedule}>
             <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                <input type="checkbox" checked={!!schedule.enabled} onChange={e => setSchedule(s => ({ ...s, enabled: e.target.checked }))} style={{ width: 'auto' }} />
+              <label className="u-c92fd94">
+                <input type="checkbox" checked={!!schedule.enabled} onChange={e => setSchedule(s => ({ ...s, enabled: e.target.checked }))} className="u-30e741d" />
                 <span className="font-semibold">Enable automatic weekly report</span>
               </label>
               {!schedule.enabled && (
-                <p style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 4 }}>Enable to have the report sent automatically on schedule.</p>
+                <p className="u-2fb0f6a">Enable to have the report sent automatically on schedule.</p>
               )}
             </div>
 
@@ -249,20 +249,15 @@ export function WeeklyReportTab() {
             <div className="form-group">
               <label>Recipients — Managers</label>
               {managers.length === 0
-                ? <p style={{ fontSize: 13, color: 'var(--gray-400)' }}>No active managers found.</p>
-                : <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                ? <p className="u-dd8016b">No active managers found.</p>
+                : <div className="u-4c3ce0d">
                     {managers.map(m => (
-                      <label key={m.id} style={{
-                        display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-                        padding: '6px 10px', borderRadius: 6, border: '1px solid var(--gray-200)',
-                        background: schedule.recipients?.includes(m.id) ? '#eff6ff' : 'transparent',
-                        fontSize: 13,
-                      }}>
-                        <input type="checkbox" style={{ width: 'auto' }}
+                      <label key={m.id} className="u-5fe57ae" style={{ background: schedule.recipients?.includes(m.id) ? '#eff6ff' : 'transparent' }}>
+                        <input type="checkbox" className="u-30e741d"
                           checked={schedule.recipients?.includes(m.id) || false}
                           onChange={() => toggleRecipient(m.id)} />
                         <span className="font-semibold">{m.name}</span>
-                        <span style={{ color: 'var(--gray-400)', fontSize: 12 }}>{m.email || '—'}</span>
+                        <span className="u-f3ab819">{m.email || '—'}</span>
                       </label>
                     ))}
                   </div>
@@ -277,11 +272,11 @@ export function WeeklyReportTab() {
       </div>
 
       {/* ── Report Sections Overview ── */}
-      <div className="card" style={{ marginTop: 20, padding: '20px 24px' }}>
-        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="card u-2d16f0b">
+        <h3 className="u-1fb1cdf">
           <ScrollText size={15} color="var(--primary)" /> Report Contents
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+        <div className="u-5ac6b39">
           {[
             { emoji: '📁', title: 'Projects Opened',         desc: 'New projects from the past 7 days' },
             { emoji: '📅', title: 'Upcoming Deadlines',      desc: 'Projects & tasks due in 14 days' },
@@ -293,9 +288,9 @@ export function WeeklyReportTab() {
             { emoji: '📊', title: 'SLA Compliance',          desc: 'Breach summary for all 4 SLA metrics' },
             { emoji: '🏢', title: 'New Customers',           desc: 'Customers added this week' },
           ].map(s => (
-            <div key={s.title} style={{ padding: '10px 12px', background: 'var(--gray-50)', borderRadius: 8, border: '1px solid var(--gray-100)' }}>
-              <div style={{ fontSize: 14, marginBottom: 2 }}>{s.emoji} <strong style={{ fontSize: 13 }}>{s.title}</strong></div>
-              <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{s.desc}</div>
+            <div key={s.title} className="u-1a922eb">
+              <div className="u-e6ef123">{s.emoji} <strong className="u-5e0faad">{s.title}</strong></div>
+              <div className="u-5be3ef4">{s.desc}</div>
             </div>
           ))}
         </div>
@@ -305,23 +300,23 @@ export function WeeklyReportTab() {
       {showPreview && preview && (
         <Modal title="Report Preview" onClose={() => setShowPreview(false)} width={780}>
           <div className="mb-12">
-            <div style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 8 }}>
+            <div className="u-7d2b03a">
               <strong>Subject:</strong> {preview.subject}
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div className="u-592ab7b">
               {[
                 { label: 'Active Projects',  val: preview.stats?.activeProjects },
                 { label: 'Open Tasks',       val: preview.stats?.openTasks },
                 { label: 'Overdue Projects', val: preview.stats?.overdueProjects },
                 { label: 'Pending Closure',  val: preview.stats?.pendingClosure },
               ].map(s => (
-                <div key={s.label} style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 14px', textAlign: 'center', minWidth: 90 }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--primary)' }}>{s.val ?? 0}</div>
-                  <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{s.label}</div>
+                <div key={s.label} className="u-d419cf7">
+                  <div className="u-6df2889">{s.val ?? 0}</div>
+                  <div className="u-5be3ef4">{s.label}</div>
                 </div>
               ))}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8, marginBottom: 12 }}>
+            <div className="u-6675343">
               {[
                 { emoji: '📁', label: 'Projects opened',   val: preview.projectsOpened?.length },
                 { emoji: '📅', label: 'Upcoming deadlines',val: preview.upcomingDeadlines?.length },
@@ -330,10 +325,10 @@ export function WeeklyReportTab() {
                 { emoji: '📄', label: 'Reports pending',   val: preview.reportsPending?.length },
                 { emoji: '⏳', label: 'Pending closure',   val: preview.closurePending?.length },
               ].map(s => (
-                <div key={s.label} style={{ padding: '8px 12px', background: 'var(--gray-50)', borderRadius: 6, border: '1px solid var(--gray-100)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div key={s.label} className="u-46d2236">
                   <span>{s.emoji}</span>
-                  <span style={{ fontSize: 12, color: 'var(--gray-600)', flex: 1 }}>{s.label}</span>
-                  <strong style={{ fontSize: 14 }}>{s.val ?? 0}</strong>
+                  <span className="u-7f83e9d">{s.label}</span>
+                  <strong className="u-433de30">{s.val ?? 0}</strong>
                 </div>
               ))}
             </div>
@@ -341,8 +336,7 @@ export function WeeklyReportTab() {
               href="/api/report-settings/preview"
               target="_blank"
               rel="noopener noreferrer"
-              className="btn btn-ghost btn-sm"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+              className="btn btn-ghost btn-sm u-5de5886"
             >
               <ExternalLink size={12} /> Open Full HTML Preview in new tab
             </a>

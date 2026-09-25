@@ -66,10 +66,10 @@ export function TeamsAdminSection() {
   return (
     <div className="card mb-16">
       <div className="section-title">Teams</div>
-      <p className="text-sm text-muted" style={{ marginBottom: 10 }}>
+      <p className="text-sm text-muted u-761d3ad">
         Configure workflow emphasis independently from access. Engineers keep every module allowed by RBAC; these capabilities only prioritize navigation, quick actions and My Work.
       </p>
-      <form onSubmit={create} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+      <form onSubmit={create} className="u-b37b9a5">
         <input value={name} onChange={e => setName(e.target.value)} placeholder="New team name…" />
         <button className="btn btn-primary btn-sm" disabled={!name.trim()}><Plus size={13} /> Add Team</button>
       </form>
@@ -83,11 +83,11 @@ export function TeamsAdminSection() {
                 <td>
                   <button className="btn btn-sm btn-ghost" onClick={() => openMembers(t)}>{t.member_count} member(s)</button>
                 </td>
-                <td><div style={{ display:'grid',gap:5 }}>
-                  <label className="text-sm" style={{ display:'flex',gap:6,alignItems:'center' }}><input type="checkbox" checked={!!t.managed_service_operations} onChange={() => toggleCapability(t,'managed_service_operations')} style={{ width:'auto' }} /> Managed Services</label>
-                  <label className="text-sm" style={{ display:'flex',gap:6,alignItems:'center' }}><input type="checkbox" checked={!!t.project_delivery_enabled} onChange={() => toggleCapability(t,'project_delivery_enabled')} style={{ width:'auto' }} /> Project Delivery</label>
+                <td><div className="u-15d9c4f">
+                  <label className="text-sm u-25b5288"><input type="checkbox" checked={!!t.managed_service_operations} onChange={() => toggleCapability(t,'managed_service_operations')} className="u-30e741d" /> Managed Services</label>
+                  <label className="text-sm u-25b5288"><input type="checkbox" checked={!!t.project_delivery_enabled} onChange={() => toggleCapability(t,'project_delivery_enabled')} className="u-30e741d" /> Project Delivery</label>
                 </div></td>
-                <td><input type="checkbox" checked={!!t.service_activity_enabled} onChange={() => toggleEnabled(t)} style={{ width: 'auto' }} /></td>
+                <td><input type="checkbox" checked={!!t.service_activity_enabled} onChange={() => toggleEnabled(t)} className="u-30e741d" /></td>
                 <td><button className="btn btn-sm btn-ghost" onClick={() => openSla(t)}><Clock size={12} /> Targets</button></td>
                 <td><button className="btn btn-sm btn-ghost" onClick={() => remove(t)}><Trash2 size={12} /></button></td>
               </tr>
@@ -102,11 +102,11 @@ export function TeamsAdminSection() {
           <div className="form-group">
             <select multiple value={editingMembers.memberIds.map(String)}
               onChange={e => setEditingMembers(em => ({ ...em, memberIds: [...e.target.selectedOptions].map(o => Number(o.value)) }))}
-              style={{ minHeight: 200 }}>
+              className="u-b9666ec">
               {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
             </select>
           </div>
-          <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+          <div className="modal-footer u-cc45258">
             <button className="btn btn-ghost" onClick={() => setEditingMembers(null)}>Cancel</button>
             <button className="btn btn-primary" onClick={saveMembers}>Save Members</button>
           </div>
@@ -131,7 +131,7 @@ export function TeamsAdminSection() {
                 onChange={e => setEditingSla(s => ({ ...s, resolution_hours: e.target.value }))} />
             </div>
           </div>
-          <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+          <div className="modal-footer u-cc45258">
             <button className="btn btn-ghost" onClick={() => setEditingSla(null)}>Cancel</button>
             <button className="btn btn-primary" onClick={saveSla}><Save size={13} /> Save Targets</button>
           </div>
@@ -181,20 +181,20 @@ export function ServiceActivityGeneralSettings() {
     <div className="card mb-16">
       <div className="section-title">General Settings</div>
       <div className="form-group">
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
-          <input type="checkbox" checked={settings.allow_attachments} style={{ width: 'auto' }}
+        <label className="u-ea06b0c">
+          <input type="checkbox" checked={settings.allow_attachments} className="u-30e741d"
             onChange={e => setSettings(s => ({ ...s, allow_attachments: e.target.checked }))} />
           Allow Attachments
         </label>
       </div>
       <div className="form-group">
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
-          <input type="checkbox" checked={settings.allow_follow_up_task_creation} style={{ width: 'auto' }}
+        <label className="u-ea06b0c">
+          <input type="checkbox" checked={settings.allow_follow_up_task_creation} className="u-30e741d"
             onChange={e => setSettings(s => ({ ...s, allow_follow_up_task_creation: e.target.checked }))} />
           Allow Follow-Up Task Creation
         </label>
       </div>
-      <div className="form-group" style={{ maxWidth: 260 }}>
+      <div className="form-group u-55585d5">
         <label>Retention Period (days)</label>
         <input type="number" min="1" value={settings.retention_days || ''} placeholder="No limit"
           onChange={e => setSettings(s => ({ ...s, retention_days: e.target.value || null }))} />
@@ -204,7 +204,7 @@ export function ServiceActivityGeneralSettings() {
       </button>
 
       {retention?.retention_days && (
-        <div style={{ paddingTop: 10, borderTop: '1px solid var(--gray-100)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="u-650b690">
           <span className="text-sm text-muted">
             {retention.eligible_count} activit{retention.eligible_count === 1 ? 'y is' : 'ies are'} older than {retention.retention_days} days (before {retention.cutoff})
           </span>
@@ -252,7 +252,7 @@ export function ServiceActivityAdminTab() {
           label: 'Team',
           initial: '',
           render: (value, setValue) => (
-            <select value={value || ''} onChange={e => setValue(e.target.value)} style={{ minWidth: 160 }} aria-label="Team">
+            <select value={value || ''} onChange={e => setValue(e.target.value)} className="u-94253f9" aria-label="Team">
               <option value="">Shared (every team)</option>
               {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
@@ -262,7 +262,7 @@ export function ServiceActivityAdminTab() {
           {
             label: 'Team',
             render: item => (
-              <select value={item.team_id || ''} style={{ minWidth: 160 }} aria-label={`Team for ${item.name}`}
+              <select value={item.team_id || ''} className="u-94253f9" aria-label={`Team for ${item.name}`}
                 onChange={async e => { await api.updateActivityCategory(item.id, { team_id: e.target.value || null }); load(); }}>
                 <option value="">Shared (every team)</option>
                 {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -272,14 +272,14 @@ export function ServiceActivityAdminTab() {
           {
             label: 'Require Attachment',
             render: item => (
-              <input type="checkbox" checked={!!item.require_attachment} style={{ width: 'auto' }}
+              <input type="checkbox" checked={!!item.require_attachment} className="u-30e741d"
                 onChange={async () => { await api.updateActivityCategory(item.id, { require_attachment: !item.require_attachment }); load(); }} />
             ),
           },
           {
             label: 'Require Asset',
             render: item => (
-              <input type="checkbox" checked={!!item.require_asset} style={{ width: 'auto' }} title="Activities in this category must name the customer asset worked on (when the customer has assets)"
+              <input type="checkbox" checked={!!item.require_asset} className="u-30e741d" title="Activities in this category must name the customer asset worked on (when the customer has assets)"
                 onChange={async () => { await api.updateActivityCategory(item.id, { require_asset: !item.require_asset }); load(); }} />
             ),
           },

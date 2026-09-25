@@ -54,21 +54,21 @@ export default function WorkloadPlanning() {
   useEffect(() => { setEdit(null); }, [asOf]);
   const busy = loading || loadedDate !== asOf;
   return <section>
-    <div className="flex gap-8 mb-16"><label htmlFor="planning-date">Planning date</label><input id="planning-date" type="date" min="1900-01-01" max="9998-12-01" value={asOf} onChange={event => setAsOf(event.target.value)} style={{ width: 'auto' }} /><button className="btn btn-ghost" disabled={busy} onClick={load}>Refresh</button></div>
+    <div className="flex gap-8 mb-16"><label htmlFor="planning-date">Planning date</label><input id="planning-date" type="date" min="1900-01-01" max="9998-12-01" value={asOf} onChange={event => setAsOf(event.target.value)} className="u-30e741d" /><button className="btn btn-ghost" disabled={busy} onClick={load}>Refresh</button></div>
     {error ? <div className="error-msg" role="alert">{error} <button className="btn btn-ghost" onClick={load}>Retry</button></div> : busy ? <p role="status">Loading effort and availability...</p> : <>
       <p className="text-muted mb-16">{data.coverage}</p>
       {data.engineers.length === 0 && <p>No active engineers.</p>}
       {data.engineers.map(engineer => <article className="card mb-20" key={engineer.id}>
-        <h2 style={{ fontSize: 18 }}>{engineer.name}</h2>
+        <h2 className="u-4ff818f">{engineer.name}</h2>
         <p className="text-muted text-sm">{engineer.outside_window_count} outstanding items without a date or beyond this window; excluded from weekly percentages.</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 16 }}>
-          {engineer.weeks.map(week => <section key={week.start} style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: 12 }}>
-            <h3 style={{ fontSize: 14 }}>{fmtDate(week.start)} – {fmtDate(week.end)}</h3>
+        <div className="u-8947de6">
+          {engineer.weeks.map(week => <section key={week.start} className="u-def7edf">
+            <h3 className="u-433de30">{fmtDate(week.start)} – {fmtDate(week.end)}</h3>
             <p><strong>{week.capacity_percent === null ? 'Percentage unavailable' : `${week.capacity_percent}% estimated task/visit load`}</strong></p>
             <p>{week.estimated_hours}h weighted effort / {week.available_hours === null ? 'availability not recorded' : `${week.available_hours}h net available`}</p>
             <p className="text-muted text-sm">{week.unweighted_hours}h before weighting / {week.item_count} items · {week.unknown_estimates} missing estimates with positive weight</p>
             <button className="btn btn-ghost btn-sm" onClick={() => setEdit({ type: 'availability', title: `${engineer.name} · ${fmtDate(week.start)}`, userId: engineer.id, week: week.start, version: week.availability_version, hours: week.available_hours })}>Set availability</button>
-            {week.items.map(item => <div key={`${item.kind}:${item.id}`} style={{ padding: '8px 0', borderTop: '1px solid var(--gray-100)' }}>
+            {week.items.map(item => <div key={`${item.kind}:${item.id}`} className="u-6c87dab">
               <div className="text-sm">{item.title}</div><div className="text-muted text-sm">{Math.round(item.status_weight*100)}% status factor / {item.kind} · {item.status.replaceAll('_',' ')} · {fmtDate(item.date)}</div>
               <button className="btn btn-ghost btn-sm" onClick={() => setEdit({ type: 'estimate', title: item.title, kind: item.kind, id: item.id, version: item.estimate_version, hours: item.remaining_hours })}>{item.remaining_hours === null ? 'Add estimate' : `${item.remaining_hours}h · Edit estimate`}</button>
             </div>)}

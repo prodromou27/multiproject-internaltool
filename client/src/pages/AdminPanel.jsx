@@ -68,11 +68,7 @@ function SettingsStatusPill({ status }) {
   if (!status) return null;
   const s = STATUS_STYLES[status] || STATUS_STYLES.warning;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      padding: '1px 6px', borderRadius: 999, background: s.bg, color: s.color,
-      fontSize: 10, fontWeight: 800, lineHeight: 1.5, whiteSpace: 'nowrap',
-    }}>
+    <span className="u-f29654b" style={{ background: s.bg, color: s.color }}>
       {s.label}
     </span>
   );
@@ -129,15 +125,15 @@ export default function AdminPanel() {
 
   return (
     <div className="page">
-      <div className="page-header" style={{ marginBottom: 0 }}>
+      <div className="page-header u-ef0b7a1">
         <div>
           <h1 className="page-title flex-center gap-8">
             <Settings size={22} /> Settings
           </h1>
           <p className="text-sm text-muted mt-4">System configuration, access control, security, and operations</p>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--gray-400)', textAlign: 'right' }}>
-          Signed in as<br /><strong style={{ color: 'var(--gray-700)' }}>{user.name}</strong>
+        <div className="u-f8bc0db">
+          Signed in as<br /><strong className="u-3a065eb">{user.name}</strong>
         </div>
       </div>
 
@@ -178,7 +174,7 @@ export default function AdminPanel() {
 
           {!q && businessLinks.length > 0 && <div className="settings-nav-group"><div className="settings-nav-heading">Related pages</div>{businessLinks.map(page => <Link className="settings-nav-item" key={page.id} to={page.path} style={{ display: 'block' }}>{page.label}</Link>)}</div>}
           {filteredTabs.length === 0 && (
-            <p className="text-sm text-muted" style={{ padding: '8px 10px' }}>No settings matched.</p>
+            <p className="text-sm text-muted u-cfa1ecf">No settings matched.</p>
           )}
         </aside>
 

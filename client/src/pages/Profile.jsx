@@ -10,13 +10,7 @@ function Alert({ type, msg }) {
   if (!msg) return null;
   const ok = type === 'success';
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 8,
-      padding: '9px 13px', borderRadius: 8, marginBottom: 14, fontSize: 13,
-      background: ok ? '#f0fdf4' : '#fef2f2',
-      border: `1px solid ${ok ? '#bbf7d0' : '#fecaca'}`,
-      color: ok ? '#166534' : '#991b1b',
-    }}>
+    <div className="u-2b95d35" style={{ background: ok ? '#f0fdf4' : '#fef2f2', border: `1px solid ${ok ? '#bbf7d0' : '#fecaca'}`, color: ok ? '#166534' : '#991b1b' }}>
       {ok ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
       {msg}
     </div>
@@ -70,33 +64,21 @@ function AvatarSection({ user, onRefresh }) {
 
   return (
     <div className="card mb-20">
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="u-a32a8d3">
         <Camera size={15} color="var(--primary)" /> Profile Picture
       </div>
       <Alert type={msg.type} msg={msg.text} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+      <div className="u-277c3be">
         {/* Avatar preview */}
         <div
           onClick={() => fileRef.current?.click()}
-          style={{
-            width: 80, height: 80, borderRadius: '50%', flexShrink: 0,
-            background: user.avatar_url ? 'transparent' : 'linear-gradient(135deg,#3b82f6,#6366f1)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 26, fontWeight: 800, color: '#fff',
-            cursor: 'pointer', overflow: 'hidden',
-            border: '3px solid var(--gray-100)',
-            position: 'relative',
-          }}
+          className="u-d6a4d8c" style={{ background: user.avatar_url ? 'transparent' : 'linear-gradient(135deg,#3b82f6,#6366f1)' }}
           title="Click to change photo"
         >
           {user.avatar_url
-            ? <img src={user.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ? <img src={user.avatar_url} alt="avatar" className="u-618aa59" />
             : initials}
-          <div style={{
-            position: 'absolute', inset: 0, background: 'rgba(0,0,0,.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            opacity: 0, transition: 'opacity .15s',
-          }}
+          <div className="u-884fc59"
             onMouseEnter={e => e.currentTarget.style.opacity = 1}
             onMouseLeave={e => e.currentTarget.style.opacity = 0}
           >
@@ -104,8 +86,8 @@ function AvatarSection({ user, onRefresh }) {
           </div>
         </div>
 
-        <div style={{ flex: 1, minWidth: 160 }}>
-          <p className="text-sm text-muted" style={{ marginBottom: 10 }}>
+        <div className="u-eb62184">
+          <p className="text-sm text-muted u-761d3ad">
             JPG, PNG or WebP · Max 2 MB · Click the photo to upload
           </p>
           <div className="flex gap-8 flex-wrap">
@@ -119,10 +101,9 @@ function AvatarSection({ user, onRefresh }) {
             </button>
             {user.avatar_url && (
               <button
-                className="btn btn-ghost btn-sm"
+                className="btn btn-ghost btn-sm u-26822bb"
                 onClick={handleRemove}
                 disabled={removing}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--danger)' }}
               >
                 <Trash2 size={13} /> {removing ? 'Removing…' : 'Remove'}
               </button>
@@ -130,7 +111,7 @@ function AvatarSection({ user, onRefresh }) {
           </div>
         </div>
       </div>
-      <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
+      <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="u-6b99de8" />
     </div>
   );
 }
@@ -159,7 +140,7 @@ function PersonalInfoSection({ user, onRefresh }) {
 
   return (
     <div className="card mb-20">
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="u-a32a8d3">
         <User size={15} color="var(--primary)" /> Personal Info
       </div>
       <Alert type={msg.type} msg={msg.text} />
@@ -170,19 +151,19 @@ function PersonalInfoSection({ user, onRefresh }) {
           <div className="form-row">
             <div className="form-group">
               <label>Full Name</label>
-              <input value={user.name || ''} disabled style={{ background: 'var(--gray-50)', cursor: 'not-allowed' }} />
+              <input value={user.name || ''} disabled className="u-a38c980" />
             </div>
             <div className="form-group">
               <label>Email Address</label>
-              <input value={user.email || ''} disabled style={{ background: 'var(--gray-50)', cursor: 'not-allowed' }} />
+              <input value={user.email || ''} disabled className="u-a38c980" />
             </div>
           </div>
-          <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '4px 0 0 0', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <p className="u-5627473">
             <AlertCircle size={12} />
             Name and email can only be changed by an administrator.
           </p>
-          <div style={{ marginTop: 12, fontSize: 11, color: 'var(--gray-400)' }}>
-            Role: <strong style={{ textTransform: 'capitalize' }}>{user.role}</strong>
+          <div className="u-4ac3eb4">
+            Role: <strong className="u-6fedee3">{user.role}</strong>
             {user.created_at && ` · Joined ${new Date(user.created_at).toLocaleDateString([], { month: 'short', year: 'numeric' })}`}
           </div>
         </div>
@@ -218,8 +199,8 @@ function PersonalInfoSection({ user, onRefresh }) {
             >
               <Save size={13} /> {saving ? 'Saving…' : 'Save Changes'}
             </button>
-            <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>
-              Role: <strong style={{ textTransform: 'capitalize' }}>{user.role}</strong>
+            <span className="u-5be3ef4">
+              Role: <strong className="u-6fedee3">{user.role}</strong>
               {user.created_at && ` · Joined ${new Date(user.created_at).toLocaleDateString([], { month: 'short', year: 'numeric' })}`}
             </span>
           </div>
@@ -254,11 +235,11 @@ function ChangePasswordSection() {
 
   return (
     <div className="card">
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="u-a32a8d3">
         <KeyRound size={15} color="var(--primary)" /> Change Password
       </div>
       <Alert type={msg.type} msg={msg.text} />
-      <form onSubmit={submit} style={{ maxWidth: 400 }}>
+      <form onSubmit={submit} className="u-cb05851">
         <div className="form-group">
           <label>Current Password *</label>
           <input
@@ -292,7 +273,7 @@ function ChangePasswordSection() {
             autoComplete="new-password"
           />
           {form.confirm && form.new_password && form.confirm !== form.new_password && (
-            <p style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4 }}>Passwords don't match</p>
+            <p className="u-5433fdf">Passwords don't match</p>
           )}
         </div>
         <button
@@ -363,30 +344,22 @@ function TwoFactorSection({ user, onRefresh }) {
 
   return (
     <div className="card mb-20">
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="u-a32a8d3">
         <ShieldCheck size={15} color="var(--primary)" /> Two-Factor Authentication
       </div>
       <Alert type={msg.type} msg={msg.text} />
 
       {/* Status indicator */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          padding: '6px 12px', borderRadius: 8,
-          background: enabled ? '#f0fdf4' : '#fef9c3',
-          border: `1px solid ${enabled ? '#86efac' : '#fde68a'}`,
-          fontSize: 13, fontWeight: 600,
-          color: enabled ? '#166534' : '#92400e',
-        }}>
+      <div className="u-b21814f">
+        <div className="u-bf58c8b" style={{ background: enabled ? '#f0fdf4' : '#fef9c3', border: `1px solid ${enabled ? '#86efac' : '#fde68a'}`, color: enabled ? '#166534' : '#92400e' }}>
           {enabled ? <ShieldCheck size={14} /> : <ShieldOff size={14} />}
           {enabled ? '2FA is enabled' : '2FA is not enabled'}
         </div>
         {enabled ? (
           <button
-            className="btn btn-ghost btn-sm"
+            className="btn btn-ghost btn-sm u-26822bb"
             onClick={disable}
             disabled={working}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--danger)' }}
           >
             <ShieldOff size={13} /> {working ? 'Disabling…' : 'Disable 2FA'}
           </button>
@@ -406,33 +379,33 @@ function TwoFactorSection({ user, onRefresh }) {
 
       {/* Setup: show QR code */}
       {!enabled && step === 'setup' && (
-        <div style={{ maxWidth: 420 }}>
-          <div style={{ fontSize: 13, color: '#374151', marginBottom: 12 }}>
+        <div className="u-0fd8744">
+          <div className="u-2c403dd">
             <strong>Step 1:</strong> Scan this QR code with your authenticator app (e.g. Google Authenticator, Authy).
           </div>
           {qrUrl && (
             <div className="flex justify-center mb-12">
-              <img src={qrUrl} alt="2FA QR Code" style={{ width: 180, height: 180, border: '3px solid var(--gray-100)', borderRadius: 8 }} />
+              <img src={qrUrl} alt="2FA QR Code" className="u-fa1c1a9" />
             </div>
           )}
           {secret && (
-            <div style={{ background: 'var(--gray-50)', borderRadius: 6, padding: '8px 12px', marginBottom: 12, fontFamily: 'monospace', fontSize: 13, letterSpacing: '.08em', wordBreak: 'break-all', textAlign: 'center', color: '#374151' }}>
-              <div style={{ fontSize: 10, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Manual entry key</div>
+            <div className="u-c210a3e">
+              <div className="u-c1f9602">Manual entry key</div>
               {secret}
             </div>
           )}
-          <div style={{ fontSize: 13, color: '#374151', marginBottom: 10 }}>
+          <div className="u-6c1c8de">
             <strong>Step 2:</strong> Enter the 6-digit code from your app to confirm setup.
           </div>
-          <form onSubmit={verifyEnable} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
+          <form onSubmit={verifyEnable} className="u-9da20e4">
+            <div className="form-group u-3b7e73f">
               <input
                 type="text"
                 inputMode="numeric"
                 value={code}
                 onChange={e => setCode(e.target.value.replace(/[^0-9 ]/g, '').slice(0, 7))}
                 placeholder="000 000"
-                style={{ textAlign: 'center', fontSize: 20, letterSpacing: '0.2em', fontWeight: 700 }}
+                className="u-e6afffc"
                 maxLength={7}
                 autoFocus
               />
@@ -450,7 +423,7 @@ function TwoFactorSection({ user, onRefresh }) {
       )}
 
       {!enabled && step === 'idle' && (
-        <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: 0 }}>
+        <p className="u-bf50fe4">
           Two-factor authentication adds an extra layer of security to your account by requiring a one-time code when logging in.
         </p>
       )}
@@ -493,20 +466,20 @@ function NotificationPreferencesSection({ user, onRefresh }) {
 
   return (
     <div className="card mb-20">
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="u-3c461cc">
         <Bell size={15} color="var(--primary)" /> Notifications
       </div>
-      <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '0 0 16px' }}>
+      <p className="u-265c667">
         Choose where you personally hear about things assigned to you, on top of the notifications you already see in this app (the bell icon).
       </p>
       <Alert type={msg.type} msg={msg.text} />
 
-      <div style={{ display: 'grid', gap: 18 }}>
+      <div className="u-eecfdda">
         <div>
           <Toggle checked={webexOn} disabled={!!saving}
             onChange={value => save('webex', { notify_external_enabled: value }, value ? 'Webex direct messages turned on.' : 'Webex direct messages turned off.')}
             label="Webex direct messages" />
-          <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '4px 0 0 50px' }}>
+          <p className="u-ab00b55">
             Only available if your organization has Webex configured. Uses the org bot — there's no separate account to connect.
           </p>
         </div>
@@ -515,9 +488,9 @@ function NotificationPreferencesSection({ user, onRefresh }) {
           <Toggle checked={teamsOn} disabled={!!saving || !user.notify_teams_webhook_set}
             onChange={value => save('teams', { notify_teams_enabled: value }, value ? 'Personal Teams notifications turned on.' : 'Personal Teams notifications turned off.')}
             label="Personal Teams channel" />
-          <div style={{ margin: '6px 0 0 50px', display: 'flex', gap: 8, maxWidth: 520, flexWrap: 'wrap' }}>
+          <div className="u-ca3eca1">
             <input type="password" autoComplete="new-password" value={webhookDraft} onChange={e => setWebhookDraft(e.target.value)}
-              placeholder={user.notify_teams_webhook_set ? 'Webhook saved — paste a new URL to replace it' : 'Your Teams incoming webhook URL'} style={{ flex: 1, minWidth: 200 }} />
+              placeholder={user.notify_teams_webhook_set ? 'Webhook saved — paste a new URL to replace it' : 'Your Teams incoming webhook URL'} className="u-7b1dd1f" />
             <button type="button" className="btn btn-ghost btn-sm" disabled={saving === 'teams-url' || !webhookDraft.trim()}
               onClick={async () => { await save('teams-url', { notify_teams_webhook_url: webhookDraft.trim() }, 'Teams webhook saved.'); setWebhookDraft(''); }}>
               {saving === 'teams-url' ? 'Saving…' : 'Save'}
@@ -527,7 +500,7 @@ function NotificationPreferencesSection({ user, onRefresh }) {
               <button type="button" className="btn btn-ghost btn-sm" disabled={!!saving} onClick={() => save('teams-url', { notify_teams_webhook_url: '' }, 'Teams webhook removed.')}>Remove</button>
             </>}
           </div>
-          <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '4px 0 0 50px' }}>
+          <p className="u-ab00b55">
             Teams has no per-person inbox the way Webex does — paste a webhook URL for a channel only you (or your team) can see, from that channel's ··· menu → Workflows.
           </p>
         </div>
@@ -536,16 +509,16 @@ function NotificationPreferencesSection({ user, onRefresh }) {
           <Toggle checked={emailOn} disabled={!!saving}
             onChange={value => save('email', { notify_email_enabled: value }, value ? 'Email alerts turned on.' : 'Email alerts turned off.')}
             label={`Email alerts${user.email ? ` (${user.email})` : ''}`} />
-          <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '4px 0 0 50px' }}>
+          <p className="u-ab00b55">
             Sent to your account email above.
           </p>
           {!user.email_delivery_available && (
-            <p style={{ fontSize: 12, color: 'var(--warning)', fontWeight: 600, margin: '4px 0 0 50px' }}>
+            <p className="u-e8acc98">
               Email delivery isn't set up for this organization yet, so alerts can't be sent. Ask an administrator to configure SMTP.
             </p>
           )}
           {emailOn && user.email_delivery_available && (
-            <div style={{ margin: '6px 0 0 50px' }}>
+            <div className="u-304c842">
               <button type="button" className="btn btn-ghost btn-sm" disabled={!!saving} onClick={() => sendTest('email')}>{saving === 'test-email' ? 'Sending…' : 'Send test email'}</button>
             </div>
           )}
@@ -587,7 +560,7 @@ export default function Profile() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 680 }}>
+      <div className="u-48a0d2f">
         <AvatarSection       user={user} onRefresh={refresh} />
         <PersonalInfoSection user={user} onRefresh={refresh} />
         <ChangePasswordSection />

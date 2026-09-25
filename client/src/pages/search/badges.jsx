@@ -25,22 +25,14 @@ export const PRIORITY_COLOR = { high: '#dc2626', medium: '#d97706', low: '#16a34
 export function SBadge({ s }) {
   if (!s) return null;
   return (
-    <span style={{
-      fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-      background: STATUS_BG[s] || 'var(--gray-100)',
-      color: STATUS_COLOR[s] || '#6b7280',
-    }}>{STATUS_LABEL[s] || s}</span>
+    <span className="u-db8a14c" style={{ background: STATUS_BG[s] || 'var(--gray-100)', color: STATUS_COLOR[s] || '#6b7280' }}>{STATUS_LABEL[s] || s}</span>
   );
 }
 
 export function PBadge({ p }) {
   if (!p) return null;
   return (
-    <span style={{
-      fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-      background: p === 'high' ? '#fef2f2' : p === 'medium' ? '#fffbeb' : '#ecfdf5',
-      color: PRIORITY_COLOR[p] || '#6b7280',
-    }}>
+    <span className="u-db8a14c" style={{ background: p === 'high' ? '#fef2f2' : p === 'medium' ? '#fffbeb' : '#ecfdf5', color: PRIORITY_COLOR[p] || '#6b7280' }}>
       {p === 'high' ? '↑' : p === 'medium' ? '→' : '↓'} {p}
     </span>
   );

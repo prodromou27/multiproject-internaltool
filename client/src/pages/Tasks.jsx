@@ -114,7 +114,7 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
           <div className="form-group">
             <label>
               {form.status === 'waiting_vendor' ? 'Waiting on Vendor' : 'Waiting on Customer'}{' '}
-              <span style={{ color: 'var(--danger)' }}>*</span>
+              <span className="u-497726e">*</span>
             </label>
             <textarea
               value={form.pending_from_customer}
@@ -125,7 +125,7 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
             />
           </div>
         )}
-        <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+        <div className="modal-footer u-cc45258">
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={saving}>
             {saving ? 'Saving…' : 'Save Changes'}
@@ -390,16 +390,16 @@ export default function Tasks() {
             </details>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+        <div className="u-95535a3">
           <ListSearch value={search} onChange={setSearch} label="Search tasks" placeholder="Search tasks, projects, or assignees…" />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: myTasksOnly ? 'var(--primary)' : 'var(--gray-600)', fontWeight: myTasksOnly ? 600 : 400, userSelect: 'none' }}>
-            <input type="checkbox" checked={myTasksOnly} onChange={e => setMyTasksOnly(e.target.checked)} style={{ width: 'auto' }} />
+          <label className="u-eb3a034" style={{ color: myTasksOnly ? 'var(--primary)' : 'var(--gray-600)', fontWeight: myTasksOnly ? 600 : 400 }}>
+            <input type="checkbox" checked={myTasksOnly} onChange={e => setMyTasksOnly(e.target.checked)} className="u-30e741d" />
             My Tasks
           </label>
           <select
             value={priorityFilter}
             onChange={e => setPriorityFilter(e.target.value)}
-            style={{ width: 'auto', fontSize: 12, padding: '4px 8px' }}
+            className="u-aedcdf0"
             title="Filter by priority"
           >
             <option value="all">All Priorities</option>
@@ -409,7 +409,7 @@ export default function Tasks() {
             <option value="low">↓ Low</option>
           </select>
           {priorityFilter !== 'all' && (
-            <button onClick={() => setPriorityFilter('all')} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray-400)', display:'flex', alignItems:'center', padding:2 }} title="Clear priority filter">
+            <button onClick={() => setPriorityFilter('all')} className="u-0c38224" title="Clear priority filter">
               <X size={13} />
             </button>
           )}
@@ -422,7 +422,7 @@ export default function Tasks() {
             ['pending_approval', 'Pending Approval'], ['done', 'Completed'],
             ['overdue', 'Overdue'], ['adhoc', 'Ad-hoc'],
           ].map(([key, label]) => <button key={key} className={'filter-pill' + (activeFilter === key ? ' active' : '') + (key === 'overdue' && counts[key] > 0 ? ' overdue-pill' : '')} onClick={() => setFilter(key)}>
-            {label} <span style={{ opacity: .65 }}>({busy ? '...' : counts[key] || 0})</span>
+            {label} <span className="u-a697a8f">({busy ? '...' : counts[key] || 0})</span>
           </button>)}
         </FilterGroup>
       </Surface>
@@ -463,10 +463,10 @@ export default function Tasks() {
               </button>
             ))
           )}
-          <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }}
+          <button className="btn btn-sm btn-ghost u-6d00061"
             onClick={() => { setSelected(new Set()); setBulkErr(''); }}>Deselect all</button>
         </div>
-        {bulkErr && <div className="error-msg" style={{ marginTop: 8 }}>{bulkErr}</div>}
+        {bulkErr && <div className="error-msg u-8a77e5a">{bulkErr}</div>}
         </>
       )}
 
@@ -489,9 +489,9 @@ export default function Tasks() {
             <caption className="sr-only">Tasks on the current page. Bulk selection applies to this page.</caption>
             <thead>
               <tr>
-                <th style={{ width: 32 }}>
+                <th className="u-82b9d86">
                   <input type="checkbox" aria-label="Select all tasks on this page" checked={allSelected} onChange={toggleAll}
-                    style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                    className="u-2cfdba3" />
                 </th>
                 <th><button className="table-sort" onClick={() => changeSort('task')}>Task <ArrowUpDown size={11} /></button></th>
                 {visibleColumns.has('project') && <th><button className="table-sort" onClick={() => changeSort('project')}>Project <ArrowUpDown size={11} /></button></th>}
@@ -507,13 +507,13 @@ export default function Tasks() {
                 <tr key={t.id} style={{ background: selected.has(t.id) ? 'var(--primary-light)' : '' }}>
                   <td>
                     <input type="checkbox" aria-label={`Select ${t.title}`} checked={selected.has(t.id)} onChange={() => toggleSelect(t.id)}
-                      style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                      className="u-2cfdba3" />
                   </td>
                   <td>
                     <span className="font-medium">{t.title}</span>
-                    {t.is_adhoc ? <span className="badge badge-adhoc" style={{ marginLeft: 6 }}>adhoc</span> : null}
+                    {t.is_adhoc ? <span className="badge badge-adhoc u-391ef12">adhoc</span> : null}
                     {t.is_blocked ? (
-                      <span className="badge badge-blocked" style={{ marginLeft: 6 }} title={`Blocked by ${t.dep_count || 1} unfinished task(s)`}>
+                      <span className="badge badge-blocked u-391ef12" title={`Blocked by ${t.dep_count || 1} unfinished task(s)`}>
                         <LockKeyhole size={10} /> Blocked
                       </span>
                     ) : null}
@@ -527,8 +527,7 @@ export default function Tasks() {
                     <select
                       value={t.status}
                       onChange={e => handleStatusChange(t, e.target.value)}
-                      style={{ width: 'auto', padding: '3px 6px', fontSize: 12,
-                        borderColor: t.status === 'waiting_customer' ? '#f97316' : undefined }}
+                      className="u-33842f4" style={{ borderColor: t.status === 'waiting_customer' ? '#f97316' : undefined }}
                       disabled={!isManager && t.assigned_to !== user.id}
                     >
                       {(isManager ? managerStatuses : engineerStatuses).map(s => (
@@ -536,7 +535,7 @@ export default function Tasks() {
                       ))}
                     </select>
                     {(t.status === 'waiting_customer' || t.status === 'waiting_vendor') && t.pending_from_customer && (
-                      <div style={{ fontSize: 11, color: t.status === 'waiting_vendor' ? '#6b21a8' : '#9a3412', marginTop: 3, maxWidth: 180, lineHeight: 1.3 }}>
+                      <div className="u-c37f0d4" style={{ color: t.status === 'waiting_vendor' ? '#6b21a8' : '#9a3412' }}>
                         ⏳ {t.pending_from_customer}
                       </div>
                     )}
@@ -544,8 +543,7 @@ export default function Tasks() {
                   <td className="text-center">
                     {(isManager || t.assigned_to === user.id) && (
                       <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ padding: '4px 6px', color: 'var(--gray-500)' }}
+                        className="btn btn-ghost btn-sm u-51719e9"
                         title="Edit task"
                         onClick={() => setEditTask(t)}
                       >
@@ -599,7 +597,7 @@ export default function Tasks() {
       {showCreate && (
         <Modal title="New Task" onClose={() => { setShowCreate(false);setCreateCustomerId(null);setCreateErr(''); }}>
           <form onSubmit={createTask}>
-            {createErr && <div className="error-msg" style={{ marginBottom: 10 }}>{createErr}</div>}
+            {createErr && <div className="error-msg u-761d3ad">{createErr}</div>}
             <div className="form-group"><label>Title *</label><input value={form.title} onChange={set('title')} required /></div>
             <div className="form-group"><label>Description</label><textarea value={form.description} onChange={set('description')} /></div>
             <div className="form-row">
@@ -624,12 +622,12 @@ export default function Tasks() {
               </select>
             </div>}
             <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
-                <input type="checkbox" checked={form.is_adhoc} onChange={e => setForm(f => ({ ...f, is_adhoc: e.target.checked }))} style={{ width: 'auto' }} />
+              <label className="u-ea06b0c">
+                <input type="checkbox" checked={form.is_adhoc} onChange={e => setForm(f => ({ ...f, is_adhoc: e.target.checked }))} className="u-30e741d" />
                 Mark as Ad-hoc Task
               </label>
             </div>
-            <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+            <div className="modal-footer u-cc45258">
               <button type="button" className="btn btn-ghost" onClick={() => { setShowCreate(false);setCreateCustomerId(null); }}>Cancel</button>
               <button type="submit" className="btn btn-primary">Create</button>
             </div>

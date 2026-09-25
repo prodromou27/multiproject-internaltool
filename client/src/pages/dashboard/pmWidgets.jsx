@@ -29,8 +29,7 @@ export function pmWidget(id, ctx) {
 
     case 'pm_visits':
       return (
-        <div key={id} className="card" style={{ marginBottom:20,
-          borderLeft: `3px solid ${incompleteVisits.length ? 'var(--warning)' : 'var(--success)'}` }}>
+        <div key={id} className="card u-49f14f8" style={{ borderLeft: `3px solid ${incompleteVisits.length ? 'var(--warning)' : 'var(--success)'}` }}>
           <div className="section-header">
             <div className="flex-center gap-8">
               <Wrench size={15} color={incompleteVisits.length ? 'var(--warning)' : 'var(--success)'} />
@@ -61,8 +60,7 @@ export function pmWidget(id, ctx) {
                           <td>
                             {v.status !== 'cancelled' && (
                               <button
-                                className="btn btn-sm btn-success"
-                                style={{ display:'inline-flex', alignItems:'center', gap:4 }}
+                                className="btn btn-sm btn-success u-122b3a0"
                                 disabled={completingVisit === v.id}
                                 onClick={async () => {
                                   if (completingVisit) return;
@@ -101,8 +99,7 @@ export function pmWidget(id, ctx) {
             ? <p className="text-muted text-sm">No active projects</p>
             : <ul className="list-none">
                 {activeProjects.slice(0, 8).map(p => (
-                  <li key={p.id} style={{ padding:'9px 0', borderBottom:'1px solid var(--gray-100)',
-                    display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                  <li key={p.id} className="u-710b0ff">
                     <Link to={`/projects/${p.id}`}
                       style={{ flex:1, fontWeight:600, minWidth:120, color:'var(--gray-900)' }}>{p.title}</Link>
                     <StatusBadge entityType="project" s={p.status} />

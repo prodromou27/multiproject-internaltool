@@ -23,9 +23,9 @@ function TemplateTaskRow({ task, tplId, onDelete, onUpdate }) {
   }
 
   if (editing) return (
-    <div style={{ padding: '8px 0', borderBottom: '1px solid var(--gray-100)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-      <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} style={{ flex: 2, minWidth: 140, fontSize: 13 }} placeholder="Task title" />
-      <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} style={{ width: 100 }}>
+    <div className="u-a5746ff">
+      <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="u-2993759" placeholder="Task title" />
+      <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className="u-db4cf10">
         {PRIORITY_OPTS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
       </select>
       <button className="btn btn-primary btn-sm" onClick={save} disabled={saving || !form.title.trim()}>Save</button>
@@ -34,12 +34,12 @@ function TemplateTaskRow({ task, tplId, onDelete, onUpdate }) {
   );
 
   return (
-    <div style={{ padding: '6px 0', borderBottom: '1px solid var(--gray-50)', display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="u-ac22c72">
       <CheckSquare size={13} color="var(--gray-400)" className="flex-shrink-0" />
-      <span style={{ flex: 1, fontSize: 13, color: 'var(--gray-800)' }}>{task.title}</span>
+      <span className="u-c3c1363">{task.title}</span>
       <PriorityBadge p={task.priority} />
-      <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px' }} onClick={() => setEditing(true)}><Pencil size={12} /></button>
-      <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', color: 'var(--danger)' }} onClick={() => onDelete(task.id)}><Trash2 size={12} /></button>
+      <button className="btn btn-ghost btn-sm u-fe9a050" onClick={() => setEditing(true)}><Pencil size={12} /></button>
+      <button className="btn btn-ghost btn-sm u-544f487" onClick={() => onDelete(task.id)}><Trash2 size={12} /></button>
     </div>
   );
 }
@@ -89,30 +89,30 @@ function TemplateCard({ tpl, onDelete, onRefresh }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+    <div className="card u-2b583d7">
+      <div className="u-bae250a">
         <div className="flex-1 min-w-0">
           {editing ? (
             <form onSubmit={saveEdit} className="flex-center gap-8 flex-wrap">
-              <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} required style={{ flex: 2, minWidth: 140 }} placeholder="Template name" />
-              <input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} style={{ flex: 3, minWidth: 180 }} placeholder="Description (optional)" />
+              <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} required className="u-d60dd40" placeholder="Template name" />
+              <input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} className="u-6dcce15" placeholder="Description (optional)" />
               <button type="submit" className="btn btn-primary btn-sm">Save</button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Cancel</button>
             </form>
           ) : (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div className="u-36764d1">
                 <FolderOpen size={15} color="var(--primary)" />
-                <span style={{ fontWeight: 700, fontSize: 15 }}>{tpl.name}</span>
-                <span className="badge badge-active" style={{ fontSize: 10 }}>{tpl.task_count} task{tpl.task_count !== 1 ? 's' : ''}</span>
+                <span className="u-0c7a14e">{tpl.name}</span>
+                <span className="badge badge-active u-0d5be05">{tpl.task_count} task{tpl.task_count !== 1 ? 's' : ''}</span>
               </div>
-              {tpl.description && <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>{tpl.description}</p>}
-              <p style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 2 }}>Created by {tpl.created_by_name}</p>
+              {tpl.description && <p className="u-711e404">{tpl.description}</p>}
+              <p className="u-f6e5233">Created by {tpl.created_by_name}</p>
             </>
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+        <div className="u-f63e8ab">
           <button className="btn btn-primary btn-sm inline-flex items-center gap-4" onClick={() => setApplying(true)} title="Use this template to create a project">
             <Copy size={12} /> Use
           </button>
@@ -120,13 +120,13 @@ function TemplateCard({ tpl, onDelete, onRefresh }) {
           <button className="btn btn-ghost btn-sm inline-flex items-center" onClick={() => setExpanded(e => !e)} title="Expand tasks">
             {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
-          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => onDelete(tpl.id)} title="Delete template"><Trash2 size={12} /></button>
+          <button className="btn btn-ghost btn-sm u-497726e" onClick={() => onDelete(tpl.id)} title="Delete template"><Trash2 size={12} /></button>
         </div>
       </div>
 
       {/* Expanded tasks */}
       {expanded && (
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--gray-100)' }}>
+        <div className="u-479bc87">
           {!detail
             ? <p className="text-muted text-sm">Loading…</p>
             : detail.tasks.length === 0 && !adding
@@ -137,16 +137,16 @@ function TemplateCard({ tpl, onDelete, onRefresh }) {
           }
 
           {adding ? (
-            <form onSubmit={addTask} style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <input autoFocus value={newTask.title} onChange={e => setNewTask(f => ({ ...f, title: e.target.value }))} placeholder="Task title…" style={{ flex: 2, minWidth: 150, fontSize: 13 }} />
-              <select value={newTask.priority} onChange={e => setNewTask(f => ({ ...f, priority: e.target.value }))} style={{ width: 100 }}>
+            <form onSubmit={addTask} className="u-b54cd21">
+              <input autoFocus value={newTask.title} onChange={e => setNewTask(f => ({ ...f, title: e.target.value }))} placeholder="Task title…" className="u-420cbe7" />
+              <select value={newTask.priority} onChange={e => setNewTask(f => ({ ...f, priority: e.target.value }))} className="u-db4cf10">
                 {PRIORITY_OPTS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
               </select>
               <button type="submit" className="btn btn-primary btn-sm" disabled={saving || !newTask.title.trim()}>Add</button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAdding(false)}>Cancel</button>
             </form>
           ) : (
-            <button className="btn btn-ghost btn-sm" style={{ marginTop: 8, fontSize: 12 }} onClick={() => setAdding(true)}>
+            <button className="btn btn-ghost btn-sm u-c5b0b89" onClick={() => setAdding(true)}>
               <Plus size={12} /> Add Task
             </button>
           )}
@@ -217,18 +217,14 @@ function ApplyTemplateModal({ tpl, onClose, onCreated }) {
           <label>Assign Engineers</label>
           <div className="flex flex-wrap gap-6 mt-4">
             {engineers.map(u => (
-              <label key={u.id} style={{
-                display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '4px 8px',
-                background: form.member_ids.includes(u.id) ? '#dbeafe' : 'var(--gray-100)', borderRadius: 6, fontSize: 12,
-                border: form.member_ids.includes(u.id) ? '1px solid #93c5fd' : '1px solid transparent',
-              }}>
-                <input type="checkbox" checked={form.member_ids.includes(u.id)} onChange={() => toggleMember(u.id)} style={{ width: 'auto' }} />
+              <label key={u.id} className="u-f96aafa" style={{ background: form.member_ids.includes(u.id) ? '#dbeafe' : 'var(--gray-100)', border: form.member_ids.includes(u.id) ? '1px solid #93c5fd' : '1px solid transparent' }}>
+                <input type="checkbox" checked={form.member_ids.includes(u.id)} onChange={() => toggleMember(u.id)} className="u-30e741d" />
                 {u.name}
               </label>
             ))}
           </div>
         </div>
-        <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+        <div className="modal-footer u-cc45258">
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={saving}>
             {saving ? 'Creating…' : `Create Project (${tpl.task_count} tasks)`}
@@ -299,7 +295,7 @@ export default function Templates() {
           <form onSubmit={createTemplate}>
             <div className="form-group"><label>Template Name *</label><input autoFocus value={newForm.name} onChange={e => setNewForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. Quarterly Site Visit" /></div>
             <div className="form-group"><label>Description</label><textarea value={newForm.description} onChange={e => setNewForm(f => ({ ...f, description: e.target.value }))} rows={2} placeholder="What is this template for?" /></div>
-            <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+            <div className="modal-footer u-cc45258">
               <button type="button" className="btn btn-ghost" onClick={() => setShowNew(false)}>Cancel</button>
               <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Creating…' : 'Create Template'}</button>
             </div>

@@ -82,15 +82,15 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
 
   return (
     <Modal onClose={onClose}>
-      <div style={{ minWidth: 420, maxWidth: 560 }}>
+      <div className="u-8ad2dda">
         {/* Header */}
         <div className="mb-20">
-          <h2 style={{ margin: 0, fontSize: 18, display: 'flex', alignItems: 'center', gap: 8 }}><Upload size={18} /> {title}</h2>
+          <h2 className="u-31afecb"><Upload size={18} /> {title}</h2>
         </div>
 
         {/* Template download */}
-        <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '12px 16px', marginBottom: 20 }}>
-          <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 13 }}>Step 1 — Download the template</div>
+        <div className="u-7505550">
+          <div className="u-26bc431">Step 1 — Download the template</div>
           <button
             className="btn btn-ghost btn-sm inline-flex items-center gap-6"
            
@@ -105,59 +105,51 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
             {downloading ? '⏳ Downloading…' : '⬇ Download Template (.xlsx)'}
           </button>
           {columns.length > 0 && (
-            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--gray-500)' }}>
+            <div className="u-84faa37">
               <strong>Columns:</strong>&nbsp;
               {columns.map((c, i) => (
                 <span key={c}>
-                  <code style={{ background: 'var(--gray-100)', padding: '1px 4px', borderRadius: 3 }}>
+                  <code className="u-59f3af2">
                     {c}
                   </code>
                   {i < columns.length - 1 ? ', ' : ''}
                 </span>
               ))}
-              <span style={{ marginLeft: 4 }}>(<span style={{ color: 'var(--danger)' }}>*</span> = required)</span>
+              <span className="u-46cec89">(<span className="u-497726e">*</span> = required)</span>
             </div>
           )}
         </div>
 
         {/* File drop zone */}
         <div className="mb-16">
-          <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>Step 2 — Upload your file</div>
+          <div className="u-fcbd5e4">Step 2 — Upload your file</div>
           <div
             onClick={() => inputRef.current?.click()}
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
             onDrop={onDrop}
-            style={{
-              border: `2px dashed ${dragging ? 'var(--primary)' : 'var(--gray-300)'}`,
-              borderRadius: 8,
-              padding: '28px 16px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              background: dragging ? 'var(--primary-light, #e8f0fe)' : 'var(--gray-50)',
-              transition: 'all 0.15s',
-            }}
+            className="u-e4ae2d3" style={{ border: `2px dashed ${dragging ? 'var(--primary)' : 'var(--gray-300)'}`, background: dragging ? 'var(--primary-light, #e8f0fe)' : 'var(--gray-50)' }}
           >
             <input
               ref={inputRef}
               type="file"
               accept={accept}
-              style={{ display: 'none' }}
+              className="u-6b99de8"
               onChange={onInputChange}
             />
             {file ? (
               <div>
-                <div style={{ fontSize: 28, marginBottom: 6 }}>📄</div>
+                <div className="u-9ff9df9">📄</div>
                 <div className="font-semibold">{file.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+                <div className="u-4687662">
                   {(file.size / 1024).toFixed(1)} KB — click to change
                 </div>
               </div>
             ) : (
               <div>
-                <div style={{ fontSize: 28, marginBottom: 6 }}>📂</div>
+                <div className="u-9ff9df9">📂</div>
                 <div className="font-semibold">Drop file here or click to browse</div>
-                <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+                <div className="u-4687662">
                   Supported: .xlsx, .xlsm, .csv
                 </div>
               </div>
@@ -167,7 +159,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
 
         {/* Error */}
         {error && (
-          <div className="alert alert-danger" style={{ marginBottom: 16, fontSize: 13 }}>
+          <div className="alert alert-danger u-5f7bb55">
             ⚠ {error}
           </div>
         )}
@@ -175,32 +167,30 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
         {/* Result summary */}
         {result && (
           <div className="mb-16">
-            <div style={{
-              display: 'flex', gap: 12, marginBottom: result.errors?.length ? 12 : 0
-            }}>
-              <div style={{ flex: 1, background: '#d1fae5', borderRadius: 8, padding: '10px 16px', textAlign: 'center' }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--tone-success-text)' }}>{result.imported}</div>
-                <div style={{ fontSize: 11, color: 'var(--tone-success-text)', fontWeight: 600 }}>Imported</div>
+            <div className="u-abc9d35" style={{ marginBottom: result.errors?.length ? 12 : 0 }}>
+              <div className="u-6396897">
+                <div className="u-4b6bd12">{result.imported}</div>
+                <div className="u-9f239db">Imported</div>
               </div>
-              <div style={{ flex: 1, background: result.skipped ? '#fef3c7' : '#f0fdf4', borderRadius: 8, padding: '10px 16px', textAlign: 'center' }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: result.skipped ? '#92400e' : '#166534' }}>{result.skipped}</div>
-                <div style={{ fontSize: 11, color: result.skipped ? '#92400e' : '#166534', fontWeight: 600 }}>Skipped / Errors</div>
+              <div className="u-0ced26f" style={{ background: result.skipped ? '#fef3c7' : '#f0fdf4' }}>
+                <div className="u-86ecc8d" style={{ color: result.skipped ? '#92400e' : '#166534' }}>{result.skipped}</div>
+                <div className="u-0907ca8" style={{ color: result.skipped ? '#92400e' : '#166534' }}>Skipped / Errors</div>
               </div>
             </div>
             {result.errors?.length > 0 && (
-              <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--gray-200)', borderRadius: 6, fontSize: 12 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div className="u-5524431">
+                <table className="u-a55f31d">
                   <thead>
-                    <tr style={{ background: 'var(--gray-50)', position: 'sticky', top: 0 }}>
-                      <th style={{ padding: '6px 10px', textAlign: 'left', width: 60 }}>Row</th>
-                      <th style={{ padding: '6px 10px', textAlign: 'left' }}>Error</th>
+                    <tr className="u-d2a4809">
+                      <th className="u-bcf0f56">Row</th>
+                      <th className="u-2a9ffb1">Error</th>
                     </tr>
                   </thead>
                   <tbody>
                     {result.errors.map((e, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid var(--gray-100)' }}>
-                        <td style={{ padding: '5px 10px', color: 'var(--gray-500)' }}>{e.row}</td>
-                        <td style={{ padding: '5px 10px', color: 'var(--danger)' }}>{e.error}</td>
+                      <tr key={i} className="u-5e0211f">
+                        <td className="u-e3294d8">{e.row}</td>
+                        <td className="u-f92cc01">{e.error}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -211,7 +201,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
         )}
 
         {/* Action buttons */}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div className="u-309cf47">
           {result ? (
             <>
               <button className="btn btn-ghost" onClick={reset}>Import Another</button>

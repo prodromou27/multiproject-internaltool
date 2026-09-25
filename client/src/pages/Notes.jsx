@@ -146,29 +146,28 @@ export default function Notes() {
 
       {noteError && <div className="error-msg" role="alert">{noteError}{!noteReady && <button className="btn btn-ghost btn-sm" onClick={loadNote}>Retry loading note</button>}</div>}
       {todoError && <div className="error-msg" role="alert">{todoError}<button className="btn btn-ghost btn-sm" onClick={loadTodos}>Retry loading list</button></div>}
-      <div className="grid-2" style={{ gap: 20, alignItems: 'start' }}>
+      <div className="grid-2 u-7cce4cc">
 
         {/* ── Left: Scratchpad ─────────────────────────────── */}
         <div className="card">
           <div className="flex items-center justify-between mb-12">
             <div className="flex-center gap-8">
               <StickyNote size={15} color="var(--warning)" />
-              <span style={{ fontWeight: 700, fontSize: 14 }}>Scratchpad</span>
+              <span className="u-4aaa243">Scratchpad</span>
             </div>
-            <div style={{ display: 'flex', align: 'center', gap: 8 }}>
+            <div className="u-11d3b55">
               {noteUpdated && (
-                <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>
+                <span className="u-5be3ef4">
                   Saved {fmtUpdated(noteUpdated)}
                 </span>
               )}
               {!noteSaved && (
-                <span style={{ fontSize: 11, color: 'var(--warning)', fontWeight: 600 }}>Unsaved…</span>
+                <span className="u-c36a96d">Unsaved…</span>
               )}
               <button
-                className="btn btn-ghost btn-sm"
+                className="btn btn-ghost btn-sm u-d367c8c"
                 onClick={saveNoteNow}
                 disabled={noteSaved}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}
               >
                 <Save size={12} /> Save
               </button>
@@ -184,17 +183,10 @@ export default function Notes() {
               value={noteContent}
               onChange={e => handleNoteChange(e.target.value)}
               placeholder={`Jot down anything, ${user.name.split(' ')[0]}…\n\nIdeas, reminders, links, quick calculations — this is your private space.`}
-              style={{
-                width: '100%', minHeight: 340, resize: 'vertical',
-                fontSize: 13, lineHeight: 1.65,
-                fontFamily: 'ui-monospace, "Cascadia Code", "Fira Code", monospace',
-                background: '#fffbf0', border: '1px solid #fde68a',
-                borderRadius: 8, padding: '12px 14px',
-                color: 'var(--gray-800)',
-              }}
+              className="u-a338ae9"
             />
           )}
-          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--gray-400)' }}>
+          <div className="u-bc16186">
             {noteContent.length} chars · Auto-saves as you type
           </div>
         </div>
@@ -204,27 +196,27 @@ export default function Notes() {
           <div className="flex items-center justify-between mb-12">
             <div className="flex-center gap-8">
               <CheckSquare size={15} color="var(--primary)" />
-              <span style={{ fontWeight: 700, fontSize: 14 }}>To-Do List</span>
+              <span className="u-4aaa243">To-Do List</span>
               {openTodos.length > 0 && (
-                <span style={{ background: 'var(--primary)', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 10, padding: '1px 7px' }}>
+                <span className="u-b53a476">
                   {openTodos.length}
                 </span>
               )}
             </div>
             {doneTodos.length > 0 && (
-              <button className="btn btn-ghost btn-sm" onClick={clearDone} style={{ fontSize: 11, color: 'var(--gray-400)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <button className="btn btn-ghost btn-sm u-5c24dde" onClick={clearDone}>
                 <Trash2 size={11} /> Clear done ({doneTodos.length})
               </button>
             )}
           </div>
 
           {/* Add new */}
-          <form onSubmit={addTodo} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <form onSubmit={addTodo} className="u-6c07a8a">
             <input
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
               placeholder="Add a to-do item…"
-              style={{ flex: 1, fontSize: 13 }}
+              className="u-7829123"
             />
             <button type="submit" className="btn btn-primary btn-sm inline-flex items-center gap-4" disabled={adding || !newTitle.trim()}>
               <Plus size={13} /> Add
@@ -243,7 +235,7 @@ export default function Notes() {
               {/* Done section */}
               {doneTodos.length > 0 && (
                 <>
-                  <li style={{ padding: '8px 0 4px', fontSize: 11, color: 'var(--gray-400)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                  <li className="u-0440d69">
                     Done
                   </li>
                   {doneTodos.map(t => (
@@ -262,26 +254,19 @@ export default function Notes() {
 
 function TodoItem({ todo, onToggle, onDelete }) {
   return (
-    <li style={{
-      display: 'flex', alignItems: 'center', gap: 10,
-      padding: '7px 0', borderBottom: '1px solid var(--gray-50)',
-    }}>
+    <li className="u-4715234">
       <input
         type="checkbox"
         checked={!!todo.done}
         onChange={() => onToggle(todo)}
-        style={{ flexShrink: 0, cursor: 'pointer', width: 16, height: 16 }}
+        className="u-1461561"
       />
-      <span style={{
-        flex: 1, fontSize: 13,
-        color: todo.done ? 'var(--gray-400)' : 'var(--gray-800)',
-        textDecoration: todo.done ? 'line-through' : 'none',
-      }}>
+      <span className="u-7829123" style={{ color: todo.done ? 'var(--gray-400)' : 'var(--gray-800)', textDecoration: todo.done ? 'line-through' : 'none' }}>
         {todo.title}
       </span>
       <button
         onClick={() => onDelete(todo.id)}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-300)', padding: '1px 3px', display: 'flex', alignItems: 'center' }}
+        className="u-548e280"
         onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
         onMouseLeave={e => e.currentTarget.style.color = 'var(--gray-300)'}
       >

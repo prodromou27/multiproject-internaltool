@@ -42,8 +42,8 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
       <div className="form-row">
         <div className="form-group"><label>Customer Code</label><input value={form.customer_code} onChange={set('customer_code')} placeholder="Internal reference" /></div>
         <div className="form-group">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0, marginTop: 22 }}>
-            <input type="checkbox" checked={!!form.active} onChange={setBool('active')} style={{ width: 'auto' }} /> Active
+          <label className="u-7ff4b47">
+            <input type="checkbox" checked={!!form.active} onChange={setBool('active')} className="u-30e741d" /> Active
           </label>
         </div>
       </div>
@@ -57,12 +57,12 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
       </div>
       <div className="form-group"><label>Notes</label><textarea value={form.notes} onChange={set('notes')} /></div>
 
-      <details className="column-picker" open={showService} onToggle={e => setShowService(e.target.open)} style={{ marginTop: 4 }}>
-        <summary className="btn btn-ghost btn-sm" style={{ display: 'inline-block' }}>Service Activity Tracking</summary>
-        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--gray-100)' }}>
+      <details className="column-picker u-96ad609" open={showService} onToggle={e => setShowService(e.target.open)}>
+        <summary className="btn btn-ghost btn-sm u-60e32dc">Service Activity Tracking</summary>
+        <div className="u-ffb3bf2">
           <div className="form-group">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
-              <input type="checkbox" checked={!!form.service_activity_enabled} onChange={setBool('service_activity_enabled')} style={{ width: 'auto' }} />
+            <label className="u-ea06b0c">
+              <input type="checkbox" checked={!!form.service_activity_enabled} onChange={setBool('service_activity_enabled')} className="u-30e741d" />
               Service Activity Tracking Enabled
             </label>
           </div>
@@ -88,7 +88,7 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
                     <span key={id} className="badge badge-open inline-flex items-center gap-4">
                       {teams.find(t => t.id === id)?.name || `Team ${id}`}
                       <button type="button" aria-label="Remove team" onClick={() => setSelectedTeams(selectedTeams.filter(x => x !== id))}
-                        style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'inherit', lineHeight: 1 }}>×</button>
+                        className="u-d7e0c12">×</button>
                     </span>
                   ))}
                 </div>
@@ -119,22 +119,22 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
           </div>
           <div className="form-group"><label>Service Notes</label><textarea value={form.service_notes} onChange={set('service_notes')} rows={2} /></div>
 
-          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: .5 }}>Activity Requirements</label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginTop: 6 }}>
+          <label className="u-6a565d3">Activity Requirements</label>
+          <div className="u-d46a252">
             {[
               ['require_duration', 'Require Duration'], ['require_ticket_reference', 'Require Ticket Reference'],
               ['require_technology', 'Require Technology'], ['require_category', 'Require Category'],
               ['require_notes', 'Require Notes'], ['require_billable_classification', 'Require Billable Classification'],
             ].map(([k, label]) => (
-              <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, textTransform: 'none', letterSpacing: 0 }}>
-                <input type="checkbox" checked={!!form[k]} onChange={setBool(k)} style={{ width: 'auto' }} /> {label}
+              <label key={k} className="u-d1b8a2e">
+                <input type="checkbox" checked={!!form[k]} onChange={setBool(k)} className="u-30e741d" /> {label}
               </label>
             ))}
           </div>
         </div>
       </details>
 
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+      <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
       </div>
@@ -239,7 +239,7 @@ export default function Customers() {
             ['tracked', 'Service tracking', counts.tracked || 0],
             ['inactive', 'Inactive', counts.inactive || 0],
           ].map(([key, label, count]) => <button key={key} className={`filter-pill${view === key ? ' active' : ''}`} onClick={() => setView(key)}>
-            {label} <span style={{ opacity: .7 }}>({count})</span>
+            {label} <span className="u-383082b">({count})</span>
           </button>)}
         </FilterGroup>
       </Surface>
