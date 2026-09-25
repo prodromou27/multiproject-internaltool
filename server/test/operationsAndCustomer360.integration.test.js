@@ -53,7 +53,7 @@ test('operational overview scopes work and aggregates more than one activity pag
   for (const section of [overview.tasks.attention, overview.projects.commitments, overview.visits.reports, overview.visits.upcoming_items, overview.service.follow_ups]) assert.ok(section.length <= 5);
   const queuedReport=(await db.prepare(`INSERT INTO managed_report_history
     (customer_id,period_start,period_end,output_format,report_version,status,workflow_status,original_name,stored_name,mime_type,size,sections,generated_by,enc_iv,enc_tag)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`).get(ids.customer,'2026-09-01','2026-09-15','pdf',1,'generated','draft','report.pdf','stored-report.pdf','application/pdf',1,'[]',ids.manager,'iv','tag'));
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`).get(ids.customer,'2026-09-01','2026-09-15','pdf',1,'final','draft','report.pdf','stored-report.pdf','application/pdf',1,'[]',ids.manager,'iv','tag'));
   await db.prepare("UPDATE managed_report_history SET workflow_status='in_review',submitted_at='2026-09-15 10:00:00' WHERE id=?").run(queuedReport.id);
   const management = await api('/api/operations/overview?as_of=2026-09-17', { token: ids.tokenManager });
   assert.equal(management.status, 200);
