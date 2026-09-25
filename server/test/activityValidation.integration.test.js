@@ -1,5 +1,5 @@
 const { test, assert, api, db, ids, createActivity, bcrypt, signJwt,  } = require('./lib/activityFixture');
-const fixture = require('./lib/activityFixture');
+const suiteFixture = require('./lib/activityFixture');
 
 
 
@@ -126,7 +126,7 @@ test('customer changes choose an eligible team for the new customer', async () =
 test('export reaches the workbook route and remains scoped to the owning engineer', async () => {
   const manager = await createActivity({ title: 'Engineer export scope marker' });
   assert.equal(manager.status, 200);
-  const response = await fetch(`${fixture.baseUrl}/api/service-activities/export`, { headers: { Authorization: `Bearer ${ids.tokenEnabled}` } });
+  const response = await fetch(`${suiteFixture.baseUrl}/api/service-activities/export`, { headers: { Authorization: `Bearer ${ids.tokenEnabled}` } });
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type'), /spreadsheetml/);
   const workbook = new (require('exceljs').Workbook)();
@@ -206,7 +206,7 @@ test('browser cookies enforce CSRF, required password changes, renewal and logou
   const restricted = await api('/api/service-activities', { cookie });
   assert.equal(restricted.status, 403);
   assert.equal(restricted.data.code, 'PASSWORD_CHANGE_REQUIRED');
-  const exportDenied = await fetch(`${fixture.baseUrl}/api/service-activities/export`, { headers: { Cookie: cookie } });
+  const exportDenied = await fetch(`${suiteFixture.baseUrl}/api/service-activities/export`, { headers: { Cookie: cookie } });
   assert.equal(exportDenied.status, 403);
   const body = { new_password: 'replacement-password-123' };
   assert.equal((await api('/api/auth/change-password-first', { method: 'POST', cookie, csrf: false, body })).status, 403);

@@ -1,5 +1,5 @@
 const { test, assert, api, db, ids, bcrypt, signJwt,  } = require('./lib/activityFixture');
-const fixture = require('./lib/activityFixture');
+const suiteFixture = require('./lib/activityFixture');
 
 test('customer recommendations validate references, preserve history and reject stale edits', async () => {
   const customer = (await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Recommendation customer')).lastInsertRowid;
@@ -183,7 +183,7 @@ test('maintenance workbook and list share filters, literal decrypted search and 
     for (const user of [ids.manager, planner]) {
       const list = await api(`/api/maintenance-visits?${query}`, { token: signJwt({ id: user }) });
       assert.equal(list.status, 200);
-      const response = await fetch(`${fixture.baseUrl}/api/maintenance-visits/export?${query}&token=${signJwt({ id: user, download: true })}`);
+      const response = await fetch(`${suiteFixture.baseUrl}/api/maintenance-visits/export?${query}&token=${signJwt({ id: user, download: true })}`);
       assert.equal(response.status, 200);
       const workbook = new (require('exceljs').Workbook)();
       await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));

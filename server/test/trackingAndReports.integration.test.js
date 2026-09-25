@@ -1,5 +1,5 @@
 const { test, assert, api, db, ids, createActivity, bcrypt, signJwt,  } = require('./lib/activityFixture');
-const fixture = require('./lib/activityFixture');
+const suiteFixture = require('./lib/activityFixture');
 
 test('service activities validate follow-up dates, times, IDs, text and boolean inputs', async () => {
   const base = { customer_id: ids.customer, activity_date: new Date().toISOString().slice(0, 10), category_id: ids.category, title: 'Validation review' };
@@ -77,7 +77,7 @@ test('attachment upload failures clean files and attachment reads enforce activi
   const uploadPdf = async () => {
     const form = new FormData();
     form.append('file', new Blob(['%PDF-1.4\nTest document'], { type: 'application/pdf' }), 'test.pdf');
-    const response = await fetch(`${fixture.baseUrl}${endpoint}`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenEnabled}` }, body: form });
+    const response = await fetch(`${suiteFixture.baseUrl}${endpoint}`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenEnabled}` }, body: form });
     return { status: response.status, data: await response.json() };
   };
   const before = (await fs.promises.readdir(uploadDir)).sort();
@@ -99,9 +99,9 @@ test('attachment upload failures clean files and attachment reads enforce activi
     const ownerList=await api(endpoint,{ token:ids.tokenEnabled });
     assert.equal(ownerList.status,200);assert.equal(ownerList.data[0].stored_name,undefined);assert.equal(ownerList.data[0].enc_iv,undefined);assert.equal(ownerList.data[0].enc_tag,undefined);
     assert.equal((await api(`${endpoint}/not-an-id/download`,{ token:ids.tokenEnabled })).status,400);
-    const download = await fetch(`${fixture.baseUrl}${endpoint}/${uploaded.data.id}/download`, { headers: { Authorization: `Bearer ${ids.tokenDisabled}` } });
+    const download = await fetch(`${suiteFixture.baseUrl}${endpoint}/${uploaded.data.id}/download`, { headers: { Authorization: `Bearer ${ids.tokenDisabled}` } });
     assert.equal(download.status, 403);
-    const ownerDownload=await fetch(`${fixture.baseUrl}${endpoint}/${uploaded.data.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenEnabled}` } });
+    const ownerDownload=await fetch(`${suiteFixture.baseUrl}${endpoint}/${uploaded.data.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenEnabled}` } });
     assert.equal(ownerDownload.status,200);assert.equal(ownerDownload.headers.get('cache-control'),'private, no-store');assert.equal(ownerDownload.headers.get('x-content-type-options'),'nosniff');
     const original = db.prepare;
     const deletionFailure = t.mock.method(db, 'prepare', function(sql) {
@@ -159,7 +159,7 @@ test('Excel export matches all list filters and exports the entire matching set'
   assert.equal(list.status, 200);
   assert.equal(Number(list.data.total), 2);
   assert.equal(list.data.rows.length, 1);
-  const response = await fetch(`${fixture.baseUrl}/api/service-activities/export?${query}`, { headers: { Authorization: `Bearer ${ids.tokenManager}` } });
+  const response = await fetch(`${suiteFixture.baseUrl}/api/service-activities/export?${query}`, { headers: { Authorization: `Bearer ${ids.tokenManager}` } });
   assert.equal(response.status, 200);
   const workbook = new (require('exceljs').Workbook)();
   await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
@@ -213,7 +213,7 @@ test('management activity report export rejects non-managers including scoped do
     assert.equal((await api(`/api/reports/service-activity/export?token=${downloadToken}`)).status, 403);
   }
   for (const suffix of ['', `?token=${signJwt({ id: ids.manager, download: true })}`]) {
-    const response = await fetch(`${fixture.baseUrl}/api/reports/service-activity/export${suffix}`, {
+    const response = await fetch(`${suiteFixture.baseUrl}/api/reports/service-activity/export${suffix}`, {
       headers: suffix ? {} : { Authorization: `Bearer ${ids.tokenManager}` },
     });
     assert.equal(response.status, 200);
@@ -249,7 +249,7 @@ test('task list and workbook export match filters and preserve ownership on Post
     const list = await api(`/api/tasks?${query}`, { token: ids.tokenEnabled });
     assert.equal(list.status, 200);
     assert.deepEqual(list.data.map(row => row.id), expected);
-    const response = await fetch(`${fixture.baseUrl}/api/tasks/export?${query}`, { headers: { Authorization: `Bearer ${ids.tokenEnabled}` } });
+    const response = await fetch(`${suiteFixture.baseUrl}/api/tasks/export?${query}`, { headers: { Authorization: `Bearer ${ids.tokenEnabled}` } });
     assert.equal(response.status, 200);
     const workbook = new (require('exceljs').Workbook)();
     await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
@@ -294,7 +294,7 @@ test('task pages retain full totals, stable ordering, enrichment and unpaged exp
   assert.equal(narrowed.data.total, 1);
   assert.equal(narrowed.data.counts.all, 1);
   const download = signJwt({ id: ids.engineerEnabled, download: true });
-  const response = await fetch(`${fixture.baseUrl}/api/tasks/export?${base}&page=2&page_size=25&token=${download}`);
+  const response = await fetch(`${suiteFixture.baseUrl}/api/tasks/export?${base}&page=2&page_size=25&token=${download}`);
   assert.equal(response.status, 200);
   const workbook = new (require('exceljs').Workbook)();
   await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));

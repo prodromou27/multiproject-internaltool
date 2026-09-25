@@ -1,5 +1,5 @@
 const { test, assert, api, db, ids, createActivity, bcrypt, signJwt,  } = require('./lib/activityFixture');
-const fixture = require('./lib/activityFixture');
+const suiteFixture = require('./lib/activityFixture');
 
 test('workload pressure enforces manager access, policy versions and independent obligations', async () => {
   const { defaults } = require('../workloadPolicy');
@@ -52,7 +52,7 @@ test('customer assets validate technical identifiers, enforce versions and remai
   assert.equal(searched.status,200);
   assert.equal(searched.data.total,1);
   for (const query of ['search=x','expiry=31']) assert.equal((await api(`${base}?${query}`,{ token:ids.tokenManager })).status,400);
-  const exportResponse=await fetch(`${fixture.baseUrl}${base}/export?search=gw01`,{ headers:{ Authorization:`Bearer ${ids.tokenManager}` } });
+  const exportResponse=await fetch(`${suiteFixture.baseUrl}${base}/export?search=gw01`,{ headers:{ Authorization:`Bearer ${ids.tokenManager}` } });
   assert.equal(exportResponse.status,200);
   const ExcelJS=require('exceljs'),exportBook=new ExcelJS.Workbook();await exportBook.xlsx.load(Buffer.from(await exportResponse.arrayBuffer()));
   assert.equal(exportBook.worksheets[0].getRow(2).getCell(1).value,'Primary Gateway');
@@ -60,7 +60,7 @@ test('customer assets validate technical identifiers, enforce versions and remai
   importSheet.addRow(['name*','asset_type*','asset_tag','technology','hostname','ip_address','coverage_type']);
   importSheet.addRow(['Imported host','Server','IMPORT-1','Firewall','imported.example.local','2001:db8::1','support']);
   const form=new FormData();form.append('file',new Blob([await importBook.xlsx.writeBuffer()],{ type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),'assets.xlsx');
-  const importedResponse=await fetch(`${fixture.baseUrl}${base}/import`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'X-SolutionsHub-Request':'1' },body:form });
+  const importedResponse=await fetch(`${suiteFixture.baseUrl}${base}/import`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'X-SolutionsHub-Request':'1' },body:form });
   assert.equal(importedResponse.status,201);
   assert.equal((await importedResponse.json()).imported,1);
   const list=await api(`${base}?coverage=managed&status=active`,{ token:ids.tokenManager });
@@ -92,7 +92,7 @@ test('customer asset files enforce ownership, file signatures, encryption and cl
   const filesPath=`${base}/${created.data.id}/attachments`;
   const sendFile=async (token,content,type,name='document.pdf') => {
     const form=new FormData();form.append('file',new Blob([content],{ type }),name);
-    return fetch(`${fixture.baseUrl}${filesPath}`,{ method:'POST',headers:{ Authorization:`Bearer ${token}`,'X-SolutionsHub-Request':'1' },body:form });
+    return fetch(`${suiteFixture.baseUrl}${filesPath}`,{ method:'POST',headers:{ Authorization:`Bearer ${token}`,'X-SolutionsHub-Request':'1' },body:form });
   };
   assert.equal((await sendFile(ids.tokenEnabled,'%PDF-1.4\ntest','application/pdf')).status,403);
   assert.equal((await sendFile(ids.tokenManager,'not a PDF','application/pdf')).status,400);
@@ -108,7 +108,7 @@ test('customer asset files enforce ownership, file signatures, encryption and cl
     assert.equal(Number(inventory.data.rows[0].attachment_count),1);
     assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets/${created.data.id}/attachments`,{ token:ids.tokenManager })).status,404);
     assert.equal((await api(`${filesPath}/${result.id}/download`,{ token:ids.tokenEnabled })).status,403);
-    const download=await fetch(`${fixture.baseUrl}${filesPath}/${result.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenManager}` } });
+    const download=await fetch(`${suiteFixture.baseUrl}${filesPath}/${result.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenManager}` } });
     assert.equal(download.status,200);assert.equal(await download.text(),'%PDF-1.4\nasset documentation');assert.equal(download.headers.get('cache-control'),'private, no-store');assert.equal(download.headers.get('x-content-type-options'),'nosniff');
     assert.equal((await api(`${filesPath}/${result.id}`,{ method:'DELETE',token:ids.tokenManager,body:{} })).status,200);
     assert.equal((await api(filesPath,{ token:ids.tokenManager })).data.length,0);
@@ -132,14 +132,14 @@ test('project attachments follow project visibility and preserve PM read-only ac
   assert.equal((await api(path,{ token:ids.tokenPlanner })).status,200);
   const sendFile=async token => {
     const form=new FormData();form.append('file',new Blob(['%PDF-1.4\nproject file'],{ type:'application/pdf' }),'project.pdf');
-    return fetch(`${fixture.baseUrl}${path}`,{ method:'POST',headers:{ Authorization:`Bearer ${token}`,'X-SolutionsHub-Request':'1' },body:form });
+    return fetch(`${suiteFixture.baseUrl}${path}`,{ method:'POST',headers:{ Authorization:`Bearer ${token}`,'X-SolutionsHub-Request':'1' },body:form });
   };
   assert.equal((await sendFile(ids.tokenPm)).status,403);
   const uploaded=await sendFile(ids.tokenManager);assert.equal(uploaded.status,201);const attachment=await uploaded.json();
   const list=await api(path,{ token:ids.tokenPlanner });
   assert.equal(list.status,200);assert.equal(list.data.length,1);assert.equal(list.data[0].stored_name,undefined);assert.equal(list.data[0].enc_iv,undefined);
   assert.equal((await api(`${path}/download/${attachment.id}`,{ token:ids.tokenDisabled })).status,403);
-  const pmDownload=await fetch(`${fixture.baseUrl}${path}/download/${attachment.id}`,{ headers:{ Authorization:`Bearer ${ids.tokenPm}` } });
+  const pmDownload=await fetch(`${suiteFixture.baseUrl}${path}/download/${attachment.id}`,{ headers:{ Authorization:`Bearer ${ids.tokenPm}` } });
   assert.equal(pmDownload.status,200);assert.equal(await pmDownload.text(),'%PDF-1.4\nproject file');assert.equal(pmDownload.headers.get('cache-control'),'private, no-store');assert.equal(pmDownload.headers.get('x-content-type-options'),'nosniff');
   assert.equal((await api(`${path}/${attachment.id}`,{ method:'DELETE',token:ids.tokenPm,body:{} })).status,403);
   assert.equal((await api(`${path}/${attachment.id}`,{ method:'DELETE',token:ids.tokenPlanner,body:{} })).status,403);

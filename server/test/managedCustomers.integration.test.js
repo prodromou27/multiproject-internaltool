@@ -1,5 +1,5 @@
 const { afterSeed, seedCustomerWork, test, assert, api, db, ids, bcrypt, signJwt,  } = require('./lib/activityFixture');
-const fixture = require('./lib/activityFixture');
+const suiteFixture = require('./lib/activityFixture');
 
 afterSeed(seedCustomerWork);
 
@@ -203,14 +203,14 @@ test('managed customer report preview reuses dashboard metrics and protects cust
   assert.deepEqual(Object.keys(preview.data.customer).sort(),['id','name','reporting_frequency','responsible_team','service_manager']);
   assert.deepEqual(preview.data.overview.tickets,overview.data.tickets);assert.deepEqual(preview.data.overview.activities,overview.data.activities);
   assert.equal(preview.data.tickets.open.rows.every(ticket => ticket.status_group==='open'),true);
-  const documentResponse=await fetch(`${fixture.baseUrl}${path.replace('report-preview','report.docx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) });
+  const documentResponse=await fetch(`${suiteFixture.baseUrl}${path.replace('report-preview','report.docx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) });
   assert.equal(documentResponse.status,200);assert.match(documentResponse.headers.get('content-type'),/wordprocessingml/);assert.match(documentResponse.headers.get('content-disposition'),/Acme_Corp_2026-09-01_2026-09-30\.docx/);
   const documentBuffer=Buffer.from(await documentResponse.arrayBuffer());assert.equal(documentBuffer.subarray(0,2).toString(),'PK');
   const archive=await require('jszip').loadAsync(documentBuffer),documentXml=await archive.file('word/document.xml').async('string');
   assert.match(documentXml,/Managed Services Report/);assert.match(documentXml,/Customer-facing summary/);assert.doesNotMatch(documentXml,/internal_notes/);
   assert.equal(documentXml.indexOf('Service Activities')<documentXml.indexOf('Executive Summary'),true);assert.equal(documentXml.indexOf('Executive Summary')<documentXml.indexOf('Ticket Summary'),true);
   assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='managed_customer_word_report_generated'").get()).count,1);
-  const workbookResponse=await fetch(`${fixture.baseUrl}${path.replace('report-preview','report.xlsx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) });
+  const workbookResponse=await fetch(`${suiteFixture.baseUrl}${path.replace('report-preview','report.xlsx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) });
   assert.equal(workbookResponse.status,200);assert.match(workbookResponse.headers.get('content-type'),/spreadsheetml/);
   const workbook=new (require('exceljs').Workbook)();await workbook.xlsx.load(Buffer.from(await workbookResponse.arrayBuffer()));
   assert.deepEqual(workbook.worksheets.map(sheet => sheet.name),['Summary','Charts','Activities']);assert.equal(workbook.getWorksheet('Summary').getCell('B2').value,'Acme Corp');assert.equal(workbook.getWorksheet('Charts').getCell('A1').value,'Ticket Throughput Trend');
@@ -223,14 +223,14 @@ test('managed customer report preview reuses dashboard metrics and protects cust
   assert.equal(history.data.rows.every(row => row.report_version===1 && row.status==='draft'),true);
   assert.equal(history.data.rows.every(row => row.stored_name===undefined && row.enc_iv===undefined && row.enc_tag===undefined),true);
   const wordHistory=history.data.rows.find(row => row.output_format==='docx');
-  const archived=await fetch(`${fixture.baseUrl}/api/managed-customers/${ids.customer}/reports/${wordHistory.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenManager}`,'X-SolutionsHub-Request':'1' } });
+  const archived=await fetch(`${suiteFixture.baseUrl}/api/managed-customers/${ids.customer}/reports/${wordHistory.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenManager}`,'X-SolutionsHub-Request':'1' } });
   assert.equal(archived.status,200);assert.match(archived.headers.get('content-disposition'),/Acme_Corp_2026-09-01_2026-09-30\.docx/);
   assert.equal(Buffer.from(await archived.arrayBuffer()).subarray(0,2).toString(),'PK');
-  const secondDocument=await fetch(`${fixture.baseUrl}${path.replace('report-preview','report.docx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ ...body,status:'draft' }) });
+  const secondDocument=await fetch(`${suiteFixture.baseUrl}${path.replace('report-preview','report.docx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ ...body,status:'draft' }) });
   assert.equal(secondDocument.status,200);assert.equal(secondDocument.headers.get('x-report-version'),'2');
   const updatedHistory=await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager });
   assert.equal(updatedHistory.data.rows[0].report_version,2);assert.equal(updatedHistory.data.rows[0].status,'draft');
-  const pdfResponse=await fetch(`${fixture.baseUrl}${path.replace('report-preview','report.pdf')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ ...body,status:'draft' }) });
+  const pdfResponse=await fetch(`${suiteFixture.baseUrl}${path.replace('report-preview','report.pdf')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ ...body,status:'draft' }) });
   assert.equal(pdfResponse.status,200);assert.match(pdfResponse.headers.get('content-type'),/application\/pdf/);assert.match(pdfResponse.headers.get('content-disposition'),/Acme_Corp_2026-09-01_2026-09-30\.pdf/);
   const pdfBuffer=Buffer.from(await pdfResponse.arrayBuffer());assert.equal(pdfBuffer.subarray(0,5).toString(),'%PDF-');
   const pdfHistory=await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager });
@@ -255,7 +255,7 @@ test('managed reports follow a conflict-safe reviewed workflow with an audit tra
   const reviewQueue=await api('/api/managed-customers/report-reviews',{ token:ids.tokenPlanner });
   assert.equal(reviewQueue.status,200);assert.equal(reviewQueue.data.total,1);assert.equal(reviewQueue.data.rows[0].id,report.id);
   assert.equal(reviewQueue.data.rows[0].customer_name,'Acme Corp');assert.equal(reviewQueue.data.rows[0].status,'in_review');
-  const reviewDownload=await fetch(`${fixture.baseUrl}/api/managed-customers/report-reviews/${report.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenPlanner}`,'X-SolutionsHub-Request':'1' } });
+  const reviewDownload=await fetch(`${suiteFixture.baseUrl}/api/managed-customers/report-reviews/${report.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenPlanner}`,'X-SolutionsHub-Request':'1' } });
   assert.equal(reviewDownload.status,200);assert.match(reviewDownload.headers.get('content-type'),/application\/pdf/);
   assert.equal((await api(`/api/managed-customers/report-reviews/${report.id}`,{ method:'PUT',token:ids.tokenEnabled,body:{ action:'approve',version:2 } })).status,403);
   const approved=await api(`/api/managed-customers/report-reviews/${report.id}`,{ method:'PUT',token:ids.tokenPlanner,body:{ action:'approve',version:2,comment:'Reviewed against the source data.' } });
@@ -265,7 +265,7 @@ test('managed reports follow a conflict-safe reviewed workflow with an audit tra
   const finalized=await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'finalize',version:3 } });
   assert.equal(finalized.status,200);assert.equal(finalized.data.report.status,'final');assert.equal(finalized.data.report.workflow_version,4);
   assert.equal((await api('/api/managed-customers/report-reviews',{ token:ids.tokenPlanner })).data.total,0);
-  assert.equal((await fetch(`${fixture.baseUrl}/api/managed-customers/report-reviews/${report.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenPlanner}`,'X-SolutionsHub-Request':'1' } })).status,404);
+  assert.equal((await fetch(`${suiteFixture.baseUrl}/api/managed-customers/report-reviews/${report.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenPlanner}`,'X-SolutionsHub-Request':'1' } })).status,404);
   assert.equal((await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'reopen',version:4 } })).status,400);
   const reopened=await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'reopen',version:4,comment:'Customer scope changed.' } });
   assert.equal(reopened.status,200);assert.equal(reopened.data.report.status,'draft');
@@ -357,7 +357,7 @@ test('team directory paging validates filters while preserving the legacy roster
 });
 
 test('concurrent report exports allocate unique versions on PostgreSQL', { skip:!process.env.TEST_DATABASE_URL },async () => {
-  const endpoint=`${fixture.baseUrl}/api/managed-customers/${ids.customer}/report.docx`,body={ from:'2026-08-01',to:'2026-08-31',sections:['executive_summary'],narratives:{ executive_summary:'Concurrent version allocation test.' },status:'draft' };
+  const endpoint=`${suiteFixture.baseUrl}/api/managed-customers/${ids.customer}/report.docx`,body={ from:'2026-08-01',to:'2026-08-31',sections:['executive_summary'],narratives:{ executive_summary:'Concurrent version allocation test.' },status:'draft' };
   const responses=await Promise.all(Array.from({ length:4 },() => fetch(endpoint,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) })));
   assert.equal(responses.every(response => response.status===200),true);
   const versions=responses.map(response => Number(response.headers.get('x-report-version'))).sort((a,b) => a-b);
@@ -403,7 +403,7 @@ test('weekly report previews await actual report data on PostgreSQL', { skip: !p
   assert.equal(preview.status,200);
   assert.equal(typeof preview.data.stats.activeProjects,'number');
   assert.equal(typeof preview.data.subject,'string');
-  const html = await fetch(`${fixture.baseUrl}/api/report-settings/preview`,{ headers: { Authorization: `Bearer ${ids.tokenManager}` } });
+  const html = await fetch(`${suiteFixture.baseUrl}/api/report-settings/preview`,{ headers: { Authorization: `Bearer ${ids.tokenManager}` } });
   assert.equal(html.status,200);
   assert.match(await html.text(),/<!DOCTYPE html>/);
 });
@@ -493,9 +493,9 @@ test('queued custom report exports remain encrypted and private to their owner',
     filePath=path.join(exportRoot,file);
     await fs.promises.mkdir(exportRoot,{ recursive:true });await fs.promises.writeFile(filePath,encrypted.data);
     await db.prepare("UPDATE background_jobs SET status='completed',artifact_name='custom-report.csv',artifact_path=?,artifact_type='text/csv',artifact_iv=?,artifact_tag=?,artifact_expires_at='2999-01-01 00:00:00',completed_at=app_now() WHERE id=?").run(file,encrypted.iv,encrypted.tag,jobId);
-    const download=await fetch(`${fixture.baseUrl}/api/reports/custom/exports/${jobId}/download`,{ headers:{ Authorization:`Bearer ${token}` } });
+    const download=await fetch(`${suiteFixture.baseUrl}/api/reports/custom/exports/${jobId}/download`,{ headers:{ Authorization:`Bearer ${token}` } });
     assert.equal(download.status,200);assert.equal(Buffer.from(await download.arrayBuffer()).equals(plain),true);
-    assert.equal((await fetch(`${fixture.baseUrl}/api/reports/custom/exports/${jobId}/download`,{ headers:{ Authorization:`Bearer ${peerToken}` } })).status,404);
+    assert.equal((await fetch(`${suiteFixture.baseUrl}/api/reports/custom/exports/${jobId}/download`,{ headers:{ Authorization:`Bearer ${peerToken}` } })).status,404);
     assert.equal((await api('/api/reports/custom/exports',{ method:'POST',token,body:{ format:'pdf',definition:{ source:'tasks',fields:['id'] } } })).status,400);
   } finally {
     if (filePath) await fs.promises.unlink(filePath).catch(()=>{});
@@ -541,13 +541,13 @@ test('custom reports preview, aggregate and export bounded matching rows on Post
   assert.equal(excluded.data.rows.length,100);
   assert.equal(excluded.data.truncated,false);
   assert.ok(excluded.data.rows.every(row => row.status==='open'));
-  const response = await fetch(`${fixture.baseUrl}/api/reports/custom/export`,{ method: 'POST',headers: { 'Content-Type': 'application/json','X-SolutionsHub-Request': '1',Authorization: `Bearer ${ids.tokenManager}` },body: JSON.stringify(definition) });
+  const response = await fetch(`${suiteFixture.baseUrl}/api/reports/custom/export`,{ method: 'POST',headers: { 'Content-Type': 'application/json','X-SolutionsHub-Request': '1',Authorization: `Bearer ${ids.tokenManager}` },body: JSON.stringify(definition) });
   assert.equal(response.status,200);
   const workbook = new (require('exceljs').Workbook)();
   await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
   assert.equal(workbook.worksheets[0].rowCount,103);
   assert.deepEqual(workbook.worksheets[0].getRow(2).values.slice(1),Object.values(preview.data.rows[0]));
-  const csv = await fetch(`${fixture.baseUrl}/api/reports/custom/export-csv`,{ method: 'POST',headers: { 'Content-Type': 'application/json','X-SolutionsHub-Request': '1',Authorization: `Bearer ${ids.tokenManager}` },body: JSON.stringify(definition) });
+  const csv = await fetch(`${suiteFixture.baseUrl}/api/reports/custom/export-csv`,{ method: 'POST',headers: { 'Content-Type': 'application/json','X-SolutionsHub-Request': '1',Authorization: `Bearer ${ids.tokenManager}` },body: JSON.stringify(definition) });
   assert.equal(csv.status,200);
   assert.match(csv.headers.get('content-type'),/text\/csv/);
   const lines = (await csv.text()).trim().split('\r\n');
