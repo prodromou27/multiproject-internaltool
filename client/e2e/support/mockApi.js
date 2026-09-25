@@ -26,10 +26,13 @@ const tasks = [
   { id: 2, project_id: null, title: 'Update VPN runbook', status: 'planned', priority: 'low', deadline: null, assigned_to: 1, assigned_to_name: 'Alex Mercer', is_adhoc: 1, logged_hours: 0 },
 ];
 
+// Visit dates are relative to today so the "upcoming" list still shows them as time passes.
+const inDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
 // report_sent and report_sent_to_customer are 0/1 integers, as the database returns them.
 const visits = [
-  { id: 1, title: 'Quarterly firewall check', customer_id: 1, customer_name: 'Northwind Logistics', engineer_ids: [1], engineer_names: 'Alex Mercer', scheduled_date: '2026-09-24', status: 'scheduled', report_sent: 0, report_sent_to_customer: 0 },
-  { id: 2, title: 'Switch stack upgrade', customer_id: 2, customer_name: 'Contoso Retail', engineer_ids: [1], engineer_names: 'Alex Mercer', scheduled_date: '2026-10-02', status: 'scheduled', report_sent: 0, report_sent_to_customer: 0 },
+  { id: 1, title: 'Quarterly firewall check', customer_id: 1, customer_name: 'Northwind Logistics', engineer_ids: [1], engineer_names: 'Alex Mercer', scheduled_date: inDays(1), status: 'scheduled', report_sent: 0, report_sent_to_customer: 0 },
+  { id: 2, title: 'Switch stack upgrade', customer_id: 2, customer_name: 'Contoso Retail', engineer_ids: [1], engineer_names: 'Alex Mercer', scheduled_date: inDays(9), status: 'scheduled', report_sent: 0, report_sent_to_customer: 0 },
 ];
 
 const calendar = {
