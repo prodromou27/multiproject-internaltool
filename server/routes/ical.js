@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const db     = require('../db');
 const { decrypt } = require('../fieldCipher');
 const { PRODUCT_NAME } = require('../product');
+const { fold } = require('../icalFold');
 
 // Escape special iCal text characters
 function icalEsc(str) {
@@ -22,17 +23,6 @@ function icalDateTime(d) {
   const dt = new Date(d);
   if (isNaN(dt)) return null;
   return dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-}
-
-function fold(line) {
-  // iCal line folding: max 75 octets, continuation lines start with a space
-  const result = [];
-  while (line.length > 75) {
-    result.push(line.slice(0, 75));
-    line = ' ' + line.slice(75);
-  }
-  result.push(line);
-  return result.join('\r\n');
 }
 
 /**
