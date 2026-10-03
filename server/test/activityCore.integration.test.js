@@ -400,3 +400,38 @@ test('direct URL access to a disabled team\'s data is rejected server-side regar
   const { status } = await api('/api/service-activities/meta', { token: ids.tokenDisabled });
   assert.equal(status, 403);
 });
+
+test('one customer can stand for in-house infrastructure, and managed-services engineers log work against it like any customer', async () => {
+  const create = body => api('/api/customers', { method: 'POST', token: ids.tokenManager, body });
+  assert.equal((await create({ name: 'Bad flag', is_internal: 'yes' })).status, 400);
+
+  const ours = await create({ name: 'Our own infrastructure', is_internal: true, service_activity_enabled: true });
+  assert.equal(ours.status, 200);
+  try {
+    // At most one: a second create, or flagging another customer, names the current one.
+    const second = await create({ name: 'Second in-house', is_internal: true });
+    assert.equal(second.status, 409);
+    assert.match(second.data.error, /Our own infrastructure/);
+    assert.equal((await api(`/api/customers/${ids.customer}`, { method: 'PUT', token: ids.tokenManager, body: { is_internal: true } })).status, 409);
+    // The edit form sends back the stored 0/1; that must not break ordinary edits.
+    assert.equal((await api(`/api/customers/${ids.customer}`, { method: 'PUT', token: ids.tokenManager, body: { is_internal: 0, notes: 'edited' } })).status, 200);
+    // Re-saving the in-house record itself is fine, and other edits leave the flag alone.
+    assert.equal((await api(`/api/customers/${ours.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { is_internal: true } })).status, 200);
+    assert.equal((await api(`/api/customers/${ours.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { notes: 'Firewalls, EDR, SIEM' } })).status, 200);
+    assert.equal((await api(`/api/customers/${ours.data.id}`, { token: ids.tokenManager })).data.is_internal, 1);
+
+    // Assigned to the team like any customer, it is offered first and flagged in the activity form.
+    await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(ours.data.id, ids.teamEnabled);
+    const meta = await api('/api/service-activities/meta', { token: ids.tokenEnabled });
+    assert.equal(meta.status, 200);
+    assert.equal(meta.data.customers[0].id, ours.data.id);
+    assert.equal(meta.data.customers[0].is_internal, true);
+    assert.ok(meta.data.customers.slice(1).every(c => c.is_internal === false));
+
+    const logged = await api('/api/service-activities', { method: 'POST', token: ids.tokenEnabled,
+      body: { customer_id: ours.data.id, activity_date: '2026-10-01', category_id: ids.category, title: 'Rotated firewall admin credentials', status: 'completed' } });
+    assert.equal(logged.status, 200);
+  } finally {
+    await db.prepare('UPDATE customers SET is_internal=0 WHERE id=?').run(ours.data.id);
+  }
+});

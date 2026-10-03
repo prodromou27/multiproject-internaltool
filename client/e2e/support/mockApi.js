@@ -100,3 +100,6 @@ export async function mockApi(page, { role = 'engineer', signedIn = true, teams 
     override: (key, handler) => overrides.set(key, handler),
   };
 }
+
+// The default activity-form metadata, for tests that override it with a variation.
+export { meta as serviceActivityMeta };

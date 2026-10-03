@@ -113,9 +113,12 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
       <div className="af-grid">
         <Field label="Customer" required className="af-wide">
           <select value={form.customer_id} required
-            onChange={e => setForm(f => ({ ...f, customer_id: e.target.value, asset_ids: String(e.target.value) === String(initial?.customer_id || '') ? initial?.assets?.map(asset => asset.id) || [] : [], asset_versions: String(e.target.value) === String(initial?.customer_id || '') ? Object.fromEntries((initial?.assets || []).filter(asset => asset.version).map(asset => [asset.id, asset.version])) : {} }))}>
+            onChange={e => setForm(f => ({ ...f, customer_id: e.target.value,
+              // Work on our own infrastructure is internal unless the engineer already chose otherwise.
+              billable_classification: !f.billable_classification && meta.customers.find(c => String(c.id) === e.target.value)?.is_internal ? 'internal' : f.billable_classification,
+              asset_ids: String(e.target.value) === String(initial?.customer_id || '') ? initial?.assets?.map(asset => asset.id) || [] : [], asset_versions: String(e.target.value) === String(initial?.customer_id || '') ? Object.fromEntries((initial?.assets || []).filter(asset => asset.version).map(asset => [asset.id, asset.version])) : {} }))}>
             <option value="">Select a customer</option>
-            {meta.customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {meta.customers.map(c => <option key={c.id} value={c.id}>{c.is_internal ? `${c.name} (in-house)` : c.name}</option>)}
           </select>
         </Field>
 

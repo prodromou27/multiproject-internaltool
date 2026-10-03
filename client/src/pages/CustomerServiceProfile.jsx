@@ -3,6 +3,7 @@ import { useParams,useLocation,useNavigate,Link } from 'react-router-dom';
 import { Activity,ArrowLeft,BriefcaseBusiness,Building2,CalendarDays,CheckSquare,ChevronDown,ClipboardList,ExternalLink,Layers,Mail,MapPin,Phone,Plus,Settings2,Wrench } from 'lucide-react';
 import { api } from '../api';
 import { StatusBadge,fmtDate } from '../components/Shared';
+import { ToneBadge } from '../components/EnterpriseUI';
 import CustomerOverview from '../components/CustomerOverview';
 import CustomerRecommendations from '../components/CustomerRecommendations';
 import CustomerAssets from '../components/CustomerAssets';
@@ -64,7 +65,7 @@ function CustomerHeader({ customer,operations,user,saAccess,onRecommendation }) 
   const health=user.role==='manager' ? customerHealth(operations) : null;
   return <header className="card cs-customer-header" style={{ '--cs-hue':customerHue(customer.name) }}>
     <div className="cs-identity-avatar" aria-hidden="true">{initialsOf(customer.name)}</div>
-    <div className="cs-customer-heading"><div className="cs-customer-title"><h1>{customer.name}</h1><span className={`badge badge-${customer.active===0?'cancelled':'active'}`}>{customer.active===0?'Inactive':'Active'}</span>{managed?.visible && managed.state!=='unavailable' && <span className={`badge badge-managed-${managed.state}`}>{{ not_enabled:'Managed services off',setup_required:'Managed setup incomplete',sync_attention:'Managed sync attention',active:'Managed services active' }[managed.state]}</span>}</div>
+    <div className="cs-customer-heading"><div className="cs-customer-title"><h1>{customer.name}</h1><span className={`badge badge-${customer.active===0?'cancelled':'active'}`}>{customer.active===0?'Inactive':'Active'}</span>{!!customer.is_internal && <ToneBadge tone="info">In-house infrastructure</ToneBadge>}{managed?.visible && managed.state!=='unavailable' && <span className={`badge badge-managed-${managed.state}`}>{{ not_enabled:'Managed services off',setup_required:'Managed setup incomplete',sync_attention:'Managed sync attention',active:'Managed services active' }[managed.state]}</span>}</div>
       <div className="cs-customer-meta">
         {contact && <span><Building2 size={13} />{contact}</span>}
         {customer.contact_email && <a href={`mailto:${customer.contact_email}`}><Mail size={13} />{customer.contact_email}</a>}

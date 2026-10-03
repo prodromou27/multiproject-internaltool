@@ -13,13 +13,14 @@ import { useConfirm } from '../components/Confirm';
 
 function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClose }) {
   const toast = useToast();
-  const [form, setForm] = useState(initial || {
+  const [form, setForm] = useState(() => initial ? { ...initial, is_internal: !!initial.is_internal } : {
     name: '', contact_name: '', contact_email: '', contact_phone: '', address: '', notes: '',
     customer_code: '', active: true, service_activity_enabled: false, primary_contact: '', location: '',
     contract_type: '', contract_start_date: '', contract_end_date: '', reporting_frequency: '',
     included_hours: '', contract_hour_period: '', service_notes: '',
     require_duration: false, require_ticket_reference: false, require_technology: false,
     require_category: false, require_notes: false, require_billable_classification: false,
+    is_internal: false,
   });
   const [selectedTeams, setSelectedTeams] = useState(() => (initial?.team_ids) || []);
   const [newTeam, setNewTeam] = useState(null); // null = not creating; string = name being typed
@@ -56,6 +57,13 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
         <div className="form-group"><label>Address</label><input value={form.address} onChange={set('address')} /></div>
       </div>
       <div className="form-group"><label>Notes</label><textarea value={form.notes} onChange={set('notes')} /></div>
+      <div className="form-group">
+        <label className="u-ea06b0c">
+          <input type="checkbox" checked={!!form.is_internal} onChange={setBool('is_internal')} className="u-30e741d" />
+          This is our own organisation (in-house infrastructure)
+        </label>
+        <p className="text-muted text-sm">Track work on your own systems here. It gets assets, team assignment and activity tracking like any customer.</p>
+      </div>
 
       <details className="column-picker u-96ad609" open={showService} onToggle={e => setShowService(e.target.open)}>
         <summary className="btn btn-ghost btn-sm u-60e32dc">Service Activity Tracking</summary>
@@ -205,6 +213,7 @@ export default function Customers() {
   const columns = [
     { key:'customer',label:'Customer',render:c => <div className="customer-identity">
       {isManager ? <Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link> : <strong>{c.name}</strong>}
+      {!!c.is_internal && <ToneBadge tone="info">In-house</ToneBadge>}
       <span>{c.customer_code || 'No customer code'} · {c.active ? 'Active' : 'Inactive'}</span>
       {c.notes && <small title={c.notes}>{c.notes}</small>}
     </div> },

@@ -125,7 +125,17 @@ function validateCustomerInput(body, existing = {}) {
   }
   if (merged.contract_start_date && merged.contract_end_date && merged.contract_end_date < merged.contract_start_date)
     return 'Contract end date cannot precede its start date';
+  if (body.is_internal != null && ![true, false, 0, 1].includes(body.is_internal))
+    return 'is_internal must be true or false';
   return null;
+}
+
+/* Only one customer can stand for the organisation's own (in-house)
+   infrastructure. Returns an error message naming the current one, or null. */
+async function internalConflict(store, exceptId = null) {
+  const current = await store.prepare('SELECT id, name FROM customers WHERE is_internal=1').get();
+  if (!current || Number(current.id) === Number(exceptId)) return null;
+  return `"${decryptCustomer(current).name}" is already marked as your organisation's in-house infrastructure`;
 }
 
 router.post('/', requireManagerOrPlanner, async (req, res) => {
@@ -137,9 +147,13 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
     contract_type, contract_start_date, contract_end_date, reporting_frequency,
     included_hours, contract_hour_period, service_notes,
     require_duration, require_ticket_reference, require_technology,
-    require_category, require_notes, require_billable_classification,
+    require_category, require_notes, require_billable_classification, is_internal,
   } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
+  if (is_internal) {
+    const conflict = await internalConflict(db);
+    if (conflict) return res.status(409).json({ error: conflict });
+  }
   if (contract_hour_period && !VALID_CONTRACT_HOUR_PERIODS.has(contract_hour_period))
     return res.status(400).json({ error: 'Invalid contract_hour_period' });
   const duplicateCandidates=await candidateCustomerNameIds(db,name);
@@ -156,14 +170,14 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
        contract_type, contract_start_date, contract_end_date, reporting_frequency,
        included_hours, contract_hour_period, service_notes,
        require_duration, require_ticket_reference, require_technology,
-       require_category, require_notes, require_billable_classification)
-      VALUES (?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?,?)`)
+       require_category, require_notes, require_billable_classification, is_internal)
+      VALUES (?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?,?, ?)`)
       .run(enc.name, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, req.user.id,
         customer_code || null, active === false ? 0 : 1, service_activity_enabled ? 1 : 0, enc.primary_contact, enc.location,
         contract_type || null, contract_start_date || null, contract_end_date || null, reporting_frequency || null,
         included_hours != null && included_hours !== '' ? Number(included_hours) : null, contract_hour_period || null, enc.service_notes,
         require_duration ? 1 : 0, require_ticket_reference ? 1 : 0, require_technology ? 1 : 0,
-        require_category ? 1 : 0, require_notes ? 1 : 0, require_billable_classification ? 1 : 0);
+        require_category ? 1 : 0, require_notes ? 1 : 0, require_billable_classification ? 1 : 0, is_internal ? 1 : 0);
     await replaceCustomerSearchDocument(tx,{ id:created.lastInsertRowid,name:name.trim(),contact_name,contact_email,address,location,customer_code });
     return created;
   });
@@ -256,9 +270,13 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
     contract_type, contract_start_date, contract_end_date, reporting_frequency,
     included_hours, contract_hour_period, service_notes,
     require_duration, require_ticket_reference, require_technology,
-    require_category, require_notes, require_billable_classification,
+    require_category, require_notes, require_billable_classification, is_internal,
   } = req.body;
   if (name !== undefined && !name?.trim()) return res.status(400).json({ error: 'Name cannot be empty' });
+  if (is_internal) {
+    const conflict = await internalConflict(db, id);
+    if (conflict) return res.status(409).json({ error: conflict });
+  }
   if (contract_hour_period && !VALID_CONTRACT_HOUR_PERIODS.has(contract_hour_period))
     return res.status(400).json({ error: 'Invalid contract_hour_period' });
   if (name?.trim()) {
@@ -294,7 +312,8 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
       service_notes=?,
       require_duration=COALESCE(?,require_duration), require_ticket_reference=COALESCE(?,require_ticket_reference),
       require_technology=COALESCE(?,require_technology), require_category=COALESCE(?,require_category),
-      require_notes=COALESCE(?,require_notes), require_billable_classification=COALESCE(?,require_billable_classification)
+      require_notes=COALESCE(?,require_notes), require_billable_classification=COALESCE(?,require_billable_classification),
+      is_internal=COALESCE(?,is_internal)
     WHERE id=?`)
     .run(enc.name || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes,
       customer_code !== undefined ? (customer_code || null) : existing.customer_code,
@@ -313,7 +332,8 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
       require_technology != null ? (require_technology ? 1 : 0) : null,
       require_category != null ? (require_category ? 1 : 0) : null,
       require_notes != null ? (require_notes ? 1 : 0) : null,
-      require_billable_classification != null ? (require_billable_classification ? 1 : 0) : null,id);
+      require_billable_classification != null ? (require_billable_classification ? 1 : 0) : null,
+      is_internal != null ? (is_internal ? 1 : 0) : null, id);
     await replaceCustomerSearchDocument(tx,{ id,
       name:name!==undefined ? name.trim() : dec.name,
       contact_name:contact_name!==undefined ? contact_name : dec.contact_name,

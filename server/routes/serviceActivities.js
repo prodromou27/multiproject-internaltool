@@ -37,15 +37,15 @@ router.get('/meta', requireAuth, requireServiceActivityAccess, async (req, res) 
   if (req.user.role === 'manager') {
     const rows = await db.prepare(`
       SELECT id, name, require_duration, require_ticket_reference, require_technology,
-        require_notes, require_billable_classification FROM customers WHERE active = 1 AND service_activity_enabled = 1
+        require_notes, require_billable_classification, is_internal FROM customers WHERE active = 1 AND service_activity_enabled = 1
     `).all();
-    customers = rows.map(c => ({ ...c, name: decryptField(c.name) })).sort((a, b) => a.name.localeCompare(b.name));
+    customers = rows.map(c => ({ ...c, name: decryptField(c.name) }));
   } else {
     const teamIds = [...req.enabledTeamIds];
     const placeholders = teamIds.map(() => '?').join(',');
     const rows = await db.prepare(`
       SELECT DISTINCT c.id, c.name, c.require_duration, c.require_ticket_reference, c.require_technology,
-        c.require_notes, c.require_billable_classification FROM customers c
+        c.require_notes, c.require_billable_classification, c.is_internal FROM customers c
       JOIN customer_teams ct ON ct.customer_id = c.id
       WHERE c.active = 1 AND c.service_activity_enabled = 1 AND ct.team_id IN (${placeholders})
     `).all(...teamIds);
@@ -53,8 +53,11 @@ router.get('/meta', requireAuth, requireServiceActivityAccess, async (req, res) 
     const restrictedIds = new Set((await db.prepare('SELECT DISTINCT customer_id FROM customer_engineers').all()).map(r => r.customer_id));
     const allowedRestricted = new Set((await db.prepare('SELECT customer_id FROM customer_engineers WHERE user_id = ?').all(req.user.id)).map(r => r.customer_id));
     customers = rows.filter(c => !restrictedIds.has(c.id) || allowedRestricted.has(c.id))
-      .map(c => ({ ...c, name: decryptField(c.name) })).sort((a, b) => a.name.localeCompare(b.name));
+      .map(c => ({ ...c, name: decryptField(c.name) }));
   }
+  // In-house infrastructure first (the managed-services team's most frequent choice), then A–Z.
+  customers = customers.map(c => ({ ...c, is_internal: !!c.is_internal }))
+    .sort((a, b) => (b.is_internal - a.is_internal) || a.name.localeCompare(b.name));
 
   res.json({
     categories: categories.map(c => ({ ...c, subcategories: subcategories.filter(s => s.category_id === c.id) })),

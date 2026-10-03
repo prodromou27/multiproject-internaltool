@@ -623,6 +623,15 @@ async function applyMigrations(pool, transaction) {
     UPDATE activity_categories SET require_asset = 1 WHERE name IN ('Upgrade', 'Patch / Firmware Update');
   `]);
 
+  migrations.push(['20261003_in_house_customer', `
+    -- The managed-services team also looks after the organisation's own
+    -- infrastructure. Rather than a parallel model, one customer record can be
+    -- flagged as "us": it then gets assets, team assignment, activity tracking,
+    -- Customer 360 and reporting exactly like any customer. At most one.
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_internal INTEGER NOT NULL DEFAULT 0;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_one_internal ON customers(is_internal) WHERE is_internal=1;
+  `]);
+
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;
