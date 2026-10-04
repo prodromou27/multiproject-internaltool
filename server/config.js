@@ -35,6 +35,16 @@ function getRuntimeConfigIssues(env = process.env) {
     } else if (!isHexKey(value)) {
       errors.push(`${keyName} must be exactly 64 hex characters`);
     }
+    // Retired keys kept for decryption during a rotation (keyring.js).
+    const previousName = `${keyName}S_PREVIOUS`;
+    const previous = String(env[previousName] || '').split(',').map(key => key.trim()).filter(Boolean);
+    if (previous.some(key => !isHexKey(key))) {
+      errors.push(`${previousName} must be a comma-separated list of 64-hex-character keys`);
+    } else if (previous.length && !value) {
+      errors.push(`${previousName} is set but ${keyName} is not; set the new current key too`);
+    } else if (previous.some(key => key.toLowerCase() === String(value).toLowerCase())) {
+      warnings.push(`${previousName} contains the current ${keyName}; it is ignored there`);
+    }
   }
 
   if (env.APP_URL && !isUrl(env.APP_URL)) {

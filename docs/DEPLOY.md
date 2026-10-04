@@ -24,6 +24,8 @@ is the production branch.
 | `JWT_SECRET` | yes (prod) | ≥32 chars; server refuses to start in production without it |
 | `CUSTOMER_FIELD_KEY` | yes (prod) | 64-char hex; required for customer PII encryption at rest |
 | `ATTACHMENT_KEY` | yes (prod) | 64-char hex; required for uploaded-file encryption at rest |
+| `CUSTOMER_FIELD_KEYS_PREVIOUS` | no | during a key rotation only: retired field keys, comma-separated, decrypt-only ([KEY_ROTATION.md](KEY_ROTATION.md)) |
+| `ATTACHMENT_KEYS_PREVIOUS` | no | during a key rotation only: retired attachment keys, comma-separated, decrypt-only |
 | `APP_URL` | yes (prod) | public HTTP(S) base URL used in password reset links |
 | `PORT` | no | defaults to 8080 |
 | `ADMIN_PASSWORD` | no | first-run password; defaults to `admin` and forces immediate change |

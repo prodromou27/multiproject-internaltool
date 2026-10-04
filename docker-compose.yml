@@ -51,6 +51,10 @@ services:
       # 64-char hex key for attachment encryption. Empty = uploads are stored
       # as plain files for backward compatibility.
       ATTACHMENT_KEY: ${ATTACHMENT_KEY:-}
+      # Only during a key rotation: retired keys, comma-separated, used for
+      # decryption only (docs/KEY_ROTATION.md). Leave empty otherwise.
+      CUSTOMER_FIELD_KEYS_PREVIOUS: ${CUSTOMER_FIELD_KEYS_PREVIOUS:-}
+      ATTACHMENT_KEYS_PREVIOUS: ${ATTACHMENT_KEYS_PREVIOUS:-}
       # Public base URL used in password reset emails.
       APP_URL: ${APP_URL:?set APP_URL in .env}
       # Used only when the users table is empty. First login forces a change.

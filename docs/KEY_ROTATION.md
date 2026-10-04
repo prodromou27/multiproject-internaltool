@@ -1,80 +1,117 @@
 # Rotating `CUSTOMER_FIELD_KEY` and `ATTACHMENT_KEY`
 
-This is a runbook, not a script. Both keys use a **single-key** design
-(`server/fieldCipher.js`, `server/cipher.js`) — there is no key ID stored
-alongside the ciphertext, and `decrypt()` only ever tries the one key
-currently in the environment. That means **this app cannot decrypt old
-data with a new key**: rotating either key requires re-encrypting every
-existing row/file with the new key in one pass, during a maintenance
-window. There is no zero-downtime path today. See "Why this is a runbook
-and not a rotation feature" below before deciding when to do this.
+Both keys can be rotated **while the app keeps running**. There is no
+maintenance window: a single-server install sees one ordinary restart, and a
+multi-server install sees none.
 
-## Before you start
+## How it works
 
-- **Back up the database and the `attachments` upload directory.** A
-  mistake here (wrong key, interrupted run, wrong environment) can make
-  data permanently unrecoverable — there is no way to guess a lost key.
-- Schedule a maintenance window. Writes to `customers` or `attachments`
-  during the rotation can be silently skipped or double-encrypted,
-  depending on when they land relative to the migration pass. Stop the
-  app (or at minimum block writes to those tables) for the duration.
-- Confirm you have the **current** key value before generating a new
-  one — you need both to re-encrypt, not just the new one.
+Each encrypted store has a *current* key and an optional list of *previous*
+keys:
 
-## Rotating `CUSTOMER_FIELD_KEY` (customer PII: name, contact, address, notes)
+| Store | Current key | Previous keys (decrypt only) |
+|---|---|---|
+| Customer and asset details, personal webhooks, the RT token | `CUSTOMER_FIELD_KEY` | `CUSTOMER_FIELD_KEYS_PREVIOUS` |
+| Attachments, archived managed reports, report exports | `ATTACHMENT_KEY` | `ATTACHMENT_KEYS_PREVIOUS` |
 
-1. Generate a new key: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
-2. With the app stopped (or writes to `customers` blocked), write a
-   one-off script modeled on `server/scripts/encrypt-existing-customers.js`
-   that, for every customer row:
-   - reads each encrypted field with the **old** key (`fieldCipher.decrypt`,
-     old `CUSTOMER_FIELD_KEY` in the environment),
-   - re-encrypts it with the **new** key,
-   - writes it back.
-   `encrypt-existing-customers.js` already contains the field list and the
-   `enc:` prefix convention (`isEncrypted()`/`decrypt()`/`encrypt()` in
-   `fieldCipher.js`) to copy from — this is a rotation pass of the same
-   shape as that initial backfill, not new logic to design from scratch.
-3. Set `CUSTOMER_FIELD_KEY` to the new value in the environment.
-4. Restart the app. The customer search index (`customer_search_tokens`) is
-   keyed by `CUSTOMER_FIELD_KEY` too; it records the key fingerprint it was
-   built with and `ensureCustomerSearchIndex()` rebuilds any customer whose
-   fingerprint no longer matches, so no manual step is needed — but search
-   results will be incomplete until that finishes, so check it after the
-   restart. Then spot-check a handful of customers (names, contact
-   info) render correctly — a wrong key doesn't error, it just returns
-   garbage or throws inside `decrypt()`, so check actual values, not just
-   "no crash."
-5. Only after confirming: securely destroy the old key.
+- New data is always encrypted with the current key.
+- Reading tries the current key first, then each previous key. Encryption is
+  AES-256-GCM, which authenticates, so a wrong key fails cleanly; it can never
+  return wrong data.
+- The stored format is unchanged, so an older app version can still read
+  everything if you need to roll back a deployment.
+- `node scripts/rotate-encryption.js` moves everything still on a previous key
+  onto the current key, in the background, while the app serves users.
 
-## Rotating `ATTACHMENT_KEY` (uploaded files)
+## Procedure
 
-Same shape, at the file level instead of the row level:
+### 1. Back up first
 
-1. Generate a new key the same way.
-2. With the app stopped, write a one-off script that, for every row in
-   `attachments` with `enc_iv`/`enc_tag` set:
-   - reads the stored file and decrypts it with `cipher.decrypt()` using
-     the **old** key,
-   - re-encrypts with `cipher.encrypt()` using the **new** key,
-   - writes the new ciphertext back to disk and updates `enc_iv`/`enc_tag`
-     in the `attachments` row (the IV changes on every encrypt call, so
-     both must be updated together — don't reuse the old IV).
-3. Set `ATTACHMENT_KEY` to the new value, restart, and spot-check by
-   downloading a few existing attachments end-to-end (not just checking
-   the file changed on disk).
-4. Only after confirming: securely destroy the old key.
+Back up the database and the `uploads` directory, and store the **current**
+keys somewhere safe. A lost key cannot be recovered.
 
-## Why this is a runbook and not a rotation feature
+### 2. Generate the new keys
 
-Adding real, zero-downtime key rotation (encrypt with the newest key,
-decrypt-with-any-known-key) is a legitimate improvement, but it changes
-the on-disk/on-row format (a key ID would need to be stored per record)
-and needs to be validated against real encrypted data to trust — neither
-of which is safe to do blind, without a database to test against, in a
-single pass. This runbook is the safe alternative for now: manual,
-downtime-based, but doesn't touch the cipher format or risk the existing
-encrypted data. If/when zero-downtime rotation is worth building, start
-in `server/fieldCipher.js` and `server/cipher.js`: add a key ID prefix to
-the stored value, keep a small ordered list of known keys for `decrypt()`
-to try, and always encrypt with the newest one.
+```sh
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Generate one per store you are rotating. You can rotate one store or both.
+
+### 3. Switch to the new key, keeping the old one readable
+
+In the environment (`.env` / secrets manager):
+
+```sh
+CUSTOMER_FIELD_KEY=<new field key>
+CUSTOMER_FIELD_KEYS_PREVIOUS=<old field key>
+ATTACHMENT_KEY=<new attachment key>
+ATTACHMENT_KEYS_PREVIOUS=<old attachment key>
+```
+
+Restart the app. Everything stays readable, and anything written from now on
+uses the new key. The customer search index is rebuilt automatically on
+startup for the new key.
+
+**Several app servers?** Do this step in two rolling deploys so no server ever
+meets data it cannot read:
+
+1. Every server gets the **new** key as an extra previous key, while still
+   encrypting with the old one (`CUSTOMER_FIELD_KEY=<old>`,
+   `CUSTOMER_FIELD_KEYS_PREVIOUS=<new>`).
+2. Once all servers run that, swap them (`CUSTOMER_FIELD_KEY=<new>`,
+   `CUSTOMER_FIELD_KEYS_PREVIOUS=<old>`).
+
+### 4. Re-encrypt in the background
+
+From `server/`, with the same environment as the app:
+
+```sh
+node scripts/rotate-encryption.js --check   # how much is still on an old key (writes nothing)
+node scripts/rotate-encryption.js           # re-encrypt it
+node scripts/rotate-encryption.js --check   # confirm
+```
+
+The script is safe to run alongside the app, and safe to stop and re-run:
+
+- It finds encrypted values in every table by itself, including encrypted
+  values inside JSON settings.
+- Each value is only replaced if it is still exactly what was read, so a user
+  editing the same record at the same moment is never overwritten.
+- Files are written under a new name, the record is switched to it in one
+  update, and only then is the old file deleted. Downloads in progress are
+  unaffected.
+- Anything no known key can read is listed and left untouched.
+
+It exits with code **0** when nothing is left on a previous key; otherwise run
+it again, and investigate any item reported as unreadable.
+
+### 5. Retire the old keys
+
+When `--check` exits 0:
+
+- remove `CUSTOMER_FIELD_KEYS_PREVIOUS` and `ATTACHMENT_KEYS_PREVIOUS`;
+- restart (rolling restart with several servers);
+- spot-check a few customers and download a few attachments and archived
+  reports;
+- then securely destroy the old keys.
+
+Report exports are kept for 24 hours. The script also re-encrypts unexpired
+ones, but if you skipped a run, keep the old attachment key in
+`ATTACHMENT_KEYS_PREVIOUS` for at least 24 hours after switching.
+
+## Checks the app performs
+
+- Startup refuses a malformed key in either `*_PREVIOUS` list, or a previous
+  key without a current key.
+- Settings → System → health shows each current key's fingerprint and warns while
+  previous keys are still configured, so an unfinished rotation is not forgotten; fingerprints are
+  short one-way hashes, never the keys themselves.
+
+## Verified
+
+`server/test/keyRotation.test.js` covers reading with retired keys, the
+unchanged format, JSON settings, startup validation, and (on PostgreSQL) a
+full rotation in which the app edits a record mid-rotation. The procedure above
+was also rehearsed end to end on a running server: the old keys were retired
+and every customer record, asset and archived report still opened.

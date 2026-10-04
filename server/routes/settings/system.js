@@ -105,6 +105,17 @@ router.get('/deployment-health', requireManager, async (req, res) => {
         ? `AES-256-GCM key active. Fingerprint: ${key.fingerprint}.`
         : 'No active customer encryption key.'
     );
+    // A rotation leaves retired keys configured until everything is re-encrypted.
+    const files = require('../../cipher').keyStatus();
+    const previous = key.previous_keys + files.previous_keys;
+    add(
+      'encryption_key_rotation',
+      'Encryption key rotation',
+      previous ? 'warning' : 'ok',
+      previous
+        ? `${previous} previous key(s) still configured (customer data: ${key.previous_keys}, files: ${files.previous_keys}). Run "node scripts/rotate-encryption.js --check"; when it reports nothing left, remove the *_PREVIOUS settings (docs/KEY_ROTATION.md).`
+        : 'No rotation in progress.'
+    );
     const coverage = await customerEncryptionReport();
     add(
       'customer_encryption_coverage',
