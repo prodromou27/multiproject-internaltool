@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-require('express-async-errors');
+// Express 5 forwards rejected async handlers to the error handler natively.
 const express = require('express');
 const { errorHandler } = require('../middleware/errors');
 

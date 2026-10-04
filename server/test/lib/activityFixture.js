@@ -63,7 +63,6 @@ Module.prototype.require = function (id) {
   return originalRequire.apply(this, arguments);
 };
 
-require('express-async-errors');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../../db');
@@ -104,7 +103,9 @@ if (isSuiteImport) test.before(async () => {
   await db.init();
 
   const app = express();
+  app.set('query parser', 'extended');
   app.use(express.json());
+  app.use(require('../../middleware/body').ensureBody);
   app.use('/api', require('../../middleware/session').protectCookieRequests);
   app.use('/api/auth', require('../../routes/auth'));
   app.use('/api/admin', require('../../routes/admin'));

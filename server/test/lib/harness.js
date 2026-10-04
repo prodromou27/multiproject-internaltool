@@ -46,7 +46,6 @@ Module.prototype.require = function (id) {
   return originalRequire.apply(this, arguments);
 };
 
-require('express-async-errors');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../../db');
@@ -56,7 +55,9 @@ const { signJwt } = require('../../middleware/auth');
 async function start(mounts) {
   await db.init();
   const app = express();
+  app.set('query parser', 'extended');
   app.use(express.json());
+  app.use(require('../../middleware/body').ensureBody);
   for (const [path, router] of Object.entries(mounts)) app.use(path, router);
   app.use(require('../../middleware/errors').errorHandler);
   const server = await new Promise(resolve => { const s = app.listen(0, () => resolve(s)); });

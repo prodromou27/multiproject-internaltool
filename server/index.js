@@ -8,7 +8,6 @@ if (fs0.existsSync(envPath)) {
   });
 }
 
-require('express-async-errors');
 const express    = require('express');
 const https      = require('https');
 const http       = require('http');
@@ -27,6 +26,8 @@ const { notify } = require('./notifications');
 const { decrypt } = require('./fieldCipher');
 
 const app = express();
+// Keep Express 4's query parsing (nested keys, arrays); Express 5 defaults to the simple parser.
+app.set('query parser', 'extended');
 
 // ── Reverse-proxy awareness ──────────────────────────────────────────────────
 // In production the app sits behind a TLS-terminating proxy (nginx/Caddy). Set
@@ -88,6 +89,7 @@ try {
 }
 
 app.use(express.json({ limit: '1mb' }));
+app.use(require('./middleware/body').ensureBody);
 app.use('/api', require('./middleware/session').protectCookieRequests);
 
 // ── Rate limiting on auth endpoints ──────────────────────────────────────────
@@ -213,7 +215,7 @@ app.use(express.static(clientBuild, {
     }
   },
 }));
-app.get('*', (req, res) => {
+app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(clientBuild, 'index.html'));
 });
 

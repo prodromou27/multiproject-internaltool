@@ -123,7 +123,9 @@ router.get('/', requireAuth, requireServiceActivityAccess, async (req, res) => {
 });
 
 /* ── Detail ───────────────────────────────────────────────────────────── */
-router.get('/:id(\\d+)', requireAuth, requireServiceActivityAccess, async (req, res) => {
+// Only numeric ids: other paths defined later (/export, ...) must not land here.
+const numericIdOnly = (req, res, next) => (/^\d+$/.test(req.params.id) ? next() : next('route'));
+router.get('/:id', numericIdOnly, requireAuth, requireServiceActivityAccess, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
   const activity = await db.prepare(`
