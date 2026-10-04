@@ -174,7 +174,7 @@ export default function KpiManagement() {
   ];
 
   return <div className="page kpi-management-page">
-    <PageHeader eyebrow="Management intelligence" title="KPI Management" description="Define trusted indicators, test their calculations, and review recorded performance without exposing management data to engineers." actions={<button className="btn btn-primary" onClick={() => setEditing(null)} disabled={!meta}><Plus size={16} /> New KPI</button>} />
+    <PageHeader title="KPI Management" actions={<button className="btn btn-primary" onClick={() => setEditing(null)} disabled={!meta}><Plus size={16} /> New KPI</button>} />
     <MetricStrip items={[
       { key: 'all', label: 'Definitions', value: data.counts?.total || 0, note: 'Configured indicators' },
       { key: 'enabled', label: 'Enabled', value: data.counts?.enabled || 0, tone: 'success', note: 'Available to calculate' },

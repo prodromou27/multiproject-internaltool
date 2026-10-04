@@ -202,7 +202,7 @@ export default function ActivityLog() {
 
   return (
     <div className="page activity-log">
-      <PageHeader eyebrow="Operations" title="Activity log" description="Record customer service work, supporting evidence and operational follow-ups." actions={<>
+      <PageHeader title="Activity log" actions={<>
         <button className="btn btn-ghost" disabled={loading || !!loadError || exporting || !meta} onClick={async () => {
           setExporting(true);
           try { await api.exportServiceActivities(exportFilters.current); }

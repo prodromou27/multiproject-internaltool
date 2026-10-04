@@ -1,7 +1,9 @@
 import './EnterpriseUI.css';
 
-export function Surface({ title,description,actions,children,className='',as:Tag='section' }) {
-  return <Tag className={`ui-surface${className ? ` ${className}` : ''}`}>
+// `label` names a section for assistive technology without a visible header
+// (filter toolbars explain themselves).
+export function Surface({ title,description,label,actions,children,className='',as:Tag='section' }) {
+  return <Tag className={`ui-surface${className ? ` ${className}` : ''}`} aria-label={label}>
     {(title || description || actions) && <header className="ui-surface-header"><div>{title && <h2>{title}</h2>}{description && <p>{description}</p>}</div>{actions && <div className="ui-surface-actions">{actions}</div>}</header>}
     {children}
   </Tag>;

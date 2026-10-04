@@ -1,12 +1,13 @@
 import { Link } from 'react-router-dom';
 import { ArrowLeft, AlertCircle } from 'lucide-react';
 
-export function PageHeader({ eyebrow, title, description, actions }) {
+/* One heading per page. `meta` is an optional short fact about the view (the date,
+   the sort order), not a tagline restating the title. */
+export function PageHeader({ title, meta, actions }) {
   return <header className="operations-page-header">
     <div>
-      {eyebrow && <p className="operations-eyebrow">{eyebrow}</p>}
       <h1>{title}</h1>
-      {description && <p className="operations-description">{description}</p>}
+      {meta && <p className="operations-description">{meta}</p>}
     </div>
     {actions && <div className="operations-page-actions">{actions}</div>}
   </header>;

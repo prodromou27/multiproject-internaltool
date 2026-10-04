@@ -97,7 +97,7 @@ export function managerWidget(id, ctx) {
                   { label:'Done',        value: summary.taskStats.done        ?? 0, color:'var(--success)'  },
                 ].map(s => (
                   <div key={s.label} className="stat u-b7c21f2">
-                    <div className="stat-value u-7afcb61" style={{ color:s.color }}>{s.value}</div>
+                    <div className="stat-value u-7afcb61">{s.value}</div>
                     <div className="stat-label">{s.label}</div>
                   </div>
                 ))}

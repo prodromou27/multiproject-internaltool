@@ -357,7 +357,7 @@ export default function Tasks() {
 
   return (
     <div className="page">
-      <PageHeader eyebrow="Operations" title="Tasks" description="Prioritize assigned work, track progress and manage deadlines." actions={<>
+      <PageHeader title="Tasks" actions={<>
 <div className="flex gap-8 flex-wrap">
           <button className="btn btn-ghost btn-sm inline-flex items-center gap-5" onClick={exportTasks} disabled={busy || !!loadError || search.trim() !== debouncedSearch}>
             <Download size={13} /> Export all matching
@@ -374,7 +374,7 @@ export default function Tasks() {
       </>} />
 
       {/* Filters */}
-      <Surface title="Task filters" description="Apply saved views, assignment scope, priority, and due-date filters.">
+      <Surface label="Task filters">
         <div className="filter-presets">
           <select defaultValue="" onChange={e => { const preset = presets.find(p => p.name === e.target.value); if (preset) applyPreset(preset); e.target.value = ''; }}>
             <option value="">Apply saved preset…</option>

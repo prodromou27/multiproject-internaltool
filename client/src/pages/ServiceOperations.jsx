@@ -58,8 +58,7 @@ export default function ServiceOperations() {
 
   return (
     <div className="page service-ops">
-      <PageHeader eyebrow="Operations" title="Service Activity Reports"
-        description="Where service time went in the selected period, and who spent it. For a single customer's tickets and history, see Managed Customers."
+      <PageHeader title="Service Activity Reports"
         actions={<><Link to="/reports?view=service_activity" className="btn btn-ghost">Build detailed report</Link>
           <button className="btn btn-ghost" onClick={retry} disabled={loading}><RefreshCw size={14} /> {loading && data ? 'Refreshing…' : 'Refresh'}</button></>} />
 

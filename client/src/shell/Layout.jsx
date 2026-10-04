@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { visiblePages, primaryPages, pageForPath } from '../navigation';
 import QuickCreate from '../components/QuickCreate';
 import HelpMenu from '../components/HelpMenu';
-import { PRODUCT_NAME, PRODUCT_WORDMARK } from '../product';
+import { PRODUCT_WORDMARK } from '../product';
 import { useAuth } from '../auth';
 import { NotificationBell } from './NotificationBell';
 import { GlobalSearch } from './GlobalSearch';
 import { Hamburger } from './Sidebar';
 import { SidebarContent } from './Sidebar';
+import UserMenu from './UserMenu';
 import { ModuleLauncher } from './ModuleLauncher';
 import { CommandPalette } from './CommandPalette';
 
@@ -122,7 +123,6 @@ export function Layout({ children }) {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  const initials = user.name?.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
   return (
     <div className={`layout operations-shell${compactNav ? ' nav-compact' : ''}${dense ? ' density-compact' : ''}`}>
@@ -135,9 +135,9 @@ export function Layout({ children }) {
         role={mobile && open ? 'dialog' : undefined} aria-modal={mobile && open ? true : undefined}
         aria-hidden={mobile && !open ? true : undefined} inert={mobile && !open}>
         {mobile && open && <button className="drawer-close" type="button" onClick={() => setOpen(false)}><X size={18} /> Close navigation</button>}
-        <SidebarContent user={user} logout={logout} onNav={() => setOpen(false)} pages={sidebarPages}
+        <SidebarContent onNav={() => setOpen(false)} pages={sidebarPages}
           compact={compactNav && !mobile} onOpenLauncher={() => { setOpen(false); setPaletteOpen(false); setLauncherOpen(true); }}
-          onToggleCompact={toggleCompactNav} dense={dense} onToggleDensity={toggleDensity} />
+          onToggleCompact={toggleCompactNav} />
       </aside>
 
       {/* Mobile overlay */}
@@ -152,21 +152,14 @@ export function Layout({ children }) {
           <GlobalSearch />
           <HelpMenu role={user.role} />
           <NotificationBell />
-          <NavLink to="/profile" className="topbar-user" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <strong>{initials}</strong><br />
-            <span className="u-0d5be05">{user.role}</span>
-          </NavLink>
+          <UserMenu user={user} team={currentTeams} logout={logout} dense={dense} onToggleDensity={toggleDensity} />
         </div>
       </header>
 
       <div className="main" inert={mobile && open}>
-        {/* Desktop-only top bar */}
+        {/* Desktop-only top bar: find, create, alerts, account. The page names
+            itself with its own heading, so it is not repeated here. */}
         <div className="desktop-topbar">
-          <div className="workspace-context">
-            <span className="workspace-section">{currentPage?.section || 'Workspace'}</span>
-            <span className="workspace-page">{currentPage?.label || PRODUCT_NAME}</span>
-          </div>
-          {currentTeams && <span className="workspace-team" title={currentTeams}>{currentTeams}</span>}
           <button type="button" className="workspace-command" onClick={() => setPaletteOpen(true)} aria-label="Open page navigation">
             <Search size={15} aria-hidden="true" /> Go to a page <kbd>Ctrl K</kbd>
           </button>
@@ -175,17 +168,7 @@ export function Layout({ children }) {
             <GlobalSearch />
             <HelpMenu role={user.role} />
             <NotificationBell />
-            <NavLink to="/profile" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit', marginLeft: 6 }}>
-              <div className="u-34cd4d9">
-                {user.avatar_url
-                  ? <img src={user.avatar_url} alt="avatar" className="u-618aa59" />
-                  : initials}
-              </div>
-              <div className="u-ac03116">
-                <div className="u-c04424d">{user.name}</div>
-                <div className="u-e149246">{user.role}</div>
-              </div>
-            </NavLink>
+            <UserMenu user={user} team={currentTeams} logout={logout} dense={dense} onToggleDensity={toggleDensity} />
           </div>
         </div>
         <main id="main-content" tabIndex={-1}>{children}</main>

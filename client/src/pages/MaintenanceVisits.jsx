@@ -509,7 +509,7 @@ export default function MaintenanceVisits() {
 
   return (
     <div className="page">
-      <PageHeader eyebrow="Operations" title="Maintenance Visits" description="Plan customer visits and track completion through report delivery." actions={<>
+      <PageHeader title="Maintenance Visits" actions={<>
 {canManage && (
           <div className="flex gap-8 flex-wrap">
             <button className="btn btn-ghost btn-sm inline-flex items-center gap-5" disabled={unavailable} onClick={async () => {
@@ -540,7 +540,7 @@ export default function MaintenanceVisits() {
       ]} />
 
       {/* Search + Filters */}
-      <Surface title="Visit filters" description="Search scheduled work and focus the report-delivery workflow.">
+      <Surface label="Visit filters">
         <ListSearch value={search} onChange={setSearch} label="Search maintenance visits" maxLength={500}
           placeholder="Search customers, visit titles, or engineers…" />
         {/* Status tabs + month picker */}

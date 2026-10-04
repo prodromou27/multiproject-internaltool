@@ -46,15 +46,14 @@ export default function Users() {
   ];
 
   return <div className="page">
-    <PageHeader eyebrow="Administration" title="Team directory"
-      description="Find active and historical accounts without loading the entire organization into the browser." />
+    <PageHeader title="Team directory" />
     <MetricStrip items={[
       { key:'all',label:'All accounts',value:counts.all || 0,note:'Matching the current search',tone:'info' },
       { key:'engineers',label:'Engineers',value:counts.engineer || 0,note:'Operational delivery users' },
       { key:'management',label:'Management',value:(counts.manager || 0)+(counts.planner || 0)+(counts.pm || 0),note:'Managers, planners and PMs' },
       { key:'shown',label:'This page',value:users.length,note:`Page ${page}`,tone:'success' },
     ]} />
-    <Surface title="Directory filters" description="Search names, email addresses, or roles.">
+    <Surface label="Directory filters">
       <ListSearch value={search} onChange={setSearch} label="Search team directory" placeholder="Search by name, email, or role…" maxLength={200} />
       <FilterGroup label="Role">
         {[

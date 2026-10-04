@@ -231,7 +231,7 @@ export default function Customers() {
 
   return (
     <div className="page">
-      <PageHeader eyebrow="Management" title="Customers" description="Customer records, service coverage, contracts and operational access." actions={
+      <PageHeader title="Customers" actions={
         <div className="flex gap-8 flex-wrap">
           <button className="btn btn-ghost" onClick={() => load()} disabled={loading}><RefreshCw size={14} /> Refresh</button>
           {canCreate && <button className="btn btn-ghost inline-flex items-center gap-6" onClick={() => setShowImport(true)}><Upload size={14} /> Import</button>}
@@ -239,7 +239,7 @@ export default function Customers() {
         </div>
       } />
 
-      <Surface title="Directory filters" description="Search customer records and narrow the operational coverage view.">
+      <Surface label="Directory filters">
         <ListSearch value={search} onChange={setSearch} label="Search customers" placeholder="Search customers, contacts, email, or location…" />
         <FilterGroup label="View">
           {[

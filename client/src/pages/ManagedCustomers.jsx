@@ -51,7 +51,7 @@ function Landing() {
     { key:'service_manager',label:'Service manager',render:row => row.service_manager || 'Unassigned' },
   ];
   return <div className="page">
-    <PageHeader eyebrow="Management" title="Managed Customers" description="Current service health, support workload and integration freshness for Managed Services customers." actions={<><Link to="/service-operations" className="btn btn-ghost">Service activity overview</Link><button className="btn btn-ghost" onClick={() => setRetry(value => value+1)} disabled={loading}><RefreshCw size={14} /> Refresh</button></>} />
+    <PageHeader title="Managed Customers" actions={<><Link to="/service-operations" className="btn btn-ghost">Service activity overview</Link><button className="btn btn-ghost" onClick={() => setRetry(value => value+1)} disabled={loading}><RefreshCw size={14} /> Refresh</button></>} />
     <MetricStrip items={[{ label:'Managed customers',value:rows.length,tone:'info' },{ label:'Need attention',value:rows.filter(row => row.service_status!=='healthy').length,tone:'warning' },{ label:'Open tickets',value:totals.tickets,tone:totals.tickets?'danger':'success' },{ label:'Pending tickets',value:totals.pending },{ label:'Activities this month',value:totals.activities }]} />
     <Surface className="managed-customer-filters" title="Customer portfolio" description="Filter by ownership and service condition to focus the review.">
       <ListSearch value={filters.search} onChange={value => setFilters(current => ({ ...current,search:value }))} label="Search managed customers" placeholder="Search managed customers…" />

@@ -145,7 +145,7 @@ export default function Approvals() {
   }
   const heading=view==='reports' ? 'Managed reports' : 'Project closure';
   return <div className="page">
-    <PageHeader eyebrow="Management" title="Approvals" description="Review operational decisions from one permission-aware workspace. The oldest requests appear first."
+    <PageHeader title="Approvals" meta="Oldest requests first."
       actions={<button className="btn btn-ghost" disabled={loading} onClick={reload}><RefreshCw size={15} /> Refresh</button>} />
     {canReviewClosures && canReviewReports && <div className="tabs" role="tablist" aria-label="Approval type">
       <button className={`tab ${view==='closures'?'active':''}`} role="tab" aria-selected={view==='closures'} onClick={() => setView('closures')}>Project closures</button>

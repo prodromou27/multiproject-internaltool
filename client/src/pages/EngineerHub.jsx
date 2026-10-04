@@ -218,7 +218,7 @@ export default function EngineerHub() {
 
   return (
     <div className="page engineer-hub">
-      <PageHeader eyebrow="Workspace" title="My Work" description="Your daily priorities, upcoming commitments and personal work tools."
+      <PageHeader title="My Work"
         actions={<button className="btn btn-ghost" onClick={load}><RotateCw size={15} /> Refresh</button>} />
       {loadError && <p className="error-msg" role="alert">{loadError}</p>}
       <section className={`workflow-banner is-${workflowProfile}`}><div><p className="operations-eyebrow">{workflowCopy.eyebrow}</p><h2>{workflowCopy.title}</h2><p>{workflowCopy.description}</p></div><div className="workflow-banner-actions">{managedFocus && saAccess.enabled && <Link className="btn btn-primary" to="/activity-log?create=1"><ClipboardList size={15} /> Log activity</Link>}<Link className={managedFocus && saAccess.enabled?'btn btn-ghost':'btn btn-primary'} to="/tasks"><CheckCircle2 size={15} /> Open tasks</Link><Link className="btn btn-ghost" to="/projects"><FolderOpen size={15} /> My projects</Link></div></section>

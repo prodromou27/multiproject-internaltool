@@ -323,7 +323,7 @@ export default function Projects() {
 
   return (
     <div className="page">
-      <PageHeader eyebrow="Operations" title="Projects" description="Customer delivery, project ownership and upcoming commitments." actions={<>
+      <PageHeader title="Projects" actions={<>
 {isManager && <button className="btn btn-primary" onClick={() => { setCreateInitial(null);setShowCreate(true); }} disabled={loading || !!loadError}>+ New Project</button>}
       </>} />
 
@@ -334,7 +334,7 @@ export default function Projects() {
         { key:'risk',label:'Red health',value:counts.rag_red || 0,note:'Within the selected status scope',tone:(counts.rag_red || 0)>0?'danger':'success' },
       ]} />
 
-      <Surface title="Portfolio filters" description="Search the permitted portfolio and narrow it by delivery state or health.">
+      <Surface label="Portfolio filters">
         <ListSearch value={search} onChange={setSearch} label="Search projects" placeholder="Search projects, customers, or owners…" />
         <FilterGroup label="Status">
           {[

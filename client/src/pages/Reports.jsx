@@ -344,7 +344,7 @@ export default function Reports() {
     return () => controller.abort();
   }, [retry]);
 
-  if (loading || !summary) return <div className="page"><PageHeader eyebrow="Management" title="Reports" description="Operational analysis, delivery health and reusable report definitions." />{tab==='builder' ? <ReportBuilder /> : loading ? <div className="skeleton-table" aria-label="Loading reports"><span /><span /><span /></div> : <div className="error-msg" role="alert">{loadError || 'Report summaries unavailable'} <button className="btn btn-ghost" onClick={() => setRetry(value => value+1)}>Retry summaries</button><button className="btn btn-primary" onClick={() => setTab('builder')}>Open Report Builder</button></div>}</div>;
+  if (loading || !summary) return <div className="page"><PageHeader title="Reports" />{tab==='builder' ? <ReportBuilder /> : loading ? <div className="skeleton-table" aria-label="Loading reports"><span /><span /><span /></div> : <div className="error-msg" role="alert">{loadError || 'Report summaries unavailable'} <button className="btn btn-ghost" onClick={() => setRetry(value => value+1)}>Retry summaries</button><button className="btn btn-primary" onClick={() => setTab('builder')}>Open Report Builder</button></div>}</div>;
 
   const byStatus = Object.fromEntries(summary.byStatus.map(s => [s.status, s.count]));
   // "Active" = everything that isn't closed or cancelled
@@ -354,7 +354,7 @@ export default function Reports() {
 
   return (
     <div className="page">
-      <PageHeader eyebrow="Management" title="Reports" description="Operational analysis, delivery health and reusable report definitions."
+      <PageHeader title="Reports"
         actions={<Link className="btn btn-ghost" to="/service-operations">Service activity overview</Link>} />
 
       <div className="tabs" aria-label="Report sections">

@@ -25,8 +25,10 @@ test('the theme toggle switches between light and dark', async ({ page }) => {
   await mockApi(page, { role: 'engineer' });
   await page.goto('/tasks');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.locator('summary[aria-label="Account menu"]').filter({ visible: true }).click();
   await page.getByRole('button', { name: /dark mode/i }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.locator('summary[aria-label="Account menu"]').filter({ visible: true }).click();
   await page.getByRole('button', { name: /light mode/i }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 });

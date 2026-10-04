@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2, Award, BarChart2, UsersIcon, Settings, LogOut, Search, MessageSquare, Ticket, Database, CheckCheck, ClipboardList, FileText, StickyNote, UserCircle, Moon, Sun, ShieldCheck, Zap, Activity, Grid3X3, PanelLeftClose, PanelLeftOpen, Rows3 } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2, Award, BarChart2, UsersIcon, Settings, Search, MessageSquare, CheckCheck, ClipboardList, FileText, StickyNote, UserCircle, ShieldCheck, Zap, Activity, Grid3X3, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { api } from '../api';
 import { PRODUCT_WORDMARK } from '../product';
-import { useToast } from '../components/Toast';
-import { useAuth } from '../auth';
 
 /* ── Hamburger icon ──────────────────────────────────────── */
 export function Hamburger({ open, onClick }) {
@@ -29,10 +27,7 @@ function OverdueDot({ count }) {
   );
 }
 
-export function SidebarContent({ user, logout, onNav, pages, compact, onOpenLauncher, onToggleCompact, dense, onToggleDensity }) {
-  const toast = useToast();
-  const { dark, toggleDark } = useAuth();
-  const initials = user.name?.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+export function SidebarContent({ onNav, pages, compact, onOpenLauncher, onToggleCompact }) {
 
   const [overdue, setOverdue] = useState({ tasks: 0, visits: 0 });
   useEffect(() => {
@@ -55,24 +50,8 @@ export function SidebarContent({ user, logout, onNav, pages, compact, onOpenLaun
         <span className="sidebar-brand-name">{PRODUCT_WORDMARK.prefix}<strong>{PRODUCT_WORDMARK.suffix}</strong></span>
       </div>
 
-      {/* User info — click to go to profile */}
-      <NavLink to="/profile" onClick={onNav} style={{ textDecoration: 'none' }}>
-        <div className="sidebar-user cursor-pointer">
-          <div className="sidebar-user-avatar u-d18c502">
-            {user.avatar_url
-              ? <img src={user.avatar_url} alt="avatar" className="u-2410f0a" />
-              : initials}
-          </div>
-          <div className="sidebar-user-info">
-            <strong>{user.name}</strong>
-            <span>{user.role}</span>
-          </div>
-        </div>
-      </NavLink>
-
       {/* Main nav */}
       <nav className="sidebar-primary-nav" aria-label="Pinned modules">
-        <div className="sidebar-section-label">Workspace</div>
         {pages.map(page => {
           const Icon = PAGE_ICONS[page.icon];
           return <NavLink key={page.id} to={page.path} end={page.path === '/'} onClick={onNav}
@@ -87,32 +66,12 @@ export function SidebarContent({ user, logout, onNav, pages, compact, onOpenLaun
         </button>
       </nav>
 
-      {/* Footer — external tools live here as compact links, out of the way of
-          the app's own pages, instead of a full "Useful Links" section above. */}
+      {/* Footer: only the rail toggle. Account, display preferences and external
+          tools live in the account menu in the top bar. */}
       <div className="sidebar-footer">
-        <div className="sidebar-external-links">
-          <a href="https://ts.odysseycs.com/" target="_blank" rel="noopener noreferrer" onClick={onNav} title="Odyssey Ticketing (opens in a new tab)">
-            <Ticket size={14} /> Ticketing
-          </a>
-          <a href="https://9605283.app.netsuite.com" target="_blank" rel="noopener noreferrer" onClick={onNav} title="Netsuite (opens in a new tab)">
-            <Database size={14} /> Netsuite
-          </a>
-        </div>
-        <button onClick={onToggleDensity} className="u-4e420af" title={dense ? 'Use comfortable spacing' : 'Use compact spacing'}>
-          <Rows3 size={15} />
-          <span>{dense ? 'Comfortable spacing' : 'Compact spacing'}</span>
-        </button>
         <button onClick={onToggleCompact} className="sidebar-collapse" title={compact ? 'Expand navigation' : 'Collapse navigation'}>
           {compact ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
           <span>{compact ? 'Expand' : 'Collapse'}</span>
-        </button>
-        <button onClick={toggleDark} className="u-4e420af" title={dark ? 'Use light mode' : 'Use dark mode'}>
-          {dark ? <Sun size={14} /> : <Moon size={14} />}
-          <span>{dark ? 'Light Mode' : 'Dark Mode'}</span>
-        </button>
-        <button title="Sign out" onClick={async () => { try { await logout(); onNav(); } catch (e) { toast.error(e.message || 'Unable to sign out'); } }}>
-          <LogOut size={14} />
-          <span>Sign Out</span>
         </button>
       </div>
     </>

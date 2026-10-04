@@ -6,10 +6,8 @@ import OperationalFocus from '../components/OperationalFocus';
 import { localDateISO } from '../utils/dates';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { isOverdue } from '../components/Shared';
 import { useWidgetPrefs } from './dashboard/widgetPrefs';
 import WidgetCustomizer from './dashboard/WidgetCustomizer';
-import OverdueBanner from './dashboard/OverdueBanner';
 import { plannerWidget } from './dashboard/plannerWidgets';
 import { managerWidget } from './dashboard/managerWidgets';
 import { engineerWidget } from './dashboard/engineerWidgets';
@@ -112,8 +110,6 @@ export default function Dashboard() {
   const active          = projects.filter(p => !['closed', 'cancelled'].includes(p.status));
   const pendingClosure  = projects.filter(p => p.status === 'pending_approval');
   const myOpen          = tasks.filter(t => !TASK_TERMINAL.includes(t.status));
-  const overdueProjects = projects.filter(p => isOverdue(p.deadline) && !['closed', 'cancelled', 'pending_approval'].includes(p.status));
-  const overdueTasks    = tasks.filter(t => isOverdue(t.deadline) && !TASK_TERMINAL.includes(t.status));
 
   /* ════════════════════════════════════════════════════════
      Widget render helpers — return null when widget has no
@@ -128,8 +124,8 @@ export default function Dashboard() {
   return (
     <div className="page dashboard-page">
       {/* Page header */}
-      <PageHeader eyebrow="Workspace" title={isManager ? 'Operations overview' : isEngineer ? 'My work overview' : isPlanner ? 'Maintenance planning' : 'Project overview'}
-        description={isManager ? 'Review exceptions, outstanding decisions and upcoming commitments.' : isEngineer ? 'Start with due work, report obligations and customer follow-ups.' : 'Plan and review the work available to your role.'}
+      <PageHeader title={isManager ? 'Operations overview' : isEngineer ? 'My work' : isPlanner ? 'Maintenance planning' : 'Project overview'}
+        meta={`${new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}${lastUpdated ? ` · updated ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`}
         actions={<>
           {isManager && <Link to="/approvals" className="btn btn-primary">Review approvals</Link>}
           {isEngineer && <Link to="/my-day" className="btn btn-primary">Open My Work</Link>}
@@ -146,12 +142,6 @@ export default function Dashboard() {
         </div>
         </>} />
 
-      <div className="dashboard-statusbar" aria-live="polite">
-        <span className="dashboard-snapshot"><i /> Current snapshot</span>
-        <span>{new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</span>
-        <span>Updated {lastUpdated ? lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'just now'}</span>
-        <span className="dashboard-widget-count">{prefs.order.length - prefs.hidden.length} of {prefs.order.length} widgets visible</span>
-      </div>
 
       {error && (
         <div className="alert alert-warning mb-20">
@@ -160,8 +150,6 @@ export default function Dashboard() {
       )}
 
       {(isManager || isEngineer) && <OperationalFocus data={overview} error={overviewError} onRefresh={load} />}
-
-      <OverdueBanner overdueProjects={overdueProjects} overdueTasks={overdueTasks} />
 
       {/* Widgets rendered in user-defined order */}
       {prefs.order.map(id => isVisible(id) ? renderFn(id, ctx) : null)}

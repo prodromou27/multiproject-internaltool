@@ -36,9 +36,11 @@ test('workspace density is optional and persists per account', async ({ page }) 
   await mockApi(page, { role: 'manager' });
   await page.goto('/tasks');
 
+  await page.locator('summary[aria-label="Account menu"]').filter({ visible: true }).click();
   await page.getByRole('button', { name: 'Compact spacing' }).click();
   await expect(page.locator('.operations-shell')).toHaveClass(/density-compact/);
   await page.reload();
   await expect(page.locator('.operations-shell')).toHaveClass(/density-compact/);
+  await page.locator('summary[aria-label="Account menu"]').filter({ visible: true }).click();
   await expect(page.getByRole('button', { name: 'Comfortable spacing' })).toBeVisible();
 });

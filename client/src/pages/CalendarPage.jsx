@@ -142,7 +142,7 @@ export default function CalendarPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Calendar & Planner" description="Plan deadlines, visits, pending reports and service follow-ups." actions={<>
+      <PageHeader title="Calendar & Planner" actions={<>
         <div className="flex gap-8 u-7c61974">
           {isManagerOrPlanner && (
             <button

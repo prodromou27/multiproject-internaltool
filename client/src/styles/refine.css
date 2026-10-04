@@ -1,0 +1,223 @@
+/* TeamHub refinement: calm and focused.
+   Ink for text and primary actions, a quiet slate for links and focus, and the
+   Odyssey red used for one job only: marking what needs attention (overdue
+   counts, attention markers, the current page). Loaded after index.css and
+   foundations.css; the generated inline.css still wins for element-level rules. */
+
+:root {
+  --ink:            #1a2027;
+  --signal:         #c8102e;
+  --signal-soft:    #fcedf0;
+
+  --primary:        #30507f;
+  --primary-dark:   #233c61;
+  --primary-light:  #eef2f8;
+  --primary-ring:   rgba(48, 80, 127, .18);
+
+  --danger:         #c8102e;
+  --danger-light:   #fcedf0;
+  --success:        #2f7d5b;
+  --success-light:  #edf6f1;
+  --warning:        #b7791f;
+  --warning-light:  #fbf4e6;
+
+  /* Cool neutral scale (no blue cast). */
+  --gray-50:  #f4f5f7;
+  --gray-100: #eceef1;
+  --gray-200: #e3e6ea;
+  --gray-300: #cdd2d9;
+  --gray-400: #9aa3ae;
+  --gray-500: #6b7480;
+  --gray-600: #545d69;
+  --gray-700: #3b434d;
+  --gray-800: #262c33;
+  --gray-900: #1a2027;
+
+  --surface:          #ffffff;
+  --highlight:        #f1f4f9;
+  --highlight-strong: #e4eaf3;
+
+  /* Radius hierarchy: controls 6, panels 10, overlays 12. */
+  --radius:    6px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+
+  /* Lines do the separating; shadows only lift overlays. */
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow:    0 1px 2px rgba(26, 32, 39, .06);
+  --shadow-md: 0 8px 24px rgba(26, 32, 39, .10);
+  --shadow-lg: 0 16px 40px rgba(26, 32, 39, .14);
+}
+
+[data-theme="dark"] {
+  --ink:            #e8ebef;
+  --signal:         #f0566c;
+  --signal-soft:    rgba(240, 86, 108, .14);
+  --primary:        #8fb0e0;
+  --primary-dark:   #b3cbee;
+  --primary-light:  rgba(143, 176, 224, .14);
+  --primary-ring:   rgba(143, 176, 224, .25);
+  --danger:         #f0566c;
+  --danger-light:   rgba(240, 86, 108, .14);
+  --gray-50:  #12161b;
+  --gray-100: #1f252d;
+  --gray-200: #2a313a;
+  --gray-300: #3a424d;
+  --gray-400: #5f6874;
+  --gray-500: #8d96a2;
+  --gray-600: #a9b1bb;
+  --gray-700: #c3c9d1;
+  --gray-800: #dde1e6;
+  --gray-900: #eef0f3;
+  --surface:          #1a1f26;
+  --highlight:        rgba(143, 176, 224, .08);
+  --highlight-strong: rgba(143, 176, 224, .16);
+}
+[data-theme="dark"] body,
+[data-theme="dark"] .card,
+[data-theme="dark"] .modal,
+[data-theme="dark"] .desktop-topbar { background: var(--surface); }
+[data-theme="dark"] body { background: var(--gray-50); }
+
+/* ── Type ─────────────────────────────────────────────────── */
+body {
+  font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  background: var(--gray-50);
+  color: var(--ink);
+  font-feature-settings: 'tnum' 1; /* counts and dates line up */
+}
+h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
+
+/* ── Buttons: ink for the one primary action, quiet otherwise ── */
+.btn-primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #000; border-color: #000; }
+[data-theme="dark"] .btn-primary { color: #12161b; }
+[data-theme="dark"] .btn-primary:hover:not(:disabled) { background: #fff; border-color: #fff; }
+.btn-ghost { box-shadow: none; }
+
+/* ── Panels: hairline, no shadow ─────────────────────────── */
+.card { border: 1px solid var(--gray-200); border-radius: var(--radius-lg); box-shadow: none; }
+
+/* ── Sidebar: light and quiet ─────────────────────────────── */
+.operations-shell .sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--gray-200);
+  color: var(--gray-700);
+}
+.operations-shell .sidebar-logo { height: 60px; border-bottom: 0; }
+.sidebar-logo .sidebar-brand-name { color: var(--ink); font-weight: 600; letter-spacing: -.01em; }
+.sidebar-logo .sidebar-brand-name strong { color: var(--signal); }
+.sidebar-logo-mark { border: 1px solid var(--gray-200); }
+.operations-shell .sidebar-primary-nav { padding: 6px 10px; }
+.operations-shell .sidebar nav a {
+  min-height: 36px; margin-bottom: 1px; border-radius: var(--radius);
+  color: var(--gray-600); font-weight: 500; font-size: 13.5px;
+}
+.operations-shell .sidebar nav a svg { color: var(--gray-500); }
+.operations-shell .sidebar nav a:hover { background: var(--gray-100); color: var(--ink); text-decoration: none; }
+.operations-shell .sidebar nav a.active {
+  background: var(--gray-100); color: var(--ink); font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--signal);
+}
+.operations-shell .sidebar nav a.active svg { color: var(--ink); }
+.sidebar-launcher {
+  margin-top: 8px; padding: 8px 10px; min-height: 36px;
+  border: 0; background: transparent; color: var(--gray-600); font-weight: 500;
+}
+.sidebar-launcher:hover { background: var(--gray-100); color: var(--ink); border: 0; }
+.sidebar-launcher svg { color: var(--gray-500); }
+.sidebar-overdue-count { background: var(--signal) !important; color: #fff !important; }
+.operations-shell .sidebar-footer { border-top: 1px solid var(--gray-200); padding: 8px 10px; background: transparent; }
+.operations-shell .sidebar-footer button {
+  width: 100%; display: flex; align-items: center; gap: 9px; padding: 8px 10px;
+  border: 0; border-radius: var(--radius); background: transparent;
+  color: var(--gray-500); font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.operations-shell .sidebar-footer button:hover { background: var(--gray-100); color: var(--ink); }
+.drawer-close { color: var(--ink); border-color: var(--gray-300); }
+
+/* ── Top bar: search, create, alerts, you ────────────────── */
+.operations-shell .desktop-topbar {
+  min-height: 60px; background: var(--surface); border-bottom: 1px solid var(--gray-200); gap: 12px;
+}
+.workspace-command {
+  margin-right: auto; min-width: 280px; justify-content: flex-start;
+  border: 1px solid var(--gray-200); background: var(--gray-50); color: var(--gray-500);
+  border-radius: var(--radius); box-shadow: none;
+}
+.workspace-command:hover { border-color: var(--gray-300); color: var(--gray-700); }
+.workspace-command kbd { margin-left: auto; }
+.topbar-action, .operations-shell .desktop-topbar button.icon-btn { border: 0 !important; background: transparent !important; box-shadow: none !important; }
+
+/* ── User menu (replaces the sidebar footer buttons) ────── */
+.user-menu { position: relative; }
+.user-menu > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px;
+  padding: 4px 8px 4px 4px; border-radius: var(--radius);
+}
+.user-menu > summary::-webkit-details-marker { display: none; }
+.user-menu > summary:hover { background: var(--gray-100); }
+.user-menu-avatar {
+  width: 32px; height: 32px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  display: grid; place-items: center; background: var(--ink); color: #fff; font-size: 12px; font-weight: 600;
+}
+[data-theme="dark"] .user-menu-avatar { color: #12161b; }
+.user-menu-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.user-menu-who { display: grid; line-height: 1.25; text-align: left; }
+.user-menu-who strong { font-size: 13px; font-weight: 600; color: var(--ink); }
+.user-menu-who span { font-size: 12px; color: var(--gray-500); text-transform: capitalize; }
+.user-menu-panel {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 60; width: 240px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--gray-200); border-radius: var(--radius-xl); box-shadow: var(--shadow-md);
+}
+.user-menu-panel a, .user-menu-panel button {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 0; border-radius: var(--radius); background: transparent; color: var(--gray-800);
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer; text-decoration: none;
+}
+.user-menu-panel a:hover, .user-menu-panel button:hover { background: var(--gray-100); text-decoration: none; }
+.user-menu-panel svg { color: var(--gray-500); flex-shrink: 0; }
+.user-menu-panel hr { border: 0; border-top: 1px solid var(--gray-200); margin: 6px 4px; }
+.user-menu-panel .user-menu-signout { color: var(--signal); }
+.user-menu-panel .user-menu-signout svg { color: var(--signal); }
+@media (max-width: 900px) { .user-menu-who { display: none; } }
+
+/* ── Page header: one heading, optional one-line context ── */
+.operations-page-header { align-items: flex-end; padding-bottom: 18px; margin-bottom: 22px; border-bottom: 1px solid var(--gray-200); }
+.operations-page-header h1 { font-size: 22px; font-weight: 600; letter-spacing: -.015em; line-height: 1.25; }
+.operations-description { margin-top: 4px; max-width: 68ch; color: var(--gray-500); font-size: 13px; }
+/* Labels that remain carry information (e.g. which team focus applies): sentence case, quiet. */
+.operations-eyebrow { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 500; color: var(--gray-500); }
+
+/* ── Dashboard: what needs you, nothing else up top ─────── */
+.focus-heading h2 { font-size: 16px; font-weight: 600; }
+.focus-metrics { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.focus-metric { padding: 14px 16px; border-radius: var(--radius-lg); border-color: var(--gray-200); }
+.focus-metric strong { font-size: 26px; font-weight: 600; line-height: 1; }
+.focus-metric.needs-attention { border-left: 1px solid var(--gray-200); box-shadow: inset 3px 0 0 var(--signal); }
+.focus-metric.needs-attention strong { color: var(--signal); }
+.focus-metric:hover { border-color: var(--gray-300); }
+.focus-all-clear {
+  display: flex; align-items: center; gap: 10px; padding: 14px 16px; margin-bottom: 16px;
+  border: 1px solid var(--gray-200); border-radius: var(--radius-lg); background: var(--surface); color: var(--gray-600);
+}
+.focus-all-clear svg { color: var(--success); }
+.focus-work-list li > svg { color: var(--gray-400); }
+.focus-work-list li.is-overdue > svg { color: var(--signal); }
+.focus-columns h3 svg { color: var(--gray-500); }
+
+/* ── Status badges: softer, smaller ──────────────────────── */
+.badge { font-weight: 500; letter-spacing: 0; }
+
+/* Dashboard widgets: ink numbers, quiet icons, red only for a live warning. */
+.dashboard-stat { --stat-icon-bg: var(--gray-100); --stat-icon-color: var(--gray-500); --stat-value-color: var(--ink); }
+.dashboard-stat.is-urgent { --stat-icon-bg: var(--signal-soft); --stat-icon-color: var(--signal); --stat-value-color: var(--signal); }
+.dashboard-page .dashboard-stat .dashboard-stat-copy strong { font-weight: 600; letter-spacing: -.01em; }
+.dashboard-page .stat-value { color: var(--ink); font-weight: 600; }
+.section-title { font-weight: 600; letter-spacing: -.005em; }
+
+/* Mobile top bar wordmark matches the sidebar. */
+.topbar { background: var(--surface); border-bottom: 1px solid var(--gray-200); }
+.topbar-logo { color: var(--ink); font-weight: 600; }
+.topbar-logo span { color: var(--signal); }
