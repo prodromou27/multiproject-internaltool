@@ -149,6 +149,14 @@ test('customer activity views reject malformed filters and missing customers con
   assert.equal((await api('/api/customers/99999999/service-summary',{ token:ids.tokenManager })).status,404);
 });
 
+// The summary query needs real PostgreSQL (pg-mem cannot run it), like the trend test above.
+test('Customer 360 activity tab opens with empty date boxes, meaning all dates rather than an error',{ skip:!process.env.TEST_DATABASE_URL },async () => {
+  const root=`/api/customers/${ids.customer}`;
+  assert.equal((await api(`${root}/service-summary?from=&to=`,{ token:ids.tokenManager })).status,200);
+  assert.equal((await api(`${root}/service-activities?from=&to=&page=1`,{ token:ids.tokenManager })).status,200);
+  assert.equal((await api(`${root}/service-summary?from=&to=`,{ token:ids.tokenEnabled })).status,200);
+});
+
 test('customer operational work lists paginate, filter, and enforce role scope',async () => {
   const root=`/api/customers/${ids.customer}/operations`;
   for (const resource of ['projects','tasks','visits']) {

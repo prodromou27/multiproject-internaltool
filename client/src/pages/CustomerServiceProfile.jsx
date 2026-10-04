@@ -109,7 +109,7 @@ function ActivitiesSection({ id,user,engineers,categories }) {
     const controller=new AbortController(),params={ page,page_size:25 };
     if (from) params.from=from;if (to) params.to=to;if (engineerFilter) params.engineer_id=engineerFilter;if (categoryFilter) params.category_id=categoryFilter;if (statusFilter) params.status=statusFilter;
     setLoading(true);setError('');
-    Promise.all([api.customerServiceActivities(id,params,{ signal:controller.signal }),api.customerServiceSummary(id,{ from,to },{ signal:controller.signal })]).then(([activities,result]) => {
+    Promise.all([api.customerServiceActivities(id,params,{ signal:controller.signal }),api.customerServiceSummary(id,{ ...(from ? { from } : {}),...(to ? { to } : {}) },{ signal:controller.signal })]).then(([activities,result]) => {
       if (!controller.signal.aborted) { setTimeline(activities.rows);setTotal(activities.total);setSummary(result); }
     }).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();

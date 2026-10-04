@@ -408,7 +408,8 @@ router.get('/:id/service-activities', requirePermission('service_activities.acce
   const id=Number(req.params.id);
   if (!await db.prepare('SELECT id FROM customers WHERE id=?').get(id)) return res.status(404).json({ error:'Customer not found' });
   if (!await canAccessCustomer(req.user,id)) return res.status(403).json({ error:'Forbidden' });
-  const { from, to, engineer_id, category_id, technology_id, status, page = 1, page_size = 25 } = req.query;
+  const { engineer_id, category_id, technology_id, status, page = 1, page_size = 25 } = req.query;
+  const from = req.query.from === '' ? undefined : req.query.from, to = req.query.to === '' ? undefined : req.query.to;
   for (const [key,value] of Object.entries({ from,to,engineer_id,category_id,technology_id,status,page,page_size })) if (value!==undefined && typeof value!=='string' && typeof value!=='number') return res.status(400).json({ error:`${key} must be a single value` });
   const validDate=value => value===undefined || (typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number(value.slice(0,4))>=1900 && Number(value.slice(0,4))<=9998 && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10)===value);
   if (!validDate(from) || !validDate(to) || (from && to && from>to)) return res.status(400).json({ error:'Invalid date range' });
@@ -472,7 +473,8 @@ router.get('/:id/service-summary', requireAuth, async (req, res) => {
   const id=Number(req.params.id);
   if (!await db.prepare('SELECT id FROM customers WHERE id=?').get(id)) return res.status(404).json({ error:'Customer not found' });
   if (!await canAccessCustomer(req.user,id)) return res.status(403).json({ error:'Forbidden' });
-  const { from, to } = req.query;
+  // An empty date (a cleared date box) means "no limit", same as leaving it out.
+  const from = req.query.from === '' ? undefined : req.query.from, to = req.query.to === '' ? undefined : req.query.to;
   if ((from!==undefined && typeof from!=='string') || (to!==undefined && typeof to!=='string')) return res.status(400).json({ error:'Dates must be single values' });
   const validDate=value => value===undefined || (/^\d{4}-\d{2}-\d{2}$/.test(value) && Number(value.slice(0,4))>=1900 && Number(value.slice(0,4))<=9998 && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10)===value);
   if (!validDate(from) || !validDate(to) || (from && to && from>to)) return res.status(400).json({ error:'Invalid date range' });

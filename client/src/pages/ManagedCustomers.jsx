@@ -6,20 +6,23 @@ import ManagedCustomerReportBuilder from '../components/ManagedCustomerReportBui
 import { fmtDateTime } from '../components/Shared';
 import { PageHeader } from '../components/PageLayout';
 import { ListSearch, ResultContext } from '../components/ListWorkspace';
+import { localDateISO } from '../utils/dates';
 import { DataTable,MetricStrip,Surface,Tabs,ToneBadge } from '../components/EnterpriseUI';
 
-const iso=date => date.toISOString().slice(0,10);
+// Periods are calendar days in the user's own time zone, matching the local
+// dates activities, tasks and visits are recorded with (not UTC).
+const iso=date => localDateISO(date);
 const formatDate=fmtDateTime;
 function period(preset,from,to) {
-  const now=new Date();
+  const now=new Date(),year=now.getFullYear(),month=now.getMonth();
   if (preset==='today') return { from:iso(now),to:iso(now) };
-  if (preset==='week') { const start=new Date(now);start.setUTCDate(start.getUTCDate()-((start.getUTCDay()+6)%7));return { from:iso(start),to:iso(now) }; }
-  if (preset==='last_month') return { from:iso(new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-1,1))),to:iso(new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),0))) };
-  if (preset==='quarter') { const month=Math.floor(now.getUTCMonth()/3)*3;return { from:iso(new Date(Date.UTC(now.getUTCFullYear(),month,1))),to:iso(now) }; }
-  if (preset==='previous_quarter') { const month=Math.floor(now.getUTCMonth()/3)*3;return { from:iso(new Date(Date.UTC(now.getUTCFullYear(),month-3,1))),to:iso(new Date(Date.UTC(now.getUTCFullYear(),month,0))) }; }
-  if (preset==='year') return { from:`${now.getUTCFullYear()}-01-01`,to:iso(now) };
+  if (preset==='week') { const start=new Date(year,month,now.getDate()-((now.getDay()+6)%7));return { from:iso(start),to:iso(now) }; }
+  if (preset==='last_month') return { from:iso(new Date(year,month-1,1)),to:iso(new Date(year,month,0)) };
+  if (preset==='quarter') { const first=Math.floor(month/3)*3;return { from:iso(new Date(year,first,1)),to:iso(now) }; }
+  if (preset==='previous_quarter') { const first=Math.floor(month/3)*3;return { from:iso(new Date(year,first-3,1)),to:iso(new Date(year,first,0)) }; }
+  if (preset==='year') return { from:`${year}-01-01`,to:iso(now) };
   if (preset==='custom') return { from,to };
-  return { from:`${iso(now).slice(0,7)}-01`,to:iso(now) };
+  return { from:iso(new Date(year,month,1)),to:iso(now) };
 }
 function age(ticket) {
   if (!ticket.created_at_external) return '—';

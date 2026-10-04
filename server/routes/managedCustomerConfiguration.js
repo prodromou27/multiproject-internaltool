@@ -8,6 +8,9 @@ const { createTicketingProvider }=require('../ticketing');
 const FREQUENCIES=new Set(['monthly','quarterly','semiannual','annual']);
 const BOOLEAN_FIELDS=['managed_services_enabled','service_activity_tracking_enabled','task_reporting_enabled','project_reporting_enabled','maintenance_visit_reporting_enabled','recommendation_tracking_enabled','include_in_managed_services_reports','ticket_integration_enabled','ticket_include_in_reporting','ticket_write_back_enabled'];
 const ALLOWED_FIELDS=new Set([...BOOLEAN_FIELDS,'responsible_team_id','service_manager_id','reporting_frequency','default_report_template_id','external_queue_id','external_queue_name','ticket_write_back_status','version']);
+// Server-owned values the GET returns. A client that saves back what it read
+// must not be rejected for them; they are ignored, never written.
+const READ_ONLY_FIELDS=new Set(['customer_id','last_successful_sync_at','last_sync_status']);
 const fail=(message,status=400) => { throw Object.assign(new Error(message),{ status }); };
 const integerOrNull=(value,label) => {
   if (value===null || value===undefined || value==='') return null;
@@ -62,7 +65,7 @@ router.get('/',requirePermission('managed_customers.view'),async (req,res) => {
 router.put('/',requireManager,async (req,res) => {
   try {
     const id=await customerId(req);
-    if (!req.body || typeof req.body!=='object' || Array.isArray(req.body) || Object.keys(req.body).some(key => !ALLOWED_FIELDS.has(key))) fail('Invalid managed customer configuration');
+    if (!req.body || typeof req.body!=='object' || Array.isArray(req.body) || Object.keys(req.body).some(key => !ALLOWED_FIELDS.has(key) && !READ_ONLY_FIELDS.has(key))) fail('Invalid managed customer configuration');
     for (const field of BOOLEAN_FIELDS) if (typeof req.body[field]!=='boolean') fail(`${field} must be true or false`);
     if (!Number.isSafeInteger(Number(req.body.version)) || Number(req.body.version)<0) fail('A valid configuration version is required');
     const responsibleTeamId=integerOrNull(req.body.responsible_team_id,'Responsible team');

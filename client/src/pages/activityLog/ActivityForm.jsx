@@ -101,6 +101,39 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
   const toggleIn = (key, value) => setForm(f => ({
     ...f, [key]: f[key].includes(value) ? f[key].filter(x => x !== value) : [...f[key], value],
   }));
+  // Which asset was worked on. For categories that require it (upgrades, patches)
+  // it sits in the main form, otherwise under More details.
+  const assetPicker = form.customer_id ? (
+    <>
+      <ChipGroup legend={category?.require_asset ? 'Customer assets (required for this category)' : 'Customer assets'} scroll
+          options={assets.map(asset => ({
+            id: asset.id,
+            label: asset.name,
+            detail: asset.hostname || asset.asset_type,
+            note: asset.lifecycle_status === 'retired' || asset.lifecycle_status === 'decommissioned' ? asset.lifecycle_status : '',
+          }))}
+          selected={form.asset_ids} onToggle={id => toggleIn('asset_ids', id)}
+          disabled={assetsLoading || !!assetsError}
+          status={assetsLoading ? 'Loading assets…' : assetsError || (!assets.length ? 'No active assets recorded for this customer.' : '')}
+          statusIsError={!!assetsError} />
+      {form.asset_ids.length > 0 && (
+        <div className="al-asset-versions">
+          <span className="al-asset-versions-title">Version <em>(optional — e.g. the version an upgrade left it on)</em></span>
+          {form.asset_ids.map(id => {
+            const asset = assets.find(item => item.id === id);
+            return (
+              <label key={id} className="al-asset-version">
+                <span>{asset?.name || `Asset ${id}`}</span>
+                <input value={form.asset_versions?.[id] || ''} maxLength={100} placeholder="e.g. 12.4.1"
+                  onChange={e => setForm(f => ({ ...f, asset_versions: { ...f.asset_versions, [id]: e.target.value } }))} />
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </>
+  ) : null;
+
   const today = iso(new Date());
   const yesterday = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return iso(d); })();
   const minutes = form.duration_minutes === '' ? null : Number(form.duration_minutes);
@@ -164,6 +197,8 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
         </Field>
       </div>
 
+      {category?.require_asset ? <div className="af-group af-assets-main">{assetPicker}</div> : null}
+
       <details className="af-more" open={showMore || requiredDetails} onToggle={e => setShowMore(e.target.open)}>
         <summary>More details</summary>
 
@@ -210,34 +245,7 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
             </Field>
             <Field label="Customer impact"><input value={form.customer_impact} onChange={set('customer_impact')} /></Field>
           </div>
-          {form.customer_id && (
-            <ChipGroup legend={category?.require_asset ? 'Customer assets (required for this category)' : 'Customer assets'} scroll
-              options={assets.map(asset => ({
-                id: asset.id,
-                label: asset.name,
-                detail: asset.hostname || asset.asset_type,
-                note: asset.lifecycle_status === 'retired' || asset.lifecycle_status === 'decommissioned' ? asset.lifecycle_status : '',
-              }))}
-              selected={form.asset_ids} onToggle={id => toggleIn('asset_ids', id)}
-              disabled={assetsLoading || !!assetsError}
-              status={assetsLoading ? 'Loading assets…' : assetsError || (!assets.length ? 'No active assets recorded for this customer.' : '')}
-              statusIsError={!!assetsError} />
-          )}
-          {form.customer_id && form.asset_ids.length > 0 && (
-            <div className="al-asset-versions">
-              <span className="al-asset-versions-title">Version <em>(optional — e.g. the version an upgrade left it on)</em></span>
-              {form.asset_ids.map(id => {
-                const asset = assets.find(item => item.id === id);
-                return (
-                  <label key={id} className="al-asset-version">
-                    <span>{asset?.name || `Asset ${id}`}</span>
-                    <input value={form.asset_versions?.[id] || ''} maxLength={100} placeholder="e.g. 12.4.1"
-                      onChange={e => setForm(f => ({ ...f, asset_versions: { ...f.asset_versions, [id]: e.target.value } }))} />
-                  </label>
-                );
-              })}
-            </div>
-          )}
+          {!category?.require_asset && assetPicker}
         </fieldset>
 
         <fieldset className="af-group">
@@ -280,7 +288,7 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
         </details>
       )}
 
-      {category?.require_attachment && (
+      {!!category?.require_attachment && (
         <p className="af-note">This category needs at least one attachment before the activity can be marked completed. You can add it after saving.</p>
       )}
 

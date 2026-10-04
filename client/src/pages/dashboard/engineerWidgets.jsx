@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { CheckCircle2, Clock, Wrench, FolderOpen, ListTodo, Send, ClipboardCheck, Building2, Ticket } from 'lucide-react';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../../components/Shared';
 import { api } from '../../api';
+import { localDateISO } from '../../utils/dates';
 import StatCard from './StatCard';
 
 export function engineerWidget(id, ctx) {
@@ -32,7 +33,7 @@ export function engineerWidget(id, ctx) {
     case 'due_week': {
       const now = new Date(); now.setHours(0,0,0,0);
       const weekEnd = new Date(now.getTime() + 7 * 86400000);
-      const todayStr = now.toISOString().slice(0,10);
+      const todayStr = localDateISO(now);
       const dueThisWeek = myOpen
         .filter(t => {
           if (!t.deadline) return false;
@@ -55,7 +56,7 @@ export function engineerWidget(id, ctx) {
             : <ul className="list-none">
                 {dueThisWeek.map(t => {
                   const isToday = t.deadline.slice(0,10) === todayStr;
-                  const isTomorrow = t.deadline.slice(0,10) === new Date(now.getTime()+86400000).toISOString().slice(0,10);
+                  const isTomorrow = t.deadline.slice(0,10) === localDateISO(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
                   const label = isToday ? 'Due today' : isTomorrow ? 'Tomorrow' : fmtDate(t.deadline);
                   return (
                     <li key={t.id} className="u-710b0ff">

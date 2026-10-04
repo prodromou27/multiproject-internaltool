@@ -50,7 +50,8 @@ export default function ManagedCustomerConfiguration({ customerId }) {
     try {
       do {
         again.current=false;
-        const sent=formRef.current;
+        // Send only the editable settings, never the server-owned sync status it also holds.
+        const sent=Object.fromEntries(Object.keys(DEFAULTS).map(key => [key,formRef.current[key]]));
         const saved=await api.saveManagedCustomerConfiguration(customerId,sent);
         // Adopt server-owned fields only; never overwrite what's being typed.
         formRef.current={ ...formRef.current,version:saved.version,last_successful_sync_at:saved.last_successful_sync_at,last_sync_status:saved.last_sync_status };

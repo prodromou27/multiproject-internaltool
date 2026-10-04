@@ -619,3 +619,23 @@ test('workload planning calculates known coverage, per-engineer visits and recor
   assert.equal(partial.data.engineers.find(row => row.id === engineer).weeks[0].unknown_estimates,1);
   await db.prepare("UPDATE tasks SET status='completed' WHERE id=?").run(missing);
 });
+
+test('the configuration read by Customer 360 can be saved back as-is (the autosave round trip)',async () => {
+  const customer=(await db.prepare('INSERT INTO customers (name,active,service_activity_enabled) VALUES (?,1,1)').run('Round-trip customer')).lastInsertRowid;
+  await db.prepare('INSERT INTO customer_teams (customer_id,team_id) VALUES (?,?)').run(customer,ids.teamEnabled);
+  const path=`/api/customers/${customer}/managed-services`;
+  const read=await api(path,{ token:ids.tokenManager });
+  assert.equal(read.status,200);
+  assert.ok('last_successful_sync_at' in read.data && 'last_sync_status' in read.data,'the read includes server-owned sync status');
+  // Exactly what the card holds: everything it read, plus the edits.
+  const saved=await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...read.data,managed_services_enabled:true,responsible_team_id:ids.teamEnabled } });
+  assert.equal(saved.status,200,JSON.stringify(saved.data));
+  assert.equal(saved.data.managed_services_enabled,true);
+  // Server-owned fields are ignored, never written from the client.
+  const forged=await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...saved.data,last_sync_status:'success',last_successful_sync_at:'2026-01-01T00:00:00Z' } });
+  assert.equal(forged.status,200);
+  assert.equal(forged.data.last_sync_status,null);
+  assert.equal(forged.data.last_successful_sync_at,null);
+  // Anything else unknown is still refused.
+  assert.equal((await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...forged.data,surprise:1 } })).status,400);
+});

@@ -111,3 +111,31 @@ test('team directory requests bounded pages and keeps role counts',async ({ page
   const directoryCalls=api.calls.filter(call => call.method==='GET' && call.path==='/api/auth/users');
   expect(directoryCalls.some(call => call.query.includes('page=2') && call.query.includes('page_size=25'))).toBeTruthy();
 });
+
+// Activities and tasks are recorded with the user's local date. Shortly after
+// midnight east of UTC the UTC date is still yesterday, and a UTC-based "This
+// month" used to stop at yesterday, silently dropping today's work from the report.
+test.describe('managed customer reporting periods use the local calendar day', () => {
+  test.use({ timezoneId: 'Asia/Nicosia' });
+  test('just after midnight, "This month" and "Today" include today', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-10-04T00:30:00+03:00'));
+    const api = await mockApi(page, { role: 'manager' });
+    // The shape the real overview endpoint returns (managedCustomerService.getOverview).
+    api.override('GET /api/managed-customers/12/overview', ({ request }) => {
+      const q = new URL(request.url()).searchParams;
+      return { body: { customer: { id: 12, name: 'Northwind Logistics', responsible_team: 'Managed Services', service_manager: null },
+        period: { from: q.get('from'), to: q.get('to') },
+        tickets: { open_now: 0, closed_now: 0, pending_now: 0, high_priority_open: 0, created_period: 0, resolved_period: 0, closed_period: 0, sla_breached_open: 0 },
+        activities: { activities: 1, minutes: 60, hours: 1 }, tasks: { open_now: 0, overdue_now: 0 }, projects: { active_now: 0 },
+        visits: { visits_period: 0, last_visit: null }, recommendations: { open_now: 0 } } };
+    });
+    await page.goto('/managed-customers/12');
+    const overview = () => api.calls.filter(c => c.path === '/api/managed-customers/12/overview').map(c => new URLSearchParams(c.query));
+    await expect.poll(() => overview().length).toBeGreaterThan(0);
+    expect(overview().at(-1).get('from')).toBe('2026-10-01');
+    expect(overview().at(-1).get('to')).toBe('2026-10-04');
+    await page.getByRole('button', { name: 'Today' }).click();
+    await expect.poll(() => overview().at(-1).get('from')).toBe('2026-10-04');
+    expect(overview().at(-1).get('to')).toBe('2026-10-04');
+  });
+});

@@ -1,9 +1,10 @@
+import { localDateISO } from '../../utils/dates';
 import { FolderOpen, CheckSquare, Wrench, Building2, User, Calendar, Clock } from 'lucide-react';
 import { fmtDate } from '../../components/Shared';
 import { SBadge, PBadge } from './badges';
 
 export function ProjectCard({ item, navigate }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateISO();
   const od = item.deadline && item.deadline < today && !['closed','cancelled'].includes(item.status);
   const pct = item.task_count > 0 ? Math.round((item.done_count / item.task_count) * 100) : null;
 
@@ -33,7 +34,7 @@ export function ProjectCard({ item, navigate }) {
 }
 
 export function TaskCard({ item, navigate }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateISO();
   const od = item.deadline && item.deadline < today && !['done', 'cancelled'].includes(item.status);
 
   return (
@@ -66,7 +67,7 @@ export function TaskCard({ item, navigate }) {
 }
 
 export function MVCard({ item, navigate }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateISO();
   const od = item.scheduled_date < today && !['completed', 'cancelled'].includes(item.status);
   const reportLabel = item.report_sent_to_customer ? 'Sent to PM'
     : item.report_sent ? 'Report Complete' : 'Report Pending';
