@@ -283,6 +283,11 @@ test('managed report templates are manager-only, validated and versioned',async 
   const editable={ name:'Customer Security Review Updated',description:created.data.description,sections:created.data.sections,default_narratives:created.data.default_narratives,active:true,version:created.data.version };
   const updated=await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:editable });
   assert.equal(updated.status,200);assert.equal(updated.data.version,2);
+  // Settings saves back the whole record it loaded (id, timestamps, Word template status).
+  const asListed=(await api('/api/managed-report-templates',{ token:ids.tokenManager })).data.rows.find(row => row.id===created.data.id);
+  const resaved=await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...asListed,description:'Edited in Settings' } });
+  assert.equal(resaved.status,200,JSON.stringify(resaved.data));assert.equal(resaved.data.description,'Edited in Settings');
+  assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...asListed,version:resaved.data.version,surprise:1 } })).status,400);
   assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...editable,name:'Stale' } })).status,409);
   assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'DELETE',token:ids.tokenManager })).status,200);
 });
@@ -655,4 +660,68 @@ test('managed-customer report activities say which asset was worked on and the v
   const row=result.data.rows.find(item => item.title==='Upgraded firmware');
   assert.deepEqual(row.assets,[{ name:'FW-REPORT-01',version:'7.4.3' }]);
   assert.equal(row.assets_label,'FW-REPORT-01 -> 7.4.3');
+});
+
+test('customer reports can use Odyssey\'s own Word template, checked on upload and filled with work done and changes',async () => {
+  const PizZip=require('pizzip');
+  const docText=buffer => new PizZip(buffer).file('word/document.xml').asText().replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
+  const base=suiteFixture.baseUrl;
+  const auth=token => ({ Authorization:`Bearer ${token}`,'X-SolutionsHub-Request':'1' });
+  const upload=(id,buffer,name,token=ids.tokenManager) => { const form=new FormData();form.append('file',new Blob([buffer]),name);
+    return fetch(`${base}/api/managed-report-templates/${id}/word-template`,{ method:'POST',headers:auth(token),body:form }); };
+
+  // A managed customer with a firewall upgraded twice in September.
+  const customer=(await db.prepare('INSERT INTO customers (name,active,service_activity_enabled) VALUES (?,1,1)').run('Word Template Customer')).lastInsertRowid;
+  await db.prepare('INSERT INTO customer_teams (customer_id,team_id) VALUES (?,?)').run(customer,ids.teamEnabled);
+  await db.prepare('INSERT INTO managed_customer_configurations (customer_id,managed_services_enabled,responsible_team_id) VALUES (?,1,?)').run(customer,ids.teamEnabled);
+  const asset=await api(`/api/customers/${customer}/assets`,{ method:'POST',token:ids.tokenManager,
+    body:{ name:'FW-WORD-01',asset_type:'Firewall',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'managed',support_end_date:'2026-11-15' } });
+  for (const [date,version,title] of [['2026-09-02','7.2.8','Baseline firmware'],['2026-09-20','7.4.3','Upgraded firewall firmware']]) {
+    const made=await api('/api/service-activities',{ method:'POST',token:ids.tokenEnabled,
+      body:{ customer_id:customer,activity_date:date,category_id:ids.category,title,status:'completed',duration_minutes:90,asset_ids:[asset.data.id],asset_versions:{ [asset.data.id]:version } } });
+    assert.equal(made.status,200,JSON.stringify(made.data));
+  }
+  const template=(await api('/api/managed-report-templates',{ method:'POST',token:ids.tokenManager,
+    body:{ name:'Word layout test',description:'',sections:['executive_summary','service_activities','changes','assets'],default_narratives:{},active:true } })).data;
+
+  // Starter template, reference, and permissions.
+  const starter=await fetch(`${base}/api/managed-report-templates/starter.docx`,{ headers:auth(ids.tokenManager) });
+  assert.equal(starter.status,200);
+  const starterBuffer=Buffer.from(await starter.arrayBuffer());
+  assert.ok(docText(starterBuffer).includes('{customer_name}'));
+  const reference=await api('/api/managed-report-templates/placeholders',{ token:ids.tokenManager });
+  assert.ok(reference.data.rows.some(row => row.tag==='changes' && row.fields.some(field => field.field==='new_version')));
+  assert.equal((await upload(template.id,starterBuffer,'layout.docx',ids.tokenEnabled)).status,403);
+
+  // Bad uploads are refused with the reason.
+  const typo=new PizZip(starterBuffer);typo.file('word/document.xml',typo.file('word/document.xml').asText().replace('{customer_name}','{custmer_name}'));
+  const typoResponse=await upload(template.id,typo.generate({ type:'nodebuffer' }),'layout.docx');
+  assert.equal(typoResponse.status,400);
+  assert.deepEqual((await typoResponse.json()).details,['{custmer_name} is not a known placeholder']);
+  assert.equal((await upload(template.id,Buffer.from('not a word file'),'layout.docx')).status,400);
+
+  // A good upload; listings never carry the file itself.
+  const saved=await upload(template.id,starterBuffer,'Odyssey layout.docx');
+  assert.equal(saved.status,200);
+  const listed=(await api('/api/managed-report-templates',{ token:ids.tokenManager })).data.rows.find(row => row.id===template.id);
+  assert.equal(listed.has_word_template,true);
+  assert.equal(listed.word_template_name,'Odyssey layout.docx');
+  assert.equal('word_template' in listed,false);
+
+  // Generating with that template fills it: work done, change log with from -> to, asset support status.
+  const generate=templateId => fetch(`${base}/api/managed-customers/${customer}/report.docx`,{ method:'POST',headers:{ ...auth(ids.tokenManager),'Content-Type':'application/json' },
+    body:JSON.stringify({ from:'2026-09-01',to:'2026-09-30',sections:['executive_summary','service_activities','changes','assets'],narratives:{ executive_summary:'Stable month.' },template_id:templateId }) });
+  const report=await generate(template.id);
+  assert.equal(report.status,200);
+  const text=docText(Buffer.from(await report.arrayBuffer()));
+  for (const expected of ['Word Template Customer','1 September 2026 to 30 September 2026','Stable month.','Upgraded firewall firmware','FW-WORD-01','7.2.8','7.4.3','Expires within 90 days']) assert.ok(text.includes(expected),`report contains ${expected}`);
+  assert.match(text,/FW-WORD-01 7\.2\.8 7\.4\.3 Upgraded firewall firmware/,'the change row shows the device, version before and version after');
+  assert.doesNotMatch(text,/[{}]/,'no placeholder is left unfilled');
+  assert.doesNotMatch(text,/Resolved tickets/,'sections the report template leaves out are not shown');
+
+  // Removing the Word template goes back to the built-in layout.
+  assert.equal((await fetch(`${base}/api/managed-report-templates/${template.id}/word-template`,{ method:'DELETE',headers:auth(ids.tokenManager) })).status,200);
+  const builtIn=docText(Buffer.from(await (await generate(template.id)).arrayBuffer()));
+  assert.ok(builtIn.includes('Managed Services Report'));
+  assert.ok(!builtIn.includes('Prepared by'),'the built-in layout, not the uploaded one');
 });

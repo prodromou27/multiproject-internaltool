@@ -1,7 +1,11 @@
 const db=require('./db');
 const managedCustomers=require('./managedCustomerService');
+const reportData=require('./managedReportData');
 
-const SECTION_KEYS=Object.freeze(['executive_summary','service_overview','ticket_summary','open_tickets','period_tickets','service_activities','tasks','projects','maintenance_visits','recommendations','risks','upcoming_work','management_notes']);
+// A customer report must list everything in the period, not a first page.
+const REPORT_ROW_LIMIT=2000;
+
+const SECTION_KEYS=Object.freeze(['executive_summary','service_overview','ticket_summary','open_tickets','period_tickets','service_activities','tasks','projects','maintenance_visits','recommendations','risks','upcoming_work','management_notes','changes','resolved_tickets','assets']);
 const NARRATIVE_KEYS=Object.freeze(['executive_summary','key_highlights','risks_concerns','major_changes','upcoming_activities','management_notes']);
 
 function validateSections(value) {
@@ -35,11 +39,16 @@ async function buildReportModel({ customerId,from,to,sections,narratives },store
     managedCustomers.getTicketAnalytics(customerId,from,to,store),
     managedCustomers.listTickets(customerId,{ from,to,page:1,pageSize:100,offset:0 },store),
     managedCustomers.listTickets(customerId,{ group:'open',page:1,pageSize:100,offset:0 },store),
-    managedCustomers.getActivities(customerId,from,to,{ page:1,pageSize:100,offset:0 },store),
+    managedCustomers.getActivities(customerId,from,to,{ page:1,pageSize:REPORT_ROW_LIMIT,offset:0 },store),
     managedCustomers.getWork(customerId,from,to,store),
     managedCustomers.getServiceReview(customerId,from,to,store),
   ]);
   const ticketsEnabled=!!config.ticket_integration_enabled && config.tickets_in_reporting!==0;
+  const [changes,resolvedTickets,assets]=await Promise.all([
+    reportData.getChanges(customerId,from,to,store),
+    ticketsEnabled ? reportData.getResolvedTickets(customerId,from,to,store) : [],
+    reportData.getAssets(customerId,to,store),
+  ]);
   return {
     schema_version:1,
     generated_at:new Date().toISOString(),
@@ -54,6 +63,9 @@ async function buildReportModel({ customerId,from,to,sections,narratives },store
     projects:work.projects,
     maintenance_visits:serviceReview.visits,
     recommendations:serviceReview.recommendations,
+    changes,
+    resolved_tickets:resolvedTickets,
+    assets,
     truncation:{ open_tickets:ticketsEnabled && openTickets.total>openTickets.rows.length,period_tickets:ticketsEnabled && periodTickets.total>periodTickets.rows.length,activities:activities.total>activities.rows.length,tasks:Number(work.tasks.summary.total || 0)>work.tasks.rows.length,projects:Number(work.projects.summary.total || 0)>work.projects.rows.length,recommendations:Number(serviceReview.recommendations.summary.total || 0)>serviceReview.recommendations.rows.length },
   };
 }

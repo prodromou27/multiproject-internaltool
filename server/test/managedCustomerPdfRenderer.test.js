@@ -52,3 +52,22 @@ test('page footers are drawn on the content pages, not on extra blank pages', as
   assert.equal(pageObjects, spy.pages(), 'no pages were created beyond the ones the content asked for');
   assert.ok(pageObjects <= 3, `a short report should fit in at most 3 pages, got ${pageObjects}`);
 });
+
+test('the built-in PDF, Word and Excel layouts include changes, resolved tickets and assets when selected', async () => {
+  const PizZip = require('pizzip');
+  const ExcelJS = require('exceljs');
+  const { renderWord } = require('../managedCustomerWordRenderer');
+  const { renderExcel } = require('../managedCustomerExcelRenderer');
+  const full = { ...model, tickets: { enabled: true, analytics: null, open: { rows: [] }, period: { rows: [] } },
+    sections: ['changes', 'resolved_tickets', 'assets'],
+    changes: [{ date: '2026-09-20', asset: 'FW-01', previous_version: '7.2.8', new_version: '7.4.3', title: 'Upgraded firmware', engineer: 'Maria Security', reference: 'ACT-1' }],
+    resolved_tickets: [{ ticket_number: '101', subject: 'VPN down', normalized_priority: 'High', owner_name: 'maria', resolved_at: '2026-09-21T10:00:00Z' }],
+    assets: [{ name: 'FW-01', type: 'Firewall', version: '7.4.3', support_end: '2026-11-15', support_status: 'Expires within 90 days', warranty_status: null }] };
+  const pdf = await renderPdf(full);
+  assert.ok(pdf.length > 1000);
+  const word = new PizZip(await renderWord(full)).file('word/document.xml').asText().replace(/<[^>]+>/g, ' ');
+  for (const text of ['Changes and upgrades', '7.2.8', '7.4.3', 'Resolved tickets', 'VPN down', 'Assets and support status', 'Expires within 90 days']) assert.ok(word.includes(text), `Word: ${text}`);
+  const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(await renderExcel(full));
+  assert.deepEqual(['Changes', 'Resolved Tickets', 'Assets'].map(name => !!workbook.getWorksheet(name)), [true, true, true]);
+  assert.equal(workbook.getWorksheet('Changes').getRow(2).getCell(3).value, '7.2.8');
+});

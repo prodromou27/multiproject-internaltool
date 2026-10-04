@@ -3,6 +3,7 @@ const { requirePermission }=require('../middleware/auth');
 const service=require('../managedCustomerService');
 const reporting=require('../managedCustomerReportingService');
 const { renderWord }=require('../managedCustomerWordRenderer');
+const wordTemplates=require('../managedReportDocx');
 const { renderExcel }=require('../managedCustomerExcelRenderer');
 const { renderPdf }=require('../managedCustomerPdfRenderer');
 const reportHistory=require('../managedReportHistoryService');
@@ -164,14 +165,19 @@ router.post('/:id/report.docx',requirePermission('managed_reports.generate'),asy
     const { from,to,sections,narratives,status,templateId }=await reportRequest(req.body);
     const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives });
     if (!model) return res.status(404).json({ error:'Managed customer not found' });
-    const buffer=await renderWord(model),safeName=model.customer.name.replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,80) || `customer_${id}`,filename=`${safeName}_${from}_${to}.docx`;
+    // Odyssey's own Word layout when the report template has one; the built-in layout otherwise.
+    const word=templateId ? await db.prepare('SELECT word_template FROM managed_report_templates WHERE id=?').get(templateId) : null;
+    const buffer=word?.word_template
+      ? wordTemplates.render(Buffer.from(word.word_template,'base64'),wordTemplates.templateData(model,{ preparedBy:req.user.name }))
+      : await renderWord(model);
+    const safeName=model.customer.name.replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,80) || `customer_${id}`,filename=`${safeName}_${from}_${to}.docx`;
     const history=await reportHistory.archive({ customerId:id,templateId,from,to,format:'docx',status,filename,sections:model.sections,userId:req.user.id,buffer });
     await logAudit(db,req,'managed_report',history.id,filename,'managed_customer_word_report_generated',`customer_id=${id}; period=${from}:${to}; version=${history.report_version}; status=${status}; sections=${model.sections.join(',')}`);
     res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
     res.setHeader('X-Report-Id',String(history.id));res.setHeader('X-Report-Version',String(history.report_version));
     res.send(buffer);
-  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the Word report' }); }
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the Word report',details:error.details }); }
 });
 router.post('/:id/report.xlsx',requirePermission('managed_reports.generate'),async (req,res) => {
   const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });

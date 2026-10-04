@@ -643,6 +643,21 @@ async function applyMigrations(pool, transaction) {
     UPDATE external_tickets SET updated_at_external=NULL WHERE updated_at_external LIKE '1970-01-01%';
   `]);
 
+  migrations.push(['20261005_managed_report_word_templates', `
+    -- Odyssey's own Word layout for customer reports (docxtemplater). Stored with
+    -- the template record: it holds no customer data, only layout and placeholders.
+    ALTER TABLE managed_report_templates ADD COLUMN IF NOT EXISTS word_template TEXT;
+    ALTER TABLE managed_report_templates ADD COLUMN IF NOT EXISTS word_template_name TEXT;
+    ALTER TABLE managed_report_templates ADD COLUMN IF NOT EXISTS word_template_uploaded_at TEXT;
+    ALTER TABLE managed_report_templates ADD COLUMN IF NOT EXISTS word_template_uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+  `]);
+
+  migrations.push(['20261005_activity_asset_previous_version', `
+    -- The version an asset had before an upgrade replaced it in the inventory, so
+    -- the customer's change log can say "from -> to".
+    ALTER TABLE service_activity_assets ADD COLUMN IF NOT EXISTS previous_version TEXT;
+  `]);
+
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

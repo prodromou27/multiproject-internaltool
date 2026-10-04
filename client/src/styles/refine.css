@@ -221,3 +221,17 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .topbar { background: var(--surface); border-bottom: 1px solid var(--gray-200); }
 .topbar-logo { color: var(--ink); font-weight: 600; }
 .topbar-logo span { color: var(--signal); }
+
+/* Report templates: Word layout panel. */
+.word-layout { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--gray-200); }
+.word-layout .btn.disabled { opacity: .6; pointer-events: none; }
+.word-layout-problems { margin: 6px 0 0 18px; }
+.word-layout-reference { margin-top: 16px; }
+.word-layout-reference > summary { cursor: pointer; font-weight: 500; color: var(--primary); }
+.word-layout-reference code { font-size: 12px; background: var(--gray-100); padding: 1px 5px; border-radius: 4px; }
+.word-layout-table { width: 100%; min-width: 0; margin-top: 10px; font-size: 13px; }
+.word-layout-table td, .word-layout-table th { padding: 6px 8px; border-bottom: 1px solid var(--gray-200); vertical-align: top; text-align: left; }
+.word-layout-table td:first-child { white-space: nowrap; }
+/* Template names have no icon, so they need the whole width (the settings menu reserves 18px for one). */
+.settings-nav-item.report-template-item { grid-template-columns: minmax(0, 1fr) auto; }
+.error-msg.word-layout-error { display: block; }

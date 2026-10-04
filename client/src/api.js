@@ -54,7 +54,9 @@ async function upload(path, field, file) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     handleUnauthorized(res.status, data, true);
-    throw new Error(data.error || res.statusText);
+    const error = new Error(data.error || res.statusText);
+    error.details = data.details; // e.g. the placeholders a Word template got wrong
+    throw error;
   }
   return data;
 }
@@ -392,6 +394,11 @@ export const api = {
   createManagedReportTemplate: data => req('POST','/managed-report-templates',data),
   updateManagedReportTemplate: (id,data) => req('PUT',`/managed-report-templates/${id}`,data),
   deleteManagedReportTemplate: id => req('DELETE',`/managed-report-templates/${id}`),
+  managedReportPlaceholders: options => req('GET','/managed-report-templates/placeholders',undefined,options),
+  managedReportStarterTemplate: () => download('/managed-report-templates/starter.docx'),
+  uploadManagedReportWordTemplate: (id,file) => upload(`/managed-report-templates/${id}/word-template`,'file',file),
+  downloadManagedReportWordTemplate: id => download(`/managed-report-templates/${id}/word-template`),
+  removeManagedReportWordTemplate: id => req('DELETE',`/managed-report-templates/${id}/word-template`),
   managedCustomerWordReport: (id,data) => download(`/managed-customers/${id}/report.docx`,data),
   managedCustomerExcelReport: (id,data) => download(`/managed-customers/${id}/report.xlsx`,data),
   managedCustomerPdfReport: (id,data) => download(`/managed-customers/${id}/report.pdf`,data),

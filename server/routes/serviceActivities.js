@@ -82,7 +82,10 @@ async function syncAssetVersions(tx, { activityId, customerId, activityDate, use
       WHERE saa.asset_id=? AND saa.version IS NOT NULL AND sa.id!=? AND sa.activity_date>?`).get(assetId, activityId, activityDate);
     if (later) continue;
     const asset = await tx.prepare('SELECT software_version FROM customer_assets WHERE id=? AND customer_id=?').get(assetId, customerId);
-    if (!asset || decryptField(asset.software_version) === version) continue;
+    const replaced = asset ? decryptField(asset.software_version) : null;
+    if (!asset || replaced === version) continue;
+    // Keep what the inventory said before, so the customer's change log reads "from -> to".
+    if (replaced) await tx.prepare('UPDATE service_activity_assets SET previous_version=? WHERE service_activity_id=? AND asset_id=? AND previous_version IS NULL').run(replaced, activityId, assetId);
     await tx.prepare('UPDATE customer_assets SET software_version=?,updated_by=?,updated_at=app_now(),version=version+1 WHERE id=? AND customer_id=?')
       .run(encryptField(version), userId, assetId, customerId);
   }

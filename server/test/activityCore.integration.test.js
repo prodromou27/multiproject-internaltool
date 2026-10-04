@@ -274,8 +274,11 @@ test('a completed upgrade keeps the asset inventory version current, and never r
 
   assert.equal((await log(day(0), 'planned', '2.0')).status, 200);
   assert.equal(await inventory(), '1.0', 'a planned upgrade does not change the inventory');
-  assert.equal((await log(day(0), 'completed', '2.0')).status, 200);
+  const completed = await log(day(0), 'completed', '2.0');
+  assert.equal(completed.status, 200);
   assert.equal(await inventory(), '2.0');
+  const link = await db.prepare('SELECT version, previous_version FROM service_activity_assets WHERE service_activity_id=?').get(completed.data.id);
+  assert.deepEqual([link.version, link.previous_version], ['2.0', '1.0'], 'the change records what the inventory said before');
   assert.equal((await log(day(-30), 'completed', '1.5')).status, 200);
   assert.equal(await inventory(), '2.0', 'back-filling an older upgrade must not roll the inventory back');
 });
