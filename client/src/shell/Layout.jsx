@@ -133,7 +133,7 @@ export function Layout({ children }) {
       {/* Desktop sidebar */}
       <aside ref={drawerRef} id="primary-navigation" className={`sidebar${open ? ' open' : ''}`} aria-label="Primary navigation"
         role={mobile && open ? 'dialog' : undefined} aria-modal={mobile && open ? true : undefined}
-        aria-hidden={mobile && !open ? true : undefined} inert={mobile && !open ? '' : undefined}>
+        aria-hidden={mobile && !open ? true : undefined} inert={mobile && !open}>
         {mobile && open && <button className="drawer-close" type="button" onClick={() => setOpen(false)}><X size={18} /> Close navigation</button>}
         <SidebarContent user={user} logout={logout} onNav={() => setOpen(false)} pages={sidebarPages}
           compact={compactNav && !mobile} onOpenLauncher={() => { setOpen(false); setPaletteOpen(false); setLauncherOpen(true); }}
@@ -144,7 +144,7 @@ export function Layout({ children }) {
       <div className={`sidebar-overlay${open ? ' open' : ''}`} onClick={() => setOpen(false)} aria-hidden="true" />
 
       {/* Mobile topbar */}
-      <header className="topbar" inert={mobile && open ? '' : undefined}>
+      <header className="topbar" inert={mobile && open}>
         <Hamburger open={open} onClick={() => setOpen(o => !o)} />
         <div className="topbar-logo">{PRODUCT_WORDMARK.prefix}<span>{PRODUCT_WORDMARK.suffix}</span></div>
         <div className="u-6bb9e7a">
@@ -159,7 +159,7 @@ export function Layout({ children }) {
         </div>
       </header>
 
-      <div className="main" inert={mobile && open ? '' : undefined}>
+      <div className="main" inert={mobile && open}>
         {/* Desktop-only top bar */}
         <div className="desktop-topbar">
           <div className="workspace-context">
