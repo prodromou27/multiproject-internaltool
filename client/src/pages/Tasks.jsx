@@ -392,7 +392,7 @@ export default function Tasks() {
         </div>
         <div className="u-95535a3">
           <ListSearch value={search} onChange={setSearch} label="Search tasks" placeholder="Search tasks, projects, or assignees…" />
-          <label className="u-eb3a034" style={{ color: myTasksOnly ? 'var(--primary)' : 'var(--gray-600)', fontWeight: myTasksOnly ? 600 : 400 }}>
+          <label className={["u-eb3a034", (myTasksOnly ? 'u-dc2e428' : 'u-31d6430'), (myTasksOnly ? 'u-eed0f8f' : 'u-7e3a944')].filter(Boolean).join(' ')}>
             <input type="checkbox" checked={myTasksOnly} onChange={e => setMyTasksOnly(e.target.checked)} className="u-30e741d" />
             My Tasks
           </label>
@@ -527,7 +527,7 @@ export default function Tasks() {
                     <select
                       value={t.status}
                       onChange={e => handleStatusChange(t, e.target.value)}
-                      className="u-33842f4" style={{ borderColor: t.status === 'waiting_customer' ? '#f97316' : undefined }}
+                      className={["u-33842f4", (t.status === 'waiting_customer' ? 'u-ec3ed4f' : '')].filter(Boolean).join(' ')}
                       disabled={!isManager && t.assigned_to !== user.id}
                     >
                       {(isManager ? managerStatuses : engineerStatuses).map(s => (
@@ -535,7 +535,7 @@ export default function Tasks() {
                       ))}
                     </select>
                     {(t.status === 'waiting_customer' || t.status === 'waiting_vendor') && t.pending_from_customer && (
-                      <div className="u-c37f0d4" style={{ color: t.status === 'waiting_vendor' ? '#6b21a8' : '#9a3412' }}>
+                      <div className={["u-c37f0d4", (t.status === 'waiting_vendor' ? 'u-2c20239' : 'u-029526a')].filter(Boolean).join(' ')}>
                         ⏳ {t.pending_from_customer}
                       </div>
                     )}

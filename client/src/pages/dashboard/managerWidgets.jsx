@@ -41,14 +41,14 @@ export function managerWidget(id, ctx) {
         <div key={id} className="card mb-20">
           <div className="section-header">
             <div className="flex-center gap-8">
-              <span className="u-9a54f29" style={{ background: ragRed ? '#ef4444' : ragAmber ? '#f59e0b' : '#22c55e' }} />
+              <span className={["u-9a54f29", (ragRed ? 'u-82403c4' : (ragAmber ? 'u-070db0b' : 'u-6e57027'))].filter(Boolean).join(' ')} />
               <div className="section-title m-0">Project Health</div>
               <span className="text-sm text-muted">({active.length} active)</span>
             </div>
             <Link to="/projects" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
           </div>
           {/* RAG breakdown row */}
-          <div className="u-9de5b72" style={{ marginBottom: atRisk.length ? 16 : 0 }}>
+          <div className={["u-9de5b72", (atRisk.length ? 'u-87c136d' : 'u-ef0b7a1')].filter(Boolean).join(' ')}>
             {RAG.map(({ label, count, bg, text, dot }) => (
               <div key={label} className="u-c39e23c" style={{ background:bg }}>
                 <div className="u-eb9a198" style={{ color:text }}>{count}</div>
@@ -65,7 +65,7 @@ export function managerWidget(id, ctx) {
               <ul className="list-none">
                 {atRisk.slice(0,5).map(p => (
                   <li key={p.id} className="u-df4f6b4">
-                    <span className="u-68bde25" style={{ background:p.rag_status==='red'?'#ef4444':'#f59e0b' }} />
+                    <span className={["u-68bde25", (p.rag_status==='red' ? 'u-82403c4' : 'u-070db0b')].filter(Boolean).join(' ')} />
                     <Link to={`/projects/${p.id}`} style={{ flex:1, fontWeight:600, color:'var(--gray-900)', fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', minWidth:0 }}>{p.title}</Link>
                     <StatusBadge entityType="project" s={p.status} />
                     {p.deadline && <span className={`${'text-sm '+(isOverdue(p.deadline)?'overdue':'text-muted') || ''} u-6ee0661`}>{fmtDate(p.deadline)}</span>}

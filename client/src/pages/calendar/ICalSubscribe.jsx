@@ -88,9 +88,8 @@ export default function ICalSubscribe() {
                 onClick={e => e.target.select()}
               />
               <button
-                className="btn btn-sm u-08ffd64"
+                className={["btn btn-sm u-08ffd64", (copied ? 'u-90b7755' : 'u-5192b20')].filter(Boolean).join(' ')}
                 onClick={copyUrl}
-                style={{ background: copied ? '#10b981' : '#0284c7' }}
               >
                 <Copy size={12} /> {copied ? 'Copied!' : 'Copy URL'}
               </button>

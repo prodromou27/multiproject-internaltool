@@ -135,7 +135,7 @@ export function AdminAlertsTab() {
                   <input type="checkbox" checked={prefs[a.key]?.email ?? false}
                     onChange={e => setToggle(a.key, 'email', e.target.checked)}
                     disabled={!prefs[a.key]?.enabled}
-                    className="u-0a83c50" style={{ opacity: prefs[a.key]?.enabled ? 1 : 0.4 }} />
+                    className={["u-0a83c50", (prefs[a.key]?.enabled ? 'u-c6e7979' : 'u-c4c3c16')].filter(Boolean).join(' ')} />
                 </td>
               </tr>
             ))}

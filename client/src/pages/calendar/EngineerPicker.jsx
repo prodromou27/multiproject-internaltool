@@ -6,7 +6,7 @@ export default function EngineerPicker({ engineers, selected, onChange }) {
       {engineers.map(e => {
         const active = selected.includes(e.id);
         return (
-          <label key={e.id} className="u-7ed4f50" style={{ background: active ? '#dbeafe' : 'var(--gray-100)', border: active ? '1px solid #93c5fd' : '1px solid transparent' }}>
+          <label key={e.id} className={["u-7ed4f50", (active ? 'u-4c55566' : 'u-d994785'), (active ? 'u-8b7de93' : 'u-52e7996')].filter(Boolean).join(' ')}>
             <input type="checkbox" checked={active}
               onChange={() => onChange(active ? selected.filter(x => x !== e.id) : [...selected, e.id])}
               className="u-30e741d" />

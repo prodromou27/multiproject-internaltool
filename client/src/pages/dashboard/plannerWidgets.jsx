@@ -20,7 +20,7 @@ export function plannerWidget(id, ctx) {
             <div className="stat-label">Completed (this month)</div>
           </div>
           <div className="card stat">
-            <div className="stat-value" style={{ color: rptPending.length ? 'var(--warning)' : 'var(--success)' }}>{rptPending.length}</div>
+            <div className={["stat-value", (rptPending.length ? 'u-52df2b0' : 'u-5a45298')].filter(Boolean).join(' ')}>{rptPending.length}</div>
             <div className="stat-label">Reports Pending</div>
           </div>
           <div className="card stat">

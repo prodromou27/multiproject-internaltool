@@ -18,7 +18,7 @@ export function ProjectCard({ item, navigate }) {
         <div className="result-card-meta">
           {item.customer_name && <span><Building2 size={11} /> {item.customer_name}</span>}
           {item.deadline && (
-            <span style={{ color: od ? '#dc2626' : 'inherit' }}>
+            <span className={[(od ? 'u-2056554' : 'u-1c9c449')].filter(Boolean).join(' ')}>
               <Calendar size={11} /> {fmtDate(item.deadline)}{od ? ' · Overdue' : ''}
             </span>
           )}
@@ -51,7 +51,7 @@ export function TaskCard({ item, navigate }) {
             ? <span><User size={11} /> {item.assigned_to_name}</span>
             : <span className="u-bc63aff">Unassigned</span>}
           {item.deadline && (
-            <span style={{ color: od ? '#dc2626' : 'inherit' }}>
+            <span className={[(od ? 'u-2056554' : 'u-1c9c449')].filter(Boolean).join(' ')}>
               <Clock size={11} /> {fmtDate(item.deadline)}{od ? ' · Overdue' : ''}
             </span>
           )}
@@ -83,7 +83,7 @@ export function MVCard({ item, navigate }) {
         <div className="result-card-title">{item.title}</div>
         <div className="result-card-meta">
           <span><Building2 size={11} /> {item.customer_name}</span>
-          <span style={{ color: od ? '#dc2626' : 'inherit' }}>
+          <span className={[(od ? 'u-2056554' : 'u-1c9c449')].filter(Boolean).join(' ')}>
             <Calendar size={11} /> {fmtDate(item.scheduled_date)}{od ? ' · Overdue' : ''}
           </span>
           {item.engineer_names && <span><User size={11} /> {item.engineer_names}</span>}

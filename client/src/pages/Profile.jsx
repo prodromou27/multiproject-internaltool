@@ -72,7 +72,7 @@ function AvatarSection({ user, onRefresh }) {
         {/* Avatar preview */}
         <div
           onClick={() => fileRef.current?.click()}
-          className="u-d6a4d8c" style={{ background: user.avatar_url ? 'transparent' : 'linear-gradient(135deg,#3b82f6,#6366f1)' }}
+          className={["u-d6a4d8c", (user.avatar_url ? 'u-a8869db' : 'u-6bde7b7')].filter(Boolean).join(' ')}
           title="Click to change photo"
         >
           {user.avatar_url

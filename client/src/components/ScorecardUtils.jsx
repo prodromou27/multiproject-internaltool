@@ -65,7 +65,7 @@ export function DimPicker({ value, onChange, disabled }) {
     <div className="flex gap-4">
       {[1,2,3,4,5].map(n => (
         <button key={n} type="button" disabled={disabled} onClick={() => onChange(n)}
-          className="u-14de30b" style={{ cursor: disabled ? 'default' : 'pointer', background: value >= n ? '#2563eb' : 'var(--gray-200)', color: value >= n ? '#fff' : '#6b7280' }}>
+          className={["u-14de30b", (disabled ? 'u-2a9295c' : 'u-3b6a3a6'), (value >= n ? 'u-830beda' : 'u-a955ec7'), (value >= n ? 'u-729d2fa' : 'u-db12fa5')].filter(Boolean).join(' ')}>
           {n}
         </button>
       ))}

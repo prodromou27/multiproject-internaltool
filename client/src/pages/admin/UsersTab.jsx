@@ -179,7 +179,7 @@ export function UsersTab({ currentUser }) {
               </thead>
               <tbody>
                 {filtered.map(u => (
-                  <tr key={u.id} style={{ opacity: u.active ? 1 : 0.5 }}>
+                  <tr className={[(u.active ? 'u-c6e7979' : 'u-e1549fd')].filter(Boolean).join(' ')} key={u.id}>
                     <td>
                       <div className="font-semibold">{u.name}</div>
                       <div className="u-5be3ef4">{u.email || '—'}</div>
@@ -209,10 +209,9 @@ export function UsersTab({ currentUser }) {
                           </button>
                         )}
                         <button
-                          className={`${'btn btn-sm ' + (u.totp_exempt ? 'btn-warning' : 'btn-ghost') || ''} u-f1fab47`}
+                          className={[(`${'btn btn-sm ' + (u.totp_exempt ? 'btn-warning' : 'btn-ghost') || ''} u-f1fab47` || ''), (u.totp_enabled || u.totp_exempt ? 'u-c6e7979' : 'u-c4c3c16')].filter(Boolean).join(' ')}
                           onClick={() => toggle2faExempt(u)}
                           title={u.totp_exempt ? '2FA Exempt (click to revoke)' : u.totp_enabled ? 'Exempt from 2FA' : '2FA not enabled'}
-                          style={{ opacity: u.totp_enabled || u.totp_exempt ? 1 : 0.4 }}
                         >
                           <ShieldAlert size={13} />
                         </button>

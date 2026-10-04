@@ -139,7 +139,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
               if (s === 'waiting_customer' || s === 'waiting_vendor') { setWaitingStatus(s); setWaitingDialog(true); return; }
               try { await onUpdate(task.id, { status: s }); onClose(); } catch (_) { /* onUpdate shows alert */ }
             }}
-            className="u-257f103" style={{ borderColor: task.status === 'waiting_customer' ? '#f97316' : undefined }}
+            className={["u-257f103", (task.status === 'waiting_customer' ? 'u-ec3ed4f' : '')].filter(Boolean).join(' ')}
           >
             {statuses.map(s => (
               <option key={s} value={s}>
@@ -305,7 +305,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
               {customFields.map(f => (
                 <div key={f.id} className="u-5e0faad">
                   <span className="u-33ea7bc">{f.name}: </span>
-                  <span style={{ fontWeight: customValues[f.id] ? 600 : 400, color: customValues[f.id] ? 'var(--gray-800)' : 'var(--gray-400)' }}>
+                  <span className={[(customValues[f.id] ? 'u-eed0f8f' : 'u-7e3a944'), (customValues[f.id] ? 'u-00597d5' : 'u-1e2ea2c')].filter(Boolean).join(' ')}>
                     {customValues[f.id] || '—'}
                   </span>
                 </div>
@@ -388,7 +388,7 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
             {task.dep_count > 0 && !task.is_blocked && <LinkIcon size={11} color="var(--gray-400)" title={`${task.dep_count} dependenc${task.dep_count !== 1 ? 'ies' : 'y'}`} />}
           </span>
           {(task.status === 'waiting_customer' || task.status === 'waiting_vendor') && task.pending_from_customer && (
-            <div className="u-9cfc075" style={{ color: task.status === 'waiting_vendor' ? '#6b21a8' : '#9a3412' }}>
+            <div className={["u-9cfc075", (task.status === 'waiting_vendor' ? 'u-2c20239' : 'u-029526a')].filter(Boolean).join(' ')}>
               ⏳ {task.pending_from_customer}
             </div>
           )}
@@ -397,7 +397,7 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
         <td><PriorityBadge p={task.priority} /></td>
         <td>{task.assigned_to_name || '—'}</td>
         <td className={isOverdue(task.deadline) && !['completed','closed','cancelled'].includes(task.status) ? 'overdue' : ''}>{fmtDate(task.deadline)}</td>
-        <td className="u-7690bd8" style={{ fontWeight: task.logged_hours > 0 ? 700 : 400 }}>
+        <td className={["u-7690bd8", (task.logged_hours > 0 ? 'u-e3ec02a' : 'u-7e3a944')].filter(Boolean).join(' ')}>
           {task.logged_hours > 0 ? `${task.logged_hours}h` : '—'}
         </td>
         <td onClick={e => e.stopPropagation()} className="flex-center gap-6">
@@ -408,7 +408,7 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
               if (s === 'waiting_customer' || s === 'waiting_vendor') { setWaitingStatus(s); setWaitingDialog(true); return; }
               onUpdate(task.id, { status: s });
             }}
-            className="u-33842f4" style={{ borderColor: task.status === 'waiting_customer' ? '#f97316' : undefined }}
+            className={["u-33842f4", (task.status === 'waiting_customer' ? 'u-ec3ed4f' : '')].filter(Boolean).join(' ')}
           >
             {statuses.map(s => <option key={s} value={s}>{TASK_STATUS_LABELS[s] || s}</option>)}
           </select>

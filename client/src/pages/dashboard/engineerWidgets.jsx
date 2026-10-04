@@ -62,7 +62,7 @@ export function engineerWidget(id, ctx) {
                     <li key={t.id} className="u-710b0ff">
                       <PriorityBadge p={t.priority} />
                       <span className="u-06d0741">{t.title}</span>
-                      <span className="u-2bde71f" style={{ color: isToday ? '#b91c1c' : isTomorrow ? '#92400e' : '#78716c', background: isToday ? '#fef2f2' : isTomorrow ? '#fffbeb' : 'var(--gray-100)' }}>
+                      <span className={["u-2bde71f", (isToday ? 'u-881d02d' : (isTomorrow ? 'u-91ee9a7' : 'u-2d1a8f5')), (isToday ? 'u-60cd622' : (isTomorrow ? 'u-4ba476d' : 'u-d994785'))].filter(Boolean).join(' ')}>
                         {label}
                       </span>
                     </li>
@@ -81,8 +81,7 @@ export function engineerWidget(id, ctx) {
           <div className="section-header">
             <div className="flex-center gap-8">
               <Send size={15} color={pendingReports.length ? 'var(--danger)' : 'var(--success)'} />
-              <div className="section-title u-1169661"
-                style={{ color: pendingReports.length ? 'var(--danger)' : 'var(--success)' }}>
+              <div className={["section-title u-1169661", (pendingReports.length ? 'u-497726e' : 'u-5a45298')].filter(Boolean).join(' ')}>
                 Reports Pending — Send to Management
               </div>
               <span className={`badge ${pendingReports.length ? 'badge-cancelled' : 'badge-done'} u-46cec89`}>

@@ -44,7 +44,7 @@ function EngineerPicker({ engineers, selected, onChange }) {
       {engineers.map(e => {
         const active = selected.includes(e.id);
         return (
-          <label key={e.id} className="u-7ed4f50" style={{ background: active ? '#dbeafe' : 'var(--gray-100)', border: active ? '1px solid #93c5fd' : '1px solid transparent' }}>
+          <label key={e.id} className={["u-7ed4f50", (active ? 'u-4c55566' : 'u-d994785'), (active ? 'u-8b7de93' : 'u-52e7996')].filter(Boolean).join(' ')}>
             <input
               type="checkbox"
               checked={active}
@@ -277,15 +277,15 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
               {steps.map((s, i) => (
                 <React.Fragment key={i}>
                   <div className="u-5ff150e">
-                    <div className="u-10e2a54" style={{ background: s.done ? 'var(--success)' : s.active ? 'var(--primary)' : 'var(--gray-100)', color: s.done || s.active ? '#fff' : 'var(--gray-400)', boxShadow: s.active ? '0 0 0 3px rgba(37,99,235,.2)' : 'none' }}>
+                    <div className={["u-10e2a54", (s.done ? 'u-1f8d1eb' : (s.active ? 'u-1eab90a' : 'u-d994785')), (s.done || s.active ? 'u-729d2fa' : 'u-1e2ea2c'), (s.active ? 'u-7652d48' : 'u-ce3f2c6')].filter(Boolean).join(' ')}>
                       {s.done ? <Check size={13} /> : i + 1}
                     </div>
-                    <span className="u-d37de03" style={{ fontWeight: s.done || s.active ? 600 : 400, color: s.done ? 'var(--success)' : s.active ? 'var(--primary)' : 'var(--gray-400)' }}>
+                    <span className={["u-d37de03", (s.done || s.active ? 'u-eed0f8f' : 'u-7e3a944'), (s.done ? 'u-5a45298' : (s.active ? 'u-dc2e428' : 'u-1e2ea2c'))].filter(Boolean).join(' ')}>
                       {s.label}
                     </span>
                   </div>
                   {i < steps.length - 1 && (
-                    <div className="u-5ac0919" style={{ background: steps[i + 1].done || s.done ? 'var(--success)' : 'var(--gray-200)' }} />
+                    <div className={["u-5ac0919", (steps[i + 1].done || s.done ? 'u-1f8d1eb' : 'u-a955ec7')].filter(Boolean).join(' ')} />
                   )}
                 </React.Fragment>
               ))}

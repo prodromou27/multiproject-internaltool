@@ -123,9 +123,8 @@ export function NotificationBell() {
     <div ref={ref} className="relative">
       {/* Bell button */}
       <button
-        className="topbar-action u-83eb2d8"
+        className={["topbar-action u-83eb2d8", (open ? 'u-dc2e428' : 'u-eee182b')].filter(Boolean).join(' ')}
         onClick={() => setOpen(o => !o)}
-        style={{ color: open ? 'var(--primary)' : 'var(--gray-500)' }}
         aria-label="Notifications"
         aria-expanded={open}
         aria-haspopup="menu"
@@ -181,15 +180,15 @@ export function NotificationBell() {
               <div
                 key={n.id}
                 onClick={() => clickNotif(n)}
-                className="u-eede90f" style={{ cursor: n.link ? 'pointer' : 'default', background: n.read ? 'var(--surface)' : 'var(--highlight)' }}
+                className={["u-eede90f", (n.link ? 'u-3b6a3a6' : 'u-2a9295c'), (n.read ? 'u-a5acbfa' : 'u-7060f04')].filter(Boolean).join(' ')}
                 onMouseEnter={e => { if (n.link) e.currentTarget.style.background = n.read ? 'var(--gray-50)' : 'var(--highlight-strong)'; }}
                 onMouseLeave={e => e.currentTarget.style.background = n.read ? 'var(--surface)' : 'var(--highlight)'}
               >
-                <div className="u-fc3d83c" style={{ background: n.read ? 'var(--gray-100)' : 'var(--highlight-strong)' }}>
+                <div className={["u-fc3d83c", (n.read ? 'u-d994785' : 'u-0ead121')].filter(Boolean).join(' ')}>
                   {NOTIF_ICONS[n.type] || <Bell size={14} color="var(--gray-500)" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="u-1cdd083" style={{ fontWeight: n.read ? 500 : 700 }}>{n.title}{['high','critical'].includes(n.priority) && <span className="u-887bf25" style={{ color:n.priority==='critical'?'#dc2626':'#d97706' }}>{n.priority}</span>}</div>
+                  <div className={["u-1cdd083", (n.read ? 'u-02a2d33' : 'u-e3ec02a')].filter(Boolean).join(' ')}>{n.title}{['high','critical'].includes(n.priority) && <span className={["u-887bf25", (n.priority==='critical' ? 'u-2056554' : 'u-488b9b9')].filter(Boolean).join(' ')}>{n.priority}</span>}</div>
                   {n.body && <div className="u-2bb9ee0">{n.body}</div>}
                   <div className="u-8459551">{timeSinceNotif(n.created_at)}</div>
                   {['high','critical'].includes(n.priority) && !n.acknowledged_at && <button type="button" onClick={e => acknowledge(n,e)} className="u-0a9b857"><CheckCheck size={11} style={{ verticalAlign:'middle',marginRight:3 }} />Acknowledge</button>}

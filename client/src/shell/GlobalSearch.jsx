@@ -51,8 +51,7 @@ export function GlobalSearch() {
       {/* Icon button */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="topbar-action u-83eb2d8"
-        style={{ color: open ? 'var(--primary)' : 'var(--gray-500)' }}
+        className={["topbar-action u-83eb2d8", (open ? 'u-dc2e428' : 'u-eee182b')].filter(Boolean).join(' ')}
         aria-label="Search"
         aria-expanded={open}
         aria-haspopup="dialog"

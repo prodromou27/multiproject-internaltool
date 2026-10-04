@@ -265,7 +265,7 @@ export default function ProjectDetail() {
         <div className="u-f5c5bf0" style={{ background: isManager ? '#fffbeb' : '#f0f9ff', border: `1px solid ${isManager ? '#fde68a' : '#bae6fd'}` }}>
           <span className="u-a7c04d4">⏳</span>
           <div className="u-7b1dd1f">
-            <div className="u-dfe9a73" style={{ color: isManager ? '#92400e' : '#0369a1' }}>
+            <div className={["u-dfe9a73", (isManager ? 'u-91ee9a7' : 'u-15cdc98')].filter(Boolean).join(' ')}>
               {isManager ? 'Closure Approval Required' : 'Awaiting Management Approval'}
             </div>
             <div className="u-1a57d8f">
@@ -360,14 +360,14 @@ export default function ProjectDetail() {
               <button
                 onClick={() => setTaskViewMode('list')}
                 title="List view"
-                className="u-b787bd9" style={{ background: taskViewMode === 'list' ? 'var(--primary)' : '#fff', color: taskViewMode === 'list' ? '#fff' : 'var(--gray-500)' }}
+                className={["u-b787bd9", (taskViewMode === 'list' ? 'u-1eab90a' : 'u-2a77131'), (taskViewMode === 'list' ? 'u-729d2fa' : 'u-eee182b')].filter(Boolean).join(' ')}
               >
                 <ListIcon size={14} /> List
               </button>
               <button
                 onClick={() => setTaskViewMode('kanban')}
                 title="Kanban view"
-                className="u-b787bd9" style={{ background: taskViewMode === 'kanban' ? 'var(--primary)' : '#fff', color: taskViewMode === 'kanban' ? '#fff' : 'var(--gray-500)' }}
+                className={["u-b787bd9", (taskViewMode === 'kanban' ? 'u-1eab90a' : 'u-2a77131'), (taskViewMode === 'kanban' ? 'u-729d2fa' : 'u-eee182b')].filter(Boolean).join(' ')}
               >
                 <LayoutGrid size={14} /> Kanban
               </button>
@@ -393,7 +393,7 @@ export default function ProjectDetail() {
                   value={taskSearch}
                   onChange={e => setTaskSearch(e.target.value)}
                   placeholder="Search tasks…"
-                  className="u-f433196" style={{ paddingRight: taskSearch ? 28 : 10 }}
+                  className={["u-f433196", (taskSearch ? 'u-67638d0' : 'u-b087246')].filter(Boolean).join(' ')}
                 />
                 <svg className="u-a818dd6" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
                 {taskSearch && (
@@ -511,7 +511,7 @@ export default function ProjectDetail() {
                     member_added: 'Added member', member_removed: 'Removed member', closure_requested: 'Requested closure', project_closed: 'Closed project',
                   };
                   return (
-                    <li key={a.id} className="u-d57244e" style={{ borderBottom: i < activity.length - 1 ? '1px solid var(--gray-100)' : 'none' }}>
+                    <li key={a.id} className={["u-d57244e", (i < activity.length - 1 ? 'u-02c1276' : 'u-71a91da')].filter(Boolean).join(' ')}>
                       <span className="u-12ece22">{icon}</span>
                       <div className="flex-1">
                         <span className="u-160b067">{a.user_name}</span>

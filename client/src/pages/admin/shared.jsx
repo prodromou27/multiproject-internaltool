@@ -48,9 +48,9 @@ export function StatCard({ label, value, sub, color, Icon: IconComp }) {
 
 export function Toggle({ checked, onChange, label, disabled }) {
   return (
-    <label className="u-584a7aa" style={{ cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
-      <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)} className="u-e118dc8" style={{ background: checked ? 'var(--primary)' : 'var(--gray-300)', cursor: disabled ? 'not-allowed' : 'pointer' }}>
-        <div className="u-6bc4309" style={{ left: checked ? 21 : 3 }} />
+    <label className={["u-584a7aa", (disabled ? 'u-61a0750' : 'u-3b6a3a6'), (disabled ? 'u-e1549fd' : 'u-c6e7979')].filter(Boolean).join(' ')}>
+      <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)} className={["u-e118dc8", (checked ? 'u-1eab90a' : 'u-231159d'), (disabled ? 'u-61a0750' : 'u-3b6a3a6')].filter(Boolean).join(' ')}>
+        <div className={["u-6bc4309", (checked ? 'u-04509a7' : 'u-f7bcc11')].filter(Boolean).join(' ')} />
       </button>
       <span className="u-5e0faad">{label}</span>
     </label>
@@ -70,9 +70,9 @@ export function ToggleRow({ label, description, value, onChange, recommended }) 
       <button
         type="button"
         onClick={() => onChange(!value)}
-        className="u-c3e9d34" style={{ background: value ? 'var(--primary)' : 'var(--gray-300)' }}
+        className={["u-c3e9d34", (value ? 'u-1eab90a' : 'u-231159d')].filter(Boolean).join(' ')}
       >
-        <span className="u-bb3c7c5" style={{ left: value ? 21 : 3 }} />
+        <span className={["u-bb3c7c5", (value ? 'u-04509a7' : 'u-f7bcc11')].filter(Boolean).join(' ')} />
       </button>
     </div>
   );

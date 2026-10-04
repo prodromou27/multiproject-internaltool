@@ -10,9 +10,9 @@ import { useAuth } from '../auth';
 export function Hamburger({ open, onClick }) {
   return (
     <button className="hamburger" onClick={onClick} aria-label="Toggle menu" aria-expanded={open} aria-controls="primary-navigation">
-      <span style={{ transform: open ? 'translateY(7px) rotate(45deg)' : 'none' }} />
-      <span style={{ opacity: open ? 0 : 1 }} />
-      <span style={{ transform: open ? 'translateY(-7px) rotate(-45deg)' : 'none' }} />
+      <span className={[(open ? 'u-b055aea' : 'u-e480998')].filter(Boolean).join(' ')} />
+      <span className={[(open ? 'u-8d919cb' : 'u-c6e7979')].filter(Boolean).join(' ')} />
+      <span className={[(open ? 'u-58b808c' : 'u-e480998')].filter(Boolean).join(' ')} />
     </button>
   );
 }

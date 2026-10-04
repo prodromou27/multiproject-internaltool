@@ -187,7 +187,7 @@ export default function SearchPage() {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Escape' && clearAll()}
           placeholder='Try: "open projects for Acme", "overdue tasks assigned to John", "reports not sent"…'
-          className="u-4b75f79" style={{ paddingRight: query ? 40 : 16 }}
+          className={["u-4b75f79", (query ? 'u-11f574c' : 'u-c127c48')].filter(Boolean).join(' ')}
         />
         {query && (
           <button onClick={clearAll} className="u-f2f961b">

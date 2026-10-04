@@ -167,14 +167,14 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
         {/* Result summary */}
         {result && (
           <div className="mb-16">
-            <div className="u-abc9d35" style={{ marginBottom: result.errors?.length ? 12 : 0 }}>
+            <div className={["u-abc9d35", (result.errors?.length ? 'u-da12f28' : 'u-ef0b7a1')].filter(Boolean).join(' ')}>
               <div className="u-6396897">
                 <div className="u-4b6bd12">{result.imported}</div>
                 <div className="u-9f239db">Imported</div>
               </div>
-              <div className="u-0ced26f" style={{ background: result.skipped ? '#fef3c7' : '#f0fdf4' }}>
-                <div className="u-86ecc8d" style={{ color: result.skipped ? '#92400e' : '#166534' }}>{result.skipped}</div>
-                <div className="u-0907ca8" style={{ color: result.skipped ? '#92400e' : '#166534' }}>Skipped / Errors</div>
+              <div className={["u-0ced26f", (result.skipped ? 'u-a342d80' : 'u-725d2d4')].filter(Boolean).join(' ')}>
+                <div className={["u-86ecc8d", (result.skipped ? 'u-91ee9a7' : 'u-d311ded')].filter(Boolean).join(' ')}>{result.skipped}</div>
+                <div className={["u-0907ca8", (result.skipped ? 'u-91ee9a7' : 'u-d311ded')].filter(Boolean).join(' ')}>Skipped / Errors</div>
               </div>
             </div>
             {result.errors?.length > 0 && (

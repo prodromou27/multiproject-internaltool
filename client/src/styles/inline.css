@@ -1040,3 +1040,89 @@
 .u-ffb3bf2.u-ffb3bf2.u-ffb3bf2 { margin-top:10px; padding-top:10px; border-top:1px solid var(--gray-100); }
 .u-ffbe152.u-ffbe152.u-ffbe152 { font-weight:800; font-size:20px; }
 .u-ffd20f1.u-ffd20f1.u-ffd20f1 { align-self:flex-end; }
+/* Conditional styles: classes chosen in JSX by the same conditions the inline styles used. */
+.u-00597d5.u-00597d5.u-00597d5 { color:var(--gray-800); }
+.u-010d9d3.u-010d9d3.u-010d9d3 { color:var(--tone-danger-text); }
+.u-029526a.u-029526a.u-029526a { color:#9a3412; }
+.u-02a2d33.u-02a2d33.u-02a2d33 { font-weight:500; }
+.u-04509a7.u-04509a7.u-04509a7 { left:21px; }
+.u-070db0b.u-070db0b.u-070db0b { background:#f59e0b; }
+.u-0ead121.u-0ead121.u-0ead121 { background:var(--highlight-strong); }
+.u-11f574c.u-11f574c.u-11f574c { padding-right:40px; }
+.u-15cdc98.u-15cdc98.u-15cdc98 { color:#0369a1; }
+.u-18c9e5b.u-18c9e5b.u-18c9e5b { color:#111; }
+.u-1c9c449.u-1c9c449.u-1c9c449 { color:inherit; }
+.u-1e45cbe.u-1e45cbe.u-1e45cbe { background:#fef9c3; }
+.u-1eab90a.u-1eab90a.u-1eab90a { background:var(--primary); }
+.u-2056554.u-2056554.u-2056554 { color:#dc2626; }
+.u-231159d.u-231159d.u-231159d { background:var(--gray-300); }
+.u-276d10f.u-276d10f.u-276d10f { cursor:wait; }
+.u-2a77131.u-2a77131.u-2a77131 { background:#fff; }
+.u-2a9295c.u-2a9295c.u-2a9295c { cursor:default; }
+.u-2b95321.u-2b95321.u-2b95321 { font-weight:800; }
+.u-2c20239.u-2c20239.u-2c20239 { color:#6b21a8; }
+.u-2d1a8f5.u-2d1a8f5.u-2d1a8f5 { color:#78716c; }
+.u-381f9f4.u-381f9f4.u-381f9f4 { color:var(--tone-warning-text); }
+.u-3b6a3a6.u-3b6a3a6.u-3b6a3a6 { cursor:pointer; }
+.u-488b9b9.u-488b9b9.u-488b9b9 { color:#d97706; }
+.u-4ba476d.u-4ba476d.u-4ba476d { background:#fffbeb; }
+.u-4c55566.u-4c55566.u-4c55566 { background:#dbeafe; }
+.u-4ff1ea9.u-4ff1ea9.u-4ff1ea9 { background:#eff6ff; }
+.u-5192b20.u-5192b20.u-5192b20 { background:#0284c7; }
+.u-52e7996.u-52e7996.u-52e7996 { border:1px solid transparent; }
+.u-58b808c.u-58b808c.u-58b808c { transform:translateY(-7px) rotate(-45deg); }
+.u-60cd622.u-60cd622.u-60cd622 { background:#fef2f2; }
+.u-6104c86.u-6104c86.u-6104c86 { background:#ecfdf5; }
+.u-61a0750.u-61a0750.u-61a0750 { cursor:not-allowed; }
+.u-64e0df7.u-64e0df7.u-64e0df7 { min-height:0; }
+.u-67638d0.u-67638d0.u-67638d0 { padding-right:28px; }
+.u-6a6a237.u-6a6a237.u-6a6a237 { color:#f59e0b; }
+.u-6bde7b7.u-6bde7b7.u-6bde7b7 { background:linear-gradient(135deg,#3b82f6,#6366f1); }
+.u-6e57027.u-6e57027.u-6e57027 { background:#22c55e; }
+.u-7059a4e.u-7059a4e.u-7059a4e { text-decoration:line-through; }
+.u-7060f04.u-7060f04.u-7060f04 { background:var(--highlight); }
+.u-71a91da.u-71a91da.u-71a91da { border-bottom:none; }
+.u-7238926.u-7238926.u-7238926 { color:#16a34a; }
+.u-725d2d4.u-725d2d4.u-725d2d4 { background:#f0fdf4; }
+.u-729d2fa.u-729d2fa.u-729d2fa { color:#fff; }
+.u-7652d48.u-7652d48.u-7652d48 { box-shadow:0 0 0 3px rgba(37,99,235,.2); }
+.u-799c49d.u-799c49d.u-799c49d { background:var(--warning-light); }
+.u-7c9a358.u-7c9a358.u-7c9a358 { border:1px solid var(--gray-200); }
+.u-7e3a944.u-7e3a944.u-7e3a944 { font-weight:400; }
+.u-80d654f.u-80d654f.u-80d654f { text-decoration:none; }
+.u-82403c4.u-82403c4.u-82403c4 { background:#ef4444; }
+.u-830beda.u-830beda.u-830beda { background:#2563eb; }
+.u-881d02d.u-881d02d.u-881d02d { color:#b91c1c; }
+.u-89f9bf0.u-89f9bf0.u-89f9bf0 { background:var(--primary-light); }
+.u-8b7de93.u-8b7de93.u-8b7de93 { border:1px solid #93c5fd; }
+.u-8d58d64.u-8d58d64.u-8d58d64 { min-height:3px; }
+.u-8d919cb.u-8d919cb.u-8d919cb { opacity:0; }
+.u-90b7755.u-90b7755.u-90b7755 { background:#10b981; }
+.u-91ee9a7.u-91ee9a7.u-91ee9a7 { color:#92400e; }
+.u-959debc.u-959debc.u-959debc { border-color:#ef4444; }
+.u-a342d80.u-a342d80.u-a342d80 { background:#fef3c7; }
+.u-a5acbfa.u-a5acbfa.u-a5acbfa { background:var(--surface); }
+.u-a8869db.u-a8869db.u-a8869db { background:transparent; }
+.u-a955ec7.u-a955ec7.u-a955ec7 { background:var(--gray-200); }
+.u-adc7316.u-adc7316.u-adc7316 { background:none; }
+.u-b055aea.u-b055aea.u-b055aea { transform:translateY(7px) rotate(45deg); }
+.u-b087246.u-b087246.u-b087246 { padding-right:10px; }
+.u-b36fc53.u-b36fc53.u-b36fc53 { color:#7c3aed; }
+.u-b4432d0.u-b4432d0.u-b4432d0 { background:var(--danger-light); }
+.u-b8b78c8.u-b8b78c8.u-b8b78c8 { background:var(--success-light); }
+.u-b9199e2.u-b9199e2.u-b9199e2 { font-size:20px; }
+.u-bab23e7.u-bab23e7.u-bab23e7 { background:#f0f9ff; }
+.u-bb95817.u-bb95817.u-bb95817 { color:var(--tone-success-text); }
+.u-be0c1c6.u-be0c1c6.u-be0c1c6 { border-bottom:1px solid var(--gray-200); }
+.u-c127c48.u-c127c48.u-c127c48 { padding-right:16px; }
+.u-c4c3c16.u-c4c3c16.u-c4c3c16 { opacity:0.4; }
+.u-c6e7979.u-c6e7979.u-c6e7979 { opacity:1; }
+.u-ce3f2c6.u-ce3f2c6.u-ce3f2c6 { box-shadow:none; }
+.u-d2fba0f.u-d2fba0f.u-d2fba0f { width:0%; }
+.u-d311ded.u-d311ded.u-d311ded { color:#166534; }
+.u-d994785.u-d994785.u-d994785 { background:var(--gray-100); }
+.u-e1549fd.u-e1549fd.u-e1549fd { opacity:0.5; }
+.u-e480998.u-e480998.u-e480998 { transform:none; }
+.u-eed0f8f.u-eed0f8f.u-eed0f8f { font-weight:600; }
+.u-f7bcc11.u-f7bcc11.u-f7bcc11 { left:3px; }
+.u-fe1fad9.u-fe1fad9.u-fe1fad9 { background:#dcfce7; }

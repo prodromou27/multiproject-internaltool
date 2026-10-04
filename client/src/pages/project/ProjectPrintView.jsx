@@ -38,7 +38,7 @@ export function ProjectPrintView({ project, tasks, milestones, members }) {
           <div className="u-dd3505d">Project Report</div>
           <div>Generated {today}</div>
           <div className="u-96ad609">
-            <span className="u-0380367" style={{ background: project.rag_status === 'green' ? 'var(--success-light)' : project.rag_status === 'amber' ? 'var(--warning-light)' : project.rag_status === 'red' ? 'var(--danger-light)' : 'var(--gray-100)', color: project.rag_status === 'green' ? 'var(--tone-success-text)' : project.rag_status === 'amber' ? 'var(--tone-warning-text)' : project.rag_status === 'red' ? 'var(--tone-danger-text)' : 'var(--gray-700)' }}>
+            <span className={["u-0380367", (project.rag_status === 'green' ? 'u-b8b78c8' : (project.rag_status === 'amber' ? 'u-799c49d' : (project.rag_status === 'red' ? 'u-b4432d0' : 'u-d994785'))), (project.rag_status === 'green' ? 'u-bb95817' : (project.rag_status === 'amber' ? 'u-381f9f4' : (project.rag_status === 'red' ? 'u-010d9d3' : 'u-3a065eb')))].filter(Boolean).join(' ')}>
               {project.rag_status === 'green' ? '🟢 On Track' : project.rag_status === 'amber' ? '🟡 At Risk' : project.rag_status === 'red' ? '🔴 Critical' : 'Health N/A'}
             </span>
           </div>
@@ -112,7 +112,7 @@ export function ProjectPrintView({ project, tasks, milestones, members }) {
                   <svg width={10} height={10} viewBox="0 0 12 12" className="flex-shrink-0">
                     <polygon points="6,0 12,6 6,12 0,6" fill={m.completed_at ? '#10b981' : isOverdue(m.due_date) ? '#ef4444' : '#7c3aed'} />
                   </svg>
-                  <span className="u-5a95af4" style={{ textDecoration: m.completed_at ? 'line-through' : 'none', color: m.completed_at ? '#9ca3af' : '#111' }}>{m.title}</span>
+                  <span className={["u-5a95af4", (m.completed_at ? 'u-7059a4e' : 'u-80d654f'), (m.completed_at ? 'u-bc63aff' : 'u-18c9e5b')].filter(Boolean).join(' ')}>{m.title}</span>
                   {m.due_date && <span className="u-ece5370">{fmtDate(m.due_date)}</span>}
                 </div>
               ))}

@@ -117,7 +117,7 @@ export function GanttTab({ project, tasks, milestones = [] }) {
                   <div className="u-6f040c0" style={{ left: `${endPct}%`, background: overdue ? '#dc2626' : barColor }} />
                 </div>
 
-                <div className="u-84d4ffc" style={{ color: overdue ? 'var(--danger)' : 'var(--gray-400)', fontWeight: overdue ? 600 : 400 }}>
+                <div className={["u-84d4ffc", (overdue ? 'u-497726e' : 'u-1e2ea2c'), (overdue ? 'u-eed0f8f' : 'u-7e3a944')].filter(Boolean).join(' ')}>
                   {fmtDate(task.deadline)}
                 </div>
               </div>
@@ -136,9 +136,9 @@ export function GanttTab({ project, tasks, milestones = [] }) {
                 const color   = m.completed_at ? '#22c55e' : overdue ? '#ef4444' : '#7c3aed';
                 return (
                   <div key={m.id} className="u-c2ccbef">
-                    <div className="u-81efc4d" style={{ color: m.completed_at ? 'var(--gray-400)' : overdue ? 'var(--danger)' : '#7c3aed' }}>
+                    <div className={["u-81efc4d", (m.completed_at ? 'u-1e2ea2c' : (overdue ? 'u-497726e' : 'u-b36fc53'))].filter(Boolean).join(' ')}>
                       <Diamond color={color} size={10} />
-                      <span title={m.title} style={{ textDecoration: m.completed_at ? 'line-through' : 'none' }}>{m.title}</span>
+                      <span className={[(m.completed_at ? 'u-7059a4e' : 'u-80d654f')].filter(Boolean).join(' ')} title={m.title}>{m.title}</span>
                     </div>
                     <div className="u-26e95a8">
                       <div className="u-f142acf" />
@@ -153,7 +153,7 @@ export function GanttTab({ project, tasks, milestones = [] }) {
                       {/* Vertical spike */}
                       <div className="u-5b15eb5" style={{ left: `${mPct}%`, background: color + '80' }} />
                     </div>
-                    <div className="u-84d4ffc" style={{ color: overdue ? 'var(--danger)' : 'var(--gray-400)', fontWeight: overdue ? 600 : 400 }}>
+                    <div className={["u-84d4ffc", (overdue ? 'u-497726e' : 'u-1e2ea2c'), (overdue ? 'u-eed0f8f' : 'u-7e3a944')].filter(Boolean).join(' ')}>
                       {fmtDate(m.due_date)}
                     </div>
                   </div>
@@ -248,7 +248,7 @@ export function MilestonesTab({ projectId, canManage, milestones, onReload }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="u-36764d1">
-                    <span className="u-6ae05fc" style={{ textDecoration: done ? 'line-through' : 'none', color: done ? 'var(--gray-400)' : 'var(--gray-800)' }}>{m.title}</span>
+                    <span className={["u-6ae05fc", (done ? 'u-7059a4e' : 'u-80d654f'), (done ? 'u-1e2ea2c' : 'u-00597d5')].filter(Boolean).join(' ')}>{m.title}</span>
                     {done && <span className="badge badge-done">Completed</span>}
                     {overdue && <span className="badge badge-cancelled">Overdue</span>}
                   </div>

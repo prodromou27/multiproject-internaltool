@@ -238,13 +238,7 @@ export default function CalendarPage() {
                       onDragOver={dateStr ? e => { e.preventDefault(); setDragOverDate(dateStr); } : undefined}
                       onDragLeave={() => setDragOverDate(null)}
                       onDrop={dateStr ? e => { e.preventDefault(); reschedule(draggedEvent, dateStr); } : undefined}
-                      className="u-5aec1b0" style={{ background: dragOverDate === dateStr
-                          ? 'var(--primary-light)'
-                          : !day
-                          ? 'var(--gray-50)'
-                          : isWeekend
-                            ? 'var(--gray-50)'
-                            : 'var(--surface)', cursor: canCreate ? 'default' : undefined }}
+                      className={["u-5aec1b0", (dragOverDate === dateStr ? 'u-89f9bf0' : (!day ? 'u-85caad1' : (isWeekend ? 'u-85caad1' : 'u-a5acbfa'))), (canCreate ? 'u-2a9295c' : '')].filter(Boolean).join(' ')}
                       // Hover hint for managers/planners on active days
                       onMouseEnter={canCreate ? e => {
                         const addBtn = e.currentTarget.querySelector('.cal-add-btn');
@@ -258,7 +252,7 @@ export default function CalendarPage() {
                       {day && (
                         <>
                           <div className="u-41edc4d">
-                            <div className="u-3d88300" style={{ fontWeight: isToday ? 800 : 500, color: isToday ? '#fff' : isWeekend ? 'var(--gray-400)' : isPast ? 'var(--gray-400)' : 'var(--gray-700)', background: isToday ? 'var(--primary)' : 'transparent' }}>{day}</div>
+                            <div className={["u-3d88300", (isToday ? 'u-2b95321' : 'u-02a2d33'), (isToday ? 'u-729d2fa' : (isWeekend ? 'u-1e2ea2c' : (isPast ? 'u-1e2ea2c' : 'u-3a065eb'))), (isToday ? 'u-1eab90a' : 'u-a8869db')].filter(Boolean).join(' ')}>{day}</div>
 
                             {/* Hover quick-add button */}
                             {canCreate && (
@@ -307,7 +301,7 @@ export default function CalendarPage() {
                   {upcoming.map((e, i) => {
                     const s = TYPE_STYLE[e.type];
                     return (
-                      <li key={i} role="button" tabIndex={0} onKeyDown={key => { if (key.key === 'Enter' || key.key === ' ') { key.preventDefault(); setSelected(e); } }} onClick={() => setSelected(e)} className="u-edd5c49" style={{ borderBottom: i < upcoming.length - 1 ? '1px solid var(--gray-100)' : 'none' }}>
+                      <li key={i} role="button" tabIndex={0} onKeyDown={key => { if (key.key === 'Enter' || key.key === ' ') { key.preventDefault(); setSelected(e); } }} onClick={() => setSelected(e)} className={["u-edd5c49", (i < upcoming.length - 1 ? 'u-02c1276' : 'u-71a91da')].filter(Boolean).join(' ')}>
                         <div className="u-a49b816" style={{ background: s.color }} />
                         <div className="flex-1 min-w-0">
                           <div className="u-7cf7897">
@@ -320,7 +314,7 @@ export default function CalendarPage() {
                           </div>
                         </div>
                         {e.type === 'maintenance' && (
-                          <span className="u-453609b" style={{ background: e.report_sent ? '#dcfce7' : '#fef3c7', color: e.report_sent ? '#166534' : '#92400e' }}>
+                          <span className={["u-453609b", (e.report_sent ? 'u-fe1fad9' : 'u-a342d80'), (e.report_sent ? 'u-d311ded' : 'u-91ee9a7')].filter(Boolean).join(' ')}>
                             {e.report_sent ? <><Check size={9} /> Sent</> : 'Report pending'}
                           </span>
                         )}

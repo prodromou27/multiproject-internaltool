@@ -379,7 +379,7 @@ export default function Workload() {
             <div className="stat-label">Scheduled Visits</div>
           </div>
           <div className="card stat">
-            <div className="stat-value" style={{ color: overdueCount > 0 ? 'var(--danger)' : 'var(--success)' }}>
+            <div className={["stat-value", (overdueCount > 0 ? 'u-497726e' : 'u-5a45298')].filter(Boolean).join(' ')}>
               {overdueCount}
             </div>
             <div className="stat-label">Overdue Tasks</div>

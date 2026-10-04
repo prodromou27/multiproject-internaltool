@@ -181,8 +181,8 @@ function ScorecardDetail({ sc, isManager, onClose, onEdit, onDelete }) {
         </div>
         <div className="u-71c92c6">
           <div className="u-39de0bb">Target</div>
-          <div className="u-028ee8c" style={{ color: sc.adjusted_score >= 80 ? 'var(--success)' : 'var(--danger)' }}>80%</div>
-          <div className="u-5a45a25" style={{ color: sc.adjusted_score >= 80 ? 'var(--success)' : 'var(--danger)' }}>
+          <div className={["u-028ee8c", (sc.adjusted_score >= 80 ? 'u-5a45298' : 'u-497726e')].filter(Boolean).join(' ')}>80%</div>
+          <div className={["u-5a45a25", (sc.adjusted_score >= 80 ? 'u-5a45298' : 'u-497726e')].filter(Boolean).join(' ')}>
             {sc.adjusted_score >= 80 ? <><CheckCircle2 size={11} /> Met</> : <><XCircle size={11} /> Not met</>}
           </div>
         </div>
@@ -225,7 +225,7 @@ function EngineerSummaryCard({ eng }) {
         <div className="u-f5fb2fe">
           <div>High: <strong>{eng.max_score}%</strong></div>
           <div>Low:  <strong>{eng.min_score}%</strong></div>
-          <div>vs target: <strong style={{ color: pct >= TARGET ? 'var(--success)' : 'var(--danger)' }}>
+          <div>vs target: <strong className={[(pct >= TARGET ? 'u-5a45298' : 'u-497726e')].filter(Boolean).join(' ')}>
             {pct >= TARGET ? '+' : ''}{Math.round((pct - TARGET) * 10) / 10}%
           </strong></div>
         </div>
@@ -373,7 +373,7 @@ export default function Scorecards() {
                 <ScoreBadge score={myAvg} size="lg" />
                 <div className="u-308c91b">
                   Target: 80% &nbsp;·&nbsp;
-                  <span className="u-e30bd2e" style={{ color: myAvg >= 80 ? 'var(--success)' : 'var(--danger)' }}>
+                  <span className={["u-e30bd2e", (myAvg >= 80 ? 'u-5a45298' : 'u-497726e')].filter(Boolean).join(' ')}>
                     {myAvg >= 80 ? <><CheckCircle2 size={12} /> On target</> : `${Math.abs(Math.round((myAvg - 80) * 10) / 10)}% below target`}
                   </span>
                 </div>
@@ -518,7 +518,7 @@ export default function Scorecards() {
                           <div className="u-1d6bcfa">
                             <div className="u-80b90e3" style={{ color: getRating(latest.adjusted_score).color }}>{latest.adjusted_score}%</div>
                             {delta !== null && (
-                              <div className="u-0907ca8" style={{ color: delta >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                              <div className={["u-0907ca8", (delta >= 0 ? 'u-5a45298' : 'u-497726e')].filter(Boolean).join(' ')}>
                                 {delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}% vs prev
                               </div>
                             )}

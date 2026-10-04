@@ -78,7 +78,7 @@ export function LocalizationTab() {
             {LANGUAGES.map(l => {
               const on = cfg.supported_languages.includes(l.code);
               return (
-                <label key={l.code} className="u-f3842ee" style={{ background: on ? '#dbeafe' : 'var(--gray-100)', border: on ? '1px solid #93c5fd' : '1px solid transparent' }}>
+                <label key={l.code} className={["u-f3842ee", (on ? 'u-4c55566' : 'u-d994785'), (on ? 'u-8b7de93' : 'u-52e7996')].filter(Boolean).join(' ')}>
                   <input type="checkbox" checked={on} onChange={() => toggleLang(l.code)} className="u-30e741d" />
                   {l.label}
                 </label>

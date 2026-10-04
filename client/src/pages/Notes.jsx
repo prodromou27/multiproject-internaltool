@@ -261,7 +261,7 @@ function TodoItem({ todo, onToggle, onDelete }) {
         onChange={() => onToggle(todo)}
         className="u-1461561"
       />
-      <span className="u-7829123" style={{ color: todo.done ? 'var(--gray-400)' : 'var(--gray-800)', textDecoration: todo.done ? 'line-through' : 'none' }}>
+      <span className={["u-7829123", (todo.done ? 'u-1e2ea2c' : 'u-00597d5'), (todo.done ? 'u-7059a4e' : 'u-80d654f')].filter(Boolean).join(' ')}>
         {todo.title}
       </span>
       <button

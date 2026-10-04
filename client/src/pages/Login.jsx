@@ -342,7 +342,7 @@ export default function Login() {
                   value={confirmPw}
                   onChange={e => setConfirmPw(e.target.value)}
                   placeholder="••••••••••••"
-                  className="u-76e0843" style={{ borderColor: confirmPw && confirmPw !== newPw ? '#ef4444' : undefined }}
+                  className={["u-76e0843", (confirmPw && confirmPw !== newPw ? 'u-959debc' : '')].filter(Boolean).join(' ')}
                   required
                 />
               </div>
@@ -438,7 +438,7 @@ export default function Login() {
               <div className="relative">
                 <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
                 <input type={showResetPw ? 'text' : 'password'} value={resetConfirm} onChange={e => setResetConfirm(e.target.value)}
-                  placeholder="••••••••••••" className="u-76e0843" style={{ borderColor: resetConfirm && resetConfirm !== resetNewPw ? '#ef4444' : undefined }} required />
+                  placeholder="••••••••••••" className={["u-76e0843", (resetConfirm && resetConfirm !== resetNewPw ? 'u-959debc' : '')].filter(Boolean).join(' ')} required />
               </div>
               {resetConfirm && resetConfirm !== resetNewPw && (
                 <div className="u-db3e48a">Passwords do not match</div>

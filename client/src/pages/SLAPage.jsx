@@ -48,7 +48,7 @@ function SLACard({ icon: Icon, title, target, metric, renderItems }) {
     <div className="card u-769fed3">
       {/* Header row */}
       <div className="u-d771e38">
-        <div className="u-4030aa7" style={{ background: breached > 0 ? '#fef2f2' : at_risk > 0 ? '#fffbeb' : '#f0fdf4' }}>
+        <div className={["u-4030aa7", (breached > 0 ? 'u-60cd622' : (at_risk > 0 ? 'u-4ba476d' : 'u-725d2d4'))].filter(Boolean).join(' ')}>
           <Icon size={20} color={breached > 0 ? '#ef4444' : at_risk > 0 ? '#f59e0b' : '#22c55e'} />
         </div>
         <div className="flex-1 min-w-0">
@@ -131,7 +131,7 @@ function MVItems({ items }) {
               <td className="u-beae6cf">{item.customer_name}</td>
               <td className="u-beae6cf">{item.engineer_names || '—'}</td>
               <td className="u-beae6cf">{fmtDate(item.scheduled_date)}</td>
-              <td className="u-aa06794" style={{ color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.working_days}</td>
+              <td className={["u-aa06794", (item.breached ? 'u-b0eb59c' : 'u-6a6a237')].filter(Boolean).join(' ')}>{item.working_days}</td>
               <td className="u-8c20179">
                 {item.breached
                   ? <span className="u-cd50164">BREACHED</span>
@@ -166,7 +166,7 @@ function ProjectItems({ items }) {
               <td className="u-d33fadf">{item.title}</td>
               <td className="u-da7c2af">{item.status.replace('_', ' ')}</td>
               <td className="u-beae6cf">{fmtDate(item.last_update)}</td>
-              <td className="u-aa06794" style={{ color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.days_since}d</td>
+              <td className={["u-aa06794", (item.breached ? 'u-b0eb59c' : 'u-6a6a237')].filter(Boolean).join(' ')}>{item.days_since}d</td>
               <td className="u-8c20179">
                 {item.breached
                   ? <span className="u-cd50164">OVERDUE</span>
@@ -202,7 +202,7 @@ function TaskItems({ items }) {
               <td className="u-beae6cf">{item.project_title || '—'}</td>
               <td className="u-beae6cf">{item.assigned_to_name || 'Unassigned'}</td>
               <td className="u-beae6cf">{fmtDate(item.created_at)}</td>
-              <td className="u-aa06794" style={{ color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.working_days}</td>
+              <td className={["u-aa06794", (item.breached ? 'u-b0eb59c' : 'u-6a6a237')].filter(Boolean).join(' ')}>{item.working_days}</td>
             </tr>
           ))}
         </tbody>
@@ -230,7 +230,7 @@ function ClosureItems({ items }) {
             <tr key={item.id} className="u-6e42c53">
               <td className="u-d33fadf">{item.title}</td>
               <td className="u-beae6cf">{fmtDate(item.closure_requested_at)}</td>
-              <td className="u-aa06794" style={{ color: item.breached ? '#ef4444' : '#f59e0b' }}>{item.working_days}</td>
+              <td className={["u-aa06794", (item.breached ? 'u-b0eb59c' : 'u-6a6a237')].filter(Boolean).join(' ')}>{item.working_days}</td>
               <td className="u-8c20179">
                 {item.breached
                   ? <span className="u-cd50164">OVERDUE</span>
@@ -267,7 +267,7 @@ function ServiceActivityItems({ items }) {
               <td className="u-beae6cf">{item.team_name}</td>
               <td className="u-beae6cf">{item.customer_name}</td>
               <td className="u-beae6cf">{fmtDateTime(item.created_at)}</td>
-              <td className="u-aa06794" style={{ color: (item.breached || item.response_breached) ? '#ef4444' : '#f59e0b' }}>{item.elapsed_hours}h</td>
+              <td className={["u-aa06794", (item.breached || item.response_breached ? 'u-b0eb59c' : 'u-6a6a237')].filter(Boolean).join(' ')}>{item.elapsed_hours}h</td>
               <td className="u-8c20179">
                 {item.breached && <span className="u-cd50164">BREACHED</span>}
                 {!item.breached && item.late_complete && <span className="u-cd50164">LATE</span>}
@@ -450,9 +450,9 @@ export default function SLAPage() {
                         <td className="u-f09f8d4">{t.response_hours}h</td>
                         <td className="u-f09f8d4">{t.resolution_hours}h</td>
                         <td className="u-f09f8d4">{t.total}</td>
-                        <td className="u-f09f8d4" style={{ color: t.breached ? '#ef4444' : undefined, fontWeight: t.breached ? 700 : 400 }}>{t.breached}</td>
-                        <td className="u-f09f8d4" style={{ color: t.at_risk ? '#f59e0b' : undefined, fontWeight: t.at_risk ? 700 : 400 }}>{t.at_risk}</td>
-                        <td className="u-f09f8d4" style={{ color: t.response_breached ? '#ef4444' : undefined, fontWeight: t.response_breached ? 700 : 400 }}>{t.response_breached}</td>
+                        <td className={["u-f09f8d4", (t.breached ? 'u-b0eb59c' : ''), (t.breached ? 'u-e3ec02a' : 'u-7e3a944')].filter(Boolean).join(' ')}>{t.breached}</td>
+                        <td className={["u-f09f8d4", (t.at_risk ? 'u-6a6a237' : ''), (t.at_risk ? 'u-e3ec02a' : 'u-7e3a944')].filter(Boolean).join(' ')}>{t.at_risk}</td>
+                        <td className={["u-f09f8d4", (t.response_breached ? 'u-b0eb59c' : ''), (t.response_breached ? 'u-e3ec02a' : 'u-7e3a944')].filter(Boolean).join(' ')}>{t.response_breached}</td>
                       </tr>
                     ))}
                   </tbody>

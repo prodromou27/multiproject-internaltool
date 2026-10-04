@@ -321,7 +321,7 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
             <div
               key={u.id}
               onMouseDown={e => { e.preventDefault(); insertMention(u.name); }}
-              className="u-5f16e65" style={{ background: i === mentionIndex ? 'var(--primary-light)' : 'var(--surface)', borderBottom: i < filtered.length - 1 ? '1px solid var(--gray-100)' : 'none' }}
+              className={["u-5f16e65", (i === mentionIndex ? 'u-89f9bf0' : 'u-a5acbfa'), (i < filtered.length - 1 ? 'u-02c1276' : 'u-71a91da')].filter(Boolean).join(' ')}
             >
               <div className="u-6c6e327">
                 {u.name.charAt(0).toUpperCase()}

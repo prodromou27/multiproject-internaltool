@@ -106,7 +106,7 @@ export function AttachmentsSection({ projectId }) {
                         type="button"
                         onClick={() => downloadAttachment(a)}
                         disabled={downloadingId === a.id}
-                        className="u-e54acda" style={{ cursor: downloadingId === a.id ? 'wait' : 'pointer' }}
+                        className={["u-e54acda", (downloadingId === a.id ? 'u-276d10f' : 'u-3b6a3a6')].filter(Boolean).join(' ')}
                       >
                         {downloadingId === a.id ? 'Preparing...' : a.original_name}
                       </button>

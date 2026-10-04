@@ -22,7 +22,7 @@ export function ConfirmProvider({ children }) {
       {req && (
         <Modal title={req.title ?? 'Are you sure?'} onClose={() => done(false)}>
           <div className="u-89d573f">
-            <div className="u-90ffd0a" style={{ background: req.danger === false ? '#eff6ff' : '#fef2f2' }}>
+            <div className={["u-90ffd0a", (req.danger === false ? 'u-4ff1ea9' : 'u-60cd622')].filter(Boolean).join(' ')}>
               <AlertTriangle size={20} color={req.danger === false ? '#3b82f6' : '#ef4444'} />
             </div>
             <p className="u-bea31f6">

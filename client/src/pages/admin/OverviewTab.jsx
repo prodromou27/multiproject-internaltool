@@ -119,7 +119,7 @@ export function OverviewTab() {
             ? <p className="text-muted text-sm">No activity recorded yet</p>
             : <ul className="list-none">
                 {activity.slice(0, 7).map((e, i) => (
-                  <li key={i} className="u-d57244e" style={{ borderBottom: i < Math.min(6, activity.length - 1) ? '1px solid var(--gray-100)' : 'none' }}>
+                  <li key={i} className={["u-d57244e", (i < Math.min(6, activity.length - 1) ? 'u-02c1276' : 'u-71a91da')].filter(Boolean).join(' ')}>
                     <span className="u-82d341f">{ACTIVITY_ICONS[e.type] || <Activity size={15} color="var(--gray-400)" />}</span>
                     <div className="flex-1 min-w-0">
                       <div className="u-b360f43">
@@ -234,7 +234,7 @@ export function ActivityTab() {
     <div className="card p-0">
       <ul className="list-none">
         {events.map((e, i) => (
-          <li key={i} className="u-5796aaa" style={{ borderBottom: i < events.length - 1 ? '1px solid var(--gray-100)' : 'none' }}>
+          <li key={i} className={["u-5796aaa", (i < events.length - 1 ? 'u-02c1276' : 'u-71a91da')].filter(Boolean).join(' ')}>
             <span className="u-12ece22">{ACTIVITY_ICONS[e.type] || <Bell size={15} color="var(--gray-400)" />}</span>
             <div className="flex-1 min-w-0">
               <div className="u-5e0faad">
