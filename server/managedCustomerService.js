@@ -170,7 +170,23 @@ async function getActivities(customerId,from,to,{ page=1,pageSize=25,offset=0 }=
     store.prepare('SELECT COUNT(*) AS total FROM service_activities WHERE customer_id=? AND activity_date BETWEEN ? AND ?').get(...range),
   ]);
   const mapped=values => values.map(row => ({ ...row,count:Number(row.count),minutes:row.minutes===undefined?undefined:Number(row.minutes),hours:row.minutes===undefined?undefined:Math.round(Number(row.minutes)/6)/10 }));
-  return { enabled:true,summary:{ activities:Number(summary.activities),minutes:Number(summary.minutes),hours:Math.round(Number(summary.minutes)/6)/10 },breakdowns:{ categories:mapped(categories),technologies:mapped(technologies),engineers:mapped(engineers),locations:mapped(locations),billing:mapped(billing) },rows,total:Number(count.total),page,page_size:pageSize };
+  // Which assets each activity touched and the version it left them on (e.g. an
+  // upgrade), so reports show what was changed, not only that work happened.
+  const assetsByActivity=new Map();
+  if (rows.length) {
+    const links=await store.prepare(`SELECT saa.service_activity_id,a.name,saa.version FROM service_activity_assets saa
+      JOIN customer_assets a ON a.id=saa.asset_id WHERE saa.service_activity_id IN (${rows.map(() => '?').join(',')}) ORDER BY saa.service_activity_id,a.id`).all(...rows.map(row => row.id));
+    for (const link of links) {
+      const list=assetsByActivity.get(Number(link.service_activity_id)) || [];
+      list.push({ name:decrypt(link.name),version:link.version || null });
+      assetsByActivity.set(Number(link.service_activity_id),list);
+    }
+  }
+  const withAssets=rows.map(row => {
+    const assets=assetsByActivity.get(Number(row.id)) || [];
+    return { ...row,assets,assets_label:assets.map(asset => asset.version ? `${asset.name} -> ${asset.version}` : asset.name).join(', ') };
+  });
+  return { enabled:true,summary:{ activities:Number(summary.activities),minutes:Number(summary.minutes),hours:Math.round(Number(summary.minutes)/6)/10 },breakdowns:{ categories:mapped(categories),technologies:mapped(technologies),engineers:mapped(engineers),locations:mapped(locations),billing:mapped(billing) },rows:withAssets,total:Number(count.total),page,page_size:pageSize };
 }
 
 async function getWork(customerId,from,to,store=db) {

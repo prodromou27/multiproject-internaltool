@@ -238,6 +238,12 @@ router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => 
   await logAudit(db, req, 'service_activity', activity.id, body.title.trim(), 'activity_created',
     `customer_id=${customerId}; category_id=${body.category_id}; status=${status}`);
 
+  // Logging work directly as Completed (the usual after-the-fact case) completes it
+  // too, so the referenced RT ticket is updated the same as on a later completion.
+  if (status === completedValue) {
+    await writeBackTicketOnCompletion(req, { id: activity.id, title: body.title.trim(), customerId, ticketReference: body.ticket_reference });
+  }
+
   res.json({ id: activity.id, activity_reference: activity.reference });
 });
 

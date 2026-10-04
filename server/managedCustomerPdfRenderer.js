@@ -9,9 +9,10 @@ function renderPdf(model) {
     const doc=new PDFDocument({ size:'A4',layout:'landscape',margin:40,bufferPages:true,info:{ Title:`Managed Services Report - ${model.customer.name}`,Author:PRODUCT_NAME,Subject:`${model.period.from} to ${model.period.to}` } });
     const chunks=[];doc.on('data',chunk => chunks.push(chunk));doc.on('error',reject);doc.on('end',() => resolve(Buffer.concat(chunks)));
     const pageWidth=doc.page.width-doc.page.margins.left-doc.page.margins.right;
+    const left=doc.page.margins.left;
     const ensureSpace=height => { if (doc.y+height>doc.page.height-doc.page.margins.bottom-18) doc.addPage(); };
-    const heading=value => { ensureSpace(42);doc.moveDown(.5).font('Helvetica-Bold').fontSize(16).fillColor(COLORS.primary).text(value).moveDown(.4); };
-    const paragraph=value => { doc.font('Helvetica').fontSize(10).fillColor(COLORS.text).text(display(value),{ lineGap:2 }).moveDown(.5); };
+    const heading=value => { ensureSpace(42);doc.x=left;doc.moveDown(.5).font('Helvetica-Bold').fontSize(16).fillColor(COLORS.primary).text(value,{ width:pageWidth }).moveDown(.4); };
+    const paragraph=value => { doc.x=left;doc.font('Helvetica').fontSize(10).fillColor(COLORS.text).text(display(value),{ width:pageWidth,lineGap:2 }).moveDown(.5); };
     const table=(title,headers,rows) => {
       heading(title);
       if (!rows.length) return paragraph('No matching records.');
@@ -26,7 +27,7 @@ function renderPdf(model) {
           doc.rect(x,y,widths[index],height).fillAndStroke(isHeader?COLORS.header:'#ffffff',COLORS.line);
           doc.fillColor(COLORS.text).text(display(value),x+padding,y+padding,{ width:widths[index]-padding*2,lineGap:1 });
         });
-        doc.y=y+height;
+        doc.x=left;doc.y=y+height;
       };
       drawRow(headers,true);rows.forEach(row => drawRow(row));doc.moveDown(.5);
     };
@@ -35,14 +36,14 @@ function renderPdf(model) {
       if (!visible.length) return paragraph('No matching records.');
       const max=Math.max(1,...visible.map(row => Number(row.count))),labelWidth=125,barWidth=pageWidth-labelWidth-55;
       visible.forEach(row => { const y=doc.y;doc.font('Helvetica').fontSize(8).fillColor(COLORS.text).text(display(row.name),doc.page.margins.left,y,{ width:labelWidth-8,lineBreak:false,ellipsis:true });doc.rect(doc.page.margins.left+labelWidth,y,barWidth,10).fill('#e2e8f0');doc.rect(doc.page.margins.left+labelWidth,y,Math.max(1,barWidth*Number(row.count)/max),10).fill(COLORS.accent);doc.fillColor(COLORS.text).text(String(row.count),doc.page.margins.left+labelWidth+barWidth+8,y-1,{ width:38,align:'right' });doc.y=y+20; });
-      doc.moveDown(.3);
+      doc.x=left;doc.moveDown(.3);
     };
     const trendChart=trend => {
       ensureSpace(215);heading('Ticket Throughput Trend');const points=trend.points,y=doc.y+8,height=125,x=doc.page.margins.left+25,width=pageWidth-50,max=Math.max(1,...points.flatMap(point => [point.created,point.resolved]));
       doc.strokeColor(COLORS.line).lineWidth(1).moveTo(x,y).lineTo(x,y+height).lineTo(x+width,y+height).stroke();
       const plot=(key,color) => { doc.strokeColor(color).lineWidth(2);points.forEach((point,index) => { const px=x+(points.length===1?0:index/(points.length-1)*width),py=y+height-(Number(point[key])/max*height);if (index===0) doc.moveTo(px,py);else doc.lineTo(px,py); });doc.stroke(); };
       if (points.length) { plot('created',COLORS.accent);plot('resolved','#16a34a');doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted).text(points[0].date,x,y+height+6,{ width:90 });doc.text(points[points.length-1].date,x+width-90,y+height+6,{ width:90,align:'right' }); }
-      doc.fillColor(COLORS.accent).text('Created',x+width-130,y-8,{ width:55 });doc.fillColor('#16a34a').text('Resolved',x+width-65,y-8,{ width:55 });doc.y=y+height+28;
+      doc.fillColor(COLORS.accent).text('Created',x+width-130,y-8,{ width:55 });doc.fillColor('#16a34a').text('Resolved',x+width-65,y-8,{ width:55 });doc.x=left;doc.y=y+height+28;
     };
     const n=model.narratives;
     doc.moveDown(5).font('Helvetica-Bold').fontSize(28).fillColor(COLORS.accent).text('Managed Services Report',{ align:'center' }).moveDown(.6);
@@ -57,7 +58,7 @@ function renderPdf(model) {
       ticket_summary:() => { if (!model.tickets.enabled) return;const { current,period,trend }=model.tickets.analytics;table('Ticket Summary',['Measure','Value'],[['Open backlog',current.total_open],['Created during period',period.created],['Resolved during period',period.resolved],['Closed during period',period.closed],['Rejected during period',period.rejected],['SLA breaches during period',period.sla_breaches]]);trendChart(trend);barChart('Open Tickets by Status',current.statuses);barChart('Open Tickets by Priority',current.priorities);barChart('Open Ticket Aging',current.aging); },
       open_tickets:() => { if (model.tickets.enabled) table('Open Tickets',['Ticket','Subject','Status','Priority','Owner','Created'],model.tickets.open.rows.map(row => [row.ticket_number,row.subject,row.normalized_status,row.normalized_priority,row.owner_name,row.created_at_external])); },
       period_tickets:() => { if (model.tickets.enabled) table('Tickets Created During Period',['Ticket','Subject','Status','Priority','Owner','Created'],model.tickets.period.rows.map(row => [row.ticket_number,row.subject,row.normalized_status,row.normalized_priority,row.owner_name,row.created_at_external])); },
-      service_activities:() => { if (model.activities.enabled) table('Service Activities',['Date','Reference','Activity','Engineer','Category','Hours'],model.activities.rows.map(row => [row.activity_date,row.activity_reference,row.title,row.engineer_name,row.category_name,Math.round(Number(row.duration_minutes || 0)/6)/10])); },
+      service_activities:() => { if (model.activities.enabled) table('Service Activities',['Date','Reference','Activity','Asset / version','Engineer','Category','Hours'],model.activities.rows.map(row => [row.activity_date,row.activity_reference,row.title,row.assets_label,row.engineer_name,row.category_name,Math.round(Number(row.duration_minutes || 0)/6)/10])); },
       tasks:() => { if (model.tasks.enabled) table('Tasks',['Task','Project','Engineer','Status','Priority','Due'],model.tasks.rows.map(row => [row.title,row.project_title,row.assigned_to_name,row.status,row.priority,row.deadline])); },
       projects:() => { if (model.projects.enabled) table('Projects',['Project','Status','Priority','Progress','Deadline'],model.projects.rows.map(row => [row.title,row.status,row.priority,`${row.completion_pct}%`,row.deadline])); },
       maintenance_visits:() => { if (model.maintenance_visits.enabled) table('Maintenance Visits',['Date','Visit','Engineer','Status','Report sent','Recommendations'],model.maintenance_visits.rows.map(row => [row.scheduled_date,row.title,row.engineer_name,row.status,row.report_sent_to_customer?'Yes':'No',row.recommendation_count])); },
@@ -69,8 +70,12 @@ function renderPdf(model) {
     model.sections.forEach(section => builders[section]?.());
     const range=doc.bufferedPageRange();
     for (let index=0;index<range.count;index++) {
-      doc.switchToPage(index);doc.save().font('Helvetica').fontSize(8).fillColor(COLORS.muted);
-      doc.text(`Confidential - Page ${index+1} of ${range.count}`,doc.page.margins.left,doc.page.height-25,{ width:pageWidth,align:'center',lineBreak:false });doc.restore();
+      // The footer sits inside the bottom margin; writing there would otherwise make
+      // pdfkit start a new (blank) page for every footer.
+      doc.switchToPage(index);const bottom=doc.page.margins.bottom;doc.page.margins.bottom=0;
+      doc.save().font('Helvetica').fontSize(8).fillColor(COLORS.muted);
+      doc.text(`Confidential - Page ${index+1} of ${range.count}`,left,doc.page.height-25,{ width:pageWidth,align:'center',lineBreak:false });doc.restore();
+      doc.page.margins.bottom=bottom;
     }
     doc.end();
   });

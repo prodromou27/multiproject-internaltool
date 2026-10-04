@@ -639,3 +639,20 @@ test('the configuration read by Customer 360 can be saved back as-is (the autosa
   // Anything else unknown is still refused.
   assert.equal((await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...forged.data,surprise:1 } })).status,400);
 });
+
+test('managed-customer report activities say which asset was worked on and the version it was left on',async () => {
+  const customer=(await db.prepare('INSERT INTO customers (name,active,service_activity_enabled) VALUES (?,1,1)').run('Report asset customer')).lastInsertRowid;
+  await db.prepare('INSERT INTO customer_teams (customer_id,team_id) VALUES (?,?)').run(customer,ids.teamEnabled);
+  await db.prepare('INSERT INTO managed_customer_configurations (customer_id,managed_services_enabled,responsible_team_id) VALUES (?,1,?)').run(customer,ids.teamEnabled);
+  const asset=await api(`/api/customers/${customer}/assets`,{ method:'POST',token:ids.tokenManager,
+    body:{ name:'FW-REPORT-01',asset_type:'Firewall',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'managed' } });
+  assert.equal(asset.status,201);
+  const logged=await api('/api/service-activities',{ method:'POST',token:ids.tokenEnabled,
+    body:{ customer_id:customer,activity_date:'2026-10-02',category_id:ids.category,title:'Upgraded firmware',status:'completed',asset_ids:[asset.data.id],asset_versions:{ [asset.data.id]:'7.4.3' } } });
+  assert.equal(logged.status,200,JSON.stringify(logged.data));
+  const result=await api(`/api/managed-customers/${customer}/activities?from=2026-10-01&to=2026-10-31`,{ token:ids.tokenManager });
+  assert.equal(result.status,200);
+  const row=result.data.rows.find(item => item.title==='Upgraded firmware');
+  assert.deepEqual(row.assets,[{ name:'FW-REPORT-01',version:'7.4.3' }]);
+  assert.equal(row.assets_label,'FW-REPORT-01 -> 7.4.3');
+});

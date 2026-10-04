@@ -132,7 +132,7 @@ function emailHtml(msg) {
   return `<div style="font-family:sans-serif;font-size:14px;color:#1f2937;max-width:480px">
     <h2 style="margin:0 0 4px;font-size:16px">${escapeHtml(msg.title)}</h2>
     ${msg.subtitle ? `<p style="margin:0 0 10px;color:#6b7280;font-size:13px">${escapeHtml(msg.subtitle)}</p>` : ''}
-    <p style="margin:0 0 10px">${escapeHtml(msg.body)}</p>
+    <p style="margin:0 0 10px">${escapeHtml(msg.body).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')}</p>
     ${facts.length ? `<table style="border-collapse:collapse;font-size:13px">${facts.map(f => `<tr><td style="padding:2px 10px 2px 0;color:#6b7280">${escapeHtml(f.name)}</td><td>${escapeHtml(String(f.value))}</td></tr>`).join('')}</table>` : ''}
   </div>`;
 }
@@ -300,8 +300,9 @@ function notify(event, data) {
       }
 
       // ── External channels (Teams / Webex) ─────────────────────────────────
-      const settings = await getSettings();
-      if (!settings) return;
+      // No organisation Teams/Webex integration configured is normal; it must not
+      // stop each person's own channels (email, personal Teams) below.
+      const settings = (await getSettings()) || {};
 
       const notifyOn = settings.notify_on || {};
       const eventKey = event.replace('.', '_');  // e.g. task.assigned → task_assigned

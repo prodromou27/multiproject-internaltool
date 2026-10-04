@@ -7,7 +7,10 @@ function normalizeDate(value) {
   if (!value) return null;
   const text=String(value).trim().replace(/^(\d{4}-\d{2}-\d{2}):(\d{2}:\d{2})/,'$1T$2');
   const date=new Date(text);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  // RT represents an unset date (no due date, not yet resolved) as the Unix epoch,
+  // 1970-01-01T00:00:00Z. Taken literally, every open ticket without a due date
+  // would count as an SLA breach.
+  return Number.isNaN(date.getTime()) || date.getTime()<=0 ? null : date.toISOString();
 }
 
 function normalizeStatus(value,mappings=DEFAULTS) {

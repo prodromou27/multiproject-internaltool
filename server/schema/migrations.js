@@ -632,6 +632,17 @@ async function applyMigrations(pool, transaction) {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_one_internal ON customers(is_internal) WHERE is_internal=1;
   `]);
 
+  migrations.push(['20261004_rt_unset_dates', `
+    -- Request Tracker reports unset dates as 1970-01-01T00:00:00Z; earlier syncs stored
+    -- them as real dates, flagging open tickets without a due date as SLA breaches.
+    -- Incremental syncs only refetch changed tickets, so clear what is already stored.
+    UPDATE external_tickets SET sla_due_at=NULL, sla_breached=0 WHERE sla_due_at LIKE '1970-01-01%';
+    UPDATE external_tickets SET resolved_at_external=NULL WHERE resolved_at_external LIKE '1970-01-01%';
+    UPDATE external_tickets SET closed_at_external=NULL WHERE closed_at_external LIKE '1970-01-01%';
+    UPDATE external_tickets SET created_at_external=NULL WHERE created_at_external LIKE '1970-01-01%';
+    UPDATE external_tickets SET updated_at_external=NULL WHERE updated_at_external LIKE '1970-01-01%';
+  `]);
+
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

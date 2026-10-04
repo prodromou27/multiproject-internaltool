@@ -85,3 +85,12 @@ test('all five notification events are exposed and validated', () => {
   assert.equal(mergeSettings({}, { notify_on: { report_submitted: false } }).notify_on.report_submitted, false);
   assert.throws(() => mergeSettings({}, { notify_on: { bogus: true } }), e => e.status === 400);
 });
+
+test('personal email shows **bold** as bold, without letting a name inject HTML', () => {
+  const html = emailHtml({ title: 'T', body: '**Maria Security** has been assigned a task.' });
+  assert.match(html, /<strong>Maria Security<\/strong> has been assigned/);
+  assert.doesNotMatch(html, /\*\*/);
+  const hostile = emailHtml({ title: 'T', body: '**<img src=x onerror=alert(1)>** was assigned.' });
+  assert.doesNotMatch(hostile, /<img/);
+  assert.match(hostile, /<strong>&lt;img/);
+});

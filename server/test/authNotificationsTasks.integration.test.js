@@ -28,6 +28,24 @@ test('notify() delivers to each recipient\'s own personal Teams webhook, honorin
   assert.ok(optedIn);
 });
 
+test('personal alerts still go out when no organisation Teams/Webex integration was ever set up', async () => {
+  const notifications = require('../notifications');
+  const user = (await db.prepare('INSERT INTO users (name, email, password, role, notify_teams_enabled, notify_teams_webhook_url) VALUES (?, ?, ?, ?, 1, ?)')
+    .run('Fresh Install Engineer', 'fresh-install@test.local', bcrypt.hashSync('pw', 4), 'engineer', 'https://93.184.216.34/fresh-install')).lastInsertRowid;
+  const saved = await db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get();
+  await db.prepare("DELETE FROM settings WHERE key = 'integrations'").run();
+  const posted = [];
+  notifications._setTransport(async (u) => { posted.push(u.pathname); return { status: 200, body: '', headers: {} }; });
+  try {
+    notifications.notify('task.assigned', { engineer_id: user, engineer_name: 'Fresh Install Engineer', task_title: 'T' });
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.deepEqual(posted, ['/fresh-install']);
+  } finally {
+    notifications._setTransport();
+    if (saved) await db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?)").run(saved.value);
+  }
+});
+
 test('notification preferences default correctly, validate their input, and persist without re-issuing a session', async () => {
   const passwordHash = bcrypt.hashSync('pw', 4);
   const target = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')

@@ -302,3 +302,25 @@ test('a direct PUT that transitions status into Completed also triggers write-ba
   await db.prepare('DELETE FROM customer_ticketing_configurations WHERE customer_id = ?').run(ids.customer);
   await db.prepare('DELETE FROM external_tickets WHERE customer_id = ?').run(ids.customer);
 });
+
+test('an activity logged directly as Completed also triggers RT write-back', async () => {
+  await db.prepare('DELETE FROM customer_ticketing_configurations WHERE customer_id = ?').run(ids.customer);
+  await db.prepare('DELETE FROM external_tickets WHERE customer_id = ?').run(ids.customer);
+  await db.prepare(`INSERT INTO customer_ticketing_configurations (customer_id, provider_type, external_queue_id, external_queue_name, enabled, write_back_enabled, write_back_status)
+    VALUES (?, 'request_tracker', '7', 'Support', 1, 1, 'resolved')`).run(ids.customer);
+  await db.prepare(`INSERT INTO external_tickets (customer_id, provider_type, external_queue_id, external_queue_name, external_ticket_id, ticket_number, subject, external_status, normalized_status, status_group)
+    VALUES (?, 'request_tracker', '7', 'Support', '4101', '4101', 'Logged as completed', 'open', 'Open', 'open')`).run(ids.customer);
+  try {
+    const created = await createActivity({ title: 'Logged after the fact', ticket_reference: 'RT#4101', status: 'completed' });
+    assert.equal(created.status, 200, 'a failed RT write-back must not fail logging the activity');
+    const entry = await db.prepare("SELECT * FROM audit_log WHERE entity_id=? AND action LIKE 'ticket_writeback%'").get(created.data.id);
+    assert.ok(entry, 'write-back was attempted');
+    assert.match(entry.detail, /ticket_id=4101/);
+    // A planned activity is not finished, so nothing is written back.
+    const planned = await createActivity({ title: 'Planned only', ticket_reference: 'RT#4101', status: 'planned' });
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE entity_id=? AND action LIKE 'ticket_writeback%'").get(planned.data.id)).n, 0);
+  } finally {
+    await db.prepare('DELETE FROM customer_ticketing_configurations WHERE customer_id = ?').run(ids.customer);
+    await db.prepare('DELETE FROM external_tickets WHERE customer_id = ?').run(ids.customer);
+  }
+});
