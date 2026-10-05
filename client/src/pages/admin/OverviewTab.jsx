@@ -4,6 +4,7 @@ import { api } from '../../api';
 import { fileSize, timeSince, ACTIVITY_ICONS } from './shared';
 import { MetricStrip } from '../../components/EnterpriseUI';
 import { fmtDateTime } from '../../components/Shared';
+import { useLiveRefresh } from '../../live';
 
 /* ══════════════════════════════════════════════════════════ */
 /* ── OVERVIEW TAB ────────────────────────────────────────── */
@@ -21,6 +22,7 @@ export function OverviewTab() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(load);
 
   if (loading || !stats) return (
     <div className="u-a8973f8">

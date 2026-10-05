@@ -51,6 +51,8 @@ async function finish(job,result) {
     if (artifact?.path) await fs.promises.unlink(path.resolve(__dirname,'uploads','exports',path.basename(artifact.path))).catch(() => {});
     return;
   }
+  // A finished job (a ticket sync, an export) changed what pages show.
+  require('./liveUpdates').emitChange(job.type==='ticket_sync' ? 'managed-customers' : 'jobs');
   if (job.created_by && artifact) await db.prepare("INSERT INTO notifications(user_id,type,title,body,link) VALUES (?,'export.ready','Export ready',?,?)")
     .run(job.created_by,`${artifact.name} is ready to download.`,`/api/reports/custom/exports/${job.id}/download`);
 }

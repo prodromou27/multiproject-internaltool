@@ -5,6 +5,7 @@ import { Modal } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
 import { CategoriesEditor, TechnologiesEditor } from './ActivityCatalogEditors';
+import { useLiveRefresh } from '../../live';
 
 export function TeamsAdminSection() {
   const toast = useToast();
@@ -17,6 +18,7 @@ export function TeamsAdminSection() {
 
   const load = () => Promise.all([api.teams(), api.users()]).then(([t, u]) => { setTeams(t); setUsers(u); });
   useEffect(() => { load(); }, []);
+  useLiveRefresh(load);
 
   async function create(e) {
     e.preventDefault();
@@ -223,6 +225,7 @@ export function ServiceActivityAdminTab() {
   const load = () => Promise.all([api.activityCategories({ includeInactive: true }), api.technologies({ includeInactive: true }), api.teams()])
     .then(([c, t, tm]) => { setCategories(c); setTechnologies(t); setTeams(tm); });
   useEffect(() => { load(); }, []);
+  useLiveRefresh(load);
 
   return (
     <div>

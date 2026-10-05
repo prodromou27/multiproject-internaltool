@@ -89,6 +89,10 @@ try {
 app.use(express.json({ limit: '1mb' }));
 app.use(require('./middleware/body').ensureBody);
 app.use('/api', require('./middleware/session').protectCookieRequests);
+// Tell every open browser when data changes (see liveUpdates.js).
+const liveUpdates = require('./liveUpdates');
+app.use('/api', liveUpdates.trackChanges);
+app.use('/api/live', liveUpdates.router);
 
 // ── Rate limiting on auth endpoints ──────────────────────────────────────────
 const authLimiter = rateLimit({
@@ -251,6 +255,7 @@ const keyFile  = path.join(certDir, 'key.pem');
     servers.push(https.createServer(tlsOptions, app).listen(HTTPS_PORT, '0.0.0.0', () => {
       console.log(`Server running on https://0.0.0.0:${HTTPS_PORT}`);
       startReminderSchedules();
+      liveUpdates.startListening();
       initScheduler();
     }));
 
@@ -272,6 +277,7 @@ const keyFile  = path.join(certDir, 'key.pem');
     servers.push(app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://0.0.0.0:${PORT} (no TLS certs found)`);
       startReminderSchedules();
+      liveUpdates.startListening();
       initScheduler();
     }));
   }

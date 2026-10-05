@@ -14,6 +14,7 @@ import {
 } from '../components/ScorecardUtils';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
+import { useLiveRefresh } from '../live';
 
 /* ── Scorecard Form ───────────────────────────────────────── */
 function ScorecardForm({ initial, pendingProjects, engineers, onSave, onClose }) {
@@ -297,6 +298,7 @@ export default function Scorecards() {
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
+  useLiveRefresh(() => load());
 
   async function deleteScorecard(id) {
     const ok = await confirm('Delete this scorecard?', { title: 'Delete Scorecard' });

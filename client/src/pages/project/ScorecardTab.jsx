@@ -4,6 +4,7 @@ import { Modal } from '../../components/Shared';
 import { DIFFICULTY_LABELS, getRating, ScoreBadge, ScoreGauge, DimPicker, ScorecardBreakdown, WEIGHTS } from '../../components/ScorecardUtils';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
+import { useLiveRefresh } from '../../live';
 
 /* ── Inline Scorecard Tab ─────────────────────────────────── */
 export function ScorecardTab({ projectId, members }) {
@@ -17,6 +18,7 @@ export function ScorecardTab({ projectId, members }) {
   const engineers = (members || []).filter(m => m.role === 'engineer');
   const load = () => api.scorecards({ project_id: projectId }).then(setCards);
   useEffect(() => { load(); }, [projectId]);
+  useLiveRefresh(load);
 
   const blank = { timeline_rating:3, delivery_quality:3, communication_ownership:3, documentation_quality:3, customer_feedback:3, difficulty:3, notes:'' };
 

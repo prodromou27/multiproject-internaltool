@@ -6,6 +6,7 @@ import { fmtDate } from './Shared';
 import { reportDueLabel,reportDueTone } from './ReportDue';
 import { ToneBadge } from './EnterpriseUI';
 import { localDateISO } from '../utils/dates';
+import { useLiveRefresh } from '../live';
 
 const SECTIONS=[['executive_summary','Executive summary'],['service_overview','Service overview'],['ticket_summary','Ticket summary'],['open_tickets','Open tickets'],['period_tickets','Period tickets'],['service_activities','Service activities'],['tasks','Tasks'],['projects','Projects'],['maintenance_visits','Maintenance Visits'],['recommendations','Recommendations'],['risks','Risks and concerns'],['upcoming_work','Upcoming work'],['management_notes','Management notes'],['changes','Changes and upgrades'],['resolved_tickets','Resolved tickets'],['assets','Assets and support status']];
 const NARRATIVES=[['executive_summary','Executive summary'],['key_highlights','Key highlights'],['risks_concerns','Risks / concerns'],['major_changes','Major changes'],['upcoming_activities','Upcoming activities'],['management_notes','Management notes']];
@@ -45,6 +46,8 @@ export default function ManagedCustomerReportBuilder({ customerId,range,due,onUs
     return () => controller.abort();
   },[customerId]);
   useEffect(() => { setPreview(null);setError(''); },[customerId,range]);
+  // Report history and its workflow move on as reviewers act; the builder's own inputs are left alone.
+  useLiveRefresh(() => api.managedCustomerReportHistory(customerId).then(result => setHistory(result.rows || [])).catch(() => {}));
 
   const toggle=key => setSections(current => current.includes(key) ? current.filter(value => value!==key) : [...current,key]);
   const chooseTemplate=value => { setTemplateId(value);const template=templates.find(item => String(item.id)===value);if (template) { setSections(template.sections);setNarratives(template.default_narratives || {});setPreview(null); } };

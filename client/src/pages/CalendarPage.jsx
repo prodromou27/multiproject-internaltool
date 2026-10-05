@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Wrench, ChevronLeft, ChevronRight, Check, Plus } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -12,6 +12,7 @@ import ContextMenu from './calendar/ContextMenu';
 import EventChip from './calendar/EventChip';
 import EventPopover from './calendar/EventPopover';
 import ICalSubscribe from './calendar/ICalSubscribe';
+import { useLiveRefresh } from '../live';
 
 /* ══════════════════════════════════════════════════════════ */
 /* ── MAIN PAGE ───────────────────────────────────────────── */
@@ -44,12 +45,16 @@ export default function CalendarPage() {
   const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
 
   const load = useCallback(() => setRefresh(value => value + 1), []);
+  const quietReload = useRef(false);
+  useLiveRefresh(() => { quietReload.current = true; load(); });
 
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
-    setLoading(true); setLoadError(''); setSelected(null);
-    setData({ tasks: [], projects: [], visits: [] });
+    // A background refresh keeps the month on screen and the open day selected.
+    if (!quietReload.current) { setLoading(true); setSelected(null); setData({ tasks: [], projects: [], visits: [] }); }
+    quietReload.current = false;
+    setLoadError('');
     api.calendar(monthStr, { signal: controller.signal })
       .then(result => { if (active) setData(result); })
       .catch(error => { if (active && error.name !== 'AbortError') setLoadError(error.message || 'Could not load calendar'); })

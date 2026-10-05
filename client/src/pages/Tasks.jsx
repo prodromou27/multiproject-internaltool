@@ -15,6 +15,7 @@ import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { Pagination,Surface } from '../components/EnterpriseUI';
+import { useLiveRefresh } from '../live';
 
 const STATUS_LABELS = {
   open: 'Open', in_progress: 'In Progress', completed: 'Completed',
@@ -200,10 +201,12 @@ export default function Tasks() {
   useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !busy && !loadError, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateCustomerId(customerId);if(customerId){ const matches=projects.filter(project => project.customer_id===customerId);setForm(current => ({ ...current,project_id:matches.length===1?String(matches[0].id):'' })); }setShowCreate(true); } });
 
   const { begin, isCurrent } = useLatestRequest(`${user.id}:${user.role}:${query}`);
-  const load = useCallback(() => {
+  const load = useCallback((loadOptions) => {
+    const quiet = loadOptions?.quiet === true;
     const request = begin();
     if (request.signal.aborted) return Promise.resolve();
-    setLoading(true); setLoadError(''); setSelected(new Set());
+    if (!quiet) { setLoading(true); setSelected(new Set()); }
+    setLoadError('');
     const options = { signal: request.signal };
     const referenceKey = `${user.id}:${user.role}`;
     const referenceData = references.current?.key === referenceKey
@@ -222,6 +225,7 @@ export default function Tasks() {
       }).finally(() => { if (isCurrent(request)) setLoading(false); });
   }, [query, queryKey, page, isManager, user.id, user.role, begin, isCurrent]);
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(() => load({ quiet: true }));
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const engineers = allUsers.filter(u => u.role === 'engineer');

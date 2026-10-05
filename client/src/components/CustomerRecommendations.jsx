@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { fmtDate, Modal } from './Shared';
 import { useToast } from './Toast';
+import { useLiveRefresh } from '../live';
 
 const STATUSES = ['open','accepted','rejected','in_progress','implemented','deferred','converted_to_project','closed'];
 const label = value => { const text = value.replaceAll('_', ' '); return text.charAt(0).toUpperCase() + text.slice(1); };
@@ -88,6 +89,7 @@ export default function CustomerRecommendations({ customerId, sourceVisitId, cre
       .finally(() => { if (isCurrent(request)) setLoading(false); });
   }, [customerId,page,status,scope,begin,isCurrent]);
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(load);
   useEffect(() => {
     if (!sourceVisitId) sourceOpened.current = null;
     if (data && sourceVisitId && sourceOpened.current !== sourceVisitId) {

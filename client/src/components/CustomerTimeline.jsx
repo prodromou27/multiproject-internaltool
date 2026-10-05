@@ -3,6 +3,7 @@ import { Activity,BriefcaseBusiness,CalendarDays,CheckSquare,ClipboardList,Layer
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { fmtDateTime } from './Shared';
+import { useLiveRefresh } from '../live';
 
 const META={
   project:[BriefcaseBusiness,'Project'],task:[CheckSquare,'Task'],visit:[CalendarDays,'Maintenance visit'],visit_report:[CalendarDays,'Visit report'],
@@ -20,7 +21,8 @@ function eventLink(event,customerId,user) {
 
 export default function CustomerTimeline({ customerId,user }) {
   const [page,setPage]=useState(1),[data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
-  useEffect(() => { const controller=new AbortController();setData(null);setError('');api.customerOperationTimeline(customerId,{ page,page_size:25 },{ signal:controller.signal }).then(result => { if(!controller.signal.aborted) setData(result); }).catch(failure => { if(!controller.signal.aborted) setError(failure.message); });return () => controller.abort(); },[customerId,page,retry]);
+  useLiveRefresh(() => setRetry(value => value+1));
+  useEffect(() => { const controller=new AbortController();setError('');api.customerOperationTimeline(customerId,{ page,page_size:25 },{ signal:controller.signal }).then(result => { if(!controller.signal.aborted) setData(result); }).catch(failure => { if(!controller.signal.aborted) setError(failure.message); });return () => controller.abort(); },[customerId,page,retry]);
   if (error) return <div className="error-msg" role="alert">{error} <button className="btn btn-ghost btn-sm" onClick={() => setRetry(value => value+1)}>Retry</button></div>;
   if (!data) return <div className="skeleton-table" role="status" aria-label="Loading customer timeline"><span /><span /><span /></div>;
   if (!data.rows.length) return <div className="card cs-empty"><h2>No recorded events</h2><p>Customer activity will appear here as work is created and updated.</p></div>;

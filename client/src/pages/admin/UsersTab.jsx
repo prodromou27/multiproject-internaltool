@@ -5,6 +5,7 @@ import { fmtDate, Modal } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
 import { timeSince } from './shared';
+import { useLiveRefresh } from '../../live';
 
 /* ── User Form ───────────────────────────────────────────── */
 export function UserForm({ initial, onSave, onClose }) {
@@ -113,6 +114,7 @@ export function UsersTab({ currentUser }) {
 
   const load = () => api.adminUsers().then(d => { setUsers(d ?? []); setLoading(false); });
   useEffect(() => { load(); }, []);
+  useLiveRefresh(() => load());
 
   const filtered = users.filter(u => {
     const q = search.toLowerCase();

@@ -10,6 +10,7 @@ import { DataTable,Pagination,Surface,ToneBadge } from '../components/Enterprise
 import { useAuth } from '../App';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
+import { useLiveRefresh } from '../live';
 
 function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClose }) {
   const toast = useToast();
@@ -173,7 +174,8 @@ export default function Customers() {
   const [counts,      setCounts]      = useState({ all:0,active:0,tracked:0,inactive:0 });
 
   const load = useCallback(async options => {
-    setLoading(true); setLoadError('');
+    if (!options?.quiet) setLoading(true);
+    setLoadError('');
     try { const result=await api.pagedCustomers({ page,page_size:25,search,view },options);setCustomers(result.rows ?? []);setTotal(result.total || 0);setCounts(result.counts || {}); }
     catch (error) { if (error.name !== 'AbortError') setLoadError(error.message || 'Unable to load customers'); }
     finally { if (!options?.signal?.aborted) setLoading(false); }
@@ -190,6 +192,7 @@ export default function Customers() {
     return () => controller.abort();
   }, [isManager]);
   useEffect(() => setPage(1),[search,view]);
+  useLiveRefresh(() => load({ quiet: true }));
 
   async function openEdit(customer) {
     setEditing(customer);

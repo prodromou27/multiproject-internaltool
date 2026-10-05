@@ -10,6 +10,7 @@ import { Toggle } from './admin/shared';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { localDateISO } from '../utils/dates';
+import { useLiveRefresh } from '../live';
 
 const REPEAT_LABELS = { none: 'Does not repeat', daily: 'Every day', weekly: 'Every week', monthly: 'Every month', yearly: 'Every year' };
 const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -119,6 +120,7 @@ export default function Reminders() {
 
   const load = useCallback(() => api.reminders().then(result => { setData(result); setError(''); }).catch(failure => setError(failure.message)), []);
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(load);
   // Move reminders into "Due now" as their time arrives, and pick up changes made elsewhere.
   useEffect(() => { const timer = setInterval(() => { setNow(new Date().toISOString()); load(); }, 60000); return () => clearInterval(timer); }, [load]);
 

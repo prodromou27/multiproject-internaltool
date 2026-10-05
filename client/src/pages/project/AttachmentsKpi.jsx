@@ -6,6 +6,7 @@ import { fmtDate, Modal, ProgressBar } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
 import { fileSize } from './shared';
+import { useLiveRefresh } from '../../live';
 
 export function AttachmentsSection({ projectId }) {
   const { user }  = useAuth();
@@ -18,6 +19,7 @@ export function AttachmentsSection({ projectId }) {
 
   const load = () => api.attachments(projectId).then(setAttachments);
   useEffect(() => { load(); }, [projectId]);
+  useLiveRefresh(load);
 
   async function handleFiles(files) {
     setUploading(true);
@@ -135,6 +137,7 @@ export function KpiSection({ projectId, canManage = false }) {
   const [form, setForm] = useState({ name: '', target_value: '', current_value: '', unit: '' });
   const load = () => api.kpis(projectId).then(setKpis);
   useEffect(() => { load(); }, [projectId]);
+  useLiveRefresh(load);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   async function save(e) {
     e.preventDefault();

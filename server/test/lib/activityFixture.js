@@ -107,6 +107,8 @@ if (isSuiteImport) test.before(async () => {
   app.use(express.json());
   app.use(require('../../middleware/body').ensureBody);
   app.use('/api', require('../../middleware/session').protectCookieRequests);
+  app.use('/api', require('../../liveUpdates').trackChanges);
+  app.use('/api/live', require('../../liveUpdates').router);
   app.use('/api/auth', require('../../routes/auth'));
   app.use('/api/admin', require('../../routes/admin'));
   app.use('/api/notes', require('../../routes/notes'));

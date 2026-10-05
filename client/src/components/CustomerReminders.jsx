@@ -4,6 +4,7 @@ import { BellRing, Check, Clock, Plus, Repeat, Users } from 'lucide-react';
 import { api } from '../api';
 import { useToast } from './Toast';
 import { ReminderForm } from '../pages/Reminders';
+import { useLiveRefresh } from '../live';
 
 const REPEAT_LABELS = { daily: 'Every day', weekly: 'Every week', monthly: 'Every month', yearly: 'Every year' };
 const when = iso => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -15,6 +16,7 @@ export default function CustomerReminders({ customer, adding, onAddingChange }) 
   const [data, setData] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const load = useCallback((signal) => api.customerReminders(customer.id, { signal }).then(setData).catch(failure => { if (!signal?.aborted) setError(failure.message); }), [customer.id]);
   useEffect(() => { const controller = new AbortController(); load(controller.signal); return () => controller.abort(); }, [load]);
+  useLiveRefresh(() => load());
 
   async function complete(reminder, team) {
     setBusy(true);

@@ -201,6 +201,7 @@ async function persistNotification(userId, type, title, body, link) {
     await db.prepare(
       `INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)`
     ).run(userId, type, title, body || null, link || null);
+    require('./liveUpdates').emitChange('notifications'); // the bell updates without waiting for its poll
   } catch (e) {
     console.error('[notify persist]', e.message);
   }

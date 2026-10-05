@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { localDateISO } from '../utils/dates';
 import { fmtDate, Modal } from './Shared';
+import { useLiveRefresh } from '../live';
 
 const labels = { task: 'Tasks',visit: 'Visits',report: 'Pending reports',follow_up: 'Service follow-ups' };
 const routes = { task: '/tasks',visit: '/maintenance-visits',report: '/maintenance-visits',follow_up: '/activity-log' };
@@ -72,6 +73,7 @@ export default function WorkloadPressure() {
       .finally(() => { if (isCurrent(request)) setLoading(false); });
   }, [date,begin,isCurrent]);
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(load);
   return <section>
     <div className="u-4fbca71"><label htmlFor="pressure-date">As of</label><input id="pressure-date" type="date" min="1900-01-01" max="9998-12-01" value={date} onChange={event => setDate(event.target.value)} className="u-30e741d" /><button className="btn btn-ghost" disabled={loading} onClick={load}>Refresh</button><button className="btn btn-ghost" onClick={() => setEditing(true)}>Configure weights</button></div>
     {error ? <div className="error-msg" role="alert">{error} <button className="btn btn-ghost" onClick={load}>Retry</button></div> : loading ? <p role="status">Loading operational pressure...</p> : data && <>

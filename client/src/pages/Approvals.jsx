@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCheck, Download, FileCheck2, RefreshCw } from 'lucide-react';
 import { api } from '../api';
@@ -6,6 +6,7 @@ import { useAuth } from '../App';
 import { PageHeader } from '../components/PageLayout';
 import { Modal, PriorityBadge, StatusBadge, fmtDate, fmtDateTime } from '../components/Shared';
 import { useToast } from '../components/Toast';
+import { useLiveRefresh } from '../live';
 
 function ReviewDialog({ project, onClose, onReviewed }) {
   const toast = useToast();
@@ -120,10 +121,13 @@ export default function Approvals() {
   const [refresh,setRefresh]=useState(0);
   const pageSize=25;
   const reload=useCallback(() => setRefresh(value => value+1),[]);
+  const quietReload=useRef(false);
+  useLiveRefresh(() => { quietReload.current=true;reload(); });
   const setView=next => { setViewState(next);setPage(1);setRows([]);setSearchParams(next==='reports' ? { view:'reports' } : {},{ replace:true }); };
   useEffect(() => {
     const controller=new AbortController();
-    setLoading(true);setError('');
+    if (!quietReload.current) setLoading(true);
+    quietReload.current=false;setError('');
     const request=view==='reports'
       ? api.managedReportReviews({ page,page_size:pageSize,status:reportStatus },{ signal:controller.signal })
       : api.closureApprovals({ page,page_size:pageSize },{ signal:controller.signal });

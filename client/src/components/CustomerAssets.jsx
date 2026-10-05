@@ -5,6 +5,7 @@ import { useConfirm } from './Confirm';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { useToast } from './Toast';
 import ImportModal from './ImportModal';
+import { useLiveRefresh } from '../live';
 
 const COVERAGE=['managed','support','neither'];
 const STATUSES=['active','spare','retired','decommissioned'];
@@ -63,6 +64,7 @@ function AssetFiles({ customerId,asset,onClose,onChanged }) {
     finally { setLoading(false); }
   },[customerId,asset.id]);
   useEffect(() => { load(); },[load]);
+  useLiveRefresh(load);
   async function uploadFiles(selected) {
     if (!selected.length) return;setUploading(true);setError('');
     try { for (const file of selected) await api.uploadCustomerAssetAttachment(customerId,asset.id,file);toast.success(selected.length===1 ? 'File uploaded' : `${selected.length} files uploaded`);await load();onChanged(); }

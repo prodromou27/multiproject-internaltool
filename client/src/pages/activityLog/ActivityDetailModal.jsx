@@ -5,6 +5,7 @@ import { api } from '../../api';
 import { StatusBadge, fmtDate, fmtDateTime, Modal } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { WORK_LOCATION_LABELS } from './helpers';
+import { useLiveRefresh } from '../../live';
 
 /* ── Activity Detail Modal (view + attachments) ──────────────────────── */
 export function ActivityDetailModal({ id, allowAttachments, onClose, onChanged }) {
@@ -25,6 +26,7 @@ export function ActivityDetailModal({ id, allowAttachments, onClose, onChanged }
       .catch(error => { if (!controller.signal.aborted) setLoadError(error.message || 'Could not load the activity'); });
   }, [id]);
   useEffect(() => { setActivity(null); load(); return () => detailRequest.current?.abort(); }, [load]);
+  useLiveRefresh(load);
 
   async function handleUpload(e) {
     const file = e.target.files[0];

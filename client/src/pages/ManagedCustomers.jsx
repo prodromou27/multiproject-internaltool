@@ -9,6 +9,7 @@ import { ListSearch, ResultContext } from '../components/ListWorkspace';
 import { localDateISO } from '../utils/dates';
 import { DataTable,MetricStrip,Surface,Tabs,ToneBadge } from '../components/EnterpriseUI';
 import { ReportDueBadge } from '../components/ReportDue';
+import { useLiveRefresh } from '../live';
 
 // Periods are calendar days in the user's own time zone, matching the local
 // dates activities, tasks and visits are recorded with (not UTC).
@@ -38,6 +39,7 @@ const reportMatches=(due,filter) => !!due && due.status!=='not_yet_due' && due.s
 
 function Landing() {
   const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0),[filters,setFilters]=useState({ search:'',team:'',manager:'',status:'',report:'' });
+  useLiveRefresh(() => setRetry(value => value+1));
   useEffect(() => { const controller=new AbortController();setLoading(true);setError('');api.managedCustomers({ signal:controller.signal }).then(result => setRows(result.rows || [])).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });return () => controller.abort(); },[retry]);
   const options=key => [...new Set(rows.map(row => row[key]).filter(Boolean))].sort((a,b) => a.localeCompare(b));
   const filtered=rows.filter(row => row.name.toLowerCase().includes(filters.search.trim().toLowerCase()) && (!filters.team || row.responsible_team===filters.team) && (!filters.manager || row.service_manager===filters.manager) && (!filters.status || row.service_status===filters.status) && (!filters.report || reportMatches(row.report_due,filters.report)));
@@ -214,6 +216,8 @@ function Timeline({ id,range,refresh }) {
 function Dashboard({ id }) {
   const [tab,setTab]=useState('overview'),[preset,setPreset]=useState('month'),[from,setFrom]=useState(''),[to,setTo]=useState(''),[data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const range=useMemo(() => period(preset,from,to),[preset,from,to]);
+  // Every tab below re-reads when `retry` changes, so one tick refreshes the open tab too.
+  useLiveRefresh(() => setRetry(value => value+1));
   useEffect(() => { if (!range.from || !range.to) return;const controller=new AbortController();setLoading(true);setError('');api.managedCustomerOverview(id,range,{ signal:controller.signal }).then(setData).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });return () => controller.abort(); },[id,range,retry]);
   return <div className="page"><div className="page-header"><div><Link to="/managed-customers" className="text-muted text-sm" style={{ display:'inline-flex',gap:4,alignItems:'center',marginBottom:6 }}><ArrowLeft size={13} /> Managed Customers</Link><h1 className="page-title">{data?.customer?.name || 'Managed customer'}</h1><p className="text-muted text-sm mt-4">{data?.customer?.responsible_team || 'No responsible team'} · {data?.customer?.service_manager || 'No service manager'} · Last ticket sync: {data?.customer?.last_successful_sync_at || 'Never'} · <Link to={`/customers/${id}/service-profile`}>Open Customer 360 →</Link></p></div></div>
     <Tabs label="Managed customer sections" value={tab} onChange={setTab} items={[['overview','Overview'],['tickets','Tickets'],['activities','Activities'],['tasks','Tasks'],['projects','Projects'],['visits','Maintenance Visits'],['recommendations','Recommendations'],['timeline','Timeline'],['reports','Reports']].map(([key,label]) => ({ key,label }))} />

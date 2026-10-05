@@ -14,6 +14,7 @@ import { StatusBadge, PriorityBadge, RagBadge, fmtDate, isOverdue, Modal } from 
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useStatuses } from '../hooks/useStatuses';
 import { useToast } from '../components/Toast';
+import { useLiveRefresh } from '../live';
 
 /* ── Inline status dropdown ────────────────────────────────────── *
  * Built on Radix's unstyled DropdownMenu primitive instead of a hand-
@@ -234,10 +235,11 @@ export default function Projects() {
   useCreateIntent({ allowed: isManager, ready: !loading && !loadError, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateInitial(customerId?{ customer_id:customerId }:null);setShowCreate(true); } });
 
   const { begin, isCurrent } = useLatestRequest(user.role);
-  const load = useCallback(() => {
+  const load = useCallback((loadOptions) => {
     const request = begin();
     if (request.signal.aborted) return Promise.resolve();
-    setLoading(true); setLoadError('');
+    if (loadOptions?.quiet !== true) setLoading(true);
+    setLoadError('');
     const options = { signal: request.signal };
     return api.pagedProjects({ page,page_size:25,search,status:activeFilter,rag:ragFilter },options).then(result => {
       if (!isCurrent(request)) return;
@@ -264,6 +266,7 @@ export default function Projects() {
     const timer=setTimeout(load,250);
     return () => clearTimeout(timer);
   }, [load]);
+  useLiveRefresh(() => load({ quiet: true }));
   useEffect(() => setPage(1),[search,filter,ragFilter]);
 
   /* ── Inline update handlers ─────────────────────────────────── */

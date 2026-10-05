@@ -13,6 +13,7 @@ import { managerWidget } from './dashboard/managerWidgets';
 import { engineerWidget } from './dashboard/engineerWidgets';
 import { pmWidget } from './dashboard/pmWidgets';
 import './Dashboard.css';
+import { useLiveRefresh } from '../live';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -95,6 +96,7 @@ export default function Dashboard() {
   }, [isManager, isPlanner, isEngineer, isPM]);
 
   useEffect(() => { load(); return () => { overviewRequest.current++; }; }, [load]);
+  useLiveRefresh(load);
 
   if (loading) return (
     <div className="page dashboard-page">

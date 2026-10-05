@@ -1,3 +1,5 @@
+import { CLIENT_ID } from './live.js';
+
 const BASE = '/api';
 
 function forceLogout() {
@@ -26,6 +28,7 @@ async function req(method, path, body, { redirectOnUnauthorized = true, signal }
     headers: {
       'Content-Type': 'application/json',
       'X-SolutionsHub-Request': '1',
+      'X-Client-Id': CLIENT_ID,
     },
     body: body != null ? JSON.stringify(body) : undefined
   });
@@ -48,7 +51,7 @@ async function upload(path, field, file) {
   const res = await fetch(BASE + path, {
     method: 'POST',
     credentials: 'same-origin',
-    headers: { 'X-SolutionsHub-Request': '1' },
+    headers: { 'X-SolutionsHub-Request': '1', 'X-Client-Id': CLIENT_ID },
     body: fd,
   });
   const data = await res.json().catch(() => ({}));
@@ -62,7 +65,7 @@ async function upload(path, field, file) {
 }
 
 async function download(path,body) {
-  const response=await fetch(BASE+path,{ method:body===undefined?'GET':'POST',credentials:'same-origin',headers:{ ...(body===undefined?{}:{ 'Content-Type':'application/json' }),'X-SolutionsHub-Request':'1' },body:body===undefined?undefined:JSON.stringify(body) });
+  const response=await fetch(BASE+path,{ method:body===undefined?'GET':'POST',credentials:'same-origin',headers:{ ...(body===undefined?{}:{ 'Content-Type':'application/json' }),'X-SolutionsHub-Request':'1','X-Client-Id':CLIENT_ID },body:body===undefined?undefined:JSON.stringify(body) });
   if (!response.ok) { const error=await response.json().catch(() => ({}));handleUnauthorized(response.status,error,true);throw new Error(error.error || 'Download failed'); }
   return response.blob();
 }

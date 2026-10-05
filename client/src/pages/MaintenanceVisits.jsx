@@ -15,6 +15,7 @@ import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { PRODUCT_NAME } from '../product';
 import { MetricStrip,Surface } from '../components/EnterpriseUI';
+import { useLiveRefresh } from '../live';
 
 /* ── Report-pending urgency helper ──────────────────────────
    Returns null | 'orange' | 'red'
@@ -430,10 +431,11 @@ export default function MaintenanceVisits() {
 
   useCreateIntent({ allowed: canManage, ready: !unavailable, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateDefaults(customerId?{ customer_id:customerId }:null);setEditing(null);setShowForm(true); } });
 
-  const load = useCallback(() => {
+  const load = useCallback((loadOptions) => {
     const request = begin();
     if (request.signal.aborted) return Promise.resolve();
-    setLoading(true); setLoadError('');
+    if (loadOptions?.quiet !== true) setLoading(true);
+    setLoadError('');
     const options = { signal: request.signal };
     const params = {};
     if (monthFilter) params.month = monthFilter;
@@ -452,6 +454,7 @@ export default function MaintenanceVisits() {
     }).finally(() => { if (isCurrent(request)) setLoading(false); });
   }, [monthFilter, canManage, scope, begin, isCurrent]);
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(() => load({ quiet: true }));
   useEffect(() => {
     setSelected(null); setShowForm(false); setEditing(null); setShowImport(false);
   }, [scope]);

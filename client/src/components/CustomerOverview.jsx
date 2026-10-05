@@ -1,4 +1,4 @@
-import { useEffect,useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Activity,BriefcaseBusiness,CalendarDays,CheckSquare,ClipboardList,ArrowRight,TrendingUp,PieChart as PieIcon,Ticket } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { BarChart,Bar,CartesianGrid,XAxis,YAxis,Tooltip,Legend,ResponsiveContainer,PieChart,Pie,Cell } from 'recharts';
@@ -6,10 +6,13 @@ import { api } from '../api';
 import { fmtDate,StatusBadge } from './Shared';
 import { fmtDuration } from './activityLedger';
 import { fmtHours,plural } from './ServiceCharts';
+import { useLiveVersion } from '../live';
 
 function useOverviewModule(load,key) {
   const [data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
-  useEffect(() => { const controller=new AbortController();setError('');setData(null);load(controller.signal).then(result => { if(!controller.signal.aborted) setData(result); }).catch(failure => { if(!controller.signal.aborted) setError(failure.message); });return () => controller.abort(); },[key,retry]);
+  const live=useLiveVersion();
+  const shown=useRef(null);
+  useEffect(() => { const controller=new AbortController();setError('');if (shown.current!==key) setData(null);shown.current=key;load(controller.signal).then(result => { if(!controller.signal.aborted) setData(result); }).catch(failure => { if(!controller.signal.aborted) setError(failure.message); });return () => controller.abort(); },[key,retry,live]);
   return { data,error,retry:() => setRetry(value => value+1) };
 }
 

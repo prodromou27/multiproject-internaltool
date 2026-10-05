@@ -814,3 +814,42 @@ test('Customer 360 lists that customer\'s team and own reminders, defaulting new
   await api(`/api/reminders/team/${shared.data.id}`, { method: 'DELETE', token: member });
   for (const made of [own, elsewhere]) await api(`/api/reminders/${made.data.id}`, { method: 'DELETE', token: member });
 });
+
+test('open browsers hear about changes made by others, but not their own', async () => {
+  const http = require('http');
+  const suite = require('./lib/activityFixture');
+  const open = (token, client) => new Promise((resolve, reject) => {
+    const received = [];
+    const req = http.get(`${suite.baseUrl}/api/live?client=${client}`, { headers: { Authorization: `Bearer ${token}` } }, res => {
+      res.setEncoding('utf8');
+      res.on('data', chunk => received.push(chunk));
+      resolve({ status: res.statusCode, type: res.headers['content-type'], text: () => received.join(''), close: () => req.destroy() });
+    });
+    req.on('error', reject);
+  });
+  const settle = () => new Promise(resolve => setTimeout(resolve, 300));
+
+  assert.equal((await new Promise(resolve => http.get(`${suite.baseUrl}/api/live`, res => { res.resume(); resolve(res.statusCode); }))), 401, 'signed-in users only');
+  const watcher = await open(ids.tokenManager, 'watcher-tab-1');
+  const author = await open(ids.tokenEnabled, 'author-tab-1');
+  try {
+    assert.equal(watcher.status, 200);
+    assert.match(watcher.type, /text\/event-stream/);
+    // Someone else changes data: the watcher hears which area, never the data.
+    const made = await fetch(`${suite.baseUrl}/api/reminders`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ids.tokenEnabled}`, 'X-Client-Id': 'author-tab-1' },
+      body: JSON.stringify({ title: 'Secret reminder title', due_at: '2099-01-01T09:00:00Z', time_zone: 'UTC', repeat: 'none' }) });
+    assert.equal(made.status, 201);
+    await settle();
+    assert.match(watcher.text(), /event: change\ndata: \{"topic":"reminders"\}/);
+    assert.doesNotMatch(watcher.text(), /Secret reminder title/);
+    // The tab that made the change does not hear its own change.
+    assert.doesNotMatch(author.text(), /event: change/);
+    // Reads and failed changes announce nothing.
+    const before = watcher.text().length;
+    await api('/api/reminders', { token: ids.tokenEnabled });
+    await api('/api/reminders', { method: 'POST', token: ids.tokenEnabled, body: { title: '' } });
+    await settle();
+    assert.equal(watcher.text().length, before);
+    await api(`/api/reminders/${(await made.json()).id}`, { method: 'DELETE', token: ids.tokenEnabled });
+  } finally { watcher.close(); author.close(); }
+});

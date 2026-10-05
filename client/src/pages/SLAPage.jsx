@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import { fmtDate, fmtDateTime } from '../components/Shared';
+import { useLiveRefresh } from '../live';
 
 /* ── helpers ─────────────────────────────────────────────── */
 function pct(num, den) {
@@ -344,6 +345,7 @@ export default function SLAPage() {
   };
 
   useEffect(() => { load(); }, []);
+  useLiveRefresh(() => load(true));
 
   const genTime = data?.generated_at
     ? new Date(data.generated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })

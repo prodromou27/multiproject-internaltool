@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckSquare, X, Bell, BellRing, CheckCheck, Trash2, Briefcase, WrenchIcon, FileText, AtSign, ShieldAlert } from 'lucide-react';
 import { api } from '../api';
+import { useLiveRefresh } from '../live';
 
 /* ── Notification Bell ───────────────────────────────────── */
 const NOTIF_ICONS = {
@@ -70,6 +71,7 @@ export function NotificationBell() {
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [load]);
+  useLiveRefresh(() => load());
 
   // Close on outside click or Escape (keyboard users had no way to dismiss it)
   useEffect(() => {

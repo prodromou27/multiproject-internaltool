@@ -5,6 +5,7 @@ import { api } from '../api';
 import { Modal, PriorityBadge } from '../components/Shared';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
+import { useLiveRefresh } from '../live';
 
 const PRIORITY_OPTS = ['low', 'medium', 'high'];
 
@@ -247,6 +248,7 @@ export default function Templates() {
 
   const load = () => api.templates().then(d => { setTemplates(d ?? []); setLoading(false); });
   useEffect(() => { load(); }, []);
+  useLiveRefresh(() => load());
 
   async function createTemplate(e) {
     e.preventDefault();

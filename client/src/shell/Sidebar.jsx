@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2, Award, BarChart2, UsersIcon, Settings, Search, MessageSquare, CheckCheck, ClipboardList, FileText, StickyNote, UserCircle, ShieldCheck, Zap, Activity, BellRing, Grid3X3, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { api } from '../api';
 import { PRODUCT_WORDMARK } from '../product';
+import { useLiveRefresh } from '../live';
 
 /* ── Hamburger icon ──────────────────────────────────────── */
 export function Hamburger({ open, onClick }) {
@@ -30,6 +31,7 @@ function OverdueDot({ count }) {
 export function SidebarContent({ onNav, pages, compact, onOpenLauncher, onToggleCompact }) {
 
   const [overdue, setOverdue] = useState({ tasks: 0, visits: 0 });
+  useLiveRefresh(() => api.overdueCounts().then(setOverdue).catch(() => {}));
   useEffect(() => {
     let mounted = true;
     const refresh = () => api.overdueCounts().then(d => { if (mounted) setOverdue(d); }).catch(() => {});

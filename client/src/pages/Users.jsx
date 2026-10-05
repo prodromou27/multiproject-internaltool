@@ -5,6 +5,7 @@ import { FilterGroup,ListSearch,ResultContext } from '../components/ListWorkspac
 import { DataTable,MetricStrip,Pagination,Surface,ToneBadge } from '../components/EnterpriseUI';
 import { fmtDate } from '../components/Shared';
 import { useLatestRequest } from '../hooks/useLatestRequest';
+import { useLiveRefresh } from '../live';
 
 const ROLE_LABELS={ manager:'Manager',engineer:'Engineer',planner:'Planner',pm:'Project Manager' };
 const ROLE_TONES={ manager:'danger',engineer:'info',planner:'warning',pm:'success' };
@@ -33,6 +34,7 @@ export default function Users() {
   },[begin,isCurrent,page,role,search]);
 
   useEffect(() => { const timer=setTimeout(load,250);return () => clearTimeout(timer); },[load]);
+  useLiveRefresh(load);
   useEffect(() => setPage(1),[search,role]);
 
   const columns=[

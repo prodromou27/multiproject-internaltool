@@ -10,6 +10,7 @@ import { useAuth } from '../App';
 import { fmtDate, isOverdue, PriorityBadge, StatusBadge } from '../components/Shared';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
+import { useLiveRefresh } from '../live';
 
 const KANBAN = [
   ['open', 'To do'], ['in_progress', 'In progress'],
@@ -91,6 +92,7 @@ export default function EngineerHub() {
     setReminders([...team, ...(result.active || [])]);
   }).catch(() => {}), []);
   useEffect(() => { loadReminders(); }, [loadReminders]);
+  useLiveRefresh(() => { loadReminders(); load({ quiet: true }); });
   const [recentProjects] = useState(() => {
     try { return JSON.parse(localStorage.getItem(`hub_recent_projects_${user.id}`) || '[]'); } catch { return []; }
   });
@@ -109,9 +111,10 @@ export default function EngineerHub() {
       : workflowProfile==='project_delivery'
         ? { eyebrow:'Project Delivery focus',title:'Move assigned delivery work forward',description:'Start with deadlines, overdue work, project updates and visit reporting. Service activities remain available when authorized.' }
         : { eyebrow:'Shared workflow',title:'Move your assigned work forward',description:'Review your operational priorities, deadlines and assigned work across the shared workspace.' };
-  const load = () => {
+  const load = (loadOptions) => {
     const request = ++loadRequest.current;
-    setLoading(true); setLoadError('');
+    if (loadOptions?.quiet !== true) setLoading(true);
+    setLoadError('');
     return Promise.allSettled([api.tasks(), api.calendar(month), api.projects(), api.myTimeLogs(from, to), api.operationsOverview({ as_of: today }),managedFocus?api.myManagedCustomers():Promise.resolve({ rows:[] })])
       .then(results => {
         if (request !== loadRequest.current) return;

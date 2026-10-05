@@ -12,6 +12,7 @@ import { ConfirmProvider } from './components/Confirm';
 import { useDarkMode } from './shell/useDarkMode';
 import { Layout } from './shell/Layout';
 import { AuthContext, useAuth } from './auth';
+import { startLive, stopLive, useLiveVersion } from './live';
 
 // Route-level code splitting: each page loads on first visit instead of in the
 // initial bundle. Login stays eager so the unauthenticated first paint is instant.
@@ -113,14 +114,22 @@ export default function App() {
     return () => { mounted = false; };
   }, []);
 
+  // Background updates from the rest of the team (see live.js).
+  const live = useLiveVersion();
+  useEffect(() => {
+    if (!user) { stopLive(); return undefined; }
+    startLive();
+    return undefined;
+  }, [user?.id]);
+
   useEffect(() => {
     if (!user) { setSaAccess({ enabled: false, teams: [], capabilities: {}, loaded: false }); return; }
     let mounted = true;
     api.teamsMine().then(d => {
       if (mounted) setSaAccess({ enabled: !!d.service_activity_enabled, teams: d.teams || [], capabilities:d.capabilities || {}, loaded: true });
-    }).catch(() => { if (mounted) setSaAccess({ enabled: false, teams: [], capabilities:{}, loaded: true }); });
+    }).catch(() => { if (mounted) setSaAccess(current => current.loaded ? current : { enabled: false, teams: [], capabilities:{}, loaded: true }); });
     return () => { mounted = false; };
-  }, [user?.id]);  
+  }, [user?.id, live]);
 
   useEffect(() => {
     if (!user) return undefined;

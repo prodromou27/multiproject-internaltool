@@ -83,6 +83,7 @@ async function sendDueReminders(now = new Date(), store = db) {
     }, { title: `Reminder: ${reminder.title}`, body: customer || reminder.notes || null, link: '/reminders' });
     sent++;
   }
+  if (sent) require('./liveUpdates').emitChange('reminders');
   return sent;
 }
 
@@ -115,6 +116,7 @@ async function sendTeamReminders(now = new Date(), store = db) {
     }
     sent++;
   }
+  if (sent) require('./liveUpdates').emitChange('reminders');
   return sent;
 }
 

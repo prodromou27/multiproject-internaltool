@@ -15,6 +15,7 @@ import { useConfirm } from '../components/Confirm';
 import { todayRange, weekRange, monthRange, RANGE_LABEL, BILLABLE_LABELS } from './activityLog/helpers';
 import { ActivityForm } from './activityLog/ActivityForm';
 import { ActivityDetailModal } from './activityLog/ActivityDetailModal';
+import { useLiveRefresh } from '../live';
 
 /* ── Main page ────────────────────────────────────────────────────────── */
 export default function ActivityLog() {
@@ -85,11 +86,11 @@ export default function ActivityLog() {
     api.serviceActivityMeta().then(setMeta).catch(e => setMetaError(e.message || 'Failed to load form data'));
   }, []);
 
-  const load = useCallback(() => {
+  const load = useCallback((options) => {
     listRequest.current?.abort();
     const controller = new AbortController();
     listRequest.current = controller;
-    setLoading(true);
+    if (options?.quiet !== true) setLoading(true);
     setLoadError('');
     const [from, to] = datePreset === 'today' ? todayRange()
       : datePreset === 'this_week' ? weekRange()
@@ -124,6 +125,7 @@ export default function ActivityLog() {
     load();
     return () => listRequest.current?.abort();
   }, [load]);
+  useLiveRefresh(() => load({ quiet: true }));
   useEffect(() => {
     const timer = setTimeout(() => { setPage(1); setDebouncedSearch(search.trim()); }, 300);
     return () => clearTimeout(timer);

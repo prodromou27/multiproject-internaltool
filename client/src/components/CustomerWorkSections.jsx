@@ -1,16 +1,21 @@
-import { useEffect,useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { fmtDate,StatusBadge } from './Shared';
+import { useLiveVersion } from '../live';
 
 function useCustomerList(load,params,customerId) {
   const [data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const scope=JSON.stringify(params);
+  const live=useLiveVersion();
+  const shown=useRef(null);
   useEffect(() => {
-    const controller=new AbortController();setError('');setData(null);
+    // Clear only for a different list; a background refresh keeps the rows on screen.
+    const key=`${customerId}:${scope}`;
+    const controller=new AbortController();setError('');if (shown.current!==key) setData(null);shown.current=key;
     load(params,{ signal:controller.signal }).then(result => { if(!controller.signal.aborted) setData(result); }).catch(failure => { if(!controller.signal.aborted) setError(failure.message); });
     return () => controller.abort();
-  },[scope,customerId,retry]);
+  },[scope,customerId,retry,live]);
   return { data,error,retry:() => setRetry(value => value+1) };
 }
 

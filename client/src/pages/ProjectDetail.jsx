@@ -16,6 +16,7 @@ import { GanttTab, MilestonesTab } from './project/GanttMilestones';
 import { ScorecardTab } from './project/ScorecardTab';
 import { ProjectPrintView } from './project/ProjectPrintView';
 import { CustomFieldsTab } from './project/CustomFieldsTab';
+import { useLiveRefresh } from '../live';
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -88,6 +89,7 @@ export default function ProjectDetail() {
     setStatusMsg(''); setTaskSearch('');
     load();
   }, [load]);
+  useLiveRefresh(load);
 
   const currentError = loadError?.projectId === id ? loadError : null;
   if (!project || project.id !== Number(id)) {
