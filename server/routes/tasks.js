@@ -5,6 +5,17 @@ const ExcelJS = require('exceljs');
 const { taskFilters, taskPagination } = require('../taskFilters');
 const { requireAuth, requireManager, requireDownloadAuth } = require('../middleware/auth');
 const { notify } = require('../notifications');
+const { canAccessCustomer } = require('../customerAccess');
+const { decrypt } = require('../fieldCipher');
+
+// A task shows its own customer or its project's. Names are stored encrypted.
+async function withCustomerNames(rows) {
+  const ids = [...new Set(rows.map(row => row.customer_id).filter(Boolean).map(Number))];
+  if (!ids.length) return rows.map(row => ({ ...row, customer_name: null }));
+  const names = new Map((await db.prepare(`SELECT id, name FROM customers WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids))
+    .map(row => [Number(row.id), decrypt(row.name)]));
+  return rows.map(row => ({ ...row, customer_name: row.customer_id ? names.get(Number(row.customer_id)) || null : null }));
+}
 
 /* ── helper: log activity into a project ──────────────────── */
 async function logActivity(project_id, user_id, action, detail) {
@@ -29,9 +40,10 @@ router.get('/', requireAuth, async (req, res) => {
   const pagination = taskPagination(req.query);
   if (pagination?.error) return res.status(400).json({ error: pagination.error });
   if (!['manager', 'engineer'].includes(req.user.role)) return res.json(pagination ? { rows: [], total: 0, counts: {}, page: pagination.page, page_size: pagination.page_size } : []);
-  let q = `SELECT t.*, u.name as assigned_to_name, c.name as created_by_name, p.title as project_title FROM tasks t
-    LEFT JOIN users u ON t.assigned_to=u.id JOIN users c ON t.created_by=c.id
+  let q = `SELECT t.*, COALESCE(t.customer_id,p.customer_id) AS customer_id,
+    u.name as assigned_to_name, c.name as created_by_name, p.title as project_title FROM tasks t
     LEFT JOIN projects p ON p.id=t.project_id
+    LEFT JOIN users u ON t.assigned_to=u.id JOIN users c ON t.created_by=c.id
     WHERE ${filters.where} ORDER BY ${filters.order}`;
   const params = [...filters.params];
   let counts;
@@ -49,14 +61,14 @@ router.get('/', requireAuth, async (req, res) => {
       SUM(CASE WHEN t.status NOT IN ('completed','closed','cancelled') AND t.deadline<? THEN 1 ELSE 0 END) AS overdue,
       SUM(CASE WHEN t.status NOT IN ('completed','closed','cancelled') AND t.deadline=? THEN 1 ELSE 0 END) AS due_today,
       SUM(CASE WHEN t.status NOT IN ('completed','closed','cancelled') AND t.deadline BETWEEN ? AND ? THEN 1 ELSE 0 END) AS due_week
-      FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to LEFT JOIN projects p ON p.id=t.project_id
+      FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to
       WHERE ${base.where}`).get(asOf, asOf, asOf, end.toISOString().slice(0, 10), ...base.params);
     counts = Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, Number(value || 0)]));
     q += ' LIMIT ? OFFSET ?';
     params.push(pagination.page_size, pagination.offset);
   }
 
-  let rows = await attachTaskHours(await db.prepare(q).all(...params));
+  let rows = await withCustomerNames(await attachTaskHours(await db.prepare(q).all(...params)));
 
   // Augment with is_blocked (has unfinished dependencies)
   if (rows.length) {
@@ -102,7 +114,7 @@ function validateTaskInput(body, creating = false) {
       || Number.isNaN(Date.parse(body.deadline)) || new Date(body.deadline).toISOString().slice(0, 10) !== body.deadline)
       return 'Deadline must be a valid YYYY-MM-DD date';
   }
-  for (const field of ['project_id', 'assigned_to']) {
+  for (const field of ['project_id', 'customer_id', 'assigned_to']) {
     if (body[field] != null && body[field] !== '' && (!Number.isSafeInteger(Number(body[field])) || Number(body[field]) < 1))
       return `${field} must be a positive integer`;
   }
@@ -124,25 +136,32 @@ router.post('/', requireAuth, async (req, res) => {
   if (inputError) return res.status(400).json({ error: inputError });
   const { project_id, title, description, priority, deadline, is_adhoc } = req.body;
   let { assigned_to } = req.body;
+  // A project's task takes the project's customer; otherwise it may belong to a customer directly.
+  const customerId = !project_id && req.body.customer_id ? Number(req.body.customer_id) : null;
   if (!title?.trim()) return res.status(400).json({ error: 'Title required' });
   if (title.trim().length > 500) return res.status(400).json({ error: 'Title cannot exceed 500 characters' });
   if (description && description.length > 10000) return res.status(400).json({ error: 'Description cannot exceed 10000 characters' });
   if (priority && !VALID_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
-  if (req.user.role === 'engineer' && !project_id) return res.status(400).json({ error: 'Engineers must link a project' });
+  if (req.user.role === 'engineer' && !project_id && !customerId) return res.status(400).json({ error: 'Choose the project or customer this task is for' });
+  if (customerId && !await db.prepare('SELECT 1 FROM customers WHERE id = ?').get(customerId)) return res.status(400).json({ error: 'Customer not found' });
 
-  // Engineers may only create tasks on projects they are assigned to,
-  // and always self-assign regardless of what was passed.
+  // Engineers may only create tasks on projects they are assigned to, or for
+  // customers they work with, and always self-assign regardless of what was passed.
   if (req.user.role === 'engineer') {
-    const member = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(project_id, req.user.id));
-    if (!member) return res.status(403).json({ error: 'You can only add tasks to projects you are assigned to' });
+    if (project_id) {
+      const member = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(project_id, req.user.id));
+      if (!member) return res.status(403).json({ error: 'You can only add tasks to projects you are assigned to' });
+    } else if (!await canAccessCustomer(req.user, customerId)) {
+      return res.status(403).json({ error: 'You can only add tasks for customers you work with' });
+    }
     assigned_to = req.user.id;
   }
 
   const relationshipError = await validateTaskRelationships(project_id, assigned_to);
   if (relationshipError) return res.status(400).json({ error: relationshipError });
 
-  const result = (await db.prepare(`INSERT INTO tasks (project_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(project_id || null, title.trim(), description, priority || 'medium', deadline || null, assigned_to || null, req.user.id, is_adhoc ? 1 : 0));
+  const result = (await db.prepare(`INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(project_id || null, customerId, title.trim(), description, priority || 'medium', deadline || null, assigned_to || null, req.user.id, is_adhoc ? 1 : 0));
 
   // Log activity
   const taskId = result.lastInsertRowid;
@@ -318,14 +337,14 @@ router.get('/export', requireDownloadAuth, async (req, res) => {
   if (filters.error) return res.status(400).json({ error: filters.error });
   const pagination = taskPagination(req.query);
   if (pagination?.error) return res.status(400).json({ error: pagination.error });
-  const rows = await attachTaskHours(await db.prepare(`SELECT t.id, t.title, t.status, t.priority, t.deadline, t.is_adhoc,
-    u.name as assigned_to, c.name as created_by, p.title as project
-    FROM tasks t LEFT JOIN users u ON t.assigned_to=u.id JOIN users c ON t.created_by=c.id
-    LEFT JOIN projects p ON p.id=t.project_id
-    WHERE ${filters.where} ORDER BY ${filters.order}`).all(...filters.params));
+  const rows = await withCustomerNames(await attachTaskHours(await db.prepare(`SELECT t.id, t.title, t.status, t.priority, t.deadline, t.is_adhoc,
+    COALESCE(t.customer_id,p.customer_id) AS customer_id, u.name as assigned_to, c.name as created_by, p.title as project
+    FROM tasks t LEFT JOIN projects p ON p.id=t.project_id
+    LEFT JOIN users u ON t.assigned_to=u.id JOIN users c ON t.created_by=c.id
+    WHERE ${filters.where} ORDER BY ${filters.order}`).all(...filters.params)));
   const wsData = [
-    ['Title','Status','Priority','Deadline','Project','Assigned To','Created By','Hours Logged','Ad-hoc'],
-    ...rows.map(r => [r.title, r.status, r.priority, r.deadline || '', r.project || '', r.assigned_to || '', r.created_by, Math.round(Number(r.logged_hours) * 10) / 10, r.is_adhoc ? 'Yes' : 'No']),
+    ['Title','Status','Priority','Deadline','Project','Customer','Assigned To','Created By','Hours Logged','Ad-hoc'],
+    ...rows.map(r => [r.title, r.status, r.priority, r.deadline || '', r.project || '', r.customer_name || '', r.assigned_to || '', r.created_by, Math.round(Number(r.logged_hours) * 10) / 10, r.is_adhoc ? 'Yes' : 'No']),
   ];
 
   const workbook  = new ExcelJS.Workbook();
@@ -348,9 +367,9 @@ router.post('/:id/duplicate', requireAuth, async (req, res) => {
     if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
   }
   const result = (await db.prepare(`
-    INSERT INTO tasks (project_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(task.project_id, task.title + ' (copy)', task.description, task.priority, task.deadline,
+    INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(task.project_id, task.customer_id, task.title + ' (copy)', task.description, task.priority, task.deadline,
          task.assigned_to, req.user.id, task.is_adhoc));
   logActivity(task.project_id, req.user.id, 'task_created', task.title + ' (copy)');
   res.json({ id: result.lastInsertRowid });

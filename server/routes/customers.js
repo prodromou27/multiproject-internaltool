@@ -48,23 +48,27 @@ router.get('/', requireAuth, async (req, res) => {
   const listQuery=parseCustomerListQuery(req.query);
   if (listQuery.error) return res.status(400).json({ error:listQuery.error });
   const candidates=listQuery.paged && listQuery.search ? await candidateCustomerIds(db,listQuery.search) : null;
-  // Engineers only see customers from their own visits/projects
+  // Engineers see the customers they work with: their visits, projects, direct
+  // assignments and their teams' customers (the same as canAccessCustomer).
   if (req.user.role === 'engineer') {
-    const rows = (await db.prepare(`
-      SELECT DISTINCT c.id, c.name, c.contact_name, c.contact_email, c.contact_phone, c.address,
-        (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = c.id) as visit_count
-      FROM customers c
-      WHERE c.id IN (
-        SELECT DISTINCT mv.customer_id FROM maintenance_visits mv
-        JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
-        WHERE mve.user_id = ?
-        UNION
-        SELECT DISTINCT p.customer_id FROM projects p
-        JOIN project_assignments pa ON pa.project_id = p.id
-        WHERE pa.user_id = ? AND p.customer_id IS NOT NULL
-      )
-      ORDER BY c.name
-    `).all(req.user.id, req.user.id));
+    const allowed = [...new Set((await db.prepare(`
+      SELECT mv.customer_id FROM maintenance_visits mv
+      JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
+      WHERE mve.user_id = ?
+      UNION
+      SELECT p.customer_id FROM projects p
+      JOIN project_assignments pa ON pa.project_id = p.id
+      WHERE pa.user_id = ? AND p.customer_id IS NOT NULL
+      UNION
+      SELECT ce.customer_id FROM customer_engineers ce WHERE ce.user_id = ?
+      UNION
+      SELECT ct.customer_id FROM customer_teams ct JOIN team_members tm ON tm.team_id = ct.team_id WHERE tm.user_id = ?
+    `).all(req.user.id, req.user.id, req.user.id, req.user.id)).map(row => Number(row.customer_id)))];
+    const marks = allowed.map(() => '?').join(',');
+    const visits = allowed.length ? new Map((await db.prepare(`SELECT customer_id, COUNT(*) AS n FROM maintenance_visits WHERE customer_id IN (${marks}) GROUP BY customer_id`)
+      .all(...allowed)).map(row => [Number(row.customer_id), Number(row.n)])) : new Map();
+    const rows = allowed.length ? (await db.prepare(`SELECT id, name, contact_name, contact_email, contact_phone, address FROM customers WHERE id IN (${marks})`)
+      .all(...allowed)).map(row => ({ ...row, visit_count: visits.get(Number(row.id)) || 0 })) : [];
     const visible=(candidates ? rows.filter(row => candidates.has(Number(row.id))) : rows).map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name));
     return res.json(listQuery.paged ? customerListPage(visible,listQuery) : visible);
   }

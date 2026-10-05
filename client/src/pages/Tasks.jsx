@@ -27,7 +27,7 @@ const STATUS_LABELS = {
 const MANAGER_STATUSES  = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed', 'pending_approval', 'closed', 'cancelled'];
 const ENGINEER_STATUSES = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed'];
 const TASK_COLUMNS = [
-  ['project', 'Project'], ['status', 'Status'], ['priority', 'Priority'],
+  ['project', 'Project or customer'], ['status', 'Status'], ['priority', 'Priority'],
   ['assignee', 'Assigned To'], ['deadline', 'Deadline'], ['update', 'Update Status'],
 ];
 
@@ -167,7 +167,8 @@ export default function Tasks() {
   const [sort, setSort] = useState({ key: 'deadline', direction: 'asc' });
   const [showCreate, setShowCreate] = useState(false);
   const [createCustomerId,setCreateCustomerId]=useState(null);
-  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', is_adhoc: false });
+  const [customers,setCustomers]=useState([]);
+  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
   const [loading, setLoading]   = useState(true);
   const [editTask, setEditTask] = useState(null);
   const [createErr, setCreateErr] = useState('');
@@ -198,7 +199,17 @@ export default function Tasks() {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => clearTimeout(timer);
   }, [search]);
-  useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !busy && !loadError, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateCustomerId(customerId);if(customerId){ const matches=projects.filter(project => project.customer_id===customerId);setForm(current => ({ ...current,project_id:matches.length===1?String(matches[0].id):'' })); }setShowCreate(true); } });
+  useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !busy && !loadError, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateCustomerId(customerId);if(customerId) setForm(current => ({ ...current,customer_id:String(customerId),project_id:'' }));setShowCreate(true); } });
+
+  // Customers the person can add tasks for, loaded when the form opens.
+  useEffect(() => {
+    if (!showCreate) return undefined;
+    const controller = new AbortController();
+    api.customers({ signal: controller.signal })
+      .then(data => { if (!controller.signal.aborted) setCustomers((Array.isArray(data) ? data : data?.rows || []).map(c => ({ id: Number(c.id), name: c.name })).sort((a, b) => String(a.name).localeCompare(String(b.name)))); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [showCreate]);
 
   const { begin, isCurrent } = useLatestRequest(`${user.id}:${user.role}:${query}`);
   const load = useCallback((loadOptions) => {
@@ -268,11 +279,13 @@ export default function Tasks() {
 
   async function createTask(e) {
     e.preventDefault(); setCreateErr('');
+    if (!isManager && !form.project_id && !form.customer_id) { setCreateErr('Choose the customer or project this task is for'); return; }
     try {
-      await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, assigned_to: form.assigned_to ? Number(form.assigned_to) : null });
+      // A project's task takes the project's customer; otherwise it belongs to the chosen customer.
+      await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, customer_id: !form.project_id && form.customer_id ? Number(form.customer_id) : null, assigned_to: form.assigned_to ? Number(form.assigned_to) : null });
       setShowCreate(false);
       setCreateCustomerId(null);
-      setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', is_adhoc: false });
+      setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
       load();
     } catch (err) { setCreateErr(err.message || 'Failed to create task'); }
   }
@@ -522,7 +535,7 @@ export default function Tasks() {
                       </span>
                     ) : null}
                   </td>
-                  {visibleColumns.has('project') && <td>{t.project_title || projects.find(p => p.id === t.project_id)?.title || <span className="text-muted">—</span>}</td>}
+                  {visibleColumns.has('project') && <td>{t.project_title || projects.find(p => p.id === t.project_id)?.title || (t.customer_name ? <>{t.customer_name} <span className="text-muted text-sm">(customer)</span></> : <span className="text-muted">—</span>)}</td>}
                   {visibleColumns.has('status') && <td><StatusBadge entityType="task" s={t.status} /></td>}
                   {visibleColumns.has('priority') && <td><PriorityBadge p={t.priority} /></td>}
                   {visibleColumns.has('assignee') && <td>{t.assigned_to_name || '—'}</td>}
@@ -612,12 +625,20 @@ export default function Tasks() {
               </div>
               <div className="form-group"><label>Deadline</label><input type="date" value={form.deadline} onChange={set('deadline')} /></div>
             </div>
-            <div className="form-group"><label>{createCustomerId ? 'Customer project *' : isManager ? 'Project (optional)' : 'Assigned Project *'}</label>
-              <select value={form.project_id} onChange={set('project_id')} required={!!createCustomerId || !isManager}>
-                <option value="">{createCustomerId?'Select a project for this customer':isManager ? 'No project (standalone)' : 'Select an assigned project'}</option>
-                {projects.filter(project => !createCustomerId || project.customer_id===createCustomerId).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-              </select>
-              {createCustomerId && !projects.some(project => project.customer_id===createCustomerId) && <p className="text-muted text-sm">Create a customer project before adding a related task.</p>}
+            <div className="form-row">
+              <div className="form-group"><label htmlFor="task-customer">Customer{isManager ? ' (optional)' : ''}</label>
+                <select id="task-customer" value={form.customer_id} onChange={e => setForm(f => ({ ...f, customer_id: e.target.value, project_id: f.project_id && projects.find(p => String(p.id) === f.project_id)?.customer_id === Number(e.target.value) ? f.project_id : '' }))}>
+                  <option value="">{isManager ? 'No customer' : 'Select a customer'}</option>
+                  {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {createCustomerId && !customers.some(c => c.id === createCustomerId) && <option value={createCustomerId}>This customer</option>}
+                </select>
+              </div>
+              <div className="form-group"><label htmlFor="task-project">Project (optional)</label>
+                <select id="task-project" value={form.project_id} onChange={e => { const chosen = projects.find(p => String(p.id) === e.target.value); setForm(f => ({ ...f, project_id: e.target.value, customer_id: chosen?.customer_id ? String(chosen.customer_id) : f.customer_id })); }}>
+                  <option value="">No project</option>
+                  {projects.filter(project => !form.customer_id || project.customer_id === Number(form.customer_id)).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+              </div>
             </div>
             {isManager && <div className="form-group"><label>Assign To</label>
               <select value={form.assigned_to} onChange={set('assigned_to')}>

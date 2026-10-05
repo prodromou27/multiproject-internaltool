@@ -50,7 +50,7 @@ router.get('/summary',requireAuth,async (req,res) => {
       COUNT(*) FILTER (WHERE t.status NOT IN ('completed','closed','cancelled') AND t.deadline IS NOT NULL AND t.deadline<app_today()) AS overdue,
       COUNT(*) FILTER (WHERE t.status='in_progress') AS in_progress,
       COUNT(*) FILTER (WHERE t.status IN ('completed','closed') AND t.updated_at>=(app_now()::timestamp-INTERVAL '30 days')::text) AS recently_completed
-      FROM tasks t JOIN projects p ON p.id=t.project_id WHERE p.customer_id=?${taskScope}`).get(customerId,...(engineer?[userId]:[])),
+      FROM tasks t LEFT JOIN projects p ON p.id=t.project_id WHERE COALESCE(t.customer_id,p.customer_id)=?${taskScope}`).get(customerId,...(engineer?[userId]:[])),
     db.prepare(`SELECT COUNT(*) FILTER (WHERE ${activeRecommendations}) AS open,
       COUNT(*) FILTER (WHERE ${activeRecommendations} AND r.risk_level IN ('high','critical')) AS high_risk,
       COUNT(*) FILTER (WHERE r.status='in_progress') AS in_progress,
@@ -146,7 +146,7 @@ router.get('/tasks',requireAuth,async (req,res) => {
   const paging=validateListQuery(req.query,['all','open','in_progress','overdue','recently_completed']);if (paging.error) return res.status(400).json({ error:paging.error });
   if (req.query.priority && !['low','medium','high','critical'].includes(req.query.priority)) return res.status(400).json({ error:'Invalid priority' });
   if (req.query.status && !['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','cancelled','closed'].includes(req.query.status)) return res.status(400).json({ error:'Invalid status' });
-  const clauses=['p.customer_id=?'],params=[customerId],filter=req.query.filter || 'all';
+  const clauses=['COALESCE(t.customer_id,p.customer_id)=?'],params=[customerId],filter=req.query.filter || 'all';
   if (req.user.role==='engineer') { clauses.push('t.assigned_to=?');params.push(req.user.id); }
   else if (req.query.engineer_id) { clauses.push('t.assigned_to=?');params.push(Number(req.query.engineer_id)); }
   if (filter==='open') clauses.push("t.status NOT IN ('completed','closed','cancelled')");
@@ -155,12 +155,12 @@ router.get('/tasks',requireAuth,async (req,res) => {
   if (filter==='recently_completed') clauses.push("t.status IN ('completed','closed') AND t.updated_at>=app_now()-INTERVAL '30 days'");
   if (req.query.status) { clauses.push('t.status=?');params.push(req.query.status); }
   if (req.query.priority) { clauses.push('t.priority=?');params.push(req.query.priority); }
-  if (req.query.search?.trim()) { const pattern=searchPattern(req.query.search);clauses.push('(LOWER(t.title) ILIKE ? OR LOWER(p.title) ILIKE ? OR LOWER(COALESCE(u.name,\'\')) ILIKE ?)');params.push(pattern,pattern,pattern); }
+  if (req.query.search?.trim()) { const pattern=searchPattern(req.query.search);clauses.push('(LOWER(t.title) ILIKE ? OR LOWER(COALESCE(p.title,\'\')) ILIKE ? OR LOWER(COALESCE(u.name,\'\')) ILIKE ?)');params.push(pattern,pattern,pattern); }
   const where=clauses.join(' AND ');
-  const rows=await db.prepare(`SELECT t.id,t.project_id,t.title,t.status,t.priority,t.deadline,t.updated_at,t.assigned_to,u.name AS assigned_to_name,p.title AS project_title,p.customer_id
-    FROM tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to WHERE ${where}
+  const rows=await db.prepare(`SELECT t.id,t.project_id,t.title,t.status,t.priority,t.deadline,t.updated_at,t.assigned_to,u.name AS assigned_to_name,p.title AS project_title,COALESCE(t.customer_id,p.customer_id) AS customer_id
+    FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to WHERE ${where}
     ORDER BY CASE WHEN t.deadline IS NULL THEN 1 ELSE 0 END,t.deadline,t.id LIMIT ? OFFSET ?`).all(...params,paging.pageSize,paging.offset);
-  const count=await db.prepare(`SELECT COUNT(*) AS total FROM tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to WHERE ${where}`).get(...params);
+  const count=await db.prepare(`SELECT COUNT(*) AS total FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to WHERE ${where}`).get(...params);
   res.json({ rows,total:Number(count.total),page:paging.page,page_size:paging.pageSize });
 });
 
@@ -194,7 +194,7 @@ router.get('/timeline',requireAuth,async (req,res) => {
   const projectJoin=role==='manager' ? '' : ' JOIN project_assignments pa_scope ON pa_scope.project_id=p.id AND pa_scope.user_id=?';
   const projectParams=role==='manager' ? [customerId] : [req.user.id,customerId];
   add(`SELECT p.id AS event_id,'project' AS kind,p.id AS entity_id,p.title,p.created_at AS event_at,'Project created' AS action,u.name AS actor_name FROM projects p${projectJoin} LEFT JOIN users u ON u.id=p.created_by WHERE p.customer_id=?`,...projectParams);
-  if (role!=='planner') add(`SELECT t.id,'task',t.id,t.title,t.created_at,'Task created',u.name FROM tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.created_by WHERE p.customer_id=?${role==='engineer'?' AND t.assigned_to=?':''}`,customerId,...(role==='engineer'?[req.user.id]:[]));
+  if (role!=='planner') add(`SELECT t.id,'task',t.id,t.title,t.created_at,'Task created',u.name FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.created_by WHERE COALESCE(t.customer_id,p.customer_id)=?${role==='engineer'?' AND t.assigned_to=?':''}`,customerId,...(role==='engineer'?[req.user.id]:[]));
   const visitJoin=role==='engineer' ? ' JOIN maintenance_visit_engineers mve_scope ON mve_scope.visit_id=mv.id AND mve_scope.user_id=?' : '';
   const visitParams=role==='engineer' ? [req.user.id,customerId] : [customerId];
   add(`SELECT mv.id,'visit',mv.id,mv.title,mv.created_at,'Visit scheduled',u.name FROM maintenance_visits mv${visitJoin} LEFT JOIN users u ON u.id=mv.created_by WHERE mv.customer_id=?`,...visitParams);

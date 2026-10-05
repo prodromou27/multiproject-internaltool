@@ -13,7 +13,7 @@ router.get('/', requireManager, async (req, res) => {
   // These are recorded events. Do not infer completion dates from updated_at.
   const events = `
     SELECT 'project' AS kind, p.id AS entity_id, p.title, p.created_at AS event_at, 'Project created' AS action FROM projects p WHERE p.customer_id=?
-    UNION ALL SELECT 'task', t.id, t.title, t.created_at, 'Task created' FROM tasks t JOIN projects p ON p.id=t.project_id WHERE p.customer_id=?
+    UNION ALL SELECT 'task', t.id, t.title, t.created_at, 'Task created' FROM tasks t LEFT JOIN projects p ON p.id=t.project_id WHERE COALESCE(t.customer_id,p.customer_id)=?
     UNION ALL SELECT 'visit', mv.id, mv.title, mv.created_at, 'Visit scheduled' FROM maintenance_visits mv WHERE mv.customer_id=?
     UNION ALL SELECT 'visit_report', mv.id, mv.title, mv.report_sent_at, 'Report submitted' FROM maintenance_visits mv WHERE mv.customer_id=? AND mv.report_sent=1 AND mv.report_sent_at IS NOT NULL
     UNION ALL SELECT 'visit_forwarded', mv.id, mv.title, mv.report_sent_to_customer_at, 'Report forwarded' FROM maintenance_visits mv WHERE mv.customer_id=? AND mv.report_sent_to_customer=1 AND mv.report_sent_to_customer_at IS NOT NULL
@@ -25,14 +25,14 @@ router.get('/', requireManager, async (req, res) => {
   const eventParams = Array(10).fill(id);
   const [projects, tasks, visits, documents, timeline, totals, counts] = await Promise.all([
     db.prepare('SELECT id,title,status,deadline FROM projects WHERE customer_id=? ORDER BY created_at DESC,id DESC LIMIT 25').all(id),
-    db.prepare('SELECT t.id,t.title,t.status,t.deadline,t.project_id,u.name AS assignee FROM tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to WHERE p.customer_id=? ORDER BY t.created_at DESC,t.id DESC LIMIT 25').all(id),
+    db.prepare('SELECT t.id,t.title,t.status,t.deadline,t.project_id,u.name AS assignee FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to WHERE COALESCE(t.customer_id,p.customer_id)=? ORDER BY t.created_at DESC,t.id DESC LIMIT 25').all(id),
     db.prepare('SELECT id,title,status,scheduled_date,report_sent,report_sent_to_customer FROM maintenance_visits WHERE customer_id=? ORDER BY scheduled_date DESC,id DESC LIMIT 25').all(id),
     db.prepare('SELECT a.id,a.original_name,a.created_at,p.id AS project_id,p.title AS project_title FROM attachments a JOIN projects p ON p.id=a.project_id WHERE p.customer_id=? ORDER BY a.created_at DESC,a.id DESC LIMIT 25').all(id),
     db.prepare(`SELECT * FROM (${events}) events ORDER BY event_at DESC,kind ASC,entity_id DESC LIMIT ? OFFSET ?`).all(...eventParams, 25, (page - 1) * 25),
     db.prepare(`SELECT COUNT(*) AS total FROM (${events}) events`).get(...eventParams),
     db.prepare(`SELECT
       (SELECT COUNT(*) FROM projects WHERE customer_id=?) AS projects,
-      (SELECT COUNT(*) FROM tasks t JOIN projects p ON p.id=t.project_id WHERE p.customer_id=?) AS tasks,
+      (SELECT COUNT(*) FROM tasks t LEFT JOIN projects p ON p.id=t.project_id WHERE COALESCE(t.customer_id,p.customer_id)=?) AS tasks,
       (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id=?) AS visits,
       (SELECT COUNT(*) FROM attachments a JOIN projects p ON p.id=a.project_id WHERE p.customer_id=?) AS documents,
       (SELECT COUNT(*) FROM customer_assets WHERE customer_id=?) AS assets`).get(id,id,id,id,id),

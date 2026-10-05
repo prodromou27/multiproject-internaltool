@@ -23,7 +23,7 @@ async function listManagedCustomers(store=db,{ teamIds }={}) {
   const [tickets,activities,tasks,projects,visits,due]=await Promise.all([
     store.prepare(`SELECT customer_id,COUNT(*) FILTER (WHERE status_group='open') AS open_tickets,COUNT(*) FILTER (WHERE normalized_status='Pending') AS pending_tickets FROM external_tickets${only} GROUP BY customer_id`).all(...args),
     store.prepare(`SELECT customer_id,COUNT(*) AS activities_this_month FROM service_activities WHERE activity_date>=substr(app_today(),1,7)||'-01'${andOnly} GROUP BY customer_id`).all(...args),
-    store.prepare(`SELECT p.customer_id,COUNT(*) AS open_tasks FROM tasks tk JOIN projects p ON p.id=tk.project_id WHERE tk.status!='completed' AND tk.status!='closed' AND tk.status!='cancelled'${andOnly.replace('customer_id','p.customer_id')} GROUP BY p.customer_id`).all(...args),
+    store.prepare(`SELECT COALESCE(tk.customer_id,p.customer_id) AS customer_id,COUNT(*) AS open_tasks FROM tasks tk LEFT JOIN projects p ON p.id=tk.project_id WHERE tk.status!='completed' AND tk.status!='closed' AND tk.status!='cancelled'${andOnly.replace('customer_id','COALESCE(tk.customer_id,p.customer_id)')} GROUP BY COALESCE(tk.customer_id,p.customer_id)`).all(...args),
     store.prepare(`SELECT customer_id,COUNT(*) AS active_projects FROM projects WHERE status!='closed' AND status!='cancelled'${andOnly} GROUP BY customer_id`).all(...args),
     store.prepare(`SELECT customer_id,MAX(scheduled_date) AS last_maintenance_visit FROM maintenance_visits WHERE status='completed'${andOnly} GROUP BY customer_id`).all(...args),
 
@@ -66,7 +66,7 @@ async function getOverview(customerId,from,to,store=db) {
     store.prepare('SELECT COUNT(*) AS activities,SUM(COALESCE(duration_minutes,0)) AS minutes FROM service_activities WHERE customer_id=? AND activity_date BETWEEN ? AND ?').get(customerId,from,to),
     store.prepare(`SELECT COUNT(*) FILTER (WHERE tk.status NOT IN ('completed','closed','cancelled')) AS open_now,
       COUNT(*) FILTER (WHERE tk.status NOT IN ('completed','closed','cancelled') AND tk.deadline<app_today()) AS overdue_now
-      FROM tasks tk JOIN projects p ON p.id=tk.project_id WHERE p.customer_id=?`).get(customerId),
+      FROM tasks tk LEFT JOIN projects p ON p.id=tk.project_id WHERE COALESCE(tk.customer_id,p.customer_id)=?`).get(customerId),
     store.prepare("SELECT COUNT(*) FILTER (WHERE status NOT IN ('closed','cancelled')) AS active_now FROM projects WHERE customer_id=?").get(customerId),
     store.prepare("SELECT COUNT(*) FILTER (WHERE scheduled_date BETWEEN ? AND ? AND status!='cancelled') AS visits_period,MAX(scheduled_date) FILTER (WHERE status='completed') AS last_visit FROM maintenance_visits WHERE customer_id=?").get(from,to,customerId),
     store.prepare("SELECT COUNT(*) FILTER (WHERE status NOT IN ('implemented','converted_to_project','closed','rejected')) AS open_now FROM customer_recommendations WHERE customer_id=?").get(customerId),
@@ -208,10 +208,10 @@ async function getWork(customerId,from,to,store=db) {
         SUM(CASE WHEN tk.status NOT IN ${taskTerminal} AND tk.deadline<app_today() THEN 1 ELSE 0 END) AS overdue_now,
         SUM(CASE WHEN tk.created_at>=? AND tk.created_at<? THEN 1 ELSE 0 END) AS created_period,
         SUM(CASE WHEN tk.status IN ${taskTerminal} AND tk.updated_at>=? AND tk.updated_at<? THEN 1 ELSE 0 END) AS completed_period
-        FROM tasks tk JOIN projects p ON p.id=tk.project_id WHERE p.customer_id=?`).get(start,end,start,end,customerId),
+        FROM tasks tk LEFT JOIN projects p ON p.id=tk.project_id WHERE COALESCE(tk.customer_id,p.customer_id)=?`).get(start,end,start,end,customerId),
       store.prepare(`SELECT tk.id,tk.title,tk.status,tk.priority,tk.deadline,tk.created_at,tk.updated_at,tk.is_adhoc,
-        u.name AS assigned_to_name,p.id AS project_id,p.title AS project_title FROM tasks tk JOIN projects p ON p.id=tk.project_id
-        LEFT JOIN users u ON u.id=tk.assigned_to WHERE p.customer_id=? AND (tk.status NOT IN ${taskTerminal} OR (tk.created_at>=? AND tk.created_at<?) OR (tk.updated_at>=? AND tk.updated_at<?))
+        u.name AS assigned_to_name,p.id AS project_id,p.title AS project_title FROM tasks tk LEFT JOIN projects p ON p.id=tk.project_id
+        LEFT JOIN users u ON u.id=tk.assigned_to WHERE COALESCE(tk.customer_id,p.customer_id)=? AND (tk.status NOT IN ${taskTerminal} OR (tk.created_at>=? AND tk.created_at<?) OR (tk.updated_at>=? AND tk.updated_at<?))
         ORDER BY CASE WHEN tk.status NOT IN ${taskTerminal} THEN 0 ELSE 1 END,tk.deadline ASC NULLS LAST,tk.id DESC LIMIT 100`).all(customerId,start,end,start,end),
     ]);
     tasks.summary=numbers(summary);tasks.rows=rows;
@@ -289,8 +289,8 @@ async function getTimeline(customerId,from,to,{ page=1,pageSize=25,offset=0 }={}
       FROM external_tickets WHERE customer_id=? AND created_at_external>=? AND created_at_external<?
     UNION ALL SELECT 'ticket_resolved',id,resolved_at_external,subject,ticket_number,external_url FROM external_tickets WHERE customer_id=? AND resolved_at_external>=? AND resolved_at_external<?
     UNION ALL SELECT 'activity_logged',id,activity_date||'T00:00:00.000Z',title,activity_reference,NULL FROM service_activities WHERE customer_id=? AND activity_date BETWEEN ? AND ?
-    UNION ALL SELECT 'task_completed',tk.id,tk.updated_at,tk.title,p.title,NULL FROM tasks tk JOIN projects p ON p.id=tk.project_id
-      WHERE p.customer_id=? AND tk.status IN ('completed','closed') AND tk.updated_at>=? AND tk.updated_at<?
+    UNION ALL SELECT 'task_completed',tk.id,tk.updated_at,tk.title,p.title,NULL FROM tasks tk LEFT JOIN projects p ON p.id=tk.project_id
+      WHERE COALESCE(tk.customer_id,p.customer_id)=? AND tk.status IN ('completed','closed') AND tk.updated_at>=? AND tk.updated_at<?
     UNION ALL SELECT 'visit_completed',id,scheduled_date||'T00:00:00.000Z',title,NULL,NULL FROM maintenance_visits WHERE customer_id=? AND status='completed' AND scheduled_date BETWEEN ? AND ?
     UNION ALL SELECT 'visit_report_sent',id,report_sent_to_customer_at,title,NULL,NULL FROM maintenance_visits WHERE customer_id=? AND report_sent_to_customer_at>=? AND report_sent_to_customer_at<?
     UNION ALL SELECT 'project_closed',id,closed_at,title,NULL,NULL FROM projects WHERE customer_id=? AND closed_at>=? AND closed_at<?

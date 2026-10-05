@@ -133,7 +133,7 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
   }
   if (body.related_task_id) {
     const t = await db.prepare(`
-      SELECT 1 FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.customer_id = ?
+      SELECT 1 FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND COALESCE(t.customer_id, p.customer_id) = ?
     `).get(body.related_task_id, customerId);
     if (!t) return { error: 'Related task does not belong to the selected customer' };
   }
@@ -142,9 +142,9 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
     if (!v) return { error: 'Related maintenance visit does not belong to the selected customer' };
   }
   if (body.follow_up_task_id) {
-    const task = await db.prepare(`SELECT t.project_id, p.customer_id FROM tasks t
+    const task = await db.prepare(`SELECT t.project_id, COALESCE(t.customer_id, p.customer_id) AS customer_id FROM tasks t
       LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?`).get(body.follow_up_task_id);
-    if (task?.project_id && task.customer_id !== Number(customerId)) return { error: 'Follow-up task does not belong to the selected customer' };
+    if (task?.customer_id && Number(task.customer_id) !== Number(customerId)) return { error: 'Follow-up task does not belong to the selected customer' };
   }
 
   // Customer-specific requirement rules

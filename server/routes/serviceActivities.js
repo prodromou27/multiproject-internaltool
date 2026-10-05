@@ -215,8 +215,9 @@ router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => 
 
   const statuses = await getStatusConfig();
   if (body.status && !statuses.some(s => s.value === body.status)) return res.status(400).json({ error: 'Invalid status' });
-  const status = body.status && statuses.some(s => s.value === body.status) ? body.status : (statuses[0]?.value || 'planned');
   const completedValue = await terminalCompletedValue(statuses);
+  // An activity is logged after the work is done, so it is completed unless a status is given.
+  const status = body.status && statuses.some(s => s.value === body.status) ? body.status : completedValue;
 
   const activity = await db.transaction(async (tx) => {
     const reference = await generateActivityReference(tx);

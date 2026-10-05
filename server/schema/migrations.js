@@ -748,6 +748,12 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261014_customer_tasks', `
+    -- A task can belong to a customer directly, without a project. A project's
+    -- tasks keep this NULL and take their customer from the project.
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE;
+    CREATE INDEX IF NOT EXISTS idx_tasks_customer ON tasks(customer_id);
+  `]);
   migrations.push(['20261013_report_due_days', `
     -- Days after a reporting period ends by which that customer's report is due
     -- (contracts differ). NULL means the standard window (managedReportObligations.js).

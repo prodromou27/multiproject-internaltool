@@ -12,7 +12,8 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
     subcategory_id: initial?.subcategory_id || '',
     title: initial?.title || '',
     duration_minutes: initial?.duration_minutes ?? '',
-    status: initial?.status || meta.statuses[0]?.value || 'planned',
+    // Logging an activity records work that was done, so a new one is completed.
+    status: initial?.status || meta.statuses.find(s => s.is_terminal && /complet/i.test(s.value))?.value || 'completed',
     description: initial?.description || '',
     technology_ids: initial?.technologies?.map(t => t.id) || [],
     asset_ids: initial?.assets?.map(asset => asset.id) || [],
@@ -168,11 +169,11 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
           </select>
         </Field>
 
-        <Field label="Status">
+        {initial?.id && <Field label="Status">
           <select value={form.status} onChange={set('status')}>
             {meta.statuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
-        </Field>
+        </Field>}
 
         <Field label="Date" required>
           <input type="date" value={form.activity_date} onChange={set('activity_date')} max={today} required />

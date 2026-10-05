@@ -4,14 +4,14 @@ const SORTS = { created: 't.created_at', task: 't.title', project: 'p.title', st
 
 function taskFilters(query, user) {
   const scalar = key => query[key] === undefined || typeof query[key] === 'string';
-  for (const key of ['filter', 'priority', 'search', 'project_id', 'assigned_to', 'adhoc', 'as_of', 'sort', 'direction']) {
+  for (const key of ['filter', 'priority', 'search', 'project_id', 'customer_id', 'assigned_to', 'adhoc', 'as_of', 'sort', 'direction']) {
     if (!scalar(key)) return { error: `${key} must be a single value` };
   }
   const filter = query.filter ?? 'all';
   if (!FILTERS.has(filter)) return { error: 'Invalid task filter' };
   if (query.priority !== undefined && !['all', 'low', 'medium', 'high', 'critical'].includes(query.priority)) return { error: 'Invalid priority filter' };
   if (query.search?.length > 500) return { error: 'Search cannot exceed 500 characters' };
-  for (const key of ['project_id', 'assigned_to']) {
+  for (const key of ['project_id', 'customer_id', 'assigned_to']) {
     if (query[key] !== undefined && (!/^[1-9]\d*$/.test(query[key]) || !Number.isSafeInteger(Number(query[key])))) return { error: `${key} must be a positive integer` };
   }
   if (query.adhoc !== undefined && !['0', '1'].includes(query.adhoc)) return { error: 'adhoc must be 0 or 1' };
@@ -28,6 +28,7 @@ function taskFilters(query, user) {
   if (user.role === 'engineer') add('t.assigned_to=?', user.id);
   else if (query.assigned_to) add('t.assigned_to=?', Number(query.assigned_to));
   if (query.project_id) add('t.project_id=?', Number(query.project_id));
+  if (query.customer_id) add('COALESCE(t.customer_id,p.customer_id)=?', Number(query.customer_id));
   if (query.adhoc === '1' || filter === 'adhoc') add('t.is_adhoc=1');
   if (filter === 'open') add("t.status IN ('open','in_progress','waiting_customer','waiting_vendor')");
   if (filter === 'done') add("t.status IN ('completed','closed')");
