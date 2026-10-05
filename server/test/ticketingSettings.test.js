@@ -15,5 +15,5 @@ test('RT settings retain, encrypt, redact and explicitly clear API tokens',() =>
 });
 
 test('RT settings reject invalid shapes and incomplete enabled configurations',() => {
-  for (const value of [[],{ enabled:'true' },{ sync_interval_minutes:5 },{ api_token:{} },{ unknown:true },{ enabled:true,base_url:'https://rt.example.test' }]) assert.throws(() => mergeSettings({},value),error => error.status===400);
+  for (const value of [[],{ enabled:'true' },{ sync_interval_minutes:4 },{ api_token:{} },{ unknown:true },{ enabled:true,base_url:'https://rt.example.test' }]) assert.throws(() => mergeSettings({},value),error => error.status===400);
 });

@@ -52,9 +52,26 @@ function ticketRecord(ticket,mapping,baseUrl,now=new Date(),mappings=DEFAULTS) {
   };
 }
 
+/** Tells managers and the shared channels that a customer's sync has stopped working, or works again. */
+async function alertSyncChange(store,mapping,recovered,reason='') {
+  try {
+    const { notifyShared,notifyUser }=require('./notifications');
+    const customer=decrypt((await store.prepare('SELECT name FROM customers WHERE id=?').get(mapping.customer_id))?.name) || `customer ${mapping.customer_id}`;
+    const queue=mapping.external_queue_name || mapping.external_queue_id || '—';
+    const msg=recovered
+      ? { title:'✅ Ticket synchronisation working again',body:`Tickets for **${customer}** are synchronising from Request Tracker again.`,facts:[{ name:'Customer',value:customer },{ name:'Queue',value:queue }] }
+      : { title:'🎫 Ticket synchronisation failed',body:`Tickets for **${customer}** could not be synchronised from Request Tracker: ${reason}`,facts:[{ name:'Customer',value:customer },{ name:'Queue',value:queue }] };
+    notifyShared('ticket_sync_failed',msg);
+    const managers=await store.prepare("SELECT id FROM users WHERE role='manager' AND active=1").all();
+    for (const { id } of managers) notifyUser(id,'ticket_sync_failed',msg,{ title:recovered ? `Ticket sync working again: ${customer}` : `Ticket sync failing: ${customer}`,body:recovered ? null : reason,link:'/settings/ticketing' })
+      .catch(error => console.error('[ticket-sync] alert failed:',error.message));
+  } catch(error) { console.error('[ticket-sync] alert failed:',error.message); }
+}
+
 async function syncCustomer(customerId,{ provider,triggeredBy=null,store=db }={}) {
   const mapping=await store.prepare("SELECT * FROM customer_ticketing_configurations WHERE customer_id=? AND provider_type='request_tracker' AND enabled=1").get(customerId);
   if (!mapping) throw Object.assign(new Error('No enabled RT queue mapping exists for this customer'),{ status:400 });
+  const wasFailing=mapping.last_sync_status==='failed';
   const cutoff=new Date(Date.now()-60*60*1000).toISOString().slice(0,19).replace('T',' ');
   await store.prepare("UPDATE ticket_sync_runs SET status='failed',completed_at=app_now(),errors=1,error_message='Synchronization was interrupted' WHERE customer_id=? AND status='running' AND started_at<?").run(customerId,cutoff);
   let runId;
@@ -96,16 +113,16 @@ async function syncCustomer(customerId,{ provider,triggeredBy=null,store=db }={}
       await tx.prepare("UPDATE customer_ticketing_configurations SET last_successful_sync_at=app_now(),last_sync_status='success',updated_at=app_now() WHERE id=?").run(mapping.id);
       await tx.prepare("UPDATE ticket_sync_runs SET completed_at=app_now(),status='success',tickets_found=?,tickets_created=?,tickets_updated=? WHERE id=?").run(records.length,created,updated,runId);
     });
+    if (wasFailing) await alertSyncChange(store,mapping,true);
     const completed=await store.prepare('SELECT completed_at FROM ticket_sync_runs WHERE id=?').get(runId);
     return { run_id:runId,completed_at:completed?.completed_at || null,tickets_found:records.length,tickets_created:created,tickets_updated:updated };
   } catch(error) {
     const safeError=error.status ? String(error.message).slice(0,2000) : 'Ticket synchronization failed';
     await store.prepare("UPDATE ticket_sync_runs SET completed_at=app_now(),status='failed',errors=1,error_message=? WHERE id=?").run(safeError,runId);
-    await store.prepare("UPDATE customer_ticketing_configurations SET last_sync_status='failed',updated_at=app_now() WHERE id=?").run(mapping.id);
-    // At most one shared-channel post per customer per day while a sync keeps failing.
-    const failing=await store.prepare('SELECT name FROM customers WHERE id=?').get(mapping.customer_id);
-    require('./notifications').notifyShared('ticket_sync_failed',{ title:'🎫 Ticket synchronisation failed',body:`Tickets for **${decrypt(failing?.name) || `customer ${mapping.customer_id}`}** could not be synchronised from Request Tracker: ${safeError}`,
-      facts:[{ name:'Customer',value:decrypt(failing?.name) || '—' },{ name:'Queue',value:mapping.external_queue_name || mapping.external_queue_id || '—' }] },{ dedupeKey:`${mapping.customer_id}:${new Date().toISOString().slice(0,10)}` });
+    // Only the run that turns a working sync into a failing one raises the alert; retries stay quiet.
+    const turned=await store.prepare("UPDATE customer_ticketing_configurations SET last_sync_status='failed',updated_at=app_now() WHERE id=? AND (last_sync_status IS NULL OR last_sync_status<>'failed')").run(mapping.id);
+    if (turned.changes) await alertSyncChange(store,mapping,false,safeError);
+    else await store.prepare('UPDATE customer_ticketing_configurations SET updated_at=app_now() WHERE id=?').run(mapping.id);
     throw error;
   }
 }

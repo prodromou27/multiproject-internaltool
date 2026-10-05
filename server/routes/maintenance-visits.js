@@ -1,5 +1,5 @@
 const router  = require('express').Router();
-const { notifyShared } = require('../notifications');
+const { notifyShared, notifyUser } = require('../notifications');
 const multer  = require('multer');
 const ExcelJS = require('exceljs');
 const db = require('../db');
@@ -453,6 +453,10 @@ router.post('/:id/report-customer-sent', requireManagerOrPlanner, async (req, re
   const visitCustomer = await db.prepare('SELECT name FROM customers WHERE id = ?').get(mv.customer_id);
   notifyShared('visit_report_approved', { title: '📄 Visit report approved', body: `The report for **${mv.title}** was approved and sent on by ${req.user.name}.`,
     facts: [{ name: 'Visit', value: mv.title }, { name: 'Customer', value: decrypt(visitCustomer?.name) || '—' }, { name: 'Date', value: mv.scheduled_date }] });
+  const engineers = await db.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ? AND user_id <> ?').all(mv.id, req.user.id);
+  for (const { user_id } of engineers) notifyUser(user_id, 'visit_report_approved', { title: '📄 Your visit report was approved', body: `The report for **${mv.title}** was approved and sent on by ${req.user.name}.`,
+    facts: [{ name: 'Customer', value: decrypt(visitCustomer?.name) || '—' }, { name: 'Date', value: mv.scheduled_date }] },
+  { title: 'Visit report approved', body: mv.title, link: '/maintenance-visits' }).catch(error => console.error('[visit report alert]', error.message));
   res.json({ ok: true });
 });
 

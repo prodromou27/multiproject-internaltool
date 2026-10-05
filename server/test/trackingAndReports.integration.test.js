@@ -384,6 +384,6 @@ test('Request Tracker settings are manager-only and never return or store a plai
     const stored=JSON.parse((await db.prepare("SELECT value FROM settings WHERE key='ticketing_rt'").get()).value);
     assert.match(stored.api_token,/^enc:/);assert.equal(JSON.stringify(stored).includes('integration-secret'),false);
     const read=await api('/api/ticketing/settings',{ token:ids.tokenManager });assert.equal(JSON.stringify(read.data).includes('integration-secret'),false);
-    assert.equal((await api('/api/ticketing/settings',{ method:'PUT',token:ids.tokenManager,body:{ sync_interval_minutes:5 } })).status,400);
+    assert.equal((await api('/api/ticketing/settings',{ method:'PUT',token:ids.tokenManager,body:{ sync_interval_minutes:4 } })).status,400);
   } finally { if (previous===undefined) delete process.env.CUSTOMER_FIELD_KEY;else process.env.CUSTOMER_FIELD_KEY=previous; }
 });

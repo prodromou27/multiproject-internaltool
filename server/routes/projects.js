@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { notifyShared } = require('../notifications');
+const { notifyShared, notifyUser } = require('../notifications');
 const db = require('../db');
 const { requireAuth, requireManager } = require('../middleware/auth');
 const { notify } = require('../notifications');
@@ -374,6 +374,13 @@ async function notifyClosure(tx, req, project, type, title, message, managers = 
     : await tx.prepare('SELECT u.id FROM project_assignments pa JOIN users u ON u.id=pa.user_id WHERE pa.project_id=? AND u.active=1 AND u.id != ?').all(project.id, req.user.id);
   for (const user of recipients) await tx.prepare('INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)')
     .run(user.id, type, title, message, `/projects/${project.id}`);
+  return recipients.map(user => user.id);
+}
+
+// The bell entries are written in the transaction; this sends each person's own channels afterwards.
+function alertClosure(userIds, title, message, project) {
+  for (const userId of userIds) notifyUser(userId, 'project_closure', { title, body: message, facts: [{ name: 'Project', value: project.title }] }, {}, { bell: false })
+    .catch(error => console.error('[closure alert]', error.message));
 }
 
 router.post('/:id/request-closure', requireAuth, async (req, res) => {
@@ -384,6 +391,7 @@ router.post('/:id/request-closure', requireAuth, async (req, res) => {
   if (!project) return res.status(404).json({ error: 'Project not found' });
   if (req.user.role !== 'manager' && !await db.prepare('SELECT 1 FROM project_assignments WHERE project_id=? AND user_id=?').get(id, req.user.id)) return res.status(403).json({ error: 'You are not assigned to this project' });
   if (['closed', 'cancelled', 'pending_approval'].includes(project.status)) return res.status(400).json({ error: 'Cannot request closure in current status' });
+  let reviewers = [];
   const changed = await db.transaction(async tx => {
     const result = await tx.prepare(`UPDATE projects SET status='pending_approval', closure_requested_at=app_now(),
         closure_requested_by=?, closure_request_version=closure_request_version+1,
@@ -392,9 +400,10 @@ router.post('/:id/request-closure', requireAuth, async (req, res) => {
     if (!result.changes) return false;
     const message = `Closure requested by ${req.user.name}`;
     await recordClosureEvent(tx, req, project, 'closure_requested', message, project.closure_request_version + 1);
-    await notifyClosure(tx, req, project, 'project.closure_requested', `Closure review: ${project.title}`, message, true);
+    reviewers = await notifyClosure(tx, req, project, 'project.closure_requested', `Closure review: ${project.title}`, message, true);
     return true;
   });
+  if (changed) alertClosure(reviewers, `🔒 Closure review: ${project.title}`, `**${req.user.name}** asked to close **${project.title}**.`, project);
   if (!changed) return res.status(409).json({ error: 'Project changed; reload before requesting closure' });
   await logAudit(db, req, 'project', id, project.title, 'closure_requested', null);
   notifyShared('project_closure_requested', { title: '🔒 Project closure requested', body: `**${req.user.name}** asked to close **${project.title}**.`,
@@ -416,6 +425,7 @@ async function reviewClosure(req, res, decision) {
   if (project.status !== 'pending_approval') return res.status(409).json({ error: 'This project is no longer awaiting closure review', code: 'CLOSURE_CONFLICT' });
   const approved = decision === 'approved';
   const message = approved ? `Project closed and approved by ${req.user.name}${comment ? ': ' + comment : ''}` : `Closure rejected by ${req.user.name}: ${comment}`;
+  let team = [];
   const changed = await db.transaction(async tx => {
     const result = await tx.prepare(`UPDATE projects SET status=?, closed_by=?, closed_at=CASE WHEN ?=1 THEN app_now() ELSE NULL END,
       closure_reviewed_by=?, closure_reviewed_at=app_now(), closure_review_comment=?, closure_decision=?, updated_at=app_now()
@@ -425,9 +435,10 @@ async function reviewClosure(req, res, decision) {
         req.user.id, comment, decision, id, project.closure_request_version);
     if (!result.changes) return false;
     await recordClosureEvent(tx, req, project, approved ? 'project_closed' : 'closure_rejected', message, project.closure_request_version);
-    await notifyClosure(tx, req, project, `project.closure_${decision}`, `${approved ? 'Closure approved' : 'Revision requested'}: ${project.title}`, message);
+    team = await notifyClosure(tx, req, project, `project.closure_${decision}`, `${approved ? 'Closure approved' : 'Revision requested'}: ${project.title}`, message);
     return true;
   });
+  if (changed) alertClosure(team, `${approved ? '✅ Closure approved' : '↩️ Revision requested'}: ${project.title}`, message, project);
   if (!changed) return res.status(409).json({ error: 'This closure request has changed. Reload before reviewing.', code: 'CLOSURE_CONFLICT' });
   await logAudit(db, req, 'project', id, project.title, `closure_${decision}`, comment);
   notifyShared('project_closure_decided', { title: approved ? '✅ Project closed' : '↩️ Project closure returned', body: message,

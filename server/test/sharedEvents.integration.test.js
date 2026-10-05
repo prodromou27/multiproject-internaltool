@@ -59,3 +59,45 @@ test('scheduled shared events are posted once per occasion and never throw', asy
   notifications._setTransport(async () => { throw new Error('network down'); });
   assert.equal(await notifications.notifyShared('ticket_sync_failed', msg), false);
 });
+
+test('ticket sync alerts when a customer starts failing and when it recovers, not on every failed run', async () => {
+  await shareTo();
+  await db.prepare("INSERT INTO settings (key,value) VALUES ('ticketing_rt',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ enabled: true, base_url: 'https://rt.example.test/rt', sync_interval_minutes: 5 }));
+  const customer = (await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Sync alert customer')).lastInsertRowid;
+  await db.prepare(`INSERT INTO customer_ticketing_configurations (customer_id,provider_type,external_queue_id,external_queue_name,enabled,include_in_reporting)
+    VALUES (?,'request_tracker','77','Alert queue',1,1)`).run(customer);
+  const { syncCustomer } = require('../ticketSync');
+  const broken = { getTickets: async () => { throw Object.assign(new Error('RT unreachable'), { status: 502 }); } };
+  const bell = async () => (await db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND type='ticket_sync_failed'").get(ids.manager)).n;
+  await assert.rejects(syncCustomer(customer, { provider: broken }));
+  await settle(1);
+  assert.equal(posts.length, 1);
+  assert.match(posts[0].markdown, /could not be synchronised[\s\S]*RT unreachable/);
+  assert.equal(Number(await bell()), 1, 'managers get it on their bell too');
+  posts.length = 0;
+  await assert.rejects(syncCustomer(customer, { provider: broken }));
+  await assert.rejects(syncCustomer(customer, { provider: broken }));
+  await settle(1);
+  assert.equal(posts.length, 0, 'retries while still failing stay quiet');
+  await syncCustomer(customer, { provider: { getTickets: async () => [] } });
+  await settle(1);
+  assert.equal(posts.length, 1);
+  assert.match(posts[0].markdown, /working again/);
+  assert.equal(Number(await bell()), 2);
+});
+
+test('people can choose the new alerts for their own channels', async () => {
+  const { eventPreferences } = require('../notifications');
+  const manager = Object.keys(eventPreferences(null, 'manager'));
+  const engineer = Object.keys(eventPreferences(null, 'engineer'));
+  for (const key of ['project_closure', 'managed_report_review', 'recommendation_assigned', 'visit_report_approved', 'ticket_sync_failed']) assert.ok(manager.includes(key), key);
+  assert.ok(!engineer.includes('ticket_sync_failed'));
+  // A high-risk recommendation assigned to someone else reaches them.
+  await shareTo({ recommendation_created: false });
+  const before = (await db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND type='recommendation_assigned'").get(ids.engineerEnabled)).n;
+  assert.equal((await api(`/api/customers/${ids.customer}/recommendations`, { method: 'POST', token: ids.tokenManager,
+    body: { finding: 'Expired certificate', recommendation: 'Renew it', owner_id: ids.engineerEnabled, risk_level: 'high', due_date: '2026-11-01' } })).status, 201);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const after = (await db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND type='recommendation_assigned'").get(ids.engineerEnabled)).n;
+  assert.equal(Number(after), Number(before) + 1);
+});

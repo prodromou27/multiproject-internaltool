@@ -175,6 +175,11 @@ const PERSONAL_EVENTS = Object.freeze([
   { key: 'task_due',         label: 'A task of mine is due tomorrow or has become overdue' },
   { key: 'report_due',       label: 'A customer report is due soon or overdue', roles: ['manager'] },
   { key: 'asset_expiring',   label: 'Asset support or warranty is expiring', roles: ['manager'] },
+  { key: 'project_closure',  label: 'A project closure needs my review, or a closure on my project is decided' },
+  { key: 'managed_report_review', label: 'A customer report needs my review, or my customer report is reviewed' },
+  { key: 'recommendation_assigned', label: 'A high or critical recommendation is assigned to me' },
+  { key: 'visit_report_approved', label: 'The report for one of my maintenance visits is approved' },
+  { key: 'ticket_sync_failed', label: 'Request Tracker ticket sync stops working, or starts working again', roles: ['manager'] },
 ]);
 const PERSONAL_CHANNELS = Object.freeze(['teams', 'email', 'webex']);
 
@@ -404,8 +409,9 @@ function notify(event, data) {
  * this event in their Profile. Resolves when every send has settled; a failing
  * channel is logged and never stops the others.
  */
-async function notifyUser(userId, eventKey, msg, inApp, { channels = true } = {}) {
-  await persistNotification(userId, eventKey, inApp.title, inApp.body, inApp.link);
+// `bell: false` when the bell entry was already written (e.g. inside a transaction).
+async function notifyUser(userId, eventKey, msg, inApp, { channels = true, bell = true } = {}) {
+  if (bell) await persistNotification(userId, eventKey, inApp.title, inApp.body, inApp.link);
   if (!channels) return;
   const person = await db.prepare(`SELECT id, email, active, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled, notify_events
     FROM users WHERE id = ?`).get(userId);

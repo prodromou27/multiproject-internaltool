@@ -1,5 +1,5 @@
 const router=require('express').Router();
-const { notifyShared } = require('../notifications');
+const { notifyShared, notifyUser } = require('../notifications');
 const appTime = require('../appTime');
 const { requirePermission }=require('../middleware/auth');
 const service=require('../managedCustomerService');
@@ -35,6 +35,8 @@ async function updateReportWorkflow(req,res,customerId,reportId) {
       for (const userId of recipients) await db.prepare('INSERT INTO notifications (user_id,type,title,body,link,priority) VALUES (?,?,?,?,?,?)').run(userId,`managed_report.${result.change.event}`,titleByAction[action],result.report.original_name,link,priority);
     } catch(error) { console.error('[managed-reports] workflow notification failed:',error.message); }
     const reportCustomer=await db.prepare('SELECT name FROM customers WHERE id=?').get(customerId);
+    for (const userId of recipients) notifyUser(userId,'managed_report_review',{ title:`📑 ${titleByAction[action]}`,body:`**${result.report.original_name}** (${decrypt(reportCustomer?.name) || 'customer'})${result.change.comment ? `: ${result.change.comment}` : ''}`,
+      facts:[{ name:'By',value:req.user.name }] },{},{ bell:false }).catch(error => console.error('[managed-reports] alert failed:',error.message));
     notifyShared(action==='submit' ? 'managed_report_submitted' : 'managed_report_decided',{ title:`📑 Customer report ${result.change.event}`,body:`**${result.report.original_name}** was ${result.change.event} by ${req.user.name}${result.change.comment ? `: ${result.change.comment}` : ''}.`,
       facts:[{ name:'Customer',value:decrypt(reportCustomer?.name) || '—' },{ name:'Status',value:String(result.change.to).replace('_',' ') }] });
     await logAudit(db,req,'managed_report',reportId,result.report.original_name,`managed_report_${result.change.event}`,`customer_id=${customerId}; from=${result.change.from}; to=${result.change.to}; workflow_version=${result.report.workflow_version}; comment=${result.change.comment || ''}`);

@@ -1,6 +1,6 @@
 const router = require('express').Router({ mergeParams: true });
 const { decrypt } = require('../fieldCipher');
-const { notifyShared } = require('../notifications');
+const { notifyShared, notifyUser } = require('../notifications');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { logAudit } = require('../auditLog');
@@ -67,6 +67,12 @@ router.post('/', async (req, res) => {
     const named = await db.prepare('SELECT name FROM customers WHERE id = ?').get(customer);
     notifyShared('recommendation_created', { title: `⚠️ ${result.row.risk_level === 'critical' ? 'Critical' : 'High'}-risk recommendation`, body: `**${result.row.finding}**\n${result.row.recommendation}`,
       facts: [{ name: 'Customer', value: decrypt(named?.name) || '—' }, { name: 'Risk', value: result.row.risk_level }, { name: 'Recorded by', value: req.user.name }] });
+    if (result.row.owner_id && result.row.owner_id !== req.user.id) {
+      notifyUser(result.row.owner_id, 'recommendation_assigned', { title: `⚠️ ${result.row.risk_level === 'critical' ? 'Critical' : 'High'}-risk recommendation for you`, body: `**${result.row.finding}**\n${result.row.recommendation}`,
+        facts: [{ name: 'Customer', value: decrypt(named?.name) || '—' }, ...(result.row.due_date ? [{ name: 'Due', value: result.row.due_date }] : []), { name: 'Recorded by', value: req.user.name }] },
+      { title: `${result.row.risk_level === 'critical' ? 'Critical' : 'High'}-risk recommendation assigned to you`, body: result.row.finding, link: `/customers/${customer}/service-profile?section=recommendations` })
+        .catch(error => console.error('[recommendation alert]', error.message));
+    }
   }
   res.status(201).json(result.row);
 });

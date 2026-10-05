@@ -3,7 +3,7 @@ import { CheckCircle2,Loader2,RefreshCw,Save } from 'lucide-react';
 import { api } from '../../api';
 import { Toggle } from './shared';
 
-const EMPTY={ enabled:false,base_url:'',api_token:'',api_token_set:false,sync_interval_minutes:60 };
+const EMPTY={ enabled:false,base_url:'',api_token:'',api_token_set:false,sync_interval_minutes:5 };
 
 export default function RequestTrackerIntegration({ sectionStyle,labelStyle }) {
   const [form,setForm]=useState(EMPTY),[loading,setLoading]=useState(true),[busy,setBusy]=useState(''),[message,setMessage]=useState(''),[error,setError]=useState(''),[queues,setQueues]=useState([]);
@@ -43,7 +43,7 @@ export default function RequestTrackerIntegration({ sectionStyle,labelStyle }) {
     <div className="form-group"><label style={labelStyle} htmlFor="rt-api-token">REST 2.0 API Token</label><input id="rt-api-token" type="password" autoComplete="new-password" value={form.api_token} onChange={event => set('api_token',event.target.value)} placeholder={form.api_token_set ? 'Leave blank to retain stored token' : 'Paste an RT authentication token'} />
       {form.api_token_set && <p className="text-muted text-sm">{form.clear_api_token ? 'Stored token will be removed when saved.' : 'A token is configured and will never be displayed.'} <button type="button" className="btn btn-ghost btn-sm" onClick={() => setForm(current => ({ ...current,api_token:'',clear_api_token:!current.clear_api_token }))}>{form.clear_api_token ? 'Keep stored token' : 'Remove stored token'}</button></p>}
     </div>
-    <div className="form-group"><label style={labelStyle} htmlFor="rt-sync-interval">Sync Interval</label><select id="rt-sync-interval" value={form.sync_interval_minutes} onChange={event => set('sync_interval_minutes',Number(event.target.value))}><option value={30}>Every 30 minutes</option><option value={60}>Every hour</option><option value={120}>Every 2 hours</option><option value={240}>Every 4 hours</option><option value={1440}>Daily</option></select></div>
+    <div className="form-group"><label style={labelStyle} htmlFor="rt-sync-interval">Sync Interval</label><select id="rt-sync-interval" value={form.sync_interval_minutes} onChange={event => set('sync_interval_minutes',Number(event.target.value))}><option value={5}>Every 5 minutes</option><option value={10}>Every 10 minutes</option><option value={15}>Every 15 minutes</option><option value={30}>Every 30 minutes</option><option value={60}>Every hour</option><option value={120}>Every 2 hours</option><option value={240}>Every 4 hours</option><option value={1440}>Daily</option></select></div>
     <div className="flex gap-8 u-1d07798">
       <button type="button" className="btn btn-primary" disabled={!!busy} onClick={save}>{busy==='save' ? <><Loader2 size={14} style={{ animation:'spin 1s linear infinite' }} /> Saving...</> : <><Save size={14} /> Save RT Settings</>}</button>
       <button type="button" className="btn btn-ghost" disabled={!!busy || !form.api_token_set || !form.base_url} onClick={test}>{busy==='test' ? 'Testing...' : 'Test Connection'}</button>

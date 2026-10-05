@@ -16,9 +16,11 @@ async function runDueSyncs() {
   try {
     const settings=await ticketingSettings.storedSettings();
     if (!settings.enabled) return;
-    const interval=Math.max(15,Math.min(1440,Number(settings.sync_interval_minutes) || 60))*60*1000;
-    const mappings=await db.prepare("SELECT customer_id,last_successful_sync_at FROM customer_ticketing_configurations WHERE provider_type='request_tracker' AND enabled=1 ORDER BY last_successful_sync_at NULLS FIRST,customer_id").all();
-    const due=mappings.filter(mapping => Date.now()-timestamp(mapping.last_successful_sync_at)>=interval).slice(0,5);
+    const interval=Math.max(5,Math.min(1440,Number(settings.sync_interval_minutes) || 5))*60*1000;
+    const mappings=await db.prepare("SELECT customer_id,last_successful_sync_at,last_sync_status,updated_at FROM customer_ticketing_configurations WHERE provider_type='request_tracker' AND enabled=1 ORDER BY last_successful_sync_at NULLS FIRST,customer_id").all();
+    // A failing customer is retried one interval after its last attempt, not every minute.
+    const lastTry=mapping => Math.max(timestamp(mapping.last_successful_sync_at),mapping.last_sync_status==='failed' ? timestamp(mapping.updated_at) : 0);
+    const due=mappings.filter(mapping => Date.now()-lastTry(mapping)>=interval).slice(0,25);
     for (const mapping of due) {
       try { await jobs.enqueue('ticket_sync',{ customer_id:mapping.customer_id },{ dedupeKey:`ticket-sync:${mapping.customer_id}`,maxAttempts:4 }); }
       catch(error) { if (error.status!==409) console.error(`[ticket-sync] customer ${mapping.customer_id}:`,error.message); }

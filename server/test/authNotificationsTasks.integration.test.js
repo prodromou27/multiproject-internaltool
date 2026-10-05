@@ -575,7 +575,7 @@ test('each person chooses which events reach which of their own channels; the ad
   const me = (await api('/api/auth/me', { token })).data;
   assert.deepEqual(me.notify_events.task_assigned, { teams: true, email: true, webex: true });
   assert.equal(me.notify_events.report_submitted, undefined);
-  assert.deepEqual(me.notify_event_options.map(event => event.key), ['task_assigned', 'project_assigned', 'visit_assigned', 'visit_reminder', 'reminder_due', 'task_due']);
+  assert.deepEqual(me.notify_event_options.map(event => event.key), ['task_assigned', 'project_assigned', 'visit_assigned', 'visit_reminder', 'reminder_due', 'task_due', 'project_closure', 'managed_report_review', 'recommendation_assigned', 'visit_report_approved']);
 
   for (const bad of [[], { report_submitted: { teams: false } }, { task_assigned: { pager: false } }, { task_assigned: { teams: 'no' } }, { nonsense: {} }])
     assert.equal((await prefs({ notify_events: bad })).status, 400, JSON.stringify(bad));
