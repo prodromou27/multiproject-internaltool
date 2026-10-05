@@ -151,15 +151,19 @@ router.put('/:id/members', async (req, res) => {
   const team = await db.prepare('SELECT * FROM teams WHERE id = ?').get(id);
   if (!team) return res.status(404).json({ error: 'Not found' });
   const { user_ids } = req.body;
-  if (!Array.isArray(user_ids)) return res.status(400).json({ error: 'user_ids must be an array' });
+  if (!Array.isArray(user_ids) || user_ids.length > 5000 || user_ids.some(uid => !Number.isSafeInteger(uid) || uid < 1)) return res.status(400).json({ error: 'user_ids must be a list of user ids' });
+  // The same person listed twice is one member, not an error.
+  const members = [...new Set(user_ids)];
+  if (members.length) {
+    const found = await db.prepare(`SELECT id FROM users WHERE id IN (${members.map(() => '?').join(',')})`).all(...members);
+    if (found.length !== members.length) return res.status(400).json({ error: 'Some of those people no longer exist; reload the list and try again' });
+  }
   await db.transaction(async (tx) => {
     await tx.prepare('DELETE FROM team_members WHERE team_id = ?').run(id);
     const ins = tx.prepare('INSERT INTO team_members (team_id, user_id) VALUES (?, ?)');
-    for (const uid of user_ids) {
-      if (Number.isInteger(uid) && uid > 0) await ins.run(id, uid);
-    }
+    for (const uid of members) await ins.run(id, uid);
   });
-  await logAudit(db, req, 'team', id, team.name, 'team_members_updated', `count=${user_ids.length}`);
+  await logAudit(db, req, 'team', id, team.name, 'team_members_updated', `count=${members.length}`);
   res.json({ ok: true });
 });
 

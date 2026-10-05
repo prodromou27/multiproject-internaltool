@@ -16,6 +16,7 @@ import { useConfirm } from '../components/Confirm';
 import { PRODUCT_NAME } from '../product';
 import { MetricStrip,Surface } from '../components/EnterpriseUI';
 import { useLiveRefresh } from '../live';
+import CheckList from '../components/CheckList';
 
 /* ── Report-pending urgency helper ──────────────────────────
    Returns null | 'orange' | 'red'
@@ -131,7 +132,7 @@ function VisitForm({ initial, defaults, customers, engineers, onSave, onClose })
           onChange={ids => setForm(f => ({ ...f, engineer_ids: ids }))}
         />
       </div>
-      <div className="form-group"><label htmlFor="visit-assets">Assets in scope</label><select id="visit-assets" multiple value={(form.asset_ids || []).map(String)} disabled={assetsLoading} onChange={event => setForm(old => ({ ...old,asset_ids:[...event.target.selectedOptions].map(option => Number(option.value)) }))} className="u-f15b2e8">{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name} · {asset.asset_type}{asset.hostname ? ` · ${asset.hostname}` : ''}</option>)}</select>{assetsLoading && <span className="text-muted text-sm" role="status">Loading assets…</span>}</div>
+      <div className="form-group"><span id="visit-assets-label" className="form-label-text">Assets in scope</span>{assetsLoading ? <span className="text-muted text-sm" role="status">Loading assets…</span> : <CheckList key={form.customer_id || 'none'} id="visit-assets" label="assets in scope" searchPlaceholder="Search assets…" emptyText={form.customer_id ? 'No active assets recorded for this customer.' : 'Choose the customer first.'} options={assets.map(asset => ({ id: asset.id, label: asset.name, detail: [asset.asset_type, asset.hostname].filter(Boolean).join(' · ') }))} selected={form.asset_ids || []} onChange={assetIds => setForm(old => ({ ...old,asset_ids:assetIds }))} />}</div>
       <div className="form-group">
         <label htmlFor="visit-form-notes">Notes</label>
         <textarea id="visit-form-notes" value={form.notes || ''} onChange={set('notes')} placeholder="Any additional notes…" />

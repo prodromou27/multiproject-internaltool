@@ -6,6 +6,7 @@ import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
 import { CategoriesEditor, TechnologiesEditor } from './ActivityCatalogEditors';
 import { useLiveRefresh } from '../../live';
+import CheckList from '../../components/CheckList';
 
 export function TeamsAdminSection() {
   const toast = useToast();
@@ -102,11 +103,11 @@ export function TeamsAdminSection() {
       {editingMembers && (
         <Modal title={`Members — ${editingMembers.name}`} onClose={() => setEditingMembers(null)}>
           <div className="form-group">
-            <select multiple value={editingMembers.memberIds.map(String)}
-              onChange={e => setEditingMembers(em => ({ ...em, memberIds: [...e.target.selectedOptions].map(o => Number(o.value)) }))}
-              className="u-b9666ec">
-              {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
-            </select>
+            <span id="team-members-label" className="sr-only">Team members</span>
+            <CheckList id="team-members" label="team members" searchPlaceholder="Search people…"
+              options={users.filter(u => u.active !== 0 && u.active !== false || editingMembers.memberIds.includes(u.id)).map(u => ({ id: u.id, label: u.name, detail: u.role }))}
+              selected={editingMembers.memberIds}
+              onChange={memberIds => setEditingMembers(em => ({ ...em, memberIds }))} />
           </div>
           <div className="modal-footer u-cc45258">
             <button className="btn btn-ghost" onClick={() => setEditingMembers(null)}>Cancel</button>
