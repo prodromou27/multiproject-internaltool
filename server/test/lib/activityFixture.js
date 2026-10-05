@@ -128,6 +128,7 @@ if (isSuiteImport) test.before(async () => {
   app.use('/api/managed-customers', require('../../routes/managedCustomers'));
   app.use('/api/managed-report-templates', require('../../routes/managedReportTemplates'));
   app.use('/api/permissions', require('../../routes/permissions'));
+  app.use('/api/reminders', require('../../routes/reminders'));
   app.use('/api/service-activities', require('../../routes/serviceActivities'));
   app.use('/api/projects/:projectId/custom-fields', require('../../routes/customFields'));
   app.use(require('../../middleware/errors').errorHandler);

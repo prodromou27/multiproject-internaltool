@@ -170,6 +170,10 @@ const PERSONAL_EVENTS = Object.freeze([
   { key: 'visit_assigned',   label: 'A maintenance visit is assigned to me' },
   { key: 'visit_reminder',   label: 'The day before one of my maintenance visits' },
   { key: 'report_submitted', label: 'An engineer submits a visit report for review', roles: ['manager'] },
+  { key: 'reminder_due',     label: 'One of my reminders is due' },
+  { key: 'task_due',         label: 'A task of mine is due tomorrow or has become overdue' },
+  { key: 'report_due',       label: 'A customer report is due soon or overdue', roles: ['manager'] },
+  { key: 'asset_expiring',   label: 'Asset support or warranty is expiring', roles: ['manager'] },
 ]);
 const PERSONAL_CHANNELS = Object.freeze(['teams', 'email', 'webex']);
 
@@ -392,6 +396,32 @@ function notify(event, data) {
   });
 }
 
+/**
+ * notifyUser(userId, eventKey, msg, inApp) — one person: always the bell, plus
+ * whichever of their own channels (Teams, email, Webex message) they chose for
+ * this event in their Profile. Resolves when every send has settled; a failing
+ * channel is logged and never stops the others.
+ */
+async function notifyUser(userId, eventKey, msg, inApp) {
+  await persistNotification(userId, eventKey, inApp.title, inApp.body, inApp.link);
+  const person = await db.prepare(`SELECT id, email, active, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled, notify_events
+    FROM users WHERE id = ?`).get(userId);
+  if (!person?.active) return;
+  const sends = [], labels = [];
+  if (person.notify_teams_enabled && person.notify_teams_webhook_url && wantsAlert(person, eventKey, 'teams')) {
+    sends.push(sendTeams({ enabled: true, webhook_url: decryptField(person.notify_teams_webhook_url) }, msg)); labels.push('Personal Teams');
+  }
+  if (person.notify_email_enabled && person.email && wantsAlert(person, eventKey, 'email')) {
+    sends.push(sendEmail({ to: person.email, subject: msg.title, html: emailHtml(msg) })); labels.push('Personal email');
+  }
+  if (person.notify_external_enabled && person.email && wantsAlert(person, eventKey, 'webex') && await webexDirectAvailable()) {
+    const webex = (await getSettings())?.webex;
+    sends.push(sendWebex({ ...webex, mode: 'direct' }, msg, person.email)); labels.push('Webex message');
+  }
+  const results = await Promise.allSettled(sends);
+  results.forEach((result, index) => { if (result.status === 'rejected') console.error(`[${labels[index]} notify user ${userId}]`, result.reason?.message); });
+}
+
 /** sendTest — used by the Admin "Test" button; rejects with the real delivery error. */
 async function sendTest(platform, settings) {
   const msg = {
@@ -442,4 +472,4 @@ async function sendPersonalTest(channel, { email, webhook_url }) {
   } else throw new Error('Unknown channel');
 }
 
-module.exports = { PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, _setTransport };
+module.exports = { notifyUser, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, _setTransport };

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Building2, CalendarDays, CheckCircle2, Clock, ClipboardList, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
+import { ArrowRight, BellRing, Building2, CalendarDays, CheckCircle2, Clock, ClipboardList, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import OperationalFocus from '../components/OperationalFocus';
 import { localDateISO } from '../utils/dates';
@@ -82,9 +82,10 @@ export default function EngineerHub() {
   const [checklists, setChecklists] = useState(() => {
     try { return JSON.parse(localStorage.getItem(`hub_checklists_${user.id}`) || '{}'); } catch { return {}; }
   });
-  const [reminders, setReminders] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(`hub_recurring_${user.id}`) || '[]'); } catch { return []; }
-  });
+  // The next few of the person's reminders; the Reminders page has them all.
+  const [reminders, setReminders] = useState([]);
+  const loadReminders = useCallback(() => api.reminders().then(result => setReminders(result.active || [])).catch(() => {}), []);
+  useEffect(() => { loadReminders(); }, [loadReminders]);
   const [recentProjects] = useState(() => {
     try { return JSON.parse(localStorage.getItem(`hub_recent_projects_${user.id}`) || '[]'); } catch { return []; }
   });
@@ -196,22 +197,9 @@ export default function EngineerHub() {
     setChecklists(next); localStorage.setItem(`hub_checklists_${user.id}`, JSON.stringify(next));
   }
 
-  function addReminder() {
-    const title = window.prompt('Reminder')?.trim();
-    if (!title) return;
-    const cadence = window.prompt('Repeat: daily, weekly, or monthly', 'weekly')?.toLowerCase();
-    if (!['daily', 'weekly', 'monthly'].includes(cadence)) return toast.error('Use daily, weekly, or monthly');
-    const next = [...reminders, { id: Date.now(), title, cadence, next: today }];
-    setReminders(next); localStorage.setItem(`hub_recurring_${user.id}`, JSON.stringify(next));
-  }
-
-  function completeReminder(reminder) {
-    const nextDate = new Date(`${reminder.next}T12:00:00`);
-    if (reminder.cadence === 'daily') nextDate.setDate(nextDate.getDate() + 1);
-    if (reminder.cadence === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
-    if (reminder.cadence === 'monthly') nextDate.setMonth(nextDate.getMonth() + 1);
-    const next = reminders.map(item => item.id === reminder.id ? { ...item, next: iso(nextDate) } : item);
-    setReminders(next); localStorage.setItem(`hub_recurring_${user.id}`, JSON.stringify(next));
+  async function completeReminder(reminder) {
+    try { await api.completeReminder(reminder.id); toast.success(reminder.repeat === 'none' ? 'Reminder done' : 'Done — moved to the next time'); loadReminders(); }
+    catch (failure) { toast.error(failure.message); }
   }
 
   if (loading) return <div className="page"><div className="skeleton-table"><span /><span /><span /><span /></div></div>;
@@ -245,7 +233,7 @@ export default function EngineerHub() {
 
       {!managedFocus && saAccess?.enabled && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canLog={saAccess.enabled} />}
 
-      <div className="grid-2 mt-16"><section className="card"><div className="section-header"><h2 className="section-title">Recurring reminders</h2><button className="btn btn-ghost btn-sm" onClick={addReminder}><Plus size={12} /> Add</button></div>{reminders.map(reminder => <div className="reminder-row" key={reminder.id}><RotateCw size={13} /><span>{reminder.title}<small>{reminder.cadence} · next {fmtDate(reminder.next)}</small></span><button className="btn btn-success btn-sm" onClick={() => completeReminder(reminder)}><CheckCircle2 size={11} /></button></div>)}{!reminders.length && <p className="text-muted">No recurring reminders.</p>}</section><section className="card"><div className="section-header"><h2 className="section-title">Projects</h2><FolderOpen size={16} /></div><h3 className="hub-subheading">Bookmarked</h3>{pinned.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}{!pinned.length && <p className="text-muted">Pin projects from the Projects page.</p>}<h3 className="hub-subheading">Recently viewed</h3>{recentProjects.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}</section></div>
+      <div className="grid-2 mt-16"><section className="card"><div className="section-header"><h2 className="section-title">Reminders</h2><Link className="btn btn-ghost btn-sm" to="/reminders"><Plus size={12} /> Add</Link></div>{reminders.slice(0, 5).map(reminder => <div className="reminder-row" key={reminder.id}><BellRing size={13} /><span>{reminder.title}<small>{new Date(reminder.due_at) <= new Date() ? 'Due now' : `Next ${fmtDate(reminder.due_at)}`}</small></span><button className="btn btn-success btn-sm" aria-label={`Done: ${reminder.title}`} onClick={() => completeReminder(reminder)}><CheckCircle2 size={11} /></button></div>)}{!reminders.length && <p className="text-muted">No reminders set.</p>}{reminders.length > 5 && <Link to="/reminders" className="text-sm">All {reminders.length} reminders</Link>}</section><section className="card"><div className="section-header"><h2 className="section-title">Projects</h2><FolderOpen size={16} /></div><h3 className="hub-subheading">Bookmarked</h3>{pinned.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}{!pinned.length && <p className="text-muted">Pin projects from the Projects page.</p>}<h3 className="hub-subheading">Recently viewed</h3>{recentProjects.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}</section></div>
     </div>
   );
 }

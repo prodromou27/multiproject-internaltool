@@ -44,14 +44,14 @@ test('primary navigation stays concise and respects role and feature access', ()
   const engineer = { role: 'engineer', permissions: {} };
 
   assert.deepEqual(primaryPages(manager, false).map(page => page.id),
-    ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'managedCustomers', 'approvals']);
+    ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'managedCustomers', 'approvals', 'reminders']);
   assert.deepEqual(primaryPages(engineer, false).map(page => page.id),
-    ['dashboard', 'myWork', 'projects', 'tasks', 'visits']);
+    ['dashboard', 'myWork', 'projects', 'tasks', 'visits', 'reminders']);
   assert.ok(primaryPages(engineer, true).some(page => page.id === 'activities'));
   assert.deepEqual(primaryPages(engineer,true,{ managedServiceOperations:true }).map(page => page.id),
-    ['dashboard','myWork','activities','projects','tasks','visits']);
+    ['dashboard','myWork','activities','projects','tasks','visits','reminders']);
   assert.deepEqual(primaryPages(engineer,true,{ managedServiceOperations:false,projectDelivery:true }).map(page => page.id),
-    ['dashboard','myWork','projects','tasks','visits','activities']);
+    ['dashboard','myWork','projects','tasks','visits','activities','reminders']);
   assert.ok(primaryPages(manager, false).every(page => canAccessPage(page, manager, false)));
 });
 

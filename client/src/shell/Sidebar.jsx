@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2, Award, BarChart2, UsersIcon, Settings, Search, MessageSquare, CheckCheck, ClipboardList, FileText, StickyNote, UserCircle, ShieldCheck, Zap, Activity, Grid3X3, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2, Award, BarChart2, UsersIcon, Settings, Search, MessageSquare, CheckCheck, ClipboardList, FileText, StickyNote, UserCircle, ShieldCheck, Zap, Activity, BellRing, Grid3X3, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { api } from '../api';
 import { PRODUCT_WORDMARK } from '../product';
 
@@ -18,7 +18,7 @@ export function Hamburger({ open, onClick }) {
 /* ── Sidebar content ─────────────────────────────────────── */
 export const PAGE_ICONS = { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2,
   Award, BarChart2, UsersIcon, Settings, Search, ClipboardList, FileText, StickyNote,
-  UserCircle, MessageSquare, ShieldCheck, Zap, Activity, CheckCheck };
+  UserCircle, MessageSquare, ShieldCheck, Zap, Activity, CheckCheck, BellRing };
 
 function OverdueDot({ count }) {
   if (!count) return null;

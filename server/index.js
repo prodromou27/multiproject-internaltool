@@ -22,8 +22,6 @@ validateRuntimeConfig();
 
 require('./db'); // initialize DB
 const db = require('./db');
-const { notify } = require('./notifications');
-const { decrypt } = require('./fieldCipher');
 
 const app = express();
 // Keep Express 4's query parsing (nested keys, arrays); Express 5 defaults to the simple parser.
@@ -175,6 +173,7 @@ app.use('/api/ticketing', require('./routes/ticketing'));
 app.use('/api/managed-customers', require('./routes/managedCustomers'));
 app.use('/api/managed-report-templates', require('./routes/managedReportTemplates'));
 app.use('/api/permissions', require('./routes/permissions'));
+app.use('/api/reminders', require('./routes/reminders'));
 
 // ── 404 handler for unknown /api/* paths (must come before the SPA catchall) ─
 app.use('/api', (req, res) => {
@@ -219,60 +218,9 @@ app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(clientBuild, 'index.html'));
 });
 
-// ── Daily next-day visit reminders ───────────────────────────────────────────
-async function sendNextDayReminders() {
-  try {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
-
-    const visits = await db.prepare(`
-      SELECT mv.id, mv.title, mv.scheduled_date,
-             cu.name AS customer_name,
-             mve.user_id,
-             u.name  AS engineer_name,
-             u.email AS engineer_email
-      FROM maintenance_visits mv
-      JOIN customers cu ON mv.customer_id = cu.id
-      JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
-      JOIN users u ON mve.user_id = u.id
-      WHERE mv.scheduled_date = ? AND mv.status = 'scheduled' AND u.active = 1
-    `).all(tomorrowStr);
-
-    console.log(`[reminders] ${visits.length} engineer-visit pair(s) for ${tomorrowStr}`);
-
-    visits.forEach(v => {
-      notify('visit.reminder', {
-        visit_id:       v.id,
-        visit_title:    v.title,
-        customer_name:  decrypt(v.customer_name),
-        scheduled_date: v.scheduled_date,
-        engineer_id:    v.user_id,
-        engineer_name:  v.engineer_name,
-        engineer_email: v.engineer_email,
-      });
-    });
-  } catch (e) {
-    console.error('[reminders]', e.message);
-  }
-}
-
-function scheduleDailyReminders() {
-  sendNextDayReminders();
-
-  function scheduleNext() {
-    const now  = new Date();
-    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
-    if (next <= now) next.setDate(next.getDate() + 1);
-    const delay = next - now;
-    console.log(`[reminders] Next run at ${next.toLocaleString()} (in ${Math.round(delay / 60000)} min)`);
-    setTimeout(() => {
-      sendNextDayReminders();
-      setInterval(sendNextDayReminders, 24 * 60 * 60 * 1000);
-    }, delay);
-  }
-  scheduleNext();
-}
+// Personal reminders every minute; automatic ones (visits, tasks, customer
+// reports, asset expiry) each morning. See reminders.js.
+const { startReminderSchedules } = require('./reminders');
 
 const { initScheduler } = require('./reportScheduler');
 
@@ -302,7 +250,7 @@ const keyFile  = path.join(certDir, 'key.pem');
 
     servers.push(https.createServer(tlsOptions, app).listen(HTTPS_PORT, '0.0.0.0', () => {
       console.log(`Server running on https://0.0.0.0:${HTTPS_PORT}`);
-      scheduleDailyReminders();
+      startReminderSchedules();
       initScheduler();
     }));
 
@@ -323,7 +271,7 @@ const keyFile  = path.join(certDir, 'key.pem');
     const PORT = process.env.PORT || 3001;
     servers.push(app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://0.0.0.0:${PORT} (no TLS certs found)`);
-      scheduleDailyReminders();
+      startReminderSchedules();
       initScheduler();
     }));
   }

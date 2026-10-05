@@ -575,7 +575,7 @@ test('each person chooses which events reach which of their own channels; the ad
   const me = (await api('/api/auth/me', { token })).data;
   assert.deepEqual(me.notify_events.task_assigned, { teams: true, email: true, webex: true });
   assert.equal(me.notify_events.report_submitted, undefined);
-  assert.deepEqual(me.notify_event_options.map(event => event.key), ['task_assigned', 'project_assigned', 'visit_assigned', 'visit_reminder']);
+  assert.deepEqual(me.notify_event_options.map(event => event.key), ['task_assigned', 'project_assigned', 'visit_assigned', 'visit_reminder', 'reminder_due', 'task_due']);
 
   for (const bad of [[], { report_submitted: { teams: false } }, { task_assigned: { pager: false } }, { task_assigned: { teams: 'no' } }, { nonsense: {} }])
     assert.equal((await prefs({ notify_events: bad })).status, 400, JSON.stringify(bad));
@@ -604,4 +604,77 @@ test('each person chooses which events reach which of their own channels; the ad
     if (stored) await db.prepare("UPDATE settings SET value = ? WHERE key = 'integrations'").run(stored.value);
   }
   assert.equal((await api('/api/auth/notification-preferences/test', { method: 'POST', token, body: { channel: 'webex' } })).status, 400);
+});
+
+test('personal reminders are private, validated, delivered once per occurrence, and repeat on Done', async () => {
+  const reminders = require('../reminders');
+  const token = ids.tokenEnabled, other = ids.tokenManager;
+  const create = (body, as = token) => api('/api/reminders', { method: 'POST', token: as, body });
+  const base = { title: 'Check backup job', due_at: '2020-01-06T07:00:00.000Z', time_zone: 'Asia/Nicosia', repeat: 'weekly' };
+
+  for (const bad of [{ ...base, title: ' ' }, { ...base, due_at: 'tomorrow' }, { ...base, repeat: 'hourly' }, { ...base, time_zone: 'Mars/Base' }, { ...base, customer_id: 'x' }])
+    assert.equal((await create(bad)).status, 400, JSON.stringify(bad));
+  const made = await create({ ...base, customer_id: ids.customer, notes: 'Veeam' });
+  assert.equal(made.status, 201, JSON.stringify(made.data));
+  assert.equal(made.data.customer_name, 'Acme Corp');
+
+  // Nobody else can see, change or remove it.
+  assert.equal((await api('/api/reminders', { token: other })).data.active.some(row => row.id === made.data.id), false);
+  assert.equal((await api(`/api/reminders/${made.data.id}`, { method: 'PUT', token: other, body: { title: 'Mine now' } })).status, 404);
+  assert.equal((await api(`/api/reminders/${made.data.id}`, { method: 'DELETE', token: other })).status, 404);
+
+  // Overdue, so the next pass delivers it to the bell, once.
+  await reminders.sendDueReminders();
+  await reminders.sendDueReminders();
+  const bell = await db.prepare("SELECT title, link FROM notifications WHERE user_id = ? AND type = 'reminder_due'").all(ids.engineerEnabled);
+  assert.deepEqual(bell.map(row => [row.title, row.link]), [['Reminder: Check backup job', '/reminders']]);
+
+  // Done moves a weekly reminder to its next future Monday at the same local time, and it can fire again.
+  const done = await api(`/api/reminders/${made.data.id}/done`, { method: 'POST', token });
+  assert.equal(done.status, 200);
+  assert.ok(done.data.due_at > new Date().toISOString());
+  assert.equal(new Date(done.data.due_at).getUTCDay(), 1);
+  assert.equal(done.data.status, 'active');
+  assert.equal(done.data.notified_at, null);
+
+  // Snooze must be in the future; a one-off reminder completes on Done.
+  assert.equal((await api(`/api/reminders/${made.data.id}/snooze`, { method: 'POST', token, body: { until: '2020-01-01T00:00:00Z' } })).status, 400);
+  const once = await create({ ...base, title: 'Renew certificate', repeat: 'none', due_at: '2099-01-01T09:00:00Z' });
+  assert.equal((await api(`/api/reminders/${once.data.id}/done`, { method: 'POST', token })).data.status, 'done');
+  const listed = (await api('/api/reminders', { token })).data;
+  assert.ok(listed.done.some(row => row.id === once.data.id));
+  assert.deepEqual(listed.automatic.map(item => item.key), ['visit_tomorrow', 'task_due']);
+  assert.equal((await api(`/api/reminders/${made.data.id}`, { method: 'DELETE', token })).status, 200);
+});
+
+test('automatic reminders: a task due tomorrow is sent once, and not to someone who turned it off', async () => {
+  const reminders = require('../reminders');
+  const { today } = await db.prepare('SELECT app_today() AS today').get();
+  const tomorrow = new Date(`${today}T00:00:00Z`); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const task = (await db.prepare("INSERT INTO tasks (title, assigned_to, deadline, status, created_by) VALUES (?, ?, ?, 'open', ?)")
+    .run('Patch the VPN concentrator', ids.engineerEnabled, tomorrow.toISOString().slice(0, 10), ids.manager)).lastInsertRowid;
+  const count = async () => Number((await db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND type = 'task_due' AND title LIKE ?").get(ids.engineerEnabled, '%Patch the VPN%')).n);
+
+  assert.equal((await api('/api/reminders/settings', { method: 'PUT', token: ids.tokenEnabled, body: { task_due: false } })).status, 200);
+  assert.equal((await api('/api/reminders/settings', { method: 'PUT', token: ids.tokenEnabled, body: { report_due: true } })).status, 400, 'engineers have no customer-report reminders');
+  await reminders.sendAutomaticReminders();
+  assert.equal(await count(), 0);
+
+  await api('/api/reminders/settings', { method: 'PUT', token: ids.tokenEnabled, body: { task_due: true } });
+  await reminders.sendAutomaticReminders();
+  await reminders.sendAutomaticReminders();
+  assert.equal(await count(), 1);
+  await db.prepare('DELETE FROM tasks WHERE id = ?').run(task);
+});
+
+test('snoozing a repeating reminder moves only this occurrence; Done returns it to its usual time', async () => {
+  const token = ids.tokenEnabled;
+  const usual = new Date(Date.now() - 2 * 3600 * 1000); usual.setUTCSeconds(0, 0);
+  const made = await api('/api/reminders', { method: 'POST', token, body: { title: 'Daily stand-up notes', due_at: usual.toISOString(), time_zone: 'UTC', repeat: 'daily' } });
+  const later = new Date(Date.now() + 3600 * 1000).toISOString();
+  assert.equal((await api(`/api/reminders/${made.data.id}/snooze`, { method: 'POST', token, body: { until: later } })).data.due_at, later);
+  const done = await api(`/api/reminders/${made.data.id}/done`, { method: 'POST', token });
+  const expected = new Date(usual); expected.setUTCDate(expected.getUTCDate() + 1);
+  assert.equal(done.data.due_at, expected.toISOString(), 'tomorrow at the usual time, not the snoozed one');
+  await api(`/api/reminders/${made.data.id}`, { method: 'DELETE', token });
 });

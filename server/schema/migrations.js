@@ -670,6 +670,42 @@ async function applyMigrations(pool, transaction) {
     -- { "task_assigned": { "teams": false }, ... }); anything unset is on.
     ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_events TEXT;
   `]);
+  migrations.push(['20261007_reminders', `
+    -- Personal reminders. due_at is the next occurrence as a UTC instant; time_zone
+    -- keeps repeats at the same local time. notified_at records the last send, so
+    -- each occurrence is delivered once.
+    CREATE TABLE IF NOT EXISTS reminders (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      notes TEXT,
+      due_at TEXT NOT NULL,
+      -- The occurrence the schedule says; a snooze moves due_at only, so Done
+      -- returns a repeating reminder to its usual time.
+      scheduled_at TEXT NOT NULL,
+      time_zone TEXT NOT NULL,
+      repeat TEXT NOT NULL DEFAULT 'none' CHECK(repeat IN ('none','daily','weekly','monthly','yearly')),
+      customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','done')),
+      notified_at TEXT,
+      completed_at TEXT,
+      created_at TEXT DEFAULT ${NOW},
+      updated_at TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(status, due_at);
+    CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id, status, due_at);
+    -- Automatic reminders already sent: once per person, kind, item and occasion.
+    CREATE TABLE IF NOT EXISTS reminder_deliveries (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      ref TEXT NOT NULL,
+      occasion TEXT NOT NULL,
+      sent_at TEXT DEFAULT ${NOW},
+      PRIMARY KEY(user_id, kind, ref, occasion)
+    );
+    -- Which automatic reminders each person wants (JSON; unset means on).
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reminder_settings TEXT;
+  `]);
   migrations.push(['20261006_managed_customers_tracked', `
     -- Managed customers whose activity tracking was left off were missing from
     -- their engineers' Log activity customer list.

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckSquare, X, Bell, CheckCheck, Trash2, Briefcase, WrenchIcon, FileText, AtSign } from 'lucide-react';
+import { CheckSquare, X, Bell, BellRing, CheckCheck, Trash2, Briefcase, WrenchIcon, FileText, AtSign, ShieldAlert } from 'lucide-react';
 import { api } from '../api';
 
 /* ── Notification Bell ───────────────────────────────────── */
@@ -16,6 +16,10 @@ const NOTIF_ICONS = {
   'managed_report.finalized': <FileText size={14} color="#10b981" />,
   'managed_report.reopened':  <FileText size={14} color="#f59e0b" />,
   'mention':          <AtSign      size={14} color="#ec4899" />,
+  'reminder_due':     <BellRing    size={14} color="var(--signal)" />,
+  'task_due':         <CheckSquare size={14} color="var(--warning)" />,
+  'report_due':       <FileText    size={14} color="var(--warning)" />,
+  'asset_expiring':   <ShieldAlert size={14} color="var(--warning)" />,
 };
 
 function timeSinceNotif(dt) {
