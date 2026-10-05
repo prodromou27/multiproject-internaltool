@@ -776,3 +776,22 @@ test('the reporting obligation shows which period is owed, how far its report ha
   const fresh=await due();
   assert.deepEqual([fresh.status,fresh.overdue,fresh.next.label],['not_yet_due',false,periodFor('monthly',today,0).label]);
 });
+
+test('a managed customer is always open for activity logging by its responsible team, even with tracking left off',async () => {
+  const customer=(await db.prepare('INSERT INTO customers (name,active,service_activity_enabled) VALUES (?,1,0)').run('Managed but untracked')).lastInsertRowid;
+  await db.prepare('INSERT INTO customer_teams (customer_id,team_id) VALUES (?,?)').run(customer,ids.teamEnabled);
+  const listed=async () => (await api('/api/service-activities/meta',{ token:ids.tokenEnabled })).data.customers.some(row => Number(row.id)===Number(customer));
+  assert.equal(await listed(),false,'not yet managed or tracked');
+
+  const path=`/api/customers/${customer}/managed-services`;
+  const read=(await api(path,{ token:ids.tokenManager })).data;
+  const saved=await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...read,managed_services_enabled:true,responsible_team_id:ids.teamEnabled,service_activity_tracking_enabled:false } });
+  assert.equal(saved.status,200,JSON.stringify(saved.data));
+  assert.equal(saved.data.service_activity_tracking_enabled,true);
+  assert.equal(await listed(),true,'the engineer can now pick the customer when logging an activity');
+
+  // Turning managed services off again leaves tracking as the manager chose it.
+  const off=await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...saved.data,managed_services_enabled:false,service_activity_tracking_enabled:false } });
+  assert.equal(off.status,200,JSON.stringify(off.data));
+  assert.equal(await listed(),false);
+});

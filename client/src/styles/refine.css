@@ -277,3 +277,4 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .cs-page .cs-health-value.is-text { font-size: 15px; font-weight: 600; line-height: 1.35; margin-top: 8px; }
 .alert-choices th, .alert-choices td { background: transparent; text-transform: none; letter-spacing: normal; }
 .alert-choices th[scope="row"] { color: var(--gray-700); font-size: 13px; }
+.af-no-customers { margin: -4px 0 0; padding: 10px 12px; border-left: 3px solid var(--warning); background: var(--warning-light); font-size: 13px; color: var(--gray-700); }

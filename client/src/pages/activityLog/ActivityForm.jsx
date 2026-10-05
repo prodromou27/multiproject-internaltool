@@ -154,6 +154,9 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
             {meta.customers.map(c => <option key={c.id} value={c.id}>{c.is_internal ? `${c.name} (in-house)` : c.name}</option>)}
           </select>
         </Field>
+        {!meta.customers.length && <p className="af-wide af-no-customers" role="status">
+          No customers are open for activity logging by your team yet. A manager can fix this on the customer's page: under Service Configuration, assign your team and turn on managed services or service activity tracking.
+        </p>}
 
         <Field label="Title" required className="af-wide">
           <input value={form.title} onChange={set('title')} maxLength={300} required placeholder="What did you do?" />

@@ -41,7 +41,7 @@ export function Toggle({ checked, onChange, label, disabled }) {
   );
 }
 
-export function ToggleRow({ label, description, value, onChange, recommended }) {
+export function ToggleRow({ label, description, value, onChange, recommended, disabled }) {
   return (
     <div className="u-184ccf1">
       <div>
@@ -53,8 +53,12 @@ export function ToggleRow({ label, description, value, onChange, recommended }) 
       </div>
       <button
         type="button"
+        role="switch"
+        aria-checked={!!value}
+        aria-label={label}
+        disabled={disabled}
         onClick={() => onChange(!value)}
-        className={["u-c3e9d34", (value ? 'u-1eab90a' : 'u-231159d')].filter(Boolean).join(' ')}
+        className={["u-c3e9d34", (value ? 'u-1eab90a' : 'u-231159d'), (disabled ? 'u-61a0750' : '')].filter(Boolean).join(' ')}
       >
         <span className={["u-bb3c7c5", (value ? 'u-04509a7' : 'u-f7bcc11')].filter(Boolean).join(' ')} />
       </button>

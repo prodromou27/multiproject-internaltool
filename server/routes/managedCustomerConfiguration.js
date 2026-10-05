@@ -118,7 +118,8 @@ router.put('/',requireManager,async (req,res) => {
           req.body.project_reporting_enabled?1:0,req.body.maintenance_visit_reporting_enabled?1:0,req.body.recommendation_tracking_enabled?1:0,
           req.body.include_in_managed_services_reports?1:0,responsibleTeamId,serviceManagerId,frequency || null,defaultTemplateId,nextVersion,req.user.id);
       }
-      await tx.prepare('UPDATE customers SET service_activity_enabled=? WHERE id=?').run(req.body.service_activity_tracking_enabled?1:0,id);
+      // A managed customer is always tracked: its engineers must be able to log work against it.
+      await tx.prepare('UPDATE customers SET service_activity_enabled=? WHERE id=?').run(req.body.managed_services_enabled || req.body.service_activity_tracking_enabled ? 1 : 0,id);
 
       const existingTicket=await tx.prepare("SELECT * FROM customer_ticketing_configurations WHERE customer_id=? AND provider_type='request_tracker'").get(id);
       if (!queueId) {

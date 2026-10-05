@@ -670,6 +670,12 @@ async function applyMigrations(pool, transaction) {
     -- { "task_assigned": { "teams": false }, ... }); anything unset is on.
     ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_events TEXT;
   `]);
+  migrations.push(['20261006_managed_customers_tracked', `
+    -- Managed customers whose activity tracking was left off were missing from
+    -- their engineers' Log activity customer list.
+    UPDATE customers SET service_activity_enabled=1
+      WHERE service_activity_enabled=0 AND id IN (SELECT customer_id FROM managed_customer_configurations WHERE managed_services_enabled=1);
+  `]);
 
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);

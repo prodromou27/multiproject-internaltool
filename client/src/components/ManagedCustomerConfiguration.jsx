@@ -239,7 +239,11 @@ export default function ManagedCustomerConfiguration({ customerId }) {
         </Optional>
 
         <Optional title="What is tracked" hint="Optional — all on by default except service activity">
-          {TRACKING.map(([key,label,description]) => <ToggleRow key={key} label={label} description={description} value={form[key]} onChange={value => update({ [key]:value })} />)}
+          {TRACKING.map(([key,label,description]) => {
+            // The managed-services team reports on its work per customer, so a managed customer is always tracked.
+            const implied=key==='service_activity_tracking_enabled' && enabled;
+            return <ToggleRow key={key} label={label} description={implied ? 'Always on for a managed customer, so its engineers can log work against it.' : description} value={implied || form[key]} disabled={implied} onChange={value => update({ [key]:value })} />;
+          })}
         </Optional>
       </>}
     </div>
