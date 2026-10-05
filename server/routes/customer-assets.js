@@ -1,4 +1,5 @@
 const router = require('express').Router({ mergeParams: true });
+const appTime = require('../appTime');
 const crypto = require('crypto');
 const net = require('net');
 const fs = require('fs');
@@ -99,14 +100,14 @@ function filters(req) {
   const customer=Number(req.params.id),page=Number(rawPage),clauses=['a.customer_id=?'],params=[customer];
   if (req.query.coverage) { clauses.push('a.coverage_type=?'); params.push(req.query.coverage); }
   if (req.query.status) { clauses.push('a.lifecycle_status=?'); params.push(req.query.status); }
-  const today=new Date().toISOString().slice(0,10);
+  const today=appTime.today();
   if (req.query.expiry==='expired') { clauses.push("a.lifecycle_status='active' AND ((a.support_end_date IS NOT NULL AND a.support_end_date<?) OR (a.warranty_expiry_date IS NOT NULL AND a.warranty_expiry_date<?))"); params.push(today,today); }
   else if (req.query.expiry) { const end=new Date(`${today}T00:00:00Z`);end.setUTCDate(end.getUTCDate()+Number(req.query.expiry));const date=end.toISOString().slice(0,10);clauses.push("a.lifecycle_status='active' AND ((a.support_end_date BETWEEN ? AND ?) OR (a.warranty_expiry_date BETWEEN ? AND ?))");params.push(today,date,today,date); }
   return { customer,page,where:clauses.join(' AND '),params,search:req.query.search?.trim().toLowerCase() };
 }
 const matchesSearch=(row,search) => !search || ['name','asset_tag','asset_type','vendor','model','serial_number','hostname','ip_address','mac_address','software_version','location','technology_name'].some(field => String(row[field] || '').toLowerCase().includes(search));
 async function expirySummary(customer) {
-  const today=new Date().toISOString().slice(0,10),end=new Date(`${today}T00:00:00Z`);end.setUTCDate(end.getUTCDate()+30);const within=end.toISOString().slice(0,10);
+  const today=appTime.today(),end=new Date(`${today}T00:00:00Z`);end.setUTCDate(end.getUTCDate()+30);const within=end.toISOString().slice(0,10);
   const row=await db.prepare(`SELECT
     SUM(CASE WHEN lifecycle_status='active' AND ((support_end_date IS NOT NULL AND support_end_date<?) OR (warranty_expiry_date IS NOT NULL AND warranty_expiry_date<?)) THEN 1 ELSE 0 END) AS expired,
     SUM(CASE WHEN lifecycle_status='active' AND ((support_end_date BETWEEN ? AND ?) OR (warranty_expiry_date BETWEEN ? AND ?)) THEN 1 ELSE 0 END) AS due_30

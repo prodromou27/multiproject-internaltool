@@ -1,4 +1,5 @@
 const router=require('express').Router();
+const appTime = require('../appTime');
 const { requirePermission }=require('../middleware/auth');
 const service=require('../managedCustomerService');
 const reporting=require('../managedCustomerReportingService');
@@ -89,7 +90,7 @@ const reportRequest=async body => {
 router.get('/',async (req,res) => res.json({ rows:await service.listManagedCustomers() }));
 router.get('/:id/overview',async (req,res) => {
   const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
-  const now=new Date(),defaultFrom=`${now.toISOString().slice(0,7)}-01`,defaultTo=now.toISOString().slice(0,10);
+  const defaultFrom=`${appTime.thisMonth()}-01`,defaultTo=appTime.today();
   const from=req.query.from || defaultFrom,to=req.query.to || defaultTo;
   if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
   const result=await service.getOverview(id,from,to);if (!result) return res.status(404).json({ error:'Managed customer not found' });
@@ -113,7 +114,7 @@ router.get('/:id/tickets',async (req,res) => {
 });
 router.get('/:id/ticket-analytics',async (req,res) => {
   const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
-  const now=new Date(),from=req.query.from || `${now.toISOString().slice(0,7)}-01`,to=req.query.to || now.toISOString().slice(0,10);
+  const from=req.query.from || `${appTime.thisMonth()}-01`,to=req.query.to || appTime.today();
   if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
   const result=await service.getTicketAnalytics(id,from,to);if (!result) return res.status(404).json({ error:'Managed customer not found' });
   res.json(result);

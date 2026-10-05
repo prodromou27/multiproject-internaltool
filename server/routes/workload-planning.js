@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const appTime = require('../appTime');
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
 const { logAudit } = require('../auditLog');
@@ -9,7 +10,7 @@ const positiveId = value => Number.isSafeInteger(value) && value>0;
 router.use(requireManager);
 
 router.get('/', async (req,res) => {
-  const asOf = req.query.as_of ?? new Date().toISOString().slice(0,10);
+  const asOf = req.query.as_of ?? appTime.today();
   if (!validDate(asOf)) return res.status(400).json({ error: 'as_of must be a real YYYY-MM-DD date' });
   const weeks = planningWeeks(asOf);
   const setting = await db.prepare("SELECT value FROM settings WHERE key='status_config'").get();

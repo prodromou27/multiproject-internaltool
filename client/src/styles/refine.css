@@ -357,6 +357,17 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .catalog-table select { min-width: 170px; width: auto; }
 .catalog-table th { white-space: nowrap; }
 
+/* Settings → Localization: server clock. */
+.server-clock .form-group .server-clock-switch { display: flex; flex-direction: row; align-items: center; gap: 8px; font-weight: 400; margin-top: 10px; text-transform: none; letter-spacing: normal; color: var(--gray-800); }
+.server-clock .server-clock-switch input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex: none; }
+.server-clock-status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; padding: 12px 14px; border-radius: var(--radius); border-left: 3px solid var(--gray-300); background: var(--gray-50); }
+.server-clock-status > div { display: grid; gap: 2px; min-width: 200px; }
+.server-clock-status span, .server-clock-status small { font-size: 12px; color: var(--gray-600); }
+.server-clock-status strong { color: var(--ink); }
+.server-clock-status.is-ok { border-left-color: var(--success); }
+.server-clock-status.is-warning { border-left-color: var(--warning); }
+.server-clock-status.is-danger { border-left-color: var(--danger); }
+.server-clock-advice { margin-top: 10px; color: var(--gray-700); }
 /* Settings → Ticketing. */
 .ticketing-heading { margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--ink); }
 .ticketing-queues select { min-width: 220px; }

@@ -2,6 +2,7 @@
  * Weekly Status Report — data gathering + HTML email builder.
  */
 const db         = require('./db');
+const appTime = require('./appTime');
 const { sendEmail } = require('./email');
 const { decrypt, decryptCustomer } = require('./fieldCipher');
 const { PRODUCT_NAME } = require('./product');
@@ -24,12 +25,13 @@ function daysDiff(str) {
 // ── Gather all report data ────────────────────────────────────────────────────
 async function gatherReportData() {
   const now        = new Date();
-  const todayStr   = now.toISOString().slice(0, 10);
-  const past1Str   = new Date(now - 1  * 86400000).toISOString().slice(0, 10);
-  const past3Str   = new Date(now - 3  * 86400000).toISOString().slice(0, 10);
-  const past7Str   = new Date(now - 7  * 86400000).toISOString().slice(0, 10);
-  const next7Str   = new Date(now + 7  * 86400000).toISOString().slice(0, 10);
-  const next14Str  = new Date(now + 14 * 86400000).toISOString().slice(0, 10);
+  // Calendar days in the organisation's time zone.
+  const todayStr   = appTime.today(now);
+  const past1Str   = appTime.addDays(todayStr, -1);
+  const past3Str   = appTime.addDays(todayStr, -3);
+  const past7Str   = appTime.addDays(todayStr, -7);
+  const next7Str   = appTime.addDays(todayStr, 7);
+  const next14Str  = appTime.addDays(todayStr, 14);
   // 'YYYY-MM-DD HH:MM:SS' cutoff matching how timestamps are stored
   const past7DateTime = new Date(now - 7 * 86400000).toISOString().slice(0, 19).replace('T', ' ');
 

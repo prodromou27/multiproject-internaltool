@@ -7,6 +7,7 @@
  * zone, so a weekly 09:00 reminder stays at 09:00 local across daylight saving.
  */
 const db = require('./db');
+const appTime = require('./appTime');
 const { decrypt } = require('./fieldCipher');
 const { notifyUser, notify, postToSharedChannels } = require('./notifications');
 const { obligations } = require('./managedReportObligations');
@@ -248,10 +249,14 @@ function startReminderSchedules() {
     .then(counts => console.log('[reminders] automatic:', JSON.stringify(counts)))
     .catch(error => console.error('[reminders] automatic:', error.message));
   daily(); // deliveries are recorded, so a restart the same day sends nothing twice
-  const now = new Date(), next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
-  if (next <= now) next.setDate(next.getDate() + 1);
-  console.log(`[reminders] Next automatic run at ${next.toLocaleString()} (in ${Math.round((next - now) / 60000)} min)`);
-  setTimeout(() => { daily(); setInterval(daily, 24 * 60 * 60 * 1000).unref?.(); }, next - now).unref?.();
+  // Each morning at 08:00 in the organisation's time zone, recomputed every day
+  // so daylight-saving changes and a changed zone are followed.
+  const scheduleNext = () => {
+    const now = new Date(), next = appTime.nextLocalTime(8, 0, now);
+    console.log(`[reminders] Next automatic run at ${next.toISOString()} (08:00 ${appTime.timeZone()}, in ${Math.round((next - now) / 60000)} min)`);
+    setTimeout(() => { daily(); scheduleNext(); }, next - now).unref?.();
+  };
+  scheduleNext();
 }
 
 module.exports = { REPEATS, AUTOMATIC, automaticSettings, validTimeZone, nextOccurrence, fromLocal, localParts, sendDueReminders, sendTeamReminders, sendAutomaticReminders, startReminderSchedules };

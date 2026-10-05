@@ -12,14 +12,24 @@ async function createBaseTables(pool) {
     RETURNS numeric AS $$ SELECT round($1::numeric, $2) $$ LANGUAGE sql IMMUTABLE;
   `);
 
-  // "Now" and "today" as the text the app stores (UTC). Used in route SQL.
+  // "Now" as the text the app stores (UTC), and "today" as the calendar date in
+  // the organisation's time zone (Settings → Localization), for due and overdue
+  // checks. A missing or unreadable setting falls back to UTC rather than failing.
   await pool.query(`
     CREATE OR REPLACE FUNCTION app_now() RETURNS text AS $$
       SELECT to_char((now() AT TIME ZONE 'UTC'),'YYYY-MM-DD HH24:MI:SS') $$ LANGUAGE sql STABLE;
   `);
   await pool.query(`
     CREATE OR REPLACE FUNCTION app_today() RETURNS text AS $$
-      SELECT to_char((now() AT TIME ZONE 'UTC'),'YYYY-MM-DD') $$ LANGUAGE sql STABLE;
+    DECLARE zone text;
+    BEGIN
+      BEGIN
+        SELECT value::json->>'timezone' INTO zone FROM settings WHERE key = 'localization_config';
+        RETURN to_char(now() AT TIME ZONE COALESCE(NULLIF(zone, ''), 'Asia/Nicosia'), 'YYYY-MM-DD');
+      EXCEPTION WHEN OTHERS THEN
+        RETURN to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD');
+      END;
+    END $$ LANGUAGE plpgsql STABLE;
   `);
 
   await pool.query(`

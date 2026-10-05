@@ -4,6 +4,7 @@
  * serviceActivityStatus.js, serviceActivitiesAccess.js) — this file is routing only.
  */
 const router  = require('express').Router();
+const appTime = require('../appTime');
 const ExcelJS = require('exceljs');
 const db      = require('../db');
 const { requireAuth, requireManager, requireDownloadAuth } = require('../middleware/auth');
@@ -445,7 +446,7 @@ router.post('/:id/duplicate', requireAuth, requireServiceActivityAccess, require
 
   const statuses = await getStatusConfig();
   const defaultStatus = statuses[0]?.value || 'planned';
-  const today = new Date().toISOString().slice(0, 10);
+  const today = appTime.today();
   const teamId = await resolveActivityTeam(req, activity.customer_id, activity.team_id);
   if (!teamId) return res.status(400).json({ error: 'Customer has no eligible team assigned' });
 

@@ -1,3 +1,4 @@
+const appTime = require('./appTime');
 const FILTERS = new Set(['all', 'upcoming', 'past', 'report_pending', 'awaiting_review', 'cancelled']);
 
 function maintenanceVisitFilters(query, user) {
@@ -13,7 +14,7 @@ function maintenanceVisitFilters(query, user) {
   const filter = query.filter ?? 'all';
   if (!FILTERS.has(filter)) return { error: 'Invalid maintenance visit filter' };
   if (query.search?.length > 500) return { error: 'Search cannot exceed 500 characters' };
-  const asOf = query.as_of ?? new Date().toISOString().slice(0, 10);
+  const asOf = query.as_of ?? appTime.today();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf) || Number(asOf.slice(0, 4)) < 1900 || Number(asOf.slice(0, 4)) > 9998
     || Number.isNaN(Date.parse(asOf)) || new Date(asOf).toISOString().slice(0, 10) !== asOf) return { error: 'as_of must be a valid YYYY-MM-DD date' };
   if (query.month !== undefined && (!/^\d{4}-(0[1-9]|1[0-2])$/.test(query.month) || Number(query.month.slice(0, 4)) < 1900 || Number(query.month.slice(0, 4)) > 9998)) return { error: 'month must be a valid YYYY-MM month' };

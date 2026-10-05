@@ -1,7 +1,9 @@
+const appTime = require('./appTime');
 function reportTemplates(now = new Date(), config = {}) {
-  const today = now.toISOString().slice(0,10);
+  const today = appTime.today(now); // in the organisation's time zone
   const monthStart = today.slice(0,7)+'-01';
-  const monthEnd = new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,0)).toISOString().slice(0,10);
+  const [year,month] = today.split('-').map(Number);
+  const monthEnd = new Date(Date.UTC(year,month,0)).toISOString().slice(0,10);
   const relative = anchor => ({ anchor,offset_days: 0 });
   const range = field => [{ field,operator: 'gte',relative: relative('month_start') },{ field,operator: 'lte',relative: relative('month_end') }];
   const count = { field: '*',operation: 'count' };

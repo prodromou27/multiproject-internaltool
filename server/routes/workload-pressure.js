@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const appTime = require('../appTime');
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
 const { logAudit } = require('../auditLog');
@@ -24,7 +25,7 @@ router.put('/policy',async (req,res) => {
   res.json({ ...policy,version: row.version });
 });
 router.get('/',async (req,res) => {
-  const asOf=req.query.as_of ?? new Date().toISOString().slice(0,10);
+  const asOf=req.query.as_of ?? appTime.today();
   if (!validDate(asOf)) return res.status(400).json({ error: 'as_of must be a real YYYY-MM-DD date' });
   const row=await db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
   let statuses = {};

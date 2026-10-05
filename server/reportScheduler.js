@@ -4,6 +4,7 @@
  * then repeats every 7 days. Call reschedule() when settings change.
  */
 const db = require('./db');
+const appTime = require('./appTime');
 const { sendWeeklyReport } = require('./weeklyReport');
 const jobs = require('./backgroundJobs');
 
@@ -11,7 +12,7 @@ let _timeout  = null;
 let _interval = null;
 
 function queueWeeklyReport() {
-  const day=new Date().toISOString().slice(0,10);
+  const day=appTime.today();
   return jobs.enqueue('weekly_report',{}, { dedupeKey:`weekly-report:${day}`,maxAttempts:3 })
     .catch(error => console.error('[weekly-report] Could not queue delivery:',error.message));
 }

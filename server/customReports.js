@@ -1,4 +1,5 @@
 const { validDate } = require('./workloadModel');
+const appTime = require('./appTime');
 const field = (sql,type,label) => ({ sql,type,label });
 const common = { id: field('r.id','id','ID'),title: field('r.title','text','Title'),status: field('r.status','text','Status'),created_at: field('r.created_at','text','Created at'),created_date: field('substr(r.created_at,1,10)','date','Created date (UTC)') };
 const SOURCES = {
@@ -25,7 +26,8 @@ const RELATIVE_ANCHORS = ['today','week_start','week_end','month_start','month_e
 function relativeDate(relative,now) {
   shape(relative,['anchor','offset_days'],'relative date');
   if (!RELATIVE_ANCHORS.includes(relative.anchor) || !Number.isSafeInteger(relative.offset_days) || Math.abs(relative.offset_days)>3660) fail('Invalid relative date');
-  const date = new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()));
+  // "Today" in the organisation's time zone; the arithmetic below is on that calendar date.
+  const date = new Date(`${appTime.today(now)}T00:00:00Z`);
   if (relative.anchor==='week_start' || relative.anchor==='week_end') {
     const mondayOffset = (date.getUTCDay()+6)%7;
     date.setUTCDate(date.getUTCDate()-mondayOffset+(relative.anchor==='week_end' ? 6 : 0));

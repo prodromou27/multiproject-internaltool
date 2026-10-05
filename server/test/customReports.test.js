@@ -2,18 +2,20 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { metadata,compileReport,csvCell } = require('../customReports');
 const base = { source: 'tasks',fields: ['id','title'] };
-test('report templates keep UTC date windows relative to execution and configured terminal states', () => {
+test('report templates use date windows in the organisation time zone, relative to execution, and configured terminal states', () => {
   const { reportTemplates } = require('../reportTemplates');
-  const templates = reportTemplates(new Date('2024-02-29T23:59:59Z'),{ project: [{ value: 'archived',is_terminal: true }] });
+  const templates = reportTemplates(new Date('2024-02-29T20:59:59Z'),{ project: [{ value: 'archived',is_terminal: true }] });
   assert.equal(templates.month_start,'2024-02-01');
   assert.equal(templates.month_end,'2024-02-29');
   assert.equal(templates.rows.length,11);
   for (const template of templates.rows) assert.doesNotThrow(() => compileReport(template.definition,100));
-  const overdue = compileReport(templates.rows.find(row => row.key==='overdue_projects').definition,100,new Date('2024-02-29T23:59:59Z'));
+  const overdue = compileReport(templates.rows.find(row => row.key==='overdue_projects').definition,100,new Date('2024-02-29T20:59:59Z'));
   assert.match(overdue.sql,/r.status NOT IN \(\?,\?,\?\)/);
   assert.deepEqual(overdue.params.slice(0,4),['2024-02-29','closed','cancelled','archived']);
   const monthly = templates.rows.find(row => row.key==='monthly_customer_activity').definition;
-  assert.deepEqual(compileReport(monthly,100,new Date('2024-02-29T23:59:59Z')).params.slice(0,2),['2024-02-01','2024-02-29']);
+  assert.deepEqual(compileReport(monthly,100,new Date('2024-02-29T20:59:59Z')).params.slice(0,2),['2024-02-01','2024-02-29']);
+  // A minute past midnight in Cyprus is still the previous day in UTC, but it is already March here.
+  assert.deepEqual(compileReport(monthly,100,new Date('2024-02-29T22:01:00Z')).params.slice(0,2),['2024-03-01','2024-03-31']);
   assert.deepEqual(compileReport(monthly,100,new Date('2024-03-15T00:00:00Z')).params.slice(0,2),['2024-03-01','2024-03-31']);
   assert.equal(reportTemplates(new Date('2026-12-31T12:00:00Z')).month_end,'2026-12-31');
   assert.throws(() => compileReport({ ...base,filters: [{ field: 'id',operator: 'not_in',value: ['1'] }] },100),error => error.status===400);

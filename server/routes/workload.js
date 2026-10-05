@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const appTime = require('../appTime');
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
@@ -16,7 +17,7 @@ router.get('/', requireManager, async (req, res) => {
 
   const engineerIds = engineers.map(e => e.id);
   const ph = engineerIds.map(() => '?').join(',');
-  const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const month = appTime.thisMonth(); // YYYY-MM, in the organisation's zone
 
   // Batch 1: all open/in-progress tasks for all engineers
   const allTasks = (await db.prepare(`

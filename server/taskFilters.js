@@ -1,3 +1,4 @@
+const appTime = require('./appTime');
 const FILTERS = new Set(['all', 'open', 'done', 'adhoc', 'waiting_customer', 'overdue', 'due_week', 'due_today', 'pending_approval']);
 const SORTS = { created: 't.created_at', task: 't.title', project: 'p.title', status: 't.status', priority: 't.priority', assignee: 'u.name', deadline: 't.deadline' };
 
@@ -14,7 +15,7 @@ function taskFilters(query, user) {
     if (query[key] !== undefined && (!/^[1-9]\d*$/.test(query[key]) || !Number.isSafeInteger(Number(query[key])))) return { error: `${key} must be a positive integer` };
   }
   if (query.adhoc !== undefined && !['0', '1'].includes(query.adhoc)) return { error: 'adhoc must be 0 or 1' };
-  const asOf = query.as_of ?? new Date().toISOString().slice(0, 10);
+  const asOf = query.as_of ?? appTime.today();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf) || Number(asOf.slice(0, 4)) < 1900 || Number(asOf.slice(0, 4)) > 9998
     || Number.isNaN(Date.parse(asOf)) || new Date(asOf).toISOString().slice(0, 10) !== asOf) return { error: 'as_of must be a valid YYYY-MM-DD date' };
   const sort = query.sort ?? 'created';

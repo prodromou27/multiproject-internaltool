@@ -1,4 +1,5 @@
 const router  = require('express').Router();
+const appTime = require('../appTime');
 const db      = require('../db');
 const ExcelJS = require('exceljs');
 const { taskFilters, taskPagination } = require('../taskFilters');
@@ -357,7 +358,7 @@ router.post('/:id/duplicate', requireAuth, async (req, res) => {
 
 /* ── Overdue counts (lightweight — used by sidebar badges) ── */
 router.get('/overdue-counts', requireAuth, async (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = appTime.today();
   let taskCount = 0;
   if (req.user.role === 'engineer') {
     taskCount = (await db.prepare(`

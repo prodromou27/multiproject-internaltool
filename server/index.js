@@ -240,6 +240,8 @@ app.get('/{*splat}', (req, res) => {
 // Personal reminders every minute; automatic ones (visits, tasks, customer
 // reports, asset expiry) each morning. See reminders.js.
 const { startReminderSchedules } = require('./reminders');
+const appTime = require('./appTime');
+const { startClockChecks } = require('./ntpCheck');
 
 const { initScheduler } = require('./reportScheduler');
 
@@ -257,6 +259,10 @@ const keyFile  = path.join(certDir, 'key.pem');
   try {
     await db.init();
     console.log('[db] schema ready');
+    await appTime.refreshTimeZone();
+    console.log(`[time] organisation time zone: ${appTime.timeZone()}`);
+    setInterval(() => appTime.refreshTimeZone(), 5 * 60 * 1000).unref?.();
+    startClockChecks();
   } catch (e) {
     console.error('[db] initialization failed — refusing to start:', e.message);
     process.exit(1);
