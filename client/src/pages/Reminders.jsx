@@ -36,13 +36,14 @@ function snoozeOptions() {
   return [['1 hour', hour], ['Tomorrow 09:00', tomorrow], ['Next week', week]];
 }
 
-function ReminderForm({ initial, group, customers, people, teams, onClose, onSaved }) {
+// `defaults` pre-fills a new reminder, e.g. from a customer: { customer_id, for, team_id }.
+export function ReminderForm({ initial, group, teamReminder, customers, people, teams, sharedTeams = [], defaults, onClose, onSaved }) {
   const toast = useToast();
-  const source = group || initial;
+  const source = group || teamReminder || initial;
   const start = source ? new Date(source.due_at) : (() => { const next = new Date(); next.setHours(next.getHours() + 1, 0, 0, 0); return next; })();
-  const [form, setForm] = useState({ title: source?.title || '', date: localDateISO(start), time: localTime(start), repeat: source?.repeat || 'none', customer_id: source?.customer_id ? String(source.customer_id) : '', notes: source?.notes || '', for: 'me', user_id: '', team_id: '' });
+  const [form, setForm] = useState({ title: source?.title || '', date: localDateISO(start), time: localTime(start), repeat: source?.repeat || 'none', customer_id: source?.customer_id ? String(source.customer_id) : defaults?.customer_id ? String(defaults.customer_id) : '', notes: source?.notes || '', for: defaults?.for || 'me', user_id: '', team_id: defaults?.team_id ? String(defaults.team_id) : '' });
   // Managers can set a new reminder for someone else or a whole team.
-  const canAssign = !source && (people.length > 0 || teams.length > 0);
+  const canAssign = !source && (people.length > 0 || teams.length > 0 || sharedTeams.length > 0);
   const [saving, setSaving] = useState(false), [error, setError] = useState('');
   const set = key => event => setForm(current => ({ ...current, [key]: event.target.value }));
   async function submit(event) {
@@ -51,20 +52,23 @@ function ReminderForm({ initial, group, customers, people, teams, onClose, onSav
     const body = { title: form.title, due_at: toInstant(form.date, form.time), time_zone: timeZone(), repeat: form.repeat, customer_id: form.customer_id || null, notes: form.notes };
     if (form.for === 'person') body.for = { user_id: Number(form.user_id) };
     if (form.for === 'team') body.for = { team_id: Number(form.team_id) };
+    if (form.for === 'shared') body.for = { team_id: Number(form.team_id), shared: true };
     try {
-      const saved = group ? await api.updateReminderGroup(group.group_key, body) : initial ? await api.updateReminder(initial.id, body) : await api.createReminder(body);
-      toast.success(group ? `Updated for ${group.recipients.length} ${group.recipients.length === 1 ? 'person' : 'people'}` : initial ? 'Reminder updated' : body.for ? `Reminder set for ${saved.recipients} ${saved.recipients === 1 ? 'person' : 'people'}` : 'Reminder set');
+      const saved = group ? await api.updateReminderGroup(group.group_key, body) : teamReminder ? await api.updateTeamReminder(teamReminder.id, body) : initial ? await api.updateReminder(initial.id, body) : await api.createReminder(body);
+      toast.success(group ? `Updated for ${group.recipients.length} ${group.recipients.length === 1 ? 'person' : 'people'}` : teamReminder ? 'Team reminder updated' : initial ? 'Reminder updated'
+        : body.for?.shared ? `Team reminder set for ${saved.team_name}` : body.for ? `Reminder set for ${saved.recipients} ${saved.recipients === 1 ? 'person' : 'people'}` : 'Reminder set');
       onSaved(saved);
     } catch (failure) { setError(failure.message); } finally { setSaving(false); }
   }
-  return <Modal title={group ? 'Edit reminder for others' : initial ? 'Edit reminder' : 'New reminder'} onClose={onClose}>
+  return <Modal title={group ? 'Edit reminder for others' : teamReminder ? `Edit ${teamReminder.team_name} team reminder` : initial ? 'Edit reminder' : 'New reminder'} onClose={onClose}>
     <form className="reminder-form" onSubmit={submit}>
       {error && <div className="error-msg" role="alert">{error}</div>}
       {canAssign && <div className="form-group"><label htmlFor="reminder-for">For</label><div className="reminder-form-for">
-        <select id="reminder-for" value={form.for} onChange={set('for')}><option value="me">Me</option>{people.length > 0 && <option value="person">Someone else</option>}{teams.length > 0 && <option value="team">A team</option>}</select>
+        <select id="reminder-for" value={form.for} onChange={event => setForm(current => ({ ...current, for: event.target.value, team_id: '' }))}><option value="me">Me</option>{sharedTeams.length > 0 && <option value="shared">A team, until someone completes it</option>}{people.length > 0 && <option value="person">Someone else</option>}{teams.length > 0 && <option value="team">Each member of a team</option>}</select>
         {form.for === 'person' && <select aria-label="Person" required value={form.user_id} onChange={set('user_id')}><option value="">Choose a person</option>{people.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select>}
+        {form.for === 'shared' && <select aria-label="Team" required value={form.team_id} onChange={set('team_id')}><option value="">Choose a team</option>{sharedTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}</select>}
         {form.for === 'team' && <select aria-label="Team" required value={form.team_id} onChange={set('team_id')}><option value="">Choose a team</option>{teams.map(team => <option key={team.id} value={team.id} disabled={!team.members}>{team.name} ({team.members} {team.members === 1 ? 'person' : 'people'})</option>)}</select>}
-      </div>{form.for === 'team' && <small className="text-muted">Each member gets their own copy to mark done.</small>}</div>}
+      </div>{form.for === 'team' && <small className="text-muted">Each member gets their own copy to mark done.</small>}{form.for === 'shared' && <small className="text-muted">Everyone in the team is reminded when it is due, and every day after, until someone marks it done.</small>}</div>}
       {group && <p className="text-sm text-muted">Changes apply to all {group.recipients.length} {group.recipients.length === 1 ? 'recipient' : 'recipients'}, and start it again for anyone who had finished it.</p>}
       <div className="form-group"><label htmlFor="reminder-title">What to remember</label><input id="reminder-title" required maxLength={200} autoFocus value={form.title} onChange={set('title')} placeholder="e.g. Check the Veeam backup report" /></div>
       <div className="reminder-form-when">
@@ -74,7 +78,7 @@ function ReminderForm({ initial, group, customers, people, teams, onClose, onSav
       </div>
       <div className="form-group"><label htmlFor="reminder-customer">Customer (optional)</label><select id="reminder-customer" value={form.customer_id} onChange={set('customer_id')}><option value="">None</option>{customers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></div>
       <div className="form-group"><label htmlFor="reminder-notes">Notes (optional)</label><textarea id="reminder-notes" rows={3} maxLength={2000} value={form.notes} onChange={set('notes')} /></div>
-      <div className="flex gap-8"><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : initial || group ? 'Save reminder' : 'Set reminder'}</button><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button></div>
+      <div className="flex gap-8"><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : initial || group || teamReminder ? 'Save reminder' : 'Set reminder'}</button><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button></div>
     </form>
   </Modal>;
 }
@@ -108,6 +112,7 @@ export default function Reminders() {
   const [data, setData] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(null); // null, 'new' or a reminder
   const [editingGroup, setEditingGroup] = useState(null); // a set of reminders for others
+  const [editingTeam, setEditingTeam] = useState(null); // a shared team reminder
   const [now, setNow] = useState(() => new Date().toISOString());
   const legacyKey = `hub_recurring_${user.id}`;
   const [legacy, setLegacy] = useState(() => { try { return JSON.parse(localStorage.getItem(legacyKey) || '[]'); } catch { return []; } });
@@ -120,6 +125,10 @@ export default function Reminders() {
   async function act(work, message) {
     setBusy(true);
     try { await work(); if (message) toast.success(message); await load(); } catch (failure) { toast.error(failure.message); } finally { setBusy(false); }
+  }
+  async function removeTeamReminder(reminder) {
+    if (!await confirm(`Delete the ${reminder.team_name} team reminder "${reminder.title}"?`, { title: 'Delete team reminder', label: 'Delete' })) return;
+    act(() => api.deleteTeamReminder(reminder.id), 'Team reminder deleted');
   }
   async function removeGroup(group) {
     if (!await confirm(`Delete "${group.title}" for all ${group.recipients.length} ${group.recipients.length === 1 ? 'recipient' : 'recipients'}?`, { title: 'Delete reminder', label: 'Delete' })) return;
@@ -164,6 +173,33 @@ export default function Reminders() {
       <Surface title="Due now" description={due.length ? 'Mark each one done, or snooze it.' : undefined}>
         {due.length ? <ul className="reminder-list">{due.map(reminder => row(reminder, true))}</ul> : <p className="text-muted reminders-empty">Nothing due. You'll get a notification here and on your chosen channels when a reminder comes up.</p>}
       </Surface>
+      {(data.team_reminders.active.length > 0 || data.shared_teams.length > 0) && <Surface title="Team reminders" description="Shared with your team. Everyone is reminded daily once due, until someone marks it done.">
+        {data.team_reminders.active.length ? <ul className="reminder-list">{data.team_reminders.active.map(reminder => {
+          const isDue = reminder.due_at <= now;
+          return <li key={reminder.id} className={`reminder-item${isDue ? ' is-due' : ''}`}>
+            <div className="reminder-item-main">
+              <strong>{reminder.title}</strong>
+              <div className="reminder-item-meta">
+                <span><Users size={12} aria-hidden="true" />{reminder.team_name}</span>
+                <span><Clock size={12} aria-hidden="true" />{isDue ? `Due since ${whenLabel(reminder.due_at)}` : whenLabel(reminder.due_at)}</span>
+                {reminder.repeat !== 'none' && <span><Repeat size={12} aria-hidden="true" />{REPEAT_LABELS[reminder.repeat]}</span>}
+                {reminder.customer_name && <Link to={`/customers/${reminder.customer_id}/service-profile`}>{reminder.customer_name}</Link>}
+                <span><UserRound size={12} aria-hidden="true" />Set by {reminder.set_by}</span>
+                {reminder.completed_by && <span>Last done by {reminder.completed_by}, {whenLabel(reminder.completed_at)}</span>}
+              </div>
+              {reminder.notes && <p>{reminder.notes}</p>}
+            </div>
+            <div className="reminder-item-actions">
+              <button type="button" className="btn btn-primary btn-sm" disabled={busy} title="Mark done for the whole team" onClick={() => act(() => api.completeTeamReminder(reminder.id), reminder.repeat === 'none' ? `Done for the ${reminder.team_name} team` : 'Done for the team — moved to the next time')}><Check size={13} /> Done for team</button>
+              {reminder.can_change && <>
+                <button type="button" className="btn btn-ghost btn-sm" aria-label={`Edit ${reminder.title}`} disabled={busy} onClick={() => setEditingTeam(reminder)}><Pencil size={13} /></button>
+                <button type="button" className="btn btn-ghost btn-sm" aria-label={`Delete ${reminder.title}`} disabled={busy} onClick={() => removeTeamReminder(reminder)}><Trash2 size={13} /></button>
+              </>}
+            </div>
+          </li>;
+        })}</ul> : <p className="text-muted reminders-empty">No team reminders. Use New reminder and choose a team, for things like certificate or licence renewals.</p>}
+        {data.team_reminders.done.length > 0 && <details className="reminders-done"><summary>Completed in the last 30 days ({data.team_reminders.done.length})</summary><ul>{data.team_reminders.done.map(reminder => <li key={reminder.id}><span>{reminder.title} · {reminder.team_name}</span><small>{reminder.completed_by ? `${reminder.completed_by}, ` : ''}{whenLabel(reminder.completed_at)}</small></li>)}</ul></details>}
+      </Surface>}
       <Surface title="Coming up">
         {upcoming.length ? <ul className="reminder-list">{upcoming.map(reminder => row(reminder, false))}</ul> : <div className="reminders-empty"><p className="text-muted">No reminders set.</p><button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing('new')}><BellRing size={13} /> Set a reminder</button></div>}
       </Surface>
@@ -194,7 +230,8 @@ export default function Reminders() {
       </Surface>
       {data.done.length > 0 && <details className="reminders-done"><summary>Done in the last 30 days ({data.done.length})</summary><ul>{data.done.map(reminder => <li key={reminder.id}><span>{reminder.title}</span><small>{whenLabel(reminder.completed_at)}</small></li>)}</ul></details>}
     </>}
-    {editing && <ReminderForm initial={editing === 'new' ? null : editing} customers={data?.customers || []} people={data?.people || []} teams={data?.teams || []} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+    {editing && <ReminderForm initial={editing === 'new' ? null : editing} customers={data?.customers || []} people={data?.people || []} teams={data?.teams || []} sharedTeams={data?.shared_teams || []} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+    {editingTeam && <ReminderForm teamReminder={editingTeam} customers={data?.customers || []} people={[]} teams={[]} onClose={() => setEditingTeam(null)} onSaved={() => { setEditingTeam(null); load(); }} />}
     {editingGroup && <ReminderForm group={editingGroup} customers={data?.customers || []} people={[]} teams={[]} onClose={() => setEditingGroup(null)} onSaved={() => { setEditingGroup(null); load(); }} />}
   </div>;
 }

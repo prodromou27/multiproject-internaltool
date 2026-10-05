@@ -716,6 +716,13 @@ async function applyMigrations(pool, transaction) {
     CREATE INDEX IF NOT EXISTS idx_reminders_group ON reminders(group_key);
     CREATE INDEX IF NOT EXISTS idx_reminders_created_by ON reminders(created_by);
   `]);
+  migrations.push(['20261009_shared_team_reminders', `
+    -- A shared team reminder is one row (shared=1, team_id) that every member of
+    -- the team is reminded about, daily once due, until anyone completes it.
+    ALTER TABLE reminders ADD COLUMN IF NOT EXISTS shared INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE reminders ADD COLUMN IF NOT EXISTS completed_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_reminders_shared ON reminders(shared, status, team_id);
+  `]);
   migrations.push(['20261006_managed_customers_tracked', `
     -- Managed customers whose activity tracking was left off were missing from
     -- their engineers' Log activity customer list.

@@ -306,6 +306,17 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .reminders-done ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
 .reminders-done li { display: flex; justify-content: space-between; gap: 12px; color: var(--gray-600); }
 .reminder-form { display: grid; gap: 4px; }
+/* Customer 360: reminders about this customer. */
+.cs-reminders { padding: 14px 18px; margin-bottom: 16px; display: grid; gap: 8px; }
+.cs-reminders-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cs-reminders-head h2 { margin: 0; font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; color: var(--ink); }
+.cs-reminders ul { list-style: none; margin: 0; padding: 0; display: grid; }
+.cs-reminders li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--gray-200); }
+.cs-reminders li:first-child { border-top: 0; }
+.cs-reminders li.is-due { border-left: 3px solid var(--signal); padding-left: 10px; }
+.cs-reminders li strong { display: block; font-weight: 600; color: var(--ink); font-size: 14px; }
+.cs-reminders-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--gray-600); margin-top: 2px; }
+.cs-reminders-meta span { display: inline-flex; align-items: center; gap: 5px; }
 .reminder-form-for { display: flex; gap: 8px; flex-wrap: wrap; }
 .reminder-form-for select { flex: 1 1 180px; }
 .reminder-recipients { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }

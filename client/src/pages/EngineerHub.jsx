@@ -84,7 +84,12 @@ export default function EngineerHub() {
   });
   // The next few of the person's reminders; the Reminders page has them all.
   const [reminders, setReminders] = useState([]);
-  const loadReminders = useCallback(() => api.reminders().then(result => setReminders(result.active || [])).catch(() => {}), []);
+  // Due team reminders come first: they stay open until someone in the team completes them.
+  const loadReminders = useCallback(() => api.reminders().then(result => {
+    const now = new Date().toISOString();
+    const team = (result.team_reminders?.active || []).filter(item => item.due_at <= now).map(item => ({ ...item, team: true }));
+    setReminders([...team, ...(result.active || [])]);
+  }).catch(() => {}), []);
   useEffect(() => { loadReminders(); }, [loadReminders]);
   const [recentProjects] = useState(() => {
     try { return JSON.parse(localStorage.getItem(`hub_recent_projects_${user.id}`) || '[]'); } catch { return []; }
@@ -198,7 +203,10 @@ export default function EngineerHub() {
   }
 
   async function completeReminder(reminder) {
-    try { await api.completeReminder(reminder.id); toast.success(reminder.repeat === 'none' ? 'Reminder done' : 'Done — moved to the next time'); loadReminders(); }
+    try {
+      if (reminder.team) await api.completeTeamReminder(reminder.id); else await api.completeReminder(reminder.id);
+      toast.success(reminder.team ? `Done for the ${reminder.team_name} team` : reminder.repeat === 'none' ? 'Reminder done' : 'Done — moved to the next time'); loadReminders();
+    }
     catch (failure) { toast.error(failure.message); }
   }
 
@@ -233,7 +241,7 @@ export default function EngineerHub() {
 
       {!managedFocus && saAccess?.enabled && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canLog={saAccess.enabled} />}
 
-      <div className="grid-2 mt-16"><section className="card"><div className="section-header"><h2 className="section-title">Reminders</h2><Link className="btn btn-ghost btn-sm" to="/reminders"><Plus size={12} /> Add</Link></div>{reminders.slice(0, 5).map(reminder => <div className="reminder-row" key={reminder.id}><BellRing size={13} /><span>{reminder.title}<small>{new Date(reminder.due_at) <= new Date() ? 'Due now' : `Next ${fmtDate(reminder.due_at)}`}</small></span><button className="btn btn-success btn-sm" aria-label={`Done: ${reminder.title}`} onClick={() => completeReminder(reminder)}><CheckCircle2 size={11} /></button></div>)}{!reminders.length && <p className="text-muted">No reminders set.</p>}{reminders.length > 5 && <Link to="/reminders" className="text-sm">All {reminders.length} reminders</Link>}</section><section className="card"><div className="section-header"><h2 className="section-title">Projects</h2><FolderOpen size={16} /></div><h3 className="hub-subheading">Bookmarked</h3>{pinned.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}{!pinned.length && <p className="text-muted">Pin projects from the Projects page.</p>}<h3 className="hub-subheading">Recently viewed</h3>{recentProjects.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}</section></div>
+      <div className="grid-2 mt-16"><section className="card"><div className="section-header"><h2 className="section-title">Reminders</h2><Link className="btn btn-ghost btn-sm" to="/reminders"><Plus size={12} /> Add</Link></div>{reminders.slice(0, 5).map(reminder => <div className="reminder-row" key={`${reminder.team ? 't' : 'p'}${reminder.id}`}><BellRing size={13} /><span>{reminder.title}<small>{reminder.team ? `${reminder.team_name} team · due now` : new Date(reminder.due_at) <= new Date() ? 'Due now' : `Next ${fmtDate(reminder.due_at)}`}</small></span><button className="btn btn-success btn-sm" aria-label={`Done: ${reminder.title}`} onClick={() => completeReminder(reminder)}><CheckCircle2 size={11} /></button></div>)}{!reminders.length && <p className="text-muted">No reminders set.</p>}{reminders.length > 5 && <Link to="/reminders" className="text-sm">All {reminders.length} reminders</Link>}</section><section className="card"><div className="section-header"><h2 className="section-title">Projects</h2><FolderOpen size={16} /></div><h3 className="hub-subheading">Bookmarked</h3>{pinned.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}{!pinned.length && <p className="text-muted">Pin projects from the Projects page.</p>}<h3 className="hub-subheading">Recently viewed</h3>{recentProjects.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}</section></div>
     </div>
   );
 }

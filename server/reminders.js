@@ -67,7 +67,7 @@ async function sendDueReminders(now = new Date(), store = db) {
   const at = now.toISOString();
   const due = await store.prepare(`SELECT r.id, r.user_id, r.title, r.notes, r.due_at, r.customer_id, c.name AS customer_name, r.created_by, s.name AS set_by_name
     FROM reminders r JOIN users u ON u.id = r.user_id LEFT JOIN customers c ON c.id = r.customer_id LEFT JOIN users s ON s.id = r.created_by
-    WHERE r.status = 'active' AND r.due_at <= ? AND (r.notified_at IS NULL OR r.notified_at < r.due_at) AND u.active = 1
+    WHERE r.status = 'active' AND r.shared = 0 AND r.due_at <= ? AND (r.notified_at IS NULL OR r.notified_at < r.due_at) AND u.active = 1
     ORDER BY r.due_at, r.id LIMIT 200`).all(at);
   let sent = 0;
   for (const reminder of due) {
@@ -81,6 +81,38 @@ async function sendDueReminders(now = new Date(), store = db) {
       facts: [...(customer ? [{ name: 'Customer', value: customer }] : []),
         ...(reminder.created_by && Number(reminder.created_by) !== Number(reminder.user_id) ? [{ name: 'Set by', value: reminder.set_by_name || 'A former user' }] : [])],
     }, { title: `Reminder: ${reminder.title}`, body: customer || reminder.notes || null, link: '/reminders' });
+    sent++;
+  }
+  return sent;
+}
+
+// ── Shared team reminders ────────────────────────────────────────────────────
+const NUDGE_EVERY_MS = 24 * 60 * 60 * 1000;
+/**
+ * Remind every active member of the team when a shared reminder falls due, and
+ * again each day after, until someone marks it done.
+ */
+async function sendTeamReminders(now = new Date(), store = db) {
+  const at = now.toISOString(), again = new Date(now.getTime() - NUDGE_EVERY_MS + 60 * 1000).toISOString();
+  const due = await store.prepare(`SELECT r.id, r.title, r.notes, r.due_at, r.notified_at, r.team_id, t.name AS team_name, r.customer_id, c.name AS customer_name
+    FROM reminders r JOIN teams t ON t.id = r.team_id LEFT JOIN customers c ON c.id = r.customer_id
+    WHERE r.shared = 1 AND r.status = 'active' AND r.due_at <= ? AND (r.notified_at IS NULL OR r.notified_at < r.due_at OR r.notified_at <= ?)
+    ORDER BY r.due_at, r.id LIMIT 200`).all(at, again);
+  let sent = 0;
+  for (const reminder of due) {
+    const claimed = await store.prepare(`UPDATE reminders SET notified_at = ? WHERE id = ? AND status = 'active'
+      AND (notified_at IS NULL OR notified_at < due_at OR notified_at <= ?)`).run(at, reminder.id, again);
+    if (claimed.changes !== 1) continue;
+    const members = await store.prepare('SELECT u.id FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.team_id = ? AND u.active = 1').all(reminder.team_id);
+    const customer = reminder.customer_name ? decrypt(reminder.customer_name) : null;
+    const repeatNotice = reminder.notified_at && reminder.notified_at >= reminder.due_at;
+    for (const member of members) {
+      await notifyUser(Number(member.id), 'reminder_due', {
+        title: `⏰ ${reminder.title}`,
+        body: `${repeatNotice ? 'Still open: ' : ''}${reminder.notes || `A ${reminder.team_name} team reminder is due. Whoever completes it, mark it done for everyone.`}`,
+        facts: [{ name: 'Team', value: reminder.team_name }, ...(customer ? [{ name: 'Customer', value: customer }] : [])],
+      }, { title: `${repeatNotice ? 'Still open' : 'Team reminder'}: ${reminder.title}`, body: [reminder.team_name, customer].filter(Boolean).join(' · '), link: '/reminders' });
+    }
     sent++;
   }
   return sent;
@@ -191,7 +223,10 @@ async function sendAutomaticReminders(store = db) {
 
 // ── Scheduling ───────────────────────────────────────────────────────────────
 function startReminderSchedules() {
-  const tick = () => sendDueReminders().catch(error => console.error('[reminders] personal:', error.message));
+  const tick = () => Promise.all([
+    sendDueReminders().catch(error => console.error('[reminders] personal:', error.message)),
+    sendTeamReminders().catch(error => console.error('[reminders] team:', error.message)),
+  ]);
   tick();
   setInterval(tick, 60 * 1000).unref?.();
 
@@ -205,4 +240,4 @@ function startReminderSchedules() {
   setTimeout(() => { daily(); setInterval(daily, 24 * 60 * 60 * 1000).unref?.(); }, next - now).unref?.();
 }
 
-module.exports = { REPEATS, AUTOMATIC, automaticSettings, validTimeZone, nextOccurrence, fromLocal, localParts, sendDueReminders, sendAutomaticReminders, startReminderSchedules };
+module.exports = { REPEATS, AUTOMATIC, automaticSettings, validTimeZone, nextOccurrence, fromLocal, localParts, sendDueReminders, sendTeamReminders, sendAutomaticReminders, startReminderSchedules };

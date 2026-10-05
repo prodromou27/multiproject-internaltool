@@ -1,6 +1,6 @@
 import { useEffect,useState } from 'react';
 import { useParams,useLocation,useNavigate,Link } from 'react-router-dom';
-import { Activity,ArrowLeft,BriefcaseBusiness,Building2,CalendarDays,CheckSquare,ChevronDown,ClipboardList,ExternalLink,Layers,Mail,MapPin,Phone,Plus,Settings2,Wrench } from 'lucide-react';
+import { Activity,ArrowLeft,BellRing,BriefcaseBusiness,Building2,CalendarDays,CheckSquare,ChevronDown,ClipboardList,ExternalLink,Layers,Mail,MapPin,Phone,Plus,Settings2,Wrench } from 'lucide-react';
 import { api } from '../api';
 import { StatusBadge,fmtDate } from '../components/Shared';
 import { ToneBadge } from '../components/EnterpriseUI';
@@ -10,6 +10,7 @@ import CustomerAssets from '../components/CustomerAssets';
 import ManagedCustomerConfiguration from '../components/ManagedCustomerConfiguration';
 import { CustomerProjects,CustomerTasks,CustomerVisits } from '../components/CustomerWorkSections';
 import CustomerTimeline from '../components/CustomerTimeline';
+import CustomerReminders from '../components/CustomerReminders';
 import { fmtHours,plural,Ranking } from '../components/ServiceCharts';
 import { fmtDuration,groupByDay,LedgerDay } from '../components/activityLedger';
 import { useAuth } from '../App';
@@ -26,19 +27,20 @@ function HealthCard({ icon:Icon,label,value,note,state='default',onClick,href,ba
   return <section className={className}>{body}</section>;
 }
 
-function QuickAdd({ customer,user,saAccess,onRecommendation }) {
+function QuickAdd({ customer,user,saAccess,onRecommendation,onReminder }) {
   const items=[];
   if (user.role==='manager' || (saAccess.enabled && user.role==='engineer')) items.push(['activity','Log Service Activity',`/activity-log?create=1&customer_id=${customer.id}`,Activity]);
   if (['manager','engineer'].includes(user.role)) items.push(['task','Create Task',`/tasks?create=1&customer_id=${customer.id}`,CheckSquare]);
   if (user.role==='manager') items.push(['project','Create Project',`/projects?create=1&customer_id=${customer.id}`,BriefcaseBusiness]);
   if (['manager','planner'].includes(user.role)) items.push(['visit','Schedule Maintenance Visit',`/maintenance-visits?create=1&customer_id=${customer.id}`,Wrench]);
   if (['manager','planner','engineer'].includes(user.role)) items.push(['recommendation','Add Recommendation',null,ClipboardList]);
+  if (onReminder) items.push(['reminder','Add Reminder',null,BellRing]);
   if (user.role==='engineer' && saAccess.capabilities?.projectDelivery && !saAccess.capabilities?.managedServiceOperations) {
     const order=['task','visit','recommendation','activity'];items.sort((left,right) => order.indexOf(left[0])-order.indexOf(right[0]));
   }
   if (!items.length) return null;
   return <details className="cs-quick-add"><summary className="btn btn-primary"><Plus size={15} /> Add <ChevronDown size={14} /></summary><div className="cs-quick-menu" role="menu">
-    {items.map(([key,label,to,Icon]) => to ? <Link key={key} to={to} role="menuitem"><Icon size={15} />{label}</Link> : <button key={key} type="button" role="menuitem" onClick={event => { event.currentTarget.closest('details').open=false;onRecommendation(); }}><Icon size={15} />{label}</button>)}
+    {items.map(([key,label,to,Icon]) => to ? <Link key={key} to={to} role="menuitem"><Icon size={15} />{label}</Link> : <button key={key} type="button" role="menuitem" onClick={event => { event.currentTarget.closest('details').open=false;(key==='reminder' ? onReminder : onRecommendation)(); }}><Icon size={15} />{label}</button>)}
   </div></details>;
 }
 
@@ -59,7 +61,7 @@ function HealthRing({ health }) {
   </details>;
 }
 
-function CustomerHeader({ customer,operations,user,saAccess,onRecommendation }) {
+function CustomerHeader({ customer,operations,user,saAccess,onRecommendation,onReminder }) {
   const contact=customer.contact_name || customer.primary_contact;
   const managed=operations?.managed;
   const health=user.role==='manager' ? customerHealth(operations) : null;
@@ -74,7 +76,7 @@ function CustomerHeader({ customer,operations,user,saAccess,onRecommendation }) 
         {managed?.responsible_team && <span><Layers size={13} />{managed.responsible_team}</span>}
       </div>
     </div>
-    <div className="cs-header-actions">{health && <HealthRing health={health} />}<QuickAdd customer={customer} user={user} saAccess={saAccess} onRecommendation={onRecommendation} />{managed?.state==='active' || managed?.state==='sync_attention' ? <Link className="btn btn-ghost" to={`/managed-customers/${customer.id}`}><ExternalLink size={14} /> Managed Services</Link> : null}</div>
+    <div className="cs-header-actions">{health && <HealthRing health={health} />}<QuickAdd customer={customer} user={user} saAccess={saAccess} onRecommendation={onRecommendation} onReminder={onReminder} />{managed?.state==='active' || managed?.state==='sync_attention' ? <Link className="btn btn-ghost" to={`/managed-customers/${customer.id}`}><ExternalLink size={14} /> Managed Services</Link> : null}</div>
   </header>;
 }
 
@@ -130,7 +132,7 @@ export default function CustomerServiceProfile() {
   const [customer,setCustomer]=useState(null),[operations,setOperations]=useState(null),[operationsError,setOperationsError]=useState(''),[profileError,setProfileError]=useState(''),[retry,setRetry]=useState(0);
   const assetsGrant=operations?.assets_access==='team'; // engineer on a managed-services team serving this customer
   const tab=customer360Section(user,query.get('section'),saAccess.capabilities,assetsGrant);
-  const [engineers,setEngineers]=useState([]),[categories,setCategories]=useState([]);
+  const [engineers,setEngineers]=useState([]),[categories,setCategories]=useState([]),[addingReminder,setAddingReminder]=useState(false);
   useEffect(() => { const controller=new AbortController();setCustomer(null);setProfileError('');api.customer(id,{ signal:controller.signal }).then(result => { if (!controller.signal.aborted) setCustomer(result); }).catch(failure => { if (!controller.signal.aborted) setProfileError(failure.message); });return () => controller.abort(); },[id,retry]);
   useEffect(() => { const controller=new AbortController();setOperations(null);setOperationsError('');api.customerOperationsSummary(id,{ signal:controller.signal }).then(result => { if (!controller.signal.aborted) setOperations(result); }).catch(failure => { if (!controller.signal.aborted) setOperationsError(failure.message); });return () => controller.abort(); },[id,retry]);
   useEffect(() => { if (!['activities','tasks'].includes(tab)) return undefined;const controller=new AbortController();Promise.all([api.users({ signal:controller.signal }),tab==='activities'?api.activityCategories({ signal:controller.signal }):Promise.resolve([])]).then(([users,cats]) => { if (!controller.signal.aborted) { setEngineers(users.filter(item => item.role==='engineer'));setCategories(cats); } }).catch(() => {});return () => controller.abort(); },[tab]);
@@ -142,11 +144,11 @@ export default function CustomerServiceProfile() {
   const sections=customer360Sections(user,saAccess.capabilities,assetsGrant);
   const assetAccess=Object.prototype.hasOwnProperty.call(user.permissions || {},'assets.access') ? user.permissions['assets.access']===true : user.role==='manager';
   return <div className="page cs-page"><Link to={user.role==='manager'?'/customers':'/'} className="cs-back"><ArrowLeft size={12} /> {user.role==='manager'?'Back to Customers':'Back to Dashboard'}</Link>
-    <CustomerHeader customer={customer} operations={operations} user={user} saAccess={saAccess} onRecommendation={() => selectTab('recommendations',null,true)} />
+    <CustomerHeader customer={customer} operations={operations} user={user} saAccess={saAccess} onRecommendation={() => selectTab('recommendations',null,true)} onReminder={() => { selectTab('overview');setAddingReminder(true); }} />
     <CustomerHealthStrip customerId={customer.id} data={operations} error={operationsError} onSelectTab={selectTab} />
     <div className="tabs cs-tabs" role="tablist" aria-label="Customer 360 sections">{sections.map((section,index) => <button key={section.id} id={`customer-tab-${section.id}`} type="button" className={`tab${tab===section.id?' active':''}`} role="tab" aria-selected={tab===section.id} aria-controls="customer-360-panel" tabIndex={tab===section.id?0:-1} onKeyDown={event => moveTab(event,index)} onClick={() => selectTab(section.id)}>{section.label}</button>)}</div>
     <main id="customer-360-panel" className="cs-tab-panel" role="tabpanel" aria-labelledby={`customer-tab-${tab}`}>
-      {tab==='overview' ? <CustomerOverview key={customer.id} customer={customer} summary={operations} summaryError={operationsError} onSelectTab={selectTab} /> : tab==='projects' ? <CustomerProjects key={`${customer.id}:${query.get('filter') || ''}`} customerId={customer.id} initialFilter={query.get('filter')} /> : tab==='tasks' ? <CustomerTasks key={`${customer.id}:${query.get('filter') || ''}`} customerId={customer.id} initialFilter={query.get('filter')} engineers={user.role==='manager'?engineers:[]} /> : tab==='maintenance-visits' ? <CustomerVisits key={`${customer.id}:${query.get('filter') || ''}`} customerId={customer.id} initialFilter={query.get('filter')} /> : tab==='timeline' ? <CustomerTimeline customerId={customer.id} user={user} /> : tab==='service-configuration' && user.role==='manager' ? <ManagedCustomerConfiguration key={customer.id} customerId={customer.id} /> : tab==='assets' && (assetAccess || assetsGrant) ? <CustomerAssets key={customer.id} customerId={customer.id} restricted={!assetAccess} /> : tab==='recommendations' ? <CustomerRecommendations key={customer.id} customerId={customer.id} sourceVisitId={sourceVisitId} create={query.get('create')==='1'} onSourceConsumed={() => { const params=new URLSearchParams(location.search);params.delete('source_visit');params.delete('create');navigate(`${location.pathname}?${params}`,{ replace:true }); }} /> : <ActivitiesSection id={id} user={user} engineers={engineers} categories={categories} />}
+      {tab==='overview' ? <><CustomerReminders key={`reminders-${customer.id}`} customer={customer} adding={addingReminder} onAddingChange={setAddingReminder} /><CustomerOverview key={customer.id} customer={customer} summary={operations} summaryError={operationsError} onSelectTab={selectTab} /></> : tab==='projects' ? <CustomerProjects key={`${customer.id}:${query.get('filter') || ''}`} customerId={customer.id} initialFilter={query.get('filter')} /> : tab==='tasks' ? <CustomerTasks key={`${customer.id}:${query.get('filter') || ''}`} customerId={customer.id} initialFilter={query.get('filter')} engineers={user.role==='manager'?engineers:[]} /> : tab==='maintenance-visits' ? <CustomerVisits key={`${customer.id}:${query.get('filter') || ''}`} customerId={customer.id} initialFilter={query.get('filter')} /> : tab==='timeline' ? <CustomerTimeline customerId={customer.id} user={user} /> : tab==='service-configuration' && user.role==='manager' ? <ManagedCustomerConfiguration key={customer.id} customerId={customer.id} /> : tab==='assets' && (assetAccess || assetsGrant) ? <CustomerAssets key={customer.id} customerId={customer.id} restricted={!assetAccess} /> : tab==='recommendations' ? <CustomerRecommendations key={customer.id} customerId={customer.id} sourceVisitId={sourceVisitId} create={query.get('create')==='1'} onSourceConsumed={() => { const params=new URLSearchParams(location.search);params.delete('source_visit');params.delete('create');navigate(`${location.pathname}?${params}`,{ replace:true }); }} /> : <ActivitiesSection id={id} user={user} engineers={engineers} categories={categories} />}
     </main>
   </div>;
 }

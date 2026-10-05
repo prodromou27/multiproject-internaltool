@@ -734,3 +734,83 @@ test('a manager can set a reminder for a person or a team; recipients can finish
   assert.ok((await db.prepare("SELECT title FROM notifications WHERE user_id = ? AND type = 'reminder_due'").all(ids.engineerEnabled)).some(row => row.title === 'Reminder: Own one, no customer'));
   assert.equal((await listOf(engineer)).active.find(row => row.id === own.data.id).set_by, null);
 });
+
+test('a shared team reminder reaches every member daily until anyone completes it', async () => {
+  const reminders = require('../reminders');
+  const manager = ids.tokenManager, member = ids.tokenEnabled;
+  const outsider = (await db.prepare("INSERT INTO users (name, email, password, role) VALUES ('Outside Engineer', 'outside@test.local', 'x', 'engineer')").run()).lastInsertRowid;
+  const outsiderToken = signJwt({ id: outsider });
+  const teammate = (await db.prepare("INSERT INTO users (name, email, password, role) VALUES ('Team Mate', 'teammate@test.local', 'x', 'engineer')").run()).lastInsertRowid;
+  await db.prepare('INSERT INTO team_members (team_id, user_id) VALUES (?, ?)').run(ids.teamEnabled, teammate);
+  const base = { title: 'Renew the SSL certificate for Acme', due_at: '2020-03-01T08:00:00.000Z', time_zone: 'UTC', repeat: 'yearly', customer_id: ids.customer };
+  const bell = async userId => (await db.prepare("SELECT title FROM notifications WHERE user_id = ? AND type = 'reminder_due' AND title LIKE ?").all(userId, '%SSL certificate for Acme%')).map(row => row.title);
+
+  // Only members (or managers) can set one for a team.
+  assert.equal((await api('/api/reminders', { method: 'POST', token: outsiderToken, body: { ...base, for: { team_id: ids.teamEnabled, shared: true } } })).status, 403);
+  const made = await api('/api/reminders', { method: 'POST', token: member, body: { ...base, for: { team_id: ids.teamEnabled, shared: true } } });
+  assert.equal(made.status, 201, JSON.stringify(made.data));
+  assert.equal(made.data.customer_name, 'Acme Corp');
+
+  // Members and managers see it; outsiders don't; it is not a personal reminder.
+  const memberView = (await api('/api/reminders', { token: member })).data;
+  assert.ok(memberView.team_reminders.active.some(row => row.id === made.data.id));
+  assert.equal(memberView.active.some(row => row.id === made.data.id), false);
+  assert.ok((await api('/api/reminders', { token: manager })).data.team_reminders.active.some(row => row.id === made.data.id));
+  assert.equal((await api('/api/reminders', { token: outsiderToken })).data.team_reminders.active.some(row => row.id === made.data.id), false);
+  assert.equal((await api(`/api/reminders/team/${made.data.id}/done`, { method: 'POST', token: outsiderToken })).status, 404);
+
+  // Due: every member is reminded, once per day.
+  await reminders.sendTeamReminders();
+  await reminders.sendTeamReminders();
+  assert.equal((await bell(ids.engineerEnabled)).length, 1);
+  assert.equal((await bell(teammate)).length, 1);
+  assert.deepEqual(await bell(outsider), []);
+  // A day later it is still open, so they are reminded again.
+  await reminders.sendTeamReminders(new Date(Date.now() + 25 * 3600 * 1000));
+  assert.equal((await bell(teammate)).length, 2);
+  assert.ok((await bell(teammate)).some(title => title.startsWith('Still open')));
+
+  // Only whoever set it, or a manager, can change it.
+  assert.equal((await api(`/api/reminders/team/${made.data.id}`, { method: 'PUT', token: signJwt({ id: teammate }), body: { title: 'Mine' } })).status, 403);
+  assert.equal((await api(`/api/reminders/team/${made.data.id}`, { method: 'PUT', token: manager, body: { notes: 'Wildcard cert, renew via the CA portal.' } })).status, 200);
+
+  // Anyone in the team completes it for everyone; a yearly one moves to next year.
+  const done = await api(`/api/reminders/team/${made.data.id}/done`, { method: 'POST', token: signJwt({ id: teammate }) });
+  assert.equal(done.status, 200, JSON.stringify(done.data));
+  assert.equal(done.data.completed_by, 'Team Mate');
+  assert.ok(done.data.due_at > new Date().toISOString());
+  assert.equal(new Date(done.data.due_at).getUTCMonth(), 2);
+  await reminders.sendTeamReminders(new Date(Date.now() + 49 * 3600 * 1000));
+  assert.equal((await bell(teammate)).length, 2, 'no more reminders once completed');
+
+  // A one-off one is closed for everyone.
+  const once = await api('/api/reminders', { method: 'POST', token: manager, body: { ...base, title: 'Rotate the shared admin password', repeat: 'none', for: { team_id: ids.teamEnabled, shared: true } } });
+  assert.equal((await api(`/api/reminders/team/${once.data.id}/done`, { method: 'POST', token: member })).data.status, 'done');
+  assert.equal((await api(`/api/reminders/team/${once.data.id}/done`, { method: 'POST', token: signJwt({ id: teammate }) })).status, 409);
+  const after = (await api('/api/reminders', { token: signJwt({ id: teammate }) })).data.team_reminders;
+  assert.equal(after.active.some(row => row.id === once.data.id), false);
+  assert.equal(after.done.find(row => row.id === once.data.id).completed_by, 'Engineer Enabled');
+
+  // Personal routes do not reach shared reminders.
+  assert.equal((await api(`/api/reminders/${made.data.id}`, { method: 'DELETE', token: member })).status, 404);
+  assert.equal((await api(`/api/reminders/team/${made.data.id}`, { method: 'DELETE', token: member })).status, 200);
+  await db.prepare('DELETE FROM team_members WHERE user_id = ?').run(teammate);
+});
+
+test('Customer 360 lists that customer\'s team and own reminders, defaulting new ones to its team', async () => {
+  const member = ids.tokenEnabled;
+  const base = { due_at: '2099-06-01T08:00:00.000Z', time_zone: 'UTC', repeat: 'yearly', customer_id: ids.customer };
+  const shared = await api('/api/reminders', { method: 'POST', token: member, body: { ...base, title: 'Renew Acme wildcard certificate', for: { team_id: ids.teamEnabled, shared: true } } });
+  const own = await api('/api/reminders', { method: 'POST', token: member, body: { ...base, title: 'Ask Acme about the renewal budget', repeat: 'none' } });
+  const elsewhere = await api('/api/reminders', { method: 'POST', token: member, body: { ...base, title: 'Unrelated', customer_id: null, repeat: 'none' } });
+  const view = await api(`/api/reminders/customer/${ids.customer}`, { token: member });
+  assert.equal(view.status, 200, JSON.stringify(view.data));
+  assert.deepEqual(view.data.team.active.map(row => row.title), ['Renew Acme wildcard certificate']);
+  assert.deepEqual(view.data.own.active.map(row => row.title), ['Ask Acme about the renewal budget']);
+  assert.equal(view.data.default_team_id, ids.teamEnabled);
+  // Someone without access to the customer gets nothing.
+  assert.equal((await api(`/api/reminders/customer/${ids.customerUnassigned}`, { token: member })).status, 404);
+  assert.equal((await api('/api/reminders/customer/abc', { token: member })).status, 400);
+  await api(`/api/reminders/team/${shared.data.id}`, { method: 'DELETE', token: member });
+  for (const made of [own, elsewhere]) await api(`/api/reminders/${made.data.id}`, { method: 'DELETE', token: member });
+});
