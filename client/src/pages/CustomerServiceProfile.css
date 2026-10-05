@@ -79,6 +79,8 @@
 .msc-group-body-rows > div:last-child { border-bottom: 0; }
 .msc-field { display: flex; flex-direction: column; gap: 6px; color: var(--gray-700); font-size: 12px; font-weight: 650; }
 .msc-field small { color: var(--gray-400); font-weight: 400; line-height: 1.4; }
+.msc-inline { display: flex; align-items: center; gap: 8px; }
+.msc-inline input { width: 84px; }
 .msc-field-primary { padding: 12px; margin: -12px; background: var(--primary-light); border-radius: var(--radius-md); }
 .msc-hint { color: var(--warning) !important; font-weight: 600 !important; }
 .msc-hint a { color: inherit; text-decoration: underline; }

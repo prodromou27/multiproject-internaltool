@@ -16,3 +16,10 @@ test('the owed period is the last complete one for each frequency', () => {
   assert.equal(periodFor('weekly', '2026-10-05'), null);
   assert.equal(periodFor('', '2026-10-05'), null);
 });
+
+test('a customer can have its own report due window; anything invalid falls back to the standard one', () => {
+  assert.equal(periodFor('monthly', '2026-10-05', -1, 30).due_date, '2026-10-30');
+  assert.equal(periodFor('quarterly', '2026-10-05', -1, 45).due_date, '2026-11-14');
+  assert.equal(periodFor('monthly', '2026-10-05', -1, 0).due_date, '2026-09-30');
+  for (const fallback of [null, undefined, '', -1, 121, 'x', 2.5]) assert.equal(periodFor('monthly', '2026-10-05', -1, fallback).due_date, '2026-10-10', String(fallback));
+});

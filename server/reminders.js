@@ -189,7 +189,7 @@ async function sendAutomaticReminders(store = db) {
   }
 
   // Customer reports owed: three days before the due date, and the day after it passes.
-  const managed = await store.prepare(`SELECT c.id, c.name, mc.reporting_frequency, mc.created_at AS managed_since, mc.service_manager_id
+  const managed = await store.prepare(`SELECT c.id, c.name, mc.reporting_frequency, mc.report_due_days, mc.created_at AS managed_since, mc.service_manager_id
     FROM managed_customer_configurations mc JOIN customers c ON c.id = mc.customer_id
     WHERE mc.managed_services_enabled = 1 AND c.active = 1 AND mc.reporting_frequency IS NOT NULL`).all();
   const owed = await obligations(managed, store);

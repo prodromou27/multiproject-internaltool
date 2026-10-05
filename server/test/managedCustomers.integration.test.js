@@ -795,3 +795,24 @@ test('a managed customer is always open for activity logging by its responsible 
   assert.equal(off.status,200,JSON.stringify(off.data));
   assert.equal(await listed(),false);
 });
+
+test('each managed customer can have its own report due window', async () => {
+  const { periodFor } = require('../managedReportObligations');
+  const { today } = await db.prepare('SELECT app_today() AS today').get();
+  const customer = (await db.prepare('INSERT INTO customers (name,active) VALUES (?,1)').run('Due Window Customer')).lastInsertRowid;
+  const path = `/api/customers/${customer}/managed-services`;
+  const initial = (await api(path, { token: ids.tokenManager })).data;
+  assert.equal(initial.report_due_days, null);
+  const body = { ...initial, managed_services_enabled: true, reporting_frequency: 'monthly' };
+  for (const key of ['customer_id', 'last_successful_sync_at', 'last_sync_status']) delete body[key];
+  for (const bad of [-1, 121, 'soon', 2.5]) assert.equal((await api(path, { method: 'PUT', token: ids.tokenManager, body: { ...body, report_due_days: bad } })).status, 400, String(bad));
+  const saved = await api(path, { method: 'PUT', token: ids.tokenManager, body: { ...body, report_due_days: 30 } });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.data.report_due_days, 30);
+  const due = async () => (await api(`/api/managed-customers/${customer}/overview`, { token: ids.tokenManager })).data.report_due;
+  assert.equal((await due()).due_date, periodFor('monthly', today, -1, 30).due_date);
+  const cleared = await api(path, { method: 'PUT', token: ids.tokenManager, body: { ...body, version: saved.data.version, report_due_days: null } });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.data.report_due_days, null);
+  assert.equal((await due()).due_date, periodFor('monthly', today).due_date);
+});

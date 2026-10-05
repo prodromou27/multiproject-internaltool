@@ -68,12 +68,14 @@ test('ticket sync alerts when a customer starts failing and when it recovers, no
     VALUES (?,'request_tracker','77','Alert queue',1,1)`).run(customer);
   const { syncCustomer } = require('../ticketSync');
   const broken = { getTickets: async () => { throw Object.assign(new Error('RT unreachable'), { status: 502 }); } };
-  const bell = async () => (await db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND type='ticket_sync_failed'").get(ids.manager)).n;
+  const count = async () => Number((await db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND type='ticket_sync_failed'").get(ids.manager)).n);
+  // Bell entries are written in the background too; wait for the expected number.
+  const bell = async expected => { for (let i = 0; i < 100 && await count() < expected; i++) await new Promise(resolve => setTimeout(resolve, 20)); return count(); };
   await assert.rejects(syncCustomer(customer, { provider: broken }));
   await settle(1);
   assert.equal(posts.length, 1);
   assert.match(posts[0].markdown, /could not be synchronised[\s\S]*RT unreachable/);
-  assert.equal(Number(await bell()), 1, 'managers get it on their bell too');
+  assert.equal(await bell(1), 1, 'managers get it on their bell too');
   posts.length = 0;
   await assert.rejects(syncCustomer(customer, { provider: broken }));
   await assert.rejects(syncCustomer(customer, { provider: broken }));
@@ -83,7 +85,7 @@ test('ticket sync alerts when a customer starts failing and when it recovers, no
   await settle(1);
   assert.equal(posts.length, 1);
   assert.match(posts[0].markdown, /working again/);
-  assert.equal(Number(await bell()), 2);
+  assert.equal(await bell(2), 2);
 });
 
 test('people can choose the new alerts for their own channels', async () => {

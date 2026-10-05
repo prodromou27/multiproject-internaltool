@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { Toggle,ToggleRow } from '../pages/admin/shared';
 
-const DEFAULTS={ managed_services_enabled:false,service_activity_tracking_enabled:false,task_reporting_enabled:true,project_reporting_enabled:true,maintenance_visit_reporting_enabled:true,recommendation_tracking_enabled:true,include_in_managed_services_reports:true,responsible_team_id:null,service_manager_id:null,reporting_frequency:'',default_report_template_id:null,ticket_integration_enabled:false,ticket_include_in_reporting:true,ticket_write_back_enabled:false,ticket_write_back_status:'',external_queue_id:'',external_queue_name:'',version:0 };
+const DEFAULTS={ managed_services_enabled:false,service_activity_tracking_enabled:false,task_reporting_enabled:true,project_reporting_enabled:true,maintenance_visit_reporting_enabled:true,recommendation_tracking_enabled:true,include_in_managed_services_reports:true,responsible_team_id:null,service_manager_id:null,reporting_frequency:'',report_due_days:null,default_report_template_id:null,ticket_integration_enabled:false,ticket_include_in_reporting:true,ticket_write_back_enabled:false,ticket_write_back_status:'',external_queue_id:'',external_queue_name:'',version:0 };
 const TRACKING=[
   ['service_activity_tracking_enabled','Service activity tracking','Log engineer time and work against this customer.'],
   ['maintenance_visit_reporting_enabled','Maintenance visits','Include visits in reports.'],
@@ -228,6 +228,14 @@ export default function ManagedCustomerConfiguration({ customerId }) {
               <select value={form.reporting_frequency} onChange={event => update({ reporting_frequency:event.target.value },{ delay:0 })}>
                 <option value="">Not scheduled</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="semiannual">Twice yearly</option><option value="annual">Annual</option>
               </select>
+            </label>
+            <label className="msc-field"><span>Report due</span>
+              <span className="msc-inline">
+                <input type="number" min="0" max="120" step="1" inputMode="numeric" value={form.report_due_days ?? ''} placeholder="10"
+                  aria-label="Days after the period ends that the report is due"
+                  onChange={event => update({ report_due_days:event.target.value === '' ? null : Number(event.target.value) })} />
+                <small className="text-muted">days after the period ends{form.report_due_days == null ? ' (standard: 10)' : ''}</small>
+              </span>
             </label>
             <label className="msc-field"><span>Default template</span>
               <select value={form.default_report_template_id || ''} onChange={event => update({ default_report_template_id:event.target.value ? Number(event.target.value) : null },{ delay:0 })}>

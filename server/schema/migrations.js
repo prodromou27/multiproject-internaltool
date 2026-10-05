@@ -748,6 +748,11 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261013_report_due_days', `
+    -- Days after a reporting period ends by which that customer's report is due
+    -- (contracts differ). NULL means the standard window (managedReportObligations.js).
+    ALTER TABLE managed_customer_configurations ADD COLUMN IF NOT EXISTS report_due_days INTEGER;
+  `]);
   migrations.push(['20261012_shared_event_deliveries', `
     -- Shared-channel posts raised by scheduled checks (report due, asset expiry,
     -- sync failures), so each is posted once.

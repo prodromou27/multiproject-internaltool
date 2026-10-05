@@ -4,10 +4,11 @@ const { requireManager,requirePermission }=require('../middleware/auth');
 const { logAudit }=require('../auditLog');
 const ticketingSettings=require('../ticketingSettings');
 const { createTicketingProvider }=require('../ticketing');
+const { MAX_REPORT_DUE_DAYS }=require('../managedReportObligations');
 
 const FREQUENCIES=new Set(['monthly','quarterly','semiannual','annual']);
 const BOOLEAN_FIELDS=['managed_services_enabled','service_activity_tracking_enabled','task_reporting_enabled','project_reporting_enabled','maintenance_visit_reporting_enabled','recommendation_tracking_enabled','include_in_managed_services_reports','ticket_integration_enabled','ticket_include_in_reporting','ticket_write_back_enabled'];
-const ALLOWED_FIELDS=new Set([...BOOLEAN_FIELDS,'responsible_team_id','service_manager_id','reporting_frequency','default_report_template_id','external_queue_id','external_queue_name','ticket_write_back_status','version']);
+const ALLOWED_FIELDS=new Set([...BOOLEAN_FIELDS,'responsible_team_id','service_manager_id','reporting_frequency','report_due_days','default_report_template_id','external_queue_id','external_queue_name','ticket_write_back_status','version']);
 // Server-owned values the GET returns. A client that saves back what it read
 // must not be rejected for them; they are ignored, never written.
 const READ_ONLY_FIELDS=new Set(['customer_id','last_successful_sync_at','last_sync_status']);
@@ -39,6 +40,7 @@ function responseShape(customer,managed={},ticket={}) {
     responsible_team_id:managed.responsible_team_id || null,
     service_manager_id:managed.service_manager_id || null,
     reporting_frequency:managed.reporting_frequency || '',
+    report_due_days:managed.report_due_days ?? null,
     default_report_template_id:managed.default_report_template_id || null,
     ticket_integration_enabled:!!ticket.enabled,
     ticket_include_in_reporting:ticket.include_in_reporting===undefined ? true : !!ticket.include_in_reporting,
@@ -74,6 +76,10 @@ router.put('/',requireManager,async (req,res) => {
     if (defaultTemplateId && !await db.prepare('SELECT 1 FROM managed_report_templates WHERE id=? AND active=1').get(defaultTemplateId)) fail('Default report template must be an active template');
     const frequency=String(req.body.reporting_frequency || '').trim().toLowerCase();
     if (frequency && !FREQUENCIES.has(frequency)) fail('Reporting frequency must be monthly, quarterly, semiannual, annual, or blank');
+    // Blank keeps the standard window; a value is this customer's own (e.g. from its contract).
+    const rawDue=req.body.report_due_days;
+    const dueDays=rawDue===undefined || rawDue===null || rawDue==='' ? null : Number(rawDue);
+    if (dueDays!==null && (!Number.isSafeInteger(dueDays) || dueDays<0 || dueDays>MAX_REPORT_DUE_DAYS)) fail(`Report due days must be a whole number from 0 to ${MAX_REPORT_DUE_DAYS}, or blank`);
     const queueId=String(req.body.external_queue_id || '').trim();
     const queueName=String(req.body.external_queue_name || '').trim();
     if (queueId && !/^\d+$/.test(queueId)) fail('RT queue ID must contain digits only');
@@ -102,21 +108,21 @@ router.put('/',requireManager,async (req,res) => {
         const update=await tx.prepare(`UPDATE managed_customer_configurations SET
           managed_services_enabled=?,task_reporting_enabled=?,project_reporting_enabled=?,maintenance_visit_reporting_enabled=?,
           recommendation_tracking_enabled=?,include_in_managed_services_reports=?,responsible_team_id=?,service_manager_id=?,
-          reporting_frequency=?,default_report_template_id=?,version=?,updated_by=?,updated_at=app_now()
+          reporting_frequency=?,report_due_days=?,default_report_template_id=?,version=?,updated_by=?,updated_at=app_now()
           WHERE customer_id=? AND version=?`).run(
           req.body.managed_services_enabled?1:0,req.body.task_reporting_enabled?1:0,req.body.project_reporting_enabled?1:0,
           req.body.maintenance_visit_reporting_enabled?1:0,req.body.recommendation_tracking_enabled?1:0,
-          req.body.include_in_managed_services_reports?1:0,responsibleTeamId,serviceManagerId,frequency || null,defaultTemplateId,
+          req.body.include_in_managed_services_reports?1:0,responsibleTeamId,serviceManagerId,frequency || null,dueDays,defaultTemplateId,
           nextVersion,req.user.id,id,Number(req.body.version));
         if (update.changes!==1) fail('This configuration changed after you opened it. Reload and try again.',409);
       } else {
         await tx.prepare(`INSERT INTO managed_customer_configurations
           (customer_id,managed_services_enabled,task_reporting_enabled,project_reporting_enabled,maintenance_visit_reporting_enabled,
            recommendation_tracking_enabled,include_in_managed_services_reports,responsible_team_id,service_manager_id,reporting_frequency,
-           default_report_template_id,version,updated_by)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,req.body.managed_services_enabled?1:0,req.body.task_reporting_enabled?1:0,
+           report_due_days,default_report_template_id,version,updated_by)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,req.body.managed_services_enabled?1:0,req.body.task_reporting_enabled?1:0,
           req.body.project_reporting_enabled?1:0,req.body.maintenance_visit_reporting_enabled?1:0,req.body.recommendation_tracking_enabled?1:0,
-          req.body.include_in_managed_services_reports?1:0,responsibleTeamId,serviceManagerId,frequency || null,defaultTemplateId,nextVersion,req.user.id);
+          req.body.include_in_managed_services_reports?1:0,responsibleTeamId,serviceManagerId,frequency || null,dueDays,defaultTemplateId,nextVersion,req.user.id);
       }
       // A managed customer is always tracked: its engineers must be able to log work against it.
       await tx.prepare('UPDATE customers SET service_activity_enabled=? WHERE id=?').run(req.body.managed_services_enabled || req.body.service_activity_tracking_enabled ? 1 : 0,id);
@@ -139,7 +145,7 @@ router.put('/',requireManager,async (req,res) => {
       }
       return nextVersion;
     });
-    await logAudit(db,req,'customer',id,`Customer ${id}`,'managed_services_configuration_updated',`managed=${req.body.managed_services_enabled}; ticketing=${req.body.ticket_integration_enabled}; write_back=${req.body.ticket_write_back_enabled}; queue_id=${queueId || 'none'}; version=${result}`);
+    await logAudit(db,req,'customer',id,`Customer ${id}`,'managed_services_configuration_updated',`managed=${req.body.managed_services_enabled}; ticketing=${req.body.ticket_integration_enabled}; write_back=${req.body.ticket_write_back_enabled}; queue_id=${queueId || 'none'}; report_due_days=${dueDays ?? 'standard'}; version=${result}`);
     const customer=await db.prepare('SELECT id,service_activity_enabled FROM customers WHERE id=?').get(id);
     const managed=await db.prepare('SELECT * FROM managed_customer_configurations WHERE customer_id=?').get(id);
     const ticket=await db.prepare("SELECT * FROM customer_ticketing_configurations WHERE customer_id=? AND provider_type='request_tracker'").get(id);

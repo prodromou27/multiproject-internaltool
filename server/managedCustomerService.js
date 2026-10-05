@@ -12,7 +12,7 @@ async function listManagedCustomers(store=db,{ teamIds }={}) {
   const scoped=Array.isArray(teamIds);
   if (scoped && !teamIds.length) return [];
   const teamFilter=scoped ? ` AND mc.responsible_team_id IN (${teamIds.map(() => '?').join(',')})` : '';
-  const rows=await store.prepare(`SELECT c.id,c.name,mc.reporting_frequency,mc.created_at AS managed_since,mc.responsible_team_id,t.name AS responsible_team,
+  const rows=await store.prepare(`SELECT c.id,c.name,mc.reporting_frequency,mc.report_due_days,mc.created_at AS managed_since,mc.responsible_team_id,t.name AS responsible_team,
     mc.service_manager_id,u.name AS service_manager,tc.enabled AS ticketing_enabled,tc.last_successful_sync_at,tc.last_sync_status
     FROM managed_customer_configurations mc JOIN customers c ON c.id=mc.customer_id
     LEFT JOIN teams t ON t.id=mc.responsible_team_id LEFT JOIN users u ON u.id=mc.service_manager_id
@@ -72,7 +72,7 @@ async function getOverview(customerId,from,to,store=db) {
     store.prepare("SELECT COUNT(*) FILTER (WHERE status NOT IN ('implemented','converted_to_project','closed','rejected')) AS open_now FROM customer_recommendations WHERE customer_id=?").get(customerId),
   ]);
   const customer=decryptCustomer(row);customer.responsible_team=row.responsible_team;customer.reporting_frequency=row.managed_reporting_frequency || row.reporting_frequency || null;customer.service_manager=row.service_manager;
-  const due=(await obligations([{ id:customerId,reporting_frequency:row.managed_reporting_frequency,managed_since:row.managed_since }],store)).get(Number(customerId)) || null;
+  const due=(await obligations([{ id:customerId,reporting_frequency:row.managed_reporting_frequency,managed_since:row.managed_since,report_due_days:row.report_due_days }],store)).get(Number(customerId)) || null;
   return { customer,report_due:due,period:{ from,to },tickets:numbers(tickets),activities:{ ...numbers(activities),hours:Math.round(Number(activities.minutes || 0)/6)/10 },tasks:numbers(tasks),projects:numbers(projects),visits:{ ...numbers(visits),last_visit:visits.last_visit || null },recommendations:numbers(recommendations) };
 }
 
