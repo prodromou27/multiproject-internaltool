@@ -9,7 +9,7 @@
 const db = require('./db');
 const appTime = require('./appTime');
 const { decrypt } = require('./fieldCipher');
-const { notifyUser, notify, postToSharedChannels } = require('./notifications');
+const { notifyUser, notify, postToSharedChannels, notifyShared } = require('./notifications');
 const { obligations } = require('./managedReportObligations');
 
 const REPEATS = ['none', 'daily', 'weekly', 'monthly', 'yearly'];
@@ -199,6 +199,9 @@ async function sendAutomaticReminders(store = db) {
     const occasion = today === addDays(due.due_date, -3) ? 'due_soon' : today === addDays(due.due_date, 1) ? 'overdue' : null;
     if (!occasion) continue;
     const name = decrypt(customer.name);
+    notifyShared('customer_report_due', { title: occasion === 'overdue' ? '⚠️ Customer report overdue' : '📄 Customer report due soon',
+      body: `The **${due.label}** report for **${name}** ${occasion === 'overdue' ? 'was due' : 'is due'} on ${due.due_date}.`,
+      facts: [{ name: 'Customer', value: name }, { name: 'Period', value: due.label }, { name: 'Due', value: due.due_date }] }, { dedupeKey: `${customer.id}:${due.from}:${occasion}` });
     for (const userId of await managersFor(store, customer.service_manager_id)) {
       if (!await wants(userId, 'report_due', store) || !await firstDelivery(store, userId, 'report_due', `${customer.id}:${due.from}`, occasion)) continue;
       await notifyUser(userId, 'report_due', {
@@ -222,6 +225,8 @@ async function sendAutomaticReminders(store = db) {
     for (const [what, date] of [['Support', asset.support_end_date], ['Warranty', asset.warranty_expiry_date]]) {
       const day = date ? String(date).slice(0, 10) : null;
       if (day !== addDays(today, 30) && day !== addDays(today, 7)) continue;
+      notifyShared('asset_expiring', { title: `🛡️ ${what} expiring`, body: `${what} for **${name}** (${customer}) ends on ${day}.`,
+        facts: [{ name: 'Asset', value: name }, { name: 'Customer', value: customer }, { name: 'Ends', value: day }] }, { dedupeKey: `${asset.id}:${what}:${day}` });
       for (const userId of await managersFor(store, asset.service_manager_id)) {
         if (!await wants(userId, 'asset_expiring', store) || !await firstDelivery(store, userId, 'asset_expiring', `${asset.id}:${what}:${day}`, day === addDays(today, 7) ? '7_days' : '30_days')) continue;
         await notifyUser(userId, 'asset_expiring', {

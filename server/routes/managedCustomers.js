@@ -1,4 +1,5 @@
 const router=require('express').Router();
+const { notifyShared } = require('../notifications');
 const appTime = require('../appTime');
 const { requirePermission }=require('../middleware/auth');
 const service=require('../managedCustomerService');
@@ -33,6 +34,9 @@ async function updateReportWorkflow(req,res,customerId,reportId) {
       const priority=['submit','reject','finalize'].includes(action) ? 'high' : 'normal';
       for (const userId of recipients) await db.prepare('INSERT INTO notifications (user_id,type,title,body,link,priority) VALUES (?,?,?,?,?,?)').run(userId,`managed_report.${result.change.event}`,titleByAction[action],result.report.original_name,link,priority);
     } catch(error) { console.error('[managed-reports] workflow notification failed:',error.message); }
+    const reportCustomer=await db.prepare('SELECT name FROM customers WHERE id=?').get(customerId);
+    notifyShared(action==='submit' ? 'managed_report_submitted' : 'managed_report_decided',{ title:`📑 Customer report ${result.change.event}`,body:`**${result.report.original_name}** was ${result.change.event} by ${req.user.name}${result.change.comment ? `: ${result.change.comment}` : ''}.`,
+      facts:[{ name:'Customer',value:decrypt(reportCustomer?.name) || '—' },{ name:'Status',value:String(result.change.to).replace('_',' ') }] });
     await logAudit(db,req,'managed_report',reportId,result.report.original_name,`managed_report_${result.change.event}`,`customer_id=${customerId}; from=${result.change.from}; to=${result.change.to}; workflow_version=${result.report.workflow_version}; comment=${result.change.comment || ''}`);
     res.json({ report:(await reportHistory.list(customerId)).find(item => item.id===reportId) });
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not update the report workflow' }); }
@@ -238,6 +242,9 @@ router.put('/:id/reports/:reportId/sent',requirePermission('managed_reports.revi
   try {
     const { report,sent }=await reportHistory.markSent(customerId,reportId,req.body,req.user.id);
     await logAudit(db,req,'managed_report',reportId,report.original_name,'managed_report_sent',`customer_id=${customerId}; sent_on=${sent.sentOn}; sent_to=${sent.sentTo}`);
+    const sentCustomer=await db.prepare('SELECT name FROM customers WHERE id=?').get(customerId);
+    notifyShared('customer_report_sent',{ title:'📨 Customer report sent',body:`**${report.original_name}** was sent to ${sent.sentTo} on ${sent.sentOn}.`,
+      facts:[{ name:'Customer',value:decrypt(sentCustomer?.name) || '—' },{ name:'Recorded by',value:req.user.name }] });
     res.json({ report:(await reportHistory.list(customerId)).find(item => item.id===reportId) });
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not record that the report was sent' }); }
 });

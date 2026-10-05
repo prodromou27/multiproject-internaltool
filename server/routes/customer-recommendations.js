@@ -1,4 +1,6 @@
 const router = require('express').Router({ mergeParams: true });
+const { decrypt } = require('../fieldCipher');
+const { notifyShared } = require('../notifications');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { logAudit } = require('../auditLog');
@@ -61,6 +63,11 @@ router.post('/', async (req, res) => {
     return { row };
   });
   if (result.error) return res.status(400).json({ error: result.error });
+  if (['high', 'critical'].includes(result.row.risk_level)) {
+    const named = await db.prepare('SELECT name FROM customers WHERE id = ?').get(customer);
+    notifyShared('recommendation_created', { title: `⚠️ ${result.row.risk_level === 'critical' ? 'Critical' : 'High'}-risk recommendation`, body: `**${result.row.finding}**\n${result.row.recommendation}`,
+      facts: [{ name: 'Customer', value: decrypt(named?.name) || '—' }, { name: 'Risk', value: result.row.risk_level }, { name: 'Recorded by', value: req.user.name }] });
+  }
   res.status(201).json(result.row);
 });
 

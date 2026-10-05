@@ -79,9 +79,15 @@ test('the test button reports real delivery failures and missing configuration',
   assert.ok(seen.some(s => s.body.toPersonEmail === 'a@b.co') && seen.some(s => s.body.roomId === 'room'));
 });
 
-test('all five notification events are exposed and validated', () => {
-  const keys = Object.keys(safeSettings({}).notify_on);
-  assert.deepEqual(keys.sort(), ['project_assigned', 'report_submitted', 'task_assigned', 'visit_assigned', 'visit_reminder']);
+test('every shared-channel event is exposed with its default, grouped for the settings page, and validated', () => {
+  const { SHARED_EVENTS } = require('../sharedEvents');
+  const safe = safeSettings({});
+  assert.ok(SHARED_EVENTS.length >= 16);
+  assert.deepEqual(Object.keys(safe.notify_on).sort(), SHARED_EVENTS.map(event => event.key).sort());
+  for (const event of SHARED_EVENTS) assert.equal(safe.notify_on[event.key], event.default, event.key);
+  assert.ok(safe.events.every(event => event.key && event.group && event.label));
+  assert.equal(safeSettings({ notify_on: { activity_logged: true, task_assigned: false } }).notify_on.activity_logged, true);
+  assert.equal(safeSettings({ notify_on: { task_assigned: false } }).notify_on.task_assigned, false);
   assert.equal(mergeSettings({}, { notify_on: { report_submitted: false } }).notify_on.report_submitted, false);
   assert.throws(() => mergeSettings({}, { notify_on: { bogus: true } }), e => e.status === 400);
 });

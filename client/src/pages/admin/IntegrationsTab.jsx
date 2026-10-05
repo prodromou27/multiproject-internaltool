@@ -11,7 +11,8 @@ import { ActivityBotSettings } from './ActivityBotSettings';
 export const DEFAULT_SETTINGS = {
   teams:  { enabled: false, webhook_url: '' },
   webex:  { enabled: false, bot_token: '', mode: 'both', space_id: '', test_email: '' },
-  notify_on: { task_assigned: true, project_assigned: true, visit_assigned: true, report_submitted: true, visit_reminder: true },
+  // The server sends every event with its default and its label (see server/sharedEvents.js).
+  notify_on: {},
 };
 
 export function IntegrationsTab() {
@@ -21,6 +22,7 @@ export function IntegrationsTab() {
   const [msg,    setMsg]    = useState('');
   const [err,    setErr]    = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [events, setEvents] = useState([]);
 
   const [loadRetry,setLoadRetry] = useState(0);
   useEffect(() => {
@@ -34,6 +36,7 @@ export function IntegrationsTab() {
           webex:     { ...DEFAULT_SETTINGS.webex,     ...d.webex },
           notify_on: { ...DEFAULT_SETTINGS.notify_on, ...d.notify_on },
         }));
+        setEvents(Array.isArray(d.events) ? d.events : []);
       }
       setLoaded(true);
     }).catch(failure => { if (!controller.signal.aborted) setErr(failure.message); });
@@ -46,7 +49,7 @@ export function IntegrationsTab() {
 
   async function save() {
     setSaving(true); setMsg(''); setErr('');
-    try { await api.saveIntegrations(cfg); const updated = await api.getIntegrations(); setCfg({ teams: { ...DEFAULT_SETTINGS.teams,...updated.teams },webex: { ...DEFAULT_SETTINGS.webex,...updated.webex },notify_on: { ...DEFAULT_SETTINGS.notify_on,...updated.notify_on } }); setMsg('Settings saved successfully.'); }
+    try { await api.saveIntegrations(cfg); const updated = await api.getIntegrations(); setCfg({ teams: { ...DEFAULT_SETTINGS.teams,...updated.teams },webex: { ...DEFAULT_SETTINGS.webex,...updated.webex },notify_on: { ...DEFAULT_SETTINGS.notify_on,...updated.notify_on } }); if (Array.isArray(updated.events)) setEvents(updated.events); setMsg('Settings saved successfully.'); }
     catch (e) { setErr(e.message); }
     finally { setSaving(false); }
   }
@@ -150,11 +153,15 @@ export function IntegrationsTab() {
           <div className="u-e6530f8"><Bell size={15} /> Notification Events</div>
           <div className="u-568bd03">Choose which events are posted to the shared Teams channel and Webex space. Each person chooses separately, in their Profile, which alerts reach their own Teams, email and Webex messages.</div>
           <div className="flex-col gap-12">
-            <Toggle checked={cfg.notify_on.task_assigned}    onChange={v => setNotify('task_assigned', v)}    label="Task assigned to an engineer" />
-            <Toggle checked={cfg.notify_on.project_assigned} onChange={v => setNotify('project_assigned', v)} label="Engineer added to a project" />
-            <Toggle checked={cfg.notify_on.visit_assigned}   onChange={v => setNotify('visit_assigned', v)}   label="Maintenance visit assigned to an engineer" />
-            <Toggle checked={cfg.notify_on.report_submitted} onChange={v => setNotify('report_submitted', v)} label="Visit report submitted" />
-            <Toggle checked={cfg.notify_on.visit_reminder}   onChange={v => setNotify('visit_reminder', v)}   label="Reminder the day before a maintenance visit" />
+            {[...new Set(events.map(event => event.group))].map(group => (
+              <div key={group} className="flex-col gap-8" role="group" aria-label={group}>
+                <div className="text-sm font-semibold text-muted">{group}</div>
+                {events.filter(event => event.group === group).map(event => (
+                  <Toggle key={event.key} checked={!!cfg.notify_on[event.key]} onChange={v => setNotify(event.key, v)} label={event.label} />
+                ))}
+              </div>
+            ))}
+            {!events.length && <div className="text-muted text-sm">Event switches appear once the settings have loaded.</div>}
           </div>
         </div>
       )}

@@ -748,6 +748,14 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261012_shared_event_deliveries', `
+    -- Shared-channel posts raised by scheduled checks (report due, asset expiry,
+    -- sync failures), so each is posted once.
+    CREATE TABLE IF NOT EXISTS shared_event_deliveries (
+      key TEXT PRIMARY KEY,
+      sent_at TEXT DEFAULT ${NOW}
+    );
+  `]);
   migrations.push(['20261006_managed_customers_tracked', `
     -- Managed customers whose activity tracking was left off were missing from
     -- their engineers' Log activity customer list.

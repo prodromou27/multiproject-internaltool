@@ -4,6 +4,7 @@
  * serviceActivityStatus.js, serviceActivitiesAccess.js) — this file is routing only.
  */
 const router  = require('express').Router();
+const { notifyShared } = require('../notifications');
 const appTime = require('../appTime');
 const ExcelJS = require('exceljs');
 const db      = require('../db');
@@ -267,6 +268,11 @@ router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => 
     await writeBackTicketOnCompletion(req, { id: activity.id, title: body.title.trim(), customerId, ticketReference: body.ticket_reference });
   }
 
+  // Posted only if an admin switches "A service activity is logged" on for the shared channels.
+  const logged = await db.prepare('SELECT c.name AS customer, cat.name AS category FROM customers c, activity_categories cat WHERE c.id = ? AND cat.id = ?').get(customerId, body.category_id);
+  notifyShared('activity_logged', { title: '🛠️ Service activity logged', body: `**${req.user.name}** logged **${body.title.trim()}**.`,
+    facts: [{ name: 'Customer', value: decryptField(logged?.customer) || '—' }, { name: 'Category', value: logged?.category || '—' },
+      ...(body.duration_minutes ? [{ name: 'Time', value: `${body.duration_minutes} min` }] : []), { name: 'Reference', value: activity.reference }] });
   res.json({ id: activity.id, activity_reference: activity.reference });
 });
 

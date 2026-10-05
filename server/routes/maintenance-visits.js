@@ -1,4 +1,5 @@
 const router  = require('express').Router();
+const { notifyShared } = require('../notifications');
 const multer  = require('multer');
 const ExcelJS = require('exceljs');
 const db = require('../db');
@@ -449,6 +450,9 @@ router.post('/:id/report-customer-sent', requireManagerOrPlanner, async (req, re
     WHERE id=? AND report_sent=1 AND report_sent_to_customer=0 AND status <> 'cancelled'`)
     .run(req.user.id, mv.id));
   if (!changed.changes) return res.status(409).json({ error: 'Visit report changed. Refresh before forwarding.' });
+  const visitCustomer = await db.prepare('SELECT name FROM customers WHERE id = ?').get(mv.customer_id);
+  notifyShared('visit_report_approved', { title: '📄 Visit report approved', body: `The report for **${mv.title}** was approved and sent on by ${req.user.name}.`,
+    facts: [{ name: 'Visit', value: mv.title }, { name: 'Customer', value: decrypt(visitCustomer?.name) || '—' }, { name: 'Date', value: mv.scheduled_date }] });
   res.json({ ok: true });
 });
 

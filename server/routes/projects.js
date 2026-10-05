@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const { notifyShared } = require('../notifications');
 const db = require('../db');
 const { requireAuth, requireManager } = require('../middleware/auth');
 const { notify } = require('../notifications');
@@ -396,6 +397,8 @@ router.post('/:id/request-closure', requireAuth, async (req, res) => {
   });
   if (!changed) return res.status(409).json({ error: 'Project changed; reload before requesting closure' });
   await logAudit(db, req, 'project', id, project.title, 'closure_requested', null);
+  notifyShared('project_closure_requested', { title: '🔒 Project closure requested', body: `**${req.user.name}** asked to close **${project.title}**.`,
+    facts: [{ name: 'Project', value: project.title }, { name: 'Requested by', value: req.user.name }] });
   res.json({ ok: true, request_version: project.closure_request_version + 1 });
 });
 
@@ -427,6 +430,8 @@ async function reviewClosure(req, res, decision) {
   });
   if (!changed) return res.status(409).json({ error: 'This closure request has changed. Reload before reviewing.', code: 'CLOSURE_CONFLICT' });
   await logAudit(db, req, 'project', id, project.title, `closure_${decision}`, comment);
+  notifyShared('project_closure_decided', { title: approved ? '✅ Project closed' : '↩️ Project closure returned', body: message,
+    facts: [{ name: 'Project', value: project.title }, { name: approved ? 'Approved by' : 'Returned by', value: req.user.name }] });
   if (approved) await notifyPendingScores(id, project.title);
   res.json({ ok: true });
 }

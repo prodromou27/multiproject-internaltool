@@ -1,16 +1,20 @@
 const object = value => value && typeof value==='object' && !Array.isArray(value);
 const fail = message => { throw Object.assign(new Error(message),{ status: 400 }); };
-const NOTIFY_EVENTS = ['task_assigned','project_assigned','visit_assigned','report_submitted','visit_reminder'];
+const { SHARED_EVENTS,SHARED_EVENT_KEYS,sharedEventEnabled } = require('./sharedEvents');
+const NOTIFY_EVENTS = SHARED_EVENT_KEYS;
 function safeSettings(settings = {}) {
   const teams = settings.teams || {},webex = settings.webex || {};
   return {
     teams: { enabled: !!teams.enabled,webhook_url: '',webhook_url_set: !!teams.webhook_url },
     webex: { enabled: !!webex.enabled,bot_token: '',bot_token_set: !!webex.bot_token,mode: webex.mode || 'both',space_id: webex.space_id || '',test_email: webex.test_email || '' },
-    notify_on: Object.fromEntries(NOTIFY_EVENTS.map(key => [key,settings.notify_on?.[key]!==false])),
+    notify_on: Object.fromEntries(NOTIFY_EVENTS.map(key => [key,sharedEventEnabled(settings.notify_on,key)])),
+    // What the page shows: every event with its group and label.
+    events: SHARED_EVENTS.map(({ key,group,label }) => ({ key,group,label })),
   };
 }
 function mergeSettings(current,body) {
-  if (!object(body) || Object.keys(body).some(key => !['teams','webex','notify_on'].includes(key))) fail('Invalid integration settings');
+  if (!object(body) || Object.keys(body).some(key => !['teams','webex','notify_on','events'].includes(key))) fail('Invalid integration settings');
+  // 'events' is the read-only catalogue the page was given; it is never stored.
   const result = { ...current };
   for (const [platform,secret] of [['teams','webhook_url'],['webex','bot_token']]) {
     if (body[platform]===undefined) continue;

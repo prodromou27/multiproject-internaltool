@@ -10,6 +10,7 @@ const { assertPublicHttpUrl, pinnedLookup } = require('./security');
 const { PRODUCT_NAME } = require('./product');
 const { sendEmail } = require('./email');
 const { decrypt: decryptField } = require('./fieldCipher');
+const { sharedEventEnabled } = require('./sharedEvents');
 
 // ── Fetch settings from DB ───────────────────────────────────────────────────
 async function getSettings() {
@@ -344,7 +345,7 @@ function notify(event, data) {
       const eventKey = event.replace('.', '_');  // e.g. task.assigned → task_assigned
       // The admin's event switches govern the shared organisation channels (the
       // Teams channel and Webex space). Each person decides for their own.
-      const orgEnabled = notifyOn[eventKey] !== false;
+      const orgEnabled = sharedEventEnabled(notifyOn, eventKey);
 
       // A submitted report goes to managers, so never DM the submitting
       // engineer via the org Webex bot. Personal channels (Teams webhook,
@@ -446,6 +447,26 @@ async function postToSharedChannels(msg) {
   return labels.filter((_, index) => results[index].status === 'fulfilled');
 }
 
+/**
+ * Post an event to the shared Teams channel and Webex space, if the admin has it
+ * switched on (Settings → Integrations). `dedupeKey` posts it once only, for
+ * events raised by scheduled checks. Never throws: a failed post is logged.
+ */
+async function notifyShared(eventKey, msg, { dedupeKey } = {}) {
+  try {
+    const settings = (await getSettings()) || {};
+    if (!sharedEventEnabled(settings.notify_on, eventKey)) return false;
+    if (dedupeKey) {
+      const first = await db.prepare('INSERT INTO shared_event_deliveries (key) VALUES (?) ON CONFLICT DO NOTHING').run(`${eventKey}:${dedupeKey}`.slice(0, 300));
+      if (first.changes !== 1) return false;
+    }
+    return (await postToSharedChannels(msg)).length > 0;
+  } catch (error) {
+    console.error(`[shared ${eventKey}]`, error.message);
+    return false;
+  }
+}
+
 /** sendTest — used by the Admin "Test" button; rejects with the real delivery error. */
 async function sendTest(platform, settings) {
   const msg = {
@@ -496,4 +517,4 @@ async function sendPersonalTest(channel, { email, webhook_url }) {
   } else throw new Error('Unknown channel');
 }
 
-module.exports = { notifyUser, sharedChannelsAvailable, postToSharedChannels, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, _setTransport };
+module.exports = { notifyShared, notifyUser, sharedChannelsAvailable, postToSharedChannels, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, _setTransport };

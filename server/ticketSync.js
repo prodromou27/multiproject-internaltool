@@ -2,6 +2,7 @@ const db=require('./db');
 const ticketingSettings=require('./ticketingSettings');
 const { createTicketingProvider }=require('./ticketing');
 const { DEFAULTS,loadMappings }=require('./ticketMappings');
+const { decrypt }=require('./fieldCipher');
 
 function normalizeDate(value) {
   if (!value) return null;
@@ -101,6 +102,10 @@ async function syncCustomer(customerId,{ provider,triggeredBy=null,store=db }={}
     const safeError=error.status ? String(error.message).slice(0,2000) : 'Ticket synchronization failed';
     await store.prepare("UPDATE ticket_sync_runs SET completed_at=app_now(),status='failed',errors=1,error_message=? WHERE id=?").run(safeError,runId);
     await store.prepare("UPDATE customer_ticketing_configurations SET last_sync_status='failed',updated_at=app_now() WHERE id=?").run(mapping.id);
+    // At most one shared-channel post per customer per day while a sync keeps failing.
+    const failing=await store.prepare('SELECT name FROM customers WHERE id=?').get(mapping.customer_id);
+    require('./notifications').notifyShared('ticket_sync_failed',{ title:'🎫 Ticket synchronisation failed',body:`Tickets for **${decrypt(failing?.name) || `customer ${mapping.customer_id}`}** could not be synchronised from Request Tracker: ${safeError}`,
+      facts:[{ name:'Customer',value:decrypt(failing?.name) || '—' },{ name:'Queue',value:mapping.external_queue_name || mapping.external_queue_id || '—' }] },{ dedupeKey:`${mapping.customer_id}:${new Date().toISOString().slice(0,10)}` });
     throw error;
   }
 }
