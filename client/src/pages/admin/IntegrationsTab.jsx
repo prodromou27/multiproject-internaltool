@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, AlertTriangle, Bell, Save, Loader2 } from 'lucide-react';
 import { api } from '../../api';
 import { Toggle } from './shared';
-import RequestTrackerIntegration from './RequestTrackerIntegration';
+import { Link } from 'react-router-dom';
 
 /* ══════════════════════════════════════════════════════════ */
 /* ── INTEGRATIONS TAB ────────────────────────────────────── */
@@ -68,7 +68,7 @@ export function IntegrationsTab() {
       {msg && <div className="alert alert-success u-01eae41"><CheckCircle2 size={14} /> {msg}</div>}
       {err && <div className="alert alert-danger u-01eae41"><AlertTriangle size={14} /> {err}</div>}
 
-      <RequestTrackerIntegration sectionStyle={sectionStyle} labelStyle={labelStyle} />
+      <div style={sectionStyle}><strong>Request Tracker</strong><p className="text-muted text-sm mt-4">The Request Tracker connection, customer queues, status mapping and sync health are in <Link to="/settings/ticketing">Settings → Ticketing</Link>.</p></div>
 
       <div style={sectionStyle}>
         <div className="u-c61bb35">

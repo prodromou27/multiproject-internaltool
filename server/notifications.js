@@ -403,8 +403,9 @@ function notify(event, data) {
  * this event in their Profile. Resolves when every send has settled; a failing
  * channel is logged and never stops the others.
  */
-async function notifyUser(userId, eventKey, msg, inApp) {
+async function notifyUser(userId, eventKey, msg, inApp, { channels = true } = {}) {
   await persistNotification(userId, eventKey, inApp.title, inApp.body, inApp.link);
+  if (!channels) return;
   const person = await db.prepare(`SELECT id, email, active, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled, notify_events
     FROM users WHERE id = ?`).get(userId);
   if (!person?.active) return;
@@ -421,6 +422,28 @@ async function notifyUser(userId, eventKey, msg, inApp) {
   }
   const results = await Promise.allSettled(sends);
   results.forEach((result, index) => { if (result.status === 'rejected') console.error(`[${labels[index]} notify user ${userId}]`, result.reason?.message); });
+}
+
+/** Which shared organisation channels are set up: the Teams channel and the Webex space. */
+async function sharedChannelsAvailable() {
+  const settings = (await getSettings()) || {};
+  const webex = settings.webex || {};
+  return {
+    teams: !!(settings.teams?.enabled && settings.teams?.webhook_url),
+    webex: !!(webex.enabled && webex.bot_token && webex.space_id && (webex.mode === 'space' || webex.mode === 'both')),
+  };
+}
+
+/** Post one message to the organisation's shared Teams channel and Webex space (those set up). */
+async function postToSharedChannels(msg) {
+  const settings = (await getSettings()) || {};
+  const available = await sharedChannelsAvailable();
+  const sends = [], labels = [];
+  if (available.teams) { sends.push(sendTeams(settings.teams, msg)); labels.push('Teams channel'); }
+  if (available.webex) { sends.push(sendWebex({ ...settings.webex, mode: 'space' }, msg, null)); labels.push('Webex space'); }
+  const results = await Promise.allSettled(sends);
+  results.forEach((result, index) => { if (result.status === 'rejected') console.error(`[${labels[index]} reminder]`, result.reason?.message); });
+  return labels.filter((_, index) => results[index].status === 'fulfilled');
 }
 
 /** sendTest — used by the Admin "Test" button; rejects with the real delivery error. */
@@ -473,4 +496,4 @@ async function sendPersonalTest(channel, { email, webhook_url }) {
   } else throw new Error('Unknown channel');
 }
 
-module.exports = { notifyUser, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, _setTransport };
+module.exports = { notifyUser, sharedChannelsAvailable, postToSharedChannels, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, _setTransport };

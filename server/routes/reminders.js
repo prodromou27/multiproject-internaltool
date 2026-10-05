@@ -16,6 +16,7 @@ const db = require('../db');
 const { decrypt } = require('../fieldCipher');
 const { canAccessCustomer } = require('../customerAccess');
 const { REPEATS, AUTOMATIC, automaticSettings, validTimeZone, nextOccurrence } = require('../reminders');
+const { sharedChannelsAvailable } = require('../notifications');
 
 router.use(requireAuth);
 
@@ -48,14 +49,26 @@ async function reminderInput(body, user, existing) {
     if (has('customer_id') && !await canAccessCustomer(user, customerId)) fail('You cannot link a reminder to that customer', 403);
     customerId = Number(customerId);
   }
-  return { title, notes: notes.trim() || null, dueAt, repeat, timeZone, customerId };
+  // Where it goes besides the bell. A team reminder posts to the shared channels unless told otherwise.
+  const flag = (key, fallback) => {
+    if (!has(key)) return existing ? !!existing[key] : fallback;
+    if (typeof body[key] !== 'boolean') fail(`${key} must be true or false`);
+    return body[key];
+  };
+  const notifyPersonal = flag('notify_personal', true);
+  const postShared = flag('post_shared', body?.for?.shared === true);
+  return { title, notes: notes.trim() || null, dueAt, repeat, timeZone, customerId, notifyPersonal, postShared };
 }
+
+// Save the delivery choices on the reminder(s) just created or changed.
+const saveDelivery = (where, args, input) => db.prepare(`UPDATE reminders SET notify_personal = ?, post_shared = ? WHERE ${where}`)
+  .run(input.notifyPersonal ? 1 : 0, input.postShared ? 1 : 0, ...args);
 
 const view = row => {
   const { user_id: owner, created_by: createdBy, set_by_name: setBy, ...rest } = row;
   const fromOther = createdBy != null && Number(createdBy) !== Number(owner);
   return { ...rest, id: Number(row.id), customer_id: row.customer_id == null ? null : Number(row.customer_id), customer_name: row.customer_name ? decrypt(row.customer_name) : null,
-    set_by: fromOther ? (setBy || 'A former user') : null };
+    set_by: fromOther ? (setBy || 'A former user') : null, notify_personal: !!row.notify_personal, post_shared: !!row.post_shared };
 };
 const setByOther = (reminder, userId) => reminder.created_by != null && Number(reminder.created_by) !== Number(userId);
 
@@ -82,13 +95,14 @@ async function recipientsFor(target, manager) {
 
 // A manager's reminders for others, one entry per set (all its copies).
 async function setForOthers(managerId) {
-  const rows = await db.prepare(`SELECT r.id, r.group_key, r.title, r.notes, r.due_at, r.time_zone, r.repeat, r.customer_id, c.name AS customer_name, r.status, r.completed_at,
+  const rows = await db.prepare(`SELECT r.id, r.group_key, r.title, r.notes, r.due_at, r.time_zone, r.repeat, r.customer_id, c.name AS customer_name, r.status, r.completed_at, r.notify_personal, r.post_shared,
       r.team_id, t.name AS team_name, u.id AS recipient_id, u.name AS recipient_name
     FROM reminders r JOIN users u ON u.id = r.user_id LEFT JOIN teams t ON t.id = r.team_id LEFT JOIN customers c ON c.id = r.customer_id
     WHERE r.created_by = ? AND r.user_id != ? AND r.group_key IS NOT NULL ORDER BY r.due_at, r.id LIMIT 2000`).all(managerId, managerId);
   const groups = new Map();
   for (const row of rows) {
     if (!groups.has(row.group_key)) groups.set(row.group_key, { group_key: row.group_key, title: row.title, notes: row.notes, due_at: row.due_at, time_zone: row.time_zone, repeat: row.repeat,
+      notify_personal: !!row.notify_personal, post_shared: !!row.post_shared,
       customer_id: row.customer_id == null ? null : Number(row.customer_id), customer_name: row.customer_name ? decrypt(row.customer_name) : null, team_name: row.team_name || null, recipients: [] });
     const group = groups.get(row.group_key);
     if (row.status === 'active' && row.due_at < group.due_at) group.due_at = row.due_at;
@@ -99,6 +113,7 @@ async function setForOthers(managerId) {
   return [...groups.values()].filter(group => group.recipients.some(item => item.status === 'active' || String(item.completed_at) >= cutoff));
 }
 const SELECT = `SELECT r.id, r.user_id, r.title, r.notes, r.due_at, r.time_zone, r.repeat, r.customer_id, c.name AS customer_name, r.status, r.notified_at, r.completed_at, r.created_at,
+    r.notify_personal, r.post_shared,
     r.created_by, s.name AS set_by_name
   FROM reminders r LEFT JOIN customers c ON c.id = r.customer_id LEFT JOIN users s ON s.id = r.created_by`;
 const one = async (id, userId) => db.prepare(`${SELECT} WHERE r.id = ? AND r.user_id = ? AND r.shared = 0`).get(id, userId);
@@ -110,7 +125,7 @@ async function teamReminderList(user) {
     ? (await db.prepare('SELECT id FROM teams').all()).map(row => Number(row.id))
     : (await db.prepare('SELECT team_id FROM team_members WHERE user_id = ?').all(user.id)).map(row => Number(row.team_id));
   if (!teamIds.length) return [];
-  const rows = await db.prepare(`SELECT r.id, r.title, r.notes, r.due_at, r.time_zone, r.repeat, r.customer_id, c.name AS customer_name, r.status, r.notified_at, r.completed_at,
+  const rows = await db.prepare(`SELECT r.id, r.title, r.notes, r.due_at, r.time_zone, r.repeat, r.customer_id, c.name AS customer_name, r.status, r.notified_at, r.completed_at, r.notify_personal, r.post_shared,
       r.team_id, t.name AS team_name, r.user_id AS created_by, s.name AS set_by_name, d.name AS completed_by_name
     FROM reminders r JOIN teams t ON t.id = r.team_id LEFT JOIN customers c ON c.id = r.customer_id
     LEFT JOIN users s ON s.id = r.user_id LEFT JOIN users d ON d.id = r.completed_by
@@ -121,6 +136,7 @@ async function teamReminderList(user) {
     customer_id: row.customer_id == null ? null : Number(row.customer_id), customer_name: row.customer_name ? decrypt(row.customer_name) : null,
     team_id: Number(row.team_id), team_name: row.team_name, set_by: row.set_by_name || 'A former user', completed_by: row.completed_by_name || null, completed_at: row.completed_at,
     reminded: !!row.notified_at && row.notified_at >= row.due_at,
+    notify_personal: !!row.notify_personal, post_shared: !!row.post_shared,
     can_change: user.role === 'manager' || Number(row.created_by) === Number(user.id),
   }));
 }
@@ -168,6 +184,7 @@ router.get('/customer/:id', async (req, res) => {
     own: { active: own.filter(row => row.status === 'active'), done: own.filter(row => row.status === 'done').slice(0, 10) },
     shared_teams: sharedTeams.map(row => ({ id: Number(row.id), name: row.name })),
     default_team_id: defaultTeam,
+    shared_channels: await sharedChannelsAvailable(),
   });
 });
 
@@ -194,6 +211,7 @@ router.get('/', async (req, res) => {
     customers,
     team_reminders: { active: team.filter(row => row.status === 'active'), done: team.filter(row => row.status === 'done').sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at))).slice(0, 20) },
     shared_teams: (manager ? teams : ownTeams).map(row => ({ id: Number(row.id), name: row.name })),
+    shared_channels: await sharedChannelsAvailable(),
     ...(manager ? { set_for_others: others, people: people.filter(row => Number(row.id) !== Number(req.user.id)).map(row => ({ id: Number(row.id), name: row.name })),
       teams: teams.map(row => ({ id: Number(row.id), name: row.name, members: Number(row.members) })) } : {}),
   });
@@ -208,6 +226,7 @@ router.post('/', async (req, res) => {
       const input = await reminderInput(req.body, req.user);
       const created = await db.prepare(`INSERT INTO reminders (user_id, title, notes, due_at, scheduled_at, time_zone, repeat, customer_id, created_by, team_id, shared)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`).run(req.user.id, input.title, input.notes, input.dueAt, input.dueAt, input.timeZone, input.repeat, input.customerId, req.user.id, Number(teamId));
+      await saveDelivery('id = ?', [created.lastInsertRowid], input);
       return res.status(201).json((await teamReminderList(req.user)).find(row => row.id === Number(created.lastInsertRowid)));
     }
     if (req.body?.for !== undefined) {
@@ -222,6 +241,7 @@ router.post('/', async (req, res) => {
             .run(userId, 'reminder_set', `${req.user.name} set a reminder for you: ${input.title}`, null, '/reminders');
         }
       });
+      await saveDelivery('group_key = ?', [groupKey], input);
       return res.status(201).json({ group_key: groupKey, recipients: userIds.length });
     }
     const count = await db.prepare("SELECT COUNT(*) AS total FROM reminders WHERE user_id = ? AND shared = 0 AND status = 'active'").get(req.user.id);
@@ -229,6 +249,7 @@ router.post('/', async (req, res) => {
     const input = await reminderInput(req.body, req.user);
     const created = await db.prepare('INSERT INTO reminders (user_id, title, notes, due_at, scheduled_at, time_zone, repeat, customer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .run(req.user.id, input.title, input.notes, input.dueAt, input.dueAt, input.timeZone, input.repeat, input.customerId);
+    await saveDelivery('id = ?', [created.lastInsertRowid], input);
     res.status(201).json(view(await one(created.lastInsertRowid, req.user.id)));
   } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Could not save the reminder' }); }
 });
@@ -272,6 +293,7 @@ router.put('/team/:id', async (req, res) => {
     const retimed = input.dueAt !== reminder.due_at;
     await db.prepare(`UPDATE reminders SET title = ?, notes = ?, due_at = ?, scheduled_at = ?, time_zone = ?, repeat = ?, customer_id = ?, updated_at = app_now()${retimed ? ", notified_at = NULL, status = 'active', completed_at = NULL, completed_by = NULL" : ''} WHERE id = ?`)
       .run(input.title, input.notes, input.dueAt, retimed ? input.dueAt : (reminder.scheduled_at || reminder.due_at), input.timeZone, input.repeat, input.customerId, reminder.id);
+    await saveDelivery('id = ?', [reminder.id], input);
     res.json((await teamReminderList(req.user)).find(row => row.id === Number(reminder.id)));
   } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Could not save the reminder' }); }
 });
@@ -298,6 +320,7 @@ router.put('/group/:key', async (req, res) => {
     await db.prepare(`UPDATE reminders SET title = ?, notes = ?, due_at = ?, scheduled_at = ?, time_zone = ?, repeat = ?, customer_id = ?, notified_at = NULL,
       status = 'active', completed_at = NULL, updated_at = app_now() WHERE group_key = ? AND created_by = ?`)
       .run(input.title, input.notes, input.dueAt, input.dueAt, input.timeZone, input.repeat, input.customerId, req.params.key, req.user.id);
+    await saveDelivery('group_key = ? AND created_by = ?', [req.params.key, req.user.id], input);
     res.json({ ok: true, recipients: copies.length });
   } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Could not save the reminder' }); }
 });
@@ -322,6 +345,7 @@ router.put('/:id', async (req, res) => {
     await db.prepare(`UPDATE reminders SET title = ?, notes = ?, due_at = ?, scheduled_at = ?, time_zone = ?, repeat = ?, customer_id = ?, updated_at = app_now()${retimed ? ', notified_at = NULL' : ''}
       ${existing.status === 'done' && retimed ? ", status = 'active', completed_at = NULL" : ''} WHERE id = ? AND user_id = ?`)
       .run(input.title, input.notes, input.dueAt, retimed ? input.dueAt : (existing.scheduled_at || existing.due_at), input.timeZone, input.repeat, input.customerId, existing.id, req.user.id);
+    await saveDelivery('id = ?', [existing.id], input);
     res.json(view(await one(existing.id, req.user.id)));
   } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Could not save the reminder' }); }
 });

@@ -853,3 +853,49 @@ test('open browsers hear about changes made by others, but not their own', async
     await api(`/api/reminders/${(await made.json()).id}`, { method: 'DELETE', token: ids.tokenEnabled });
   } finally { watcher.close(); author.close(); }
 });
+
+test('each reminder chooses where it goes: personal channels and/or the shared Teams channel and Webex space', async () => {
+  const notifications = require('../notifications');
+  const reminders = require('../reminders');
+  const member = ids.tokenEnabled;
+  const stored = await db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get();
+  await db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value")
+    .run(JSON.stringify({ teams: { enabled: true, webhook_url: 'https://93.184.216.34/org-channel' }, webex: { enabled: false }, notify_on: {} }));
+  await db.prepare("UPDATE users SET notify_teams_enabled = 1, notify_teams_webhook_url = 'https://93.184.216.34/own-teams', notify_events = NULL WHERE id = ?").run(ids.engineerEnabled);
+  const posted = [];
+  notifications._setTransport(async u => { posted.push(u.pathname); return { status: 200, body: '', headers: {} }; });
+  const base = { due_at: '2020-04-01T08:00:00.000Z', time_zone: 'UTC', repeat: 'none', customer_id: ids.customer };
+  try {
+    // The page knows which shared channels exist.
+    assert.deepEqual((await api('/api/reminders', { token: member })).data.shared_channels, { teams: true, webex: false });
+    assert.equal((await api('/api/reminders', { method: 'POST', token: member, body: { ...base, title: 'Bad', post_shared: 'yes' } })).status, 400);
+
+    // A team reminder posts to the shared channel by default, once, and to each member's own channel.
+    const team = await api('/api/reminders', { method: 'POST', token: member, body: { ...base, title: 'Renew Acme VPN licence', for: { team_id: ids.teamEnabled, shared: true } } });
+    assert.equal(team.status, 201, JSON.stringify(team.data));
+    assert.deepEqual([team.data.post_shared, team.data.notify_personal], [true, true]);
+    await reminders.sendTeamReminders();
+    assert.equal(posted.filter(path => path === '/org-channel').length, 1, 'posted once to the shared channel, not once per member');
+    assert.ok(posted.includes('/own-teams'));
+
+    // A personal reminder with personal channels off reaches only the bell; with shared on, the channel too.
+    posted.length = 0;
+    const quiet = await api('/api/reminders', { method: 'POST', token: member, body: { ...base, title: 'Bell only please', notify_personal: false } });
+    assert.deepEqual([quiet.data.notify_personal, quiet.data.post_shared], [false, false]);
+    const loud = await api('/api/reminders', { method: 'POST', token: member, body: { ...base, title: 'Tell the channel', notify_personal: false, post_shared: true } });
+    await reminders.sendDueReminders();
+    assert.deepEqual(posted, ['/org-channel']);
+    const bell = (await db.prepare("SELECT title FROM notifications WHERE user_id = ? AND type = 'reminder_due'").all(ids.engineerEnabled)).map(row => row.title);
+    assert.ok(bell.includes('Reminder: Bell only please') && bell.includes('Reminder: Tell the channel'));
+
+    // The choices can be changed later.
+    const edited = await api(`/api/reminders/${quiet.data.id}`, { method: 'PUT', token: member, body: { notify_personal: true } });
+    assert.equal(edited.data.notify_personal, true);
+    for (const made of [quiet, loud]) await api(`/api/reminders/${made.data.id}`, { method: 'DELETE', token: member });
+    await api(`/api/reminders/team/${team.data.id}`, { method: 'DELETE', token: member });
+  } finally {
+    notifications._setTransport();
+    await db.prepare('UPDATE users SET notify_teams_enabled = 0, notify_teams_webhook_url = NULL WHERE id = ?').run(ids.engineerEnabled);
+    if (stored) await db.prepare("UPDATE settings SET value = ? WHERE key = 'integrations'").run(stored.value);
+  }
+});

@@ -38,11 +38,17 @@ function snoozeOptions() {
 }
 
 // `defaults` pre-fills a new reminder, e.g. from a customer: { customer_id, for, team_id }.
-export function ReminderForm({ initial, group, teamReminder, customers, people, teams, sharedTeams = [], defaults, onClose, onSaved }) {
+export function ReminderForm({ initial, group, teamReminder, customers, people, teams, sharedTeams = [], sharedChannels = { teams: false, webex: false }, defaults, onClose, onSaved }) {
   const toast = useToast();
   const source = group || teamReminder || initial;
   const start = source ? new Date(source.due_at) : (() => { const next = new Date(); next.setHours(next.getHours() + 1, 0, 0, 0); return next; })();
-  const [form, setForm] = useState({ title: source?.title || '', date: localDateISO(start), time: localTime(start), repeat: source?.repeat || 'none', customer_id: source?.customer_id ? String(source.customer_id) : defaults?.customer_id ? String(defaults.customer_id) : '', notes: source?.notes || '', for: defaults?.for || 'me', user_id: '', team_id: defaults?.team_id ? String(defaults.team_id) : '' });
+  const [form, setForm] = useState({ title: source?.title || '', date: localDateISO(start), time: localTime(start), repeat: source?.repeat || 'none', customer_id: source?.customer_id ? String(source.customer_id) : defaults?.customer_id ? String(defaults.customer_id) : '', notes: source?.notes || '', for: defaults?.for || 'me', user_id: '', team_id: defaults?.team_id ? String(defaults.team_id) : '',
+    // Delivery: undefined means the default for the kind of reminder (shared channels on for team reminders).
+    notify_personal: source ? source.notify_personal !== false : true, post_shared: source ? !!source.post_shared : undefined });
+  const isTeam = form.for === 'shared' || form.for === 'team' || !!teamReminder || !!group;
+  const anyShared = sharedChannels.teams || sharedChannels.webex;
+  const sharedLabel = [sharedChannels.teams && 'Teams channel', sharedChannels.webex && 'Webex space'].filter(Boolean).join(' and ') || 'Teams channel and Webex space';
+  const postShared = form.post_shared ?? (form.for === 'shared' || !!teamReminder);
   // Managers can set a new reminder for someone else or a whole team.
   const canAssign = !source && (people.length > 0 || teams.length > 0 || sharedTeams.length > 0);
   const [saving, setSaving] = useState(false), [error, setError] = useState('');
@@ -54,6 +60,8 @@ export function ReminderForm({ initial, group, teamReminder, customers, people, 
     if (form.for === 'person') body.for = { user_id: Number(form.user_id) };
     if (form.for === 'team') body.for = { team_id: Number(form.team_id) };
     if (form.for === 'shared') body.for = { team_id: Number(form.team_id), shared: true };
+    body.notify_personal = form.notify_personal;
+    body.post_shared = postShared;
     try {
       const saved = group ? await api.updateReminderGroup(group.group_key, body) : teamReminder ? await api.updateTeamReminder(teamReminder.id, body) : initial ? await api.updateReminder(initial.id, body) : await api.createReminder(body);
       toast.success(group ? `Updated for ${group.recipients.length} ${group.recipients.length === 1 ? 'person' : 'people'}` : teamReminder ? 'Team reminder updated' : initial ? 'Reminder updated'
@@ -78,6 +86,12 @@ export function ReminderForm({ initial, group, teamReminder, customers, people, 
         <div className="form-group"><label htmlFor="reminder-repeat">Repeat</label><select id="reminder-repeat" value={form.repeat} onChange={set('repeat')}>{Object.entries(REPEAT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
       </div>
       <div className="form-group"><label htmlFor="reminder-customer">Customer (optional)</label><select id="reminder-customer" value={form.customer_id} onChange={set('customer_id')}><option value="">None</option>{customers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></div>
+      <fieldset className="reminder-delivery"><legend>Also send to</legend>
+        <label><input type="checkbox" checked={form.notify_personal} onChange={event => setForm(current => ({ ...current, notify_personal: event.target.checked }))} /><span>{isTeam ? "Each team member's" : 'Your'} own Teams, email or Webex <small>(as chosen in Profile)</small></span></label>
+        <label className={anyShared ? '' : 'is-unavailable'}><input type="checkbox" disabled={!anyShared} checked={anyShared && postShared} onChange={event => setForm(current => ({ ...current, post_shared: event.target.checked }))} /><span>The shared {sharedLabel}
+          {!anyShared && <small> (not set up yet: a manager adds them in Settings → Integrations)</small>}</span></label>
+        <small className="text-muted">It always appears in the bell and on the Reminders page.</small>
+      </fieldset>
       <div className="form-group"><label htmlFor="reminder-notes">Notes (optional)</label><textarea id="reminder-notes" rows={3} maxLength={2000} value={form.notes} onChange={set('notes')} /></div>
       <div className="flex gap-8"><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : initial || group || teamReminder ? 'Save reminder' : 'Set reminder'}</button><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button></div>
     </form>
@@ -188,6 +202,7 @@ export default function Reminders() {
                 {reminder.customer_name && <Link to={`/customers/${reminder.customer_id}/service-profile`}>{reminder.customer_name}</Link>}
                 <span><UserRound size={12} aria-hidden="true" />Set by {reminder.set_by}</span>
                 {reminder.completed_by && <span>Last done by {reminder.completed_by}, {whenLabel(reminder.completed_at)}</span>}
+                {reminder.post_shared && <span>Also posted to the team channel</span>}
               </div>
               {reminder.notes && <p>{reminder.notes}</p>}
             </div>
@@ -232,8 +247,8 @@ export default function Reminders() {
       </Surface>
       {data.done.length > 0 && <details className="reminders-done"><summary>Done in the last 30 days ({data.done.length})</summary><ul>{data.done.map(reminder => <li key={reminder.id}><span>{reminder.title}</span><small>{whenLabel(reminder.completed_at)}</small></li>)}</ul></details>}
     </>}
-    {editing && <ReminderForm initial={editing === 'new' ? null : editing} customers={data?.customers || []} people={data?.people || []} teams={data?.teams || []} sharedTeams={data?.shared_teams || []} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
-    {editingTeam && <ReminderForm teamReminder={editingTeam} customers={data?.customers || []} people={[]} teams={[]} onClose={() => setEditingTeam(null)} onSaved={() => { setEditingTeam(null); load(); }} />}
-    {editingGroup && <ReminderForm group={editingGroup} customers={data?.customers || []} people={[]} teams={[]} onClose={() => setEditingGroup(null)} onSaved={() => { setEditingGroup(null); load(); }} />}
+    {editing && <ReminderForm initial={editing === 'new' ? null : editing} customers={data?.customers || []} people={data?.people || []} teams={data?.teams || []} sharedTeams={data?.shared_teams || []} sharedChannels={data?.shared_channels} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+    {editingTeam && <ReminderForm teamReminder={editingTeam} customers={data?.customers || []} people={[]} teams={[]} sharedChannels={data?.shared_channels} onClose={() => setEditingTeam(null)} onSaved={() => { setEditingTeam(null); load(); }} />}
+    {editingGroup && <ReminderForm group={editingGroup} customers={data?.customers || []} people={[]} teams={[]} sharedChannels={data?.shared_channels} onClose={() => setEditingGroup(null)} onSaved={() => { setEditingGroup(null); load(); }} />}
   </div>;
 }

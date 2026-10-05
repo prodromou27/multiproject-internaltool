@@ -723,6 +723,14 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE reminders ADD COLUMN IF NOT EXISTS completed_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
     CREATE INDEX IF NOT EXISTS idx_reminders_shared ON reminders(shared, status, team_id);
   `]);
+  migrations.push(['20261010_reminder_delivery', `
+    -- Where a reminder goes besides the bell: each recipient's own channels
+    -- (Teams, email, Webex, as chosen in their Profile) and/or the organisation's
+    -- shared Teams channel and Webex space.
+    ALTER TABLE reminders ADD COLUMN IF NOT EXISTS notify_personal INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE reminders ADD COLUMN IF NOT EXISTS post_shared INTEGER NOT NULL DEFAULT 0;
+    UPDATE reminders SET post_shared = 1 WHERE shared = 1;
+  `]);
   migrations.push(['20261006_managed_customers_tracked', `
     -- Managed customers whose activity tracking was left off were missing from
     -- their engineers' Log activity customer list.

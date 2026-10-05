@@ -8,7 +8,7 @@
  */
 const db = require('./db');
 const { decrypt } = require('./fieldCipher');
-const { notifyUser, notify } = require('./notifications');
+const { notifyUser, notify, postToSharedChannels } = require('./notifications');
 const { obligations } = require('./managedReportObligations');
 
 const REPEATS = ['none', 'daily', 'weekly', 'monthly', 'yearly'];
@@ -65,22 +65,30 @@ function nextOccurrence(due, repeat, zone) {
 /** Deliver every personal reminder that has fallen due and not yet been sent for this occurrence. */
 async function sendDueReminders(now = new Date(), store = db) {
   const at = now.toISOString();
-  const due = await store.prepare(`SELECT r.id, r.user_id, r.title, r.notes, r.due_at, r.customer_id, c.name AS customer_name, r.created_by, s.name AS set_by_name
+  const due = await store.prepare(`SELECT r.id, r.user_id, r.title, r.notes, r.due_at, r.customer_id, c.name AS customer_name, r.created_by, s.name AS set_by_name, r.notify_personal, r.post_shared, r.group_key
     FROM reminders r JOIN users u ON u.id = r.user_id LEFT JOIN customers c ON c.id = r.customer_id LEFT JOIN users s ON s.id = r.created_by
     WHERE r.status = 'active' AND r.shared = 0 AND r.due_at <= ? AND (r.notified_at IS NULL OR r.notified_at < r.due_at) AND u.active = 1
     ORDER BY r.due_at, r.id LIMIT 200`).all(at);
   let sent = 0;
+  const postedGroups = new Set();
   for (const reminder of due) {
     // Claim the occurrence first, so two servers (or two ticks) never send it twice.
     const claimed = await store.prepare("UPDATE reminders SET notified_at = ? WHERE id = ? AND status = 'active' AND (notified_at IS NULL OR notified_at < due_at)").run(at, reminder.id);
     if (claimed.changes !== 1) continue;
     const customer = reminder.customer_name ? decrypt(reminder.customer_name) : null;
-    await notifyUser(Number(reminder.user_id), 'reminder_due', {
+    const message = {
       title: `⏰ ${reminder.title}`,
       body: reminder.notes || 'Your reminder is due.',
       facts: [...(customer ? [{ name: 'Customer', value: customer }] : []),
         ...(reminder.created_by && Number(reminder.created_by) !== Number(reminder.user_id) ? [{ name: 'Set by', value: reminder.set_by_name || 'A former user' }] : [])],
-    }, { title: `Reminder: ${reminder.title}`, body: customer || reminder.notes || null, link: '/reminders' });
+    };
+    await notifyUser(Number(reminder.user_id), 'reminder_due', message,
+      { title: `Reminder: ${reminder.title}`, body: customer || reminder.notes || null, link: '/reminders' }, { channels: !!reminder.notify_personal });
+    // Copies set for several people post to the shared channels once, not once per person.
+    if (reminder.post_shared && (!reminder.group_key || !postedGroups.has(reminder.group_key))) {
+      if (reminder.group_key) postedGroups.add(reminder.group_key);
+      await postToSharedChannels(message);
+    }
     sent++;
   }
   if (sent) require('./liveUpdates').emitChange('reminders');
@@ -95,7 +103,7 @@ const NUDGE_EVERY_MS = 24 * 60 * 60 * 1000;
  */
 async function sendTeamReminders(now = new Date(), store = db) {
   const at = now.toISOString(), again = new Date(now.getTime() - NUDGE_EVERY_MS + 60 * 1000).toISOString();
-  const due = await store.prepare(`SELECT r.id, r.title, r.notes, r.due_at, r.notified_at, r.team_id, t.name AS team_name, r.customer_id, c.name AS customer_name
+  const due = await store.prepare(`SELECT r.id, r.title, r.notes, r.due_at, r.notified_at, r.team_id, t.name AS team_name, r.customer_id, c.name AS customer_name, r.notify_personal, r.post_shared
     FROM reminders r JOIN teams t ON t.id = r.team_id LEFT JOIN customers c ON c.id = r.customer_id
     WHERE r.shared = 1 AND r.status = 'active' AND r.due_at <= ? AND (r.notified_at IS NULL OR r.notified_at < r.due_at OR r.notified_at <= ?)
     ORDER BY r.due_at, r.id LIMIT 200`).all(at, again);
@@ -107,13 +115,17 @@ async function sendTeamReminders(now = new Date(), store = db) {
     const members = await store.prepare('SELECT u.id FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.team_id = ? AND u.active = 1').all(reminder.team_id);
     const customer = reminder.customer_name ? decrypt(reminder.customer_name) : null;
     const repeatNotice = reminder.notified_at && reminder.notified_at >= reminder.due_at;
+    const message = {
+      title: `⏰ ${repeatNotice ? 'Still open: ' : ''}${reminder.title}`,
+      body: reminder.notes || `A ${reminder.team_name} team reminder is due. Whoever completes it, mark it done for everyone.`,
+      facts: [{ name: 'Team', value: reminder.team_name }, ...(customer ? [{ name: 'Customer', value: customer }] : [])],
+    };
     for (const member of members) {
-      await notifyUser(Number(member.id), 'reminder_due', {
-        title: `⏰ ${reminder.title}`,
-        body: `${repeatNotice ? 'Still open: ' : ''}${reminder.notes || `A ${reminder.team_name} team reminder is due. Whoever completes it, mark it done for everyone.`}`,
-        facts: [{ name: 'Team', value: reminder.team_name }, ...(customer ? [{ name: 'Customer', value: customer }] : [])],
-      }, { title: `${repeatNotice ? 'Still open' : 'Team reminder'}: ${reminder.title}`, body: [reminder.team_name, customer].filter(Boolean).join(' · '), link: '/reminders' });
+      await notifyUser(Number(member.id), 'reminder_due', message,
+        { title: `${repeatNotice ? 'Still open' : 'Team reminder'}: ${reminder.title}`, body: [reminder.team_name, customer].filter(Boolean).join(' · '), link: '/reminders' },
+        { channels: !!reminder.notify_personal });
     }
+    if (reminder.post_shared) await postToSharedChannels(message);
     sent++;
   }
   if (sent) require('./liveUpdates').emitChange('reminders');

@@ -16,8 +16,7 @@ import { SystemHealthTab, SystemUpdateTab, AuditLogTab, SecurityTab } from './ad
 import { ServiceActivityAdminTab, TeamsAdminSection } from './admin/ServiceActivityAdmin';
 import { ManagedReportTemplatesTab } from './admin/ManagedReportTemplatesTab';
 import { PermissionsTab } from './admin/PermissionsTab';
-import TicketSyncMonitoring from './admin/TicketSyncMonitoring';
-import { useToast } from '../components/Toast';
+import TicketingSettings from './admin/TicketingSettings';
 
 /* ── MAIN PAGE ───────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
@@ -37,7 +36,7 @@ const TABS = [
   { key: 'security',       label: 'Security Policy',    Icon: Shield,          group: 'technical_security',      desc: 'Password expiry and reset policy' },
   { key: 'audit_log',      label: 'Audit Log',          Icon: ClipboardList,   group: 'technical_security',      desc: 'Traceable record of system changes' },
   { key: 'admin_alerts',   label: 'System Alerts',      Icon: ShieldAlert,     group: 'technical_security',      desc: 'Manager alert preferences for operational issues' },
-  { key: 'managed_services', label: 'Ticket Sync Status', Icon: Building2,     group: 'technical_operations',    desc: 'Request Tracker sync health — mapped customers, ticket counts, and recent runs. To configure a customer’s mapping, use Managed Customers.' },
+  { key: 'ticketing', label: 'Ticketing', Icon: Building2, group: 'technical_configuration', desc: 'Request Tracker connection, customer queues, status mapping and sync health' },
   { key: 'activity',       label: 'Activity Feed',      Icon: Activity,        group: 'technical_operations',    desc: 'Recent application activity' },
   { key: 'system_health',  label: 'System Health',      Icon: HardDrive,       group: 'technical_operations',    desc: 'Stats, deployment status, and logging — in one place' },
   { key: 'export',         label: 'Data Export',        Icon: FileSpreadsheet, group: 'technical_operations',    desc: 'Download operational data' },
@@ -76,7 +75,6 @@ function SettingsStatusPill({ status }) {
 
 export default function AdminPanel() {
   const { user } = useAuth();
-  const toast = useToast();
   const navigate = useNavigate();
   const { section } = useParams();
   const initialTab = TAB_KEYS.has(section) ? section : 'overview';
@@ -86,6 +84,7 @@ export default function AdminPanel() {
 
   useEffect(() => {
     if (!section) { setTab('overview'); return; }
+    if (section === 'managed_services') { navigate('/settings/ticketing', { replace: true }); return; } // its old name
     if (TAB_KEYS.has(section)) setTab(section);
     else navigate('/settings', { replace: true });
   }, [section, navigate]);
@@ -198,7 +197,7 @@ export default function AdminPanel() {
           {tab === 'statuses'     && <StatusManagementTab />}
           {tab === 'service_activity_tracking' && <ServiceActivityAdminTab />}
           {tab === 'managed_report_templates' && <ManagedReportTemplatesTab />}
-          {tab === 'managed_services' && <TicketSyncMonitoring standalone onMessage={toast.success} />}
+          {tab === 'ticketing' && <TicketingSettings />}
           {tab === 'activity'     && <ActivityTab />}
           {tab === 'system_health' && <SystemHealthTab />}
           {tab === 'export'       && <DataExportTab />}

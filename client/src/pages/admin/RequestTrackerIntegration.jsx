@@ -2,8 +2,6 @@ import { useEffect,useState } from 'react';
 import { CheckCircle2,Loader2,RefreshCw,Save } from 'lucide-react';
 import { api } from '../../api';
 import { Toggle } from './shared';
-import TicketMappingConfiguration from './TicketMappingConfiguration';
-import TicketSyncMonitoring from './TicketSyncMonitoring';
 
 const EMPTY={ enabled:false,base_url:'',api_token:'',api_token_set:false,sync_interval_minutes:60 };
 
@@ -14,7 +12,10 @@ export default function RequestTrackerIntegration({ sectionStyle,labelStyle }) {
   const set=(key,value) => setForm(current => ({ ...current,[key]:value,...(key==='api_token' ? { clear_api_token:false } : {}) }));
   async function save() {
     setBusy('save');setError('');setMessage('');
-    try { const saved=await api.saveTicketingSettings(form);setForm({ ...EMPTY,...saved });setMessage('Request Tracker settings saved.'); }
+    // Send only what can be edited: the server refuses read-only fields such as api_token_set,
+    // and the token only when a new one was typed (it is never sent back to the page).
+    const body={ enabled:!!form.enabled,base_url:form.base_url,sync_interval_minutes:Number(form.sync_interval_minutes),...(form.api_token ? { api_token:form.api_token } : {}),...(form.clear_api_token ? { clear_api_token:true } : {}) };
+    try { const saved=await api.saveTicketingSettings(body);setForm({ ...EMPTY,...saved,api_token:'' });setMessage('Request Tracker settings saved.'); }
     catch(failure) { setError(failure.message); } finally { setBusy(''); }
   }
   async function test() {
@@ -49,8 +50,6 @@ export default function RequestTrackerIntegration({ sectionStyle,labelStyle }) {
       <button type="button" className="btn btn-ghost" disabled={!!busy || !form.api_token_set || !form.base_url} onClick={discover}>{busy==='queues' ? 'Loading...' : <><RefreshCw size={14} /> Discover Queues</>}</button>
     </div>
     {!!queues.length && <div className="table-wrap u-ed26b21"><table><thead><tr><th>Queue ID</th><th>Name</th><th>Description</th></tr></thead><tbody>{queues.map(queue => <tr key={queue.id}><td>{queue.id}</td><td>{queue.name}</td><td className="text-muted">{queue.description || 'No description'}</td></tr>)}</tbody></table></div>}
-    <TicketSyncMonitoring onMessage={setMessage} />
-    <TicketMappingConfiguration />
     <p className="text-muted text-sm u-56f4356">Use a dedicated least-privilege RT token. Private-network RT URLs require the server setting ALLOW_PRIVATE_TICKETING_URLS=true.</p>
   </div>;
 }

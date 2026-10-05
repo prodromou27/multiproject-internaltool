@@ -49,7 +49,7 @@ export default function CustomerReminders({ customer, adding, onAddingChange }) 
       </li>;
     })}</ul> : <p className="text-muted text-sm">No reminders for {customer.name}. Add one for renewals and other dates the team must not miss, such as an SSL certificate or a licence.</p>}
     <Link className="text-sm" to="/reminders">All reminders</Link>
-    {adding && data && <ReminderForm customers={[{ id: customer.id, name: customer.name }]} people={[]} teams={[]} sharedTeams={data.shared_teams}
+    {adding && data && <ReminderForm customers={[{ id: customer.id, name: customer.name }]} people={[]} teams={[]} sharedTeams={data.shared_teams} sharedChannels={data.shared_channels}
       defaults={{ customer_id: customer.id, for: data.default_team_id ? 'shared' : 'me', team_id: data.default_team_id }}
       onClose={() => onAddingChange(false)} onSaved={() => { onAddingChange(false); load(); }} />}
   </section>;
