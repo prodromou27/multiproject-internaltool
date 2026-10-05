@@ -465,7 +465,7 @@ export const api = {
   saveTeamSla: (id, data) => req('PUT', `/teams/${id}/sla`, data),
 
   // activity categories / subcategories
-  activityCategories: (options) => req('GET', '/activity-categories', undefined, options),
+  activityCategories: (options = {}) => req('GET', `/activity-categories${options.includeInactive ? '?include_inactive=1' : ''}`, undefined, options),
   createActivityCategory: (data) => req('POST', '/activity-categories', data),
   updateActivityCategory: (id, data) => req('PUT', `/activity-categories/${id}`, data),
   deleteActivityCategory: (id) => req('DELETE', `/activity-categories/${id}`),
@@ -474,7 +474,7 @@ export const api = {
   deleteActivitySubcategory: (categoryId, subId) => req('DELETE', `/activity-categories/${categoryId}/subcategories/${subId}`),
 
   // technologies
-  technologies: () => req('GET', '/technologies'),
+  technologies: (options = {}) => req('GET', `/technologies${options.includeInactive ? '?include_inactive=1' : ''}`, undefined, options),
   createTechnology: (data) => req('POST', '/technologies', data),
   updateTechnology: (id, data) => req('PUT', `/technologies/${id}`, data),
   deleteTechnology: (id) => req('DELETE', `/technologies/${id}`),

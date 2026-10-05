@@ -65,7 +65,6 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
     if (!form.customer_id) return 'Customer is required';
     if (!form.activity_date) return 'Activity date is required';
     if (!form.category_id) return 'Category is required';
-    if (!form.title.trim()) return 'Title is required';
     if (form.duration_minutes !== '' && Number(form.duration_minutes) <= 0) return 'Duration must be greater than zero';
     if (category?.require_asset && assets.length > 0 && form.asset_ids.length === 0) return 'Select the asset that was worked on';
     if (form.start_time && form.end_time && form.end_time < form.start_time) return 'End time cannot be before start time';
@@ -102,7 +101,7 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
     ...f, [key]: f[key].includes(value) ? f[key].filter(x => x !== value) : [...f[key], value],
   }));
   // Which asset was worked on. For categories that require it (upgrades, patches)
-  // it sits in the main form, otherwise under More details.
+  // it is required; for the others it is optional. Always in the main form.
   const assetPicker = form.customer_id ? (
     <>
       <ChipGroup legend={category?.require_asset ? 'Customer assets (required for this category)' : 'Customer assets'} scroll
@@ -158,8 +157,8 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
           No customers are open for activity logging by your team yet. A manager can fix this on the customer's page: under Service Configuration, assign your team and turn on managed services or service activity tracking.
         </p>}
 
-        <Field label="Title" required className="af-wide">
-          <input value={form.title} onChange={set('title')} maxLength={300} required placeholder="What did you do?" />
+        <Field label="Title (optional)" className="af-wide">
+          <input value={form.title} onChange={set('title')} maxLength={300} placeholder="Leave blank to name it after the category and asset" />
         </Field>
 
         <Field label="Category" required>
@@ -200,7 +199,8 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
         </Field>
       </div>
 
-      {category?.require_asset ? <div className="af-group af-assets-main">{assetPicker}</div> : null}
+      {/* The asset worked on is part of the main record, for every category. */}
+      {assetPicker && <div className="af-group af-assets-main">{assetPicker}</div>}
 
       <details className="af-more" open={showMore || requiredDetails} onToggle={e => setShowMore(e.target.open)}>
         <summary>More details</summary>
@@ -248,7 +248,6 @@ export function ActivityForm({ meta, initial, onSave, onClose, onReload }) {
             </Field>
             <Field label="Customer impact"><input value={form.customer_impact} onChange={set('customer_impact')} /></Field>
           </div>
-          {!category?.require_asset && assetPicker}
         </fieldset>
 
         <fieldset className="af-group">

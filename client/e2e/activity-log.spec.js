@@ -9,7 +9,7 @@ test('an engineer in an enabled team can log an activity', async ({ page }) => {
   const dialog = page.getByRole('dialog');
   // Required fields carry a "*" marker in their label.
   await dialog.getByLabel(/^Customer\s*\*?$/).selectOption({ label: 'Northwind Logistics' });
-  await dialog.getByLabel(/^Title\s*\*?$/).fill('Reviewed the outbound firewall rules');
+  await dialog.getByLabel(/^Title \(optional\)$/).fill('Reviewed the outbound firewall rules');
   await dialog.getByLabel(/^Category\s*\*?$/).selectOption({ label: 'Support' });
   await dialog.getByLabel('Time spent (minutes)').fill('45');
   await dialog.getByRole('button', { name: 'Log activity' }).click();
@@ -52,7 +52,7 @@ test('work on in-house infrastructure is offered first, labelled, and billed as 
   const customer = dialog.getByLabel(/^Customer\s*\*?$/);
   await expect(customer.locator('option').nth(1)).toHaveText('Our infrastructure (in-house)');
   await customer.selectOption({ label: 'Our infrastructure (in-house)' });
-  await dialog.getByLabel(/^Title\s*\*?$/).fill('Patched the VPN concentrator');
+  await dialog.getByLabel(/^Title \(optional\)$/).fill('Patched the VPN concentrator');
   await dialog.getByLabel(/^Category\s*\*?$/).selectOption({ label: 'Support' });
   await dialog.getByRole('button', { name: 'Log activity' }).click();
 
@@ -67,7 +67,7 @@ test('choosing a client customer does not force the internal billing class', asy
   await page.getByRole('button', { name: 'Log activity' }).first().click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel(/^Customer\s*\*?$/).selectOption({ label: 'Northwind Logistics' });
-  await dialog.getByLabel(/^Title\s*\*?$/).fill('Reviewed alerts');
+  await dialog.getByLabel(/^Title \(optional\)$/).fill('Reviewed alerts');
   await dialog.getByLabel(/^Category\s*\*?$/).selectOption({ label: 'Support' });
   await dialog.getByRole('button', { name: 'Log activity' }).click();
   await expect.poll(() => api.calls.some(c => c.method === 'POST' && c.path === '/api/service-activities')).toBe(true);

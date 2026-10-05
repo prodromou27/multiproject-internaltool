@@ -4,7 +4,7 @@ import { api } from '../../api';
 import { Modal } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
-import { LookupTable } from './shared';
+import { CategoriesEditor, TechnologiesEditor } from './ActivityCatalogEditors';
 
 export function TeamsAdminSection() {
   const toast = useToast();
@@ -216,13 +216,11 @@ export function ServiceActivityGeneralSettings() {
 }
 
 export function ServiceActivityAdminTab() {
-  const toast = useToast();
-  const confirm = useConfirm();
   const [categories, setCategories] = useState([]);
   const [technologies, setTechnologies] = useState([]);
   const [teams, setTeams] = useState([]);
 
-  const load = () => Promise.all([api.activityCategories(), api.technologies(), api.teams()])
+  const load = () => Promise.all([api.activityCategories({ includeInactive: true }), api.technologies({ includeInactive: true }), api.teams()])
     .then(([c, t, tm]) => { setCategories(c); setTechnologies(t); setTeams(tm); });
   useEffect(() => { load(); }, []);
 
@@ -238,65 +236,8 @@ export function ServiceActivityAdminTab() {
         </p>
       </div>
 
-      <LookupTable
-        title="Activity Categories"
-        items={categories}
-        onAdd={async (name, teamId) => { await api.createActivityCategory({ name, team_id: teamId || null }); load(); }}
-        onToggle={async item => { await api.updateActivityCategory(item.id, { active: !item.active }); load(); }}
-        onDelete={async item => {
-          const ok = await confirm(`Delete category "${item.name}"?`, { title: 'Delete Category' });
-          if (!ok) return;
-          try { await api.deleteActivityCategory(item.id); load(); } catch (e) { toast.error(e.message); }
-        }}
-        extraField={{
-          label: 'Team',
-          initial: '',
-          render: (value, setValue) => (
-            <select value={value || ''} onChange={e => setValue(e.target.value)} className="u-94253f9" aria-label="Team">
-              <option value="">Shared (every team)</option>
-              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          ),
-        }}
-        extraColumns={[
-          {
-            label: 'Team',
-            render: item => (
-              <select value={item.team_id || ''} className="u-94253f9" aria-label={`Team for ${item.name}`}
-                onChange={async e => { await api.updateActivityCategory(item.id, { team_id: e.target.value || null }); load(); }}>
-                <option value="">Shared (every team)</option>
-                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            ),
-          },
-          {
-            label: 'Require Attachment',
-            render: item => (
-              <input type="checkbox" checked={!!item.require_attachment} className="u-30e741d"
-                onChange={async () => { await api.updateActivityCategory(item.id, { require_attachment: !item.require_attachment }); load(); }} />
-            ),
-          },
-          {
-            label: 'Require Asset',
-            render: item => (
-              <input type="checkbox" checked={!!item.require_asset} className="u-30e741d" title="Activities in this category must name the customer asset worked on (when the customer has assets)"
-                onChange={async () => { await api.updateActivityCategory(item.id, { require_asset: !item.require_asset }); load(); }} />
-            ),
-          },
-        ]}
-      />
-
-      <LookupTable
-        title="Technologies"
-        items={technologies}
-        onAdd={async name => { await api.createTechnology({ name }); load(); }}
-        onToggle={async item => { await api.updateTechnology(item.id, { active: !item.active }); load(); }}
-        onDelete={async item => {
-          const ok = await confirm(`Delete technology "${item.name}"?`, { title: 'Delete Technology' });
-          if (!ok) return;
-          try { await api.deleteTechnology(item.id); load(); } catch (e) { toast.error(e.message); }
-        }}
-      />
+      <CategoriesEditor categories={categories} teams={teams} onChanged={load} />
+      <TechnologiesEditor technologies={technologies} onChanged={load} />
 
       <div className="card">
         <div className="section-title">Statuses, Customers & Rules</div>

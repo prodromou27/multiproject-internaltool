@@ -164,9 +164,26 @@ router.get('/:id', numericIdOnly, requireAuth, requireServiceActivityAccess, asy
 });
 
 /* ── Create ───────────────────────────────────────────────────────────── */
+// The title is optional: left blank, the activity is named after its category,
+// subcategory and the assets worked on, e.g. "Upgrade – Firmware: FW-01".
+const blankTitle = value => value === undefined || value === null || (typeof value === 'string' && !value.trim());
+async function defaultActivityTitle({ categoryId, subcategoryId, assetIds, customerId }) {
+  const id = value => (Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : null);
+  const category = id(categoryId) ? await db.prepare('SELECT name FROM activity_categories WHERE id = ?').get(id(categoryId)) : null;
+  const subcategory = id(subcategoryId) ? await db.prepare('SELECT name FROM activity_subcategories WHERE id = ?').get(id(subcategoryId)) : null;
+  const ids = Array.isArray(assetIds) ? assetIds.map(id).filter(Boolean).slice(0, 50) : [];
+  const assets = ids.length && id(customerId)
+    ? (await db.prepare(`SELECT name FROM customer_assets WHERE customer_id = ? AND id IN (${ids.map(() => '?').join(',')}) ORDER BY id`).all(id(customerId), ...ids)).map(row => decryptField(row.name))
+    : [];
+  const what = [category?.name, subcategory?.name].filter(Boolean).join(' – ') || 'Service activity';
+  const on = assets.length ? `: ${assets.slice(0, 2).join(', ')}${assets.length > 2 ? ` +${assets.length - 2}` : ''}` : '';
+  return `${what}${on}`.slice(0, 300);
+}
+
 router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => {
   const body = req.body || {};
   const customerId = body.customer_id;
+  if (blankTitle(body.title)) body.title = await defaultActivityTitle({ categoryId: body.category_id, subcategoryId: body.subcategory_id, assetIds: body.asset_ids, customerId });
   if (!customerId) return res.status(400).json({ error: 'Customer is required' });
 
   // Server-side authorization: never trust engineer/team from the client.
@@ -262,6 +279,11 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
   if (!Number.isSafeInteger(body.version) || body.version < 1) return res.status(400).json({ error: 'Invalid activity version' });
   if (body.version !== existing.version) return res.status(409).json({ error: 'Activity changed. Your draft is preserved; reload the latest activity before saving.', code: 'ACTIVITY_CONFLICT' });
   const customerId = body.customer_id || existing.customer_id;
+  if (body.title !== undefined && blankTitle(body.title)) {
+    const assetIds = body.asset_ids !== undefined ? body.asset_ids
+      : (await db.prepare('SELECT asset_id FROM service_activity_assets WHERE service_activity_id = ?').all(id)).map(row => row.asset_id);
+    body.title = await defaultActivityTitle({ categoryId: body.category_id ?? existing.category_id, subcategoryId: body.subcategory_id !== undefined ? body.subcategory_id : existing.subcategory_id, assetIds, customerId });
+  }
 
   // Re-check access even if the customer is unchanged: assignments can be revoked.
   if (req.user.role !== 'manager') {

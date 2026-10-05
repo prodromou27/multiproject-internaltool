@@ -438,3 +438,55 @@ test('one customer can stand for in-house infrastructure, and managed-services e
     await db.prepare('UPDATE customers SET is_internal=0 WHERE id=?').run(ours.data.id);
   }
 });
+
+test('an activity title is optional: left blank, it is named after the category, subcategory and asset', async () => {
+  const category = (await db.prepare('INSERT INTO activity_categories (name) VALUES (?)').run('Health check')).lastInsertRowid;
+  const sub = (await db.prepare('INSERT INTO activity_subcategories (category_id, name) VALUES (?, ?)').run(category, 'Firewall')).lastInsertRowid;
+  const asset = await api(`/api/customers/${ids.customer}/assets`, { method: 'POST', token: ids.tokenManager,
+    body: { name: 'HC-FW-01', asset_tag: 'HC-1', asset_type: 'Firewall', environment: 'production', criticality: 'high', lifecycle_status: 'active', coverage_type: 'managed' } });
+  const today = new Date().toISOString().slice(0, 10);
+  const made = await api('/api/service-activities', { method: 'POST', token: ids.tokenEnabled,
+    body: { customer_id: ids.customer, activity_date: today, category_id: category, subcategory_id: sub, asset_ids: [asset.data.id], title: '  ', status: 'planned' } });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+  const stored = await db.prepare('SELECT title, version FROM service_activities WHERE id = ?').get(made.data.id);
+  assert.equal(stored.title, 'Health check – Firewall: HC-FW-01');
+  const noTitle = await api('/api/service-activities', { method: 'POST', token: ids.tokenEnabled,
+    body: { customer_id: ids.customer, activity_date: today, category_id: category, status: 'planned' } });
+  assert.equal(noTitle.status, 200, JSON.stringify(noTitle.data));
+  assert.equal((await db.prepare('SELECT title FROM service_activities WHERE id = ?').get(noTitle.data.id)).title, 'Health check');
+  // Clearing the title on edit names it again; a typed title is kept as typed.
+  const cleared = await api(`/api/service-activities/${noTitle.data.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { version: 1, title: '', subcategory_id: sub } });
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.data));
+  assert.equal((await db.prepare('SELECT title FROM service_activities WHERE id = ?').get(noTitle.data.id)).title, 'Health check – Firewall');
+});
+
+test('admins manage categories, subcategories and technologies, including ones switched off', async () => {
+  const manager = ids.tokenManager, engineer = ids.tokenEnabled;
+  const category = (await api('/api/activity-categories', { method: 'POST', token: manager, body: { name: 'Patching' } })).data.id;
+  assert.equal((await api('/api/activity-categories', { method: 'POST', token: manager, body: { name: 'x'.repeat(101) } })).status, 400);
+  assert.equal((await api(`/api/activity-categories/${category}`, { method: 'PUT', token: manager, body: { name: '  ' } })).status, 400);
+  assert.equal((await api(`/api/activity-categories/${category}`, { method: 'PUT', token: manager, body: { name: 'Patch management', active: false, sort_order: 5 } })).status, 200);
+  // Switched off: gone from the engineer's list, still listed for the manager to switch back on.
+  assert.equal((await api('/api/activity-categories', { token: engineer })).data.some(row => row.id === category), false);
+  assert.equal((await api('/api/activity-categories?include_inactive=1', { token: engineer })).data.some(row => row.id === category), false, 'only managers see switched-off items');
+  const listed = (await api('/api/activity-categories?include_inactive=1', { token: manager })).data.find(row => row.id === category);
+  assert.deepEqual([listed.name, listed.active, listed.sort_order], ['Patch management', 0, 5]);
+
+  const sub = (await api(`/api/activity-categories/${category}/subcategories`, { method: 'POST', token: manager, body: { name: 'Windows' } })).data.id;
+  assert.equal((await api(`/api/activity-categories/${category}/subcategories`, { method: 'POST', token: manager, body: { name: 'windows' } })).status, 409);
+  await api(`/api/activity-categories/${category}/subcategories`, { method: 'POST', token: manager, body: { name: 'Linux' } });
+  assert.equal((await api(`/api/activity-categories/${category}/subcategories/${sub}`, { method: 'PUT', token: manager, body: { name: 'Linux' } })).status, 409);
+  assert.equal((await api(`/api/activity-categories/${category}/subcategories/${sub}`, { method: 'PUT', token: manager, body: { name: 'Windows Server', active: false } })).status, 200);
+  assert.equal((await api(`/api/activity-categories/${category}/subcategories/999999`, { method: 'PUT', token: manager, body: { name: 'Nope' } })).status, 404);
+  const subs = (await api('/api/activity-categories?include_inactive=1', { token: manager })).data.find(row => row.id === category).subcategories;
+  assert.deepEqual(subs.map(row => [row.name, row.active]).sort(), [['Linux', 1], ['Windows Server', 0]]);
+
+  const technology = (await api('/api/technologies', { method: 'POST', token: manager, body: { name: 'Sophos' } })).data.id;
+  await api('/api/technologies', { method: 'POST', token: manager, body: { name: 'Palo Alto' } });
+  assert.equal((await api(`/api/technologies/${technology}`, { method: 'PUT', token: manager, body: { name: 'palo alto' } })).status, 409);
+  assert.equal((await api(`/api/technologies/${technology}`, { method: 'PUT', token: manager, body: { name: 'Sophos XGS', active: false } })).status, 200);
+  assert.equal((await api(`/api/technologies/${technology}`, { method: 'PUT', token: engineer, body: { name: 'Mine' } })).status, 403);
+  assert.equal((await api('/api/technologies', { token: engineer })).data.some(row => row.id === technology), false);
+  assert.equal((await api('/api/technologies?include_inactive=1', { token: manager })).data.find(row => row.id === technology).name, 'Sophos XGS');
+  assert.equal((await api('/api/technologies/999999', { method: 'PUT', token: manager, body: { active: true } })).status, 404);
+});

@@ -7,14 +7,17 @@ const { requireAuth, requireManager } = require('../middleware/auth');
 // visible here regardless of team — access to *use* one for a specific activity is
 // enforced separately in routes/serviceActivities.js (GET /meta), which scopes the
 // list to the team the activity actually belongs to.
+// Managers editing the list (?include_inactive=1) also see what is switched off,
+// so it can be switched back on.
 router.get('/', requireAuth, async (req, res) => {
+  const all = req.query.include_inactive === '1' && req.user.role === 'manager';
   const categories = await db.prepare(`
     SELECT c.*, t.name AS team_name FROM activity_categories c
     LEFT JOIN teams t ON t.id = c.team_id
-    WHERE c.active = 1 ORDER BY c.sort_order, c.name
+    ${all ? '' : 'WHERE c.active = 1'} ORDER BY c.sort_order, c.name
   `).all();
   const subcategories = await db.prepare(
-    'SELECT * FROM activity_subcategories WHERE active = 1 ORDER BY sort_order, name'
+    `SELECT * FROM activity_subcategories ${all ? '' : 'WHERE active = 1'} ORDER BY sort_order, name`
   ).all();
   res.json(categories.map(c => ({
     ...c,
@@ -47,9 +50,12 @@ async function nameTaken(name, teamId, excludeId) {
     : db.prepare('SELECT 1 FROM activity_categories WHERE LOWER(name) = LOWER(?) AND team_id = ? AND id != ?').get(name, teamId, exclude));
 }
 
+const NAME_MAX = 100;
+const badName = name => (name !== undefined && name !== null && (typeof name !== 'string' || !name.trim() || name.trim().length > NAME_MAX));
+
 router.post('/', async (req, res) => {
   const { name, sort_order, require_attachment, require_asset } = req.body;
-  if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
+  if (!name?.trim() || badName(name)) return res.status(400).json({ error: `Name is required (at most ${NAME_MAX} characters)` });
   const team = await resolveTeamId(req.body.team_id);
   if (team.error) return res.status(400).json({ error: team.error });
   if (await nameTaken(name.trim(), team.value)) return res.status(409).json({ error: 'Category already exists' });
@@ -64,6 +70,8 @@ router.put('/:id', async (req, res) => {
   const existing = await db.prepare('SELECT * FROM activity_categories WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Category not found' });
   const { name, active, sort_order, require_attachment, require_asset } = req.body;
+  if (badName(name)) return res.status(400).json({ error: `Name cannot be empty or longer than ${NAME_MAX} characters` });
+  if (sort_order != null && !Number.isSafeInteger(sort_order)) return res.status(400).json({ error: 'Invalid order' });
 
   let teamId = existing.team_id;
   if (req.body.team_id !== undefined) {
@@ -96,7 +104,9 @@ router.post('/:id/subcategories', async (req, res) => {
   const category = await db.prepare('SELECT 1 FROM activity_categories WHERE id = ?').get(categoryId);
   if (!category) return res.status(404).json({ error: 'Category not found' });
   const { name, sort_order } = req.body;
-  if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
+  if (!name?.trim() || badName(name)) return res.status(400).json({ error: `Name is required (at most ${NAME_MAX} characters)` });
+  if (await db.prepare('SELECT 1 FROM activity_subcategories WHERE category_id = ? AND LOWER(name) = LOWER(?)').get(categoryId, name.trim()))
+    return res.status(409).json({ error: 'Subcategory already exists for this category' });
   try {
     const result = await db.prepare('INSERT INTO activity_subcategories (category_id, name, sort_order) VALUES (?, ?, ?)')
       .run(categoryId, name.trim(), sort_order || 0);
@@ -110,14 +120,21 @@ router.put('/:id/subcategories/:subId', async (req, res) => {
   const subId = parseInt(req.params.subId, 10);
   if (!subId) return res.status(400).json({ error: 'Invalid ID' });
   const { name, active, sort_order } = req.body;
-  await db.prepare(`UPDATE activity_subcategories SET name=COALESCE(?,name), active=COALESCE(?,active), sort_order=COALESCE(?,sort_order) WHERE id=? AND category_id=?`)
+  if (badName(name)) return res.status(400).json({ error: `Name cannot be empty or longer than ${NAME_MAX} characters` });
+  if (sort_order != null && !Number.isSafeInteger(sort_order)) return res.status(400).json({ error: 'Invalid order' });
+  if (name?.trim() && await db.prepare('SELECT 1 FROM activity_subcategories WHERE category_id = ? AND LOWER(name) = LOWER(?) AND id != ?').get(req.params.id, name.trim(), subId))
+    return res.status(409).json({ error: 'Subcategory already exists for this category' });
+  const updated = await db.prepare(`UPDATE activity_subcategories SET name=COALESCE(?,name), active=COALESCE(?,active), sort_order=COALESCE(?,sort_order) WHERE id=? AND category_id=?`)
     .run(name?.trim() || null, active != null ? (active ? 1 : 0) : null, sort_order ?? null, subId, req.params.id);
+  if (!updated.changes) return res.status(404).json({ error: 'Subcategory not found' });
   res.json({ ok: true });
 });
 
 router.delete('/:id/subcategories/:subId', async (req, res) => {
   const subId = parseInt(req.params.subId, 10);
   if (!subId) return res.status(400).json({ error: 'Invalid ID' });
+  if (await db.prepare('SELECT 1 FROM service_activities WHERE subcategory_id = ?').get(subId))
+    return res.status(409).json({ error: 'Subcategory is used by existing activities — switch it off instead of deleting' });
   await db.prepare('DELETE FROM activity_subcategories WHERE id = ? AND category_id = ?').run(subId, req.params.id);
   res.json({ ok: true });
 });

@@ -311,3 +311,24 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
   .reminder-item { flex-direction: column; }
   .reminder-form-when { grid-template-columns: 1fr 1fr; }
 }
+
+/* Settings: category, subcategory and technology editors. */
+.catalog-add { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.catalog-add input { flex: 1 1 220px; min-width: 0; }
+.catalog-add select { width: auto; }
+.catalog-table td { vertical-align: middle; }
+.catalog-table tr.is-off td { color: var(--gray-500); }
+.catalog-table tr.is-off .catalog-name { color: var(--gray-500); text-decoration: line-through; }
+.catalog-name { width: 100%; min-width: 160px; border: 1px solid transparent; background: transparent; padding: 5px 8px; border-radius: 6px; font: inherit; color: var(--ink); }
+.catalog-name:hover { border-color: var(--gray-200); }
+.catalog-name:focus { border-color: var(--primary); background: var(--surface); outline: none; box-shadow: 0 0 0 3px var(--primary-ring); }
+.catalog-order { display: inline-flex; gap: 2px; }
+.catalog-order .btn { padding: 4px 6px; }
+.catalog-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+.catalog-subs-row > td { background: var(--gray-50); }
+.catalog-subs ul { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 4px; }
+.catalog-subs li { display: flex; align-items: center; gap: 8px; }
+.catalog-subs li.is-off .catalog-name { color: var(--gray-500); text-decoration: line-through; }
+.catalog-subs .catalog-add { margin-bottom: 4px; }
+.catalog-table select { min-width: 170px; width: auto; }
+.catalog-table th { white-space: nowrap; }
