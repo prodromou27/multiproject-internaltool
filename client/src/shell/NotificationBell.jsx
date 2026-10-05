@@ -17,6 +17,7 @@ const NOTIF_ICONS = {
   'managed_report.reopened':  <FileText size={14} color="#f59e0b" />,
   'mention':          <AtSign      size={14} color="#ec4899" />,
   'reminder_due':     <BellRing    size={14} color="var(--signal)" />,
+  'reminder_set':     <BellRing    size={14} color="var(--primary)" />,
   'task_due':         <CheckSquare size={14} color="var(--warning)" />,
   'report_due':       <FileText    size={14} color="var(--warning)" />,
   'asset_expiring':   <ShieldAlert size={14} color="var(--warning)" />,

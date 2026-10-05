@@ -91,29 +91,29 @@ function VisitForm({ initial, defaults, customers, engineers, onSave, onClose })
   return (
     <form onSubmit={submit}>
       <div className="form-group">
-        <label>Customer *</label>
-        <select value={form.customer_id} onChange={event => setForm(old => ({ ...old,customer_id:event.target.value,asset_ids:String(event.target.value)===String(initial?.customer_id || '') ? initial?.asset_ids || [] : [] }))} required>
+        <label htmlFor="visit-customer">Customer *</label>
+        <select id="visit-customer" value={form.customer_id} onChange={event => setForm(old => ({ ...old,customer_id:event.target.value,asset_ids:String(event.target.value)===String(initial?.customer_id || '') ? initial?.asset_ids || [] : [] }))} required>
           <option value="">Select customer…</option>
           {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
       <div className="form-group">
-        <label>Visit Title *</label>
-        <input value={form.title} onChange={set('title')} required placeholder="e.g. Q2 Health Check" />
+        <label htmlFor="visit-title">Visit Title *</label>
+        <input id="visit-title" value={form.title} onChange={set('title')} required placeholder="e.g. Q2 Health Check" />
       </div>
       <div className="form-group">
-        <label>Description</label>
-        <textarea value={form.description || ''} onChange={set('description')} placeholder="Scope, objectives…" />
+        <label htmlFor="visit-description">Description</label>
+        <textarea id="visit-description" value={form.description || ''} onChange={set('description')} placeholder="Scope, objectives…" />
       </div>
       <div className="form-row">
         <div className="form-group">
-          <label>Scheduled Date *</label>
-          <input type="date" value={form.scheduled_date} onChange={set('scheduled_date')} required />
+          <label htmlFor="visit-date">Scheduled Date *</label>
+          <input id="visit-date" type="date" value={form.scheduled_date} onChange={set('scheduled_date')} required />
         </div>
         {initial && (
           <div className="form-group">
-            <label>Status</label>
-            <select value={form.status} onChange={set('status')}>
+            <label htmlFor="visit-status">Status</label>
+            <select id="visit-status" value={form.status} onChange={set('status')}>
               <option value="scheduled">Scheduled</option>
               <option value="in_progress">In Progress</option>
               <option value="completed">Completed</option>
@@ -130,10 +130,10 @@ function VisitForm({ initial, defaults, customers, engineers, onSave, onClose })
           onChange={ids => setForm(f => ({ ...f, engineer_ids: ids }))}
         />
       </div>
-      <div className="form-group"><label>Assets in scope</label><select multiple value={(form.asset_ids || []).map(String)} disabled={assetsLoading} onChange={event => setForm(old => ({ ...old,asset_ids:[...event.target.selectedOptions].map(option => Number(option.value)) }))} className="u-f15b2e8">{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name} · {asset.asset_type}{asset.hostname ? ` · ${asset.hostname}` : ''}</option>)}</select>{assetsLoading && <span className="text-muted text-sm" role="status">Loading assets…</span>}</div>
+      <div className="form-group"><label htmlFor="visit-assets">Assets in scope</label><select id="visit-assets" multiple value={(form.asset_ids || []).map(String)} disabled={assetsLoading} onChange={event => setForm(old => ({ ...old,asset_ids:[...event.target.selectedOptions].map(option => Number(option.value)) }))} className="u-f15b2e8">{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name} · {asset.asset_type}{asset.hostname ? ` · ${asset.hostname}` : ''}</option>)}</select>{assetsLoading && <span className="text-muted text-sm" role="status">Loading assets…</span>}</div>
       <div className="form-group">
-        <label>Notes</label>
-        <textarea value={form.notes || ''} onChange={set('notes')} placeholder="Any additional notes…" />
+        <label htmlFor="visit-form-notes">Notes</label>
+        <textarea id="visit-form-notes" value={form.notes || ''} onChange={set('notes')} placeholder="Any additional notes…" />
       </div>
       {formErr && <div className="error-msg mb-8">{formErr}</div>}
       <div className="modal-footer u-cc45258">

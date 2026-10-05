@@ -1,7 +1,10 @@
 /**
  * /api/reminders — each person's own reminders and their automatic-reminder
- * choices. Nobody can see or change another person's reminders.
+ * choices. A manager can also set a reminder for a person or a team: each
+ * recipient gets a copy they can mark done or snooze but not change, and the
+ * manager can change or remove every copy at once.
  */
+const crypto = require('crypto');
 const router = require('express').Router();
 const { requireAuth } = require('../middleware/auth');
 const db = require('../db');
@@ -43,9 +46,56 @@ async function reminderInput(body, user, existing) {
   return { title, notes: notes.trim() || null, dueAt, repeat, timeZone, customerId };
 }
 
-const view = row => ({ ...row, id: Number(row.id), customer_id: row.customer_id == null ? null : Number(row.customer_id), customer_name: row.customer_name ? decrypt(row.customer_name) : null });
-const SELECT = `SELECT r.id, r.title, r.notes, r.due_at, r.time_zone, r.repeat, r.customer_id, c.name AS customer_name, r.status, r.notified_at, r.completed_at, r.created_at
-  FROM reminders r LEFT JOIN customers c ON c.id = r.customer_id`;
+const view = row => {
+  const { user_id: owner, created_by: createdBy, set_by_name: setBy, ...rest } = row;
+  const fromOther = createdBy != null && Number(createdBy) !== Number(owner);
+  return { ...rest, id: Number(row.id), customer_id: row.customer_id == null ? null : Number(row.customer_id), customer_name: row.customer_name ? decrypt(row.customer_name) : null,
+    set_by: fromOther ? (setBy || 'A former user') : null };
+};
+const setByOther = (reminder, userId) => reminder.created_by != null && Number(reminder.created_by) !== Number(userId);
+
+// Who a manager's reminder goes to: { user_id } or { team_id }. Active users only.
+async function recipientsFor(target, manager) {
+  if (manager.role !== 'manager') fail('Only managers can set reminders for others', 403);
+  if (!target || typeof target !== 'object') fail('Choose who the reminder is for');
+  if (target.user_id != null) {
+    if (!positiveId(target.user_id)) fail('Invalid person');
+    const person = await db.prepare('SELECT id FROM users WHERE id = ? AND active = 1').get(target.user_id);
+    if (!person) fail('That person is not an active user');
+    return { userIds: [Number(person.id)], teamId: null };
+  }
+  if (target.team_id != null) {
+    if (!positiveId(target.team_id)) fail('Invalid team');
+    const team = await db.prepare('SELECT id FROM teams WHERE id = ?').get(target.team_id);
+    if (!team) fail('Team not found');
+    const members = await db.prepare('SELECT u.id FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.team_id = ? AND u.active = 1 ORDER BY u.id').all(team.id);
+    if (!members.length) fail('That team has no active members');
+    return { userIds: members.map(row => Number(row.id)), teamId: Number(team.id) };
+  }
+  fail('Choose a person or a team');
+}
+
+// A manager's reminders for others, one entry per set (all its copies).
+async function setForOthers(managerId) {
+  const rows = await db.prepare(`SELECT r.id, r.group_key, r.title, r.notes, r.due_at, r.time_zone, r.repeat, r.customer_id, c.name AS customer_name, r.status, r.completed_at,
+      r.team_id, t.name AS team_name, u.id AS recipient_id, u.name AS recipient_name
+    FROM reminders r JOIN users u ON u.id = r.user_id LEFT JOIN teams t ON t.id = r.team_id LEFT JOIN customers c ON c.id = r.customer_id
+    WHERE r.created_by = ? AND r.user_id != ? AND r.group_key IS NOT NULL ORDER BY r.due_at, r.id LIMIT 2000`).all(managerId, managerId);
+  const groups = new Map();
+  for (const row of rows) {
+    if (!groups.has(row.group_key)) groups.set(row.group_key, { group_key: row.group_key, title: row.title, notes: row.notes, due_at: row.due_at, time_zone: row.time_zone, repeat: row.repeat,
+      customer_id: row.customer_id == null ? null : Number(row.customer_id), customer_name: row.customer_name ? decrypt(row.customer_name) : null, team_name: row.team_name || null, recipients: [] });
+    const group = groups.get(row.group_key);
+    if (row.status === 'active' && row.due_at < group.due_at) group.due_at = row.due_at;
+    group.recipients.push({ id: Number(row.recipient_id), name: row.recipient_name, status: row.status, due_at: row.due_at, completed_at: row.completed_at });
+  }
+  // Keep sets still running, and finished ones for 30 days.
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+  return [...groups.values()].filter(group => group.recipients.some(item => item.status === 'active' || String(item.completed_at) >= cutoff));
+}
+const SELECT = `SELECT r.id, r.user_id, r.title, r.notes, r.due_at, r.time_zone, r.repeat, r.customer_id, c.name AS customer_name, r.status, r.notified_at, r.completed_at, r.created_at,
+    r.created_by, s.name AS set_by_name
+  FROM reminders r LEFT JOIN customers c ON c.id = r.customer_id LEFT JOIN users s ON s.id = r.created_by`;
 const one = async (id, userId) => db.prepare(`${SELECT} WHERE r.id = ? AND r.user_id = ?`).get(id, userId);
 
 // Customers a person may link a reminder to (the same rule as customerAccess.canAccessCustomer).
@@ -65,17 +115,40 @@ router.get('/', async (req, res) => {
   const settingsRow = await db.prepare('SELECT reminder_settings FROM users WHERE id = ?').get(req.user.id);
   const customers = (await linkableCustomers(req.user)).map(row => ({ id: Number(row.id), name: decrypt(row.name) })).sort((a, b) => a.name.localeCompare(b.name));
   const settings = automaticSettings(settingsRow?.reminder_settings, req.user.role);
+  const manager = req.user.role === 'manager';
+  const [people, teams, others] = manager ? await Promise.all([
+    db.prepare('SELECT id, name FROM users WHERE active = 1 ORDER BY name').all(),
+    db.prepare(`SELECT t.id, t.name, COUNT(u.id) AS members FROM teams t LEFT JOIN team_members tm ON tm.team_id = t.id LEFT JOIN users u ON u.id = tm.user_id AND u.active = 1
+      GROUP BY t.id, t.name ORDER BY t.name`).all(),
+    setForOthers(req.user.id),
+  ]) : [[], [], []];
   res.json({
     now: new Date().toISOString(),
     active: rows.filter(row => row.status === 'active'),
     done: rows.filter(row => row.status === 'done').sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at))).slice(0, 20),
     automatic: AUTOMATIC.filter(item => item.key in settings).map(({ key, label }) => ({ key, label, enabled: settings[key] })),
     customers,
+    ...(manager ? { set_for_others: others, people: people.filter(row => Number(row.id) !== Number(req.user.id)).map(row => ({ id: Number(row.id), name: row.name })),
+      teams: teams.map(row => ({ id: Number(row.id), name: row.name, members: Number(row.members) })) } : {}),
   });
 });
 
 router.post('/', async (req, res) => {
   try {
+    if (req.body?.for !== undefined) {
+      const { userIds, teamId } = await recipientsFor(req.body.for, req.user);
+      const input = await reminderInput(req.body, req.user);
+      const groupKey = crypto.randomUUID();
+      await db.transaction(async tx => {
+        for (const userId of userIds) {
+          await tx.prepare(`INSERT INTO reminders (user_id, title, notes, due_at, scheduled_at, time_zone, repeat, customer_id, created_by, group_key, team_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(userId, input.title, input.notes, input.dueAt, input.dueAt, input.timeZone, input.repeat, input.customerId, req.user.id, groupKey, teamId);
+          if (userId !== Number(req.user.id)) await tx.prepare('INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)')
+            .run(userId, 'reminder_set', `${req.user.name} set a reminder for you: ${input.title}`, null, '/reminders');
+        }
+      });
+      return res.status(201).json({ group_key: groupKey, recipients: userIds.length });
+    }
     const count = await db.prepare("SELECT COUNT(*) AS total FROM reminders WHERE user_id = ? AND status = 'active'").get(req.user.id);
     if (Number(count.total) >= 500) fail('You have 500 active reminders; complete or delete some first');
     const input = await reminderInput(req.body, req.user);
@@ -99,11 +172,38 @@ router.put('/settings', async (req, res) => {
   res.json({ automatic: AUTOMATIC.filter(item => item.key in settings).map(({ key, label }) => ({ key, label, enabled: settings[key] })) });
 });
 
+// The manager who set a reminder for others changes or removes every copy at once.
+async function ownGroup(req) {
+  if (typeof req.params.key !== 'string' || !/^[0-9a-f-]{36}$/.test(req.params.key)) fail('Invalid reminder', 400);
+  const copies = await db.prepare('SELECT * FROM reminders WHERE group_key = ? AND created_by = ? ORDER BY id').all(req.params.key, req.user.id);
+  if (!copies.length) fail('Reminder not found', 404);
+  return copies;
+}
+router.put('/group/:key', async (req, res) => {
+  try {
+    const copies = await ownGroup(req);
+    const input = await reminderInput(req.body, req.user, copies[0]);
+    // Every recipient starts again from the new details, as if newly set.
+    await db.prepare(`UPDATE reminders SET title = ?, notes = ?, due_at = ?, scheduled_at = ?, time_zone = ?, repeat = ?, customer_id = ?, notified_at = NULL,
+      status = 'active', completed_at = NULL, updated_at = app_now() WHERE group_key = ? AND created_by = ?`)
+      .run(input.title, input.notes, input.dueAt, input.dueAt, input.timeZone, input.repeat, input.customerId, req.params.key, req.user.id);
+    res.json({ ok: true, recipients: copies.length });
+  } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Could not save the reminder' }); }
+});
+router.delete('/group/:key', async (req, res) => {
+  try {
+    await ownGroup(req);
+    await db.prepare('DELETE FROM reminders WHERE group_key = ? AND created_by = ?').run(req.params.key, req.user.id);
+    res.json({ ok: true });
+  } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Could not delete the reminder' }); }
+});
+
 router.put('/:id', async (req, res) => {
   if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid reminder' });
   try {
     const existing = await db.prepare('SELECT * FROM reminders WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
     if (!existing) fail('Reminder not found', 404);
+    if (setByOther(existing, req.user.id)) fail('This reminder was set for you by someone else; only they can change it', 403);
     const input = await reminderInput(req.body, req.user, existing);
     // A new time is a new occurrence, which should be delivered again.
     const retimed = input.dueAt !== existing.due_at;
@@ -144,6 +244,8 @@ router.post('/:id/snooze', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid reminder' });
+  const mine = await db.prepare('SELECT created_by FROM reminders WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (mine && setByOther(mine, req.user.id)) return res.status(403).json({ error: 'This reminder was set for you by someone else; only they can remove it' });
   const removed = await db.prepare('DELETE FROM reminders WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
   if (removed.changes !== 1) return res.status(404).json({ error: 'Reminder not found' });
   res.json({ ok: true });

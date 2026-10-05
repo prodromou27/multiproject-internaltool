@@ -6,7 +6,7 @@ import { fmtDate, Modal } from './Shared';
 import { useToast } from './Toast';
 
 const STATUSES = ['open','accepted','rejected','in_progress','implemented','deferred','converted_to_project','closed'];
-const label = value => value.replaceAll('_', ' ');
+const label = value => { const text = value.replaceAll('_', ' '); return text.charAt(0).toUpperCase() + text.slice(1); };
 
 function TaskConversionForm({ customerId,recommendation,projects,owners,onSaved,onClose }) {
   const [form,setForm]=useState({ version:recommendation.version,title:recommendation.finding.slice(0,500),project_id:'',assigned_to:recommendation.owner_id || '',priority:recommendation.risk_level==='critical' ? 'high' : recommendation.risk_level,deadline:recommendation.due_date || '' });

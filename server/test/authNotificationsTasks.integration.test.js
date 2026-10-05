@@ -678,3 +678,59 @@ test('snoozing a repeating reminder moves only this occurrence; Done returns it 
   assert.equal(done.data.due_at, expected.toISOString(), 'tomorrow at the usual time, not the snoozed one');
   await api(`/api/reminders/${made.data.id}`, { method: 'DELETE', token });
 });
+
+test('a manager can set a reminder for a person or a team; recipients can finish it but not change it', async () => {
+  const reminders = require('../reminders');
+  const manager = ids.tokenManager, engineer = ids.tokenEnabled;
+  const base = { title: 'Submit timesheets', due_at: '2020-02-03T07:00:00.000Z', time_zone: 'UTC', repeat: 'none' };
+  const listOf = async token => (await api('/api/reminders', { token })).data;
+
+  // Engineers cannot set reminders for others; bad targets are refused.
+  assert.equal((await api('/api/reminders', { method: 'POST', token: engineer, body: { ...base, for: { user_id: ids.manager } } })).status, 403);
+  for (const target of [{}, { user_id: 'x' }, { user_id: 999999 }, { team_id: 999999 }])
+    assert.equal((await api('/api/reminders', { method: 'POST', token: manager, body: { ...base, for: target } })).status >= 400, true, JSON.stringify(target));
+
+  // For one person: they get it, with who set it, and a notice in the bell.
+  const single = await api('/api/reminders', { method: 'POST', token: manager, body: { ...base, for: { user_id: ids.engineerEnabled } } });
+  assert.equal(single.status, 201, JSON.stringify(single.data));
+  assert.equal(single.data.recipients, 1);
+  const copy = (await listOf(engineer)).active.find(row => row.title === 'Submit timesheets');
+  assert.equal(copy.set_by, 'Manager One');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND type = 'reminder_set'").get(ids.engineerEnabled)).n >= 1, true);
+
+  // The recipient may finish it, but not change or remove it.
+  assert.equal((await api(`/api/reminders/${copy.id}`, { method: 'PUT', token: engineer, body: { title: 'Never mind' } })).status, 403);
+  assert.equal((await api(`/api/reminders/${copy.id}`, { method: 'DELETE', token: engineer })).status, 403);
+
+  // It is delivered like any reminder, saying who set it.
+  await reminders.sendDueReminders();
+  assert.ok((await db.prepare("SELECT title FROM notifications WHERE user_id = ? AND type = 'reminder_due'").all(ids.engineerEnabled)).some(row => row.title === 'Reminder: Submit timesheets'));
+  assert.equal((await api(`/api/reminders/${copy.id}/done`, { method: 'POST', token: engineer })).data.status, 'done');
+
+  // The manager sees the set and its progress.
+  let set = (await listOf(manager)).set_for_others.find(group => group.group_key === single.data.group_key);
+  assert.deepEqual(set.recipients.map(item => [item.id, item.status]), [[ids.engineerEnabled, 'done']]);
+
+  // For a team: every active member gets their own copy.
+  const team = await api('/api/reminders', { method: 'POST', token: manager, body: { ...base, title: 'Read the new runbook', due_at: '2099-01-05T08:00:00Z', for: { team_id: ids.teamEnabled } } });
+  assert.equal(team.status, 201, JSON.stringify(team.data));
+  const members = (await db.prepare('SELECT COUNT(*) AS n FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.team_id = ? AND u.active = 1').get(ids.teamEnabled)).n;
+  assert.equal(team.data.recipients, Number(members));
+  set = (await listOf(manager)).set_for_others.find(group => group.group_key === team.data.group_key);
+  assert.equal(set.team_name !== null, true);
+
+  // The manager changes or removes every copy at once; nobody else can.
+  assert.equal((await api(`/api/reminders/group/${team.data.group_key}`, { method: 'PUT', token: engineer, body: { title: 'Hijacked' } })).status, 404);
+  assert.equal((await api(`/api/reminders/group/${team.data.group_key}`, { method: 'PUT', token: manager, body: { title: 'Read the updated runbook' } })).status, 200);
+  assert.equal((await listOf(engineer)).active.find(row => row.set_by && row.title.includes('runbook')).title, 'Read the updated runbook');
+  assert.equal((await api(`/api/reminders/group/${team.data.group_key}`, { method: 'DELETE', token: manager })).status, 200);
+  assert.equal((await listOf(engineer)).active.some(row => row.title.includes('runbook')), false);
+  assert.equal((await api('/api/reminders/group/not-a-key', { method: 'DELETE', token: manager })).status, 400);
+
+  // A person's own reminders still list and send normally (no customer, set by nobody).
+  const own = await api('/api/reminders', { method: 'POST', token: engineer, body: { ...base, title: 'Own one, no customer' } });
+  assert.equal(own.status, 201);
+  await reminders.sendDueReminders();
+  assert.ok((await db.prepare("SELECT title FROM notifications WHERE user_id = ? AND type = 'reminder_due'").all(ids.engineerEnabled)).some(row => row.title === 'Reminder: Own one, no customer'));
+  assert.equal((await listOf(engineer)).active.find(row => row.id === own.data.id).set_by, null);
+});

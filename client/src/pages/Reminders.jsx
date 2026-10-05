@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BellRing, Check, Clock, Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
+import { BellRing, Check, Clock, Pencil, Plus, Repeat, Trash2, UserRound, Users } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { Modal } from '../components/Shared';
@@ -36,25 +36,36 @@ function snoozeOptions() {
   return [['1 hour', hour], ['Tomorrow 09:00', tomorrow], ['Next week', week]];
 }
 
-function ReminderForm({ initial, customers, onClose, onSaved }) {
+function ReminderForm({ initial, group, customers, people, teams, onClose, onSaved }) {
   const toast = useToast();
-  const start = initial ? new Date(initial.due_at) : (() => { const next = new Date(); next.setHours(next.getHours() + 1, 0, 0, 0); return next; })();
-  const [form, setForm] = useState({ title: initial?.title || '', date: localDateISO(start), time: localTime(start), repeat: initial?.repeat || 'none', customer_id: initial?.customer_id ? String(initial.customer_id) : '', notes: initial?.notes || '' });
+  const source = group || initial;
+  const start = source ? new Date(source.due_at) : (() => { const next = new Date(); next.setHours(next.getHours() + 1, 0, 0, 0); return next; })();
+  const [form, setForm] = useState({ title: source?.title || '', date: localDateISO(start), time: localTime(start), repeat: source?.repeat || 'none', customer_id: source?.customer_id ? String(source.customer_id) : '', notes: source?.notes || '', for: 'me', user_id: '', team_id: '' });
+  // Managers can set a new reminder for someone else or a whole team.
+  const canAssign = !source && (people.length > 0 || teams.length > 0);
   const [saving, setSaving] = useState(false), [error, setError] = useState('');
   const set = key => event => setForm(current => ({ ...current, [key]: event.target.value }));
   async function submit(event) {
     event.preventDefault();
     setSaving(true); setError('');
     const body = { title: form.title, due_at: toInstant(form.date, form.time), time_zone: timeZone(), repeat: form.repeat, customer_id: form.customer_id || null, notes: form.notes };
+    if (form.for === 'person') body.for = { user_id: Number(form.user_id) };
+    if (form.for === 'team') body.for = { team_id: Number(form.team_id) };
     try {
-      const saved = initial ? await api.updateReminder(initial.id, body) : await api.createReminder(body);
-      toast.success(initial ? 'Reminder updated' : 'Reminder set');
+      const saved = group ? await api.updateReminderGroup(group.group_key, body) : initial ? await api.updateReminder(initial.id, body) : await api.createReminder(body);
+      toast.success(group ? `Updated for ${group.recipients.length} ${group.recipients.length === 1 ? 'person' : 'people'}` : initial ? 'Reminder updated' : body.for ? `Reminder set for ${saved.recipients} ${saved.recipients === 1 ? 'person' : 'people'}` : 'Reminder set');
       onSaved(saved);
     } catch (failure) { setError(failure.message); } finally { setSaving(false); }
   }
-  return <Modal title={initial ? 'Edit reminder' : 'New reminder'} onClose={onClose}>
+  return <Modal title={group ? 'Edit reminder for others' : initial ? 'Edit reminder' : 'New reminder'} onClose={onClose}>
     <form className="reminder-form" onSubmit={submit}>
       {error && <div className="error-msg" role="alert">{error}</div>}
+      {canAssign && <div className="form-group"><label htmlFor="reminder-for">For</label><div className="reminder-form-for">
+        <select id="reminder-for" value={form.for} onChange={set('for')}><option value="me">Me</option>{people.length > 0 && <option value="person">Someone else</option>}{teams.length > 0 && <option value="team">A team</option>}</select>
+        {form.for === 'person' && <select aria-label="Person" required value={form.user_id} onChange={set('user_id')}><option value="">Choose a person</option>{people.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select>}
+        {form.for === 'team' && <select aria-label="Team" required value={form.team_id} onChange={set('team_id')}><option value="">Choose a team</option>{teams.map(team => <option key={team.id} value={team.id} disabled={!team.members}>{team.name} ({team.members} {team.members === 1 ? 'person' : 'people'})</option>)}</select>}
+      </div>{form.for === 'team' && <small className="text-muted">Each member gets their own copy to mark done.</small>}</div>}
+      {group && <p className="text-sm text-muted">Changes apply to all {group.recipients.length} {group.recipients.length === 1 ? 'recipient' : 'recipients'}, and start it again for anyone who had finished it.</p>}
       <div className="form-group"><label htmlFor="reminder-title">What to remember</label><input id="reminder-title" required maxLength={200} autoFocus value={form.title} onChange={set('title')} placeholder="e.g. Check the Veeam backup report" /></div>
       <div className="reminder-form-when">
         <div className="form-group"><label htmlFor="reminder-date">Date</label><input id="reminder-date" type="date" required value={form.date} onChange={set('date')} /></div>
@@ -63,7 +74,7 @@ function ReminderForm({ initial, customers, onClose, onSaved }) {
       </div>
       <div className="form-group"><label htmlFor="reminder-customer">Customer (optional)</label><select id="reminder-customer" value={form.customer_id} onChange={set('customer_id')}><option value="">None</option>{customers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></div>
       <div className="form-group"><label htmlFor="reminder-notes">Notes (optional)</label><textarea id="reminder-notes" rows={3} maxLength={2000} value={form.notes} onChange={set('notes')} /></div>
-      <div className="flex gap-8"><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : initial ? 'Save reminder' : 'Set reminder'}</button><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button></div>
+      <div className="flex gap-8"><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : initial || group ? 'Save reminder' : 'Set reminder'}</button><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button></div>
     </form>
   </Modal>;
 }
@@ -76,14 +87,17 @@ function ReminderRow({ reminder, due, busy, onDone, onSnooze, onEdit, onDelete }
         <span><Clock size={12} aria-hidden="true" />{due && new Date(reminder.due_at) < new Date(Date.now() - 60000) ? `Since ${whenLabel(reminder.due_at)}` : whenLabel(reminder.due_at)}</span>
         {reminder.repeat !== 'none' && <span><Repeat size={12} aria-hidden="true" />{REPEAT_LABELS[reminder.repeat]}</span>}
         {reminder.customer_name && <Link to={`/customers/${reminder.customer_id}/service-profile`}>{reminder.customer_name}</Link>}
+        {reminder.set_by && <span><UserRound size={12} aria-hidden="true" />Set by {reminder.set_by}</span>}
       </div>
       {reminder.notes && <p>{reminder.notes}</p>}
     </div>
     <div className="reminder-item-actions">
       <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={onDone} title={reminder.repeat === 'none' ? 'Mark as done' : 'Done for now; moves to the next time'}><Check size={13} /> Done</button>
       {due && <details className="reminder-snooze"><summary className="btn btn-ghost btn-sm">Snooze</summary><div role="menu">{snoozeOptions().map(([label, until]) => <button key={label} type="button" role="menuitem" disabled={busy} onClick={event => { event.currentTarget.closest('details').open = false; onSnooze(until); }}>{label}</button>)}</div></details>}
-      <button type="button" className="btn btn-ghost btn-sm" aria-label={`Edit ${reminder.title}`} disabled={busy} onClick={onEdit}><Pencil size={13} /></button>
-      <button type="button" className="btn btn-ghost btn-sm" aria-label={`Delete ${reminder.title}`} disabled={busy} onClick={onDelete}><Trash2 size={13} /></button>
+      {!reminder.set_by && <>
+        <button type="button" className="btn btn-ghost btn-sm" aria-label={`Edit ${reminder.title}`} disabled={busy} onClick={onEdit}><Pencil size={13} /></button>
+        <button type="button" className="btn btn-ghost btn-sm" aria-label={`Delete ${reminder.title}`} disabled={busy} onClick={onDelete}><Trash2 size={13} /></button>
+      </>}
     </div>
   </li>;
 }
@@ -93,6 +107,7 @@ export default function Reminders() {
   const toast = useToast(), confirm = useConfirm();
   const [data, setData] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(null); // null, 'new' or a reminder
+  const [editingGroup, setEditingGroup] = useState(null); // a set of reminders for others
   const [now, setNow] = useState(() => new Date().toISOString());
   const legacyKey = `hub_recurring_${user.id}`;
   const [legacy, setLegacy] = useState(() => { try { return JSON.parse(localStorage.getItem(legacyKey) || '[]'); } catch { return []; } });
@@ -105,6 +120,10 @@ export default function Reminders() {
   async function act(work, message) {
     setBusy(true);
     try { await work(); if (message) toast.success(message); await load(); } catch (failure) { toast.error(failure.message); } finally { setBusy(false); }
+  }
+  async function removeGroup(group) {
+    if (!await confirm(`Delete "${group.title}" for all ${group.recipients.length} ${group.recipients.length === 1 ? 'recipient' : 'recipients'}?`, { title: 'Delete reminder', label: 'Delete' })) return;
+    act(() => api.deleteReminderGroup(group.group_key), 'Reminder deleted for everyone');
   }
   async function remove(reminder) {
     if (!await confirm(`Delete "${reminder.title}"?`, { title: 'Delete reminder', label: 'Delete' })) return;
@@ -148,12 +167,34 @@ export default function Reminders() {
       <Surface title="Coming up">
         {upcoming.length ? <ul className="reminder-list">{upcoming.map(reminder => row(reminder, false))}</ul> : <div className="reminders-empty"><p className="text-muted">No reminders set.</p><button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing('new')}><BellRing size={13} /> Set a reminder</button></div>}
       </Surface>
+      {data.set_for_others && <Surface title="Set for others" description="Reminders you set for people or teams, and how far each person has got.">
+        {data.set_for_others.length ? <ul className="reminder-list">{data.set_for_others.map(group => {
+          const done = group.recipients.filter(item => item.status === 'done').length;
+          return <li key={group.group_key} className="reminder-item">
+            <div className="reminder-item-main">
+              <strong>{group.title}</strong>
+              <div className="reminder-item-meta">
+                <span>{group.team_name ? <Users size={12} aria-hidden="true" /> : <UserRound size={12} aria-hidden="true" />}{group.team_name || group.recipients[0]?.name}</span>
+                <span><Clock size={12} aria-hidden="true" />{whenLabel(group.due_at)}</span>
+                {group.repeat !== 'none' && <span><Repeat size={12} aria-hidden="true" />{REPEAT_LABELS[group.repeat]}</span>}
+                {group.repeat === 'none' && <span>{done} of {group.recipients.length} done</span>}
+              </div>
+              {group.recipients.length > 1 && <div className="reminder-recipients">{group.recipients.map(item => <span key={item.id} className={item.status === 'done' ? 'is-done' : ''}>{item.status === 'done' && <Check size={11} aria-hidden="true" />}{item.name}</span>)}</div>}
+            </div>
+            <div className="reminder-item-actions">
+              <button type="button" className="btn btn-ghost btn-sm" aria-label={`Edit ${group.title} for others`} disabled={busy} onClick={() => setEditingGroup(group)}><Pencil size={13} /></button>
+              <button type="button" className="btn btn-ghost btn-sm" aria-label={`Delete ${group.title} for others`} disabled={busy} onClick={() => removeGroup(group)}><Trash2 size={13} /></button>
+            </div>
+          </li>;
+        })}</ul> : <p className="text-muted reminders-empty">None yet. Use New reminder and choose who it is for.</p>}
+      </Surface>}
       <Surface title="Automatic reminders" description="The app reminds you about these by itself, each morning.">
         <div className="reminders-automatic">{data.automatic.map(item => <Toggle key={item.key} checked={item.enabled} disabled={busy} onChange={value => toggleAutomatic(item.key, value)} label={item.label} />)}</div>
         <p className="text-muted text-sm">Reminders always appear in the bell. Choose which also reach your Teams, email or Webex in <Link to="/profile">your profile</Link>.</p>
       </Surface>
       {data.done.length > 0 && <details className="reminders-done"><summary>Done in the last 30 days ({data.done.length})</summary><ul>{data.done.map(reminder => <li key={reminder.id}><span>{reminder.title}</span><small>{whenLabel(reminder.completed_at)}</small></li>)}</ul></details>}
     </>}
-    {editing && <ReminderForm initial={editing === 'new' ? null : editing} customers={data?.customers || []} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+    {editing && <ReminderForm initial={editing === 'new' ? null : editing} customers={data?.customers || []} people={data?.people || []} teams={data?.teams || []} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+    {editingGroup && <ReminderForm group={editingGroup} customers={data?.customers || []} people={[]} teams={[]} onClose={() => setEditingGroup(null)} onSaved={() => { setEditingGroup(null); load(); }} />}
   </div>;
 }

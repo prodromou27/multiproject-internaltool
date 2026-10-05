@@ -706,6 +706,16 @@ async function applyMigrations(pool, transaction) {
     -- Which automatic reminders each person wants (JSON; unset means on).
     ALTER TABLE users ADD COLUMN IF NOT EXISTS reminder_settings TEXT;
   `]);
+  migrations.push(['20261008_reminders_for_others', `
+    -- A manager can set a reminder for a person or a team: each recipient gets
+    -- a copy (user_id); created_by is who set it, group_key ties the copies
+    -- together so the manager can change or remove them all at once.
+    ALTER TABLE reminders ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE reminders ADD COLUMN IF NOT EXISTS group_key TEXT;
+    ALTER TABLE reminders ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_reminders_group ON reminders(group_key);
+    CREATE INDEX IF NOT EXISTS idx_reminders_created_by ON reminders(created_by);
+  `]);
   migrations.push(['20261006_managed_customers_tracked', `
     -- Managed customers whose activity tracking was left off were missing from
     -- their engineers' Log activity customer list.

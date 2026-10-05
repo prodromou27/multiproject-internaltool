@@ -65,8 +65,8 @@ function nextOccurrence(due, repeat, zone) {
 /** Deliver every personal reminder that has fallen due and not yet been sent for this occurrence. */
 async function sendDueReminders(now = new Date(), store = db) {
   const at = now.toISOString();
-  const due = await store.prepare(`SELECT r.id, r.user_id, r.title, r.notes, r.due_at, r.customer_id, c.name AS customer_name
-    FROM reminders r JOIN users u ON u.id = r.user_id LEFT JOIN customers c ON c.id = r.customer_id
+  const due = await store.prepare(`SELECT r.id, r.user_id, r.title, r.notes, r.due_at, r.customer_id, c.name AS customer_name, r.created_by, s.name AS set_by_name
+    FROM reminders r JOIN users u ON u.id = r.user_id LEFT JOIN customers c ON c.id = r.customer_id LEFT JOIN users s ON s.id = r.created_by
     WHERE r.status = 'active' AND r.due_at <= ? AND (r.notified_at IS NULL OR r.notified_at < r.due_at) AND u.active = 1
     ORDER BY r.due_at, r.id LIMIT 200`).all(at);
   let sent = 0;
@@ -78,7 +78,8 @@ async function sendDueReminders(now = new Date(), store = db) {
     await notifyUser(Number(reminder.user_id), 'reminder_due', {
       title: `⏰ ${reminder.title}`,
       body: reminder.notes || 'Your reminder is due.',
-      facts: customer ? [{ name: 'Customer', value: customer }] : [],
+      facts: [...(customer ? [{ name: 'Customer', value: customer }] : []),
+        ...(reminder.created_by && Number(reminder.created_by) !== Number(reminder.user_id) ? [{ name: 'Set by', value: reminder.set_by_name || 'A former user' }] : [])],
     }, { title: `Reminder: ${reminder.title}`, body: customer || reminder.notes || null, link: '/reminders' });
     sent++;
   }
