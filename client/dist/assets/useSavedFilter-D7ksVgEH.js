@@ -1,0 +1,1 @@
+import{r as e}from"./rolldown-runtime-hePW80VL.js";import{_ as t}from"./vendor-charts-CA9Ff00H.js";var n=e(t(),1);function r(e,t){let[r,i]=(0,n.useState)(()=>{try{let n=localStorage.getItem(`hub_filter_`+e);return n===null?t:n}catch{return t}});return(0,n.useEffect)(()=>{try{localStorage.setItem(`hub_filter_`+e,r)}catch{}},[e,r]),[r,i]}export{r as t};
