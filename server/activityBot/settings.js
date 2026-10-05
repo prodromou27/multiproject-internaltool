@@ -1,5 +1,5 @@
 /**
- * Activity bot settings (Settings → Integrations → Activity bot). Secrets are
+ * Activity bot settings (Settings → Activity bot). Secrets are
  * encrypted at rest and never sent back to the browser. The Webex bot token is
  * the one already set for Webex notifications.
  */

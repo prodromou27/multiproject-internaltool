@@ -196,7 +196,7 @@ export default function ManagedCustomerConfiguration({ customerId }) {
             </div>
           </div>}
           {hasTeam && !syncBad && <p className="msc-ok"><CheckCircle2 size={14} /> Set up. <Link to={`/managed-customers/${customerId}`}>Open the Managed Customers dashboard <ExternalLink size={12} /></Link></p>}
-          {syncBad && <p className="msc-hint"><AlertTriangle size={13} /> The last ticket sync failed — check Request Tracker under Settings → Integrations.</p>}
+          {syncBad && <p className="msc-hint"><AlertTriangle size={13} /> The last ticket sync failed — check Request Tracker under Settings → Ticketing.</p>}
         </section>
 
         <Optional title="Ticketing" hint="Optional — connect a Request Tracker queue to see this customer's tickets" defaultOpen={!!form.external_queue_id}>

@@ -455,7 +455,7 @@ async function postToSharedChannels(msg) {
 
 /**
  * Post an event to the shared Teams channel and Webex space, if the admin has it
- * switched on (Settings → Integrations). `dedupeKey` posts it once only, for
+ * switched on (Settings → Notifications). `dedupeKey` posts it once only, for
  * events raised by scheduled checks. Never throws: a failed post is logged.
  */
 async function notifyShared(eventKey, msg, { dedupeKey } = {}) {

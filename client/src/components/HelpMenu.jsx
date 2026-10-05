@@ -23,7 +23,7 @@ const MANAGER_STEPS = [
   'Enable Service Activity Tracking for a team, if it does customer service work (Settings → Teams → Tracking Enabled)',
   'Add customers and assign them to a team (Customers)',
   'Set SLA response/resolution targets per team (Settings → Teams → Targets)',
-  'Configure Teams/Webex notifications and Request Tracker, if used (Settings → Integrations)',
+  'Configure Teams/Webex notifications and Request Tracker, if used (Settings → Notifications and Settings → Ticketing)',
 ];
 
 export default function HelpMenu({ role }) {

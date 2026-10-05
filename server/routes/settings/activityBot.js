@@ -1,4 +1,4 @@
-/** Settings → Integrations → Activity bot (managers). */
+/** Settings → Activity bot (managers). */
 const router = require('express').Router();
 const { requireManager } = require('../../middleware/auth');
 const { logSettingsChange } = require('./shared');

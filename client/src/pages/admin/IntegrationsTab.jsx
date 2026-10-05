@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, AlertTriangle, Bell, Save, Loader2 } from 'lucide-react';
 import { api } from '../../api';
 import { Toggle } from './shared';
-import { Link } from 'react-router-dom';
-import { ActivityBotSettings } from './ActivityBotSettings';
 
 /* ══════════════════════════════════════════════════════════ */
 /* ── INTEGRATIONS TAB ────────────────────────────────────── */
@@ -71,10 +69,6 @@ export function IntegrationsTab() {
     <fieldset disabled={saving || Object.values(testing).some(Boolean)} className="u-af2cbf6">
       {msg && <div className="alert alert-success u-01eae41"><CheckCircle2 size={14} /> {msg}</div>}
       {err && <div className="alert alert-danger u-01eae41"><AlertTriangle size={14} /> {err}</div>}
-
-      <div style={sectionStyle}><strong>Request Tracker</strong><p className="text-muted text-sm mt-4">The Request Tracker connection, customer queues, status mapping and sync health are in <Link to="/settings/ticketing">Settings → Ticketing</Link>.</p></div>
-
-      <ActivityBotSettings sectionStyle={sectionStyle} />
 
       <div style={sectionStyle}>
         <div className="u-c61bb35">
@@ -167,7 +161,7 @@ export function IntegrationsTab() {
       )}
 
       <button className="btn btn-primary inline-flex items-center gap-6" onClick={save} disabled={saving}>
-        {saving ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving…</> : <><Save size={14} /> Save Integration Settings</>}
+        {saving ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving…</> : <><Save size={14} /> Save notification settings</>}
       </button>
     </fieldset>
   );

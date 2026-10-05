@@ -1,6 +1,6 @@
 /**
  * Events that can be posted to the organisation's shared Teams channel and
- * Webex space (Settings → Integrations → Notification events). Each has a
+ * Webex space (Settings → Notifications). Each has a
  * default; the admin's switches override it. People's own channels are set
  * separately, in their Profile.
  */

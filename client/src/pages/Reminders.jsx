@@ -89,7 +89,7 @@ export function ReminderForm({ initial, group, teamReminder, customers, people, 
       <fieldset className="reminder-delivery"><legend>Also send to</legend>
         <label><input type="checkbox" checked={form.notify_personal} onChange={event => setForm(current => ({ ...current, notify_personal: event.target.checked }))} /><span>{isTeam ? "Each team member's" : 'Your'} own Teams, email or Webex <small>(as chosen in Profile)</small></span></label>
         <label className={anyShared ? '' : 'is-unavailable'}><input type="checkbox" disabled={!anyShared} checked={anyShared && postShared} onChange={event => setForm(current => ({ ...current, post_shared: event.target.checked }))} /><span>The shared {sharedLabel}
-          {!anyShared && <small> (not set up yet: a manager adds them in Settings → Integrations)</small>}</span></label>
+          {!anyShared && <small> (not set up yet: a manager adds them in Settings → Notifications)</small>}</span></label>
         <small className="text-muted">It always appears in the bell and on the Reminders page.</small>
       </fieldset>
       <div className="form-group"><label htmlFor="reminder-notes">Notes (optional)</label><textarea id="reminder-notes" rows={3} maxLength={2000} value={form.notes} onChange={set('notes')} /></div>

@@ -6,6 +6,7 @@ import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
 import { StatsTab } from './OverviewTab';
 import { LoggingTab } from './AlertsLoggingTab';
+import { DataExportTab } from './DataTabs';
 
 /* ── System Update Tab ───────────────────────────────────── */
 export const PHASE_LABELS = {
@@ -50,10 +51,12 @@ const SYSTEM_HEALTH_SECTIONS = [
   { key: 'stats',      label: 'Stats' },
   { key: 'deployment', label: 'Deployment' },
   { key: 'logging',    label: 'Logging' },
+  { key: 'updates',    label: 'Updates' },
+  { key: 'export',     label: 'Data export' },
 ];
 
-export function SystemHealthTab() {
-  const [section, setSection] = useState('stats');
+export function SystemHealthTab({ initial }) {
+  const [section, setSection] = useState(SYSTEM_HEALTH_SECTIONS.some(s => s.key === initial) ? initial : 'stats');
   return (
     <div>
       <div className="u-cb21afb" role="tablist" aria-label="System health section">
@@ -68,6 +71,8 @@ export function SystemHealthTab() {
       {section === 'stats' && <StatsTab />}
       {section === 'deployment' && <DeploymentHealthTab />}
       {section === 'logging' && <LoggingTab />}
+      {section === 'updates' && <SystemUpdateTab />}
+      {section === 'export' && <DataExportTab />}
     </div>
   );
 }

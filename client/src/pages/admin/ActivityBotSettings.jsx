@@ -4,7 +4,7 @@ import { api } from '../../api';
 import { useToast } from '../../components/Toast';
 import { Toggle } from './shared';
 
-/* Settings → Integrations → Activity bot: engineers log service activities by
+/* Settings → Activity bot: engineers log service activities by
    messaging a Webex or Teams bot in plain words. */
 
 // The bot answers in a small Markdown subset: **bold**, *italic* and line breaks. Rendered as text, never as HTML.

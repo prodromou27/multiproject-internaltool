@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Users as UsersIcon, Shield, ShieldCheck, FolderOpen, Wrench, ClipboardList, HardDrive, ScrollText, Activity, Settings, Download, ShieldAlert, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound } from 'lucide-react';
+import { Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Settings, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot } from 'lucide-react';
 import { api } from '../api';
 import { visiblePages } from '../navigation';
 import { useAuth } from '../App';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { UsersTab } from './admin/UsersTab';
-import { OverviewTab, ActivityTab } from './admin/OverviewTab';
-import { ProjectsAdminTab, MaintenanceAdminTab, DataExportTab } from './admin/DataTabs';
+import { OverviewTab } from './admin/OverviewTab';
 import { IntegrationsTab } from './admin/IntegrationsTab';
 import { WeeklyReportTab } from './admin/WeeklyReportTab';
 import { StatusManagementTab } from './admin/StatusManagementTab';
 import { LocalizationTab } from './admin/LocalizationTab';
 import { AdminAlertsTab } from './admin/AlertsLoggingTab';
-import { SystemHealthTab, SystemUpdateTab, AuditLogTab, SecurityTab } from './admin/SystemTabs';
+import { SystemHealthTab, AuditLogTab, SecurityTab } from './admin/SystemTabs';
 import { ServiceActivityAdminTab, TeamsAdminSection } from './admin/ServiceActivityAdmin';
+import { ActivityBotSettings } from './admin/ActivityBotSettings';
 import { ManagedReportTemplatesTab } from './admin/ManagedReportTemplatesTab';
 import { PermissionsTab } from './admin/PermissionsTab';
 import TicketingSettings from './admin/TicketingSettings';
@@ -21,39 +21,47 @@ import TicketingSettings from './admin/TicketingSettings';
 /* ── MAIN PAGE ───────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
 const TABS = [
-  { key: 'overview',       label: 'Overview',           Icon: LayoutDashboard, group: 'overview',      desc: 'Health, activity, and manager attention items' },
-  { key: 'users',          label: 'Users & Access',     Icon: UsersIcon,       group: 'business_people',        desc: 'Accounts, roles, activation, passwords, and 2FA exceptions' },
-  { key: 'teams',          label: 'Teams',              Icon: UsersRound,      group: 'business_people',        desc: 'Create teams, manage membership, and enable Service Activity Tracking per team' },
-  { key: 'permissions',    label: 'Permissions',        Icon: ShieldCheck,     group: 'business_people',        desc: 'Role capabilities and explicit user access exceptions' },
-  { key: 'projects',       label: 'Projects',           Icon: FolderOpen,      group: 'business_people',        desc: 'Project administration and status visibility' },
-  { key: 'maintenance',    label: 'Maintenance Visits', Icon: Wrench,          group: 'business_people',        desc: 'Visit administration and report status' },
-  { key: 'statuses',       label: 'Status Workflow',    Icon: Tag,             group: 'business_rules', desc: 'Project status labels, colors, and workflow rules' },
-  { key: 'service_activity_tracking', label: 'Service Activity Tracking', Icon: ClipboardList, group: 'business_rules', desc: 'Activity categories, technologies, and MSP operations log settings' },
-  { key: 'managed_report_templates', label: 'Managed Report Templates', Icon: FileSpreadsheet, group: 'business_rules', desc: 'Reusable sections and default narrative for customer reports' },
-  { key: 'integrations',   label: 'Integrations',       Icon: Globe,           group: 'technical_configuration', desc: 'External service and SMTP configuration' },
-  { key: 'weekly_report',  label: 'Weekly Report',      Icon: ScrollText,      group: 'technical_configuration', desc: 'Report schedule, recipients, and preview' },
-  { key: 'localization',   label: 'Localization',       Icon: Globe,           group: 'technical_configuration', desc: 'Language and regional settings' },
-  { key: 'security',       label: 'Security Policy',    Icon: Shield,          group: 'technical_security',      desc: 'Password expiry and reset policy' },
-  { key: 'audit_log',      label: 'Audit Log',          Icon: ClipboardList,   group: 'technical_security',      desc: 'Traceable record of system changes' },
-  { key: 'admin_alerts',   label: 'System Alerts',      Icon: ShieldAlert,     group: 'technical_security',      desc: 'Manager alert preferences for operational issues' },
-  { key: 'ticketing', label: 'Ticketing', Icon: Building2, group: 'technical_configuration', desc: 'Request Tracker connection, customer queues, status mapping and sync health' },
-  { key: 'activity',       label: 'Activity Feed',      Icon: Activity,        group: 'technical_operations',    desc: 'Recent application activity' },
-  { key: 'system_health',  label: 'System Health',      Icon: HardDrive,       group: 'technical_operations',    desc: 'Stats, deployment status, and logging — in one place' },
-  { key: 'export',         label: 'Data Export',        Icon: FileSpreadsheet, group: 'technical_operations',    desc: 'Download operational data' },
-  { key: 'system_update',  label: 'System Update',      Icon: Download,        group: 'technical_operations',    desc: 'Controlled application update workflow' },
+  { key: 'overview',       label: 'Overview',           Icon: LayoutDashboard, group: 'overview', desc: 'Health, activity, and items that need a manager' },
+  { key: 'users',          label: 'Users',              Icon: UsersIcon,       group: 'people',   desc: 'Accounts, roles, activation, passwords, and 2FA exceptions' },
+  { key: 'teams',          label: 'Teams',              Icon: UsersRound,      group: 'people',   desc: 'Teams, their members, activity tracking and SLA targets' },
+  { key: 'permissions',    label: 'Permissions',        Icon: ShieldCheck,     group: 'people',   desc: 'What each role may do, and exceptions for individual people' },
+  { key: 'security',       label: 'Sign-in & passwords', Icon: Shield,         group: 'people',   desc: 'Password expiry and reset policy' },
+  { key: 'service_activity_tracking', label: 'Activity categories', Icon: ClipboardList, group: 'work', desc: 'Categories, subcategories and technologies engineers choose when logging activities' },
+  { key: 'statuses',       label: 'Project statuses',   Icon: Tag,             group: 'work',     desc: 'Project status names, colours and workflow rules' },
+  { key: 'managed_report_templates', label: 'Customer report templates', Icon: FileSpreadsheet, group: 'work', desc: 'Word templates, sections and default text for customer reports' },
+  { key: 'weekly_report',  label: 'Weekly report',      Icon: ScrollText,      group: 'work',     desc: 'When the weekly report is sent, to whom, and a preview' },
+  { key: 'notifications',  label: 'Notifications',      Icon: Bell,            group: 'connections', desc: 'The shared Teams channel and Webex space, which events they receive, and alerts about the system' },
+  { key: 'ticketing',      label: 'Ticketing',          Icon: Building2,       group: 'connections', desc: 'Request Tracker connection, customer queues, status mapping and sync health' },
+  { key: 'activity_bot',   label: 'Activity bot',       Icon: Bot,             group: 'connections', desc: 'Engineers log service activities by chatting with a Webex or Teams bot' },
+  { key: 'localization',   label: 'Time & region',      Icon: Globe,           group: 'system',   desc: 'Time zone, server clock, language and date formats' },
+  { key: 'audit_log',      label: 'Audit log',          Icon: ClipboardList,   group: 'system',   desc: 'Who changed what, and when' },
+  { key: 'system_health',  label: 'System health',      Icon: HardDrive,       group: 'system',   desc: 'Status, deployment, logging, updates and data export' },
 ];
 
-// One flat, always-visible list, grouped under clear headings — no separate
-// area switcher on top of it. Getting to any setting used to take two
-// decisions (pick an area, then a group); now it's one scroll or a search.
+// Four plain groups. Pages that only listed data shown elsewhere (projects,
+// visits, the activity feed) are gone; their old links still lead somewhere useful.
 const TAB_GROUPS = [
-  { key: 'overview',label: 'Overview' },
-  { key: 'business_people',label: 'People & Work' },
-  { key: 'business_rules',label: 'Workflow & Service Rules' },
-  { key: 'technical_configuration',label: 'Application & Delivery' },
-  { key: 'technical_security',label: 'Security & Audit' },
-  { key: 'technical_operations',label: 'System Operations' },
+  { key: 'overview',    label: 'Overview' },
+  { key: 'people',      label: 'People' },
+  { key: 'work',        label: 'How we work' },
+  { key: 'connections', label: 'Connections' },
+  { key: 'system',      label: 'Organisation & system' },
 ];
+
+// Old section names → where that content lives now ([tab, part] or a page path).
+const MOVED = {
+  managed_services: ['ticketing'],
+  integrations: ['notifications'],
+  admin_alerts: ['notifications'],
+  activity: ['audit_log'],
+  logging: ['system_health', 'logging'],
+  stats: ['system_health', 'stats'],
+  deployment: ['system_health', 'deployment'],
+  system_update: ['system_health', 'updates'],
+  export: ['system_health', 'export'],
+  projects: '/projects',
+  maintenance: '/maintenance-visits',
+};
 
 const TAB_KEYS = new Set(TABS.map(t => t.key));
 
@@ -77,6 +85,8 @@ export default function AdminPanel() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { section } = useParams();
+  const location = useLocation();
+  const part = new URLSearchParams(location.search).get('part');
   const initialTab = TAB_KEYS.has(section) ? section : 'overview';
   const [tab, setTab] = useState(initialTab);
   const [tabSearch, setTabSearch] = useState('');
@@ -84,7 +94,9 @@ export default function AdminPanel() {
 
   useEffect(() => {
     if (!section) { setTab('overview'); return; }
-    if (section === 'managed_services') { navigate('/settings/ticketing', { replace: true }); return; } // its old name
+    const moved = MOVED[section];
+    if (typeof moved === 'string') { navigate(moved, { replace: true }); return; }
+    if (moved) { navigate(`/settings/${moved[0]}${moved[1] ? `?part=${moved[1]}` : ''}`, { replace: true }); return; }
     if (TAB_KEYS.has(section)) setTab(section);
     else navigate('/settings', { replace: true });
   }, [section, navigate]);
@@ -192,20 +204,15 @@ export default function AdminPanel() {
           {tab === 'users'        && <UsersTab currentUser={user} />}
           {tab === 'teams'        && <TeamsAdminSection />}
           {tab === 'permissions'  && <PermissionsTab />}
-          {tab === 'projects'     && <ProjectsAdminTab />}
-          {tab === 'maintenance'  && <MaintenanceAdminTab />}
           {tab === 'statuses'     && <StatusManagementTab />}
           {tab === 'service_activity_tracking' && <ServiceActivityAdminTab />}
           {tab === 'managed_report_templates' && <ManagedReportTemplatesTab />}
           {tab === 'ticketing' && <TicketingSettings />}
-          {tab === 'activity'     && <ActivityTab />}
-          {tab === 'system_health' && <SystemHealthTab />}
-          {tab === 'export'       && <DataExportTab />}
-          {tab === 'integrations'  && <IntegrationsTab />}
+          {tab === 'system_health' && <SystemHealthTab key={part || 'stats'} initial={part} />}
+          {tab === 'notifications' && <><IntegrationsTab /><h3 className="settings-subheading">Alerts about the system</h3><AdminAlertsTab /></>}
+          {tab === 'activity_bot'  && <ActivityBotSettings sectionStyle={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 }} />}
           {tab === 'weekly_report' && <WeeklyReportTab />}
           {tab === 'localization'  && <LocalizationTab />}
-          {tab === 'admin_alerts'  && <AdminAlertsTab />}
-          {tab === 'system_update' && <SystemUpdateTab />}
           {tab === 'audit_log'     && <AuditLogTab />}
           {tab === 'security'      && <SecurityTab />}
         </section>
@@ -237,6 +244,7 @@ export default function AdminPanel() {
           margin-bottom: 12px;
         }
         .settings-nav-group + .settings-nav-group { margin-top: 14px; }
+        .settings-subheading { font-size: 15px; font-weight: 700; margin: 28px 0 12px; }
         .settings-nav-heading {
           padding: 0 6px 6px;
           color: var(--gray-400);

@@ -7,10 +7,13 @@ import { mockApi } from './support/mockApi.js';
 // any such error. Sections may show an error message for the sparse mock data; what
 // they must never do is reference something that does not exist.
 
+// Current sections, then old names that now redirect.
 const SETTINGS_TABS = [
-  'overview', 'users', 'projects', 'maintenance', 'statuses', 'service_activity_tracking',
-  'integrations', 'weekly_report', 'localization', 'security', 'audit_log', 'logging',
-  'admin_alerts', 'stats', 'activity', 'deployment', 'export', 'system_update',
+  'overview', 'users', 'teams', 'permissions', 'security', 'service_activity_tracking', 'statuses',
+  'managed_report_templates', 'weekly_report', 'notifications', 'ticketing', 'activity_bot',
+  'localization', 'audit_log', 'system_health',
+  'projects', 'maintenance', 'integrations', 'logging', 'admin_alerts', 'stats', 'activity',
+  'deployment', 'export', 'system_update',
 ];
 
 function collectReferenceErrors(page) {
