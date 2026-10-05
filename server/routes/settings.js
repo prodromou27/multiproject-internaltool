@@ -11,5 +11,6 @@ router.use(require('./settings/alerts'));
 router.use(require('./settings/logging'));
 router.use(require('./settings/system'));
 router.use(require('./settings/security'));
+router.use(require('./settings/activityBot'));
 
 module.exports = router;

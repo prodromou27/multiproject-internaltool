@@ -86,7 +86,8 @@ try {
   // module not installed — responses served uncompressed
 }
 
-app.use(express.json({ limit: '1mb' }));
+// Chat webhooks are verified against the exact bytes received, so keep them for /api/bots.
+app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { if (req.originalUrl.startsWith('/api/bots/')) req.rawBody = buf; } }));
 app.use(require('./middleware/body').ensureBody);
 app.use('/api', require('./middleware/session').protectCookieRequests);
 // Tell every open browser when data changes (see liveUpdates.js).
@@ -193,6 +194,7 @@ app.use('/api/managed-customers', require('./routes/managedCustomers'));
 app.use('/api/managed-report-templates', require('./routes/managedReportTemplates'));
 app.use('/api/permissions', require('./routes/permissions'));
 app.use('/api/reminders', require('./routes/reminders'));
+app.use('/api/bots', require('./routes/bots'));
 
 // ── 404 handler for unknown /api/* paths (must come before the SPA catchall) ─
 app.use('/api', (req, res) => {
@@ -242,6 +244,9 @@ app.get('/{*splat}', (req, res) => {
 const { startReminderSchedules } = require('./reminders');
 const appTime = require('./appTime');
 const { startClockChecks } = require('./ntpCheck');
+// The activity bot calls the app's own API as the engineer (see activityBot/appApi.js).
+const activityBotApi = require('./activityBot/appApi');
+setInterval(() => require('./activityBot/channels').pruneProcessed().catch(() => {}), 6 * 60 * 60 * 1000).unref?.();
 
 const { initScheduler } = require('./reportScheduler');
 
@@ -275,6 +280,7 @@ const keyFile  = path.join(certDir, 'key.pem');
 
     servers.push(https.createServer(tlsOptions, app).listen(HTTPS_PORT, '0.0.0.0', () => {
       console.log(`Server running on https://0.0.0.0:${HTTPS_PORT}`);
+      activityBotApi.setBase(`https://127.0.0.1:${HTTPS_PORT}`);
       startReminderSchedules();
       liveUpdates.startListening();
       initScheduler();
@@ -297,6 +303,7 @@ const keyFile  = path.join(certDir, 'key.pem');
     const PORT = process.env.PORT || 3001;
     servers.push(app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://0.0.0.0:${PORT} (no TLS certs found)`);
+      activityBotApi.setBase(`http://127.0.0.1:${PORT}`);
       startReminderSchedules();
       liveUpdates.startListening();
       initScheduler();

@@ -28,6 +28,8 @@ const PUBLIC = new Set([
   'auth POST /forgot-password',
   'auth POST /reset-password',      // authorised by a single-use reset token
   'ical GET /',                     // authorised by a scoped, hashed feed token in ?token=
+  'bots POST /webex/events',        // authorised by the webhook's HMAC signature (Webex)
+  'bots POST /teams/messages',      // authorised by a Microsoft-signed token for our app id
 ]);
 
 function unprotectedRoutes(file, router) {

@@ -731,6 +731,23 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE reminders ADD COLUMN IF NOT EXISTS post_shared INTEGER NOT NULL DEFAULT 0;
     UPDATE reminders SET post_shared = 1 WHERE shared = 1;
   `]);
+  migrations.push(['20261011_activity_bot', `
+    -- The activity bot's draft per person and chat channel (expires after 30 minutes).
+    CREATE TABLE IF NOT EXISTS bot_conversations (
+      channel TEXT NOT NULL,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      state TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (channel, user_id)
+    );
+    -- Chat messages already handled, so a redelivered webhook is not answered twice.
+    CREATE TABLE IF NOT EXISTS bot_processed_messages (
+      channel TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      received_at TEXT DEFAULT ${NOW},
+      PRIMARY KEY (channel, message_id)
+    );
+  `]);
   migrations.push(['20261006_managed_customers_tracked', `
     -- Managed customers whose activity tracking was left off were missing from
     -- their engineers' Log activity customer list.

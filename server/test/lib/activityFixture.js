@@ -104,7 +104,7 @@ if (isSuiteImport) test.before(async () => {
 
   const app = express();
   app.set('query parser', 'extended');
-  app.use(express.json());
+  app.use(express.json({ verify: (req, res, buf) => { if (req.originalUrl.startsWith('/api/bots/')) req.rawBody = buf; } }));
   app.use(require('../../middleware/body').ensureBody);
   app.use('/api', require('../../middleware/session').protectCookieRequests);
   app.use('/api', require('../../liveUpdates').trackChanges);
@@ -131,6 +131,7 @@ if (isSuiteImport) test.before(async () => {
   app.use('/api/managed-report-templates', require('../../routes/managedReportTemplates'));
   app.use('/api/permissions', require('../../routes/permissions'));
   app.use('/api/reminders', require('../../routes/reminders'));
+  app.use('/api/bots', require('../../routes/bots'));
   app.use('/api/activity-categories', require('../../routes/activityCategories'));
   app.use('/api/technologies', require('../../routes/technologies'));
   app.use('/api/service-activities', require('../../routes/serviceActivities'));

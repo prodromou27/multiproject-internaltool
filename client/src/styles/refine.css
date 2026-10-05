@@ -372,3 +372,23 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .ticketing-heading { margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--ink); }
 .ticketing-queues select { min-width: 220px; }
 .ticketing-queues td { vertical-align: middle; }
+
+/* Settings → Integrations → Activity bot. */
+.bot-settings .bot-settings-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+.bot-settings .bot-settings-head > svg { color: var(--primary); margin-top: 2px; flex: none; }
+.bot-settings .bot-settings-head p { margin: 4px 0 0; }
+.bot-channel { border-top: 1px solid var(--gray-200); padding-top: 14px; margin-top: 14px; }
+.bot-channel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.bot-channel ol { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 6px; color: var(--gray-700); }
+.bot-ok { color: var(--success); font-weight: 600; }
+.bot-copy { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 12px; font-size: 13px; }
+.bot-copy span { color: var(--gray-600); }
+.bot-copy code { background: var(--surface); border: 1px solid var(--gray-200); border-radius: 6px; padding: 3px 8px; word-break: break-all; }
+.bot-try { border-top: 1px solid var(--gray-200); padding-top: 14px; margin-top: 16px; }
+.bot-try h4 { margin: 0 0 4px; font-size: 14px; }
+.bot-try-log { max-height: 340px; overflow-y: auto; display: grid; gap: 8px; padding: 12px; margin: 8px 0; background: var(--surface); border: 1px solid var(--gray-200); border-radius: var(--radius); }
+.bot-line { max-width: 85%; padding: 8px 12px; border-radius: 10px; font-size: 13.5px; line-height: 1.5; }
+.bot-line.is-you { justify-self: end; background: var(--primary); color: #fff; }
+.bot-line.is-bot { justify-self: start; background: var(--gray-100); color: var(--gray-800); }
+.bot-try-input { display: flex; gap: 8px; }
+.bot-try-input input { flex: 1; min-width: 0; }
