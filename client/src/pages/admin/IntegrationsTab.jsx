@@ -145,12 +145,12 @@ export function IntegrationsTab() {
       {(cfg.teams.enabled || cfg.webex.enabled) && (
         <div style={sectionStyle}>
           <div className="u-e6530f8"><Bell size={15} /> Notification Events</div>
-          <div className="u-568bd03">Choose which events trigger a notification.</div>
+          <div className="u-568bd03">Choose which events are posted to the shared Teams channel and Webex space. Each person chooses separately, in their Profile, which alerts reach their own Teams, email and Webex messages.</div>
           <div className="flex-col gap-12">
             <Toggle checked={cfg.notify_on.task_assigned}    onChange={v => setNotify('task_assigned', v)}    label="Task assigned to an engineer" />
             <Toggle checked={cfg.notify_on.project_assigned} onChange={v => setNotify('project_assigned', v)} label="Engineer added to a project" />
             <Toggle checked={cfg.notify_on.visit_assigned}   onChange={v => setNotify('visit_assigned', v)}   label="Maintenance visit assigned to an engineer" />
-            <Toggle checked={cfg.notify_on.report_submitted} onChange={v => setNotify('report_submitted', v)} label="Visit report submitted (to the space / channel)" />
+            <Toggle checked={cfg.notify_on.report_submitted} onChange={v => setNotify('report_submitted', v)} label="Visit report submitted" />
             <Toggle checked={cfg.notify_on.visit_reminder}   onChange={v => setNotify('visit_reminder', v)}   label="Reminder the day before a maintenance visit" />
           </div>
         </div>

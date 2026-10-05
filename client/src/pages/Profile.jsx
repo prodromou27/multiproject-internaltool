@@ -442,6 +442,13 @@ function NotificationPreferencesSection({ user, onRefresh }) {
   const webexOn = user.notify_external_enabled !== false; // treat unset (older sessions) as the default: on
   const teamsOn = !!user.notify_teams_enabled;
   const emailOn = !!user.notify_email_enabled;
+  // Channels that can actually reach this person right now, for the per-event grid.
+  const channels = [
+    teamsOn && ['teams', 'Teams'],
+    emailOn && user.email_delivery_available && ['email', 'Email'],
+    webexOn && user.webex_direct_available && ['webex', 'Webex'],
+  ].filter(Boolean);
+  const events = user.notify_event_options || [];
 
   async function sendTest(channel) {
     setSaving(`test-${channel}`); setMsg({ type: '', text: '' });
@@ -480,8 +487,15 @@ function NotificationPreferencesSection({ user, onRefresh }) {
             onChange={value => save('webex', { notify_external_enabled: value }, value ? 'Webex direct messages turned on.' : 'Webex direct messages turned off.')}
             label="Webex direct messages" />
           <p className="u-ab00b55">
-            Only available if your organization has Webex configured. Uses the org bot — there's no separate account to connect.
+            {user.webex_direct_available
+              ? "Messages come from your organization's Webex bot to your account email; there's no separate account to connect."
+              : "Your organization hasn't set up Webex direct messages, so nothing is sent here yet."}
           </p>
+          {webexOn && user.webex_direct_available && (
+            <div className="u-304c842">
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!!saving} onClick={() => sendTest('webex')}>{saving === 'test-webex' ? 'Sending…' : 'Send test message'}</button>
+            </div>
+          )}
         </div>
 
         <div>
@@ -523,6 +537,25 @@ function NotificationPreferencesSection({ user, onRefresh }) {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="alert-choices">
+        <h3>Which alerts go where</h3>
+        {!channels.length
+          ? <p className="text-muted text-sm">Turn on a channel above to choose which alerts it receives.</p>
+          : <table>
+              <caption className="sr-only">Alerts by channel</caption>
+              <thead><tr><th scope="col">When</th>{channels.map(([key, label]) => <th key={key} scope="col">{label}</th>)}</tr></thead>
+              <tbody>{events.map(event => <tr key={event.key}>
+                <th scope="row">{event.label}</th>
+                {channels.map(([key, label]) => {
+                  const on = user.notify_events?.[event.key]?.[key] !== false;
+                  return <td key={key}><input type="checkbox" checked={on} disabled={!!saving} aria-label={`${event.label}: ${label}`}
+                    onChange={() => save(`event-${event.key}-${key}`, { notify_events: { [event.key]: { [key]: !on } } }, `${label}: ${on ? 'off' : 'on'} for "${event.label.toLowerCase()}".`)} /></td>;
+                })}
+              </tr>)}</tbody>
+            </table>}
+        <p className="text-muted text-sm">You always see these in the app (the bell icon), whatever you choose here.</p>
       </div>
     </div>
   );

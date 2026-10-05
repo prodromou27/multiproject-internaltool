@@ -63,7 +63,8 @@ test('notification preferences default correctly, validate their input, and pers
   // An empty body is a valid no-op (partial-update design: send only what you're changing).
   const noop = await api('/api/auth/notification-preferences', { method: 'PUT', token, body: {} });
   assert.equal(noop.status, 200);
-  assert.deepEqual(noop.data, { notify_external_enabled: true, notify_teams_enabled: false, notify_email_enabled: false, notify_teams_webhook_set: false, email_delivery_available: noop.data.email_delivery_available });
+  assert.deepEqual(noop.data, { notify_external_enabled: true, notify_teams_enabled: false, notify_email_enabled: false, notify_teams_webhook_set: false, email_delivery_available: noop.data.email_delivery_available,
+    webex_direct_available: noop.data.webex_direct_available, notify_events: noop.data.notify_events, notify_event_options: noop.data.notify_event_options });
   for (const bad of [{ notify_external_enabled: 'yes' }, { notify_external_enabled: 1 }, { notify_external_enabled: null },
     { notify_teams_enabled: 'yes' }, { notify_email_enabled: 'yes' }, { notify_teams_webhook_url: 123 }]) {
     assert.equal((await api('/api/auth/notification-preferences', { method: 'PUT', token, body: bad })).status, 400);
@@ -561,4 +562,46 @@ test('quick and smart search enforce task roles and PM project visibility', { sk
   assert.equal((await api('/api/search?q=Search%20review', { token: ids.tokenDisabled })).data.tasks.length, 0);
   for (const path of ['/api/search?q[a]=test', '/api/search/smart?q[a]=test', '/api/search/smart?entity=unknown'])
     assert.equal((await api(path, { token: ids.tokenManager })).status, 400);
+});
+
+test('each person chooses which events reach which of their own channels; the admin switches only govern the shared channels', async () => {
+  const notifications = require('../notifications');
+  const user = (await db.prepare('INSERT INTO users (name, email, password, role, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled) VALUES (?, ?, ?, ?, 1, ?, 0)')
+    .run('Choosy Engineer', 'choosy@test.local', bcrypt.hashSync('pw', 4), 'engineer', 'https://93.184.216.34/choosy')).lastInsertRowid;
+  const token = signJwt({ id: user });
+  const prefs = body => api('/api/auth/notification-preferences', { method: 'PUT', token, body });
+
+  // Everything defaults to on; engineers aren't offered manager-only events.
+  const me = (await api('/api/auth/me', { token })).data;
+  assert.deepEqual(me.notify_events.task_assigned, { teams: true, email: true, webex: true });
+  assert.equal(me.notify_events.report_submitted, undefined);
+  assert.deepEqual(me.notify_event_options.map(event => event.key), ['task_assigned', 'project_assigned', 'visit_assigned', 'visit_reminder']);
+
+  for (const bad of [[], { report_submitted: { teams: false } }, { task_assigned: { pager: false } }, { task_assigned: { teams: 'no' } }, { nonsense: {} }])
+    assert.equal((await prefs({ notify_events: bad })).status, 400, JSON.stringify(bad));
+  const saved = await prefs({ notify_events: { task_assigned: { teams: false } } });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.data.notify_events.task_assigned, { teams: false, email: true, webex: true });
+  // Changing one event leaves the others as they were.
+  assert.equal((await prefs({ notify_events: { visit_reminder: { email: false } } })).data.notify_events.task_assigned.teams, false);
+
+  const stored = await db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get();
+  await db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value")
+    .run(JSON.stringify({ teams: { enabled: true, webhook_url: 'https://93.184.216.34/org-channel' }, webex: { enabled: false }, notify_on: { visit_assigned: false } }));
+  const posted = [];
+  notifications._setTransport(async (u) => { posted.push(u.pathname); return { status: 200, body: '', headers: {} }; });
+  const settle = () => new Promise(resolve => setTimeout(resolve, 300));
+  try {
+    notifications.notify('task.assigned', { engineer_id: user, engineer_name: 'Choosy Engineer', task_title: 'T' });
+    await settle();
+    assert.deepEqual(posted, ['/org-channel'], 'the person turned task alerts off on their Teams');
+    posted.length = 0;
+    notifications.notify('visit.assigned', { engineer_id: user, engineer_name: 'Choosy Engineer', visit_title: 'V', customer_name: 'C', scheduled_date: '2026-10-07' });
+    await settle();
+    assert.deepEqual(posted, ['/choosy'], 'the admin turned visit posts off for the shared channel only');
+  } finally {
+    notifications._setTransport();
+    if (stored) await db.prepare("UPDATE settings SET value = ? WHERE key = 'integrations'").run(stored.value);
+  }
+  assert.equal((await api('/api/auth/notification-preferences/test', { method: 'POST', token, body: { channel: 'webex' } })).status, 400);
 });

@@ -30,22 +30,6 @@ export const ACTIVITY_ICONS = {
   new_user:       <UsersIcon     size={15} color="#0891b2" />,
 };
 
-/* ── Stat Card ───────────────────────────────────────────── */
-export function StatCard({ label, value, sub, color, Icon: IconComp }) {
-  return (
-    <div className="card u-ad96c58">
-      <div className="u-dc7903e" style={{ background: color + '20' }}>
-        {IconComp && <IconComp size={22} color={color} />}
-      </div>
-      <div>
-        <div className="u-7565975" style={{ color }}>{value}</div>
-        <div className="u-adccfd4">{label}</div>
-        {sub && <div className="u-ed87168">{sub}</div>}
-      </div>
-    </div>
-  );
-}
-
 export function Toggle({ checked, onChange, label, disabled }) {
   return (
     <label className={["u-584a7aa", (disabled ? 'u-61a0750' : 'u-3b6a3a6'), (disabled ? 'u-e1549fd' : 'u-c6e7979')].filter(Boolean).join(' ')}>

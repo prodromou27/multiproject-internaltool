@@ -227,8 +227,8 @@ export default function ProjectDetail() {
               <Printer size={14} /> Export PDF
             </button>
           )}
-          {/* Edit — manager/planner only, not when closed */}
-          {canManage && !['closed','cancelled'].includes(project.status) && (
+          {/* Edit — managers (the server allows no one else); a closed project stays editable */}
+          {isManager && project.status !== 'cancelled' && (
             <button className="btn btn-ghost btn-sm" onClick={() => {
               setEditForm({ title: project.title, description: project.description, priority: project.priority, deadline: project.deadline?.slice(0, 10) || '', status: project.status, customer_id: project.customer_id || '', pending_from_customer: project.pending_from_customer || '', completion_pct: project.completion_pct ?? '', rag_override: project.rag_override || '' });
               setShowEdit(true);
@@ -595,7 +595,7 @@ export default function ProjectDetail() {
                 </select>
               </div>
               <div className="form-group"><label>Status</label>
-                <select value={editForm.status} onChange={setE('status')} disabled={project.status === 'pending_approval'}>
+                <select value={editForm.status} onChange={setE('status')} disabled={['pending_approval','closed'].includes(project.status)}>
                   {[
                     { value: 'not_started',        label: 'Not Started' },
                     { value: 'in_progress',        label: 'In Progress' },
@@ -606,12 +606,14 @@ export default function ProjectDetail() {
                     { value: 'completed_engineer', label: 'Completed by Engineer' },
                     { value: 'pending_approval',   label: 'Pending Management Approval' },
                     { value: 'reopened',           label: 'Reopened' },
+                    { value: 'closed',             label: 'Closed' },
                     { value: 'cancelled',          label: 'Cancelled' },
-                  ].filter(s => s.value !== 'pending_approval' || project.status === 'pending_approval').map(({ value, label }) => (
+                  ].filter(s => !['pending_approval','closed'].includes(s.value) || project.status === s.value).map(({ value, label }) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
                 </select>
                 {project.status === 'pending_approval' && <small>Use the closure review controls to approve or return this project.</small>}
+                {project.status === 'closed' && <small>The project stays closed while you edit it. A manager can use Reopen Project to change its status.</small>}
               </div>
             </div>
             {/* Completion percentage override */}

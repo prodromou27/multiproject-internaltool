@@ -665,6 +665,11 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS sent_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
     ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS sent_recorded_at TEXT;
   `]);
+  migrations.push(['20261006_personal_alert_events', `
+    -- Per person, which events reach which of their own channels (JSON:
+    -- { "task_assigned": { "teams": false }, ... }); anything unset is on.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_events TEXT;
+  `]);
 
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);

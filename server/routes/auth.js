@@ -16,7 +16,7 @@ const { assertPublicHttpUrl } = require('../security');
 const { effectivePermissions } = require('../permissions');
 const { parseUserDirectoryQuery,escapeLike } = require('../userDirectory');
 const { PRODUCT_NAME } = require('../product');
-const { sendPersonalTest } = require('../notifications');
+const { sendPersonalTest, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable } = require('../notifications');
 
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('not-the-real-password', 12);
 
@@ -373,7 +373,7 @@ router.get('/users', requireAuth, async (req, res) => {
 
 // GET /api/auth/me — current user profile
 router.get('/me', requireAuth, async (req, res) => {
-  const u = (await db.prepare('SELECT id, name, email, role, avatar_url, created_at, last_login, totp_enabled, must_change_password, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled FROM users WHERE id = ?').get(req.user.id));
+  const u = (await db.prepare('SELECT id, name, email, role, avatar_url, created_at, last_login, totp_enabled, must_change_password, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled, notify_events FROM users WHERE id = ?').get(req.user.id));
   if (!u) return res.status(404).json({ error: 'User not found' });
   res.setHeader('Cache-Control', 'no-store');
   res.json({ ...(await notificationPrefsView(u)), permissions: await effectivePermissions(u) });
@@ -383,14 +383,33 @@ router.get('/me', requireAuth, async (req, res) => {
 // Teams webhook URL is a secret (anyone holding it can post to that channel),
 // so it's encrypted at rest and never sent back — only whether one is set,
 // mirroring how the admin integration redacts its own webhook/bot token.
-async function notificationPrefsView(row) {
-  const { notify_teams_webhook_url, ...rest } = row;
+async function notificationPrefsView(row, role) {
+  const { notify_teams_webhook_url, notify_events, ...rest } = row;
   const smtp = await getSmtpSettings();
+  const events = eventPreferences(notify_events, role || row.role);
   return {
     ...rest,
     notify_teams_webhook_set: !!notify_teams_webhook_url,
     email_delivery_available: !!smtp?.host,
+    webex_direct_available: await webexDirectAvailable(),
+    notify_events: events,
+    notify_event_options: PERSONAL_EVENTS.filter(event => events[event.key]).map(({ key, label }) => ({ key, label })),
   };
+}
+
+// { event: { channel: boolean } } for the events this person can receive.
+function eventChoicesInput(value, role) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('notify_events must be an object');
+  const allowed = eventPreferences(null, role);
+  for (const [event, channels] of Object.entries(value)) {
+    if (!allowed[event]) throw new Error(`Unknown alert event: ${event}`);
+    if (!channels || typeof channels !== 'object' || Array.isArray(channels)) throw new Error(`Choices for ${event} must be an object`);
+    for (const [channel, on] of Object.entries(channels)) {
+      if (!PERSONAL_CHANNELS.includes(channel)) throw new Error(`Unknown alert channel: ${channel}`);
+      if (typeof on !== 'boolean') throw new Error(`${event}.${channel} must be true or false`);
+    }
+  }
+  return value;
 }
 
 // PUT /api/auth/notification-preferences — self-service configuration of how
@@ -408,6 +427,11 @@ router.put('/notification-preferences', requireAuth, async (req, res) => {
   }
   if (has('notify_teams_webhook_url') && notify_teams_webhook_url !== null && typeof notify_teams_webhook_url !== 'string')
     return res.status(400).json({ error: 'notify_teams_webhook_url must be text or null' });
+  let eventChoices;
+  if (has('notify_events')) {
+    try { eventChoices = eventChoicesInput(req.body.notify_events, req.user.role); }
+    catch (e) { return res.status(400).json({ error: e.message }); }
+  }
   const url = has('notify_teams_webhook_url') ? (notify_teams_webhook_url || '').trim() : undefined;
   if (url) {
     try { await assertPublicHttpUrl(url, { label: 'Teams webhook URL' }); }
@@ -430,12 +454,18 @@ router.put('/notification-preferences', requireAuth, async (req, res) => {
   if (effectiveTeamsEnabled !== undefined) { sets.push('notify_teams_enabled = ?');      params.push(effectiveTeamsEnabled ? 1 : 0); }
   if (url !== undefined)                 { sets.push('notify_teams_webhook_url = ?');    params.push(url ? encryptField(url) : null); }
   if (has('notify_email_enabled'))       { sets.push('notify_email_enabled = ?');        params.push(req.body.notify_email_enabled ? 1 : 0); }
+  if (eventChoices) {
+    // Merge into what is stored, so a client can change one event at a time.
+    const stored = eventPreferences((await db.prepare('SELECT notify_events FROM users WHERE id = ?').get(req.user.id))?.notify_events);
+    for (const [event, channels] of Object.entries(eventChoices)) stored[event] = { ...stored[event], ...channels };
+    sets.push('notify_events = ?'); params.push(JSON.stringify(stored));
+  }
   if (sets.length) {
     params.push(req.user.id);
     await db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...params);
   }
-  const row = await db.prepare('SELECT notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled FROM users WHERE id = ?').get(req.user.id);
-  res.json(await notificationPrefsView({ ...row, notify_external_enabled: !!row.notify_external_enabled, notify_teams_enabled: !!row.notify_teams_enabled, notify_email_enabled: !!row.notify_email_enabled }));
+  const row = await db.prepare('SELECT notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled, notify_events FROM users WHERE id = ?').get(req.user.id);
+  res.json(await notificationPrefsView({ ...row, notify_external_enabled: !!row.notify_external_enabled, notify_teams_enabled: !!row.notify_teams_enabled, notify_email_enabled: !!row.notify_email_enabled }, req.user.role));
 });
 
 // POST /api/auth/notification-preferences/test — send a real test message
@@ -447,11 +477,11 @@ const personalTestLimiter = rateLimit({ windowMs: 60_000, max: 6, standardHeader
   message: { error: 'Too many test messages — wait a minute and try again.' } });
 router.post('/notification-preferences/test', requireAuth, personalTestLimiter, async (req, res) => {
   const { channel } = req.body;
-  if (!['teams', 'email'].includes(channel)) return res.status(400).json({ error: 'channel must be "teams" or "email"' });
+  if (!['teams', 'email', 'webex'].includes(channel)) return res.status(400).json({ error: 'channel must be "teams", "email" or "webex"' });
   const row = await db.prepare('SELECT email, notify_teams_webhook_url FROM users WHERE id = ?').get(req.user.id);
   try {
     await sendPersonalTest(channel, { email: row.email, webhook_url: decryptField(row.notify_teams_webhook_url) });
-    res.json({ ok: true, message: channel === 'teams' ? 'Test posted to your Teams webhook.' : `Test email sent to ${row.email}.` });
+    res.json({ ok: true, message: channel === 'teams' ? 'Test posted to your Teams webhook.' : channel === 'webex' ? `Test sent to ${row.email} on Webex.` : `Test email sent to ${row.email}.` });
   } catch (e) {
     res.status(400).json({ error: e.message || 'Test failed' });
   }

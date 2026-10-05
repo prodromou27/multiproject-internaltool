@@ -19,7 +19,7 @@ import './CustomerServiceProfile.css';
 const initialsOf=name => (name || '').trim().split(/\s+/).map(word => word[0]).slice(0,2).join('').toUpperCase() || '?';
 
 function HealthCard({ icon:Icon,label,value,note,state='default',onClick,href,bar }) {
-  const body=<><div className="cs-health-head"><Icon size={15} aria-hidden="true" /><span>{label}</span></div><div className="cs-health-value">{value}</div>{note && <div className="cs-health-note">{note}</div>}{bar}</>;
+  const body=<><div className="cs-health-head"><Icon size={15} aria-hidden="true" /><span>{label}</span></div><div className={`cs-health-value${/^\d+$/.test(String(value)) ? '' : ' is-text'}`}>{value}</div>{note && <div className="cs-health-note">{note}</div>}{bar}</>;
   const className=`card cs-health-card${state!=='default'?` is-${state}`:''}${onClick || href?' is-actionable':''}`;
   if (href) return <Link to={href} className={className}>{body}</Link>;
   if (onClick) return <button type="button" className={className} onClick={onClick}>{body}</button>;

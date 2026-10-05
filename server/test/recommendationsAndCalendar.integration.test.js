@@ -502,3 +502,16 @@ test('closure review rolls back when its history cannot be recorded on PostgreSQ
   assert.equal(stored.closure_decision, null);
   assert.equal(stored.closure_reviewed_by, null);
 });
+
+test('a closed project and its tasks stay editable, and only a manager can edit or reopen it', async () => {
+  const project = (await db.prepare("INSERT INTO projects (title, status, created_by) VALUES (?, 'closed', ?)").run('Closed but editable', ids.manager)).lastInsertRowid;
+  const task = (await db.prepare("INSERT INTO tasks (title, project_id, status, created_by) VALUES (?, ?, 'completed', ?)").run('Hand-over notes', project, ids.manager)).lastInsertRowid;
+  const path = `/api/projects/${project}`;
+  assert.equal((await api(path, { method: 'PUT', token: ids.tokenManager, body: { title: 'Closed, notes corrected', status: 'closed' } })).status, 200);
+  assert.equal((await api(`/api/tasks/${task}`, { method: 'PUT', token: ids.tokenManager, body: { title: 'Hand-over notes (final)' } })).status, 200);
+  assert.equal((await api(path, { method: 'PUT', token: ids.tokenPlanner, body: { status: 'in_progress' } })).status, 403);
+  assert.deepEqual(Object.values(await db.prepare('SELECT title, status FROM projects WHERE id=?').get(project)), ['Closed, notes corrected', 'closed']);
+  assert.equal((await db.prepare('SELECT title FROM tasks WHERE id=?').get(task)).title, 'Hand-over notes (final)');
+  assert.equal((await api(path, { method: 'PUT', token: ids.tokenManager, body: { status: 'reopened' } })).status, 200);
+  assert.equal((await db.prepare('SELECT status FROM projects WHERE id=?').get(project)).status, 'reopened');
+});

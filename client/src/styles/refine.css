@@ -249,3 +249,31 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .report-sent-form { display: grid; grid-template-columns: minmax(200px, 2fr) minmax(140px, 1fr) minmax(200px, 2fr) auto; gap: 12px; align-items: end; }
 .report-sent-form .form-group { margin: 0; }
 @media (max-width: 760px) { .report-sent-form { grid-template-columns: 1fr; } .report-due-banner .report-due { justify-items: start; } }
+
+/* Profile: which personal alerts reach which channel. */
+.alert-choices { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--gray-200); }
+.alert-choices h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+.alert-choices table { width: 100%; max-width: 620px; border-collapse: collapse; font-size: 13px; }
+.alert-choices th, .alert-choices td { padding: 8px 10px; border-bottom: 1px solid var(--gray-200); text-align: center; }
+.alert-choices th[scope="row"], .alert-choices thead th:first-child { text-align: left; font-weight: 500; }
+.alert-choices thead th { font-weight: 600; color: var(--gray-600); }
+.alert-choices input[type="checkbox"] { width: 16px; height: 16px; }
+.alert-choices > p { margin: 10px 0 0; }
+
+/* Customer 360: a plain header and an aligned, quiet summary row. The page's own
+   stylesheet loads later, so these use the page class for precedence. */
+.cs-page .cs-customer-header { background: var(--surface); border: 1px solid var(--gray-200); border-top: 1px solid var(--gray-200); box-shadow: var(--shadow-xs); }
+.cs-page .cs-customer-header .cs-identity-avatar { background: var(--gray-100); color: var(--ink); box-shadow: none; }
+.cs-page .cs-customer-header h1 { color: var(--ink); }
+.cs-page .cs-health-strip { align-items: stretch; }
+.cs-page .cs-health-strip > .card { margin: 0; }
+.cs-page .cs-health-card { border: 1px solid var(--gray-200); border-left: 3px solid transparent; box-shadow: none; }
+.cs-page .cs-health-card.is-warning { border-left-color: var(--warning); }
+.cs-page .cs-health-card.is-danger { border-left-color: var(--danger); }
+.cs-page .cs-health-card.is-actionable:hover { transform: none; box-shadow: none; border-color: var(--gray-300); }
+.cs-page .cs-health-card.is-warning.is-actionable:hover { border-left-color: var(--warning); }
+.cs-page .cs-health-card.is-danger.is-actionable:hover { border-left-color: var(--danger); }
+.cs-page .cs-health-value { color: var(--ink); font-weight: 650; }
+.cs-page .cs-health-value.is-text { font-size: 15px; font-weight: 600; line-height: 1.35; margin-top: 8px; }
+.alert-choices th, .alert-choices td { background: transparent; text-transform: none; letter-spacing: normal; }
+.alert-choices th[scope="row"] { color: var(--gray-700); font-size: 13px; }

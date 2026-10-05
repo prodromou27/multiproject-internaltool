@@ -160,6 +160,37 @@ async function sendWebex(cfg, msg, engineerEmail) {
   if (failed) throw failed.reason;
 }
 
+// ── Personal alert choices ───────────────────────────────────────────────────
+// Each person picks, per event, which of their own channels it reaches. Stored
+// as JSON on users.notify_events; anything not chosen yet defaults to on, so
+// enabling a channel keeps working as it did before these choices existed.
+const PERSONAL_EVENTS = Object.freeze([
+  { key: 'task_assigned',    label: 'A task is assigned to me' },
+  { key: 'project_assigned', label: 'I am added to a project' },
+  { key: 'visit_assigned',   label: 'A maintenance visit is assigned to me' },
+  { key: 'visit_reminder',   label: 'The day before one of my maintenance visits' },
+  { key: 'report_submitted', label: 'An engineer submits a visit report for review', roles: ['manager'] },
+]);
+const PERSONAL_CHANNELS = Object.freeze(['teams', 'email', 'webex']);
+
+function eventPreferences(raw, role) {
+  let stored = {};
+  try { stored = raw ? JSON.parse(raw) : {}; } catch { stored = {}; }
+  const result = {};
+  for (const event of PERSONAL_EVENTS) {
+    if (event.roles && role && !event.roles.includes(role)) continue;
+    result[event.key] = Object.fromEntries(PERSONAL_CHANNELS.map(channel => [channel, stored?.[event.key]?.[channel] !== false]));
+  }
+  return result;
+}
+const wantsAlert = (person, eventKey, channel) => eventPreferences(person.notify_events)[eventKey]?.[channel] !== false;
+
+/** Whether the organisation's Webex bot can send direct messages to people. */
+async function webexDirectAvailable() {
+  const webex = (await getSettings())?.webex;
+  return !!(webex?.enabled && webex?.bot_token && (webex.mode === 'direct' || webex.mode === 'both'));
+}
+
 // ── Persist notification to DB for a specific user ──────────────────────────
 async function persistNotification(userId, type, title, body, link) {
   try {
@@ -306,8 +337,9 @@ function notify(event, data) {
 
       const notifyOn = settings.notify_on || {};
       const eventKey = event.replace('.', '_');  // e.g. task.assigned → task_assigned
-      // visit.reminder defaults to enabled unless explicitly disabled
-      if (notifyOn[eventKey] === false) return;
+      // The admin's event switches govern the shared organisation channels (the
+      // Teams channel and Webex space). Each person decides for their own.
+      const orgEnabled = notifyOn[eventKey] !== false;
 
       // A submitted report goes to managers, so never DM the submitting
       // engineer via the org Webex bot. Personal channels (Teams webhook,
@@ -317,7 +349,7 @@ function notify(event, data) {
       // additionally honors the engineer's opt-out. In-app (bell icon)
       // notifications are unaffected by any of this — persisted above,
       // unconditionally.
-      const PREF_COLS = 'id, email, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled';
+      const PREF_COLS = 'id, email, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled, notify_events';
       let dmEmail = event === 'report.submitted' ? null : data.engineer_email;
       let recipients = [];
       if (event === 'report.submitted') {
@@ -326,21 +358,26 @@ function notify(event, data) {
         const recipient = await db.prepare(`SELECT ${PREF_COLS} FROM users WHERE id = ?`).get(data.engineer_id);
         if (recipient) {
           recipients = [recipient];
-          if (!recipient.notify_external_enabled) dmEmail = null;
+          if (!recipient.notify_external_enabled || !wantsAlert(recipient, eventKey, 'webex')) dmEmail = null;
         }
       }
 
-      const sends = [
-        sendTeams(settings.teams, msg),
-        sendWebex(settings.webex, msg, dmEmail),
-      ];
-      const sendLabels = ['Teams', 'Webex'];
+      const sends = [], sendLabels = [];
+      if (orgEnabled) { sends.push(sendTeams(settings.teams, msg)); sendLabels.push('Teams'); }
+      // The Webex space follows the admin's choice; the direct message, the person's.
+      const webexMode = settings.webex?.mode;
+      const space = orgEnabled && (webexMode === 'space' || webexMode === 'both');
+      const direct = !!dmEmail && (webexMode === 'direct' || webexMode === 'both');
+      if (space || direct) {
+        sends.push(sendWebex({ ...settings.webex, mode: space && direct ? 'both' : space ? 'space' : 'direct' }, msg, direct ? dmEmail : null));
+        sendLabels.push('Webex');
+      }
       for (const person of recipients) {
-        if (person.notify_teams_enabled && person.notify_teams_webhook_url) {
+        if (person.notify_teams_enabled && person.notify_teams_webhook_url && wantsAlert(person, eventKey, 'teams')) {
           sends.push(sendTeams({ enabled: true, webhook_url: decryptField(person.notify_teams_webhook_url) }, msg));
           sendLabels.push(`Personal Teams (user ${person.id})`);
         }
-        if (person.notify_email_enabled && person.email) {
+        if (person.notify_email_enabled && person.email && wantsAlert(person, eventKey, 'email')) {
           sends.push(sendEmail({ to: person.email, subject: msg.title, html: emailHtml(msg) }));
           sendLabels.push(`Personal email (user ${person.id})`);
         }
@@ -394,10 +431,15 @@ async function sendPersonalTest(channel, { email, webhook_url }) {
   if (channel === 'teams') {
     if (!webhook_url) throw new Error('Save a Teams webhook URL first');
     await sendTeams({ enabled: true, webhook_url }, msg);
+  } else if (channel === 'webex') {
+    const webex = (await getSettings())?.webex;
+    if (!(await webexDirectAvailable())) throw new Error('Webex direct messages are not set up for this organization');
+    if (!email) throw new Error('Your account has no email address for Webex to message');
+    await sendWebex({ ...webex, mode: 'direct', enabled: true }, msg, email);
   } else if (channel === 'email') {
     if (!email) throw new Error('Your account has no email address');
     await sendEmail({ to: email, subject: msg.title, html: emailHtml(msg) });
   } else throw new Error('Unknown channel');
 }
 
-module.exports = { sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, _setTransport };
+module.exports = { PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, _setTransport };

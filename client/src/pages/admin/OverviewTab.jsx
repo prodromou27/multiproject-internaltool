@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Users as UsersIcon, Shield, Cog, UserX, FolderOpen, CheckCircle2, Lock, AlertTriangle, CheckSquare, Inbox, Zap, Wrench, ClipboardList, Send, Building2, Paperclip, HardDrive, ScrollText, Bell, Loader2, Activity, RefreshCw, TrendingUp, ShieldAlert, LayoutDashboard } from 'lucide-react';
+import { UserX, CheckCircle2, AlertTriangle, ScrollText, Bell, Loader2, Activity, RefreshCw, TrendingUp, ShieldAlert } from 'lucide-react';
 import { api } from '../../api';
-import { fileSize, timeSince, ACTIVITY_ICONS, StatCard } from './shared';
+import { fileSize, timeSince, ACTIVITY_ICONS } from './shared';
+import { MetricStrip } from '../../components/EnterpriseUI';
 import { fmtDateTime } from '../../components/Shared';
 
 /* ══════════════════════════════════════════════════════════ */
@@ -40,10 +41,10 @@ export function OverviewTab() {
     alerts.push({ level: 'info',    icon: <UserX size={14} />, msg: `${users.total - users.active} user account${(users.total - users.active) !== 1 ? 's' : ''} deactivated` });
 
   const healthBars = [
-    { label: 'Users Active',       value: users.active,                                      total: Math.max(1, users.total),        color: 'var(--success)' },
-    { label: 'Projects On Track',  value: Math.max(0, projects.active - projects.overdue),   total: Math.max(1, projects.active),    color: 'var(--primary)' },
-    { label: 'Tasks Completed',    value: tasks.done,                                         total: Math.max(1, tasks.total),        color: 'var(--success)' },
-    { label: 'MV Reports Sent',    value: maintenance.report_sent,                            total: Math.max(1, maintenance.total),  color: 'var(--primary)' },
+    { label: 'Users active',       value: users.active,                                      total: Math.max(1, users.total), color: 'var(--primary)' },
+    { label: 'Projects on track',  value: Math.max(0, projects.active - projects.overdue),   total: Math.max(1, projects.active), color: 'var(--primary)' },
+    { label: 'Tasks completed',    value: tasks.done,                                         total: Math.max(1, tasks.total), color: 'var(--primary)' },
+    { label: 'Visit reports sent',    value: maintenance.report_sent,                            total: Math.max(1, maintenance.total), color: 'var(--primary)' },
   ];
 
   return (
@@ -63,12 +64,12 @@ export function OverviewTab() {
       </div>
 
       {/* ── Key metric cards ──────────────────────────────── */}
-      <div className="grid-4 mb-20">
-        <StatCard Icon={UsersIcon}   label="Active Users"    value={users.active}               sub={`${users.managers} managers · ${users.engineers} engineers`}    color="var(--primary)" />
-        <StatCard Icon={FolderOpen}  label="Active Projects" value={projects.active}            sub={projects.overdue ? `⚠ ${projects.overdue} overdue` : 'All on track'}  color={projects.overdue ? 'var(--danger)' : 'var(--success)'} />
-        <StatCard Icon={CheckSquare} label="Open Tasks"      value={tasks.open}                 sub={`${tasks.done} completed · ${tasks.adhoc} ad-hoc`}              color="var(--warning)" />
-        <StatCard Icon={Wrench}      label="MV Reports Due"  value={maintenance.report_pending} sub={`${maintenance.report_sent} sent · ${maintenance.total} total`}  color={maintenance.report_pending > 0 ? 'var(--warning)' : 'var(--success)'} />
-      </div>
+      <MetricStrip className="mb-20" items={[
+        { label: 'Active users', value: users.active, note: `${users.managers} managers, ${users.engineers} engineers` },
+        { label: 'Active projects', value: projects.active, note: projects.overdue ? `${projects.overdue} overdue` : 'None overdue', tone: projects.overdue ? 'danger' : undefined },
+        { label: 'Open tasks', value: tasks.open, note: `${tasks.done} completed, ${tasks.adhoc} ad-hoc` },
+        { label: 'Visit reports not sent', value: maintenance.report_pending, note: `${maintenance.report_sent} sent of ${maintenance.total} visits`, tone: maintenance.report_pending ? 'warning' : undefined },
+      ]} />
 
       {/* ── Health + Recent Activity ──────────────────────── */}
       <div className="grid-2 mb-20">
@@ -88,7 +89,7 @@ export function OverviewTab() {
                 <div key={label}>
                   <div className="u-189fef4">
                     <span className="font-semibold">{label}</span>
-                    <span className="u-1e2ea2c">{value}/{total} <strong style={{ color }}>{pct}%</strong></span>
+                    <span className="u-1e2ea2c">{value}/{total} <strong>{pct}%</strong></span>
                   </div>
                   <div className="progress-bar">
                     <div className="progress-bar-fill u-7f8ceac" style={{ width: `${pct}%`, background: color }} />
@@ -100,12 +101,12 @@ export function OverviewTab() {
           {/* Quick counters */}
           <div className="u-e5c1aed">
             {[
-              { label: 'Customers',       value: stats.customers,         color: '#0891b2' },
-              { label: 'Pending Closure', value: projects.pending_closure, color: 'var(--warning)' },
-              { label: 'Storage',         value: fileSize(stats.attachments.total_size), color: 'var(--gray-600)' },
+              { label: 'Customers',       value: stats.customers },
+              { label: 'Pending closure', value: projects.pending_closure, color: projects.pending_closure ? 'var(--warning)' : undefined },
+              { label: 'Storage',         value: fileSize(stats.attachments.total_size) },
             ].map(({ label, value, color }) => (
               <div key={label}>
-                <div className="u-3d57896" style={{ color }}>{value}</div>
+                <div className="u-3d57896" style={color ? { color } : undefined}>{value}</div>
                 <div className="u-8e62657">{label}</div>
               </div>
             ))}
@@ -136,26 +137,14 @@ export function OverviewTab() {
 
       {/* ── Role breakdown ────────────────────────────────── */}
       <div className="card">
-        <div className="section-title u-8cac894"><UsersIcon size={14} /> Team Breakdown</div>
-        <div className="u-aa8878b">
-          {[
-            { role: 'manager',  label: 'Managers',  count: users.managers,         color: '#7c3aed',          Icon: Shield },
-            { role: 'engineer', label: 'Engineers', count: users.engineers,        color: '#0891b2',          Icon: Cog },
-            { role: 'planner',  label: 'Planners',  count: users.planners || 0,    color: '#059669',          Icon: LayoutDashboard },
-            { role: 'pm',       label: 'PMs',       count: users.pms || 0,         color: '#0ea5e9',          Icon: ClipboardList },
-            { role: 'inactive', label: 'Inactive',  count: users.total - users.active, color: 'var(--gray-400)', Icon: UserX },
-          ].map(({ label, count, color, Icon }) => (
-            <div key={label} className="u-a3b5c73">
-              <div className="u-433b31a" style={{ background: color + '18' }}>
-                <Icon size={18} color={color} />
-              </div>
-              <div>
-                <div className="u-76bc9ef" style={{ color }}>{count}</div>
-                <div className="u-c945d44">{label}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <div className="section-title u-8cac894">Team breakdown</div>
+        <MetricStrip items={[
+          { label: 'Managers', value: users.managers },
+          { label: 'Engineers', value: users.engineers },
+          { label: 'Planners', value: users.planners || 0 },
+          { label: 'PMs', value: users.pms || 0 },
+          { label: 'Inactive', value: users.total - users.active },
+        ]} />
       </div>
     </div>
   );
@@ -173,47 +162,47 @@ export function StatsTab() {
   return (
     <div className="u-f22e0e6">
       <div>
-        <div className="section-title flex-center gap-6"><UsersIcon size={14} /> Users</div>
-        <div className="grid-4">
-          <StatCard Icon={UsersIcon}     label="Total Users"    value={users.total}               sub={`${users.active} active`}   color="var(--primary)" />
-          <StatCard Icon={Shield}        label="Managers"       value={users.managers}             sub="management role"            color="#7c3aed" />
-          <StatCard Icon={Cog}           label="Engineers"      value={users.engineers}            sub="engineering role"           color="#0891b2" />
-          <StatCard Icon={UserX}         label="Inactive"       value={users.total - users.active} sub="deactivated"                color="var(--gray-400)" />
-        </div>
+        <div className="section-title">Users</div>
+        <MetricStrip items={[
+          { label: 'Total users', value: users.total, note: `${users.active} active` },
+          { label: 'Managers', value: users.managers },
+          { label: 'Engineers', value: users.engineers },
+          { label: 'Inactive', value: users.total - users.active, note: 'deactivated' },
+        ]} />
       </div>
       <div>
-        <div className="section-title flex-center gap-6"><FolderOpen size={14} /> Projects</div>
-        <div className="grid-4">
-          <StatCard Icon={FolderOpen}    label="Total"          value={projects.total}           sub="all time"               color="var(--primary)" />
-          <StatCard Icon={CheckCircle2}  label="Active"         value={projects.active}          sub="in progress"            color="var(--success)" />
-          <StatCard Icon={Lock}          label="Closed"         value={projects.closed}          sub="completed"              color="var(--gray-600)" />
-          <StatCard Icon={AlertTriangle} label="Overdue"        value={projects.overdue}         sub="past deadline"          color="var(--danger)" />
-        </div>
+        <div className="section-title">Projects</div>
+        <MetricStrip items={[
+          { label: 'Total', value: projects.total, note: 'all time' },
+          { label: 'Active', value: projects.active },
+          { label: 'Closed', value: projects.closed },
+          { label: 'Overdue', value: projects.overdue, note: 'past deadline', tone: projects.overdue ? 'danger' : undefined },
+        ]} />
       </div>
       <div>
-        <div className="section-title flex-center gap-6"><CheckSquare size={14} /> Tasks</div>
-        <div className="grid-4">
-          <StatCard Icon={CheckSquare}   label="Total Tasks"    value={tasks.total}   sub="active & completed"  color="var(--primary)" />
-          <StatCard Icon={Inbox}         label="Open"           value={tasks.open}    sub="awaiting action"     color="var(--warning)" />
-          <StatCard Icon={CheckCircle2}  label="Completed"      value={tasks.done}    sub="done"                color="var(--success)" />
-          <StatCard Icon={Zap}           label="Ad-hoc"         value={tasks.adhoc}   sub="unplanned"           color="#db2777" />
-        </div>
+        <div className="section-title">Tasks</div>
+        <MetricStrip items={[
+          { label: 'Total tasks', value: tasks.total },
+          { label: 'Open', value: tasks.open, note: 'awaiting action' },
+          { label: 'Completed', value: tasks.done },
+          { label: 'Ad-hoc', value: tasks.adhoc, note: 'unplanned' },
+        ]} />
       </div>
       <div>
-        <div className="section-title flex-center gap-6"><Wrench size={14} /> Maintenance Visits</div>
-        <div className="grid-4">
-          <StatCard Icon={Wrench}        label="Total MVs"          value={maintenance.total}          sub="all visits"         color="var(--primary)" />
-          <StatCard Icon={ClipboardList} label="Reports Pending"    value={maintenance.report_pending} sub="not yet sent"       color="var(--warning)" />
-          <StatCard Icon={Send}          label="Reports Sent"       value={maintenance.report_sent}    sub="delivered"          color="var(--success)" />
-          <StatCard Icon={Building2}     label="Customers"          value={customers}                  sub="registered clients" color="#0891b2" />
-        </div>
+        <div className="section-title">Maintenance visits</div>
+        <MetricStrip items={[
+          { label: 'Visits', value: maintenance.total },
+          { label: 'Reports not sent', value: maintenance.report_pending, tone: maintenance.report_pending ? 'warning' : undefined },
+          { label: 'Reports sent', value: maintenance.report_sent },
+          { label: 'Customers', value: customers },
+        ]} />
       </div>
       <div>
-        <div className="section-title flex-center gap-6"><Paperclip size={14} /> Storage</div>
-        <div className="grid-2">
-          <StatCard Icon={Paperclip}     label="Attachments"    value={attachments.count}               sub="files uploaded"      color="#7c3aed" />
-          <StatCard Icon={HardDrive}     label="Storage Used"   value={fileSize(attachments.total_size)} sub="across all projects" color="var(--gray-600)" />
-        </div>
+        <div className="section-title">Storage</div>
+        <MetricStrip items={[
+          { label: 'Attachments', value: attachments.count, note: 'files uploaded' },
+          { label: 'Storage used', value: fileSize(attachments.total_size), note: 'across all projects' },
+        ]} />
       </div>
     </div>
   );
