@@ -49,3 +49,11 @@ test('report data maps activities, the change log and asset support status', () 
   assert.deepEqual([data.assets[0].support_end, data.assets_needing_attention], ['15/11/2026', '1']);
   assert.deepEqual([data.include_changes, data.include_assets, data.include_resolved_tickets], [true, true, false]);
 });
+
+test('a template that unpacks to far more than a real document is refused before it is read', async () => {
+  const zip = new PizZip(await docx.starterTemplate());
+  zip.file('word/media/padding.bin', Buffer.alloc(60 * 1024 * 1024)); // compresses to a few KB
+  const bomb = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+  assert.ok(bomb.length < 1024 * 1024, `the upload itself is small (${bomb.length} bytes)`);
+  assert.throws(() => docx.validateTemplate(bomb), error => error.status === 400 && /too large once unpacked/.test(error.message));
+});

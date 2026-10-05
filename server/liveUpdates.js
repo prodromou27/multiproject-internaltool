@@ -14,31 +14,36 @@
  */
 const crypto = require('crypto');
 const db = require('./db');
-const { requireAuth } = require('./middleware/auth');
+const { requireAuth, verifyJwt, freshActiveUser } = require('./middleware/auth');
+const { requestToken } = require('./middleware/session');
 
 const CHANNEL = 'app_changes';
 const INSTANCE = crypto.randomUUID();
-const HEARTBEAT_MS = 25 * 1000;
+let HEARTBEAT_MS = 25 * 1000;
 const MAX_STREAMS = 2000;
+const MAX_STREAMS_PER_USER = 10; // a few tabs and devices each; stops one account exhausting the server
 // Changes that only concern the person making them, or that are not data.
 const QUIET = new Set(['auth', 'live', 'client-errors', 'search']);
+// Requests that change only the requester's own things (reading notifications, private notes).
+const PERSONAL = new Set(['notifications', 'notes']);
 const streams = new Map();
 let listener = null;
 
 const cleanClientId = value => (typeof value === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(value) ? value : null);
 
-function deliver({ topic, exceptClient }) {
+function deliver({ topic, exceptClient, userId }) {
   const payload = `event: change\ndata: ${JSON.stringify({ topic })}\n\n`;
   for (const stream of streams.values()) {
     if (exceptClient && stream.clientId === exceptClient) continue;
+    if (userId != null && Number(stream.userId) !== Number(userId)) continue;
     try { stream.res.write(payload); stream.res.flush?.(); } catch { /* closed; cleaned up on 'close' */ }
   }
 }
 
-/** Announce that `topic` changed. Safe to call from anywhere; never throws. */
-function emitChange(topic, { exceptClient = null } = {}) {
+/** Announce that `topic` changed — to everyone, or with `userId` to that person only. Never throws. */
+function emitChange(topic, { exceptClient = null, userId = null } = {}) {
   if (!topic || QUIET.has(topic)) return;
-  const event = { topic: String(topic).slice(0, 60), exceptClient: cleanClientId(exceptClient) };
+  const event = { topic: String(topic).slice(0, 60), exceptClient: cleanClientId(exceptClient), userId: userId == null ? null : Number(userId) };
   deliver(event);
   if (listener) {
     db.pool.query('SELECT pg_notify($1, $2)', [CHANNEL, JSON.stringify({ ...event, origin: INSTANCE })])
@@ -52,6 +57,7 @@ function trackChanges(req, res, next) {
   res.on('finish', () => {
     if (res.statusCode >= 400) return;
     const topic = String(req.originalUrl || '').split('?')[0].split('/')[2];
+    if (PERSONAL.has(topic)) return;
     emitChange(topic, { exceptClient: req.get('x-client-id') });
   });
   next();
@@ -60,6 +66,13 @@ function trackChanges(req, res, next) {
 /** GET /api/live — the event stream for one browser tab. */
 function stream(req, res) {
   if (streams.size >= MAX_STREAMS) return res.status(503).json({ error: 'Too many live connections' });
+  const own = [...streams.values()].filter(item => item.userId === req.user.id);
+  if (own.length >= MAX_STREAMS_PER_USER) {
+    // Close this person's oldest stream rather than refusing: usually a tab that went away uncleanly.
+    try { own[0].res.end(); } catch { /* already gone */ }
+    streams.delete(own[0].id);
+  }
+  const token = requestToken(req);
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
@@ -69,8 +82,16 @@ function stream(req, res) {
   res.write('retry: 5000\n\n');
   res.flush?.();
   const id = crypto.randomUUID();
-  streams.set(id, { res, userId: req.user.id, clientId: cleanClientId(req.query.client) });
-  const heartbeat = setInterval(() => { try { res.write(': ping\n\n'); res.flush?.(); } catch { /* closed */ } }, HEARTBEAT_MS);
+  streams.set(id, { id, res, userId: req.user.id, clientId: cleanClientId(req.query.client) });
+  // Each heartbeat re-checks the session, so signing out, a password reset or a
+  // deactivated account ends the stream within one heartbeat.
+  const heartbeat = setInterval(async () => {
+    try {
+      const check = await freshActiveUser(verifyJwt(token));
+      if (check.errorStatus) { streams.delete(id); res.end(); return; }
+      res.write(': ping\n\n'); res.flush?.();
+    } catch { streams.delete(id); try { res.end(); } catch { /* closed */ } }
+  }, HEARTBEAT_MS);
   heartbeat.unref?.();
   req.on('close', () => { clearInterval(heartbeat); streams.delete(id); });
 }
@@ -104,4 +125,4 @@ async function startListening() {
 const router = require('express').Router();
 router.get('/', requireAuth, stream);
 
-module.exports = { router, trackChanges, emitChange, startListening, _streams: streams };
+module.exports = { router, trackChanges, emitChange, startListening, _streams: streams, _setHeartbeat: ms => { HEARTBEAT_MS = ms; } };

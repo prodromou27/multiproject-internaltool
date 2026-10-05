@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Users as UsersIcon, FolderOpen, CheckCircle2, CheckSquare, Wrench, Building2, Loader2, Download, Database } from 'lucide-react';
 import { api } from '../../api';
 import { fmtDate, StatusBadge, PriorityBadge, isOverdue } from '../../components/Shared';
+import { localDateISO } from '../../utils/dates';
 
 /* ══════════════════════════════════════════════════════════ */
 /* ── PROJECTS ADMIN TAB ──────────────────────────────────── */
@@ -209,7 +210,7 @@ export function DataExportTab() {
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      a.download = `${name}_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `${name}_${localDateISO()}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       setDone(d => ({ ...d, [name]: true }));

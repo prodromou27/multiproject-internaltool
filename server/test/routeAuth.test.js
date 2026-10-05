@@ -51,11 +51,14 @@ test('every route requires authentication unless explicitly public', () => {
   const dir = path.join(__dirname, '..', 'routes');
   const problems = [];
   let inspected = 0;
-  for (const name of fs.readdirSync(dir).filter(f => f.endsWith('.js'))) {
-    const router = require(path.join(dir, name));
+  // Every router file, including sub-folders (settings/…), and routers that live outside routes/.
+  const files = fs.readdirSync(dir, { recursive: true }).filter(f => f.endsWith('.js')).map(f => [f.split(path.sep).join('/').replace(/\.js$/, ''), path.join(dir, f)]);
+  files.push(['live', path.join(__dirname, '..', 'liveUpdates.js')]);
+  for (const [file, full] of files) {
+    const exported = require(full);
+    const router = exported?.stack ? exported : exported?.router;
     if (!router?.stack) continue;
     inspected += router.stack.filter(l => l.route).length;
-    const file = name.replace(/\.js$/, '');
     problems.push(...unprotectedRoutes(file, router).filter(r => !PUBLIC.has(r)));
   }
   assert.ok(inspected > 100, `expected to inspect the whole API, saw ${inspected} routes`);

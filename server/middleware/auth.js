@@ -174,4 +174,4 @@ function requireDownloadPermission(permissionKey) {
   };
 }
 
-module.exports = { requireAuth, requireDownloadAuth, requireManager, requireManagerOrPlanner, requireDownloadManager, requireDownloadManagerOrPlanner, requirePermission, requireDownloadPermission, signJwt, verifyJwt };
+module.exports = { freshActiveUser, requireAuth, requireDownloadAuth, requireManager, requireManagerOrPlanner, requireDownloadManager, requireDownloadManagerOrPlanner, requirePermission, requireDownloadPermission, signJwt, verifyJwt };

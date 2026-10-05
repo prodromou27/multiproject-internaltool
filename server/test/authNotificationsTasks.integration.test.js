@@ -899,3 +899,73 @@ test('each reminder chooses where it goes: personal channels and/or the shared T
     if (stored) await db.prepare("UPDATE settings SET value = ? WHERE key = 'integrations'").run(stored.value);
   }
 });
+
+test('a live stream closes once its session is revoked, and each person has a bounded number of streams', async () => {
+  const http = require('http');
+  const suite = require('./lib/activityFixture');
+  const live = require('../liveUpdates');
+  live._setHeartbeat(150);
+  const user = (await db.prepare("INSERT INTO users (name, email, password, role) VALUES ('Stream User', 'stream@test.local', 'x', 'engineer')").run()).lastInsertRowid;
+  const token = signJwt({ id: user, token_version: 0 });
+  const open = () => new Promise((resolve, reject) => {
+    const req = http.get(`${suite.baseUrl}/api/live`, { headers: { Authorization: `Bearer ${token}` } }, res => {
+      const state = { ended: false, close: () => req.destroy() };
+      res.on('data', () => {}); res.on('end', () => { state.ended = true; }); res.on('close', () => { state.ended = true; });
+      resolve(state);
+    });
+    req.on('error', reject);
+  });
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  try {
+    // Eleven streams for one person: the oldest is closed to make room.
+    const streams = [];
+    for (let i = 0; i < 11; i++) streams.push(await open());
+    await wait(200);
+    assert.equal(streams[0].ended, true, 'the oldest stream was closed');
+    assert.equal(streams.slice(1).every(stream => !stream.ended), true);
+    // Signing out everywhere (token version bump) ends every stream at the next heartbeat.
+    await db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(user);
+    await wait(500);
+    assert.equal(streams.every(stream => stream.ended), true, 'revoked sessions lose their streams');
+    assert.equal([...live._streams.values()].some(stream => Number(stream.userId) === Number(user)), false);
+  } finally { live._setHeartbeat(25000); }
+});
+
+test('a team reminder does not reveal its customer to team members who cannot see that customer', async () => {
+  const manager = ids.tokenManager;
+  const outsiderCustomer = ids.customerUnassigned; // not assigned to the enabled team
+  const made = await api('/api/reminders', { method: 'POST', token: manager, body: { title: 'Renew Other Corp licence', due_at: '2099-02-01T09:00:00Z', time_zone: 'UTC', repeat: 'none', customer_id: outsiderCustomer, for: { team_id: ids.teamEnabled, shared: true } } });
+  assert.equal(made.status, 201, JSON.stringify(made.data));
+  const seen = (await api('/api/reminders', { token: ids.tokenEnabled })).data.team_reminders.active.find(row => row.id === made.data.id);
+  assert.ok(seen, 'the team member still sees the reminder');
+  assert.deepEqual([seen.customer_id, seen.customer_name], [null, null]);
+  assert.equal((await api('/api/reminders', { token: manager })).data.team_reminders.active.find(row => row.id === made.data.id).customer_name, 'Other Corp');
+  await api(`/api/reminders/team/${made.data.id}`, { method: 'DELETE', token: manager });
+});
+
+test('notifications reach only their recipient\'s stream, and reading them announces nothing', async () => {
+  const http = require('http');
+  const suite = require('./lib/activityFixture');
+  const live = require('../liveUpdates');
+  const open = token => new Promise((resolve, reject) => {
+    const chunks = [];
+    const req = http.get(`${suite.baseUrl}/api/live`, { headers: { Authorization: `Bearer ${token}` } }, res => {
+      res.setEncoding('utf8'); res.on('data', chunk => chunks.push(chunk));
+      resolve({ text: () => chunks.join(''), close: () => req.destroy() });
+    });
+    req.on('error', reject);
+  });
+  const settle = () => new Promise(resolve => setTimeout(resolve, 300));
+  const engineer = await open(ids.tokenEnabled), manager = await open(ids.tokenManager);
+  try {
+    live.emitChange('notifications', { userId: ids.engineerEnabled });
+    await settle();
+    assert.match(engineer.text(), /"topic":"notifications"/);
+    assert.doesNotMatch(manager.text(), /"topic":"notifications"/);
+    const before = manager.text().length;
+    await api('/api/notifications/read-all', { method: 'POST', token: ids.tokenEnabled });
+    await api('/api/notifications/read-all', { method: 'PUT', token: ids.tokenEnabled });
+    await settle();
+    assert.equal(manager.text().length, before, 'marking notifications read does not refresh other people');
+  } finally { engineer.close(); manager.close(); }
+});

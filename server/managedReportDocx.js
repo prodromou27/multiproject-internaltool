@@ -152,10 +152,16 @@ function trackingParser(unknown) {
   });
 }
 
+const MAX_UNPACKED_BYTES = 50 * 1024 * 1024;
+
 function compile(buffer, unknown) {
   let zip;
   try { zip = new PizZip(buffer); } catch { fail('This file is not a valid Word document (.docx).'); }
   if (!zip.file('word/document.xml')) fail('This file is not a valid Word document (.docx).');
+  // A small upload can unpack to gigabytes (a "zip bomb"); a real report template is a few MB at most.
+  const files = Object.values(zip.files);
+  const unpacked = files.reduce((sum, file) => sum + Number(file._data?.uncompressedSize || 0), 0);
+  if (files.length > 2000 || unpacked > MAX_UNPACKED_BYTES) fail('This Word document is too large once unpacked to use as a template.');
   try {
     return new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, errorLogging: false, nullGetter: () => '', parser: trackingParser(unknown) });
   } catch (error) {

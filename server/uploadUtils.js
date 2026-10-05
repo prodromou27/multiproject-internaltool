@@ -81,4 +81,17 @@ function hasAllowedMagic(filePath, mimeType) {
   return false;
 }
 
-module.exports = { uploadDir, ALLOWED_MIME_TYPES, upload, safeStoredName, safeDownloadName, hasAllowedMagic };
+/**
+ * Refuse a spreadsheet that would unpack to far more than any real import (a
+ * "zip bomb") before ExcelJS expands it in memory. Throws a 400 error.
+ */
+function assertSafeSpreadsheet(buffer, { maxUnpackedBytes = 200 * 1024 * 1024, maxEntries = 10000 } = {}) {
+  const PizZip = require('pizzip');
+  let zip;
+  try { zip = new PizZip(buffer); } catch { throw Object.assign(new Error('Could not read the file. Use the .xlsx format.'), { status: 400 }); }
+  const files = Object.values(zip.files);
+  const unpacked = files.reduce((sum, file) => sum + Number(file._data?.uncompressedSize || 0), 0);
+  if (files.length > maxEntries || unpacked > maxUnpackedBytes) throw Object.assign(new Error('This spreadsheet is too large once unpacked to import.'), { status: 400 });
+}
+
+module.exports = { uploadDir, ALLOWED_MIME_TYPES, upload, safeStoredName, safeDownloadName, hasAllowedMagic, assertSafeSpreadsheet };

@@ -36,6 +36,7 @@ function getCellVal(ws, row, col) {
 
 async function parseEffortSheet(buffer) {
   const wb = new ExcelJS.Workbook();
+  require('../uploadUtils').assertSafeSpreadsheet(buffer);
   await wb.xlsx.load(buffer);
 
   // Prefer "Solutions" sheet, fall back to first sheet

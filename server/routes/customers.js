@@ -190,9 +190,10 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
 
   const workbook = new ExcelJS.Workbook();
   try {
+    require('../uploadUtils').assertSafeSpreadsheet(req.file.buffer);
     await workbook.xlsx.load(req.file.buffer);
   } catch (e) {
-    return res.status(400).json({ error: 'Could not parse file. Use .xlsx format' });
+    return res.status(400).json({ error: e.status === 400 ? e.message : 'Could not parse file. Use .xlsx format' });
   }
 
   const sheet = workbook.worksheets[0];

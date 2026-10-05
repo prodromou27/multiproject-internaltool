@@ -104,6 +104,21 @@ const authLimiter = rateLimit({
   skipSuccessfulRequests: true, // only count failures toward the limit
 });
 app.use('/api/auth/login',                  authLimiter);
+// Per account as well as per address: guesses spread over many addresses still
+// pause after 10 failures on one account. Same message whether or not it exists.
+app.use('/api/auth/login', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: req => {
+    const id = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    return `account:${id === 'admin' ? 'admin@company.com' : id}`;
+  },
+  validate: { keyGeneratorIpFallback: false },
+  message: { error: 'Too many attempts. Please try again in 15 minutes.' },
+}));
 app.use('/api/auth/2fa/verify',            authLimiter);
 app.use('/api/auth/2fa/enable',            authLimiter); // brute-force 6-digit TOTP
 app.use('/api/auth/change-password',       authLimiter);

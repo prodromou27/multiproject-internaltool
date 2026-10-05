@@ -131,9 +131,14 @@ async function teamReminderList(user) {
     LEFT JOIN users s ON s.id = r.user_id LEFT JOIN users d ON d.id = r.completed_by
     WHERE r.shared = 1 AND r.team_id IN (${teamIds.map(() => '?').join(',')}) AND (r.status = 'active' OR r.completed_at >= ?)
     ORDER BY r.status, r.due_at, r.id LIMIT 500`).all(...teamIds, new Date(Date.now() - 30 * 86400000).toISOString());
+  // A team member who cannot see a customer is not shown which customer a reminder is about.
+  const visible = new Map();
+  for (const id of new Set(rows.map(row => row.customer_id).filter(value => value != null))) visible.set(Number(id), await canAccessCustomer(user, id));
   return rows.map(row => ({
     id: Number(row.id), title: row.title, notes: row.notes, due_at: row.due_at, time_zone: row.time_zone, repeat: row.repeat, status: row.status,
-    customer_id: row.customer_id == null ? null : Number(row.customer_id), customer_name: row.customer_name ? decrypt(row.customer_name) : null,
+    ...(row.customer_id != null && visible.get(Number(row.customer_id))
+      ? { customer_id: Number(row.customer_id), customer_name: row.customer_name ? decrypt(row.customer_name) : null }
+      : { customer_id: null, customer_name: null }),
     team_id: Number(row.team_id), team_name: row.team_name, set_by: row.set_by_name || 'A former user', completed_by: row.completed_by_name || null, completed_at: row.completed_at,
     reminded: !!row.notified_at && row.notified_at >= row.due_at,
     notify_personal: !!row.notify_personal, post_shared: !!row.post_shared,
@@ -223,6 +228,8 @@ router.post('/', async (req, res) => {
       const teamId = req.body.for.team_id;
       if (!positiveId(teamId) || !await db.prepare('SELECT 1 FROM teams WHERE id = ?').get(teamId)) fail('Choose a team');
       if (req.user.role !== 'manager' && !await memberOf(req.user.id, teamId)) fail('You can only set shared reminders for your own teams', 403);
+      const open = await db.prepare("SELECT COUNT(*) AS total FROM reminders WHERE shared = 1 AND team_id = ? AND status = 'active'").get(teamId);
+      if (Number(open.total) >= 500) fail('This team has 500 open reminders; complete or delete some first');
       const input = await reminderInput(req.body, req.user);
       const created = await db.prepare(`INSERT INTO reminders (user_id, title, notes, due_at, scheduled_at, time_zone, repeat, customer_id, created_by, team_id, shared)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`).run(req.user.id, input.title, input.notes, input.dueAt, input.dueAt, input.timeZone, input.repeat, input.customerId, req.user.id, Number(teamId));

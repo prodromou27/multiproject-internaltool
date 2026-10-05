@@ -57,7 +57,7 @@ export default function Dashboard() {
         (isManager || isEngineer) ? api.operationsOverview({ as_of: localDateISO() }) : Promise.resolve(null),
       ]);
       const detailPromise=Promise.allSettled([
-        api.maintenanceVisits({ month: new Date().toISOString().slice(0,7), overview:1 }),
+        api.maintenanceVisits({ month: localDateISO().slice(0,7), overview:1 }),
         isManager ? api.maintenanceVisits({ review_pending:1 }) : Promise.resolve([]),
         (isManager || isPM) ? api.maintenanceVisits({ not_completed:1 }) : Promise.resolve([]),
         isEngineer ? api.maintenanceVisits({ pending_report:1 }) : Promise.resolve([]),

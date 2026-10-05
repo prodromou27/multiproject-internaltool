@@ -135,7 +135,7 @@ router.get('/export',async (req,res) => {
 
 router.post('/import',importUpload.single('file'),async (req,res) => {
   if (!req.file) return res.status(400).json({ error:'Select an .xlsx file' });
-  const workbook=new ExcelJS.Workbook();try { await workbook.xlsx.load(req.file.buffer); } catch { return res.status(400).json({ error:'Could not parse the workbook; use .xlsx format' }); }
+  const workbook=new ExcelJS.Workbook();try { require('../uploadUtils').assertSafeSpreadsheet(req.file.buffer);await workbook.xlsx.load(req.file.buffer); } catch(error) { return res.status(400).json({ error:error.status===400 ? error.message : 'Could not parse the workbook; use .xlsx format' }); }
   const sheet=workbook.worksheets[0];if (!sheet || sheet.rowCount<2) return res.status(400).json({ error:'The workbook contains no asset rows' });
   if (sheet.rowCount-1>500) return res.status(413).json({ error:'Import supports at most 500 asset rows' });
   const headers=new Map();sheet.getRow(1).eachCell((cell,column) => headers.set(excelText(cell.value).trim().replace(/\*$/,''),column));
