@@ -1,7 +1,11 @@
 import { useEffect,useState } from 'react';
-import { CheckCircle2,Download,FileText,History,RefreshCw,RotateCcw,Send,XCircle } from 'lucide-react';
+import { CalendarCheck,CheckCircle2,Download,FileText,History,MailCheck,RefreshCw,RotateCcw,Send,Undo2,XCircle } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
+import { fmtDate } from './Shared';
+import { reportDueLabel,reportDueTone } from './ReportDue';
+import { ToneBadge } from './EnterpriseUI';
+import { localDateISO } from '../utils/dates';
 
 const SECTIONS=[['executive_summary','Executive summary'],['service_overview','Service overview'],['ticket_summary','Ticket summary'],['open_tickets','Open tickets'],['period_tickets','Period tickets'],['service_activities','Service activities'],['tasks','Tasks'],['projects','Projects'],['maintenance_visits','Maintenance Visits'],['recommendations','Recommendations'],['risks','Risks and concerns'],['upcoming_work','Upcoming work'],['management_notes','Management notes'],['changes','Changes and upgrades'],['resolved_tickets','Resolved tickets'],['assets','Assets and support status']];
 const NARRATIVES=[['executive_summary','Executive summary'],['key_highlights','Key highlights'],['risks_concerns','Risks / concerns'],['major_changes','Major changes'],['upcoming_activities','Upcoming activities'],['management_notes','Management notes']];
@@ -9,7 +13,7 @@ const Metric=({ label,value }) => <div className="card u-8ebc437"><div className
 const ReportBarChart=({ title,rows }) => { const max=Math.max(1,...rows.map(row => Number(row.count)));return <div className="card u-287f770"><h3 className="u-05b83e9">{title}</h3><div className="u-ef7f9f1">{rows.map(row => <div key={row.name} className="u-edb8b70"><span title={row.name} className="u-fb7680b">{row.name}</span><span className="u-404250b"><span className="u-ddd3270" style={{ width:`${Number(row.count)/max*100}%` }} /></span><strong className="u-54c2afb">{row.count}</strong></div>)}</div></div>; };
 const ThroughputChart=({ trend }) => { const max=Math.max(1,...trend.points.flatMap(point => [point.created,point.resolved]));return <div className="card u-07cf80e"><div className="u-47f85a7"><h3 className="u-433de30">Ticket throughput</h3><span className="text-muted text-sm">Blue created · Green resolved</span></div><div className="u-e26516e" style={{ minWidth:Math.max(420,trend.points.length*18) }}>{trend.points.map(point => <div key={point.date} title={`${point.date}: ${point.created} created, ${point.resolved} resolved`} className="u-fd1dd50"><span className="u-8633faa" style={{ minHeight:point.created?3:0, height:`${point.created/max*100}%` }} /><span className="u-067b5e4" style={{ minHeight:point.resolved?3:0, height:`${point.resolved/max*100}%` }} /></div>)}</div><div className="text-muted text-sm u-e29980b"><span>{trend.points[0]?.date}</span><span>{trend.points.at(-1)?.date}</span></div></div>; };
 
-export default function ManagedCustomerReportBuilder({ customerId,range }) {
+export default function ManagedCustomerReportBuilder({ customerId,range,due,onUsePeriod,onChanged }) {
   const { user }=useAuth();
   const canGenerate=!!user?.permissions?.['managed_reports.generate'];
   const canReview=!!user?.permissions?.['managed_reports.review'];
@@ -22,6 +26,8 @@ export default function ManagedCustomerReportBuilder({ customerId,range }) {
   const [preview,setPreview]=useState(null);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
+  // The final report being marked as sent, and what the reviewer entered.
+  const [sending,setSending]=useState(null);
 
   useEffect(() => {
     const controller=new AbortController();
@@ -55,7 +61,7 @@ export default function ManagedCustomerReportBuilder({ customerId,range }) {
       const exporters={ docx:api.managedCustomerWordReport,xlsx:api.managedCustomerExcelReport,pdf:api.managedCustomerPdfReport };
       const blob=await exporters[format](customerId,request());
       saveBlob(blob,`managed_services_report_${range.from}_${range.to}.${format}`);
-      const result=await api.managedCustomerReportHistory(customerId);setHistory(result.rows || []);
+      const result=await api.managedCustomerReportHistory(customerId);setHistory(result.rows || []);onChanged?.();
     } catch(failure) { setError(failure.message); } finally { setBusy(false); }
   }
   async function downloadArchived(report) {
@@ -72,6 +78,7 @@ export default function ManagedCustomerReportBuilder({ customerId,range }) {
     try {
       const result=await api.updateManagedCustomerReportWorkflow(customerId,report.id,{ action,version:report.workflow_version,comment });
       setHistory(current => current.map(item => item.id===report.id ? result.report : item));
+      onChanged?.();
       if (workflowEvents[report.id]) {
         const events=await api.managedCustomerReportWorkflow(customerId,report.id);
         setWorkflowEvents(current => ({ ...current,[report.id]:events.rows || [] }));
@@ -84,6 +91,20 @@ export default function ManagedCustomerReportBuilder({ customerId,range }) {
       }
     } finally { setBusy(false); }
   }
+  async function recordSent(event) {
+    event.preventDefault();
+    setBusy(true);setError('');
+    try {
+      const result=await api.markManagedCustomerReportSent(customerId,sending.id,{ sent_to:sending.sent_to,sent_on:sending.sent_on,note:sending.note });
+      setHistory(current => current.map(item => item.id===sending.id ? result.report : item));setSending(null);onChanged?.();
+    } catch(failure) { setError(failure.message); } finally { setBusy(false); }
+  }
+  async function undoSent(report) {
+    if (!window.confirm(`Clear the record that this report was sent to ${report.sent_to}?`)) return;
+    setBusy(true);setError('');
+    try { const result=await api.clearManagedCustomerReportSent(customerId,report.id);setHistory(current => current.map(item => item.id===report.id ? result.report : item));onChanged?.(); }
+    catch(failure) { setError(failure.message); } finally { setBusy(false); }
+  }
   async function toggleWorkflowHistory(report) {
     if (workflowEvents[report.id]) return setWorkflowEvents(current => { const next={ ...current };delete next[report.id];return next; });
     setBusy(true);setError('');
@@ -95,16 +116,25 @@ export default function ManagedCustomerReportBuilder({ customerId,range }) {
     {report.status==='draft' && canGenerate && <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => updateWorkflow(report,'submit')}><Send size={13} /> Submit</button>}
     {report.status==='in_review' && canReview && <><button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => updateWorkflow(report,'approve')}><CheckCircle2 size={13} /> Approve</button><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => updateWorkflow(report,'reject')}><XCircle size={13} /> Return</button></>}
     {report.status==='approved' && canReview && <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => updateWorkflow(report,'finalize')}><CheckCircle2 size={13} /> Finalize</button>}
+    {report.status==='final' && !report.sent_at && canReview && <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => setSending({ id:report.id,sent_to:'',sent_on:localDateISO(new Date()),note:'' })}><MailCheck size={13} /> Mark as sent</button>}
+    {report.sent_at && canReview && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => undoSent(report)}><Undo2 size={13} /> Not sent</button>}
     {report.status==='final' && canReview && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => updateWorkflow(report,'reopen')}><RotateCcw size={13} /> Reopen</button>}
     <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => toggleWorkflowHistory(report)}><History size={13} /> Activity</button>
     <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => downloadArchived(report)}><Download size={13} /> Download</button>
   </div>;
 
+  const periodChosen=due && range.from===due.from && range.to===due.to;
   return <div className="u-eecfdda">
+    {due && due.status!=='not_yet_due' && <section className={`card report-due-banner${due.overdue ? ' is-overdue' : ''}`} aria-label="Report owed to the customer">
+      <CalendarCheck size={18} aria-hidden="true" />
+      <div><strong>{due.label} report</strong><p className="text-muted text-sm">{due.status==='sent' ? 'Sent to the customer.' : `Due with the customer by ${fmtDate(due.due_date)}.`}</p></div>
+      <ToneBadge tone={reportDueTone(due)}>{reportDueLabel(due)}</ToneBadge>
+      {due.status!=='sent' && onUsePeriod && (periodChosen ? <span className="text-muted text-sm">This period is selected.</span> : <button type="button" className="btn btn-ghost btn-sm" onClick={() => onUsePeriod(due)}>Use this period</button>)}
+    </section>}
     <section className="card"><div className="u-5459a74"><div><h2 className="u-1444c6e">Managed Services report</h2><p className="text-muted text-sm mt-4">Choose customer-facing content for {range.from || 'the start date'} to {range.to || 'the end date'}, then review the calculated report data.</p></div><FileText size={20} color="var(--primary)" /></div>
       {error && <div className="error-msg u-2b583d7" role="alert">{error}</div>}
       <div className="form-group u-0fd8744"><label htmlFor="managed-report-template">Report template</label><select id="managed-report-template" value={templateId} onChange={event => chooseTemplate(event.target.value)}><option value="">Custom selection</option>{templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</select></div>
-      <div className="info-box u-87c136d">Generated files begin as drafts. Submit a draft for review, approve or return it, then finalize the approved version.</div>
+      <div className="info-box u-87c136d">Generated files begin as drafts. Submit a draft for review, approve or return it, then finalize the approved version. Once you've sent the final version to the customer, mark it as sent.</div>
       <fieldset className="u-9b32c1e"><legend className="u-3be1dd4">Included sections</legend><div className="u-e0076b8">{SECTIONS.map(([key,label]) => <label key={key} className="u-eefe62e"><input type="checkbox" checked={sections.includes(key)} onChange={() => toggle(key)} />{label}</label>)}</div></fieldset>
       <div className="u-010e439">{NARRATIVES.map(([key,label]) => <div className="form-group" key={key}><label htmlFor={`report-${key}`}>{label}</label><textarea id={`report-${key}`} rows={4} maxLength={10000} value={narratives[key] || ''} onChange={event => setNarratives(current => ({ ...current,[key]:event.target.value }))} placeholder={`Add ${label.toLowerCase()} for this report...`} /></div>)}</div>
       <div className="flex gap-8 u-62da067"><button type="button" className="btn btn-primary" disabled={busy || !sections.length} onClick={prepare}>{busy ? 'Working...' : preview ? <><RefreshCw size={14} /> Refresh Preview</> : <><FileText size={14} /> Prepare Preview</>}</button>{preview && canGenerate && <><button type="button" className="btn btn-ghost" disabled={busy} onClick={() => downloadReport('docx')}><Download size={14} /> Generate Word Draft</button><button type="button" className="btn btn-ghost" disabled={busy} onClick={() => downloadReport('xlsx')}><Download size={14} /> Export Excel Draft</button><button type="button" className="btn btn-ghost" disabled={busy} onClick={() => downloadReport('pdf')}><Download size={14} /> Generate PDF Draft</button></>}{preview && !canGenerate && <span className="text-muted text-sm">You can preview reports but need report generation permission to create a draft.</span>}</div>
@@ -115,7 +145,12 @@ export default function ManagedCustomerReportBuilder({ customerId,range }) {
       <div className="card table-wrap"><table><thead><tr><th>Detail section</th><th>Available records</th><th>Included in preview</th><th>Coverage</th></tr></thead><tbody>{[['Open tickets',preview.tickets.open,preview.truncation.open_tickets],['Period tickets',preview.tickets.period,preview.truncation.period_tickets],['Service activities',preview.activities,preview.truncation.activities],['Tasks',preview.tasks,preview.truncation.tasks],['Projects',preview.projects,preview.truncation.projects],['Recommendations',preview.recommendations,preview.truncation.recommendations]].map(([label,data,truncated]) => <tr key={label}><td>{label}</td><td>{data.total ?? data.summary?.total ?? 0}</td><td>{data.rows?.length || 0}</td><td>{truncated ? 'First 100 shown' : 'Complete'}</td></tr>)}</tbody></table></div>
     </section>}
     <section><div className="u-761d3ad"><h2 className="u-1444c6e">Report history</h2><p className="text-muted text-sm mt-4">The latest 100 generated files are retained as immutable versions.</p></div>
-      <div className="card table-wrap"><table><thead><tr><th>Generated</th><th>Period</th><th>Format</th><th>Version</th><th>Workflow</th><th>Template</th><th>Generated by</th><th></th></tr></thead><tbody>{history.length ? history.flatMap(report => { const events=workflowEvents[report.id];return [<tr key={report.id}><td>{report.generated_at}</td><td>{report.period_start} to {report.period_end}</td><td>{report.output_format.toUpperCase()}</td><td>v{report.report_version}</td><td><span className={`badge ${report.status==='final'?'badge-done':'badge-progress'}`}>{report.status.replace('_',' ')}</span>{report.decision_comment && <div className="text-muted text-sm mt-4">{report.decision_comment}</div>}</td><td>{report.template_name || 'Custom'}</td><td>{report.generated_by_name || 'Former user'}</td><td>{workflowButtons(report)}</td></tr>,...(events ? [<tr key={`${report.id}-workflow`}><td colSpan="8" className="u-85caad1"><strong className="u-6cb285c">Workflow activity</strong><div className="u-ae0e71a">{events.map(event => <div key={event.id} className="text-sm"><strong>{event.action}</strong> by {event.actor_name || 'Former user'} on {event.created_at}{event.comment ? ` — ${event.comment}` : ''}</div>)}</div></td></tr>] : [])]; }) : <tr><td colSpan="8" className="text-muted">No reports have been generated yet.</td></tr>}</tbody></table></div>
+      <div className="card table-wrap"><table><thead><tr><th>Generated</th><th>Period</th><th>Format</th><th>Version</th><th>Workflow</th><th>Template</th><th>Generated by</th><th></th></tr></thead><tbody>{history.length ? history.flatMap(report => { const events=workflowEvents[report.id];return [<tr key={report.id}><td>{report.generated_at}</td><td>{report.period_start} to {report.period_end}</td><td>{report.output_format.toUpperCase()}</td><td>v{report.report_version}</td><td><span className={`badge ${report.status==='final'?'badge-done':'badge-progress'}`}>{report.sent_at ? 'sent' : report.status.replace('_',' ')}</span>{report.sent_at && <div className="text-sm mt-4">Sent {fmtDate(report.sent_at)} to {report.sent_to}{report.sent_by_name ? ` (recorded by ${report.sent_by_name})` : ''}{report.sent_note ? ` — ${report.sent_note}` : ''}</div>}{report.decision_comment && <div className="text-muted text-sm mt-4">{report.decision_comment}</div>}</td><td>{report.template_name || 'Custom'}</td><td>{report.generated_by_name || 'Former user'}</td><td>{workflowButtons(report)}</td></tr>,...(sending?.id===report.id ? [<tr key={`${report.id}-sent`}><td colSpan="8"><form className="report-sent-form" onSubmit={recordSent}>
+        <div className="form-group"><label htmlFor="report-sent-to">Sent to</label><input id="report-sent-to" required maxLength={500} value={sending.sent_to} onChange={event => setSending(current => ({ ...current,sent_to:event.target.value }))} placeholder="Names or email addresses" autoFocus /></div>
+        <div className="form-group"><label htmlFor="report-sent-on">Sent on</label><input id="report-sent-on" type="date" required max={localDateISO(new Date())} value={sending.sent_on} onChange={event => setSending(current => ({ ...current,sent_on:event.target.value }))} /></div>
+        <div className="form-group"><label htmlFor="report-sent-note">Note (optional)</label><input id="report-sent-note" maxLength={2000} value={sending.note} onChange={event => setSending(current => ({ ...current,note:event.target.value }))} placeholder="e.g. sent with the monthly invoice" /></div>
+        <div className="flex gap-8"><button type="submit" className="btn btn-primary btn-sm" disabled={busy}>Record as sent</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => setSending(null)}>Cancel</button></div>
+      </form></td></tr>] : []),...(events ? [<tr key={`${report.id}-workflow`}><td colSpan="8" className="u-85caad1"><strong className="u-6cb285c">Workflow activity</strong><div className="u-ae0e71a">{events.map(event => <div key={event.id} className="text-sm"><strong>{event.action}</strong> by {event.actor_name || 'Former user'} on {event.created_at}{event.comment ? ` — ${event.comment}` : ''}</div>)}</div></td></tr>] : [])]; }) : <tr><td colSpan="8" className="text-muted">No reports have been generated yet.</td></tr>}</tbody></table></div>
     </section>
   </div>;
 }

@@ -657,6 +657,14 @@ async function applyMigrations(pool, transaction) {
     -- the customer's change log can say "from -> to".
     ALTER TABLE service_activity_assets ADD COLUMN IF NOT EXISTS previous_version TEXT;
   `]);
+  migrations.push(['20261006_managed_report_sent', `
+    -- Reports are sent to the customer outside the app; record when, to whom and by whom.
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS sent_at TEXT;
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS sent_to TEXT;
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS sent_note TEXT;
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS sent_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS sent_recorded_at TEXT;
+  `]);
 
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);

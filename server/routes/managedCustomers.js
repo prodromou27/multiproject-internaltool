@@ -230,6 +230,26 @@ router.put('/:id/reports/:reportId/workflow',async (req,res) => {
   return updateReportWorkflow(req,res,Number(req.params.id),Number(req.params.reportId));
 });
 
+// Sending happens outside the app; reviewers record that a final report reached the customer.
+router.put('/:id/reports/:reportId/sent',requirePermission('managed_reports.review'),async (req,res) => {
+  if (!positiveId(req.params.id) || !positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  const customerId=Number(req.params.id),reportId=Number(req.params.reportId);
+  try {
+    const { report,sent }=await reportHistory.markSent(customerId,reportId,req.body,req.user.id);
+    await logAudit(db,req,'managed_report',reportId,report.original_name,'managed_report_sent',`customer_id=${customerId}; sent_on=${sent.sentOn}; sent_to=${sent.sentTo}`);
+    res.json({ report:(await reportHistory.list(customerId)).find(item => item.id===reportId) });
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not record that the report was sent' }); }
+});
+router.delete('/:id/reports/:reportId/sent',requirePermission('managed_reports.review'),async (req,res) => {
+  if (!positiveId(req.params.id) || !positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  const customerId=Number(req.params.id),reportId=Number(req.params.reportId);
+  try {
+    const report=await reportHistory.clearSent(customerId,reportId);
+    await logAudit(db,req,'managed_report',reportId,report.original_name,'managed_report_sent_cleared',`customer_id=${customerId}; was_sent_on=${report.sent_at}; was_sent_to=${report.sent_to}`);
+    res.json({ report:(await reportHistory.list(customerId)).find(item => item.id===reportId) });
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not clear the sent record' }); }
+});
+
 router.get('/:id/reports/:reportId/download',async (req,res) => {
   if (!positiveId(req.params.id) || !positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
   const report=await reportHistory.get(Number(req.params.id),Number(req.params.reportId));

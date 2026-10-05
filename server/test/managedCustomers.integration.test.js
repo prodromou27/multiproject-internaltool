@@ -725,3 +725,54 @@ test('customer reports can use Odyssey\'s own Word template, checked on upload a
   assert.ok(builtIn.includes('Managed Services Report'));
   assert.ok(!builtIn.includes('Prepared by'),'the built-in layout, not the uploaded one');
 });
+
+test('the reporting obligation shows which period is owed, how far its report has got, and when it was sent',async () => {
+  const { periodFor }=require('../managedReportObligations');
+  const { today }=await db.prepare('SELECT app_today() AS today').get();
+  const owed=periodFor('monthly',today);
+  const customer=(await db.prepare('INSERT INTO customers (name,active) VALUES (?,1)').run('Obligation Customer')).lastInsertRowid;
+  await db.prepare("INSERT INTO managed_customer_configurations (customer_id,managed_services_enabled,reporting_frequency,created_at) VALUES (?,1,'monthly','2020-01-01')").run(customer);
+  const due=async () => (await api('/api/managed-customers',{ token:ids.tokenManager })).data.rows.find(row => Number(row.id)===Number(customer)).report_due;
+
+  const before=await due();
+  assert.deepEqual([before.from,before.to,before.label,before.due_date,before.status,before.report_id],[owed.from,owed.to,owed.label,owed.due_date,'not_started',null]);
+  assert.equal(before.overdue,today>owed.due_date);
+  assert.deepEqual((await api(`/api/managed-customers/${customer}/overview`,{ token:ids.tokenManager })).data.report_due,before);
+
+  // A report for that month moves the obligation through the workflow.
+  const generated=await fetch(`${suiteFixture.baseUrl}/api/managed-customers/${customer}/report.pdf`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ from:owed.from,to:owed.to,sections:['service_overview'],status:'draft' }) });
+  assert.equal(generated.status,200);
+  const reportId=Number(generated.headers.get('x-report-id'));
+  assert.deepEqual([(await due()).status,(await due()).report_id],['draft',reportId]);
+  const workflow=`/api/managed-customers/${customer}/reports/${reportId}/workflow`,sent=`/api/managed-customers/${customer}/reports/${reportId}/sent`;
+  assert.equal((await api(sent,{ method:'PUT',token:ids.tokenManager,body:{ sent_to:'ciso@obligation.example' } })).status,409,'a draft cannot be marked as sent');
+  for (const [action,version] of [['submit',1],['approve',2],['finalize',3]]) assert.equal((await api(workflow,{ method:'PUT',token:ids.tokenManager,body:{ action,version } })).status,200);
+  assert.equal((await due()).status,'final');
+
+  // Recording the send: reviewers only, a recipient, a real date not in the future.
+  assert.equal((await api(sent,{ method:'PUT',token:ids.tokenEnabled,body:{ sent_to:'ciso@obligation.example' } })).status,403);
+  assert.equal((await api(sent,{ method:'PUT',token:ids.tokenManager,body:{ sent_to:'  ' } })).status,400);
+  assert.equal((await api(sent,{ method:'PUT',token:ids.tokenManager,body:{ sent_to:'ciso@obligation.example',sent_on:'2026-02-30' } })).status,400);
+  assert.equal((await api(sent,{ method:'PUT',token:ids.tokenManager,body:{ sent_to:'ciso@obligation.example',sent_on:'2999-01-01' } })).status,400);
+  const marked=await api(sent,{ method:'PUT',token:ids.tokenManager,body:{ sent_to:'ciso@obligation.example',note:'Sent with the invoice.' } });
+  assert.equal(marked.status,200);
+  assert.deepEqual([marked.data.report.sent_at,marked.data.report.sent_to,marked.data.report.sent_note,!!marked.data.report.sent_by_name],[today,'ciso@obligation.example','Sent with the invoice.',true]);
+  assert.equal((await api(sent,{ method:'PUT',token:ids.tokenManager,body:{ sent_to:'again@obligation.example' } })).status,409);
+  assert.deepEqual([(await due()).status,(await due()).overdue],['sent',false]);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='managed_report_sent' AND entity_id=?").get(reportId)).count,1);
+
+  // Undoing a mistake, and reopening a sent report, both clear the record.
+  const cleared=await api(sent,{ method:'DELETE',token:ids.tokenManager });
+  assert.equal(cleared.status,200);assert.equal(cleared.data.report.sent_at,null);assert.equal((await due()).status,'final');
+  assert.equal((await api(sent,{ method:'DELETE',token:ids.tokenManager })).status,409);
+  assert.equal((await api(sent,{ method:'PUT',token:ids.tokenManager,body:{ sent_to:'ciso@obligation.example',sent_on:owed.to } })).status,200);
+  assert.equal((await api(workflow,{ method:'PUT',token:ids.tokenManager,body:{ action:'reopen',version:4,comment:'Figures corrected.' } })).status,200);
+  const reopened=(await api(`/api/managed-customers/${customer}/reports`,{ token:ids.tokenManager })).data.rows.find(row => row.id===reportId);
+  assert.deepEqual([reopened.status,reopened.sent_at,reopened.sent_to],['draft',null,null]);
+  assert.equal((await due()).status,'draft');
+
+  // A customer taken on after the owed month owes nothing yet.
+  await db.prepare('UPDATE managed_customer_configurations SET created_at=? WHERE customer_id=?').run(`${today} 09:00:00`,customer);
+  const fresh=await due();
+  assert.deepEqual([fresh.status,fresh.overdue,fresh.next.label],['not_yet_due',false,periodFor('monthly',today,0).label]);
+});

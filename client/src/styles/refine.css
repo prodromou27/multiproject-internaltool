@@ -235,3 +235,17 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 /* Template names have no icon, so they need the whole width (the settings menu reserves 18px for one). */
 .settings-nav-item.report-template-item { grid-template-columns: minmax(0, 1fr) auto; }
 .error-msg.word-layout-error { display: block; }
+
+/* Reporting obligation: which period's report is owed and how far it has got. */
+.report-due { display: grid; gap: 4px; justify-items: start; }
+.report-due > span { white-space: nowrap; }
+.report-due-banner { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; border-left: 3px solid var(--primary); }
+.report-due-banner > svg { color: var(--primary); flex: none; }
+.report-due-banner > div:first-of-type { flex: 1 1 220px; }
+.report-due-banner p { margin: 2px 0 0; }
+.report-due-banner .report-due { justify-items: end; }
+.report-due-banner.is-overdue { border-left-color: var(--danger); }
+.report-due-banner.is-overdue > svg { color: var(--danger); }
+.report-sent-form { display: grid; grid-template-columns: minmax(200px, 2fr) minmax(140px, 1fr) minmax(200px, 2fr) auto; gap: 12px; align-items: end; }
+.report-sent-form .form-group { margin: 0; }
+@media (max-width: 760px) { .report-sent-form { grid-template-columns: 1fr; } .report-due-banner .report-due { justify-items: start; } }

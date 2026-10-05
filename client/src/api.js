@@ -408,6 +408,8 @@ export const api = {
   managedReportReviewDownload: reportId => download(`/managed-customers/report-reviews/${reportId}/download`),
   managedCustomerReportWorkflow: (id,reportId,options) => req('GET',`/managed-customers/${id}/reports/${reportId}/workflow`,undefined,options),
   updateManagedCustomerReportWorkflow: (id,reportId,data) => req('PUT',`/managed-customers/${id}/reports/${reportId}/workflow`,data),
+  markManagedCustomerReportSent: (id,reportId,data) => req('PUT',`/managed-customers/${id}/reports/${reportId}/sent`,data),
+  clearManagedCustomerReportSent: (id,reportId) => req('DELETE',`/managed-customers/${id}/reports/${reportId}/sent`),
   managedCustomerArchivedReport: (id,reportId) => download(`/managed-customers/${id}/reports/${reportId}/download`),
 
   // system update
