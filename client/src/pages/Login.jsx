@@ -5,6 +5,20 @@ import { api } from '../api';
 import { useAuth } from '../App';
 import { PRODUCT_WORDMARK } from '../product';
 
+// Why a Microsoft sign-in came back to this page (server: routes/auth.js /saml/acs).
+const SSO_ERRORS = {
+  not_configured: 'Microsoft sign-in is not set up yet. Sign in with your password, or ask an administrator.',
+  invalid: 'Microsoft sign-in could not be verified. Please try again.',
+  expired: 'That sign-in took too long, or was finished in a different browser. Please try again.',
+  no_email: 'Your Microsoft account did not send an email address. Ask an administrator to check the Entra set-up.',
+  no_account: 'There is no account here for your Microsoft email address. Ask an administrator to add you.',
+  inactive: 'Your account is deactivated. Contact your administrator.',
+};
+
+function MicrosoftLogo() {
+  return <svg width="16" height="16" viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022" /><rect x="11" y="1" width="9" height="9" fill="#7fba00" /><rect x="1" y="11" width="9" height="9" fill="#00a4ef" /><rect x="11" y="11" width="9" height="9" fill="#ffb900" /></svg>;
+}
+
 export default function Login() {
   const { login, passwordChangeUser } = useAuth();
   const navigate  = useNavigate();
@@ -16,6 +30,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const [showPw, setShowPw] = useState(false);
+  const [sso, setSso] = useState(null); // { enabled, label } when Microsoft sign-in is set up
 
   // Steps: 'login' | '2fa' | 'set_password' | 'forgot_email' | 'forgot_sent' | 'reset_password'
   const [step,         setStep]         = useState('login');
@@ -41,6 +56,9 @@ export default function Login() {
   useEffect(() => {
     const token = searchParams.get('reset_token');
     if (token) { setResetToken(token); setStep('reset_password'); }
+    const ssoError = searchParams.get('sso_error');
+    if (ssoError) setError(SSO_ERRORS[ssoError] || SSO_ERRORS.invalid);
+    api.samlStatus().then(setSso).catch(() => setSso(null));
   }, []);  
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -172,6 +190,12 @@ export default function Login() {
         )}
 
         {/* ── Step 1: Email + Password ── */}
+        {step === 'login' && sso?.enabled && (
+          <div className="login-sso">
+            <a className="login-sso-btn" href="/api/auth/saml/login?next=%2F"><MicrosoftLogo /> {sso.label}</a>
+            <div className="login-sso-or"><span>or use your password</span></div>
+          </div>
+        )}
         {step === 'login' && (
           <form onSubmit={handleLogin}>
             <div className="form-group">

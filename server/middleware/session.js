@@ -28,8 +28,14 @@ function clearSessionCookie(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 }
 
+// Microsoft posts the SAML sign-in result from its own site. That response is
+// signed, answers a request we made, and is tied to the browser that started it
+// (routes/auth.js), so it is the one cross-site POST accepted.
+const CROSS_SITE_SIGN_IN = new Set(['/auth/saml/acs']);
+
 function protectCookieRequests(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  if (req.method === 'POST' && CROSS_SITE_SIGN_IN.has(req.path)) return next();
   const origin = req.headers.origin;
   if (origin) {
     const trusted = [process.env.APP_URL, process.env.ALLOWED_ORIGIN, `${req.protocol}://${req.get('host')}`];

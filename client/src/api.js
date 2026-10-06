@@ -73,6 +73,10 @@ async function download(path,body) {
 export const api = {
   // auth
   login: (email, password) => req('POST', '/auth/login', { email, password }, { redirectOnUnauthorized: false }),
+  samlStatus: () => req('GET', '/auth/saml/status', undefined, { redirectOnUnauthorized: false }),
+  ssoSettings: options => req('GET', '/settings/sso', undefined, options),
+  saveSsoSettings: data => req('PUT', '/settings/sso', data),
+  refreshSsoMetadata: () => req('POST', '/settings/sso/refresh-metadata', {}),
   logout: () => req('POST', '/auth/logout', {}, { redirectOnUnauthorized: false }),
   verify2fa: (partial_token, code) => req('POST', '/auth/2fa/verify', { partial_token, code }, { redirectOnUnauthorized: false }),
   setup2fa: () => req('GET', '/auth/2fa/setup'),

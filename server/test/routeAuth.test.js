@@ -27,6 +27,10 @@ const PUBLIC = new Set([
   'auth POST /2fa/verify',          // completes login with a short-lived challenge token
   'auth POST /forgot-password',
   'auth POST /reset-password',      // authorised by a single-use reset token
+  'auth GET /saml/status',          // whether to show "Sign in with Microsoft" on the login page
+  'auth GET /saml/metadata',        // service-provider metadata for setting up Entra
+  'auth GET /saml/login',           // starts a Microsoft sign-in
+  'auth POST /saml/acs',            // authorised by Entra's signed SAML assertion
   'ical GET /',                     // authorised by a scoped, hashed feed token in ?token=
   'bots POST /webex/events',        // authorised by the webhook's HMAC signature (Webex)
   'bots POST /teams/messages',      // authorised by a Microsoft-signed token for our app id

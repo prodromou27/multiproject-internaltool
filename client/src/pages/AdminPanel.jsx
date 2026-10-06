@@ -14,6 +14,7 @@ import { AdminAlertsTab } from './admin/AlertsLoggingTab';
 import { SystemHealthTab, AuditLogTab, SecurityTab } from './admin/SystemTabs';
 import { ServiceActivityAdminTab, TeamsAdminSection } from './admin/ServiceActivityAdmin';
 import { ActivityBotSettings } from './admin/ActivityBotSettings';
+import { SsoSettings } from './admin/SsoSettings';
 import { ManagedReportTemplatesTab } from './admin/ManagedReportTemplatesTab';
 import { PermissionsTab } from './admin/PermissionsTab';
 import TicketingSettings from './admin/TicketingSettings';
@@ -25,7 +26,7 @@ const TABS = [
   { key: 'users',          label: 'Users',              Icon: UsersIcon,       group: 'people',   desc: 'Accounts, roles, activation, passwords, and 2FA exceptions' },
   { key: 'teams',          label: 'Teams',              Icon: UsersRound,      group: 'people',   desc: 'Teams, their members, activity tracking and SLA targets' },
   { key: 'permissions',    label: 'Permissions',        Icon: ShieldCheck,     group: 'people',   desc: 'What each role may do, and exceptions for individual people' },
-  { key: 'security',       label: 'Sign-in & passwords', Icon: Shield,         group: 'people',   desc: 'Password expiry and reset policy' },
+  { key: 'security',       label: 'Sign-in & passwords', Icon: Shield,         group: 'people',   desc: 'Microsoft 365 sign-in, password expiry and reset policy' },
   { key: 'service_activity_tracking', label: 'Activity categories', Icon: ClipboardList, group: 'work', desc: 'Categories, subcategories and technologies engineers choose when logging activities' },
   { key: 'statuses',       label: 'Project statuses',   Icon: Tag,             group: 'work',     desc: 'Project status names, colours and workflow rules' },
   { key: 'managed_report_templates', label: 'Customer report templates', Icon: FileSpreadsheet, group: 'work', desc: 'Word templates, sections and default text for customer reports' },
@@ -214,7 +215,7 @@ export default function AdminPanel() {
           {tab === 'weekly_report' && <WeeklyReportTab />}
           {tab === 'localization'  && <LocalizationTab />}
           {tab === 'audit_log'     && <AuditLogTab />}
-          {tab === 'security'      && <SecurityTab />}
+          {tab === 'security'      && <><SsoSettings /><SecurityTab /></>}
         </section>
       </div>
 
@@ -245,6 +246,17 @@ export default function AdminPanel() {
         }
         .settings-nav-group + .settings-nav-group { margin-top: 14px; }
         .settings-subheading { font-size: 15px; font-weight: 700; margin: 28px 0 12px; }
+        .sso-settings { padding: 18px 20px; margin-bottom: 20px; display: grid; gap: 10px; }
+        .sso-settings header { display: flex; justify-content: space-between; align-items: center; }
+        .sso-settings h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; }
+        .sso-settings h4 { margin: 8px 0 0; font-size: 13px; }
+        .sso-copy { display: grid; grid-template-columns: minmax(180px, 260px) 1fr auto; align-items: center; gap: 8px; font-size: 13px; }
+        .sso-copy code { overflow-wrap: anywhere; background: var(--gray-50); padding: 4px 8px; border-radius: 6px; }
+        .sso-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--gray-600); }
+        .sso-actions { display: flex; gap: 8px; }
+        .sso-status { border-top: 1px solid var(--gray-200); padding-top: 8px; }
+        .sso-status p { margin: 2px 0; }
+        @media (max-width: 720px) { .sso-copy { grid-template-columns: 1fr auto; } .sso-copy span { grid-column: 1 / -1; } }
         .settings-nav-heading {
           padding: 0 6px 6px;
           color: var(--gray-400);

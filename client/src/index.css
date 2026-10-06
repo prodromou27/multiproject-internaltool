@@ -851,6 +851,14 @@ tr:hover td { background: var(--gray-50); transition: background .1s; }
 }
 
 /* Submit button */
+/* Sign in with Microsoft (SAML), above the password form */
+.login-sso { margin-bottom: 14px; }
+.login-sso-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 16px;
+  background: #fff; color: #1f1f1f; border: 1px solid #8c8c8c; border-radius: var(--radius); font-size: 14px; font-weight: 600; text-decoration: none; }
+.login-sso-btn:hover { background: #f3f3f3; }
+.login-sso-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.login-sso-or { display: flex; align-items: center; gap: 10px; margin: 14px 0 4px; color: var(--gray-400); font-size: 12px; }
+.login-sso-or::before, .login-sso-or::after { content: ''; flex: 1; height: 1px; background: var(--gray-200); }
 .login-submit-btn {
   width: 100%;
   display: flex;

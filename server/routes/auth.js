@@ -237,6 +237,81 @@ router.post('/login', async (req, res) => {
   });
 });
 
+/* ── Sign in with Microsoft 365 (Entra ID, SAML) ─────────────
+   Offered next to the password form when set up in Settings → Sign-in.
+   Entra handles the password and MFA; the app trusts its signed assertion
+   for an existing, active account with the same email. */
+const saml = require('../sso/saml');
+const express = require('express');
+const SAML_STATE_COOKIE = 'th_saml_state';
+const samlCookieOptions = req => {
+  const secure = req.secure || /^https:\/\//i.test(process.env.APP_URL || '');
+  // Entra posts the result back from its own site, so over https the cookie must be SameSite=None to come with it.
+  return { httpOnly: true, secure, sameSite: secure ? 'none' : 'lax', path: '/api/auth/saml', maxAge: 10 * 60 * 1000 };
+};
+// A tiny page that moves on to the app. A same-site hop, so the strict session cookie is sent.
+function continueTo(res, target) {
+  const href = target.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${href}"><title>Signing in…</title></head><body><p><a href="${href}">Continue</a></p></body></html>`);
+}
+
+router.get('/saml/status', async (req, res) => {
+  const settings = await saml.stored();
+  res.json({ enabled: saml.ready(settings), label: settings.button_label || saml.DEFAULTS.button_label });
+});
+
+router.get('/saml/metadata', async (req, res) => {
+  const settings = await saml.stored();
+  if (!settings.entry_point || !settings.idp_certs?.length) {
+    // Metadata for setting Entra up before its details are entered.
+    const { generateServiceProviderMetadata } = require('@node-saml/node-saml');
+    return res.type('application/xml').send(generateServiceProviderMetadata({ issuer: settings.sp_entity_id || saml.defaultEntityId(), callbackUrl: saml.acsUrl(), identifierFormat: null, wantAssertionsSigned: true }));
+  }
+  res.type('application/xml').send(saml.client(settings).generateServiceProviderMetadata(null, null));
+});
+
+router.get('/saml/login', async (req, res) => {
+  const settings = await saml.refreshIfStale(await saml.stored());
+  if (!saml.ready(settings)) return res.redirect(303, '/login?sso_error=not_configured');
+  const nonce = crypto.randomBytes(18).toString('base64url');
+  const relay = Buffer.from(JSON.stringify({ n: nonce, next: saml.safeNext(req.query.next) })).toString('base64url');
+  res.cookie(SAML_STATE_COOKIE, nonce, samlCookieOptions(req));
+  try { res.redirect(303, await saml.client(settings).getAuthorizeUrlAsync(relay, req.get('host'), {})); }
+  catch (error) { console.error('[sso] could not start sign-in:', error.message); res.redirect(303, '/login?sso_error=not_configured'); }
+});
+
+router.post('/saml/acs', express.urlencoded({ extended: false, limit: '512kb' }), async (req, res) => {
+  const fail = async (code, detail, user = null) => { await recordFailedLogin(req, detail || null, `sso_${code}`, user); continueTo(res, `/login?sso_error=${code}`); };
+  const settings = await saml.refreshIfStale(await saml.stored());
+  if (!saml.ready(settings)) return fail('not_configured');
+  let relay = {};
+  try { relay = JSON.parse(Buffer.from(String(req.body?.RelayState || ''), 'base64url').toString('utf8')) || {}; } catch { relay = {}; }
+  const cookieNonce = (req.headers.cookie || '').split(/;\s*/).map(part => part.split('=')).find(([name]) => name === SAML_STATE_COOKIE)?.[1];
+  res.clearCookie(SAML_STATE_COOKIE, { ...samlCookieOptions(req), maxAge: undefined });
+  // Over https the browser that started the sign-in must be the one finishing it (stops login CSRF).
+  if (samlCookieOptions(req).secure && (!cookieNonce || cookieNonce !== relay.n)) return fail('expired');
+  let profile;
+  try { ({ profile } = await saml.client(settings).validatePostResponseAsync({ SAMLResponse: String(req.body?.SAMLResponse || '') })); }
+  catch (error) { console.error('[sso] rejected SAML response:', error.message); return fail('invalid'); }
+  const email = saml.emailOf(profile || {});
+  if (!email) return fail('no_email');
+  const user = await db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(email);
+  if (!user) return fail('no_account', email);
+  if (!user.active) return fail('inactive', email, user);
+  // Entra proved who this is. A temporary password nobody changed is retired rather than left usable;
+  // a local password can be set again with "Forgot password".
+  if (user.must_change_password) {
+    await db.prepare('UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?').run(bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10), user.id);
+    user.must_change_password = 0;
+  }
+  await db.prepare('UPDATE users SET last_login = app_now() WHERE id = ?').run(user.id);
+  issueSession(req, res, user);
+  await recordSuccessfulLogin(req, user);
+  await recordAuthEvent(req, 'login_sso', `saml; ${email}`, user);
+  continueTo(res, saml.safeNext(relay.next));
+});
+
 /* ── 2FA: verify TOTP code during login ──────────────────── */
 router.post('/2fa/verify', async (req, res) => {
   const { partial_token, code } = req.body;
