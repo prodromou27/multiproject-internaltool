@@ -53,3 +53,5 @@ client/playwright-report/
 
 # Runtime uploads and generated report files (also written by the test suite)
 server/uploads/
+# Per-server compose additions (extra_hosts, dns), never committed
+docker-compose.override.yml

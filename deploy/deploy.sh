@@ -34,6 +34,9 @@ esac
 
 # Move to the repo root (parent of this script's dir).
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Server-specific additions (e.g. extra_hosts for an internal Request Tracker)
+# live in an untracked docker-compose.override.yml; use it when present.
+if [ -f docker-compose.override.yml ]; then COMPOSE+=(-f docker-compose.override.yml); fi
 
 echo "==> Deploying '$ENVIRONMENT' from branch '$BRANCH'"
 

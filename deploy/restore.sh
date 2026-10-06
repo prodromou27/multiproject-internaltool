@@ -18,6 +18,9 @@ esac
 [ -f "$DUMP" ] || { echo "ERROR: dump file not found: $DUMP" >&2; exit 1; }
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Server-specific additions (e.g. extra_hosts for an internal Request Tracker)
+# live in an untracked docker-compose.override.yml; use it when present.
+if [ -f docker-compose.override.yml ]; then COMPOSE+=(-f docker-compose.override.yml); fi
 [ -f .env ] && set -a && . ./.env && set +a
 PGUSER="${POSTGRES_USER:-app}"
 PGDB="${POSTGRES_DB:-app}"
