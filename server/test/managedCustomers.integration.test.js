@@ -142,52 +142,38 @@ test('managed customer ticket analytics separate current backlog from period thr
   assert.equal(result.data.trend.points.reduce((sum,row) => sum+row.created,0),2);assert.equal(result.data.trend.points.reduce((sum,row) => sum+row.resolved,0),1);
 });
 
+// The customer report reads activities, work and the service review through these.
+const managedService=require('../managedCustomerService');
+
 test('managed customer activities reuse customer-scoped activity records and period totals',async () => {
-  const path=`/api/managed-customers/${ids.customer}/activities`;
-  assert.equal((await api(`${path}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenEnabled })).status,403);
-  for (const query of ['from=bad&to=2026-12-31','from=2026-12-31&to=2026-01-01','from=2026-01-01&to=2026-12-31&page_size=101']) assert.equal((await api(`${path}?${query}`,{ token:ids.tokenManager })).status,400);
-  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/activities?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager })).status,404);
-  const result=await api(`${path}?from=2026-01-01&to=2026-12-31&page=1&page_size=1`,{ token:ids.tokenManager });
-  assert.equal(result.status,200);assert.equal(result.data.enabled,true);assert.equal(result.data.rows.length,1);
-  assert.equal(result.data.total>=1,true);assert.equal(result.data.summary.activities,result.data.total);
-  assert.equal(typeof result.data.summary.hours,'number');assert.equal(result.data.breakdowns.categories.length>=1,true);
-  assert.equal(result.data.rows[0].category_name.length>0,true);assert.equal(result.data.rows[0].engineer_name.length>0,true);
+  assert.equal(await managedService.getActivities(ids.customerUnassigned,'2026-01-01','2026-12-31',{ page:1,pageSize:25,offset:0 }),null);
+  const result=await managedService.getActivities(ids.customer,'2026-01-01','2026-12-31',{ page:1,pageSize:1,offset:0 });
+  assert.equal(result.enabled,true);assert.equal(result.rows.length,1);
+  assert.equal(result.total>=1,true);assert.equal(result.summary.activities,result.total);
+  assert.equal(typeof result.summary.hours,'number');assert.equal(result.breakdowns.categories.length>=1,true);
+  assert.equal(result.rows[0].category_name.length>0,true);assert.equal(result.rows[0].engineer_name.length>0,true);
 });
 
 test('managed customer work reuses task and project relationships with configured reporting gates',async () => {
-  const path=`/api/managed-customers/${ids.customer}/work`;
-  assert.equal((await api(`${path}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenEnabled })).status,403);
-  assert.equal((await api(`${path}?from=2026-12-31&to=2026-01-01`,{ token:ids.tokenManager })).status,400);
-  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/work?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager })).status,404);
-  const result=await api(`${path}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager });
-  assert.equal(result.status,200);assert.equal(result.data.tasks.enabled,true);assert.equal(result.data.projects.enabled,true);
-  assert.equal(result.data.tasks.summary.total>=result.data.tasks.rows.length,true);
-  assert.equal(result.data.projects.summary.total>=result.data.projects.rows.length,true);
-  assert.equal(result.data.tasks.rows.every(row => row.project_id),true);
-  assert.equal(result.data.projects.rows.every(row => Number.isInteger(row.completion_pct)),true);
+  assert.equal(await managedService.getWork(ids.customerUnassigned,'2026-01-01','2026-12-31'),null);
+  const result=await managedService.getWork(ids.customer,'2026-01-01','2026-12-31');
+  assert.equal(result.tasks.enabled,true);assert.equal(result.projects.enabled,true);
+  assert.equal(result.tasks.summary.total>=result.tasks.rows.length,true);
+  assert.equal(result.projects.summary.total>=result.projects.rows.length,true);
+  assert.equal(result.projects.rows.every(row => Number.isInteger(row.completion_pct)),true);
 });
 
 test('managed customer service review combines visits, report delivery and recommendations',async () => {
-  const path=`/api/managed-customers/${ids.customer}/service-review`;
-  assert.equal((await api(`${path}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenEnabled })).status,403);
-  assert.equal((await api(`${path}?from=bad&to=2026-12-31`,{ token:ids.tokenManager })).status,400);
-  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/service-review?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager })).status,404);
-  const result=await api(`${path}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager });
-  assert.equal(result.status,200);assert.equal(result.data.visits.enabled,true);assert.equal(result.data.recommendations.enabled,true);
-  assert.equal(result.data.visits.summary.visits_period>=result.data.visits.rows.length,true);
-  assert.equal(result.data.visits.rows.every(row => Number.isInteger(row.recommendation_count)),true);
-  assert.equal(typeof result.data.recommendations.summary.open_now,'number');assert.equal(Array.isArray(result.data.recommendations.statuses),true);
+  assert.equal(await managedService.getServiceReview(ids.customerUnassigned,'2026-01-01','2026-12-31'),null);
+  const result=await managedService.getServiceReview(ids.customer,'2026-01-01','2026-12-31');
+  assert.equal(result.visits.enabled,true);assert.equal(result.recommendations.enabled,true);
+  assert.equal(result.visits.summary.visits_period>=result.visits.rows.length,true);
+  assert.equal(result.visits.rows.every(row => Number.isInteger(row.recommendation_count)),true);
+  assert.equal(typeof result.recommendations.summary.open_now,'number');assert.equal(Array.isArray(result.recommendations.statuses),true);
 });
 
-test('managed customer timeline combines source events with stable pagination',async () => {
-  const path=`/api/managed-customers/${ids.customer}/timeline`;
-  assert.equal((await api(`${path}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenEnabled })).status,403);
-  assert.equal((await api(`${path}?from=2026-01-01&to=2026-12-31&page=0`,{ token:ids.tokenManager })).status,400);
-  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/timeline?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager })).status,404);
-  const result=await api(`${path}?from=2026-01-01&to=2026-12-31&page_size=2`,{ token:ids.tokenManager });
-  assert.equal(result.status,200);assert.equal(result.data.rows.length<=2,true);assert.equal(result.data.total>=result.data.rows.length,true);
-  assert.equal(result.data.rows.every(row => ['kind','source_id','occurred_at','title'].every(key => row[key])),true);
-  assert.deepEqual([...result.data.rows].sort((a,b) => b.occurred_at.localeCompare(a.occurred_at)),result.data.rows);
+test('the old dashboard-only endpoints are gone (Customer 360 serves those views)',async () => {
+  for (const part of ['activities','work','service-review','timeline']) assert.equal((await api(`/api/managed-customers/${ids.customer}/${part}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager })).status,404,part);
 });
 
 test('managed customer report preview reuses dashboard metrics and protects customer-facing input',async () => {
@@ -655,9 +641,8 @@ test('managed-customer report activities say which asset was worked on and the v
   const logged=await api('/api/service-activities',{ method:'POST',token:ids.tokenEnabled,
     body:{ customer_id:customer,activity_date:'2026-10-02',category_id:ids.category,title:'Upgraded firmware',status:'completed',asset_ids:[asset.data.id],asset_versions:{ [asset.data.id]:'7.4.3' } } });
   assert.equal(logged.status,200,JSON.stringify(logged.data));
-  const result=await api(`/api/managed-customers/${customer}/activities?from=2026-10-01&to=2026-10-31`,{ token:ids.tokenManager });
-  assert.equal(result.status,200);
-  const row=result.data.rows.find(item => item.title==='Upgraded firmware');
+  const result=await managedService.getActivities(customer,'2026-10-01','2026-10-31',{ page:1,pageSize:25,offset:0 });
+  const row=result.rows.find(item => item.title==='Upgraded firmware');
   assert.deepEqual(row.assets,[{ name:'FW-REPORT-01',version:'7.4.3' }]);
   assert.equal(row.assets_label,'FW-REPORT-01 -> 7.4.3');
 });
