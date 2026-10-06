@@ -56,8 +56,9 @@ async function validateActivityPayload(body, { customerId, isCreate }) {
       || d.getFullYear() !== Number(activityDate.slice(0, 4))
       || d.getMonth() + 1 !== Number(activityDate.slice(5, 7))
       || d.getDate() !== Number(activityDate.slice(8, 10))) return { error: 'Invalid activity date' };
-    const today = new Date(); today.setHours(23, 59, 59, 999);
-    if (d > today) return { error: 'Activity date cannot be in the future' };
+    // "Today" is the organisation's date (Settings → Time & region), not the server clock's,
+    // which can still be yesterday in a time zone behind it.
+    if (activityDate > require('./appTime').today()) return { error: 'Activity date cannot be in the future' };
   }
 
   if (!body.category_id) return { error: 'Category is required' };

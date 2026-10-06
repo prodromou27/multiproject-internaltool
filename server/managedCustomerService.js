@@ -215,7 +215,7 @@ async function getWork(customerId,from,to,store=db) {
     tasks.summary=numbers(summary);tasks.rows=rows;
   }
   if (projects.enabled) {
-    const upcomingDate=new Date();upcomingDate.setUTCDate(upcomingDate.getUTCDate()+30);const upcoming=upcomingDate.toISOString().slice(0,10);
+    const appTime=require('./appTime');const upcoming=appTime.addDays(appTime.today(),30);
     const [summary,rows]=await Promise.all([
       store.prepare(`SELECT COUNT(*) AS total,
         SUM(CASE WHEN status NOT IN ${projectTerminal} THEN 1 ELSE 0 END) AS active_now,
