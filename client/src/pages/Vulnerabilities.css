@@ -1,0 +1,39 @@
+/* Vulnerabilities (CVE portal) */
+.vuln-sync { margin: 8px 0 12px; font-size: 13px; color: var(--gray-500); }
+.vuln-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-top: 10px; }
+.vuln-check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; white-space: nowrap; }
+.vuln-check select { width: auto; }
+.vuln-table { width: 100%; }
+.vuln-table td { vertical-align: top; }
+.vuln-table tr.is-affected td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
+.vuln-table tr.is-hidden td { color: var(--gray-400); }
+.vuln-id, .vuln-link { background: none; border: 0; padding: 0; color: var(--primary); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+.vuln-id:hover, .vuln-link:hover { text-decoration: underline; }
+.vuln-summary { max-width: 52ch; color: var(--gray-600); }
+.vuln-hit { color: var(--danger); }
+.vuln-error { color: var(--danger); }
+.vuln-counts { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.vuln-products { display: grid; gap: 16px; }
+.vuln-product { padding: 16px 18px; }
+.vuln-product header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 10px; }
+.vuln-product h3 { margin: 0 0 2px; font-size: 15px; }
+.vuln-assets { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.vuln-mapping { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 8px 12px; max-width: 640px; }
+.vuln-mapping label, .vuln-add label, .vuln-key label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--gray-600); }
+.vuln-mapping-actions { display: flex; gap: 6px; align-items: end; }
+.vuln-mapping p { grid-column: 1 / -1; margin: 0; }
+.vuln-add, .vuln-key { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-bottom: 14px; }
+.vuln-key label { flex: 1 1 320px; }
+.vuln-admin { display: grid; gap: 16px; }
+.vuln-detail { display: grid; gap: 14px; }
+.vuln-detail h3 { font-size: 14px; margin: 0 0 6px; }
+.vuln-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.vuln-kev { border: 1px solid var(--danger); border-radius: 8px; padding: 10px 14px; background: color-mix(in srgb, var(--danger) 6%, transparent); }
+.vuln-kev p { margin: 4px 0; }
+.vuln-ranges, .vuln-refs { margin: 0; padding-left: 18px; font-size: 13px; }
+.vuln-refs a { word-break: break-all; }
+@media (max-width: 720px) {
+  .vuln-mapping { grid-template-columns: 1fr; }
+  .vuln-product header { flex-direction: column; }
+  .vuln-summary { max-width: none; }
+}

@@ -194,6 +194,7 @@ app.use('/api/managed-customers', require('./routes/managedCustomers'));
 app.use('/api/managed-report-templates', require('./routes/managedReportTemplates'));
 app.use('/api/permissions', require('./routes/permissions'));
 app.use('/api/reminders', require('./routes/reminders'));
+app.use('/api/vulnerabilities', require('./routes/vulnerabilities'));
 app.use('/api/bots', require('./routes/bots'));
 
 // ── 404 handler for unknown /api/* paths (must come before the SPA catchall) ─
@@ -282,6 +283,7 @@ const keyFile  = path.join(certDir, 'key.pem');
       console.log(`Server running on https://0.0.0.0:${HTTPS_PORT}`);
       activityBotApi.setBase(`https://127.0.0.1:${HTTPS_PORT}`);
       startReminderSchedules();
+      require('./cve/sync').startCveSchedule(); // CVEs from NVD and CISA each morning
       liveUpdates.startListening();
       initScheduler();
     }));
@@ -305,6 +307,7 @@ const keyFile  = path.join(certDir, 'key.pem');
       console.log(`Server running on http://0.0.0.0:${PORT} (no TLS certs found)`);
       activityBotApi.setBase(`http://127.0.0.1:${PORT}`);
       startReminderSchedules();
+      require('./cve/sync').startCveSchedule(); // CVEs from NVD and CISA each morning
       liveUpdates.startListening();
       initScheduler();
     }));

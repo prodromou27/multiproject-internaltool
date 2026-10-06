@@ -28,4 +28,15 @@ async function isManagedServicesEngineer(user,customerId,store=db) {
     WHERE tm.user_id=? AND ct.customer_id=?`).get(user.id,customerId);
 }
 
-module.exports={ positiveId,canAccessCustomer,isManagedServicesEngineer };
+/** The customers a person may see, as a Set of ids, or null for "all" (the same rule as canAccessCustomer). */
+async function accessibleCustomerIds(user,store=db) {
+  if (['manager','planner'].includes(user?.role)) return null;
+  if (user?.role!=='engineer') return new Set();
+  const rows=await store.prepare(`SELECT mv.customer_id FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id=mv.id WHERE mve.user_id=?
+    UNION SELECT p.customer_id FROM projects p JOIN project_assignments pa ON pa.project_id=p.id WHERE pa.user_id=? AND p.customer_id IS NOT NULL
+    UNION SELECT ce.customer_id FROM customer_engineers ce WHERE ce.user_id=?
+    UNION SELECT ct.customer_id FROM customer_teams ct JOIN team_members tm ON tm.team_id=ct.team_id WHERE tm.user_id=?`).all(user.id,user.id,user.id,user.id);
+  return new Set(rows.map(row => Number(row.customer_id)));
+}
+
+module.exports={ positiveId,canAccessCustomer,isManagedServicesEngineer,accessibleCustomerIds };

@@ -5,7 +5,7 @@ test('the module launcher exposes unpinned areas and remembers new pins', async 
   await mockApi(page, { role: 'manager' });
   await page.goto('/');
 
-  await expect(page.getByRole('navigation', { name: 'Pinned modules' }).getByRole('link')).toHaveCount(8);
+  await expect(page.getByRole('navigation', { name: 'Pinned modules' }).getByRole('link')).toHaveCount(9);
   await expect(page.getByRole('navigation', { name: 'Pinned modules' }).getByRole('link', { name: 'Settings' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'All modules' }).click();

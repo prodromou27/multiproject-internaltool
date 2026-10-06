@@ -748,6 +748,61 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261016_vulnerabilities', `
+    -- Vulnerabilities (CVE portal). CVEs for the vendors/products we watch, from NVD.
+    CREATE TABLE IF NOT EXISTS cves (
+      id            TEXT PRIMARY KEY,
+      published     TEXT,
+      last_modified TEXT,
+      description   TEXT,
+      cvss_score    REAL,
+      severity      TEXT,
+      cvss_vector   TEXT,
+      cvss_version  TEXT,
+      refs          TEXT,
+      entries       TEXT NOT NULL DEFAULT '[]',
+      products      TEXT NOT NULL DEFAULT '',
+      fetched_at    TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_cves_published ON cves(published);
+    -- CISA's Known Exploited Vulnerabilities catalogue.
+    CREATE TABLE IF NOT EXISTS cve_kev (
+      cve_id          TEXT PRIMARY KEY,
+      name            TEXT,
+      date_added      TEXT,
+      due_date        TEXT,
+      required_action TEXT,
+      ransomware      TEXT
+    );
+    -- What we watch: an NVD vendor, or one of its products. 'asset' rows follow
+    -- the vendors on customers' assets; 'manual' rows an admin added.
+    CREATE TABLE IF NOT EXISTS cve_watch (
+      id            SERIAL PRIMARY KEY,
+      cpe_vendor    TEXT NOT NULL,
+      cpe_product   TEXT NOT NULL DEFAULT '',
+      label         TEXT,
+      source        TEXT NOT NULL DEFAULT 'manual' CHECK(source IN ('asset','manual')),
+      asset_vendor  TEXT,
+      hidden        INTEGER NOT NULL DEFAULT 0,
+      total         INTEGER,
+      last_sync_at  TEXT,
+      last_status   TEXT,
+      last_error    TEXT,
+      created_at    TEXT DEFAULT ${NOW},
+      UNIQUE (cpe_vendor, cpe_product)
+    );
+    -- Which NVD product an asset vendor + model runs (e.g. Fortinet FortiGate -> fortinet:fortios),
+    -- so the asset's software version can be checked.
+    CREATE TABLE IF NOT EXISTS cve_asset_products (
+      asset_vendor  TEXT NOT NULL,
+      asset_model   TEXT NOT NULL DEFAULT '',
+      cpe_vendor    TEXT NOT NULL,
+      cpe_product   TEXT NOT NULL,
+      updated_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at    TEXT DEFAULT ${NOW},
+      PRIMARY KEY (asset_vendor, asset_model)
+    );
+  `]);
   migrations.push(['20261015_recurring_tasks', `
     -- The task form offers Critical priority, but the original check allowed only
     -- low/medium/high, so saving a critical task failed.

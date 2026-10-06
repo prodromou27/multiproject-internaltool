@@ -4,6 +4,7 @@ export const PAGES = [
   { id: 'dashboard', path: '/', label: 'Dashboard', section: 'Workspace', icon: 'LayoutDashboard', roles: everyone, description: 'Operational overview and work that needs attention' },
   { id: 'myWork', path: '/my-day', label: 'My Work', section: 'Workspace', icon: 'Zap', roles: ['engineer'], description: 'Your assignments, upcoming work and time tracking' },
   { id: 'reminders', path: '/reminders', label: 'Reminders', section: 'Workspace', icon: 'BellRing', roles: everyone, description: 'Your own reminders, and the automatic ones the app sends you' },
+  { id: 'vulnerabilities', path: '/vulnerabilities', label: 'Vulnerabilities', section: 'Workspace', icon: 'ShieldAlert', roles: everyone, description: 'CVEs for the vendors and products we support, and which customer devices they affect' },
   { id: 'calendar', path: '/calendar', label: 'Calendar', section: 'Workspace', icon: 'CalendarDays', roles: everyone, description: 'Plan project deadlines, tasks and maintenance visits' },
   { id: 'projects', path: '/projects', label: 'Projects', section: 'Operations', icon: 'FolderOpen', roles: ['manager', 'engineer', 'pm'], permission:'projects.access', description: 'Delivery progress, ownership and project commitments' },
   { id: 'tasks', path: '/tasks', label: 'Tasks', section: 'Operations', icon: 'CheckSquare', roles: ['manager', 'engineer'], permission:'tasks.access', badge: 'tasks', description: 'Assigned tasks and operational follow-ups' },
@@ -40,10 +41,10 @@ export function visiblePages(userOrRole, serviceActivityEnabled = false) {
 }
 
 const DEFAULT_PRIMARY_PAGES = {
-  manager: ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'customers', 'approvals', 'reminders'],
-  engineer: ['dashboard', 'myWork', 'tasks', 'activities', 'projects', 'visits', 'reminders'],
-  planner: ['dashboard', 'calendar', 'visits', 'reminders'],
-  pm: ['dashboard', 'projects', 'activities', 'visits', 'reminders'],
+  manager: ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'customers', 'approvals', 'reminders', 'vulnerabilities'],
+  engineer: ['dashboard', 'myWork', 'tasks', 'activities', 'projects', 'visits', 'reminders', 'vulnerabilities'],
+  planner: ['dashboard', 'calendar', 'visits', 'reminders', 'vulnerabilities'],
+  pm: ['dashboard', 'projects', 'activities', 'visits', 'reminders', 'vulnerabilities'],
 };
 
 // Keep the persistent navigation intentionally short. Every permitted destination
@@ -52,8 +53,8 @@ export function primaryPages(userOrRole, serviceActivityEnabled = false, capabil
   const user = typeof userOrRole === 'string' ? { role: userOrRole, permissions: {} } : userOrRole;
   const managed=capabilities.managedServiceOperations===true;
   const engineerIds=managed
-    ? ['dashboard','myWork','activities','projects','tasks','visits','reminders']
-    : ['dashboard','myWork','projects','tasks','visits','activities','reminders'];
+    ? ['dashboard','myWork','activities','projects','tasks','visits','reminders','vulnerabilities']
+    : ['dashboard','myWork','projects','tasks','visits','activities','reminders','vulnerabilities'];
   const ids = user?.role==='engineer' ? engineerIds : DEFAULT_PRIMARY_PAGES[user?.role] || ['dashboard'];
   return ids
     .map(id => PAGES.find(page => page.id === id))

@@ -34,6 +34,7 @@ const Templates         = lazy(() => import('./pages/Templates'));
 const Workload          = lazy(() => import('./pages/Workload'));
 const Notes             = lazy(() => import('./pages/Notes'));
 const Reminders         = lazy(() => import('./pages/Reminders'));
+const Vulnerabilities   = lazy(() => import('./pages/Vulnerabilities'));
 const Profile           = lazy(() => import('./pages/Profile'));
 const SLAPage           = lazy(() => import('./pages/SLAPage'));
 const SearchPage        = lazy(() => import('./pages/SearchPage'));
@@ -194,6 +195,7 @@ export default function App() {
           <Route path="/sla"               element={<PrivateRoute page="sla"><SLAPage /></PrivateRoute>} />
           <Route path="/notes"               element={<PrivateRoute page="notes"><Notes /></PrivateRoute>} />
           <Route path="/reminders"           element={<PrivateRoute page="reminders"><Reminders /></PrivateRoute>} />
+          <Route path="/vulnerabilities"     element={<PrivateRoute page="vulnerabilities"><Vulnerabilities /></PrivateRoute>} />
           <Route path="/search"             element={<PrivateRoute page="search"><SearchPage /></PrivateRoute>} />
           <Route path="/my-day"             element={<PrivateRoute page="myWork"><EngineerHub /></PrivateRoute>} />
           <Route path="/profile"             element={<PrivateRoute page="profile"><Profile /></PrivateRoute>} />
