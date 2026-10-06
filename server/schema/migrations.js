@@ -748,6 +748,10 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261019_report_tables', `
+    -- Per report template: which columns each report table shows, sorting and a row limit.
+    ALTER TABLE managed_report_templates ADD COLUMN IF NOT EXISTS tables TEXT NOT NULL DEFAULT '{}';
+  `]);
   migrations.push(['20261018_time_off', `
     -- Days an engineer is away (leave, training…), so visit planning knows who is free.
     CREATE TABLE IF NOT EXISTS engineer_time_off (

@@ -277,6 +277,20 @@ test('managed report templates are manager-only, validated and versioned',async 
   const resaved=await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...asListed,description:'Edited in Settings' } });
   assert.equal(resaved.status,200,JSON.stringify(resaved.data));assert.equal(resaved.data.description,'Edited in Settings');
   assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...asListed,version:resaved.data.version,surprise:1 } })).status,400);
+  // Report tables: columns, sorting and a row limit per table.
+  assert.ok(seeded.data.tables.some(table => table.key==='service_activities' && table.columns.some(column => column.key==='hours')));
+  assert.deepEqual(resaved.data.tables,{});
+  assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...asListed,version:resaved.data.version,tables:{ assets:{ columns:['ghost'] } } } })).status,400);
+  const withTables=await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...asListed,version:resaved.data.version,tables:{ assets:{ columns:['asset','vendor'],sort:{ column:'asset',direction:'desc' },limit:5 } } } });
+  assert.equal(withTables.status,200,JSON.stringify(withTables.data));
+  assert.deepEqual(withTables.data.tables,{ assets:{ columns:['asset','vendor'],sort:{ column:'asset',direction:'desc' },limit:5 } });
+  // Reports made with the template use its columns.
+  const activitiesOnly=await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...asListed,version:withTables.data.version,tables:{ service_activities:{ columns:['engineer','reference'] } } } });
+  assert.equal(activitiesOnly.status,200);
+  const sheetResponse=await fetch(`${suiteFixture.baseUrl}/api/managed-customers/${ids.customer}/report.xlsx`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ from:'2026-09-01',to:'2026-09-30',sections:['service_activities'],template_id:created.data.id }) });
+  assert.equal(sheetResponse.status,200,await sheetResponse.clone().text());
+  const sheetBook=new (require('exceljs').Workbook)();await sheetBook.xlsx.load(Buffer.from(await sheetResponse.arrayBuffer()));
+  assert.deepEqual(sheetBook.getWorksheet('Activities').getRow(1).values.slice(1),['Engineer','Reference']);
   assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...editable,name:'Stale' } })).status,409);
   assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'DELETE',token:ids.tokenManager })).status,200);
 });

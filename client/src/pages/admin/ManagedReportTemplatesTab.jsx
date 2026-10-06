@@ -2,11 +2,13 @@ import { useEffect,useState } from 'react';
 import { ChevronDown,ChevronUp,Download,FileText,Plus,Save,Trash2,Upload,X } from 'lucide-react';
 import { api } from '../../api';
 import { Toggle } from './shared';
+import { ReportTableColumns } from './ReportTableColumns';
+import './ReportTableColumns.css';
 
 const LABELS={ executive_summary:'Executive summary',service_overview:'Service overview',ticket_summary:'Ticket summary',open_tickets:'Open tickets',period_tickets:'Period tickets',service_activities:'Service activities',tasks:'Tasks',projects:'Projects',maintenance_visits:'Maintenance Visits',recommendations:'Recommendations',risks:'Risks',upcoming_work:'Upcoming work',management_notes:'Management notes',changes:'Changes and upgrades',resolved_tickets:'Resolved tickets',assets:'Assets and support status' };
-const empty={ name:'',description:'',sections:Object.keys(LABELS),default_narratives:{},active:true,version:0 };
+const empty={ name:'',description:'',sections:Object.keys(LABELS),default_narratives:{},tables:{},active:true,version:0 };
 const saveBlob=(blob,name) => { const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(() => URL.revokeObjectURL(url),1000); };
-const EDITABLE=['name','description','sections','default_narratives','active','version'];
+const EDITABLE=['name','description','sections','default_narratives','tables','active','version'];
 
 /* Odyssey's own Word layout for this report template. Uploads are checked by the
    server; a template with unknown or broken placeholders is refused with the list. */
@@ -42,11 +44,11 @@ function WordLayout({ template,onChanged }) {
 }
 
 export function ManagedReportTemplatesTab() {
-  const [rows,setRows]=useState([]),[form,setForm]=useState(empty),[selected,setSelected]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
-  const load=async () => { const result=await api.managedReportTemplates();setRows(result.rows || []);return result.rows || []; };
+  const [catalogue,setCatalogue]=useState([]),[rows,setRows]=useState([]),[form,setForm]=useState(empty),[selected,setSelected]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
+  const load=async () => { const result=await api.managedReportTemplates();setRows(result.rows || []);setCatalogue(result.tables || []);return result.rows || []; };
   useEffect(() => { load().catch(failure => setError(failure.message)); },[]);
-  const edit=row => { setSelected(row.id);setForm({ ...row,default_narratives:{ ...row.default_narratives } });setError('');setMessage(''); };
-  const reset=() => { setSelected(null);setForm({ ...empty,sections:[...empty.sections],default_narratives:{} }); };
+  const edit=row => { setSelected(row.id);setForm({ ...row,default_narratives:{ ...row.default_narratives },tables:{ ...(row.tables || {}) } });setError('');setMessage(''); };
+  const reset=() => { setSelected(null);setForm({ ...empty,sections:[...empty.sections],default_narratives:{},tables:{} }); };
   const toggle=key => setForm(current => ({ ...current,sections:current.sections.includes(key)?current.sections.filter(value => value!==key):[...current.sections,key] }));
   const move=(index,direction) => setForm(current => { const sections=[...current.sections],target=index+direction;if (target<0 || target>=sections.length) return current;[sections[index],sections[target]]=[sections[target],sections[index]];return { ...current,sections }; });
   async function save() { setBusy(true);setError('');setMessage('');try { const payload=Object.fromEntries(EDITABLE.filter(key => key in form).map(key => [key,form[key]]));const saved=selected?await api.updateManagedReportTemplate(selected,payload):await api.createManagedReportTemplate(payload);await load();edit(saved);setMessage('Report template saved.'); } catch(failure) { setError(failure.message); } finally { setBusy(false); } }
@@ -55,6 +57,7 @@ export function ManagedReportTemplatesTab() {
     {error && <div className="error-msg" role="alert">{error}</div>}{message && <div className="alert alert-success">{message}</div>}
     <div className="form-group"><label>Template name</label><input maxLength={120} value={form.name} onChange={event => setForm(current => ({ ...current,name:event.target.value }))} /></div><div className="form-group"><label>Description</label><textarea rows={2} maxLength={1000} value={form.description} onChange={event => setForm(current => ({ ...current,description:event.target.value }))} /></div><Toggle checked={form.active} onChange={active => setForm(current => ({ ...current,active }))} label="Active template" />
     <h3 className="u-999b629">Sections and order</h3><div className="u-5646293">{form.sections.map((key,index) => <div key={key} className="u-a4f885d"><span className="u-7829123">{index+1}. {LABELS[key]}</span><button className="btn btn-ghost btn-sm" aria-label={`Move ${LABELS[key]} up`} disabled={!index} onClick={() => move(index,-1)}><ChevronUp size={13} /></button><button className="btn btn-ghost btn-sm" aria-label={`Move ${LABELS[key]} down`} disabled={index===form.sections.length-1} onClick={() => move(index,1)}><ChevronDown size={13} /></button><button className="btn btn-ghost btn-sm" aria-label={`Remove ${LABELS[key]}`} onClick={() => toggle(key)}><X size={13} /></button></div>)}</div><div className="flex gap-8 u-a8b6fba">{Object.entries(LABELS).filter(([key]) => !form.sections.includes(key)).map(([key,label]) => <button key={key} className="btn btn-ghost btn-sm" onClick={() => toggle(key)}><Plus size={12} /> {label}</button>)}</div>
+    <ReportTableColumns catalogue={catalogue} sections={form.sections} tables={form.tables || {}} onChange={tables => setForm(current => ({ ...current,tables }))} />
     <h3 className="u-999b629">Default narrative</h3><textarea rows={5} maxLength={10000} value={form.default_narratives.executive_summary || ''} onChange={event => setForm(current => ({ ...current,default_narratives:{ ...current.default_narratives,executive_summary:event.target.value } }))} placeholder="Default executive summary text" />
     <div className="flex gap-8 u-1b0f499"><button className="btn btn-primary" disabled={busy || !form.name.trim() || !form.sections.length} onClick={save}><Save size={14} /> Save template</button>{selected && <button className="btn btn-danger" disabled={busy} onClick={remove}><Trash2 size={14} /> Delete</button>}</div>
     {selected ? <WordLayout template={form} onChanged={saved => { setRows(current => current.map(row => row.id===saved.id ? saved : row));setForm(current => ({ ...current,has_word_template:saved.has_word_template,word_template_name:saved.word_template_name,word_template_uploaded_at:saved.word_template_uploaded_at })); }} />

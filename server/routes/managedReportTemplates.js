@@ -4,6 +4,7 @@ const { requireManager,requirePermission }=require('../middleware/auth');
 const { logAudit }=require('../auditLog');
 const reporting=require('../managedCustomerReportingService');
 const wordTemplates=require('../managedReportDocx');
+const reportTables=require('../reportTables');
 const multer=require('multer');
 
 // Word templates are layout plus placeholders; a few MB is generous.
@@ -15,13 +16,13 @@ const fail=(message,status=400) => { throw Object.assign(new Error(message),{ st
 const parse=row => {
   if (!row) return row;
   const { word_template:file,...rest }=row;
-  return { ...rest,active:!!row.active,version:Number(row.version),sections:JSON.parse(row.sections),default_narratives:JSON.parse(row.default_narratives),has_word_template:!!file };
+  return { ...rest,active:!!row.active,version:Number(row.version),sections:JSON.parse(row.sections),default_narratives:JSON.parse(row.default_narratives),tables:JSON.parse(row.tables || '{}'),has_word_template:!!file };
 };
 function input(body,{ create=false }={}) {
   if (!body || typeof body!=='object' || Array.isArray(body)) fail('Invalid report template');
   // Fields the listing returns but the client cannot change are ignored, so saving
   // back what was loaded works; anything else unknown is refused.
-  const allowed=new Set(['name','description','sections','default_narratives','active','version']);
+  const allowed=new Set(['name','description','sections','default_narratives','tables','active','version']);
   const readOnly=new Set(['id','created_by','updated_by','created_at','updated_at','has_word_template','word_template_name','word_template_uploaded_at','word_template_uploaded_by']);
   if (Object.keys(body).some(key => !allowed.has(key) && !readOnly.has(key))) fail('Invalid report template');
   const name=String(body.name || '').trim(),description=String(body.description || '').trim();
@@ -30,7 +31,8 @@ function input(body,{ create=false }={}) {
   const narratives=reporting.validateNarratives(body.default_narratives);
   if (typeof body.active!=='boolean') fail('active must be true or false');
   if (!create && (!Number.isSafeInteger(Number(body.version)) || Number(body.version)<1)) fail('A valid template version is required');
-  return { name,description,sections,narratives,active:body.active,version:Number(body.version || 0) };
+  const tables=reportTables.validateTables(body.tables);
+  return { name,description,sections,narratives,tables,active:body.active,version:Number(body.version || 0) };
 }
 /* ── Word templates ──────────────────────────────────────────────────────── */
 router.get('/placeholders',requirePermission('managed_customers.view'),(req,res) => res.json({ rows:wordTemplates.placeholderReference() }));
@@ -77,9 +79,9 @@ router.delete('/:id/word-template',requireManager,async (req,res) => {
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not remove the Word template' }); }
 });
 
-router.get('/',requirePermission('managed_customers.view'),async (req,res) => { const rows=await db.prepare('SELECT * FROM managed_report_templates ORDER BY active DESC,name,id').all();res.json({ rows:rows.map(parse),section_keys:reporting.SECTION_KEYS,narrative_keys:reporting.NARRATIVE_KEYS }); });
-router.post('/',requireManager,async (req,res) => { try { const value=input(req.body,{ create:true }),result=await db.prepare('INSERT INTO managed_report_templates (name,description,sections,default_narratives,active,created_by,updated_by) VALUES (?,?,?,?,?,?,?)').run(value.name,value.description,JSON.stringify(value.sections),JSON.stringify(value.narratives),value.active?1:0,req.user.id,req.user.id);await logAudit(db,req,'managed_report_template',result.lastInsertRowid,value.name,'created',`sections=${value.sections.join(',')}`);res.status(201).json(parse(await db.prepare('SELECT * FROM managed_report_templates WHERE id=?').get(result.lastInsertRowid))); } catch(error) { if (error.code==='23505') return res.status(409).json({ error:'A report template with this name already exists' });res.status(error.status || 500).json({ error:error.status?error.message:'Could not create report template' }); } });
-router.put('/:id',requireManager,async (req,res) => { try { const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) fail('Invalid template ID');const value=input(req.body),result=await db.prepare('UPDATE managed_report_templates SET name=?,description=?,sections=?,default_narratives=?,active=?,version=version+1,updated_by=?,updated_at=app_now() WHERE id=? AND version=?').run(value.name,value.description,JSON.stringify(value.sections),JSON.stringify(value.narratives),value.active?1:0,req.user.id,id,value.version);if (result.changes!==1) fail('This template changed after you opened it. Reload and try again.',409);await logAudit(db,req,'managed_report_template',id,value.name,'updated',`version=${value.version+1}`);res.json(parse(await db.prepare('SELECT * FROM managed_report_templates WHERE id=?').get(id))); } catch(error) { if (error.code==='23505') return res.status(409).json({ error:'A report template with this name already exists' });res.status(error.status || 500).json({ error:error.status?error.message:'Could not update report template' }); } });
+router.get('/',requirePermission('managed_customers.view'),async (req,res) => { const rows=await db.prepare('SELECT * FROM managed_report_templates ORDER BY active DESC,name,id').all();res.json({ rows:rows.map(parse),section_keys:reporting.SECTION_KEYS,narrative_keys:reporting.NARRATIVE_KEYS,tables:reportTables.catalogue() }); });
+router.post('/',requireManager,async (req,res) => { try { const value=input(req.body,{ create:true }),result=await db.prepare('INSERT INTO managed_report_templates (name,description,sections,default_narratives,tables,active,created_by,updated_by) VALUES (?,?,?,?,?,?,?,?)').run(value.name,value.description,JSON.stringify(value.sections),JSON.stringify(value.narratives),JSON.stringify(value.tables),value.active?1:0,req.user.id,req.user.id);await logAudit(db,req,'managed_report_template',result.lastInsertRowid,value.name,'created',`sections=${value.sections.join(',')}`);res.status(201).json(parse(await db.prepare('SELECT * FROM managed_report_templates WHERE id=?').get(result.lastInsertRowid))); } catch(error) { if (error.code==='23505') return res.status(409).json({ error:'A report template with this name already exists' });res.status(error.status || 500).json({ error:error.status?error.message:'Could not create report template' }); } });
+router.put('/:id',requireManager,async (req,res) => { try { const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) fail('Invalid template ID');const value=input(req.body),result=await db.prepare('UPDATE managed_report_templates SET name=?,description=?,sections=?,default_narratives=?,tables=?,active=?,version=version+1,updated_by=?,updated_at=app_now() WHERE id=? AND version=?').run(value.name,value.description,JSON.stringify(value.sections),JSON.stringify(value.narratives),JSON.stringify(value.tables),value.active?1:0,req.user.id,id,value.version);if (result.changes!==1) fail('This template changed after you opened it. Reload and try again.',409);await logAudit(db,req,'managed_report_template',id,value.name,'updated',`version=${value.version+1}`);res.json(parse(await db.prepare('SELECT * FROM managed_report_templates WHERE id=?').get(id))); } catch(error) { if (error.code==='23505') return res.status(409).json({ error:'A report template with this name already exists' });res.status(error.status || 500).json({ error:error.status?error.message:'Could not update report template' }); } });
 router.delete('/:id',requireManager,async (req,res) => { try { const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) fail('Invalid template ID');const template=await db.prepare('SELECT * FROM managed_report_templates WHERE id=?').get(id);if (!template) fail('Report template not found',404);const used=await db.prepare('SELECT COUNT(*) AS count FROM managed_customer_configurations WHERE default_report_template_id=?').get(id);if (Number(used.count)) fail('This template is the default for one or more managed customers',409);await db.prepare('DELETE FROM managed_report_templates WHERE id=?').run(id);await logAudit(db,req,'managed_report_template',id,template.name,'deleted','');res.json({ ok:true }); } catch(error) { res.status(error.status || 500).json({ error:error.status?error.message:'Could not delete report template' }); } });
 
 module.exports=router;

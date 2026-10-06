@@ -1,5 +1,6 @@
 const PDFDocument=require('pdfkit');
 const { PRODUCT_NAME }=require('./product');
+const { TABLES,tableFor }=require('./reportTables');
 
 const COLORS={ primary:'#1e3a8a',accent:'#2563eb',text:'#172033',muted:'#64748b',line:'#cbd5e1',header:'#e2e8f0',danger:'#b91c1c' };
 const display=value => value===null || value===undefined || value==='' ? '-' : String(value);
@@ -13,10 +14,11 @@ function renderPdf(model) {
     const ensureSpace=height => { if (doc.y+height>doc.page.height-doc.page.margins.bottom-18) doc.addPage(); };
     const heading=value => { ensureSpace(42);doc.x=left;doc.moveDown(.5).font('Helvetica-Bold').fontSize(16).fillColor(COLORS.primary).text(value,{ width:pageWidth }).moveDown(.4); };
     const paragraph=value => { doc.x=left;doc.font('Helvetica').fontSize(10).fillColor(COLORS.text).text(display(value),{ width:pageWidth,lineGap:2 }).moveDown(.5); };
-    const table=(title,headers,rows) => {
+    // `weights` share the page width between columns (equal when not given).
+    const table=(title,headers,rows,weights=headers.map(() => 1)) => {
       heading(title);
       if (!rows.length) return paragraph('No matching records.');
-      const widths=headers.map(() => pageWidth/headers.length),padding=4;
+      const total=weights.reduce((sum,weight) => sum+weight,0),widths=weights.map(weight => pageWidth*weight/total),padding=4;
       const drawRow=(values,isHeader=false) => {
         doc.font(isHeader?'Helvetica-Bold':'Helvetica').fontSize(isHeader?8:7);
         const heights=values.map((value,index) => doc.heightOfString(display(value),{ width:widths[index]-padding*2,lineGap:1 }));
@@ -56,20 +58,12 @@ function renderPdf(model) {
       executive_summary:() => { heading('Executive Summary');paragraph(n.executive_summary || 'No executive summary provided.');if (n.key_highlights) { heading('Key Highlights');paragraph(n.key_highlights); }if (n.major_changes) { heading('Major Changes');paragraph(n.major_changes); } },
       service_overview:() => table('Service Overview',['Current / period measure','Value'],[['Open tickets now',model.overview.tickets?.open_now ?? 'Excluded'],['Pending tickets now',model.overview.tickets?.pending_now ?? 'Excluded'],['Service activities',model.overview.activities.activities],['Service hours',model.overview.activities.hours],['Open tasks now',model.overview.tasks.open_now],['Active projects now',model.overview.projects.active_now],['Maintenance Visits in period',model.overview.visits.visits_period],['Open recommendations now',model.overview.recommendations.open_now]]),
       ticket_summary:() => { if (!model.tickets.enabled) return;const { current,period,trend }=model.tickets.analytics;table('Ticket Summary',['Measure','Value'],[['Open backlog',current.total_open],['Created during period',period.created],['Resolved during period',period.resolved],['Closed during period',period.closed],['Rejected during period',period.rejected],['SLA breaches during period',period.sla_breaches]]);trendChart(trend);barChart('Open Tickets by Status',current.statuses);barChart('Open Tickets by Priority',current.priorities);barChart('Open Ticket Aging',current.aging); },
-      open_tickets:() => { if (model.tickets.enabled) table('Open Tickets',['Ticket','Subject','Status','Priority','Owner','Created'],model.tickets.open.rows.map(row => [row.ticket_number,row.subject,row.normalized_status,row.normalized_priority,row.owner_name,row.created_at_external])); },
-      period_tickets:() => { if (model.tickets.enabled) table('Tickets Created During Period',['Ticket','Subject','Status','Priority','Owner','Created'],model.tickets.period.rows.map(row => [row.ticket_number,row.subject,row.normalized_status,row.normalized_priority,row.owner_name,row.created_at_external])); },
-      service_activities:() => { if (model.activities.enabled) table('Service Activities',['Date','Reference','Activity','Asset / version','Engineer','Category','Hours'],model.activities.rows.map(row => [row.activity_date,row.activity_reference,row.title,row.assets_label,row.engineer_name,row.category_name,Math.round(Number(row.duration_minutes || 0)/6)/10])); },
-      tasks:() => { if (model.tasks.enabled) table('Tasks',['Task','Project','Engineer','Status','Priority','Due'],model.tasks.rows.map(row => [row.title,row.project_title,row.assigned_to_name,row.status,row.priority,row.deadline])); },
-      projects:() => { if (model.projects.enabled) table('Projects',['Project','Status','Priority','Progress','Deadline'],model.projects.rows.map(row => [row.title,row.status,row.priority,`${row.completion_pct}%`,row.deadline])); },
-      maintenance_visits:() => { if (model.maintenance_visits.enabled) table('Maintenance Visits',['Date','Visit','Engineer','Status','Report sent','Recommendations'],model.maintenance_visits.rows.map(row => [row.scheduled_date,row.title,row.engineer_name,row.status,row.report_sent_to_customer?'Yes':'No',row.recommendation_count])); },
-      changes:() => table('Changes and upgrades',['Date','Device','From','To','Change','Engineer'],(model.changes || []).map(row => [row.date,row.asset || '-',row.previous_version || '-',row.new_version || '-',row.title,row.engineer])),
-      resolved_tickets:() => { if (model.tickets.enabled) table('Resolved tickets',['Ticket','Subject','Priority','Owner','Resolved'],(model.resolved_tickets || []).map(row => [row.ticket_number,row.subject,row.normalized_priority,row.owner_name,String(row.resolved_at || '').slice(0,10)])); },
-      assets:() => table('Assets and support status',['Asset','Type','Version','Support ends','Support','Warranty'],(model.assets || []).map(row => [row.name,row.type,row.version || '-',row.support_end || '-',row.support_status || '-',row.warranty_status || '-'])),
-      recommendations:() => { if (model.recommendations.enabled) table('Recommendations',['Finding','Recommendation','Risk','Status','Owner','Due'],model.recommendations.rows.map(row => [row.finding,row.recommendation,row.risk_level,row.status,row.owner_name,row.due_date])); },
       risks:() => { heading('Risks / Concerns');paragraph(n.risks_concerns || 'No risks or concerns provided.'); },
       upcoming_work:() => { heading('Upcoming Work');paragraph(n.upcoming_activities || 'No upcoming activities provided.'); },
       management_notes:() => { heading('Management Notes');paragraph(n.management_notes || 'No management notes provided.'); },
     };
+    // The data tables, with the report template's columns, sorting and row limit.
+    for (const key of Object.keys(TABLES)) builders[key]=() => { const data=tableFor(model,key);if (data) table(data.title,data.columns.map(c => c.label),data.rows,data.columns.map(c => c.width)); };
     model.sections.forEach(section => builders[section]?.());
     const range=doc.bufferedPageRange();
     for (let index=0;index<range.count;index++) {

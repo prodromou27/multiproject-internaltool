@@ -14,6 +14,7 @@
  */
 const PizZip = require('pizzip');
 const Docxtemplater = require('docxtemplater');
+const { orderedRows } = require('./reportTables');
 const { AlignmentType, Document, Footer, HeadingLevel, Packer, PageNumber, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } = require('docx');
 
 const value = (description, example) => ({ kind: 'value', description, example });
@@ -82,21 +83,22 @@ const titleCase = text => text ? String(text).replace(/_/g, ' ').replace(/\b\w/g
 /** The placeholder values for one report. */
 function templateData(model, { preparedBy } = {}) {
   const narratives = model.narratives || {};
-  const activities = (model.activities?.rows || []).map(row => ({
+  const rowsOf = key => { try { return orderedRows(model, key); } catch { return []; } };
+  const activities = rowsOf('service_activities').map(row => ({
     date: dmy(row.activity_date), reference: row.activity_reference, title: row.title, category: row.category_name,
     engineer: row.engineer_name, hours: hours(row.duration_minutes), assets: row.assets_label || '', status: titleCase(row.status),
     billing: titleCase(row.billable_classification), ticket: row.ticket_reference || '',
   }));
   const breakdown = rows => (rows || []).map(row => ({ name: row.name, hours: String(row.hours ?? hours(row.minutes)), count: String(row.count) }));
-  const changes = (model.changes || []).map(row => ({ ...row, date: dmy(row.date), status: titleCase(row.status), risk: titleCase(row.risk),
+  const changes = rowsOf('changes').map(row => ({ ...row, date: dmy(row.date), status: titleCase(row.status), risk: titleCase(row.risk),
     asset: row.asset || '', asset_type: row.asset_type || '', previous_version: row.previous_version || '', new_version: row.new_version || '',
     change_type: row.change_type || '', approval_reference: row.approval_reference || '' }));
-  const resolved = (model.resolved_tickets || []).map(row => ({ number: row.ticket_number, subject: row.subject, priority: row.normalized_priority || '',
+  const resolved = rowsOf('resolved_tickets').map(row => ({ number: row.ticket_number, subject: row.subject, priority: row.normalized_priority || '',
     owner: row.owner_name || '', resolved_date: dmy(row.resolved_at) }));
-  const assets = (model.assets || []).map(row => ({ ...row, type: row.type || '', vendor: row.vendor || '', model: row.model || '', version: row.version || '',
+  const assets = rowsOf('assets').map(row => ({ ...row, type: row.type || '', vendor: row.vendor || '', model: row.model || '', version: row.version || '',
     environment: titleCase(row.environment), criticality: titleCase(row.criticality), support_end: dmy(row.support_end), support_status: row.support_status || '',
     warranty_end: dmy(row.warranty_end), warranty_status: row.warranty_status || '' }));
-  const recommendations = (model.recommendations?.rows || []).map(row => ({ finding: row.finding, recommendation: row.recommendation,
+  const recommendations = rowsOf('recommendations').map(row => ({ finding: row.finding, recommendation: row.recommendation,
     risk: titleCase(row.risk_level), status: titleCase(row.status), owner: row.owner_name || '', due: dmy(row.due_date) }));
   const sections = new Set(model.sections || []);
   return {
