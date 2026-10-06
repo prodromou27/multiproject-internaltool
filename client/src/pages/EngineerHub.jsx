@@ -11,6 +11,7 @@ import { fmtDate, isOverdue, PriorityBadge, StatusBadge } from '../components/Sh
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { useLiveRefresh } from '../live';
+import AddToCalendarButton from '../components/AddToCalendarButton';
 
 const KANBAN = [
   ['open', 'To do'], ['in_progress', 'In progress'],
@@ -234,7 +235,7 @@ export default function EngineerHub() {
       <div className="grid-2 engineer-summary">
         <section className="card"><div className="section-header"><h2 className="section-title">Today & overdue</h2><CalendarDays size={16} /></div>
           {[...overdue, ...todayTasks.filter(t => !overdue.some(o => o.id === t.id))].map(task => <div className="my-day-row" key={task.id}><PriorityBadge p={task.priority} /><span>{task.title}</span><small>{fmtDate(task.deadline)}</small>{!timer && <button className="btn btn-ghost btn-sm" onClick={() => startTimer(task)}><Play size={11} /></button>}</div>)}
-          {todayVisits.map(visit => <div className="my-day-row" key={`v${visit.id}`}><Wrench size={14} /><span>{visit.title}</span><small>{visit.customer_name}</small></div>)}
+          {todayVisits.map(visit => <div className="my-day-row" key={`v${visit.id}`}><Wrench size={14} /><span>{visit.title}</span><small>{visit.customer_name}</small><AddToCalendarButton visitId={visit.id} title={visit.title} compact /></div>)}
           {!overdue.length && !todayTasks.length && !todayVisits.length && <p className="text-muted">Nothing urgent today.</p>}
         </section>
         <section className="card"><div className="section-header"><h2 className="section-title">Timesheet</h2><Clock size={16} /></div><div className="timesheet-total"><strong>{weekTotal.toFixed(1)}h</strong><span>This week · {from} to {to}</span></div>{todayTotal < 7 && <div className="alert alert-warning">Missing-time reminder: {Math.max(0, 7 - todayTotal).toFixed(1)}h remaining for today.</div>}{logs.slice(0, 6).map(log => <div className="time-row" key={log.id}><span>{log.task_title || log.visit_title || 'Work log'}</span><strong>{Number(log.hours).toFixed(2)}h</strong></div>)}</section>

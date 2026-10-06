@@ -4,6 +4,7 @@ import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../../components
 import { api } from '../../api';
 import { localDateISO } from '../../utils/dates';
 import StatCard from './StatCard';
+import AddToCalendarButton from '../../components/AddToCalendarButton';
 
 export function engineerWidget(id, ctx) {
   const { active, load, myManagedCustomers, myOpen, pendingReports, visits } = ctx;
@@ -132,7 +133,7 @@ export function engineerWidget(id, ctx) {
           </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Customer</th><th>Visit</th><th>Date</th><th>Report</th></tr></thead>
+              <thead><tr><th>Customer</th><th>Visit</th><th>Date</th><th>Report</th><th><span className="sr-only">Calendar</span></th></tr></thead>
               <tbody>
                 {visits.slice(0,5).map(v => (
                   <tr key={v.id}>
@@ -146,6 +147,7 @@ export function engineerWidget(id, ctx) {
                           ? <span className="badge badge-active">Report Complete</span>
                           : <span className="badge badge-open">Pending</span>}
                     </td>
+                    <td>{v.status !== 'cancelled' && <AddToCalendarButton visitId={v.id} title={v.title} compact />}</td>
                   </tr>
                 ))}
               </tbody>

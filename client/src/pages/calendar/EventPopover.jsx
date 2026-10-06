@@ -5,6 +5,7 @@ import { api } from '../../api';
 import { useAuth } from '../../App';
 import { fmtDate, Modal } from '../../components/Shared';
 import { TYPE_STYLE } from './constants';
+import AddToCalendarButton from '../../components/AddToCalendarButton';
 
 /* ── Event detail popover ────────────────────────────────── */
 export default function EventPopover({ event, onClose, onReportSent }) {
@@ -73,6 +74,7 @@ export default function EventPopover({ event, onClose, onReportSent }) {
             <div><span className="u-db12fa5">Report:</span> {event.report_sent
               ? <span className="u-9775886"><Check size={12} /> Sent</span>
               : <span className="u-212c94a">Pending</span>}</div>
+            {event.status !== 'cancelled' && <AddToCalendarButton visitId={event.id} title={event.title} />}
             {!event.report_sent && event.status !== 'cancelled' && ['manager', 'planner', 'engineer'].includes(user.role) && (
               <button className="btn btn-success btn-sm u-169d66d"
                 disabled={saving} onClick={markSent}>
