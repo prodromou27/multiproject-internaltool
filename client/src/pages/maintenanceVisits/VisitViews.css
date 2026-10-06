@@ -1,0 +1,44 @@
+/* Maintenance Visits: calendar and team availability */
+.vv-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.vv-head h2 { margin: 0 6px; font-size: 16px; min-width: 150px; text-align: center; }
+.vv-head-wrap { flex-wrap: wrap; }
+.vv-calendar, .vv-availability { padding: 16px 18px; }
+.vv-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--gray-200); border-left: 1px solid var(--gray-200); }
+.vv-weekday { padding: 6px 8px; font-size: 12px; font-weight: 600; color: var(--gray-500); border-right: 1px solid var(--gray-200); border-bottom: 1px solid var(--gray-200); background: var(--gray-50); }
+.vv-day { min-height: 104px; padding: 4px 6px 6px; border-right: 1px solid var(--gray-200); border-bottom: 1px solid var(--gray-200); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.vv-day.is-outside { background: var(--gray-50); color: var(--gray-400); }
+.vv-day.is-today .vv-date span { background: var(--primary); color: #fff; border-radius: 999px; padding: 0 7px; }
+.vv-date { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; }
+.vv-add { border: 0; background: none; color: var(--gray-400); cursor: pointer; padding: 2px; border-radius: 4px; opacity: 0; }
+.vv-day:hover .vv-add, .vv-add:focus-visible { opacity: 1; }
+.vv-add:hover { color: var(--primary); background: var(--gray-100); }
+.vv-visit { text-align: left; border: 0; border-left: 3px solid var(--primary); background: var(--gray-50); border-radius: 4px; padding: 3px 6px; cursor: pointer; font: inherit; min-width: 0; }
+.vv-visit strong, .vv-visit span { display: block; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vv-visit span { color: var(--gray-500); font-size: 11px; }
+.vv-visit.is-completed { border-left-color: var(--success); }
+.vv-visit.is-in_progress { border-left-color: var(--warning); }
+.vv-visit.is-cancelled { border-left-color: var(--gray-300); text-decoration: line-through; opacity: .7; }
+.vv-visit:hover { background: var(--gray-100); }
+.vv-filter { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.vv-filter select { width: auto; max-width: 220px; }
+.vv-suggest { margin: 4px 0 14px; }
+.vv-suggest h3 { font-size: 14px; margin: 0 0 8px; }
+.vv-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.vv-chip { display: flex; flex-direction: column; align-items: flex-start; border: 1px solid var(--gray-200); background: #fff; border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit; text-align: left; }
+.vv-chip strong { font-size: 13px; }
+.vv-chip span { font-size: 12px; color: var(--gray-500); }
+.vv-chip:hover { border-color: var(--primary); }
+.vv-table { font-size: 12px; }
+.vv-table th, .vv-table td { min-width: 92px; vertical-align: top; padding: 6px; }
+.vv-table tbody th { min-width: 150px; text-align: left; white-space: nowrap; }
+.vv-table tbody th small { display: block; color: var(--gray-400); font-weight: 400; }
+.vv-table .is-weekend { background: var(--gray-50); color: var(--gray-400); }
+.vv-busy { background: color-mix(in srgb, var(--primary) 12%, transparent); border-radius: 4px; padding: 2px 5px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+.vv-off { background: color-mix(in srgb, var(--warning) 15%, transparent); border-radius: 4px; padding: 2px 5px; display: flex; justify-content: space-between; gap: 4px; }
+.vv-off button { border: 0; background: none; cursor: pointer; padding: 0; color: inherit; }
+.vv-tasks { color: var(--gray-500); }
+.vv-plan { border: 1px dashed var(--success); background: color-mix(in srgb, var(--success) 8%, transparent); color: var(--success); border-radius: 4px; padding: 2px 8px; cursor: pointer; font: inherit; font-weight: 600; }
+.vv-plan:hover { background: color-mix(in srgb, var(--success) 18%, transparent); }
+.vv-timeoff { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 10px 0 14px; border-bottom: 1px solid var(--gray-200); margin-bottom: 12px; }
+.vv-timeoff label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--gray-600); }
+@media (max-width: 720px) { .vv-day { min-height: 70px; } .vv-visit span { display: none; } }

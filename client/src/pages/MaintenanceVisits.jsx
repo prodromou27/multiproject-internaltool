@@ -9,6 +9,7 @@ import { useLatestRequest } from '../hooks/useLatestRequest';
 import { localDateISO } from '../utils/dates';
 import { api } from '../api';
 import AddToCalendarButton from '../components/AddToCalendarButton';
+import { TeamAvailability, VisitCalendar } from './maintenanceVisits/VisitViews';
 import { useAuth } from '../App';
 import { fmtDate, isOverdue, Modal } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
@@ -407,6 +408,7 @@ export default function MaintenanceVisits() {
   const [customers,   setCustomers]   = useState([]);
   const [engineers,   setEngineers]   = useState([]);
   const [filter,      setFilter]      = useSavedFilter('mv_filter', 'upcoming');
+  const [savedView,   setView]        = useSavedFilter('mv_view', 'list');
   const [monthFilter, setMonthFilter] = useState('');
   const [search,      setSearch]      = useState('');
   const [selected,    setSelected]    = useState(null);
@@ -440,6 +442,9 @@ export default function MaintenanceVisits() {
     if (found) { openedLink.current = linkedVisit; setSelected(found); }
   }, [linkedVisit, visits]);
 
+  // A remembered view this person may not use (or no longer exists) falls back to the list.
+  const view = savedView === 'calendar' || (savedView === 'availability' && canManage) ? savedView : 'list';
+  const planVisit = defaults => { setCreateDefaults(defaults); setEditing(null); setShowForm(true); };
   useCreateIntent({ allowed: canManage, ready: !unavailable, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateDefaults(customerId?{ customer_id:customerId }:null);setEditing(null);setShowForm(true); } });
 
   const load = useCallback((loadOptions) => {
@@ -553,6 +558,15 @@ export default function MaintenanceVisits() {
         { key:'sent',label:'Sent to PM',value:unavailable ? '…' : visits.filter(v => v.report_sent_to_customer).length,tone:'info',note:'Approved report deliveries' },
       ]} />
 
+      {/* List, calendar, or (managers and planners) the team's availability. */}
+      <div className="filter-bar" role="tablist" aria-label="Visit views" style={{ marginBottom: 12 }}>
+        {[['list', 'List'], ['calendar', 'Calendar'], ...(canManage ? [['availability', 'Team availability']] : [])].map(([key, label]) => (
+          <button key={key} type="button" role="tab" aria-selected={view === key} className={'filter-pill' + (view === key ? ' active' : '')} onClick={() => setView(key)}>{label}</button>
+        ))}
+      </div>
+      {view === 'calendar' && <VisitCalendar onOpen={visit => setSelected(visit)} onPlan={canManage ? planVisit : null} />}
+      {view === 'availability' && canManage && <TeamAvailability customers={customers} onPlan={planVisit} />}
+      {view === 'list' && <>
       {/* Search + Filters */}
       <Surface label="Visit filters">
         <ListSearch value={search} onChange={setSearch} label="Search maintenance visits" maxLength={500}
@@ -668,6 +682,7 @@ export default function MaintenanceVisits() {
           </div>
         )
       }
+      </>}
 
       {selected && (
         <VisitDetailModal

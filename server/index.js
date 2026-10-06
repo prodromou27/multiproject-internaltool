@@ -195,6 +195,7 @@ app.use('/api/managed-report-templates', require('./routes/managedReportTemplate
 app.use('/api/permissions', require('./routes/permissions'));
 app.use('/api/reminders', require('./routes/reminders'));
 app.use('/api/vulnerabilities', require('./routes/vulnerabilities'));
+app.use('/api/visit-planning', require('./routes/visit-planning'));
 app.use('/api/bots', require('./routes/bots'));
 
 // ── 404 handler for unknown /api/* paths (must come before the SPA catchall) ─

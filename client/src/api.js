@@ -261,6 +261,10 @@ export const api = {
 
   // maintenance visits
   maintenanceVisits: (params = {}, options = {}) => req('GET', '/maintenance-visits?' + new URLSearchParams(params).toString(), undefined, options),
+  visitAvailability: (params, options) => req('GET', '/visit-planning/availability?' + new URLSearchParams(params).toString(), undefined, options),
+  timeOff: (params, options) => req('GET', '/visit-planning/time-off?' + new URLSearchParams(params).toString(), undefined, options),
+  addTimeOff: data => req('POST', '/visit-planning/time-off', data),
+  removeTimeOff: id => req('DELETE', `/visit-planning/time-off/${id}`),
   maintenanceVisit: (id) => req('GET', `/maintenance-visits/${id}`),
   maintenanceVisitAssets: (customerId, options) => req('GET', `/maintenance-visits/assets/choices?customer_id=${encodeURIComponent(customerId)}`, undefined, options),
   createVisit: (data) => req('POST', '/maintenance-visits', data),

@@ -748,6 +748,20 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261018_time_off', `
+    -- Days an engineer is away (leave, training…), so visit planning knows who is free.
+    CREATE TABLE IF NOT EXISTS engineer_time_off (
+      id          SERIAL PRIMARY KEY,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      start_date  TEXT NOT NULL,
+      end_date    TEXT NOT NULL,
+      reason      TEXT,
+      created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  TEXT DEFAULT ${NOW},
+      CHECK (end_date >= start_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_time_off_dates ON engineer_time_off(start_date, end_date);
+  `]);
   migrations.push(['20261017_activities_are_done', `
     -- Service activities record work already done, so they no longer have a status
     -- to choose. Ones logged as planned or in progress become completed on their date;
