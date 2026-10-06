@@ -77,9 +77,8 @@ async function getOverview(customerId,from,to,store=db) {
 }
 
 async function listTickets(customerId,filters,store=db) {
-  const managed=await store.prepare(`SELECT 1 FROM managed_customer_configurations mc
-    JOIN customers c ON c.id=mc.customer_id WHERE mc.customer_id=? AND mc.managed_services_enabled=1 AND c.active=1`).get(customerId);
-  if (!managed) return null;
+  // Any active customer can have its tickets synced from Request Tracker, managed or not.
+  if (!await store.prepare('SELECT 1 FROM customers WHERE id=? AND active=1').get(customerId)) return null;
   let where='WHERE customer_id=?';const params=[customerId];
   if (filters.status) { where+=' AND normalized_status=?';params.push(filters.status); }
   if (filters.group) { where+=' AND status_group=?';params.push(filters.group); }
@@ -108,9 +107,8 @@ async function listTickets(customerId,filters,store=db) {
 }
 
 async function getTicketAnalytics(customerId,from,to,store=db,now=new Date()) {
-  const managed=await store.prepare(`SELECT 1 FROM managed_customer_configurations mc
-    JOIN customers c ON c.id=mc.customer_id WHERE mc.customer_id=? AND mc.managed_services_enabled=1 AND c.active=1`).get(customerId);
-  if (!managed) return null;
+  // Any active customer can have its tickets synced from Request Tracker, managed or not.
+  if (!await store.prepare('SELECT 1 FROM customers WHERE id=? AND active=1').get(customerId)) return null;
   const start=`${from}T00:00:00.000Z`,endDate=new Date(`${to}T00:00:00.000Z`);endDate.setUTCDate(endDate.getUTCDate()+1);const end=endDate.toISOString();
   const [periodRows,statuses,priorities,owners,agingRows]=await Promise.all([
     store.prepare(`SELECT normalized_status,created_at_external,resolved_at_external,closed_at_external,updated_at_external,sla_breached

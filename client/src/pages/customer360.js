@@ -1,7 +1,7 @@
 export const CUSTOMER_360_SECTIONS=Object.freeze([
   { id:'overview',label:'Overview',roles:['manager'] },
   { id:'activities',label:'Service Activities',roles:['manager','engineer','planner'] },
-  { id:'tickets',label:'Tickets',roles:['manager'],managed:true },
+  { id:'tickets',label:'Tickets',roles:['manager'],tickets:true },
   { id:'projects',label:'Projects',roles:['manager','engineer','planner'] },
   { id:'tasks',label:'Tasks',roles:['manager','engineer'] },
   { id:'maintenance-visits',label:'Maintenance Visits',roles:['manager','engineer','planner'] },
@@ -17,11 +17,13 @@ const permitted=(user,permission) => Object.prototype.hasOwnProperty.call(user?.
 /* `assetsGrant`: the server says this engineer is on a managed-services team
    serving this customer, which earns the Assets tab (view + add) without the
    assets.access permission. `managedCustomer`: the customer receives managed
-   services, which adds the Tickets and Reports tabs. */
-export function customer360Sections(user,capabilities={},assetsGrant=false,managedCustomer=false) {
+   services, which adds the Reports tab. `hasTickets`: it has a Request Tracker
+   queue (managed or not), which adds the Tickets tab. */
+export function customer360Sections(user,capabilities={},assetsGrant=false,managedCustomer=false,hasTickets=false) {
   const assetAllowed=assetsGrant===true || permitted(user,'assets.access');
   const managedAllowed=managedCustomer===true && permitted(user,'managed_customers.view');
-  const available=CUSTOMER_360_SECTIONS.filter(section => !section.pending && (section.managed ? managedAllowed && section.roles.includes(user?.role) : section.id==='assets' ? assetAllowed : section.roles.includes(user?.role)));
+  const ticketsAllowed=(managedCustomer===true || hasTickets===true) && permitted(user,'managed_customers.view');
+  const available=CUSTOMER_360_SECTIONS.filter(section => !section.pending && (section.tickets ? ticketsAllowed && section.roles.includes(user?.role) : section.managed ? managedAllowed && section.roles.includes(user?.role) : section.id==='assets' ? assetAllowed : section.roles.includes(user?.role)));
   if (user?.role!=='engineer' || (capabilities.managedServiceOperations===undefined && capabilities.projectDelivery===undefined)) return available;
   const managed=capabilities.managedServiceOperations===true;
   const delivery=capabilities.projectDelivery===true;
@@ -32,8 +34,8 @@ export function customer360Sections(user,capabilities={},assetsGrant=false,manag
   return order.map(id => available.find(section => section.id===id)).filter(Boolean);
 }
 
-export function customer360Section(user,requested,capabilities={},assetsGrant=false,managedCustomer=false) {
-  const available=customer360Sections(user,capabilities,assetsGrant,managedCustomer);
+export function customer360Section(user,requested,capabilities={},assetsGrant=false,managedCustomer=false,hasTickets=false) {
+  const available=customer360Sections(user,capabilities,assetsGrant,managedCustomer,hasTickets);
   const aliases={ 'managed-services':'service-configuration' };
   const normalized=aliases[requested] || requested;
   return available.some(section => section.id===normalized) ? normalized : available[0]?.id || 'overview';

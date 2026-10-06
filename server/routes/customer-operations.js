@@ -92,7 +92,9 @@ router.get('/summary',requireAuth,async (req,res) => {
   }
   res.json({ projects:numbers(projects),tasks:{ ...numbers(tasks),visible:!planner },recommendations:numbers(recommendations),
     visits:{ ...numbers(visits),last:lastVisit || null,next:nextVisit || null },activities:{ recent:activities },
-    assets:Number(assets.total || 0),assets_access:assetsAccess,managed });
+    assets:Number(assets.total || 0),assets_access:assetsAccess,managed,
+    // Any customer with a Request Tracker queue gets the Tickets tab, managed or not.
+    tickets_mapped:req.user.role==='manager' && !!await db.prepare("SELECT 1 FROM customer_ticketing_configurations WHERE customer_id=? AND provider_type='request_tracker' AND enabled=1").get(customerId) });
 });
 
 // Weekly opened vs closed tickets for the Customer 360 Overview chart — last

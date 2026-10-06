@@ -82,3 +82,11 @@ test('managed customers add Tickets and Reports, for people who may see managed 
   assert.equal(customer360Section(manager, 'tickets', {}, false, true), 'tickets');
   assert.equal(customer360Section(manager, 'tickets', {}, false, false), 'overview');
 });
+
+test('a customer with a Request Tracker queue gets Tickets even when not managed; Reports stays with managed customers', () => {
+  const ids = (managed, tickets) => customer360Sections({ role: 'manager' }, {}, false, managed, tickets).map(section => section.id);
+  assert.ok(ids(false, true).includes('tickets'));
+  assert.ok(!ids(false, true).includes('reports'));
+  assert.ok(!ids(false, false).includes('tickets'));
+  assert.ok(ids(true, false).includes('tickets') && ids(true, false).includes('reports'));
+});

@@ -116,7 +116,9 @@ test('managed customer tickets enforce access, validate filters and paginate loc
   for (const query of ['page=0','page_size=101','from=2026-02-30','from=2026-09-22&to=2026-09-21','search=']) {
     assert.equal((await api(`${path}?${query}`,{ token:ids.tokenManager })).status,400);
   }
-  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/tickets`,{ token:ids.tokenManager })).status,404);
+  // Any active customer can have Request Tracker tickets, managed or not; an unknown one cannot.
+  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/tickets`,{ token:ids.tokenManager })).status,200);
+  assert.equal((await api('/api/managed-customers/999999/tickets',{ token:ids.tokenManager })).status,404);
   const first=await api(`${path}?page=1&page_size=1`,{ token:ids.tokenManager });
   assert.equal(first.status,200);assert.equal(first.data.total,2);assert.equal(first.data.rows.length,1);assert.equal(first.data.page_size,1);
   assert.equal(first.data.facets.owners.includes('Alice'),true);assert.equal(first.data.facets.statuses.includes('Open'),true);
@@ -131,7 +133,8 @@ test('managed customer ticket analytics separate current backlog from period thr
   const path=`/api/managed-customers/${ids.customer}/ticket-analytics`;
   assert.equal((await api(path,{ token:ids.tokenEnabled })).status,403);
   assert.equal((await api(`${path}?from=bad&to=2026-09-21`,{ token:ids.tokenManager })).status,400);
-  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/ticket-analytics`,{ token:ids.tokenManager })).status,404);
+  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/ticket-analytics?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager })).status,200);
+  assert.equal((await api('/api/managed-customers/999999/ticket-analytics?from=2026-01-01&to=2026-12-31',{ token:ids.tokenManager })).status,404);
   const result=await api(`${path}?from=2026-09-01&to=2026-09-30`,{ token:ids.tokenManager });
   assert.equal(result.status,200);assert.equal(result.data.current.total_open,1);
   assert.deepEqual(result.data.current.statuses,[{ name:'Open',count:1 }]);
@@ -800,4 +803,22 @@ test('each managed customer can have its own report due window', async () => {
   assert.equal(cleared.status, 200);
   assert.equal(cleared.data.report_due_days, null);
   assert.equal((await due()).due_date, periodFor('monthly', today).due_date);
+});
+
+test('a customer that is not managed can be connected to a Request Tracker queue and gets a Tickets tab', async () => {
+  await db.prepare("INSERT INTO settings (key,value) VALUES ('ticketing_rt',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ enabled:true,base_url:'https://rt.example.test/rt',api_token:'x' }));
+  const customer=(await db.prepare('INSERT INTO customers (name,active) VALUES (?,1)').run('Project-only customer')).lastInsertRowid;
+  const path=`/api/customers/${customer}/managed-services`;
+  const current=(await api(path,{ token:ids.tokenManager })).data;
+  for (const key of ['customer_id','last_successful_sync_at','last_sync_status']) delete current[key];
+  const saved=await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...current,managed_services_enabled:false,ticket_integration_enabled:true,external_queue_id:'912',external_queue_name:'Projects queue' } });
+  assert.equal(saved.status,200,JSON.stringify(saved.data));
+  assert.equal(saved.data.managed_services_enabled,false);
+  assert.equal(saved.data.ticket_integration_enabled,true);
+  const summary=(await api(`/api/customers/${customer}/operations/summary`,{ token:ids.tokenManager })).data;
+  assert.equal(summary.tickets_mapped,true,'Customer 360 shows its Tickets tab');
+  assert.equal(summary.managed.state,'not_enabled');
+  const monitoring=(await api('/api/ticketing/monitoring',{ token:ids.tokenManager })).data;
+  const row=monitoring.customers.find(item => Number(item.customer_id)===Number(customer));
+  assert.equal(row.mapping_problem,null,'not flagged for being outside managed services');
 });

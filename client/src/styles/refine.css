@@ -370,6 +370,7 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .server-clock-advice { margin-top: 10px; color: var(--gray-700); }
 /* Settings → Ticketing. */
 .ticketing-heading { margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--ink); }
+.ticketing-search { max-width: 320px; margin: 4px 0 10px; }
 .ticketing-queues select { min-width: 220px; }
 .ticketing-queues td { vertical-align: middle; }
 

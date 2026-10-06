@@ -164,7 +164,7 @@ export default function ManagedCustomerConfiguration({ customerId }) {
         </div>
         <div className="msc-head-side">
           <SaveStatus status={status} message={saveError} onRetry={flush} />
-          <Toggle checked={enabled} onChange={value => update({ managed_services_enabled:value,...(value ? {} : { ticket_integration_enabled:false,ticket_write_back_enabled:false }) },{ delay:0 })} label={enabled ? 'On' : 'Off'} />
+          <Toggle checked={enabled} onChange={value => update({ managed_services_enabled:value },{ delay:0 })} label={enabled ? 'On' : 'Off'} />
         </div>
       </header>
 
@@ -199,28 +199,6 @@ export default function ManagedCustomerConfiguration({ customerId }) {
           {syncBad && <p className="msc-hint"><AlertTriangle size={13} /> The last ticket sync failed — check Request Tracker under Settings → Ticketing.</p>}
         </section>
 
-        <Optional title="Ticketing" hint="Optional — connect a Request Tracker queue to see this customer's tickets" defaultOpen={!!form.external_queue_id}>
-          <label className="msc-field">
-            <span>Request Tracker queue</span>
-            <select value={form.external_queue_id} onFocus={() => { if (!queues.length && !busy) loadQueues(); }} onChange={event => chooseQueue(event.target.value)}>
-              <option value="">No ticketing</option>
-              {storedQueueMissing && <option value={form.external_queue_id}>{form.external_queue_name} ({form.external_queue_id})</option>}
-              {queues.map(queue => <option key={queue.id} value={queue.id} disabled={!!queue.mapping && Number(queue.mapping.customer_id)!==Number(customerId)}>{queue.name} ({queue.id}){queue.mapping && Number(queue.mapping.customer_id)!==Number(customerId) ? ` — used by ${queue.mapping.customer_name}` : ''}</option>)}
-            </select>
-            {busy==='queues' && <small>Loading queues…</small>}
-            {queueError && <small className="msc-hint">{queueError}</small>}
-          </label>
-          {form.external_queue_id && <>
-            <p className="text-sm text-muted">Last sync: {form.last_successful_sync_at || 'not yet'}{form.last_sync_status ? ` (${form.last_sync_status})` : ''}</p>
-            <ToggleRow label="Include tickets in reports" value={form.ticket_include_in_reporting} onChange={value => update({ ticket_include_in_reporting:value })} />
-            <ToggleRow label="Update the RT ticket when an activity is completed" description="Set the matched ticket to the status below." value={form.ticket_write_back_enabled} onChange={value => update({ ticket_write_back_enabled:value })} />
-            {form.ticket_write_back_enabled && <label className="msc-field"><span>RT status to set</span><input value={form.ticket_write_back_status} maxLength={100} placeholder="e.g. resolved" onChange={event => update({ ticket_write_back_status:event.target.value },{ delay:900 })} /></label>}
-            <div className="flex gap-8 msc-actions">
-              <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || status==='saving'} onClick={syncTickets}>{busy==='sync' ? 'Syncing…' : 'Sync tickets now'}</button>
-              {message && <span className="text-sm text-muted">{message}</span>}
-            </div>
-          </>}
-        </Optional>
 
         <Optional title="Reporting" hint="Optional — how often and in what format reports are prepared">
           <div className="msc-group-body">
@@ -254,6 +232,29 @@ export default function ManagedCustomerConfiguration({ customerId }) {
           })}
         </Optional>
       </>}
+      {/* Any customer, managed or not, can be connected to a Request Tracker queue. */}
+        <Optional title="Ticketing" hint="Optional — connect a Request Tracker queue to see this customer's tickets" defaultOpen={!!form.external_queue_id}>
+          <label className="msc-field">
+            <span>Request Tracker queue</span>
+            <select value={form.external_queue_id} onFocus={() => { if (!queues.length && !busy) loadQueues(); }} onChange={event => chooseQueue(event.target.value)}>
+              <option value="">No ticketing</option>
+              {storedQueueMissing && <option value={form.external_queue_id}>{form.external_queue_name} ({form.external_queue_id})</option>}
+              {queues.map(queue => <option key={queue.id} value={queue.id} disabled={!!queue.mapping && Number(queue.mapping.customer_id)!==Number(customerId)}>{queue.name} ({queue.id}){queue.mapping && Number(queue.mapping.customer_id)!==Number(customerId) ? ` — used by ${queue.mapping.customer_name}` : ''}</option>)}
+            </select>
+            {busy==='queues' && <small>Loading queues…</small>}
+            {queueError && <small className="msc-hint">{queueError}</small>}
+          </label>
+          {form.external_queue_id && <>
+            <p className="text-sm text-muted">Last sync: {form.last_successful_sync_at || 'not yet'}{form.last_sync_status ? ` (${form.last_sync_status})` : ''}</p>
+            <ToggleRow label="Include tickets in reports" value={form.ticket_include_in_reporting} onChange={value => update({ ticket_include_in_reporting:value })} />
+            <ToggleRow label="Update the RT ticket when an activity is completed" description="Set the matched ticket to the status below." value={form.ticket_write_back_enabled} onChange={value => update({ ticket_write_back_enabled:value })} />
+            {form.ticket_write_back_enabled && <label className="msc-field"><span>RT status to set</span><input value={form.ticket_write_back_status} maxLength={100} placeholder="e.g. resolved" onChange={event => update({ ticket_write_back_status:event.target.value },{ delay:900 })} /></label>}
+            <div className="flex gap-8 msc-actions">
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || status==='saving'} onClick={syncTickets}>{busy==='sync' ? 'Syncing…' : 'Sync tickets now'}</button>
+              {message && <span className="text-sm text-muted">{message}</span>}
+            </div>
+          </>}
+        </Optional>
     </div>
   </div>;
 }

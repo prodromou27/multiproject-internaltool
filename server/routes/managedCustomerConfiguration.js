@@ -86,7 +86,6 @@ router.put('/',requireManager,async (req,res) => {
     if (queueId && !queueName) fail('RT queue name is required when a queue is selected');
     if (queueName.length>500) fail('RT queue name must be at most 500 characters');
     if (req.body.ticket_integration_enabled && (!queueId || !queueName)) fail('Select an RT queue before enabling ticket integration');
-    if (req.body.ticket_integration_enabled && !req.body.managed_services_enabled) fail('Managed Services must be enabled before ticket integration');
     if (req.body.ticket_integration_enabled && !(await ticketingSettings.storedSettings()).enabled) fail('Enable the Request Tracker integration before enabling this customer mapping',409);
     const writeBackStatus=String(req.body.ticket_write_back_status || '').trim();
     if (req.body.ticket_write_back_enabled && !req.body.ticket_integration_enabled) fail('Enable ticket integration before enabling status write-back');

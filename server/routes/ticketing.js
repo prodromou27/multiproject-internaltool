@@ -96,7 +96,7 @@ router.get('/monitoring',async (req,res) => {
     managed_services_enabled:!!row.managed_services_enabled,
     ticket_count:Number(row.ticket_count),
     open_ticket_count:Number(row.open_ticket_count),
-    mapping_problem:!row.customer_active ? 'Customer is inactive' : !row.managed_services_enabled ? 'Managed Services is disabled for this customer' : !row.enabled ? 'Ticket synchronization is disabled for this mapping' : null,
+    mapping_problem:!row.customer_active ? 'Customer is inactive' : !row.enabled ? 'Ticket synchronization is disabled for this mapping' : null,
   })).sort((a,b) => a.customer_name.localeCompare(b.customer_name));
   res.json({
     integration:{ enabled:publicSettings.enabled,configured:!!(publicSettings.base_url && publicSettings.api_token_set),sync_interval_minutes:publicSettings.sync_interval_minutes },

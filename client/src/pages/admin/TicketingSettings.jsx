@@ -18,13 +18,16 @@ const labelStyle = { fontSize: 12, fontWeight: 600, color: 'var(--gray-600)', ma
 function CustomerQueues() {
   const toast = useToast();
   const [rows, setRows] = useState(null), [queues, setQueues] = useState(null), [queueError, setQueueError] = useState('');
-  const [drafts, setDrafts] = useState({}), [busy, setBusy] = useState(''), [error, setError] = useState('');
+  const [drafts, setDrafts] = useState({}), [busy, setBusy] = useState(''), [error, setError] = useState(''), [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const [managed, monitoring] = await Promise.all([api.managedCustomers(), api.ticketingMonitoring()]);
+      // Every active customer can be connected to a queue, managed or not; connected ones first.
+      const [customers, monitoring] = await Promise.all([api.customers(), api.ticketingMonitoring()]);
       const byCustomer = new Map((monitoring.customers || []).map(row => [Number(row.customer_id), row]));
-      setRows((managed.rows || []).map(customer => ({ ...customer, ticketing: byCustomer.get(Number(customer.id)) || null })));
+      setRows((Array.isArray(customers) ? customers : customers.rows || []).filter(customer => customer.active !== 0 && customer.active !== false)
+        .map(customer => ({ ...customer, ticketing: byCustomer.get(Number(customer.id)) || null }))
+        .sort((a, b) => Number(!!b.ticketing?.external_queue_id) - Number(!!a.ticketing?.external_queue_id) || String(a.name).localeCompare(String(b.name))));
       setError('');
     } catch (failure) { setError(failure.message); }
   }, []);
@@ -60,16 +63,17 @@ function CustomerQueues() {
   if (!rows) return <p className="text-muted text-sm">Loading customers…</p>;
   return <>
     {queueError && <p className="text-sm text-muted">RT queues could not be listed ({queueError}). Set up and test the connection above, then <button type="button" className="btn btn-ghost btn-sm" onClick={loadQueues}><RefreshCw size={12} /> Try again</button></p>}
-    {!rows.length ? <p className="text-muted text-sm">No managed customers yet. Turn on managed services in a customer's Service Configuration first.</p> :
+    {rows.length > 8 && <input type="search" className="ticketing-search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Find a customer…" aria-label="Find a customer" />}
+    {!rows.length ? <p className="text-muted text-sm">No customers yet.</p> :
       <div className="table-wrap"><table className="ticketing-queues">
         <thead><tr><th>Customer</th><th>RT queue</th><th>Last sync</th><th /></tr></thead>
-        <tbody>{rows.map(customer => {
+        <tbody>{rows.filter(customer => !search.trim() || String(customer.name).toLowerCase().includes(search.trim().toLowerCase())).map(customer => {
           const currentId = customer.ticketing?.external_queue_id ? String(customer.ticketing.external_queue_id) : '';
           const draft = drafts[customer.id] ?? currentId;
           const changed = draft !== currentId;
           const known = (queues || []).some(queue => String(queue.id) === currentId);
           return <tr key={customer.id}>
-            <td><Link to={`/customers/${customer.id}/service-profile?section=service-configuration`}>{customer.name}</Link><div className="text-muted text-sm">{customer.responsible_team || 'No responsible team'}</div></td>
+            <td><Link to={`/customers/${customer.id}/service-profile?section=service-configuration`}>{customer.name}</Link><div className="text-muted text-sm">{customer.is_managed ? 'Managed customer' : 'Customer'}</div></td>
             <td>
               <select aria-label={`RT queue for ${customer.name}`} value={draft} disabled={!queues?.length && !currentId} onChange={event => setDrafts(current => ({ ...current, [customer.id]: event.target.value }))}>
                 <option value="">Not connected</option>
@@ -104,7 +108,7 @@ export default function TicketingSettings() {
     </section>
     <section style={sectionStyle} aria-label="Customer queues">
       <h3 className="ticketing-heading">2. Customer queues</h3>
-      <p className="text-muted text-sm">Which RT queue holds each managed customer's tickets. A queue can belong to one customer only. The same choice appears in each customer's Service Configuration.</p>
+      <p className="text-muted text-sm">Which RT queue holds each customer's tickets. A queue can belong to one customer only. The same choice appears in each customer's Service Configuration.</p>
       <CustomerQueues />
     </section>
     <section style={sectionStyle} aria-label="Status and priority mapping">
