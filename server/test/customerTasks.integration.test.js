@@ -7,6 +7,10 @@ test('a new activity is logged as completed unless a status is given', async () 
   const row = await db.prepare('SELECT status, completed_at FROM service_activities WHERE id = ?').get(created.data.id);
   assert.match(row.status, /complet/);
   assert.ok(row.completed_at);
+  // There is no status to change: an edit that sends one leaves the activity completed.
+  const current = (await api(`/api/service-activities/${created.data.id}`, { token: ids.tokenEnabled })).data;
+  assert.equal((await api(`/api/service-activities/${created.data.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { version: current.version, status: 'planned', title: 'Still done' } })).status, 200);
+  assert.match((await db.prepare('SELECT status FROM service_activities WHERE id = ?').get(created.data.id)).status, /complet/);
 });
 
 test('a task can be created for a customer without a project, and shows on that customer', async () => {

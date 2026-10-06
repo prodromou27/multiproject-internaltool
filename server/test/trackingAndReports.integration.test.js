@@ -154,7 +154,7 @@ test('Excel export matches all list filters and exports the entire matching set'
   const technology = (await db.prepare('INSERT INTO technologies (name) VALUES (?)').run('Export consistency technology')).lastInsertRowid;
   for (let i = 0; i < 2; i++) await createActivity({ title: `Export consistency ${i}`, technology_ids: [technology], billable_classification: 'billable' });
   await createActivity({ title: 'Export consistency excluded', billable_classification: 'non_billable' });
-  const query = new URLSearchParams({ customer_id: ids.customer, category_id: ids.category, technology_id: technology, status: 'planned', billable_classification: 'billable', search: 'Export consistency', from: '2026-01-01', to: '2026-01-31', page_size: 1 });
+  const query = new URLSearchParams({ customer_id: ids.customer, category_id: ids.category, technology_id: technology, status: 'completed', billable_classification: 'billable', search: 'Export consistency', from: '2026-01-01', to: '2026-01-31', page_size: 1 });
   const list = await api(`/api/service-activities?${query}`, { token: ids.tokenManager });
   assert.equal(list.status, 200);
   assert.equal(Number(list.data.total), 2);
@@ -187,11 +187,9 @@ test('completion and follow-up creation invalidate older editing snapshots', asy
   const created = await createActivity({ title: 'Other mutations invalidate edits' });
   const path = `/api/service-activities/${created.data.id}`;
   const token = ids.tokenEnabled;
-  const before = (await api(path, { token })).data;
-  assert.equal((await api(`${path}/complete`, { method: 'POST', token, body: {} })).status, 200);
+  // Activities are completed when logged, so "complete" changes nothing and does not disturb an open edit.
   const completed = (await api(path, { token })).data;
-  assert.equal(completed.version, before.version + 1);
-  assert.equal((await api(path, { method: 'PUT', token, body: { version: before.version, title: 'Stale' } })).status, 409);
+  assert.match(completed.status, /complet/);
   assert.equal((await api(`${path}/complete`, { method: 'POST', token, body: {} })).status, 200);
   assert.equal((await api(path, { token })).data.version, completed.version);
   assert.equal((await api(`${path}/follow-up-task`, { method: 'POST', token, body: {} })).status, 200);

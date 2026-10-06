@@ -1,14 +1,14 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import '../components/billingMix.css';
 import './ActivityForm.css';
-import { ClipboardList, Search, Copy, CheckCircle2, ListPlus, Pencil, Flag, SlidersHorizontal, X } from 'lucide-react';
+import { ClipboardList, Search, Copy, ListPlus, Pencil, Flag, SlidersHorizontal, X } from 'lucide-react';
 import { fmtDuration, MIX, mixOf, groupByDay, LedgerDay } from '../components/activityLedger';
 import { PageHeader } from '../components/PageLayout';
 import { useSearchParams } from 'react-router-dom';
 import { customerIdFromCreateIntent, useCreateIntent } from '../hooks/useCreateIntent';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { StatusBadge, fmtDate, Modal } from '../components/Shared';
+import { fmtDate, Modal } from '../components/Shared';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
@@ -41,7 +41,6 @@ export default function ActivityLog() {
   const [customTo, setCustomTo] = useState('');
   const [customerFilter, setCustomerFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
   const [technologyFilter, setTechnologyFilter] = useState('');
   const [billableFilter, setBillableFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -101,7 +100,6 @@ export default function ActivityLog() {
     if (to) params.to = to;
     if (customerFilter) params.customer_id = customerFilter;
     if (categoryFilter) params.category_id = categoryFilter;
-    if (statusFilter) params.status = statusFilter;
     if (technologyFilter) params.technology_id = technologyFilter;
     if (billableFilter) params.billable_classification = billableFilter;
     if (debouncedSearch) params.search = debouncedSearch;
@@ -119,7 +117,7 @@ export default function ActivityLog() {
     }).finally(() => {
       if (!controller.signal.aborted) setLoading(false);
     });
-  }, [page, datePreset, customFrom, customTo, customerFilter, categoryFilter, statusFilter, technologyFilter, billableFilter, debouncedSearch]);
+  }, [page, datePreset, customFrom, customTo, customerFilter, categoryFilter, technologyFilter, billableFilter, debouncedSearch]);
 
   useEffect(() => {
     load();
@@ -144,11 +142,6 @@ export default function ActivityLog() {
     setEditActivity(null);
     toast.success('Activity updated');
     load();
-  }
-
-  async function handleComplete(row) {
-    try { await api.completeServiceActivity(row.id); toast.success('Marked as completed'); load(); }
-    catch (e) { toast.error(e.message); }
   }
 
   async function handleDuplicate(row) {
@@ -183,7 +176,6 @@ export default function ActivityLog() {
   const filterDefs = meta ? [
     { key: 'customer', label: 'Customer', value: customerFilter, set: setCustomerFilter, options: meta.customers.map(c => [c.id, c.name]) },
     { key: 'category', label: 'Category', value: categoryFilter, set: setCategoryFilter, options: meta.categories.map(c => [c.id, c.name]) },
-    { key: 'status', label: 'Status', value: statusFilter, set: setStatusFilter, options: meta.statuses.map(s => [s.value, s.label]) },
     { key: 'technology', label: 'Technology', value: technologyFilter, set: setTechnologyFilter, options: meta.technologies.map(t => [t.id, t.name]) },
     { key: 'billing', label: 'Billing', value: billableFilter, set: setBillableFilter, options: Object.entries(BILLABLE_LABELS) },
   ] : [];
@@ -199,7 +191,6 @@ export default function ActivityLog() {
     setPage(1);
   }
 
-  const completedValue = meta?.statuses?.find(s => s.is_terminal && /complet/i.test(s.value))?.value || 'completed';
   const canFollowUp = ['manager', 'engineer'].includes(user.role) && meta?.settings?.allow_follow_up_task_creation !== false;
 
   return (
@@ -319,13 +310,11 @@ export default function ActivityLog() {
                               </div>
                             </div>
                             <div className="al-side">
-                              <StatusBadge entityType="service_activity" s={r.status} />
+                              {/* An activity records work done; only an old, cancelled one is marked. */}
+                              {r.status === 'cancelled' && <span className="badge badge-cancelled">Cancelled</span>}
                               <div className="al-actions">
                                 <button type="button" aria-label={`Edit ${r.title}`} title="Edit" disabled={!meta || editLoadingId === r.id} onClick={() => handleEdit(r)}><Pencil size={15} aria-hidden="true" /></button>
                                 <button type="button" aria-label={`Duplicate ${r.title}`} title="Duplicate" onClick={() => handleDuplicate(r)}><Copy size={15} aria-hidden="true" /></button>
-                                {r.status !== completedValue
-                                  ? <button type="button" aria-label={`Mark ${r.title} complete`} title="Mark complete" onClick={() => handleComplete(r)}><CheckCircle2 size={15} aria-hidden="true" /></button>
-                                  : <span className="al-action-gap" aria-hidden="true" />}
                                 {canFollowUp && (
                                   <button type="button" aria-label={`Create follow-up task for ${r.title}`} title="Create follow-up task" onClick={() => handleFollowUp(r)}><ListPlus size={15} aria-hidden="true" /></button>
                                 )}

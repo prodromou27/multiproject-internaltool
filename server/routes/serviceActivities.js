@@ -213,11 +213,9 @@ router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => 
 
   const engineerId = req.user.id; // never trust client-supplied engineer_id
 
-  const statuses = await getStatusConfig();
-  if (body.status && !statuses.some(s => s.value === body.status)) return res.status(400).json({ error: 'Invalid status' });
-  const completedValue = await terminalCompletedValue(statuses);
-  // An activity is logged after the work is done, so it is completed unless a status is given.
-  const status = body.status && statuses.some(s => s.value === body.status) ? body.status : completedValue;
+  // An activity records work already done: it is always completed (there is no status to choose).
+  const completedValue = await terminalCompletedValue(await getStatusConfig());
+  const status = completedValue;
 
   const activity = await db.transaction(async (tx) => {
     const reference = await generateActivityReference(tx);
@@ -322,10 +320,9 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
     if (categoryError) return res.status(400).json({ error: categoryError });
   }
 
-  const statuses = await getStatusConfig();
-  if (body.status && !statuses.some(s => s.value === body.status)) return res.status(400).json({ error: 'Invalid status' });
-  const completedValue = await terminalCompletedValue(statuses);
-  const newStatus = body.status || existing.status;
+  // Editing never changes what an activity is: work done. An old, cancelled one stays cancelled.
+  const completedValue = await terminalCompletedValue(await getStatusConfig());
+  const newStatus = existing.status === 'cancelled' ? 'cancelled' : completedValue;
 
   // Enforce "require attachment" only on the transition INTO Completed (the activity
   // already exists at this point, so attachments could have been uploaded first) —
@@ -357,7 +354,7 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
         body.duration_minutes !== undefined ? (body.duration_minutes || null) : existing.duration_minutes,
         body.category_id || null, body.subcategory_id !== undefined ? (body.subcategory_id || null) : existing.subcategory_id,
         body.title?.trim() || null, body.description !== undefined ? (body.description || null) : existing.description,
-        body.status || null, body.priority !== undefined ? (body.priority || null) : existing.priority,
+        newStatus, body.priority !== undefined ? (body.priority || null) : existing.priority,
         body.work_location !== undefined ? (body.work_location || null) : existing.work_location,
         body.customer_impact !== undefined ? (body.customer_impact || null) : existing.customer_impact,
         body.ticket_reference !== undefined ? (body.ticket_reference || null) : existing.ticket_reference,
@@ -407,8 +404,8 @@ router.put('/:id', requireAuth, requireServiceActivityAccess, requireOwnedActivi
     await writeBackTicketOnCompletion(req, { id, title: body.title?.trim() || existing.title, customerId, ticketReference: effectiveTicketReference });
   }
 
-  if (body.status && body.status !== existing.status) {
-    await logAudit(db, req, 'service_activity', id, body.title?.trim() || existing.title, 'activity_status_changed', `status ${existing.status}->${body.status}`);
+  if (newStatus !== existing.status) {
+    await logAudit(db, req, 'service_activity', id, body.title?.trim() || existing.title, 'activity_status_changed', `status ${existing.status}->${newStatus}`);
   }
   if (body.customer_id && body.customer_id !== existing.customer_id) {
     await logAudit(db, req, 'service_activity', id, body.title?.trim() || existing.title, 'activity_customer_changed', `customer_id ${existing.customer_id}->${body.customer_id}`);

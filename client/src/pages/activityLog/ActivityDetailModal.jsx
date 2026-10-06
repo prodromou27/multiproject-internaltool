@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Paperclip, Upload, Trash2, Flag } from 'lucide-react';
 import { fmtDuration, mixOf } from '../../components/activityLedger';
 import { api } from '../../api';
-import { StatusBadge, fmtDate, fmtDateTime, Modal } from '../../components/Shared';
+import { fmtDate, fmtDateTime, Modal } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { WORK_LOCATION_LABELS } from './helpers';
 import { useLiveRefresh } from '../../live';
@@ -64,7 +64,7 @@ export function ActivityDetailModal({ id, allowAttachments, onClose, onChanged }
       <div className="ad">
         <div className="ad-head">
           <h3>{activity.title}</h3>
-          <StatusBadge entityType="service_activity" s={activity.status} />
+          {activity.status === 'cancelled' && <span className="badge badge-cancelled">Cancelled</span>}
         </div>
 
         {activity.follow_up_required ? (

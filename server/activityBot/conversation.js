@@ -51,7 +51,6 @@ function describe(draft) {
   if (draft.technologies?.length) lines.push(`• Technology: ${draft.technologies.map(tech => tech.name).join(', ')}`);
   if (draft.ticket_reference) lines.push(`• Ticket: ${draft.ticket_reference}`);
   if (draft.billable_classification) lines.push(`• Billing: ${BILLABLE.find(([key]) => key === draft.billable_classification)?.[1] || draft.billable_classification}`);
-  if (draft.status && !/complet/.test(draft.status)) lines.push(`• Status: ${draft.status.replace(/_/g, ' ')}`);
   if (draft.description) lines.push(`• Notes: ${draft.description.length > 300 ? `${draft.description.slice(0, 300)}…` : draft.description}`);
   return lines.join('\n');
 }
@@ -151,7 +150,7 @@ function applyParsed(draft, parsed) {
   else if (parsed.customer_choices && !draft.customer) { draft.customer_choices = parsed.customer_choices; understood = true; }
   if (parsed.category) { draft.category = parsed.category; draft.category_choices = null; draft.subcategory = parsed.subcategory || null; understood = true; }
   else if (parsed.category_choices && !draft.category) { draft.category_choices = parsed.category_choices; understood = true; }
-  for (const key of ['duration_minutes', 'activity_date', 'ticket_reference', 'billable_classification', 'status']) {
+  for (const key of ['duration_minutes', 'activity_date', 'ticket_reference', 'billable_classification']) {
     if (parsed[key] !== undefined) { draft[key] = parsed[key]; understood = true; }
   }
   if (parsed.technologies?.length) { draft.technologies = parsed.technologies; understood = true; }
@@ -181,7 +180,6 @@ function payload(draft) {
     category_id: draft.category.id,
     subcategory_id: draft.subcategory?.id || null,
     activity_date: draft.activity_date,
-    status: draft.status,
     duration_minutes: draft.duration_minutes || null,
     description: draft.description || null,
     ticket_reference: draft.ticket_reference || null,

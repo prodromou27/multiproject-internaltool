@@ -316,9 +316,10 @@ test('an activity logged directly as Completed also triggers RT write-back', asy
     const entry = await db.prepare("SELECT * FROM audit_log WHERE entity_id=? AND action LIKE 'ticket_writeback%'").get(created.data.id);
     assert.ok(entry, 'write-back was attempted');
     assert.match(entry.detail, /ticket_id=4101/);
-    // A planned activity is not finished, so nothing is written back.
-    const planned = await createActivity({ title: 'Planned only', ticket_reference: 'RT#4101', status: 'planned' });
-    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE entity_id=? AND action LIKE 'ticket_writeback%'").get(planned.data.id)).n, 0);
+    // Activities record work done: a status sent by an older client is ignored, and the ticket is still updated.
+    const planned = await createActivity({ title: 'Sent as planned', ticket_reference: 'RT#4101', status: 'planned' });
+    assert.match((await db.prepare('SELECT status FROM service_activities WHERE id=?').get(planned.data.id)).status, /complet/);
+    assert.equal(Number((await db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE entity_id=? AND action LIKE 'ticket_writeback%'").get(planned.data.id)).n), 1);
   } finally {
     await db.prepare('DELETE FROM customer_ticketing_configurations WHERE customer_id = ?').run(ids.customer);
     await db.prepare('DELETE FROM external_tickets WHERE customer_id = ?').run(ids.customer);

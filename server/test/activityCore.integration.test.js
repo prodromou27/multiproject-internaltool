@@ -272,9 +272,9 @@ test('a completed upgrade keeps the asset inventory version current, and never r
     body: { customer_id: ids.customer, activity_date: date, category_id: category, title: 'Upgrade', status, asset_ids: [asset.data.id], asset_versions: { [asset.data.id]: version } } });
   const day = offset => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 
-  assert.equal((await log(day(0), 'planned', '2.0')).status, 200);
-  assert.equal(await inventory(), '1.0', 'a planned upgrade does not change the inventory');
-  const completed = await log(day(0), 'completed', '2.0');
+  assert.equal(await inventory(), '1.0');
+  // Logged work is done work, whatever status a client sends: the inventory follows it.
+  const completed = await log(day(0), 'planned', '2.0');
   assert.equal(completed.status, 200);
   assert.equal(await inventory(), '2.0');
   const link = await db.prepare('SELECT version, previous_version FROM service_activity_assets WHERE service_activity_id=?').get(completed.data.id);

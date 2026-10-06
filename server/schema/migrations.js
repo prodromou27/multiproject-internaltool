@@ -748,6 +748,13 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261017_activities_are_done', `
+    -- Service activities record work already done, so they no longer have a status
+    -- to choose. Ones logged as planned or in progress become completed on their date;
+    -- cancelled ones are left as they are.
+    UPDATE service_activities SET status = 'completed', completed_at = COALESCE(completed_at, activity_date || ' 00:00:00')
+      WHERE status NOT IN ('completed', 'cancelled');
+  `]);
   migrations.push(['20261016_vulnerabilities', `
     -- Vulnerabilities (CVE portal). CVEs for the vendors/products we watch, from NVD.
     CREATE TABLE IF NOT EXISTS cves (
