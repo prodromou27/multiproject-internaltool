@@ -387,3 +387,16 @@ test('Request Tracker settings are manager-only and never return or store a plai
     assert.equal((await api('/api/ticketing/settings',{ method:'PUT',token:ids.tokenManager,body:{ sync_interval_minutes:4 } })).status,400);
   } finally { if (previous===undefined) delete process.env.CUSTOMER_FIELD_KEY;else process.env.CUSTOMER_FIELD_KEY=previous; }
 });
+
+test('Request Tracker may be on an internal address unless ALLOW_PRIVATE_TICKETING_URLS=false', async () => {
+  const save = base_url => api('/api/ticketing/settings', { method: 'PUT', token: ids.tokenManager, body: { enabled: true, base_url, api_token: 'internal-rt-token', sync_interval_minutes: 30 } });
+  const before = process.env.ALLOW_PRIVATE_TICKETING_URLS;
+  try {
+    delete process.env.ALLOW_PRIVATE_TICKETING_URLS;
+    assert.equal((await save('https://10.20.30.40/rt/')).status, 200, 'internal address allowed by default');
+    process.env.ALLOW_PRIVATE_TICKETING_URLS = 'false';
+    assert.equal((await save('https://192.168.1.50/rt/')).status, 400, 'refused when switched off');
+  } finally {
+    if (before === undefined) delete process.env.ALLOW_PRIVATE_TICKETING_URLS; else process.env.ALLOW_PRIVATE_TICKETING_URLS = before;
+  }
+});

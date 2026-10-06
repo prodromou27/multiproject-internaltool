@@ -9,7 +9,7 @@ class RequestTrackerProvider {
 
   async validate() {
     if (!this.config.base_url || !this.config.api_token || this.config.api_token.startsWith('[')) throw Object.assign(new Error('Request Tracker is not fully configured'),{ status:400 });
-    await this.validateUrl(this.config.base_url,{ label:'RT base URL',allowPrivate:process.env.ALLOW_PRIVATE_TICKETING_URLS==='true' });
+    await this.validateUrl(this.config.base_url,{ label:'RT base URL',allowPrivate:process.env.ALLOW_PRIVATE_TICKETING_URLS!=='false' });
   }
 
   async request(path,params={}) {

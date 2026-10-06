@@ -22,7 +22,7 @@ router.put('/settings',async (req,res) => {
   let next;
   try {
     const current=await settings.storedSettings();next=settings.mergeSettings(current,req.body);
-    if (next.base_url) await assertPublicHttpUrl(next.base_url,{ label:'RT base URL',allowPrivate:process.env.ALLOW_PRIVATE_TICKETING_URLS==='true' });
+    if (next.base_url) await assertPublicHttpUrl(next.base_url,{ label:'RT base URL',allowPrivate:process.env.ALLOW_PRIVATE_TICKETING_URLS!=='false' });
   } catch(error) { return res.status(error.status || 400).json({ error:error.message }); }
   await settings.saveSettings(next);
   await logAudit(db,req,'settings','ticketing_rt','Request Tracker','ticketing_settings_updated',`enabled=${next.enabled}; sync_interval_minutes=${next.sync_interval_minutes}; token_set=${!!next.api_token}`);

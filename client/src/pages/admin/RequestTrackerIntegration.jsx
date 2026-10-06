@@ -50,6 +50,6 @@ export default function RequestTrackerIntegration({ sectionStyle,labelStyle }) {
       <button type="button" className="btn btn-ghost" disabled={!!busy || !form.api_token_set || !form.base_url} onClick={discover}>{busy==='queues' ? 'Loading...' : <><RefreshCw size={14} /> Discover Queues</>}</button>
     </div>
     {!!queues.length && <div className="table-wrap u-ed26b21"><table><thead><tr><th>Queue ID</th><th>Name</th><th>Description</th></tr></thead><tbody>{queues.map(queue => <tr key={queue.id}><td>{queue.id}</td><td>{queue.name}</td><td className="text-muted">{queue.description || 'No description'}</td></tr>)}</tbody></table></div>}
-    <p className="text-muted text-sm u-56f4356">Use a dedicated least-privilege RT token. Private-network RT URLs require the server setting ALLOW_PRIVATE_TICKETING_URLS=true.</p>
+    <p className="text-muted text-sm u-56f4356">Use a dedicated least-privilege RT token. Internal (private-network) RT addresses are allowed.</p>
   </div>;
 }
