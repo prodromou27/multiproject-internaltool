@@ -208,7 +208,7 @@ async function sendAutomaticReminders(store = db) {
         title: occasion === 'overdue' ? '⚠️ Customer report overdue' : '📄 Customer report due soon',
         body: `The **${due.label}** report for **${name}** ${occasion === 'overdue' ? 'was due' : 'is due'} on ${due.due_date}.`,
         facts: [{ name: 'Customer', value: name }, { name: 'Period', value: due.label }, { name: 'Due', value: due.due_date }],
-      }, { title: `${name}: ${due.label} report ${occasion === 'overdue' ? 'overdue' : 'due soon'}`, body: `Due ${due.due_date}`, link: `/managed-customers/${customer.id}` });
+      }, { title: `${name}: ${due.label} report ${occasion === 'overdue' ? 'overdue' : 'due soon'}`, body: `Due ${due.due_date}`, link: `/customers/${customer.id}/service-profile?section=reports` });
       counts.report_due++;
     }
   }

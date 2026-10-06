@@ -24,7 +24,7 @@ async function updateReportWorkflow(req,res,customerId,reportId) {
   const action=req.body?.action;
   try {
     const result=await reportHistory.transition(customerId,reportId,req.body || {},req.user.id);
-    const link=action==='submit' ? '/approvals?view=reports' : `/managed-customers/${customerId}`;
+    const link=action==='submit' ? '/approvals?view=reports' : `/customers/${customerId}/service-profile?section=reports`;
     const titleByAction={ submit:'Managed report awaiting review',approve:'Managed report approved',reject:'Managed report returned for changes',finalize:'Managed report finalized',reopen:'Managed report reopened' };
     let recipients=[];
     if (action==='submit') {

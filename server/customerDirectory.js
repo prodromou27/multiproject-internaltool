@@ -1,5 +1,5 @@
 const SEARCH_FIELDS=Object.freeze(['name','contact_name','contact_email','address','location','customer_code']);
-const VIEWS=new Set(['all','active','inactive','tracked']);
+const VIEWS=new Set(['all','active','inactive','tracked','managed']);
 
 function parseCustomerListQuery(query={}) {
   if (query.paged===undefined) return { paged:false };
@@ -25,10 +25,12 @@ function customerListPage(rows,options) {
     active:searched.filter(row => !!row.active).length,
     inactive:searched.filter(row => !row.active).length,
     tracked:searched.filter(row => !!row.service_activity_enabled).length,
+    managed:searched.filter(row => !!row.is_managed).length,
   };
   const filtered=options.view==='active' ? searched.filter(row => !!row.active)
     : options.view==='inactive' ? searched.filter(row => !row.active)
     : options.view==='tracked' ? searched.filter(row => !!row.service_activity_enabled)
+    : options.view==='managed' ? searched.filter(row => !!row.is_managed)
     : searched;
   const offset=(options.page-1)*options.pageSize;
   return { rows:filtered.slice(offset,offset+options.pageSize),total:filtered.length,

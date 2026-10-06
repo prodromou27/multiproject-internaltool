@@ -25,7 +25,7 @@ test('navigation and create actions respect existing role and feature boundaries
   assert.equal(quickCreateActions('manager').length, 4);
   const delegatedReviewer={ role:'planner',permissions:{ 'managed_reports.review':true,'managed_customers.view':false } };
   assert.equal(visiblePages(delegatedReviewer).some(page => page.id==='approvals'),true);
-  assert.equal(visiblePages(delegatedReviewer).some(page => page.id==='managedCustomers'),false);
+  assert.equal(visiblePages(delegatedReviewer).some(page => page.id==='customers'),false);
   assert.equal(visiblePages({ role:'manager',permissions:{ 'projects.access':false } }).some(page => page.id==='projects'),false);
   assert.equal(visiblePages({ role:'planner',permissions:{ 'customers.access':true } }).some(page => page.id==='customers'),true);
   assert.equal(visiblePages({ role:'manager',permissions:{ 'reports.access':false } }).some(page => ['reports','serviceOperations'].includes(page.id)),false);
@@ -44,7 +44,7 @@ test('primary navigation stays concise and respects role and feature access', ()
   const engineer = { role: 'engineer', permissions: {} };
 
   assert.deepEqual(primaryPages(manager, false).map(page => page.id),
-    ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'managedCustomers', 'approvals', 'reminders']);
+    ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'customers', 'approvals', 'reminders']);
   assert.deepEqual(primaryPages(engineer, false).map(page => page.id),
     ['dashboard', 'myWork', 'projects', 'tasks', 'visits', 'reminders']);
   assert.ok(primaryPages(engineer, true).some(page => page.id === 'activities'));

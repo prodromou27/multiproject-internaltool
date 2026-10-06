@@ -10,13 +10,12 @@ export const PAGES = [
   { id: 'visits', path: '/maintenance-visits', label: 'Maintenance Visits', section: 'Operations', icon: 'Wrench', roles: everyone, permission:'visits.access', badge: 'visits', description: 'Customer visits, engineer assignments and reports' },
   { id: 'activities', path: '/activity-log', label: 'Activity Log', section: 'Operations', icon: 'ClipboardList', roles: ['manager', 'engineer', 'pm'], permission:'service_activities.access', feature: 'serviceActivity', description: 'Customer service work, evidence and follow-ups' },
   { id: 'customers', path: '/customers', label: 'Customers', section: 'Management', icon: 'Building2', roles: ['manager'], permission:'customers.access', description: 'Customer profiles, service contracts and team access' },
-  { id: 'managedCustomers', path: '/managed-customers', label: 'Managed Customers', section: 'Management', icon: 'Building2', roles: ['manager'], permission: 'managed_customers.view', description: 'Customer-centric managed-service health, tickets and reporting' },
   { id: 'workload', path: '/workload', label: 'Workload', section: 'Management', icon: 'UsersIcon', roles: ['manager'], description: 'Engineer commitments and upcoming demand' },
   { id: 'reports', path: '/reports', label: 'Reports', section: 'Management', icon: 'BarChart2', roles: ['manager'], permission:'reports.access', description: 'Operational summaries, delivery trends and reporting' },
   { id: 'kpiManagement', path: '/kpis', label: 'KPI Management', section: 'Management', icon: 'BarChart2', roles: ['manager'], permission:'kpis.manage', description: 'Define, test and review management performance indicators' },
   { id: 'approvals', path: '/approvals', label: 'Approvals', section: 'Management', icon: 'CheckCheck', roles: ['manager'], permission: 'managed_reports.review', description: 'Review project closures and managed-service reports' },
   { id: 'scorecards', path: '/scorecards', label: 'Scorecards', section: 'Management', icon: 'Award', roles: ['manager'], description: 'Project delivery evaluations and engineer performance' },
-  { id: 'serviceOperations', path: '/service-operations', label: 'Service Activity Reports', section: 'Management', icon: 'Activity', roles: ['manager'], permission:'reports.access', description: 'Aggregated reporting over logged service activity — see Managed Customers for per-customer detail' },
+  { id: 'serviceOperations', path: '/service-operations', label: 'Service Activity Reports', section: 'Management', icon: 'Activity', roles: ['manager'], permission:'reports.access', description: 'Aggregated reporting over logged service activity — see Customer 360 for per-customer detail' },
   { id: 'sla', path: '/sla', label: 'SLA', section: 'Management', icon: 'ShieldCheck', roles: ['manager'], description: 'Service commitments and exceptions requiring attention' },
   { id: 'templates', path: '/templates', label: 'Templates', section: 'Administration', icon: 'FileText', roles: ['manager'], description: 'Reusable project structures and default tasks' },
   { id: 'users', path: '/users', label: 'Users', section: 'Administration', icon: 'UsersIcon', roles: ['manager'], description: 'User accounts and operational roles' },
@@ -41,7 +40,7 @@ export function visiblePages(userOrRole, serviceActivityEnabled = false) {
 }
 
 const DEFAULT_PRIMARY_PAGES = {
-  manager: ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'managedCustomers', 'approvals', 'reminders'],
+  manager: ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'customers', 'approvals', 'reminders'],
   engineer: ['dashboard', 'myWork', 'tasks', 'activities', 'projects', 'visits', 'reminders'],
   planner: ['dashboard', 'calendar', 'visits', 'reminders'],
   pm: ['dashboard', 'projects', 'activities', 'visits', 'reminders'],

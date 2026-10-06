@@ -20,7 +20,8 @@ test('customer directory validates paging before route/database work',() => {
 test('customer directory applies literal search, full-scope counts, views, and pages',() => {
   const searched=customerListPage(rows,{ page:1,pageSize:25,search:'north',view:'all' });
   assert.deepEqual(searched.rows.map(row => row.id),[1]);
-  assert.deepEqual(searched.counts,{ all:1,active:1,inactive:0,tracked:1 });
+  assert.deepEqual(searched.counts,{ all:1,active:1,inactive:0,tracked:1,managed:0 });
+  assert.deepEqual(customerListPage(rows.map(row => ({ ...row,is_managed:row.id===2 })),{ page:1,pageSize:25,search:'',view:'managed' }).rows.map(row => row.id),[2]);
   const inactive=customerListPage(rows,{ page:1,pageSize:1,search:'',view:'inactive' });
   assert.equal(inactive.total,1);assert.equal(inactive.rows[0].id,3);assert.equal(inactive.page_size,1);
 });

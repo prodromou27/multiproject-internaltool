@@ -4,14 +4,14 @@ import { Modal } from './Shared';
 
 /**
  * A glossary for the customer/service screens that share overlapping names
- * (Customers, Managed Customers, Activity Log, Service Activity Reports,
+ * (Customers, Customer 360, Activity Log, Service Activity Reports,
  * Service Activity Tracking, Ticket Sync Status) plus a short setup checklist
  * for managers. Answers "what does this screen do?" without needing a
  * separate hosted docs site.
  */
 const GLOSSARY = [
-  { term: 'Customers', desc: 'General customer profiles, contacts and contracts.' },
-  { term: 'Managed Customers', desc: 'Per-customer managed-service health, tickets and reports — for one customer at a time.' },
+  { term: 'Customers', desc: 'Every customer. The Managed view shows managed-service customers with their report status, service health and tickets.' },
+  { term: 'Customer 360', desc: 'Everything about one customer. Managed customers also have Tickets and Reports tabs.' },
   { term: 'Activity Log', desc: 'Where engineers log service work as it happens.' },
   { term: 'Service Activity Reports', desc: 'Aggregated reporting over all logged service activity, across every customer.' },
   { term: 'Service Activity Tracking (Settings)', desc: 'Admin configuration for the Activity Log module — categories, technologies, and per-team setup.' },

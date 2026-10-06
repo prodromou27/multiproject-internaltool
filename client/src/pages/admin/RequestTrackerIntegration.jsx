@@ -34,7 +34,7 @@ export default function RequestTrackerIntegration({ sectionStyle,labelStyle }) {
       <div className="u-ba0f8c4">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#7c3aed"/><path d="M5 9a2 2 0 010 4v2a1 1 0 001 1h12a1 1 0 001-1v-2a2 2 0 010-4V7a1 1 0 00-1-1H6a1 1 0 00-1 1v2z" fill="white"/><path d="M12 6.5v1.5M12 11v2M12 15.5V17" stroke="#7c3aed" strokeWidth="1.5" strokeLinecap="round"/></svg>
       </div>
-      <div className="u-97445a8"><div className="u-0c7a14e">Request Tracker</div><div className="text-muted text-sm">REST 2.0 ticket and queue integration for Managed Customers</div></div>
+      <div className="u-97445a8"><div className="u-0c7a14e">Request Tracker</div><div className="text-muted text-sm">REST 2.0 ticket and queue integration for managed customers</div></div>
       <Toggle checked={form.enabled} onChange={value => set('enabled',value)} label={form.enabled ? 'Enabled' : 'Disabled'} />
     </div>
     {error && <div className="error-msg mb-12" role="alert">{error}</div>}

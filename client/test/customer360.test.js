@@ -71,3 +71,14 @@ test('an engineer on a managed-services team gets the Assets tab for that custom
   // Managers are unaffected.
   assert.equal(customer360Sections({ role: 'manager', permissions: {} }).some(section => section.id === 'assets'), true);
 });
+
+test('managed customers add Tickets and Reports, for people who may see managed services', () => {
+  const ids = (user, managed) => customer360Sections(user, {}, false, managed).map(section => section.id);
+  const manager = { role: 'manager' };
+  assert.ok(!ids(manager, false).includes('tickets'));
+  assert.ok(ids(manager, true).includes('tickets') && ids(manager, true).includes('reports'));
+  assert.ok(!ids({ role: 'manager', permissions: { 'managed_customers.view': false } }, true).includes('tickets'));
+  assert.ok(!ids({ role: 'engineer' }, true).includes('reports'));
+  assert.equal(customer360Section(manager, 'tickets', {}, false, true), 'tickets');
+  assert.equal(customer360Section(manager, 'tickets', {}, false, false), 'overview');
+});

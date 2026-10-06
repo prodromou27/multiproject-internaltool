@@ -72,9 +72,10 @@ router.get('/', requireAuth, async (req, res) => {
     const visible=(candidates ? rows.filter(row => candidates.has(Number(row.id))) : rows).map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name));
     return res.json(listQuery.paged ? customerListPage(visible,listQuery) : visible);
   }
+  const managed = new Set((await db.prepare('SELECT customer_id FROM managed_customer_configurations WHERE managed_services_enabled = 1').all()).map(row => Number(row.customer_id)));
   const rows = (await db.prepare(`SELECT c.*, u.name as created_by_name,
     (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = c.id) as visit_count
-    FROM customers c LEFT JOIN users u ON c.created_by = u.id ORDER BY c.name`).all());
+    FROM customers c LEFT JOIN users u ON c.created_by = u.id ORDER BY c.name`).all()).map(row => ({ ...row, is_managed: managed.has(Number(row.id)) }));
   const visible=(candidates ? rows.filter(row => candidates.has(Number(row.id))) : rows).map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name));
   return res.json(listQuery.paged ? customerListPage(visible,listQuery) : visible);
 });

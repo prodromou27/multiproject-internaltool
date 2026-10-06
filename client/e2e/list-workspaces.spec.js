@@ -72,21 +72,31 @@ test('customer directory combines service coverage with recoverable loading', as
   await expect(page.getByText('Contoso Retail')).toHaveCount(0);
 });
 
-test('managed customer landing filters service health with visible result context', async ({ page }) => {
+test('managed customers are a view of Customers, with report status, service health and tickets', async ({ page }) => {
   const api = await mockApi(page, { role: 'manager' });
+  const rows = [
+    { id: 1, name: 'Northwind Logistics', active: 1, is_managed: true },
+    { id: 2, name: 'Contoso Retail', active: 1, is_managed: true },
+  ];
+  api.override('GET /api/customers', ({ request }) => {
+    const view = new URL(request.url()).searchParams.get('view');
+    const shown = view === 'managed' ? rows : [...rows, { id: 3, name: 'Fabrikam', active: 1, is_managed: false }];
+    return { body: { rows: shown, total: shown.length, page: 1, page_size: 25, counts: { all: 3, active: 3, tracked: 0, managed: 2, inactive: 0 } } };
+  });
   api.override('GET /api/managed-customers', () => ({ body: { rows: [
-    { id: 1, name: 'Northwind Logistics', responsible_team: 'Security', service_manager: 'Alex Mercer', service_status: 'healthy', open_tickets: 2, pending_tickets: 1, activities_this_month: 8, open_tasks: 2, active_projects: 1 },
-    { id: 2, name: 'Contoso Retail', responsible_team: 'Cloud', service_manager: 'Jordan Lee', service_status: 'attention', open_tickets: 4, pending_tickets: 2, activities_this_month: 3, open_tasks: 1, active_projects: 0 },
+    { id: 1, name: 'Northwind Logistics', responsible_team: 'Security', service_manager: 'Alex Mercer', service_status: 'healthy', open_tickets: 2, pending_tickets: 1, activities_this_month: 8 },
+    { id: 2, name: 'Contoso Retail', responsible_team: 'Cloud', service_manager: 'Jordan Lee', service_status: 'attention', open_tickets: 4, pending_tickets: 2, activities_this_month: 3 },
   ] } }));
+  // The old page's address opens the Managed view.
   await page.goto('/managed-customers');
-
-  await expect(page.getByText('2 of 2 managed customers')).toBeVisible();
-  await page.getByLabel('Service status').selectOption('attention');
-  await expect(page.getByText('1 of 2 managed customers')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Contoso Retail' })).toBeVisible();
-  await expect(page.getByText('Northwind Logistics')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Reset view' }).click();
-  await expect(page.getByText('2 of 2 managed customers')).toBeVisible();
+  await expect(page).toHaveURL(/\/customers\?view=managed/);
+  await expect(page.getByRole('button', { name: /Managed \(2\)/ })).toHaveClass(/active/);
+  await expect(page.getByRole('columnheader', { name: 'Service status' })).toBeVisible();
+  await expect(page.getByText('Sync issue')).toBeVisible();
+  await expect(page.getByRole('link', { name: '4' })).toHaveAttribute('href', '/customers/2/service-profile?section=tickets');
+  await expect(page.getByText('Fabrikam')).toHaveCount(0);
+  await page.getByRole('button', { name: /All \(3\)/ }).click();
+  await expect(page.getByText('Fabrikam')).toBeVisible();
 });
 
 test('team directory requests bounded pages and keeps role counts',async ({ page }) => {
@@ -120,22 +130,26 @@ test.describe('managed customer reporting periods use the local calendar day', (
   test('just after midnight, "This month" and "Today" include today', async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-10-04T00:30:00+03:00'));
     const api = await mockApi(page, { role: 'manager' });
-    // The shape the real overview endpoint returns (managedCustomerService.getOverview).
-    api.override('GET /api/managed-customers/12/overview', ({ request }) => {
+    api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+    api.override('GET /api/customers/12/operations/summary', () => ({ body: {
+      projects: { active: 0, delayed: 0 }, tasks: { visible: true, open: 0, overdue: 0 }, recommendations: { open: 0, high_risk: 0 },
+      visits: { next: null, reports_pending: 0, this_year: 0 }, managed: { visible: true, state: 'active', open_tickets: 0, closed_tickets: 0 } } }));
+    api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+    api.override('GET /api/managed-customers/12/tickets', () => ({ body: { rows: [], total: 0, page: 1, page_size: 25, facets: { statuses: [], priorities: [], owners: [] } } }));
+    api.override('GET /api/managed-customers/12/ticket-analytics', ({ request }) => {
       const q = new URL(request.url()).searchParams;
-      return { body: { customer: { id: 12, name: 'Northwind Logistics', responsible_team: 'Managed Services', service_manager: null },
-        period: { from: q.get('from'), to: q.get('to') },
-        tickets: { open_now: 0, closed_now: 0, pending_now: 0, high_priority_open: 0, created_period: 0, resolved_period: 0, closed_period: 0, sla_breached_open: 0 },
-        activities: { activities: 1, minutes: 60, hours: 1 }, tasks: { open_now: 0, overdue_now: 0 }, projects: { active_now: 0 },
-        visits: { visits_period: 0, last_visit: null }, recommendations: { open_now: 0 } } };
+      return { body: { current: { total_open: 0, priorities: [], statuses: [], aging: [], owners: [] }, period: { from: q.get('from'), to: q.get('to'), created: 0, resolved: 0, closed: 0, rejected: 0, sla_breaches: 0 } } };
     });
+    // The old dashboard address opens Customer 360, where Tickets carries the period.
     await page.goto('/managed-customers/12');
-    const overview = () => api.calls.filter(c => c.path === '/api/managed-customers/12/overview').map(c => new URLSearchParams(c.query));
-    await expect.poll(() => overview().length).toBeGreaterThan(0);
-    expect(overview().at(-1).get('from')).toBe('2026-10-01');
-    expect(overview().at(-1).get('to')).toBe('2026-10-04');
+    await expect(page).toHaveURL(/\/customers\/12\/service-profile/);
+    await page.goto('/customers/12/service-profile?section=tickets');
+    const analytics = () => api.calls.filter(c => c.path === '/api/managed-customers/12/ticket-analytics').map(c => new URLSearchParams(c.query));
+    await expect.poll(() => analytics().length).toBeGreaterThan(0);
+    expect(analytics().at(-1).get('from')).toBe('2026-10-01');
+    expect(analytics().at(-1).get('to')).toBe('2026-10-04');
     await page.getByRole('button', { name: 'Today' }).click();
-    await expect.poll(() => overview().at(-1).get('from')).toBe('2026-10-04');
-    expect(overview().at(-1).get('to')).toBe('2026-10-04');
+    await expect.poll(() => analytics().at(-1).get('from')).toBe('2026-10-04');
+    expect(analytics().at(-1).get('to')).toBe('2026-10-04');
   });
 });

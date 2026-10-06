@@ -40,7 +40,6 @@ const SearchPage        = lazy(() => import('./pages/SearchPage'));
 const EngineerHub       = lazy(() => import('./pages/EngineerHub'));
 const ActivityLog       = lazy(() => import('./pages/ActivityLog'));
 const ServiceOperations = lazy(() => import('./pages/ServiceOperations'));
-const ManagedCustomers   = lazy(() => import('./pages/ManagedCustomers'));
 const CustomerServiceProfile = lazy(() => import('./pages/CustomerServiceProfile'));
 
 export { AuthContext, useAuth } from './auth';
@@ -66,6 +65,12 @@ function PrivateRoute({ children, allowedRoles, page }) {
     return <Layout><PageState title="Access unavailable" description="Your role or team settings do not allow access to this page. Contact your administrator if you need access." /></Layout>;
   }
   return <Layout><ErrorBoundary resetKey={location.pathname}><Suspense fallback={<PageLoader />}>{children}</Suspense></ErrorBoundary></Layout>;
+}
+
+// Managed customers are a view of Customers, and each one's dashboard is Customer 360.
+function ManagedCustomersMoved() {
+  const { id } = useParams();
+  return <Navigate to={id ? `/customers/${id}/service-profile` : '/customers?view=managed'} replace />;
 }
 
 function LegacySettingsRedirect() {
@@ -173,8 +178,8 @@ export default function App() {
           <Route path="/tasks"               element={<PrivateRoute page="tasks"><Tasks /></PrivateRoute>} />
           <Route path="/maintenance-visits"  element={<PrivateRoute page="visits"><MaintenanceVisits /></PrivateRoute>} />
           <Route path="/customers"           element={<PrivateRoute page="customers"><Customers /></PrivateRoute>} />
-          <Route path="/managed-customers"   element={<PrivateRoute page="managedCustomers"><ManagedCustomers /></PrivateRoute>} />
-          <Route path="/managed-customers/:id" element={<PrivateRoute page="managedCustomers"><ManagedCustomers /></PrivateRoute>} />
+          <Route path="/managed-customers"   element={<ManagedCustomersMoved />} />
+          <Route path="/managed-customers/:id" element={<ManagedCustomersMoved />} />
           <Route path="/scorecards"          element={<PrivateRoute page="scorecards"><Scorecards /></PrivateRoute>} />
           <Route path="/reports"             element={<PrivateRoute page="reports"><Reports /></PrivateRoute>} />
           <Route path="/kpis"                element={<PrivateRoute page="kpiManagement"><KpiManagement /></PrivateRoute>} />

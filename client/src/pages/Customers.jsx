@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { RefreshCw, Upload } from 'lucide-react';
 import { api } from '../api';
 import { Modal } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
 import { PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
-import { DataTable,Pagination,Surface,ToneBadge } from '../components/EnterpriseUI';
+import { DataTable,MetricStrip,Pagination,Surface,ToneBadge } from '../components/EnterpriseUI';
+import { ReportDueBadge } from '../components/ReportDue';
 import { useAuth } from '../App';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
@@ -153,8 +154,13 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
 
 const CUSTOMER_COLUMNS = ['name*', 'contact_name', 'contact_email', 'contact_phone', 'address', 'notes'];
 
+const SERVICE_STATUS = { healthy:['Healthy','success'],attention:['Sync issue','danger'],awaiting_sync:['Awaiting first sync','warning'],activity_only:['No ticket integration','info'] };
+// A report owed for the last period and not yet sent; "overdue" once its due date has passed.
+const reportOverdue = due => !!due && due.status!=='not_yet_due' && due.status!=='sent' && due.overdue;
+
 export default function Customers() {
   const { user } = useAuth();
+  const location = useLocation();
   const toast    = useToast();
   const confirm  = useConfirm();
   const isManager  = user?.role === 'manager';
@@ -166,7 +172,10 @@ export default function Customers() {
   const [showImport,  setShowImport]  = useState(false);
   const [editing,     setEditing]     = useState(null);
   const [search,      setSearch]      = useState('');
-  const [view,        setView]        = useState('all');
+  // Managed customers are a view of this list (they used to have their own page).
+  const canSeeManaged = Object.prototype.hasOwnProperty.call(user?.permissions || {}, 'managed_customers.view') ? user.permissions['managed_customers.view'] === true : isManager;
+  const [view,        setView]        = useState(() => new URLSearchParams(location.search).get('view') === 'managed' && canSeeManaged ? 'managed' : 'all');
+  const [managed,     setManaged]     = useState(new Map());
   const [loading,     setLoading]     = useState(true);
   const [loadError,   setLoadError]   = useState('');
   const [page,        setPage]        = useState(1);
@@ -192,7 +201,15 @@ export default function Customers() {
     return () => controller.abort();
   }, [isManager]);
   useEffect(() => setPage(1),[search,view]);
-  useLiveRefresh(() => load({ quiet: true }));
+  // Service health, tickets and report status for managed customers.
+  const [managedVersion, setManagedVersion] = useState(0);
+  useEffect(() => {
+    if (!canSeeManaged || view !== 'managed') return undefined;
+    const controller = new AbortController();
+    api.managedCustomers({ signal: controller.signal }).then(result => setManaged(new Map((result.rows || []).map(row => [Number(row.id), row])))).catch(() => {});
+    return () => controller.abort();
+  }, [canSeeManaged, view, managedVersion]);
+  useLiveRefresh(() => { load({ quiet: true }); setManagedVersion(value => value + 1); });
 
   async function openEdit(customer) {
     setEditing(customer);
@@ -213,6 +230,16 @@ export default function Customers() {
     try { await api.deleteCustomer(id); toast.success('Customer deleted'); load(); } catch (e) { toast.error(e.message); }
   }
 
+  const managedRows = [...managed.values()];
+  const managedColumns = [
+    { key:'customer',label:'Customer',render:c => <div className="customer-identity"><Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link><span>{managed.get(Number(c.id))?.responsible_team || 'No responsible team'}</span></div> },
+    { key:'report',label:'Customer report',render:c => <ReportDueBadge due={managed.get(Number(c.id))?.report_due} /> },
+    { key:'status',label:'Service status',render:c => { const [label, tone] = SERVICE_STATUS[managed.get(Number(c.id))?.service_status] || ['—', 'neutral']; return <ToneBadge tone={tone}>{label}</ToneBadge>; } },
+    { key:'tickets',label:'Open tickets',numeric:true,render:c => <Link to={`/customers/${c.id}/service-profile?section=tickets`}>{managed.get(Number(c.id))?.open_tickets ?? 0}</Link> },
+    { key:'activities',label:'Activities this month',numeric:true,render:c => managed.get(Number(c.id))?.activities_this_month ?? 0 },
+    { key:'manager',label:'Service manager',render:c => managed.get(Number(c.id))?.service_manager || 'Unassigned' },
+    { key:'actions',label:'Actions',render:c => <div className="table-actions"><Link className="btn btn-sm btn-ghost" to={`/customers/${c.id}/service-profile?section=reports`}>Reports</Link></div> },
+  ];
   const columns = [
     { key:'customer',label:'Customer',render:c => <div className="customer-identity">
       {isManager ? <Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link> : <strong>{c.name}</strong>}
@@ -249,6 +276,7 @@ export default function Customers() {
             ['all', 'All', counts.all || 0],
             ['active', 'Active', counts.active || 0],
             ['tracked', 'Service tracking', counts.tracked || 0],
+            ...(canSeeManaged ? [['managed', 'Managed', counts.managed || 0]] : []),
             ['inactive', 'Inactive', counts.inactive || 0],
           ].map(([key, label, count]) => <button key={key} className={`filter-pill${view === key ? ' active' : ''}`} onClick={() => setView(key)}>
             {label} <span className="u-383082b">({count})</span>
@@ -256,11 +284,19 @@ export default function Customers() {
         </FilterGroup>
       </Surface>
 
+      {view === 'managed' && <MetricStrip items={[
+        { label:'Reports overdue', value:managedRows.filter(row => reportOverdue(row.report_due)).length, tone:managedRows.some(row => reportOverdue(row.report_due)) ? 'danger' : 'success' },
+        { label:'Need attention', value:managedRows.filter(row => row.service_status !== 'healthy').length, tone:'warning' },
+        { label:'Open tickets', value:managedRows.reduce((sum, row) => sum + Number(row.open_tickets || 0), 0) },
+        { label:'Pending tickets', value:managedRows.reduce((sum, row) => sum + Number(row.pending_tickets || 0), 0) },
+        { label:'Activities this month', value:managedRows.reduce((sum, row) => sum + Number(row.activities_this_month || 0), 0) },
+      ]} />}
+
       {!loading && !loadError && <ResultContext shown={filtered.length} total={total} noun="customers"
         activeFilters={(search.trim() ? 1 : 0) + (view !== 'all' ? 1 : 0)}
         onClear={() => { setSearch(''); setView('all'); }} />}
 
-      <DataTable columns={columns} rows={filtered} loading={loading} error={loadError} onRetry={() => load()}
+      <DataTable columns={view === 'managed' ? managedColumns : columns} rows={filtered} loading={loading} error={loadError} onRetry={() => load()}
         caption="Customer directory" empty={search.trim() || view!=='all' ? 'No customers match this view' : 'No customers have been added yet'}
         emptyAction={(search.trim() || view!=='all') && <button className="btn btn-ghost btn-sm" onClick={() => { setSearch('');setView('all'); }}>Reset view</button>} />
       <Pagination page={page} total={total} pageSize={25} loading={loading} onPageChange={setPage} label="Customer pages" />
