@@ -64,6 +64,17 @@ async function upload(path, field, file) {
   return data;
 }
 
+// Saves a downloaded file under the name the server gives it.
+export async function saveDownload(path,fallbackName) {
+  const response=await fetch(BASE+path,{ credentials:'same-origin',headers:{ 'X-SolutionsHub-Request':'1','X-Client-Id':CLIENT_ID } });
+  if (!response.ok) { const error=await response.json().catch(() => ({}));handleUnauthorized(response.status,error,true);throw new Error(error.error || 'Download failed'); }
+  const name=(response.headers.get('content-disposition') || '').match(/filename="([^"]+)"/)?.[1] || fallbackName;
+  const url=URL.createObjectURL(await response.blob());
+  const link=Object.assign(document.createElement('a'),{ href:url,download:name });
+  document.body.appendChild(link);link.click();link.remove();
+  setTimeout(() => URL.revokeObjectURL(url),1000);
+}
+
 async function download(path,body) {
   const response=await fetch(BASE+path,{ method:body===undefined?'GET':'POST',credentials:'same-origin',headers:{ ...(body===undefined?{}:{ 'Content-Type':'application/json' }),'X-SolutionsHub-Request':'1','X-Client-Id':CLIENT_ID },body:body===undefined?undefined:JSON.stringify(body) });
   if (!response.ok) { const error=await response.json().catch(() => ({}));handleUnauthorized(response.status,error,true);throw new Error(error.error || 'Download failed'); }

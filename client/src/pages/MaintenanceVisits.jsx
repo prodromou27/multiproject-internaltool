@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Upload, X, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle } from 'lucide-react';
+import { Upload, X, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle, CalendarPlus } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { PageHeader } from '../components/PageLayout';
@@ -7,7 +7,7 @@ import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorksp
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { localDateISO } from '../utils/dates';
-import { api } from '../api';
+import { api, saveDownload } from '../api';
 import { useAuth } from '../App';
 import { fmtDate, isOverdue, Modal } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
@@ -221,6 +221,12 @@ function generatePDF(visit, onError) {
 }
 
 /* ── Visit Detail Modal ──────────────────────────────────── */
+// Downloads the visit as a calendar invitation (.ics) for Outlook, Google or Apple Calendar.
+async function addToCalendar(visit, toast) {
+  try { await saveDownload(`/maintenance-visits/${visit.id}/calendar.ics`, `visit-${visit.id}.ics`); toast.success('Calendar invitation downloaded. Open it to add the visit to your calendar.'); }
+  catch (failure) { toast.error(failure.message); }
+}
+
 function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate }) {
   const toast = useToast();
   const [notes, setNotes] = useState(visit.notes || '');
@@ -374,6 +380,9 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
         {reportState === 'report_complete' && isManager && (
           <button className="btn btn-ghost btn-sm" onClick={markUnsent} disabled={saving} title="Undo — move back to report pending">↩ Undo Submission</button>
         )}
+        <button className="btn btn-ghost btn-sm" onClick={() => addToCalendar(visit, toast)} title="Download a calendar invitation for this visit">
+          <CalendarPlus size={13} /> Add to calendar
+        </button>
         <button
           className="btn btn-ghost btn-sm u-e4d240f"
           onClick={() => generatePDF(visit, msg => toast.warning(msg))}
@@ -429,6 +438,14 @@ export default function MaintenanceVisits() {
   useEffect(() => {
     if (!VISIT_FILTERS.has(filter)) setFilter('upcoming');
   }, [filter, setFilter]);
+  // Opened from a link to one visit (e.g. the calendar invitation): show it once the list has it.
+  const linkedVisit = new URLSearchParams(location.search).get('visit');
+  const openedLink = useRef(null);
+  useEffect(() => {
+    if (!linkedVisit || openedLink.current === linkedVisit || !visits.length) return;
+    const found = visits.find(v => String(v.id) === linkedVisit);
+    if (found) { openedLink.current = linkedVisit; setSelected(found); }
+  }, [linkedVisit, visits]);
 
   useCreateIntent({ allowed: canManage, ready: !unavailable, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateDefaults(customerId?{ customer_id:customerId }:null);setEditing(null);setShowForm(true); } });
 
@@ -645,6 +662,7 @@ export default function MaintenanceVisits() {
                         {!!v.report_sent && !v.report_sent_to_customer && canManage && (
                           <button className="btn btn-sm btn-primary inline-flex items-center gap-4" disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.markCustomerSent(v.id), 'Report approved & sent to PM'); }}><Send size={12} /> Approve &amp; Send to PM</button>
                         )}
+                        {v.status !== 'cancelled' && <button className="btn btn-sm btn-ghost" onClick={() => addToCalendar(v, toast)} aria-label={`Add ${v.title} to your calendar`} title="Add to calendar"><CalendarPlus size={13} /></button>}
                         {canManage && <button className="btn btn-sm btn-ghost" disabled={actionBusy} onClick={() => openEdit(v)}>Edit</button>}
                         {canManage && <button className="btn btn-sm btn-danger" disabled={actionBusy} onClick={() => handleDelete(v.id)}>Del</button>}
                       </div>

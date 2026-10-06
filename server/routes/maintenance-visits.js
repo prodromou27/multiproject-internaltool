@@ -6,6 +6,7 @@ const db = require('../db');
 const { requireAuth, requireManager, requireManagerOrPlanner, requireDownloadManagerOrPlanner } = require('../middleware/auth');
 const { notify } = require('../notifications');
 const { decrypt } = require('../fieldCipher');
+const { visitInvite, inviteFileName } = require('../visitInvite');
 const { maintenanceVisitFilters, searchMaintenanceVisits } = require('../maintenanceVisitFilters');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -206,6 +207,24 @@ router.get('/:id', requireAuth, async (req, res) => {
   if (req.user.role === 'engineer' && !await isAssignedEngineer(mv.id, req.user.id))
     return res.status(403).json({ error: 'Forbidden' });
   res.json((await enrichVisitLinks([parseEngIds(mv)]))[0]);
+});
+
+// ── Calendar invitation (.ics) for one visit ─────────────────────────────────
+// The same people who can open the visit can add it to their calendar.
+router.get('/:id/calendar.ics', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid visit ID' });
+  const mv = await db.prepare('SELECT id, customer_id, title, description, notes, scheduled_date, status, updated_at FROM maintenance_visits WHERE id = ?').get(id);
+  if (!mv) return res.status(404).json({ error: 'Not found' });
+  if (req.user.role === 'engineer' && !await isAssignedEngineer(mv.id, req.user.id)) return res.status(403).json({ error: 'Forbidden' });
+  const customer = await db.prepare('SELECT name, address, location, contact_name, contact_phone, contact_email FROM customers WHERE id = ?').get(mv.customer_id) || {};
+  const engineers = (await db.prepare('SELECT u.name FROM maintenance_visit_engineers mve JOIN users u ON u.id = mve.user_id WHERE mve.visit_id = ? ORDER BY u.name').all(mv.id)).map(row => row.name);
+  const plain = Object.fromEntries(Object.entries(customer).map(([key, value]) => [key, value == null ? value : decrypt(value)]));
+  const body = visitInvite({ visit: mv, customer: plain, engineers, appUrl: process.env.APP_URL || `${req.protocol}://${req.get('host')}` });
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${inviteFileName(mv)}"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(body);
 });
 
 // ── Create ───────────────────────────────────────────────────────────────────
