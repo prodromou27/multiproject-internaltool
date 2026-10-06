@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckSquare, Download, Trash2, UserCheck, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch } from '../components/ListWorkspace';
 import { useLatestRequest } from '../hooks/useLatestRequest';
@@ -140,6 +140,10 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
 export default function Tasks() {
   const { user } = useAuth();
   const location  = useLocation();
+  const navigate  = useNavigate();
+  // Opened from a customer (Customer 360): only that customer's tasks.
+  const urlCustomer = new URLSearchParams(location.search).get('create') ? null : new URLSearchParams(location.search).get('customer_id');
+  const customerFilter = urlCustomer && /^[1-9]\d*$/.test(urlCustomer) ? urlCustomer : '';
   const toast     = useToast();
   const confirm   = useConfirm();
   const isManager = user.role === 'manager';
@@ -190,6 +194,7 @@ export default function Tasks() {
   const baseParams = new URLSearchParams({ filter: activeFilter, priority: priorityFilter, as_of: today, sort: sort.key, direction: sort.direction });
   if (debouncedSearch) baseParams.set('search', debouncedSearch);
   if (myTasksOnly) baseParams.set('assigned_to', String(user.id));
+  if (customerFilter) baseParams.set('customer_id', customerFilter);
   const queryKey = baseParams.toString();
   const page = paging.key === queryKey ? paging.page : 1;
   const query = `${queryKey}&page=${page}&page_size=${pageSize}`;
@@ -409,6 +414,7 @@ export default function Tasks() {
         </div>
         <div className="u-95535a3">
           <ListSearch value={search} onChange={setSearch} label="Search tasks" placeholder="Search tasks, projects, or assignees…" />
+          {customerFilter && <span className="filter-pill active">{tasks.find(task => String(task.customer_id) === customerFilter)?.customer_name || 'One customer'} <button type="button" className="btn btn-ghost btn-sm" aria-label="Show tasks for every customer" onClick={() => navigate('/tasks')}><X size={12} /></button></span>}
           <label className={["u-eb3a034", (myTasksOnly ? 'u-dc2e428' : 'u-31d6430'), (myTasksOnly ? 'u-eed0f8f' : 'u-7e3a944')].filter(Boolean).join(' ')}>
             <input type="checkbox" checked={myTasksOnly} onChange={e => setMyTasksOnly(e.target.checked)} className="u-30e741d" />
             My Tasks

@@ -250,9 +250,15 @@ function startReminderSchedules() {
   tick();
   setInterval(tick, 60 * 1000).unref?.();
 
-  const daily = () => sendAutomaticReminders()
-    .then(counts => console.log('[reminders] automatic:', JSON.stringify(counts)))
-    .catch(error => console.error('[reminders] automatic:', error.message));
+  const daily = () => Promise.all([
+    sendAutomaticReminders()
+      .then(counts => console.log('[reminders] automatic:', JSON.stringify(counts)))
+      .catch(error => console.error('[reminders] automatic:', error.message)),
+    // Recurring customer tasks due soon become real tasks (recurringTasks.js).
+    require('./recurringTasks').createDueTasks()
+      .then(counts => console.log('[recurring tasks]', JSON.stringify(counts)))
+      .catch(error => console.error('[recurring tasks]', error.message)),
+  ]);
   daily(); // deliveries are recorded, so a restart the same day sends nothing twice
   // Each morning at 08:00 in the organisation's time zone, recomputed every day
   // so daylight-saving changes and a changed zone are followed.

@@ -300,3 +300,9 @@
 .cs-mix-legend li { display: flex; align-items: center; gap: 8px; }
 .cs-mix-legend li span { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
 .cs-mix-legend li b { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--gray-900); }
+
+/* Customer 360 → Tasks → Recurring tasks */
+.cs-recurring { padding: 16px 18px; margin-bottom: 16px; }
+.cs-recurring header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.cs-recurring h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0; }
+.cs-recurring tr.is-paused td { color: var(--gray-400); }

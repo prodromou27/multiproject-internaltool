@@ -748,6 +748,31 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261015_recurring_tasks', `
+    -- The task form offers Critical priority, but the original check allowed only
+    -- low/medium/high, so saving a critical task failed.
+    ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_priority_check;
+    ALTER TABLE tasks ADD CONSTRAINT tasks_priority_check CHECK(priority IN ('low','medium','high','critical'));
+    -- A customer's repeating task: each occurrence becomes a real task lead_days before it is due.
+    CREATE TABLE IF NOT EXISTS recurring_tasks (
+      id           SERIAL PRIMARY KEY,
+      customer_id  INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      title        TEXT NOT NULL,
+      description  TEXT,
+      priority     TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('low','medium','high','critical')),
+      assigned_to  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      frequency    TEXT NOT NULL CHECK(frequency IN ('weekly','monthly','quarterly','semiannual','annual')),
+      start_date   TEXT NOT NULL,
+      lead_days    INTEGER NOT NULL DEFAULT 7,
+      next_due     TEXT NOT NULL,
+      active       INTEGER NOT NULL DEFAULT 1,
+      last_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+      created_by   INTEGER NOT NULL REFERENCES users(id),
+      created_at   TEXT DEFAULT ${NOW},
+      updated_at   TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_recurring_tasks_customer ON recurring_tasks(customer_id);
+  `]);
   migrations.push(['20261014_customer_tasks', `
     -- A task can belong to a customer directly, without a project. A project's
     -- tasks keep this NULL and take their customer from the project.

@@ -14,6 +14,7 @@ router.use('/:id/recommendations', require('./customer-recommendations'));
 router.use('/:id/assets', require('./customer-assets'));
 router.use('/:id/managed-services', require('./managedCustomerConfiguration'));
 router.use('/:id/operations',require('./customer-operations'));
+router.use('/:id/recurring-tasks', require('./customer-recurring-tasks'));
 
 function cellToString(v) {
   if (v === null || v === undefined) return '';
