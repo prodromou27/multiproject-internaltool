@@ -1,5 +1,36 @@
 const { assertPublicHttpUrl } = require('../security');
 
+/* Why a request to Request Tracker never got an answer, in words a manager can
+   act on. fetch() reports every network failure as "fetch failed"; the cause
+   carries the real reason. No secrets are included. */
+function connectionError(error,host) {
+  if (error?.name==='TimeoutError') return 'Request Tracker did not respond before the timeout';
+  const cause=error?.cause || error || {};
+  const code=String(cause.code || '');
+  const text=String(cause.message || '');
+  let reason;
+  if (code==='ENOTFOUND' || code==='EAI_AGAIN') reason=`the name ${host} could not be found. The server running this app must resolve it: add it to that server's DNS or hosts file (under Docker, use extra_hosts)`;
+  else if (code==='ECONNREFUSED') reason=`${host} refused the connection. Check the port in the base URL and that Request Tracker is running`;
+  else if (code==='ETIMEDOUT' || code==='ENETUNREACH' || code==='EHOSTUNREACH' || code==='UND_ERR_CONNECT_TIMEOUT') reason=`${host} could not be reached from the server running this app. Check routing and firewalls`;
+  else if (code==='ECONNRESET') reason=`${host} closed the connection`;
+  else if (/CERT|SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER/.test(code)) reason=code==='ERR_TLS_CERT_ALTNAME_INVALID'
+    ? `the HTTPS certificate is not issued for ${host}. Use the name on the certificate in the base URL`
+    : `the HTTPS certificate of ${host} is not trusted (${code}). If it comes from your own certificate authority, set NODE_EXTRA_CA_CERTS to that CA's certificate file`;
+  else if (/redirect/i.test(text)) reason='Request Tracker answered with a redirect. Use the exact address of the RT web interface as the base URL (for example https://host/rt if RT lives under /rt)';
+  else reason=code || text || 'unknown network error';
+  return `Could not connect to Request Tracker: ${reason}`;
+}
+
+/* An HTTP error from Request Tracker, with what usually causes it. */
+function httpError(status) {
+  const hint={
+    401:'the API token was not accepted. Create an auth token in RT (Logged in as > Settings > Auth Tokens) and paste it again',
+    403:'the token user may not do this. Give that RT user rights to see the queues and tickets',
+    404:'the REST 2.0 API was not found at this address. Check the base URL is the RT web address (for example https://host/rt) and that REST2 is enabled',
+  }[status];
+  return `Request Tracker returned HTTP ${status}${hint ? `: ${hint}` : ''}`;
+}
+
 class RequestTrackerProvider {
   constructor(config,{ fetchImpl=global.fetch,validateUrl=assertPublicHttpUrl,timeoutMs=15000 }={}) {
     this.config=config || {};this.fetchImpl=fetchImpl;this.validateUrl=validateUrl;this.timeoutMs=timeoutMs;this.ready=null;
@@ -18,8 +49,8 @@ class RequestTrackerProvider {
     for (const [key,value] of Object.entries(params)) if (value!==undefined) url.searchParams.set(key,String(value));
     let response;
     try { response=await this.fetchImpl(url,{ headers:{ Accept:'application/json',Authorization:`token ${this.config.api_token}` },redirect:'error',signal:AbortSignal.timeout(this.timeoutMs) }); }
-    catch(error) { throw Object.assign(new Error(error.name==='TimeoutError' ? 'Request Tracker did not respond before the timeout' : 'Could not connect to Request Tracker'),{ status:502 }); }
-    if (!response.ok) throw Object.assign(new Error(`Request Tracker returned HTTP ${response.status}`),{ status:502 });
+    catch(error) { throw Object.assign(new Error(connectionError(error,url.hostname)),{ status:502 }); }
+    if (!response.ok) throw Object.assign(new Error(httpError(response.status)),{ status:502 });
     const type=response.headers.get('content-type') || '';
     if (!type.toLowerCase().includes('application/json')) throw Object.assign(new Error('Request Tracker returned an unexpected response type'),{ status:502 });
     try { return await response.json(); } catch { throw Object.assign(new Error('Request Tracker returned invalid JSON'),{ status:502 }); }
@@ -41,8 +72,8 @@ class RequestTrackerProvider {
         redirect:'error',
         signal:AbortSignal.timeout(this.timeoutMs),
       });
-    } catch(error) { throw Object.assign(new Error(error.name==='TimeoutError' ? 'Request Tracker did not respond before the timeout' : 'Could not connect to Request Tracker'),{ status:502 }); }
-    if (!response.ok) throw Object.assign(new Error(`Request Tracker returned HTTP ${response.status}`),{ status:502 });
+    } catch(error) { throw Object.assign(new Error(connectionError(error,url.hostname)),{ status:502 }); }
+    if (!response.ok) throw Object.assign(new Error(httpError(response.status)),{ status:502 });
     const type=response.headers.get('content-type') || '';
     let result=null;
     if (type.toLowerCase().includes('application/json')) { try { result=await response.json(); } catch { /* fall through with no parsed body */ } }
@@ -109,4 +140,4 @@ class RequestTrackerProvider {
   }
 }
 
-module.exports={ RequestTrackerProvider };
+module.exports={ RequestTrackerProvider,connectionError,httpError };

@@ -22,7 +22,7 @@ test('RT provider uses token authentication and follows bounded queue pagination
 
 test('RT provider reports connection failures without exposing credentials',async () => {
   const provider=new RequestTrackerProvider({ base_url:'https://rt.example.test',api_token:'do-not-expose' },{ validateUrl:async () => {},fetchImpl:async () => json({ message:'token do-not-expose rejected' },401) });
-  await assert.rejects(() => provider.testConnection(),error => error.status===502 && error.message==='Request Tracker returned HTTP 401' && !error.message.includes('do-not-expose'));
+  await assert.rejects(() => provider.testConnection(),error => error.status===502 && error.message.startsWith('Request Tracker returned HTTP 401: the API token was not accepted') && !error.message.includes('do-not-expose'));
 });
 
 test('RT provider reads a single queue using a validated identifier',async () => {
@@ -83,4 +83,19 @@ test('RT provider status update reports connection failures and non-2xx the same
 
   const httpErrorProvider = new RequestTrackerProvider({ base_url: 'https://rt.example.test', api_token: 'do-not-expose' }, { validateUrl: async () => {}, fetchImpl: async () => json({ message: 'token do-not-expose rejected' }, 403) });
   await assert.rejects(() => httpErrorProvider.updateTicketStatus('123', 'resolved'), error => error.status === 502 && !error.message.includes('do-not-expose'));
+});
+
+test('a failed connection says why, and what to do about it', async () => {
+  const { connectionError } = require('../ticketing/requestTrackerProvider');
+  const failed = (code, message = 'x') => Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(message), { code }) });
+  assert.match(connectionError(failed('ENOTFOUND'), 'ts.example.com'), /ts\.example\.com could not be found.*extra_hosts/);
+  assert.match(connectionError(failed('ECONNREFUSED'), 'rt'), /refused the connection/);
+  assert.match(connectionError(failed('UNABLE_TO_VERIFY_LEAF_SIGNATURE'), 'rt'), /not trusted.*NODE_EXTRA_CA_CERTS/);
+  assert.match(connectionError(failed('DEPTH_ZERO_SELF_SIGNED_CERT'), 'rt'), /not trusted/);
+  assert.match(connectionError(failed('ERR_TLS_CERT_ALTNAME_INVALID'), 'rt'), /not issued for rt/);
+  assert.match(connectionError(Object.assign(new TypeError('fetch failed'), { cause: new Error('unexpected redirect') }), 'rt'), /redirect.*\/rt/);
+  assert.match(connectionError(Object.assign(new Error('t'), { name: 'TimeoutError' }), 'rt'), /timeout/);
+
+  const provider = new RequestTrackerProvider({ base_url: 'https://rt.example.test', api_token: 'secret' }, { fetchImpl: async () => { throw failed('ECONNREFUSED'); }, validateUrl: async () => {} });
+  await assert.rejects(() => provider.testConnection(), error => error.status === 502 && /refused/.test(error.message) && !error.message.includes('secret'));
 });
