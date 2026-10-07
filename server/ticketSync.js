@@ -47,6 +47,7 @@ function ticketRecord(ticket,mapping,baseUrl,now=new Date(),mappings=DEFAULTS) {
     external_ticket_id:id,ticket_number:id,subject:String(ticket.Subject || ticket.subject || `Ticket ${id}`).slice(0,2000),
     external_status:status.external,normalized_status:status.normalized,status_group:status.group,external_priority:priority.external,normalized_priority:priority.normalized,
     owner_external_id:owner.id ? String(owner.id).slice(0,500) : null,owner_name:owner.Name ? String(owner.Name).slice(0,500) : (owner.id ? String(owner.id).slice(0,500) : null),
+    owner_email:owner.EmailAddress ? String(owner.EmailAddress).trim().toLowerCase().slice(0,320) : null,
     created_at_external:created,updated_at_external:updated,resolved_at_external:resolved,closed_at_external:status.group==='closed' ? resolved : null,
     sla_due_at:due,sla_breached:!!(due && status.group==='open' && new Date(due)<now),external_url:`${String(baseUrl).replace(/\/+$/,'').replace(/\/REST\/2\.0$/i,'')}/Ticket/Display.html?id=${encodeURIComponent(id)}`,
   };
@@ -95,24 +96,26 @@ async function syncCustomer(customerId,{ provider,triggeredBy=null,store=db }={}
     await store.transaction(async tx => {
       const upsert=tx.prepare(`INSERT INTO external_tickets
         (customer_id,provider_type,external_queue_id,external_queue_name,external_ticket_id,ticket_number,subject,external_status,normalized_status,status_group,
-         external_priority,normalized_priority,owner_external_id,owner_name,created_at_external,updated_at_external,resolved_at_external,closed_at_external,sla_due_at,sla_breached,external_url,last_synced_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,app_now())
+         external_priority,normalized_priority,owner_external_id,owner_name,owner_email,created_at_external,updated_at_external,resolved_at_external,closed_at_external,sla_due_at,sla_breached,external_url,last_synced_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,app_now())
         ON CONFLICT (provider_type,external_ticket_id) DO UPDATE SET customer_id=EXCLUDED.customer_id,external_queue_id=EXCLUDED.external_queue_id,
           external_queue_name=EXCLUDED.external_queue_name,ticket_number=EXCLUDED.ticket_number,subject=EXCLUDED.subject,external_status=EXCLUDED.external_status,
           normalized_status=EXCLUDED.normalized_status,status_group=EXCLUDED.status_group,external_priority=EXCLUDED.external_priority,
-          normalized_priority=EXCLUDED.normalized_priority,owner_external_id=EXCLUDED.owner_external_id,owner_name=EXCLUDED.owner_name,
+          normalized_priority=EXCLUDED.normalized_priority,owner_external_id=EXCLUDED.owner_external_id,owner_name=EXCLUDED.owner_name,owner_email=COALESCE(EXCLUDED.owner_email,external_tickets.owner_email),
           created_at_external=EXCLUDED.created_at_external,updated_at_external=EXCLUDED.updated_at_external,resolved_at_external=EXCLUDED.resolved_at_external,
           closed_at_external=EXCLUDED.closed_at_external,sla_due_at=EXCLUDED.sla_due_at,sla_breached=EXCLUDED.sla_breached,
           external_url=EXCLUDED.external_url,last_synced_at=app_now()`);
       for (const record of records) {
         await upsert.run(record.customer_id,record.provider_type,record.external_queue_id,record.external_queue_name,record.external_ticket_id,record.ticket_number,
           record.subject,record.external_status,record.normalized_status,record.status_group,record.external_priority,record.normalized_priority,record.owner_external_id,
-          record.owner_name,record.created_at_external,record.updated_at_external,record.resolved_at_external,record.closed_at_external,record.sla_due_at,record.sla_breached?1:0,record.external_url);
+          record.owner_name,record.owner_email,record.created_at_external,record.updated_at_external,record.resolved_at_external,record.closed_at_external,record.sla_due_at,record.sla_breached?1:0,record.external_url);
         if (existing.has(record.external_ticket_id)) updated++;else created++;
       }
       await tx.prepare("UPDATE customer_ticketing_configurations SET last_successful_sync_at=app_now(),last_sync_status='success',updated_at=app_now() WHERE id=?").run(mapping.id);
       await tx.prepare("UPDATE ticket_sync_runs SET completed_at=app_now(),status='success',tickets_found=?,tickets_created=?,tickets_updated=? WHERE id=?").run(records.length,created,updated,runId);
     });
+    // Link ticket owners to TeamHub users; a problem here never fails the sync.
+    await require('./ticketOwners').linkOwners(store).catch(error => console.error('[ticket-owners] linking failed:',error.message));
     if (wasFailing) await alertSyncChange(store,mapping,true);
     const completed=await store.prepare('SELECT completed_at FROM ticket_sync_runs WHERE id=?').get(runId);
     return { run_id:runId,completed_at:completed?.completed_at || null,tickets_found:records.length,tickets_created:created,tickets_updated:updated };

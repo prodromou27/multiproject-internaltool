@@ -748,6 +748,13 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261020_ticket_owners', `
+    -- Which TeamHub user each Request Tracker user is, so tickets count towards an engineer's workload.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS ticketing_username TEXT;
+    ALTER TABLE external_tickets ADD COLUMN IF NOT EXISTS owner_email TEXT;
+    ALTER TABLE external_tickets ADD COLUMN IF NOT EXISTS owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_external_tickets_owner_user ON external_tickets(owner_user_id, resolved_at_external);
+  `]);
   migrations.push(['20261019_report_tables', `
     -- Per report template: which columns each report table shows, sorting and a row limit.
     ALTER TABLE managed_report_templates ADD COLUMN IF NOT EXISTS tables TEXT NOT NULL DEFAULT '{}';

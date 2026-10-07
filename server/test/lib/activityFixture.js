@@ -177,7 +177,8 @@ if (isSuiteImport) test.before(async () => {
 });
 
 if (isSuiteImport) test.after(async () => {
-  if (server) await new Promise(resolve => server.close(resolve));
+  // Idle keep-alive connections would otherwise hold the server open.
+  if (server) { const closed = new Promise(resolve => server.close(resolve)); server.closeAllConnections?.(); await closed; }
   await db.pool.end();
   Module.prototype.require = originalRequire;
 });

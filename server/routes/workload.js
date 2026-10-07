@@ -76,6 +76,15 @@ router.get('/', requireManager, async (req, res) => {
 
 // GET /api/workload/forecast — 4-week scheduled-item grid
 // Replaces 8N queries with 8 batched queries (was: 160 queries for 20 engineers)
+// Tickets each engineer resolved in Request Tracker over the last 1, 3, 6 or 12 months.
+router.get('/tickets', requireManager, async (req, res) => {
+  const months = Number(req.query.months ?? 3);
+  if (![1, 3, 6, 12].includes(months)) return res.status(400).json({ error: 'months must be 1, 3, 6 or 12' });
+  const userId = req.query.user_id === undefined ? null : Number(req.query.user_id);
+  if (userId !== null && (!Number.isSafeInteger(userId) || userId < 1)) return res.status(400).json({ error: 'Invalid user' });
+  res.json(await require('../ticketOwners').workload({ months, userId }));
+});
+
 router.get('/forecast', requireManager, async (req, res) => {
   const engineers = (await db.prepare(
     "SELECT id, name FROM users WHERE role = 'engineer' AND active = 1 ORDER BY name ASC"

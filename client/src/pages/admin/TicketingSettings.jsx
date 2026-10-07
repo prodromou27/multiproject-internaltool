@@ -7,6 +7,7 @@ import { useLiveRefresh } from '../../live';
 import RequestTrackerIntegration from './RequestTrackerIntegration';
 import TicketMappingConfiguration from './TicketMappingConfiguration';
 import TicketSyncMonitoring from './TicketSyncMonitoring';
+import TicketOwners from './TicketOwners';
 
 /* Settings → Ticketing: everything about Request Tracker in one place —
    the connection, which queue belongs to which customer, how RT statuses and
@@ -111,12 +112,17 @@ export default function TicketingSettings() {
       <p className="text-muted text-sm">Which RT queue holds each customer's tickets. A queue can belong to one customer only. The same choice appears in each customer's Service Configuration.</p>
       <CustomerQueues />
     </section>
+    <section style={sectionStyle} aria-label="Engineers in Request Tracker">
+      <h3 className="ticketing-heading">3. Engineers in Request Tracker</h3>
+      <p className="text-muted text-sm">Which TeamHub user each RT ticket owner is, so their tickets count in Workload → Tickets resolved and in reports. RT users with the same email as a TeamHub user are linked automatically.</p>
+      <TicketOwners />
+    </section>
     <section style={sectionStyle} aria-label="Status and priority mapping">
-      <h3 className="ticketing-heading">3. Status and priority mapping</h3>
+      <h3 className="ticketing-heading">4. Status and priority mapping</h3>
       <TicketMappingConfiguration />
     </section>
     <section style={sectionStyle} aria-label="Sync health">
-      <h3 className="ticketing-heading">4. Sync health</h3>
+      <h3 className="ticketing-heading">5. Sync health</h3>
       <TicketSyncMonitoring standalone onMessage={toast.success} />
     </section>
   </div>;

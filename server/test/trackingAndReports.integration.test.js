@@ -80,7 +80,11 @@ test('attachment upload failures clean files and attachment reads enforce activi
     const response = await fetch(`${suiteFixture.baseUrl}${endpoint}`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenEnabled}` }, body: form });
     return { status: response.status, data: await response.json() };
   };
-  const before = (await fs.promises.readdir(uploadDir)).sort();
+  // Other suites upload into the same folder at the same time, so follow this
+  // upload's own file: the route must delete it, and it must be gone.
+  const removed = [];
+  const originalUnlink = fs.promises.unlink;
+  const unlink = t.mock.method(fs.promises, 'unlink', function(target, ...rest) { removed.push(String(target)); return originalUnlink.call(this, target, ...rest); });
   const originalPrepare = db.prepare;
   const failure = t.mock.method(db, 'prepare', function(sql) {
     if (/INSERT INTO attachments/i.test(sql)) return { run: async () => { throw new Error('Simulated attachment database failure'); } };
@@ -88,8 +92,10 @@ test('attachment upload failures clean files and attachment reads enforce activi
   });
   try {
     assert.equal((await uploadPdf()).status, 500);
-    assert.deepEqual((await fs.promises.readdir(uploadDir)).sort(), before);
-  } finally { failure.mock.restore(); }
+    const cleaned = removed.filter(target => path.dirname(path.resolve(target)) === path.resolve(uploadDir));
+    assert.equal(cleaned.length, 1, 'the failed upload removes its file');
+    assert.equal(fs.existsSync(cleaned[0]), false);
+  } finally { failure.mock.restore(); unlink.mock.restore(); }
   const uploaded = await uploadPdf();
   assert.equal(uploaded.status, 200);
   const attachment = await db.prepare('SELECT stored_name FROM attachments WHERE id=?').get(uploaded.data.id);

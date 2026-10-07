@@ -8,6 +8,7 @@ const settings=require('../ticketingSettings');
 const { createTicketingProvider }=require('../ticketing');
 const { syncCustomer,applyMappingsToStoredTickets }=require('../ticketSync');
 const mappings=require('../ticketMappings');
+const ticketOwners=require('../ticketOwners');
 
 router.use(requireManager);
 
@@ -105,6 +106,17 @@ router.get('/monitoring',async (req,res) => {
   });
 });
 
+// Request Tracker users and the TeamHub user each one is.
+router.get('/owners',async (req,res) => res.json(await ticketOwners.listOwners()));
+router.put('/owners',async (req,res) => {
+  const { username,user_id:userId }=req.body || {};
+  if (userId!==null && (!Number.isSafeInteger(userId) || userId<1)) return res.status(400).json({ error:'Choose a TeamHub user' });
+  try {
+    await ticketOwners.setOwner(username,userId);
+    await logAudit(db,req,'settings','ticket_owners',String(username),'ticket_owner_linked',userId ? `user_id=${userId}` : 'unlinked');
+    res.json(await ticketOwners.listOwners());
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not link the Request Tracker user' }); }
+});
 router.get('/sync-runs',async (req,res) => {
   const customerId=req.query.customer_id===undefined ? null : Number(req.query.customer_id);
   if (customerId!==null && (!Number.isSafeInteger(customerId) || customerId<1)) return res.status(400).json({ error:'Invalid customer ID' });

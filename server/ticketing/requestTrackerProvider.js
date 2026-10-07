@@ -108,7 +108,7 @@ class RequestTrackerProvider {
     }
     const tickets=[];let page=1;
     while (page<=100) {
-      const result=await this.request('/tickets',{ query,page,per_page:100,fields:'Subject,Status,Priority,Owner,Created,LastUpdated,Resolved,Due,Queue','fields[Owner]':'Name','fields[Queue]':'Name' });
+      const result=await this.request('/tickets',{ query,page,per_page:100,fields:'Subject,Status,Priority,Owner,Created,LastUpdated,Resolved,Due,Queue','fields[Owner]':'Name,EmailAddress,RealName','fields[Queue]':'Name' });
       if (!Array.isArray(result.items)) throw Object.assign(new Error('Request Tracker ticket response is invalid'),{ status:502 });
       tickets.push(...result.items);
       if (tickets.length>10000) throw Object.assign(new Error('A single Request Tracker sync cannot exceed 10,000 tickets'),{ status:413 });

@@ -1,0 +1,12 @@
+/* Workload → Tickets */
+.wt-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.wt-head h2 { font-size: 16px; margin: 0 0 4px; }
+.wt-head p { margin: 0; max-width: 60ch; }
+.wt-periods { display: flex; gap: 4px; flex-wrap: wrap; }
+.wt-unlinked { margin-bottom: 12px; }
+.wt-table .num { text-align: right; white-space: nowrap; }
+.wt-table th[scope="row"] { font-weight: 600; white-space: nowrap; }
+.wt-bars { display: flex; align-items: flex-end; gap: 3px; height: 44px; }
+.wt-bar { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; width: 22px; height: 100%; }
+.wt-bar i { display: block; width: 14px; min-height: 2px; background: var(--primary, #2563eb); border-radius: 2px 2px 0 0; }
+.wt-bar small { font-size: 9px; color: var(--gray-500); line-height: 1.4; }
