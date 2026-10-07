@@ -95,6 +95,11 @@ async function initScheduler() {
       return { run_id:result.run_id,tickets_found:result.tickets_found,tickets_created:result.tickets_created,tickets_updated:result.tickets_updated };
     },
     custom_report_export: (payload,job) => require('./customReportExport').generate(payload,job),
+    // Tickets linked engineers own in Request Tracker (any queue), for Workload.
+    engineer_ticket_sync: async payload => {
+      const owners=require('./ticketOwners');
+      return payload.user_id ? owners.syncEngineer(Number(payload.user_id)) : owners.syncAllEngineers();
+    },
   });
   await reschedule();
   require('./customReportScheduler').start();

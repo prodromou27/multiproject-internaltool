@@ -26,7 +26,7 @@ export default function WorkloadTickets() {
     <header className="wt-head">
       <div>
         <h2>Tickets resolved</h2>
-        {data && <p className="text-muted text-sm">{data.from} to {data.to}. Counts tickets resolved or closed in Request Tracker (not rejected) by the engineer who owned them.</p>}
+        {data && <p className="text-muted text-sm">{data.from} to {data.to}. Tickets resolved or closed in Request Tracker (not rejected) by the engineer who owned them, in any queue.</p>}
       </div>
       <div className="wt-periods" role="group" aria-label="Period">
         {PERIODS.map(value => <button type="button" key={value} className={`btn btn-sm ${months === value ? 'btn-primary' : 'btn-ghost'}`} aria-pressed={months === value} onClick={() => setMonths(value)}>
@@ -34,12 +34,12 @@ export default function WorkloadTickets() {
       </div>
     </header>
     {error ? <div className="error-msg" role="alert">{error}</div> : !data ? <p className="text-muted">Loading…</p> : <>
-      {data.unlinked.resolved > 0 && <p className="alert alert-warning wt-unlinked">{data.unlinked.resolved} resolved ticket{data.unlinked.resolved === 1 ? '' : 's'} belong to {data.unlinked.owners} RT user{data.unlinked.owners === 1 ? '' : 's'} not linked to anyone here. <Link to="/settings/ticketing">Link them in Settings → Ticketing</Link>.</p>}
-      {!data.engineers.length ? <p className="text-muted">No engineer is linked to a Request Tracker user yet. Engineers whose RT email matches their TeamHub email are linked automatically after the next sync; others can be linked in <Link to="/settings/ticketing">Settings → Ticketing</Link>.</p> :
+      {data.unlinked_engineers > 0 && <p className="alert alert-warning wt-unlinked">{data.unlinked_engineers} engineer{data.unlinked_engineers === 1 ? ' is' : 's are'} not linked to a Request Tracker user. <Link to="/settings/ticketing">Link them in Settings → Ticketing</Link>.</p>}
+      {!data.engineers.length ? <p className="text-muted">No one is linked to a Request Tracker user yet. Choose each engineer's RT user in <Link to="/settings/ticketing">Settings → Ticketing</Link>.</p> :
         <div className="table-wrap"><table className="wt-table">
-          <thead><tr><th scope="col">Engineer</th><th scope="col" className="num">Resolved</th><th scope="col">By month</th><th scope="col" className="num">Avg. days to resolve</th><th scope="col" className="num">Open now</th><th scope="col">Main customers</th></tr></thead>
+          <thead><tr><th scope="col">Engineer</th><th scope="col" className="num">Resolved</th><th scope="col">By month</th><th scope="col" className="num">Avg. days to resolve</th><th scope="col" className="num">Open now</th><th scope="col">Main customers or queues</th></tr></thead>
           <tbody>{data.engineers.map(engineer => <tr key={engineer.id}>
-            <th scope="row">{engineer.name}</th>
+            <th scope="row">{engineer.name}<small className="wt-rt">{engineer.sync_error ? <span className="text-danger" title={engineer.sync_error}>RT read failed</span> : engineer.synced_at ? `RT: ${engineer.rt_username}` : 'Waiting for RT…'}</small></th>
             <td className="num"><strong>{engineer.resolved}</strong></td>
             <td><div className="wt-bars" aria-label={engineer.by_month.map(month => `${monthName(month.month)} ${month.count}`).join(', ')}>
               {engineer.by_month.map(month => <span key={month.month} className="wt-bar" title={`${monthName(month.month)}: ${month.count}`}>

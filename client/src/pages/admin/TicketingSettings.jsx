@@ -114,7 +114,7 @@ export default function TicketingSettings() {
     </section>
     <section style={sectionStyle} aria-label="Engineers in Request Tracker">
       <h3 className="ticketing-heading">3. Engineers in Request Tracker</h3>
-      <p className="text-muted text-sm">Which TeamHub user each RT ticket owner is, so their tickets count in Workload → Tickets resolved and in reports. RT users with the same email as a TeamHub user are linked automatically.</p>
+      <p className="text-muted text-sm">Each TeamHub user's account in Request Tracker. Their RT tickets are then read from every queue, whether or not it belongs to a customer, for Workload → Tickets resolved.</p>
       <TicketOwners />
     </section>
     <section style={sectionStyle} aria-label="Status and priority mapping">

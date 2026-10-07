@@ -2,7 +2,7 @@ const db=require('./db');
 const ticketingSettings=require('./ticketingSettings');
 const jobs=require('./backgroundJobs');
 
-let timer=null,initialTimer=null,running=false;
+let timer=null,initialTimer=null,running=false,engineersQueuedAt=0;
 
 function timestamp(value) {
   if (!value) return 0;
@@ -24,6 +24,15 @@ async function runDueSyncs() {
     for (const mapping of due) {
       try { await jobs.enqueue('ticket_sync',{ customer_id:mapping.customer_id },{ dedupeKey:`ticket-sync:${mapping.customer_id}`,maxAttempts:4 }); }
       catch(error) { if (error.status!==409) console.error(`[ticket-sync] customer ${mapping.customer_id}:`,error.message); }
+    }
+    // Engineers' own tickets (every queue), at most every 15 minutes.
+    const oldest=await db.prepare('SELECT ticketing_synced_at FROM users WHERE active=1 AND ticketing_username IS NOT NULL ORDER BY ticketing_synced_at NULLS FIRST LIMIT 1').get();
+    const every=Math.max(interval,15*60*1000);
+    // Failing reads leave the time empty, so also wait between attempts.
+    if (oldest && Date.now()-timestamp(oldest.ticketing_synced_at)>=every && Date.now()-engineersQueuedAt>=every) {
+      engineersQueuedAt=Date.now();
+      try { await jobs.enqueue('engineer_ticket_sync',{},{ dedupeKey:'engineer-ticket-sync',maxAttempts:2 }); }
+      catch(error) { if (error.status!==409) console.error('[ticket-sync] engineers:',error.message); }
     }
   } catch(error) { console.error('[ticket-sync] scheduler:',error.message); }
   finally { running=false; }

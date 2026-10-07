@@ -748,6 +748,25 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261021_engineer_tickets', `
+    -- Tickets each linked engineer owns in Request Tracker, from every queue (not only
+    -- customer queues), so Workload can count what they resolved.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS ticketing_synced_at TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS ticketing_sync_error TEXT;
+    CREATE TABLE IF NOT EXISTS engineer_tickets (
+      external_ticket_id   TEXT PRIMARY KEY,
+      user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      queue_name           TEXT,
+      subject              TEXT,
+      external_status      TEXT,
+      normalized_status    TEXT,
+      status_group         TEXT,
+      created_at_external  TEXT,
+      resolved_at_external TEXT,
+      synced_at            TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_engineer_tickets_user ON engineer_tickets(user_id, resolved_at_external);
+  `]);
   migrations.push(['20261020_ticket_owners', `
     -- Which TeamHub user each Request Tracker user is, so tickets count towards an engineer's workload.
     ALTER TABLE users ADD COLUMN IF NOT EXISTS ticketing_username TEXT;

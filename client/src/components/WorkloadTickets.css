@@ -10,3 +10,4 @@
 .wt-bar { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; width: 22px; height: 100%; }
 .wt-bar i { display: block; width: 14px; min-height: 2px; background: var(--primary, #2563eb); border-radius: 2px 2px 0 0; }
 .wt-bar small { font-size: 9px; color: var(--gray-500); line-height: 1.4; }
+.wt-rt { display: block; font-weight: 400; font-size: 11px; color: var(--gray-500); }

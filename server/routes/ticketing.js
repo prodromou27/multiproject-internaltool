@@ -9,6 +9,7 @@ const { createTicketingProvider }=require('../ticketing');
 const { syncCustomer,applyMappingsToStoredTickets }=require('../ticketSync');
 const mappings=require('../ticketMappings');
 const ticketOwners=require('../ticketOwners');
+const jobs=require('../backgroundJobs');
 
 router.use(requireManager);
 
@@ -106,16 +107,27 @@ router.get('/monitoring',async (req,res) => {
   });
 });
 
-// Request Tracker users and the TeamHub user each one is.
-router.get('/owners',async (req,res) => res.json(await ticketOwners.listOwners()));
-router.put('/owners',async (req,res) => {
-  const { username,user_id:userId }=req.body || {};
-  if (userId!==null && (!Number.isSafeInteger(userId) || userId<1)) return res.status(400).json({ error:'Choose a TeamHub user' });
+// TeamHub users and their Request Tracker user (chosen from RT's user list).
+router.get('/rt-users',async (req,res) => {
+  try { res.json({ rows:await ticketOwners.rtUsers({ refresh:req.query.refresh==='1' }) }); }
+  catch(error) { res.status(error.status || 502).json({ error:error.status ? error.message : 'Could not list Request Tracker users' }); }
+});
+router.get('/user-links',async (req,res) => res.json(await ticketOwners.listLinks()));
+router.put('/user-links/:userId',async (req,res) => {
+  const userId=Number(req.params.userId);
+  if (!Number.isSafeInteger(userId) || userId<1) return res.status(400).json({ error:'Invalid user' });
+  const username=req.body?.rt_username ?? null;
+  if (username!==null && typeof username!=='string') return res.status(400).json({ error:'Choose a Request Tracker user' });
   try {
-    await ticketOwners.setOwner(username,userId);
-    await logAudit(db,req,'settings','ticket_owners',String(username),'ticket_owner_linked',userId ? `user_id=${userId}` : 'unlinked');
-    res.json(await ticketOwners.listOwners());
+    const { changed }=await ticketOwners.setLink(userId,username || null);
+    if (changed && username) await jobs.enqueue('engineer_ticket_sync',{ user_id:userId },{ dedupeKey:`engineer-ticket-sync:${userId}`,maxAttempts:3 }).catch(() => {});
+    await logAudit(db,req,'user',userId,username || '-','ticketing_user_linked',username ? `rt_username=${username}` : 'unlinked');
+    res.json(await ticketOwners.listLinks());
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not link the Request Tracker user' }); }
+});
+router.post('/user-links/sync',async (req,res) => {
+  try { const job=await jobs.enqueue('engineer_ticket_sync',{},{ dedupeKey:'engineer-ticket-sync',maxAttempts:2 });res.status(202).json({ id:job.id }); }
+  catch(error) { if (error.status===409) return res.status(202).json({ queued:true });res.status(500).json({ error:'Could not start reading tickets' }); }
 });
 router.get('/sync-runs',async (req,res) => {
   const customerId=req.query.customer_id===undefined ? null : Number(req.query.customer_id);

@@ -407,3 +407,5 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .checklist-items label input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
 .checklist-items small { color: var(--gray-500); font-size: 12px; }
 .form-label-text { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--gray-700); }
+.ticket-owners-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ticket-owners-tools .ticketing-search { margin: 0; }

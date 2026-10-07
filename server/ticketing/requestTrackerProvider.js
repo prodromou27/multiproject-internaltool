@@ -119,6 +119,46 @@ class RequestTrackerProvider {
     throw Object.assign(new Error('Request Tracker ticket pagination exceeded 100 pages'),{ status:413 });
   }
 
+  /** RT staff accounts (privileged users), to link to TeamHub users. */
+  async getUsers() {
+    const users=[];let page=1,pages=1;
+    do {
+      let result;
+      try { result=await this.request('/users/privileged',{ page,per_page:100,fields:'Name,EmailAddress,RealName,Disabled' }); }
+      catch(error) {
+        if (/HTTP 403/.test(error.message)) throw Object.assign(new Error('Request Tracker did not list its users: give the token\'s RT user the right to see users (for example AdminUsers or ShowUserHistory)'),{ status:502 });
+        throw error;
+      }
+      if (!Array.isArray(result.items)) throw Object.assign(new Error('Request Tracker user response is invalid'),{ status:502 });
+      users.push(...result.items);pages=Math.max(1,Number(result.pages || 1));page++;
+      if (users.length>2000 || page>20) break;
+    } while(page<=pages);
+    return users.filter(user => user && !Number(user.Disabled)).map(user => ({
+      username:String(user.Name || user.id || '').slice(0,200),email:user.EmailAddress ? String(user.EmailAddress).trim().toLowerCase().slice(0,320) : null,
+      real_name:user.RealName ? String(user.RealName).slice(0,200) : null,
+    })).filter(user => user.username && user.username.toLowerCase()!=='nobody').sort((a,b) => a.username.localeCompare(b.username));
+  }
+
+  /** Tickets an RT user owns, in any queue: open now, or resolved since `since`. */
+  async getOwnedTickets(username,{ since }={}) {
+    const name=String(username ?? '');
+    if (!name || name.length>200 || /['\\\r\n]/.test(name)) throw Object.assign(new Error('Invalid Request Tracker user name'),{ status:400 });
+    const from=new Date(since);
+    if (Number.isNaN(from.getTime())) throw Object.assign(new Error('Invalid date'),{ status:400 });
+    const query=`Owner = '${name}' AND (Status = '__Active__' OR Resolved >= '${from.toISOString().slice(0,10)}')`;
+    const tickets=[];let page=1;
+    while (page<=100) {
+      const result=await this.request('/tickets',{ query,page,per_page:100,fields:'Subject,Status,Created,Resolved,Queue','fields[Queue]':'Name' });
+      if (!Array.isArray(result.items)) throw Object.assign(new Error('Request Tracker ticket response is invalid'),{ status:502 });
+      tickets.push(...result.items);
+      if (tickets.length>10000) throw Object.assign(new Error(`${name} owns more than 10,000 tickets in the period`),{ status:413 });
+      const hasPageCount=result.pages!==null && result.pages!==undefined && Number.isFinite(Number(result.pages));
+      if ((hasPageCount && page>=Number(result.pages)) || (!hasPageCount && !result.next_page) || result.items.length===0) return tickets;
+      page++;
+    }
+    throw Object.assign(new Error('Request Tracker ticket pagination exceeded 100 pages'),{ status:413 });
+  }
+
   async getQueues() {
     const references=[];let page=1,pages=1;
     do {
