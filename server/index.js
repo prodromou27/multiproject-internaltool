@@ -154,6 +154,11 @@ const APP_BUILD = (() => {
   catch { return null; }
 })();
 app.use('/api', (req, res, next) => { if (APP_BUILD) res.setHeader('X-App-Build', APP_BUILD); next(); });
+// While a backup is being restored, the API waits (the app restarts afterwards).
+app.use('/api', (req, res, next) => {
+  if (req.path !== '/health' && require('./databaseBackups').isRestoring()) return res.status(503).json({ error: 'TeamHub is restoring a database backup and will restart in a moment. Try again in a minute.', code: 'RESTORING' });
+  next();
+});
 
 // ── Health check (no auth) — used by Docker/compose healthchecks & load balancers
 app.get('/api/health', async (req, res) => {
@@ -278,6 +283,7 @@ const keyFile  = path.join(certDir, 'key.pem');
     console.log(`[time] organisation time zone: ${appTime.timeZone()}`);
     setInterval(() => appTime.refreshTimeZone(), 5 * 60 * 1000).unref?.();
     startClockChecks();
+    require('./databaseBackups').start();
   } catch (e) {
     console.error('[db] initialization failed — refusing to start:', e.message);
     process.exit(1);

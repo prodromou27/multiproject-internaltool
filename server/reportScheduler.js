@@ -95,6 +95,11 @@ async function initScheduler() {
       return { run_id:result.run_id,tickets_found:result.tickets_found,tickets_created:result.tickets_created,tickets_updated:result.tickets_updated };
     },
     custom_report_export: (payload,job) => require('./customReportExport').generate(payload,job),
+    database_backup: async payload => {
+      const backups=require('./databaseBackups');
+      const row=await backups.exclusive('backup',() => backups.backupNow({ kind:payload.kind==='scheduled' ? 'scheduled' : 'manual' }));
+      return { file:row.file,size_bytes:row.size_bytes };
+    },
     // Tickets linked engineers own in Request Tracker (any queue), for Workload.
     engineer_ticket_sync: async payload => {
       const owners=require('./ticketOwners');

@@ -55,3 +55,6 @@ client/playwright-report/
 server/uploads/
 # Per-server compose additions (extra_hosts, dns), never committed
 docker-compose.override.yml
+
+# In-app database backups (Settings → System → Backups)
+server/backups/

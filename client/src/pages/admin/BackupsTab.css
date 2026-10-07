@@ -1,0 +1,16 @@
+/* Settings → Backups */
+.bk { display: grid; gap: 16px; }
+.bk h3 { font-size: 15px; margin: 0 0 6px; }
+.bk-summary { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.bk-summary p { margin: 0; max-width: 70ch; }
+.bk-actions, .bk-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.bk-fields { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0 8px; }
+.bk-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--gray-600); }
+.bk-fields input { width: 160px; }
+.bk-table .num { text-align: right; white-space: nowrap; }
+.bk-ok { color: var(--success, #15803d); display: inline-flex; align-items: center; gap: 4px; }
+.text-danger svg, .bk-ok svg { vertical-align: -2px; }
+.bk-restarting { display: flex; align-items: center; gap: 10px; }
+@keyframes bk-spin { to { transform: rotate(-360deg); } }
+.bk-spin { animation: bk-spin 1.2s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .bk-spin { animation: none; } }

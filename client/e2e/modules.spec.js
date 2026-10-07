@@ -11,7 +11,7 @@ import { mockApi } from './support/mockApi.js';
 const SETTINGS_TABS = [
   'overview', 'users', 'teams', 'permissions', 'security', 'service_activity_tracking', 'statuses',
   'managed_report_templates', 'weekly_report', 'notifications', 'ticketing', 'activity_bot',
-  'localization', 'audit_log', 'system_health',
+  'localization', 'audit_log', 'system_health', 'backups',
   'projects', 'maintenance', 'integrations', 'logging', 'admin_alerts', 'stats', 'activity',
   'deployment', 'export', 'system_update',
 ];

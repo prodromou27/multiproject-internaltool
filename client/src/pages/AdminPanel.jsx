@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Settings, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot } from 'lucide-react';
+import { Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Settings, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup } from 'lucide-react';
 import { api } from '../api';
 import { visiblePages } from '../navigation';
 import { useAuth } from '../App';
@@ -18,6 +18,7 @@ import { SsoSettings } from './admin/SsoSettings';
 import { ManagedReportTemplatesTab } from './admin/ManagedReportTemplatesTab';
 import { PermissionsTab } from './admin/PermissionsTab';
 import TicketingSettings from './admin/TicketingSettings';
+import { BackupsTab } from './admin/BackupsTab';
 
 /* ── MAIN PAGE ───────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
@@ -35,6 +36,7 @@ const TABS = [
   { key: 'ticketing',      label: 'Ticketing',          Icon: Building2,       group: 'connections', desc: 'Request Tracker connection, customer queues, status mapping and sync health' },
   { key: 'activity_bot',   label: 'Activity bot',       Icon: Bot,             group: 'connections', desc: 'Engineers log service activities by chatting with a Webex or Teams bot' },
   { key: 'localization',   label: 'Time & region',      Icon: Globe,           group: 'system',   desc: 'Time zone, server clock, language and date formats' },
+  { key: 'backups',        label: 'Backups',            Icon: DatabaseBackup,  group: 'system',   desc: 'Automatic database backups, checks, download and restore' },
   { key: 'audit_log',      label: 'Audit log',          Icon: ClipboardList,   group: 'system',   desc: 'Who changed what, and when' },
   { key: 'system_health',  label: 'System health',      Icon: HardDrive,       group: 'system',   desc: 'Status, deployment, logging, updates and data export' },
 ];
@@ -210,6 +212,7 @@ export default function AdminPanel() {
           {tab === 'managed_report_templates' && <ManagedReportTemplatesTab />}
           {tab === 'ticketing' && <TicketingSettings />}
           {tab === 'system_health' && <SystemHealthTab key={part || 'stats'} initial={part} />}
+          {tab === 'backups' && <BackupsTab />}
           {tab === 'notifications' && <><IntegrationsTab /><h3 className="settings-subheading">Alerts about the system</h3><AdminAlertsTab /></>}
           {tab === 'activity_bot'  && <ActivityBotSettings sectionStyle={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 }} />}
           {tab === 'weekly_report' && <WeeklyReportTab />}

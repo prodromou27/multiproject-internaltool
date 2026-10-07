@@ -10,6 +10,7 @@ router.use(require('./settings/localization'));
 router.use(require('./settings/alerts'));
 router.use(require('./settings/logging'));
 router.use(require('./settings/system'));
+router.use(require('./settings/backups'));
 router.use(require('./settings/security'));
 router.use(require('./settings/activityBot'));
 router.use(require('./settings/sso'));

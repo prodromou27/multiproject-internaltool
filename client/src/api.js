@@ -49,8 +49,9 @@ async function req(method, path, body, { redirectOnUnauthorized = true, signal }
   return data;
 }
 
-async function upload(path, field, file) {
+async function upload(path, field, file, extra = {}) {
   const fd = new FormData();
+  for (const [key, value] of Object.entries(extra)) fd.append(key, value);
   fd.append(field, file);
   const res = await fetch(BASE + path, {
     method: 'POST',
@@ -68,9 +69,10 @@ async function upload(path, field, file) {
   return data;
 }
 
-// Saves a downloaded file under the name the server gives it.
-export async function saveDownload(path,fallbackName) {
-  const response=await fetch(BASE+path,{ credentials:'same-origin',headers:{ 'X-SolutionsHub-Request':'1','X-Client-Id':CLIENT_ID } });
+// Saves a downloaded file under the name the server gives it (POST sends `body`, e.g. a password).
+export async function saveDownload(path,fallbackName,body) {
+  const response=await fetch(BASE+path,body ? { method:'POST',credentials:'same-origin',headers:{ 'Content-Type':'application/json','X-SolutionsHub-Request':'1','X-Client-Id':CLIENT_ID },body:JSON.stringify(body) }
+    : { credentials:'same-origin',headers:{ 'X-SolutionsHub-Request':'1','X-Client-Id':CLIENT_ID } });
   if (!response.ok) { const error=await response.json().catch(() => ({}));handleUnauthorized(response.status,error,true);throw new Error(error.error || 'Download failed'); }
   const name=(response.headers.get('content-disposition') || '').match(/filename="([^"]+)"/)?.[1] || fallbackName;
   const url=URL.createObjectURL(await response.blob());
@@ -444,6 +446,15 @@ export const api = {
   deleteManagedReportTemplate: id => req('DELETE',`/managed-report-templates/${id}`),
   managedReportPlaceholders: options => req('GET','/managed-report-templates/placeholders',undefined,options),
   managedReportStarterTemplate: () => download('/managed-report-templates/starter.docx'),
+  // Settings → Backups
+  backups: options => req('GET','/settings/backups',undefined,options),
+  saveBackupSchedule: body => req('PUT','/settings/backups/schedule',body),
+  createBackup: () => req('POST','/settings/backups',{}),
+  verifyBackup: file => req('POST',`/settings/backups/${encodeURIComponent(file)}/verify`,{}),
+  restoreBackup: (file,password) => req('POST',`/settings/backups/${encodeURIComponent(file)}/restore`,{ confirm:'RESTORE',password }),
+  deleteBackup: file => req('DELETE',`/settings/backups/${encodeURIComponent(file)}`),
+  downloadBackup: (file,password) => saveDownload(`/settings/backups/${encodeURIComponent(file)}/download`,file,{ password }),
+  uploadBackup: (file,password) => upload('/settings/backups/upload','file',file,{ password }),
   uploadManagedReportWordTemplate: (id,file) => upload(`/managed-report-templates/${id}/word-template`,'file',file),
   downloadManagedReportWordTemplate: id => download(`/managed-report-templates/${id}/word-template`),
   removeManagedReportWordTemplate: id => req('DELETE',`/managed-report-templates/${id}/word-template`),

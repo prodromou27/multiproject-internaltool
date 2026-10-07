@@ -40,6 +40,15 @@ jobs:
         working-directory: server
         run: npm ci
 
+      # pg_dump/psql 16 for the database backup tests (same major version as the service).
+      - name: Install PostgreSQL client tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-16
+          echo "PG_BIN_DIR=/usr/lib/postgresql/16/bin" >> "$GITHUB_ENV"
+
       - name: Run server tests
         working-directory: server
         run: npm test
@@ -51,7 +60,7 @@ jobs:
         # Each suite seeds the same fixed cast (users, teams, customers), so it
         # gets a freshly created database rather than sharing one.
         run: |
-          for suite in activityCore activityValidation authNotificationsTasks trackingAndReports managedCustomers recommendationsAndCalendar operationsAndCustomer360 customReportSources ticketOwners; do
+          for suite in activityCore activityValidation authNotificationsTasks trackingAndReports managedCustomers recommendationsAndCalendar operationsAndCustomer360 customReportSources ticketOwners databaseBackups; do
             PGPASSWORD=test_password psql -h localhost -U app -d postgres -v ON_ERROR_STOP=1               -c 'DROP DATABASE IF EXISTS solutionshub_test WITH (FORCE)' -c 'CREATE DATABASE solutionshub_test'
             node --test "test/$suite.integration.test.js"
           done
@@ -137,3 +146,10 @@ jobs:
           ATTACHMENT_KEY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
           APP_URL=http://localhost:8080 \
           docker compose config
+
+      # The image must carry pg_dump/psql 16 for in-app backups.
+      - name: Build the app image and check its backup tools
+        run: |
+          docker build -t teamhub-ci .
+          docker run --rm --entrypoint pg_dump teamhub-ci --version | tee /dev/stderr | grep -q "PostgreSQL) 16\."
+          docker run --rm --entrypoint psql teamhub-ci --version | grep -q "PostgreSQL) 16\."

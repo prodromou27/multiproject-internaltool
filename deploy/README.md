@@ -200,6 +200,20 @@ instead of being force-killed.
 
 ## 5. Backups (production)
 
+TeamHub backs up its own database: **Settings → Backups**. By default it makes
+one backup a day at 02:30 (organisation time) and keeps 14 days, always keeping
+the newest 3. From there a manager can back up now, check a backup (restore it
+into a temporary database), download one, upload one, and restore one. A
+restore first backs up the current data, runs in a single transaction (a
+failure changes nothing) and then restarts the app.
+
+Backups are stored in the `backups` Docker volume (`/app/server/backups`).
+Keep copies off this server too: download one regularly, or copy the volume
+(`docker run --rm -v <project>_backups:/b -v "$PWD":/out alpine cp -r /b /out`).
+The files are the same gzipped SQL as the scripts below, so either can restore
+the other's backups. The scripts remain for use from the host, for example to
+restore when the app itself will not start:
+
 ```bash
 ./deploy/backup.sh prod                     # one-off dump → deploy/backups/
 ./deploy/verify-backup.sh prod deploy/backups/app-YYYYmmdd-HHMMSS.sql.gz
