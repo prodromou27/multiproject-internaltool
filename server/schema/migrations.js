@@ -748,6 +748,25 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261022_kpi_sources', `
+    -- KPIs: more data sources and scopes (checked by the app), customer and
+    -- engineer scopes, and entries managers record (trainings, certifications…).
+    ALTER TABLE kpi_definitions DROP CONSTRAINT IF EXISTS kpi_definitions_data_source_check;
+    ALTER TABLE kpi_definitions DROP CONSTRAINT IF EXISTS kpi_definitions_scope_type_check;
+    ALTER TABLE kpi_definitions ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE RESTRICT;
+    ALTER TABLE kpi_definitions ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE RESTRICT;
+    CREATE TABLE IF NOT EXISTS kpi_records (
+      id            SERIAL PRIMARY KEY,
+      definition_id INTEGER NOT NULL REFERENCES kpi_definitions(id) ON DELETE CASCADE,
+      user_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      record_date   TEXT NOT NULL,
+      value         REAL NOT NULL DEFAULT 1,
+      note          TEXT,
+      created_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at    TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_kpi_records_definition ON kpi_records(definition_id, record_date);
+  `]);
   migrations.push(['20261021_engineer_tickets', `
     -- Tickets each linked engineer owns in Request Tracker, from every queue (not only
     -- customer queues), so Workload can count what they resolved.

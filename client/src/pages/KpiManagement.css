@@ -35,3 +35,23 @@
   .kpi-row-actions { min-width:0; }
   .kpi-enabled-control { padding-top:0; }
 }
+
+/* Scorecard (KpiScorecard.jsx) */
+.kpi-scorecard { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.kpi-card { border: 1px solid var(--gray-200); border-left: 4px solid var(--gray-300); border-radius: 10px; padding: 12px 14px; display: grid; gap: 6px; background: var(--surface, #fff); }
+.kpi-card.is-healthy { border-left-color: #16a34a; }
+.kpi-card.is-warning { border-left-color: #d97706; }
+.kpi-card.is-critical { border-left-color: #dc2626; }
+.kpi-card header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.kpi-card h3 { font-size: 14px; margin: 0; }
+.kpi-card header p, .kpi-card-target { margin: 0; font-size: 12px; color: var(--gray-500); }
+.kpi-card-value { display: flex; align-items: baseline; gap: 6px; }
+.kpi-card-value strong { font-size: 26px; font-variant-numeric: tabular-nums; }
+.kpi-card-value span { font-size: 12px; color: var(--gray-500); }
+.kpi-card-breakdown summary { cursor: pointer; font-size: 12px; font-weight: 600; }
+.kpi-card-breakdown table, .kpi-breakdown { width: 100%; font-size: 12px; margin-top: 4px; }
+.kpi-card-breakdown th, .kpi-breakdown th { font-weight: 500; text-align: left; }
+.kpi-card-breakdown .num, .kpi-breakdown .num { text-align: right; font-variant-numeric: tabular-nums; }
+.kpi-breakdown { margin: 12px 0; }
+.kpi-record-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; margin-bottom: 14px; }
+.kpi-record-form .is-wide { grid-column: 1 / -1; }

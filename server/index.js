@@ -284,6 +284,7 @@ const keyFile  = path.join(certDir, 'key.pem');
     setInterval(() => appTime.refreshTimeZone(), 5 * 60 * 1000).unref?.();
     startClockChecks();
     require('./databaseBackups').start();
+    require('./kpiSnapshots').start();
   } catch (e) {
     console.error('[db] initialization failed — refusing to start:', e.message);
     process.exit(1);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, History, Play, Plus, RefreshCw } from 'lucide-react';
+import { BarChart3, ClipboardList, History, Play, Plus, RefreshCw } from 'lucide-react';
+import { KpiScorecard, RecordsDialog } from './KpiScorecard';
 import { api } from '../api';
 import { DataTable, Field, MetricStrip, Pagination, Surface, ToneBadge } from '../components/EnterpriseUI';
 import { Modal, fmtDateTime, fmtNumber } from '../components/Shared';
@@ -11,9 +12,10 @@ const PAGE_SIZE = 25;
 const emptyForm = {
   name: '', description: '', category: '', data_source: 'manual', manual_value: '0',
   target_value: '100', warning_threshold: '75', critical_threshold: '50', direction: 'higher',
-  scope_type: 'organization', team_id: '', project_id: '', enabled: true, display_order: '0',
-  visualization_type: 'number', version: undefined,
+  scope_type: 'organization', team_id: '', project_id: '', customer_id: '', user_id: '', enabled: true, display_order: '0',
+  visualization_type: 'number', version: undefined, period: 'month', per_engineer: false, aggregate: 'count', unit: '',
 };
+const SCOPE_LABELS = { organization: 'Organisation', team: 'Team', project: 'Project', customer: 'Customer', engineer: 'Engineer' };
 
 const label = value => String(value || '').replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase());
 const healthTone = status => status === 'healthy' ? 'success' : status === 'warning' ? 'warning' : status === 'critical' ? 'danger' : 'neutral';
@@ -26,17 +28,28 @@ function toForm(definition) {
     target_value: String(definition.target_value), warning_threshold: String(definition.warning_threshold),
     critical_threshold: String(definition.critical_threshold), display_order: String(definition.display_order),
     team_id: definition.team_id ? String(definition.team_id) : '', project_id: definition.project_id ? String(definition.project_id) : '',
+    customer_id: definition.customer_id ? String(definition.customer_id) : '', user_id: definition.user_id ? String(definition.user_id) : '',
+    period: definition.calculation_config?.period || 'all', per_engineer: !!definition.calculation_config?.per_engineer,
+    aggregate: definition.calculation_config?.aggregate || 'count', unit: definition.calculation_config?.unit || '',
   };
 }
 
-function payload(form) {
+function payload(form, meta) {
+  const source = meta?.data_sources.find(item => item.key === form.data_source);
+  const config = form.data_source === 'manual' ? { manual_value: Number(form.manual_value) } : {
+    ...(source?.period ? { period: form.period } : {}),
+    ...(source?.people && ['organization', 'team'].includes(form.scope_type) && form.per_engineer ? { per_engineer: true } : {}),
+    ...(form.data_source === 'records' ? { aggregate: form.aggregate, unit: form.unit || null } : {}),
+  };
   return {
     name: form.name, description: form.description, category: form.category, data_source: form.data_source,
-    calculation_config: form.data_source === 'manual' ? { manual_value: Number(form.manual_value) } : {},
+    calculation_config: config,
     target_value: Number(form.target_value), warning_threshold: Number(form.warning_threshold), critical_threshold: Number(form.critical_threshold),
     direction: form.direction, scope_type: form.scope_type,
     team_id: form.scope_type === 'team' ? Number(form.team_id) : null,
     project_id: form.scope_type === 'project' ? Number(form.project_id) : null,
+    customer_id: form.scope_type === 'customer' ? Number(form.customer_id) : null,
+    user_id: form.scope_type === 'engineer' ? Number(form.user_id) : null,
     enabled: !!form.enabled, display_order: Number(form.display_order), visualization_type: form.visualization_type,
     ...(form.version ? { version: form.version } : {}),
   };
@@ -47,10 +60,11 @@ function DefinitionDialog({ definition, meta, onClose, onSaved }) {
   const [saving, setSaving] = useState(false), [previewing, setPreviewing] = useState(false);
   const [error, setError] = useState(''), [preview, setPreview] = useState(null);
   const set = key => event => setForm(current => ({ ...current, [key]: event.target.type === 'checkbox' ? event.target.checked : event.target.value }));
+  const source = meta.data_sources.find(item => item.key === form.data_source);
 
   async function runPreview() {
     setPreviewing(true); setError('');
-    try { setPreview(await api.previewKpiDefinition(payload(form))); }
+    try { setPreview(await api.previewKpiDefinition(payload(form, meta))); }
     catch (failure) { setPreview(null); setError(failure.message); }
     finally { setPreviewing(false); }
   }
@@ -58,8 +72,8 @@ function DefinitionDialog({ definition, meta, onClose, onSaved }) {
   async function save(event) {
     event.preventDefault(); setSaving(true); setError('');
     try {
-      if (definition) await api.updateKpiDefinition(definition.id, payload(form));
-      else await api.createKpiDefinition(payload(form));
+      if (definition) await api.updateKpiDefinition(definition.id, payload(form, meta));
+      else await api.createKpiDefinition(payload(form, meta));
       onSaved(definition ? 'KPI definition updated' : 'KPI definition created');
     } catch (failure) { setError(failure.status === 409 ? 'This definition changed elsewhere. Close and reopen it before saving.' : failure.message); }
     finally { setSaving(false); }
@@ -73,10 +87,18 @@ function DefinitionDialog({ definition, meta, onClose, onSaved }) {
         <Field label="Category" required><input value={form.category} onChange={set('category')} maxLength={80} required placeholder="Delivery, Service, Quality…" /></Field>
         <Field label="Description" className="is-wide"><textarea value={form.description || ''} onChange={set('description')} maxLength={1000} rows={3} /></Field>
       </div></section>
-      <section><h3>Calculation</h3><div className="kpi-form-grid">
-        <Field label="Data source" required><select value={form.data_source} onChange={set('data_source')}>{meta.data_sources.map(source => <option key={source.key} value={source.key}>{source.label}</option>)}</select></Field>
+      <section><h3>What is measured</h3><div className="kpi-form-grid">
+        <Field label="Data source" required><select value={form.data_source} onChange={event => {
+          const next = meta.data_sources.find(item => item.key === event.target.value);
+          setForm(current => ({ ...current, data_source: event.target.value, scope_type: next?.scopes.includes(current.scope_type) ? current.scope_type : next?.scopes[0] || 'organization' }));
+        }}>{meta.data_sources.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}</select></Field>
+        {source?.period && <Field label="Period" required><select value={form.period} onChange={set('period')}>{meta.periods.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}</select></Field>}
         {form.data_source === 'manual' && <Field label="Manual value" required help="Used for previews and recorded snapshots."><input type="number" step="any" value={form.manual_value} onChange={set('manual_value')} required /></Field>}
-        <p className="kpi-source-help is-wide">{meta.data_sources.find(source => source.key === form.data_source)?.description}</p>
+        {form.data_source === 'records' && <>
+          <Field label="Count or add up" required><select value={form.aggregate} onChange={set('aggregate')}><option value="count">Count the entries</option><option value="sum">Add up their values</option></select></Field>
+          <Field label="What is recorded" help="For example: trainings, certifications, hours of training."><input value={form.unit} onChange={set('unit')} maxLength={40} placeholder="trainings" /></Field>
+        </>}
+        <p className="kpi-source-help is-wide">{source?.description}{source?.unit ? ` Measured in ${source.unit}.` : ''}</p>
       </div></section>
       <section><h3>Evaluation</h3><div className="kpi-form-grid is-four">
         <Field label="Target" required><input type="number" step="any" value={form.target_value} onChange={set('target_value')} required /></Field>
@@ -84,14 +106,19 @@ function DefinitionDialog({ definition, meta, onClose, onSaved }) {
         <Field label="Critical threshold" required><input type="number" step="any" value={form.critical_threshold} onChange={set('critical_threshold')} required /></Field>
         <Field label="Direction" required><select value={form.direction} onChange={set('direction')}><option value="higher">Higher is better</option><option value="lower">Lower is better</option></select></Field>
       </div><p className="kpi-source-help">{form.direction === 'higher' ? 'Critical ≤ warning ≤ target.' : 'Target ≤ warning ≤ critical.'}</p></section>
-      <section><h3>Scope and presentation</h3><div className="kpi-form-grid is-four">
-        <Field label="Scope" required><select value={form.scope_type} onChange={set('scope_type')}><option value="organization">Organization</option><option value="team">Team</option><option value="project">Project</option></select></Field>
+      <section><h3>Who it is for, and presentation</h3><div className="kpi-form-grid is-four">
+        <Field label="Measured for" required><select value={form.scope_type} onChange={set('scope_type')}>{(source?.scopes || ['organization']).map(scope => <option key={scope} value={scope}>{SCOPE_LABELS[scope]}</option>)}</select></Field>
         {form.scope_type === 'team' && <Field label="Team" required><select value={form.team_id} onChange={set('team_id')} required><option value="">Select team</option>{meta.teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}</select></Field>}
         {form.scope_type === 'project' && <Field label="Project" required><select value={form.project_id} onChange={set('project_id')} required><option value="">Select project</option>{meta.projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}</select></Field>}
+        {form.scope_type === 'customer' && <Field label="Customer" required><select value={form.customer_id} onChange={set('customer_id')} required><option value="">Select customer</option>{meta.customers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></Field>}
+        {form.scope_type === 'engineer' && <Field label="Engineer" required><select value={form.user_id} onChange={set('user_id')} required><option value="">Select engineer</option>{meta.engineers.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select></Field>}
+        {source?.people && ['organization', 'team'].includes(form.scope_type) && <label className="kpi-enabled-control is-wide"><input type="checkbox" checked={form.per_engineer} onChange={set('per_engineer')} /><span><strong>Measure each engineer</strong><small>Every engineer {form.scope_type === 'team' ? 'in the team' : ''} is measured against the target; the KPI shows their average</small></span></label>}
         <Field label="Visualization"><select value={form.visualization_type} onChange={set('visualization_type')}>{meta.visualizations.map(item => <option key={item} value={item}>{label(item)}</option>)}</select></Field>
         <Field label="Display order"><input type="number" min="0" max="1000000" value={form.display_order} onChange={set('display_order')} /></Field>
         <label className="kpi-enabled-control"><input type="checkbox" checked={form.enabled} onChange={set('enabled')} /><span><strong>Enabled</strong><small>Available for calculation and dashboards</small></span></label>
       </div></section>
+      {preview?.breakdown && <table className="kpi-breakdown"><thead><tr><th scope="col">Engineer</th><th scope="col" className="num">Value</th><th scope="col">Health</th></tr></thead>
+        <tbody>{preview.breakdown.map(row => <tr key={row.user_id}><th scope="row">{row.name}</th><td className="num">{row.value === null ? '—' : fmtNumber(row.value)}</td><td><ToneBadge tone={healthTone(row.status)}>{row.status === 'no_data' ? 'No data' : label(row.status)}</ToneBadge></td></tr>)}</tbody></table>}
       {preview && <div className={`kpi-preview is-${preview.status}`} role="status"><div><span>Calculated preview</span><strong>{fmtNumber(preview.value)}</strong></div><ToneBadge tone={healthTone(preview.status)}>{label(preview.status)}</ToneBadge><small>{preview.facts?.records === undefined ? 'Manual source' : `${preview.facts.records} matching records`}</small></div>}
     </form>
   </Modal>;
@@ -128,7 +155,7 @@ export default function KpiManagement() {
   const [filters, setFilters] = useState({ search: '', data_source: '', scope_type: '', enabled: '' }), [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true), [error, setError] = useState('');
   const [editing, setEditing] = useState(undefined), [history, setHistory] = useState(null), [busy, setBusy] = useState('');
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState(null), [records, setRecords] = useState(null), [scoreVersion, setScoreVersion] = useState(0);
 
   const load = useCallback(async (signal) => {
     setLoading(true); setError('');
@@ -161,7 +188,7 @@ export default function KpiManagement() {
   const columns = [
     { key: 'name', label: 'KPI', render: row => <div className="kpi-name-cell"><strong>{row.name}</strong><span>{row.description || row.category}</span></div> },
     { key: 'source', label: 'Source', render: row => <><strong>{sourceLabels[row.data_source] || label(row.data_source)}</strong><small className="kpi-cell-note">{row.category}</small></> },
-    { key: 'scope', label: 'Scope', render: row => <><ToneBadge>{label(row.scope_type)}</ToneBadge><small className="kpi-cell-note">{row.team_name || row.project_title || 'All operations'}</small></> },
+    { key: 'scope', label: 'Measured for', render: row => <><ToneBadge>{SCOPE_LABELS[row.scope_type] || label(row.scope_type)}</ToneBadge><small className="kpi-cell-note">{row.team_name || row.project_title || row.customer_name || row.engineer_name || 'All operations'}{row.calculation_config?.per_engineer ? ' · each engineer' : ''}</small></> },
     { key: 'current', label: 'Current value', numeric: true, render: row => row.current_value == null ? <span className="text-muted">Not calculated</span> : <><strong>{fmtNumber(row.current_value)}</strong><small className="kpi-cell-note">Target {fmtNumber(row.target_value)}</small></> },
     { key: 'health', label: 'Health', render: row => <><ToneBadge tone={healthTone(row.current_status)}>{row.current_status ? label(row.current_status) : 'No value'}</ToneBadge><small className="kpi-cell-note">{row.enabled ? 'Enabled' : 'Disabled'}</small></> },
     { key: 'actions', label: 'Actions', render: row => <div className="kpi-row-actions">
@@ -169,6 +196,7 @@ export default function KpiManagement() {
       <button className="btn btn-ghost btn-sm" onClick={() => action(row, 'test')} disabled={!!busy}><Play size={13} /> Test</button>
       <button className="btn btn-ghost btn-sm" onClick={() => action(row, 'calculate')} disabled={!!busy || !row.enabled}><RefreshCw size={13} className={busy === `calculate:${row.id}` ? 'spin' : ''} /> Calculate</button>
       <button className="btn btn-ghost btn-sm" onClick={() => setHistory(row)}><History size={13} /> History</button>
+      {row.data_source === 'records' && <button className="btn btn-ghost btn-sm" onClick={() => setRecords(row)}><ClipboardList size={13} /> Records</button>}
       <button className="btn btn-ghost btn-sm" onClick={() => action(row, 'state')} disabled={!!busy}>{row.enabled ? 'Deactivate' : 'Activate'}</button>
     </div> },
   ];
@@ -182,17 +210,19 @@ export default function KpiManagement() {
       { key: 'team', label: 'Team scoped', value: data.counts?.team_scoped || 0, tone: 'info', note: 'Team-specific measures' },
     ]} />
     {result && <div className={`kpi-run-result is-${result.status}`} role="status"><BarChart3 size={18} /><div><strong>{result.name}: {fmtNumber(result.value)}</strong><span>{result.type === 'test' ? 'Test result only; no history was changed.' : 'Value recorded in KPI history.'}</span></div><ToneBadge tone={healthTone(result.status)}>{label(result.status)}</ToneBadge><button onClick={() => setResult(null)} aria-label="Dismiss result">×</button></div>}
+    <KpiScorecard sources={meta?.data_sources} version={scoreVersion} onRecords={setRecords} />
     <Surface title="Definition catalogue" description="Search and filter the approved KPI catalogue. Calculations always run on the server.">
       <div className="kpi-toolbar">
         <input type="search" value={filters.search} onChange={event => changeFilter('search', event.target.value)} placeholder="Search name, category or description" aria-label="Search KPI definitions" />
         <select value={filters.data_source} onChange={event => changeFilter('data_source', event.target.value)} aria-label="Filter by data source"><option value="">All sources</option>{meta?.data_sources.map(source => <option key={source.key} value={source.key}>{source.label}</option>)}</select>
-        <select value={filters.scope_type} onChange={event => changeFilter('scope_type', event.target.value)} aria-label="Filter by scope"><option value="">All scopes</option><option value="organization">Organization</option><option value="team">Team</option><option value="project">Project</option></select>
+        <select value={filters.scope_type} onChange={event => changeFilter('scope_type', event.target.value)} aria-label="Filter by scope"><option value="">Measured for anyone</option>{Object.entries(SCOPE_LABELS).map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select>
         <select value={filters.enabled} onChange={event => changeFilter('enabled', event.target.value)} aria-label="Filter by state"><option value="">Any state</option><option value="true">Enabled</option><option value="false">Disabled</option></select>
       </div>
       <DataTable columns={columns} rows={data.rows} loading={loading} error={error} onRetry={() => load()} empty="No KPI definitions match these filters." caption="KPI definitions" />
       <Pagination page={page} total={data.total} pageSize={PAGE_SIZE} loading={loading} onPageChange={setPage} />
     </Surface>
-    {editing !== undefined && meta && <DefinitionDialog definition={editing} meta={meta} onClose={() => setEditing(undefined)} onSaved={message => { setEditing(undefined); toast.success(message); load(); }} />}
+    {editing !== undefined && meta && <DefinitionDialog definition={editing} meta={meta} onClose={() => setEditing(undefined)} onSaved={message => { setEditing(undefined); toast.success(message); load(); setScoreVersion(v => v + 1); }} />}
     {history && <HistoryDialog definition={history} onClose={() => setHistory(null)} />}
+    {records && meta && <RecordsDialog definition={records} engineers={meta.engineers} onClose={() => { setRecords(null); setScoreVersion(v => v + 1); }} />}
   </div>;
 }

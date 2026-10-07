@@ -175,6 +175,10 @@ export const api = {
   testKpiDefinition: id => req('POST', `/kpis/definitions/${id}/test`, {}),
   calculateKpiDefinition: id => req('POST', `/kpis/definitions/${id}/calculate`, {}),
   setKpiDefinitionState: (id, enabled, version) => req('POST', `/kpis/definitions/${id}/state`, { enabled, version }),
+  kpiScorecard: options => req('GET', '/kpis/scorecard', undefined, options),
+  kpiRecords: (id, options) => req('GET', `/kpis/definitions/${id}/records`, undefined, options),
+  addKpiRecord: (id, body) => req('POST', `/kpis/definitions/${id}/records`, body),
+  deleteKpiRecord: recordId => req('DELETE', `/kpis/records/${recordId}`),
   kpiDefinitionValues: (id, params = {}, options) => req('GET', `/kpis/definitions/${id}/values?${new URLSearchParams(params)}`, undefined, options),
 
   // reports

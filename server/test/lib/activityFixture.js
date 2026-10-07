@@ -124,6 +124,7 @@ if (isSuiteImport) test.before(async () => {
   app.use('/api/teams', require('../../routes/teams'));
   app.use('/api/customers', require('../../routes/customers'));
   app.use('/api/workload', require('../../routes/workload'));
+  app.use('/api/kpis', require('../../routes/kpis'));
   app.use('/api/report-settings', require('../../routes/report-settings'));
   app.use('/api/settings', require('../../routes/settings'));
   app.use('/api/ticketing', require('../../routes/ticketing'));
