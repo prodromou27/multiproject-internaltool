@@ -11,3 +11,17 @@
 .wt-bar i { display: block; width: 14px; min-height: 2px; background: var(--primary, #2563eb); border-radius: 2px 2px 0 0; }
 .wt-bar small { font-size: 9px; color: var(--gray-500); line-height: 1.4; }
 .wt-rt { display: block; font-weight: 400; font-size: 11px; color: var(--gray-500); }
+.wt-stack { display: flex; flex-direction: column-reverse; align-items: center; }
+.wt-stack i { width: 14px; display: block; }
+.wt-k-tickets { background: #2563eb; }
+.wt-k-tasks { background: #16a34a; }
+.wt-k-visits { background: #d97706; }
+.wt-k-activities { background: #7c3aed; }
+.wt-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--gray-600); margin-bottom: 8px; }
+.wt-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.wt-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.wt-expand { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; }
+.wt-open span { display: block; white-space: nowrap; }
+.wt-detail > td { background: var(--gray-50); }
+.wt-months { width: auto; margin-bottom: 8px; }
+.wt-months th, .wt-months td { padding: 4px 12px 4px 0; }

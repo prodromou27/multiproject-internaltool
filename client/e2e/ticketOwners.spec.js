@@ -16,12 +16,17 @@ test('managers pick each user\'s RT account and see the tickets each resolved', 
     { username: 'ppat', email: 'pat@odyssey.example', real_name: null },
   ] } }));
   for (const id of [7, 8]) api.override(`PUT /api/ticketing/user-links/${id}`, ({ body }) => { saved.push([id, body.rt_username]); links = links.map(row => row.id === id ? { ...row, rt_username: body.rt_username } : row); return { body: { rows: links } }; });
-  api.override('GET /api/workload/tickets', ({ request }) => {
+  const month = (m, tickets, tasks, visits, activities) => ({ month: m, tickets, tasks, visits, activities, hours: activities * 1.5 });
+  api.override('GET /api/workload/engineers', ({ request }) => {
     const months = Number(new URL(request.url()).searchParams.get('months'));
-    return { body: { from: '2026-07-07', to: '2026-10-07', months: ['2026-07', '2026-08', '2026-09', '2026-10'], unlinked_engineers: 1,
-      engineers: [{ id: 8, name: 'Nick Network', role: 'engineer', rt_username: 'nnetwork', synced_at: '2026-10-07 09:00:00', sync_error: null, resolved: months === 6 ? 61 : 31, open_now: 4, avg_days_to_resolve: 1.5,
-        by_month: [{ month: '2026-07', count: 5 }, { month: '2026-08', count: 10 }, { month: '2026-09', count: 12 }, { month: '2026-10', count: 4 }],
-        customers: [{ name: 'Northwind Logistics', count: 20 }, { name: 'Internal IT', count: 11 }] }] } };
+    return { body: { from: '2026-07-07', to: '2026-10-07', months: ['2026-07', '2026-08', '2026-09', '2026-10'], unlinked_engineers: 1, engineers: [
+      { id: 8, name: 'Nick Network', role: 'engineer', rt_username: 'nnetwork', tickets: { linked: true, resolved: months === 6 ? 61 : 31, open_now: 4, avg_days_to_resolve: 1.5, synced_at: '2026-10-07 09:00:00', sync_error: null },
+        tasks: { done: 9, open: 3, overdue: 1 }, visits: { completed: 2, upcoming: 1 }, activities: { count: 14, hours: 21 }, logged_hours: 12.5,
+        by_month: [month('2026-07', 5, 2, 0, 3), month('2026-08', 10, 3, 1, 4), month('2026-09', 12, 3, 1, 5), month('2026-10', 4, 1, 0, 2)],
+        customers: [{ name: 'Northwind Logistics', count: 20 }, { name: 'Internal IT', count: 11 }] },
+      { id: 7, name: 'Maria Security', role: 'engineer', rt_username: null, tickets: { linked: false }, tasks: { done: 4, open: 0, overdue: 0 }, visits: { completed: 0, upcoming: 0 },
+        activities: { count: 2, hours: 3 }, logged_hours: 0, by_month: [month('2026-07', 0, 1, 0, 0), month('2026-08', 0, 1, 0, 1), month('2026-09', 0, 1, 0, 1), month('2026-10', 0, 1, 0, 0)], customers: [] },
+    ] } };
   });
 
   // The other Ticketing sections, as the server returns them.
@@ -39,11 +44,16 @@ test('managers pick each user\'s RT account and see the tickets each resolved', 
   await expect(page.getByRole('row', { name: /Pat Planner/ })).toContainText('14 resolved in 3 months');
 
   await page.goto('/workload');
-  await page.getByRole('button', { name: 'Tickets resolved' }).click();
+  // By engineer is the first tab.
   const row = page.getByRole('row', { name: /Nick Network/ });
   await expect(row).toContainText('31');
-  await expect(row).toContainText('Northwind Logistics (20)');
+  await expect(row).toContainText('1 overdue');
+  await expect(row).toContainText('Northwind Logistics');
+  await expect(page.getByRole('row', { name: /Maria Security/ })).toContainText('Not linked');
   await expect(page.getByText('1 engineer is not linked to a Request Tracker user')).toBeVisible();
+  await page.getByRole('button', { name: 'Nick Network' }).click();
+  await expect(page.locator('.wt-months').getByRole('row', { name: /September 2026/ })).toContainText('12');
+  await expect(page.getByText('1.5 days on average to resolve a ticket')).toBeVisible();
   await page.getByRole('button', { name: '6 months' }).click();
   await expect(row).toContainText('61');
 });

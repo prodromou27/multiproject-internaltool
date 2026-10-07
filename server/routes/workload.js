@@ -76,6 +76,13 @@ router.get('/', requireManager, async (req, res) => {
 
 // GET /api/workload/forecast — 4-week scheduled-item grid
 // Replaces 8N queries with 8 batched queries (was: 160 queries for 20 engineers)
+// One row per engineer: tickets, tasks, visits, activities and time over the last 1, 3, 6 or 12 months.
+router.get('/engineers', requireManager, async (req, res) => {
+  const months = Number(req.query.months ?? 3);
+  if (![1, 3, 6, 12].includes(months)) return res.status(400).json({ error: 'months must be 1, 3, 6 or 12' });
+  res.json(await require('../workloadSummary').engineerSummary({ months }));
+});
+
 // Tickets each engineer resolved in Request Tracker over the last 1, 3, 6 or 12 months.
 router.get('/tickets', requireManager, async (req, res) => {
   const months = Number(req.query.months ?? 3);

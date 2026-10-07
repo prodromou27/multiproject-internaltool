@@ -85,3 +85,24 @@ test('periods are counted back in calendar months', () => {
   assert.equal(owners.monthsBack('2026-05-31', 3), '2026-02-28');
   assert.equal(owners.monthsBack('2026-01-15', 12), '2025-01-15');
 });
+
+test('the engineer summary adds up tickets, tasks, visits, activities and time for the period', async () => {
+  const eng = Number(ids.engineerEnabled), day = appTime.addDays(today, -3), old = appTime.addDays(today, -200);
+  await db.prepare("INSERT INTO tasks (title, status, customer_id, assigned_to, created_by, updated_at) VALUES ('Done task', 'completed', ?, ?, ?, ?)").run(ids.customer, eng, ids.manager, `${day} 10:00:00`);
+  await db.prepare("INSERT INTO tasks (title, status, customer_id, assigned_to, created_by, updated_at) VALUES ('Old task', 'completed', ?, ?, ?, ?)").run(ids.customer, eng, ids.manager, `${old} 10:00:00`);
+  await db.prepare("INSERT INTO tasks (title, status, assigned_to, created_by, deadline) VALUES ('Late task', 'open', ?, ?, ?)").run(eng, ids.manager, appTime.addDays(today, -1));
+  const visit = (await db.prepare("INSERT INTO maintenance_visits (customer_id, title, scheduled_date, status, created_by) VALUES (?, 'Quarterly check', ?, 'completed', ?)").run(ids.customer, day, ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?)').run(visit, eng);
+  await db.prepare("INSERT INTO time_logs (user_id, hours, logged_at) VALUES (?, 1.5, ?)").run(eng, `${day} 09:00:00`);
+  const res = await api('/api/workload/engineers?months=3', { token: ids.tokenManager });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  const row = res.data.engineers.find(e => e.id === eng);
+  assert.deepEqual(row.tasks, { done: 1, open: 1, overdue: 1 });
+  assert.deepEqual(row.visits, { completed: 1, upcoming: 0 });
+  assert.equal(row.logged_hours, 1.5);
+  assert.equal(row.tickets.linked, false);
+  assert.equal(row.customers[0].name, 'Acme Corp');
+  assert.equal(row.by_month.reduce((sum, m) => sum + m.tasks, 0), 1);
+  assert.equal((await api('/api/workload/engineers?months=2', { token: ids.tokenManager })).status, 400);
+  assert.equal((await api('/api/workload/engineers', { token: ids.tokenEnabled })).status, 403);
+});

@@ -311,7 +311,7 @@ function Pill({ icon, value, label, color }) {
 }
 
 export default function Workload() {
-  const [tab,        setTab]        = useState('snapshot');
+  const [tab,        setTab]        = useState('tickets');
   const [engineers,  setEngineers]  = useState([]);
   const [forecast,   setForecast]   = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -390,12 +390,12 @@ export default function Workload() {
 
       {/* Tabs */}
       <div className="tabs mb-16">
+        <button className={'tab' + (tab === 'tickets' ? ' active' : '')} onClick={() => setTab('tickets')}>By engineer</button>
         <button className={'tab' + (tab === 'pressure' ? ' active' : '')} onClick={() => setTab('pressure')}>Operational pressure</button>
         <button className={'tab' + (tab === 'planning' ? ' active' : '')} onClick={() => setTab('planning')}>Effort and availability</button>
         <button className={'tab' + (tab === 'snapshot' ? ' active' : '')} onClick={() => setTab('snapshot')}>
           <Users size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />Current Snapshot
         </button>
-        <button className={'tab' + (tab === 'tickets' ? ' active' : '')} onClick={() => setTab('tickets')}>Tickets resolved</button>
         <button className={'tab' + (tab === 'forecast' ? ' active' : '')} onClick={() => setTab('forecast')}>
           <CalendarDays size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />4-Week Forecast
         </button>
