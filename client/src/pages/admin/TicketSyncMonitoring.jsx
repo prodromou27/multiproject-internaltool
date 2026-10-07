@@ -12,7 +12,8 @@ export default function TicketSyncMonitoring({ onMessage, standalone }) {
     setLoading(true);setError('');
     try {
       const [status,history]=await Promise.all([api.ticketingMonitoring({ signal }),api.ticketSyncRuns({}, { signal })]);
-      if (!signal.aborted) { setMonitoring(status);setRuns(history.rows || []); }
+      // Missing parts of the reply count as empty rather than breaking Settings.
+      if (!signal.aborted) { setMonitoring({ ...status,integration:status?.integration || {},summary:status?.summary || {},customers:Array.isArray(status?.customers) ? status.customers : [] });setRuns(Array.isArray(history?.rows) ? history.rows : []); }
     } catch(failure) { if (!signal.aborted) setError(failure.message); }
     finally { if (!signal.aborted) setLoading(false); }
   },[]);

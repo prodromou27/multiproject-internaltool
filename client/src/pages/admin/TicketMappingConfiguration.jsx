@@ -2,16 +2,18 @@ import { useEffect,useState } from 'react';
 import { Plus,Save,Trash2 } from 'lucide-react';
 import { api } from '../../api';
 
+// The server always sends both lists; anything else is treated as empty rather than breaking Settings.
+const shape=value => ({ statuses:Array.isArray(value?.statuses) ? value.statuses : [],priorities:Array.isArray(value?.priorities) ? value.priorities : [] });
 const STATUSES=['New','Open','In Progress','Pending','Resolved','Closed','Rejected','Excluded'];
 const PRIORITIES=['Low','Normal','High','Critical'];
 
 export default function TicketMappingConfiguration() {
   const [config,setConfig]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
-  useEffect(() => { const controller=new AbortController();api.ticketMappings({ signal:controller.signal }).then(setConfig).catch(failure => { if (!controller.signal.aborted) setError(failure.message); });return () => controller.abort(); },[]);
+  useEffect(() => { const controller=new AbortController();api.ticketMappings({ signal:controller.signal }).then(value => setConfig(shape(value))).catch(failure => { if (!controller.signal.aborted) setError(failure.message); });return () => controller.abort(); },[]);
   const update=(type,index,key,value) => setConfig(current => ({ ...current,[type]:current[type].map((item,itemIndex) => itemIndex===index ? { ...item,[key]:value } : item) }));
   const remove=(type,index) => setConfig(current => ({ ...current,[type]:current[type].filter((_,itemIndex) => itemIndex!==index) }));
   const add=type => setConfig(current => ({ ...current,[type]:[...current[type],type==='statuses' ? { external:'',normalized:'Open',group:'open' } : { external:'',normalized:'Normal' }] }));
-  async function save() { setBusy(true);setError('');setMessage('');try { const result=await api.saveTicketMappings(config);setConfig({ statuses:result.statuses,priorities:result.priorities });setMessage(`Mappings saved; ${result.reclassified} stored ticket(s) reclassified.`); } catch(failure) { setError(failure.message); } finally { setBusy(false); } }
+  async function save() { setBusy(true);setError('');setMessage('');try { const result=await api.saveTicketMappings(config);setConfig(shape(result));setMessage(`Mappings saved; ${result?.reclassified ?? 0} stored ticket(s) reclassified.`); } catch(failure) { setError(failure.message); } finally { setBusy(false); } }
   if (!config) return <p className="text-muted text-sm">{error || 'Loading ticket mappings...'}</p>;
   return <div className="u-0519f7a">
     <div className="u-87c136d"><h3 className="u-de00808">Ticket normalization</h3><p className="text-muted text-sm">Map RT lifecycle values to stable dashboard and report categories. Saving immediately reclassifies stored tickets.</p></div>

@@ -32,6 +32,8 @@ for (const tab of SETTINGS_TABS) {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(500);
     expect(problems).toEqual([]);
+    // Ticketing must survive a reply missing its lists (other pages rely on the real server's shapes).
+    if (tab === 'ticketing') await expect(page.getByText('Something went wrong on this page')).toHaveCount(0);
   });
 }
 
