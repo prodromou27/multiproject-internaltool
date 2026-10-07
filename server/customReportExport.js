@@ -10,7 +10,7 @@ const exportRoot=path.resolve(__dirname,'uploads','exports');
 
 async function generate(payload,job) {
   if (!cipher.isConfigured()) throw Object.assign(new Error('Encrypted export storage is unavailable'),{ permanent:true });
-  if (!['csv','xlsx'].includes(payload.format)) throw Object.assign(new Error('Unsupported export format'),{ permanent:true });
+  if (!['csv','xlsx','pdf'].includes(payload.format)) throw Object.assign(new Error('Unsupported export format'),{ permanent:true });
   const owner=await db.prepare("SELECT id FROM users WHERE id=? AND role='manager' AND active=1 AND must_change_password=0").get(job.created_by);
   if (!owner) throw Object.assign(new Error('Export owner no longer has permission to run management reports'),{ permanent:true });
   const result=await execution.run(payload.definition,5000);
@@ -18,6 +18,8 @@ async function generate(payload,job) {
   let raw,type,name;
   if (payload.format==='csv') {
     raw=Buffer.from(execution.csv(result),'utf8');type='text/csv; charset=utf-8';name='custom-report.csv';
+  } else if (payload.format==='pdf') {
+    raw=await execution.pdf(result,payload.title || 'Custom report');type='application/pdf';name='custom-report.pdf';
   } else {
     const workbook=new ExcelJS.Workbook(),sheet=workbook.addWorksheet('Report');
     sheet.addRow(result.columns.map(column => column.label));

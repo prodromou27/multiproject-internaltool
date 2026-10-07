@@ -54,3 +54,19 @@ test('report aggregation uses stable groups and approved numeric operations', ()
   assert.equal(JSON.stringify(metadata()).includes('sql'),false);
   for (const source of metadata()) for (const field of source.fields) assert.ok(!/password|secret|token|notes|email|storage/i.test(field.key));
 });
+
+test('lookups resolve names after the query, and encrypted fields are shown but never filtered or grouped', () => {
+  const byCustomer = compileReport({ source: 'tasks',fields: ['title','customer_id'],sort: [{ field: 'customer_id',direction: 'desc' }] },100);
+  assert.deepEqual(byCustomer.postSort,[{ field: 'customer_id',direction: 'desc' }],'sorted by name after the names are filled in');
+  assert.equal(byCustomer.columns.find(column => column.key==='customer_id').lookup,'customer');
+  assert.deepEqual(compileReport({ source: 'tasks',fields: ['title'],sort: [{ field: 'title',direction: 'asc' }] },100).postSort,[]);
+  assert.throws(() => compileReport({ source: 'tasks',fields: ['customer_id'],sort: [{ field: 'customer_id',direction: 'asc' },{ field: 'deadline',direction: 'asc' }] },100),/output columns/);
+  assert.doesNotThrow(() => compileReport({ source: 'tasks',fields: ['title'],filters: [{ field: 'customer_id',operator: 'in',value: [1,2] }] },100));
+  assert.throws(() => compileReport({ source: 'tasks',fields: ['title'],filters: [{ field: 'customer_id',operator: 'eq',value: 'Acme' }] },100),/match its field type/);
+  assert.throws(() => compileReport({ source: 'assets',fields: ['name'],filters: [{ field: 'vendor',operator: 'contains',value: 'forti' }] },100),/encrypted/);
+  assert.throws(() => compileReport({ source: 'assets',fields: ['vendor'],group_by: ['vendor'],aggregations: [{ field: '*',operation: 'count' }] },100),/grouped/);
+  const fields = metadata().find(source => source.key==='assets').fields;
+  assert.equal(fields.find(field => field.key==='vendor').filterable,false);
+  assert.equal(fields.find(field => field.key==='criticality').filterable,true);
+  assert.match(compileReport({ source: 'cves',fields: ['cve','severity'] },100).sql,/ORDER BY r\.id ASC/);
+});

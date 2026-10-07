@@ -45,6 +45,13 @@ function SaveDialog({ selected,definition,references,onSaved,onClose }) {
   </Modal>;
 }
 
+/* A customer, engineer, team, project or category, chosen by name (the report filters by ID). */
+function LookupValue({ index,multiple,options,value,onChange }) {
+  const selected = (Array.isArray(value) ? value : String(value ?? '').split(',')).map(String).filter(Boolean);
+  if (multiple) return <select aria-label={`Filter value ${index+1}`} multiple size={Math.min(6,Math.max(3,options.length))} value={selected} onChange={event => onChange([...event.target.selectedOptions].map(option => option.value))}>{options.map(option => <option key={option.id} value={String(option.id)}>{option.name}</option>)}</select>;
+  return <select aria-label={`Filter value ${index+1}`} required value={selected[0] || ''} onChange={event => onChange(event.target.value)}><option value="">Choose…</option>{options.map(option => <option key={option.id} value={String(option.id)}>{option.name}</option>)}</select>;
+}
+
 export default function ReportBuilder() {
   const { user } = useAuth();
   const toast = useToast(),confirm = useConfirm();
@@ -97,13 +104,18 @@ export default function ReportBuilder() {
         return { field: filter.field,operator: filter.operator,relative: { anchor: filter.relative.anchor,offset_days: Number(filter.relative.offset_days) } };
       }
       const parse = value => {
-        if (['number','id'].includes(field.type)) {
+        if (['number','id'].includes(field.type) || field.lookup) {
           if (String(value).trim()==='') throw new Error(`Enter a value for ${field.label}`);
           return Number(value);
         }
         return value;
       };
-      return { ...filter,value: ['in','not_in'].includes(filter.operator) ? String(filter.value).split(',').map(value => parse(value.trim())) : parse(filter.value) };
+      if (['in','not_in'].includes(filter.operator)) {
+        const values = Array.isArray(filter.value) ? filter.value : String(filter.value ?? '').split(',').map(value => value.trim()).filter(value => value!=='');
+        if (!values.length) throw new Error(`Choose at least one value for ${field.label}`);
+        return { ...filter,value: values.map(parse) };
+      }
+      return { ...filter,value: parse(filter.value) };
     }) };
   }
   async function run(event) {
@@ -120,9 +132,9 @@ export default function ReportBuilder() {
     if (exporting) return;
     setExporting(true); setError('');
     try {
-      const blob = await api.customReportExport(collect(),format);
+      const blob = await api.customReportExport(collect(),format,selected?.name);
       const url = URL.createObjectURL(blob),anchor = document.createElement('a');
-      anchor.href=url; anchor.download=`custom-report.${format}`; anchor.click();
+      anchor.href=url; anchor.download=`${(selected?.name || 'custom-report').replace(/[^\w .-]+/g,'_')}.${format}`; anchor.click();
       setTimeout(() => URL.revokeObjectURL(url),1000);
     } catch (failure) { setError(failure.message); }
     finally { setExporting(false); }
@@ -147,7 +159,8 @@ export default function ReportBuilder() {
   const busy = loading || loaded!==scope;
   if (busy && !error) return <p role="status">Loading report sources and definitions...</p>;
   if (busy || !references || !source) return <div className="error-msg" role="alert">{error || 'Report metadata unavailable'} <button className="btn btn-ghost" onClick={load}>Retry</button><button className="btn btn-ghost" onClick={() => { setSelected(null); setDefinition(initial()); }}>New definition</button></div>;
-  const output = grouped ? [...definition.group_by.map(key => ({ key,label: source.fields.find(row => row.key===key)?.label || key })),...definition.aggregations.map((entry,i) => ({ key: `metric_${i}`,label: `${entry.operation} ${entry.field}` }))] : source.fields;
+  const filterable = source.fields.filter(field => field.filterable!==false);
+  const output = grouped ? [...definition.group_by.map(key => ({ key,label: source.fields.find(row => row.key===key)?.label || key })),...definition.aggregations.map((entry,i) => ({ key: `metric_${i}`,label: `${entry.operation} ${entry.field}` }))] : source.fields.filter(field => definition.fields.includes(field.key) || (!field.lookup && field.filterable!==false));
   return <section>
     {error && <div className="error-msg" role="alert">{error}</div>}
     <section className="card mb-20">
@@ -170,27 +183,28 @@ export default function ReportBuilder() {
       <h2 className="u-4ff818f">Report Builder{selected ? ` · ${selected.name}` : ''}</h2>
       <p className="text-muted text-sm">{source.grain}. Preview up to {references.preview_limit} rows; exports reject more than {references.export_limit} rows.</p>
       {selected && !selected.can_edit && <p className="text-muted">Shared report: you may run it or save a copy. Its owner controls changes.</p>}
-      <div className="form-group"><label htmlFor="report-source">Source</label><select id="report-source" value={definition.source} onChange={event => { setSelected(null); setDefinition({ source: event.target.value,fields: ['id'],filters: [],group_by: [],aggregations: [],sort: [] }); }}>{references.sources.map(row => <option key={row.key} value={row.key}>{row.label}</option>)}</select></div>
+      <div className="form-group"><label htmlFor="report-source">Source</label><select id="report-source" value={definition.source} onChange={event => { const next = references.sources.find(row => row.key===event.target.value); setSelected(null); setDefinition({ source: event.target.value,fields: next.fields.slice(0,3).map(field => field.key),filters: [],group_by: [],aggregations: [],sort: [] }); }}>{references.sources.map(row => <option key={row.key} value={row.key}>{row.label}</option>)}</select></div>
       <label className="flex gap-8"><input type="checkbox" checked={grouped} onChange={event => setDefinition(old => ({ ...old,fields: [],group_by: [],aggregations: event.target.checked ? [{ field: '*',operation: 'count' }] : [],sort: [] }))} />Group and aggregate</label>
-      <fieldset className="u-ad0985f"><legend>{grouped ? 'Grouping fields (up to 4)' : 'Output fields (up to 12)'}</legend><div className="u-c64adbe">{source.fields.map(field => <label key={field.key} className="flex gap-6"><input type="checkbox" checked={definition.fields.includes(field.key)} disabled={!definition.fields.includes(field.key) && definition.fields.length>=(grouped ? 4 : 12)} onChange={event => { const fields=event.target.checked ? [...definition.fields,field.key] : definition.fields.filter(key => key!==field.key); setDefinition(old => ({ ...old,fields,group_by: grouped ? fields : [],sort: [] })); }} />{field.label}</label>)}</div></fieldset>
+      <fieldset className="u-ad0985f"><legend>{grouped ? 'Grouping fields (up to 4)' : 'Output fields (up to 12)'}</legend><div className="u-c64adbe">{source.fields.filter(field => !grouped || field.groupable!==false).map(field => <label key={field.key} className="flex gap-6"><input type="checkbox" checked={definition.fields.includes(field.key)} disabled={!definition.fields.includes(field.key) && definition.fields.length>=(grouped ? 4 : 12)} onChange={event => { const fields=event.target.checked ? [...definition.fields,field.key] : definition.fields.filter(key => key!==field.key); setDefinition(old => ({ ...old,fields,group_by: grouped ? fields : [],sort: [] })); }} />{field.label}</label>)}</div></fieldset>
       {grouped && <fieldset><legend>Aggregations</legend>{definition.aggregations.map((entry,index) => <div className="form-row" key={index}>
-        <select aria-label={`Measure ${index+1}`} value={entry.field} onChange={event => change('aggregations',index,{ field: event.target.value,operation: 'count' })}><option value="*">All records</option>{source.fields.map(field => <option key={field.key} value={field.key}>{field.label}</option>)}</select>
+        <select aria-label={`Measure ${index+1}`} value={entry.field} onChange={event => change('aggregations',index,{ field: event.target.value,operation: 'count' })}><option value="*">All records</option>{source.fields.filter(field => field.filterable!==false).map(field => <option key={field.key} value={field.key}>{field.label}</option>)}</select>
         <select aria-label={`Aggregation ${index+1}`} value={entry.operation} onChange={event => change('aggregations',index,{ operation: event.target.value })}>{(entry.field==='*' ? ['count'] : source.fields.find(field => field.key===entry.field)?.aggregations || ['count']).map(value => <option key={value} value={value}>{value}</option>)}</select>
         <button className="btn btn-ghost btn-sm" type="button" onClick={() => set('aggregations',definition.aggregations.filter((_,i) => i!==index))}>Remove</button>
       </div>)}<button className="btn btn-ghost btn-sm" type="button" disabled={definition.aggregations.length>=6} onClick={() => set('aggregations',[...definition.aggregations,{ field: '*',operation: 'count' }])}>Add aggregation</button></fieldset>}
       <fieldset className="u-f63b87b"><legend>Filters (all must match)</legend>{definition.filters.map((entry,index) => {
         const field=source.fields.find(row => row.key===entry.field);
         return <div className="form-row" key={index}>
-          <select aria-label={`Filter field ${index+1}`} value={entry.field} onChange={event => change('filters',index,{ field: event.target.value,operator: 'eq',value: '',relative: undefined })}>{source.fields.map(row => <option key={row.key} value={row.key}>{row.label}</option>)}</select>
+          <select aria-label={`Filter field ${index+1}`} value={entry.field} onChange={event => change('filters',index,{ field: event.target.value,operator: 'eq',value: '',relative: undefined })}>{filterable.map(row => <option key={row.key} value={row.key}>{row.label}</option>)}</select>
           <select aria-label={`Filter operator ${index+1}`} value={entry.operator} onChange={event => change('filters',index,{ operator: event.target.value,...(['in','not_in','is_null','is_not_null'].includes(event.target.value) ? { relative: undefined } : {}) })}>{field.operators.map(value => <option key={value} value={value}>{value.replaceAll('_',' ')}</option>)}</select>
           {field.type==='date' && !['in','not_in','is_null','is_not_null'].includes(entry.operator) && <select aria-label={`Date mode ${index+1}`} value={entry.relative?.anchor || 'fixed'} onChange={event => change('filters',index,event.target.value==='fixed' ? { relative: undefined,value: '' } : { value: undefined,relative: { anchor: event.target.value,offset_days: 0 } })}><option value="fixed">Fixed date</option><option value="today">Run date</option><option value="week_start">Start of run week</option><option value="week_end">End of run week</option><option value="month_start">Start of run month</option><option value="month_end">End of run month</option></select>}
           {entry.relative && <input aria-label={`Relative day offset ${index+1}`} type="number" min="-3660" max="3660" step="1" required value={entry.relative.offset_days} onChange={event => change('filters',index,{ relative: { ...entry.relative,offset_days: event.target.value } })} title="Days before (-) or after (+) the selected anchor" />}
-          {!entry.relative && !['is_null','is_not_null'].includes(entry.operator) && <input aria-label={`Filter value ${index+1}`} value={Array.isArray(entry.value) ? entry.value.join(',') : entry.value} onChange={event => change('filters',index,{ value: event.target.value })} type={['in','not_in'].includes(entry.operator) ? 'text' : field.type==='date' ? 'date' : ['id','number'].includes(field.type) ? 'number' : 'text'} step={field.type==='id' ? 1 : 'any'} min={field.type==='id' ? 1 : undefined} placeholder={['in','not_in'].includes(entry.operator) ? 'Comma-separated values' : 'Value'} maxLength={5000} />}
+          {field.lookup && !['is_null','is_not_null'].includes(entry.operator) && <LookupValue index={index} multiple={['in','not_in'].includes(entry.operator)} options={references.lookups?.[field.type] || []} value={entry.value} onChange={value => change('filters',index,{ value })} />}
+          {!field.lookup && !entry.relative && !['is_null','is_not_null'].includes(entry.operator) && <input aria-label={`Filter value ${index+1}`} value={Array.isArray(entry.value) ? entry.value.join(',') : entry.value} onChange={event => change('filters',index,{ value: event.target.value })} type={['in','not_in'].includes(entry.operator) ? 'text' : field.type==='date' ? 'date' : ['id','number'].includes(field.type) ? 'number' : 'text'} step={field.type==='id' ? 1 : 'any'} min={field.type==='id' ? 1 : undefined} placeholder={['in','not_in'].includes(entry.operator) ? 'Comma-separated values' : 'Value'} maxLength={5000} />}
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => set('filters',definition.filters.filter((_,i) => i!==index))}>Remove</button>
         </div>;
-      })}<button className="btn btn-ghost btn-sm" type="button" disabled={definition.filters.length>=12} onClick={() => set('filters',[...definition.filters,{ field: source.fields[0].key,operator: 'eq',value: '' }])}>Add filter</button></fieldset>
+      })}<button className="btn btn-ghost btn-sm" type="button" disabled={definition.filters.length>=12} onClick={() => set('filters',[...definition.filters,{ field: filterable[0].key,operator: 'eq',value: '' }])}>Add filter</button></fieldset>
       <fieldset className="u-f63b87b"><legend>Sorts</legend>{definition.sort.map((entry,index) => <div className="form-row" key={index}><select aria-label={`Sort field ${index+1}`} value={entry.field} onChange={event => change('sort',index,{ field: event.target.value })}>{output.map(row => <option key={row.key} value={row.key}>{row.label}</option>)}</select><select aria-label={`Sort direction ${index+1}`} value={entry.direction} onChange={event => change('sort',index,{ direction: event.target.value })}><option value="asc">Ascending</option><option value="desc">Descending</option></select><button className="btn btn-ghost btn-sm" type="button" onClick={() => set('sort',definition.sort.filter((_,i) => i!==index))}>Remove</button></div>)}<button className="btn btn-ghost btn-sm" type="button" disabled={definition.sort.length>=3 || !output.length} onClick={() => set('sort',[...definition.sort,{ field: output[0].key,direction: 'asc' }])}>Add sort</button></fieldset>
-      <div className="flex gap-8 u-62da067"><button className="btn btn-primary" type="submit" disabled={running}>{running ? 'Running...' : 'Preview'}</button><button className="btn btn-ghost" type="button" disabled={exporting} onClick={() => exportReport('xlsx')}>Export Excel</button><button className="btn btn-ghost" type="button" disabled={exporting} onClick={() => exportReport('csv')}>Export CSV</button><button className="btn btn-ghost" type="button" onClick={() => saveReport(false)}>Save as new</button>{selected?.can_edit && <><button className="btn btn-ghost" type="button" onClick={() => setSchedule(selected)}>Delivery schedule</button><button className="btn btn-ghost" type="button" onClick={() => saveReport(true)}>Update saved report</button><button className="btn btn-danger" type="button" onClick={deleteReport}>Delete definition</button></>}</div>
+      <div className="flex gap-8 u-62da067"><button className="btn btn-primary" type="submit" disabled={running}>{running ? 'Running...' : 'Preview'}</button><button className="btn btn-ghost" type="button" disabled={exporting} onClick={() => exportReport('xlsx')}>Export Excel</button><button className="btn btn-ghost" type="button" disabled={exporting} onClick={() => exportReport('pdf')}>Export PDF</button><button className="btn btn-ghost" type="button" disabled={exporting} onClick={() => exportReport('csv')}>Export CSV</button><button className="btn btn-ghost" type="button" onClick={() => saveReport(false)}>Save as new</button>{selected?.can_edit && <><button className="btn btn-ghost" type="button" onClick={() => setSchedule(selected)}>Delivery schedule</button><button className="btn btn-ghost" type="button" onClick={() => saveReport(true)}>Update saved report</button><button className="btn btn-danger" type="button" onClick={deleteReport}>Delete definition</button></>}</div>
     </form>
     {preview?.signature===signature && <section className="card table-wrap mt-20"><p>{preview.rows.length} preview rows{preview.truncated ? ' · More matching rows exist; preview is truncated.' : ''}</p><table><thead><tr>{preview.columns.map(column => <th key={column.key}>{column.label}</th>)}</tr></thead><tbody>{preview.rows.map((row,index) => <tr key={index}>{preview.columns.map(column => <td key={column.key}>{row[column.key] ?? '—'}</td>)}</tr>)}</tbody></table>{!preview.rows.length && <p>No matching records.</p>}</section>}
     {schedule && <ReportScheduleDialog report={schedule} onClose={() => setSchedule(null)} />}

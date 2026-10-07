@@ -504,7 +504,7 @@ test('queued custom report exports remain encrypted and private to their owner',
     const download=await fetch(`${suiteFixture.baseUrl}/api/reports/custom/exports/${jobId}/download`,{ headers:{ Authorization:`Bearer ${token}` } });
     assert.equal(download.status,200);assert.equal(Buffer.from(await download.arrayBuffer()).equals(plain),true);
     assert.equal((await fetch(`${suiteFixture.baseUrl}/api/reports/custom/exports/${jobId}/download`,{ headers:{ Authorization:`Bearer ${peerToken}` } })).status,404);
-    assert.equal((await api('/api/reports/custom/exports',{ method:'POST',token,body:{ format:'pdf',definition:{ source:'tasks',fields:['id'] } } })).status,400);
+    assert.equal((await api('/api/reports/custom/exports',{ method:'POST',token,body:{ format:'docx',definition:{ source:'tasks',fields:['id'] } } })).status,400);
   } finally {
     if (filePath) await fs.promises.unlink(filePath).catch(()=>{});
     if (jobId) await db.prepare('DELETE FROM background_jobs WHERE id=?').run(jobId);

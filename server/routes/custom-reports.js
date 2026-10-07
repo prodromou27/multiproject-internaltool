@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { requirePermission } = require('../middleware/auth');
 const { metadata,compileReport } = require('../customReports');
+const { decrypt } = require('../fieldCipher');
 const { logAudit } = require('../auditLog');
 const { reportTemplates } = require('../reportTemplates');
 const { run,csv } = require('../reportExecution');
@@ -18,12 +19,18 @@ router.get('/sources',async (req,res) => {
   const row = await db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
   let config = {};
   try { config = JSON.parse(row?.value || '{}'); } catch { /* use default states */ }
-  const [shareUsers,shareTeams] = await Promise.all([
+  const [shareUsers,shareTeams,customers,users,projects,categories] = await Promise.all([
     db.prepare("SELECT id,name FROM users WHERE role='manager' AND active=1 AND must_change_password=0 ORDER BY name,id LIMIT 501").all(),
     db.prepare('SELECT id,name FROM teams ORDER BY name,id LIMIT 501').all(),
+    db.prepare('SELECT id,name FROM customers ORDER BY id LIMIT 2000').all(),
+    db.prepare('SELECT id,name FROM users ORDER BY name,id LIMIT 2000').all(),
+    db.prepare('SELECT id,title AS name FROM projects ORDER BY title,id LIMIT 2000').all(),
+    db.prepare('SELECT id,name FROM activity_categories ORDER BY name,id LIMIT 500').all(),
   ]);
+  // Choices for filters on customer, engineer, team, project and category fields.
+  const lookups = { customer: customers.map(row => ({ id: row.id,name: decrypt(row.name) })).sort((a,b) => a.name.localeCompare(b.name)),user: users,team: shareTeams,project: projects,category: categories };
   if (shareUsers.length>500 || shareTeams.length>500) return res.status(413).json({ error: 'Report sharing directory exceeds 500 entries' });
-  res.json({ sources: metadata(),templates: reportTemplates(new Date(),config || {}),share_users: shareUsers,share_teams: shareTeams,preview_limit: 100,export_limit: 5000 });
+  res.json({ sources: metadata(),lookups,templates: reportTemplates(new Date(),config || {}),share_users: shareUsers,share_teams: shareTeams,preview_limit: 100,export_limit: 5000 });
 });
 const id = value => typeof value==='string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
 const conflict = res => res.status(409).json({ error: 'Saved report changed. Reload before modifying it.',code: 'REPORT_CONFLICT' });
@@ -128,10 +135,11 @@ router.put('/saved/:reportId/schedule',async (req,res) => {
 
 router.post('/preview',async (req,res) => res.json(await run(req.body,100)));
 router.post('/exports',async (req,res) => {
-  if (!req.body || !['csv','xlsx'].includes(req.body.format)) return res.status(400).json({ error:'Export format must be csv or xlsx' });
+  if (!req.body || !['csv','xlsx','pdf'].includes(req.body.format)) return res.status(400).json({ error:'Export format must be csv, xlsx or pdf' });
   compileReport(req.body.definition,5000);
+  const title=typeof req.body.title==='string' && req.body.title.trim() ? req.body.title.trim().slice(0,200) : undefined;
   if (!fileCipher.isConfigured()) return res.status(503).json({ error:'Encrypted export storage is unavailable' });
-  const job=await backgroundJobs.enqueue('custom_report_export',{ definition:req.body.definition,format:req.body.format },{ createdBy:req.user.id,maxAttempts:2,priority:80 });
+  const job=await backgroundJobs.enqueue('custom_report_export',{ definition:req.body.definition,format:req.body.format,title },{ createdBy:req.user.id,maxAttempts:2,priority:80 });
   res.status(202).json({ id:job.id,status:job.status });
 });
 router.get('/exports/:jobId',async (req,res) => {
@@ -152,7 +160,7 @@ router.get('/exports/:jobId/download',async (req,res) => {
     const buffer=fileCipher.decrypt(await fs.promises.readFile(target),job.artifact_iv,job.artifact_tag);
     await db.prepare('UPDATE background_jobs SET artifact_downloaded_at=app_now() WHERE id=?').run(job.id);
     res.setHeader('Content-Type',job.artifact_type || 'application/octet-stream');
-    res.setHeader('Content-Disposition',`attachment; filename="${job.artifact_name === 'custom-report.csv' ? 'custom-report.csv' : 'custom-report.xlsx'}"`);
+    res.setHeader('Content-Disposition',`attachment; filename="${['custom-report.csv','custom-report.pdf'].includes(job.artifact_name) ? job.artifact_name : 'custom-report.xlsx'}"`);
     res.send(buffer);
   } catch(error) {
     if (error.code==='ENOENT') return res.status(410).json({ error:'This export is no longer available. Generate it again.' });
