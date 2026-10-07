@@ -3,16 +3,29 @@ const db = require('../db');
 const { requireManager } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
 const { workingDaysBetween } = require('../workingDays');
-const { getTeamSlaTargets } = require('../teamSla');
-const { evaluateActivitySla, summarizeByTeam } = require('../serviceActivitySla');
-const { getStatusConfig } = require('../serviceActivityStatus');
+const { getPolicy, validatePolicy, catalogue } = require('../slaPolicy');
+const { logAudit } = require('../auditLog');
+
+// The SLAs and their limits, as set in Settings (slaPolicy.js).
+router.get('/policy', requireManager, async (req, res) => res.json({ policy: await getPolicy(), slas: catalogue() }));
+router.put('/policy', requireManager, async (req, res) => {
+  try {
+    const policy = validatePolicy(req.body);
+    await db.prepare("INSERT INTO settings (key, value) VALUES ('sla_policy', ?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify(policy));
+    await logAudit(db, req, 'settings', 'sla_policy', 'SLA settings', 'sla_policy_updated', Object.entries(policy).map(([key, value]) => `${key}=${value.enabled ? value.limit : 'off'}`).join('; '));
+    res.json({ policy, slas: catalogue() });
+  } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Could not save the SLA settings' }); }
+});
 
 router.get('/overview', requireManager, async (req, res) => {
   const today = (await db.prepare('SELECT app_today() AS d').get()).d;
+  const policy = await getPolicy();
+  // A switched-off SLA is reported as such, with nothing in it.
+  const on = key => policy[key].enabled;
 
-  // ── 1. MV Report Complete SLA (7 working days from scheduled_date) ────
-  const MV_SLA = 7;
-  const allMVs = (await db.prepare(`
+  // ── 1. MV Report Complete SLA (working days from scheduled_date) ─────
+  const MV_SLA = policy.visit_report.limit;
+  const allMVs = !on('visit_report') ? [] : (await db.prepare(`
     SELECT mv.id, mv.title, mv.scheduled_date, mv.report_sent, mv.report_sent_at,
            mv.report_sent_to_customer, mv.status,
            c.name AS customer_name,
@@ -48,9 +61,9 @@ router.get('/overview', requireManager, async (req, res) => {
     };
   });
 
-  // ── 2. Project Status Update SLA (every 7 calendar days) ─────────────
-  const PROJ_SLA = 7;
-  const activeProjects = (await db.prepare(`
+  // ── 2. Project Status Update SLA (every N calendar days) ─────────────
+  const PROJ_SLA = policy.project_update.limit;
+  const activeProjects = !on('project_update') ? [] : (await db.prepare(`
     SELECT p.id, p.title, p.status, p.created_at,
       (SELECT MAX(psu.created_at) FROM project_status_updates psu
        WHERE psu.project_id = p.id) AS last_status_update
@@ -72,9 +85,9 @@ router.get('/overview', requireManager, async (req, res) => {
     };
   });
 
-  // ── 3. High-priority task first response (1 working day) ─────────────
-  const TASK_SLA = 1;
-  const highPriTasks = (await db.prepare(`
+  // ── 3. High-priority task first response (N working days) ────────────
+  const TASK_SLA = policy.task_response.limit;
+  const highPriTasks = !on('task_response') ? [] : (await db.prepare(`
     SELECT t.id, t.title, t.created_at, t.status,
            p.title AS project_title,
            u.name  AS assigned_to_name
@@ -98,9 +111,9 @@ router.get('/overview', requireManager, async (req, res) => {
     };
   });
 
-  // ── 4. Closure approval SLA (3 working days) ──────────────────────────
-  const CLOSURE_SLA = 3;
-  const pendingClosure = (await db.prepare(`
+  // ── 4. Closure approval SLA (N working days) ──────────────────────────
+  const CLOSURE_SLA = policy.closure_review.limit;
+  const pendingClosure = !on('closure_review') ? [] : (await db.prepare(`
     SELECT p.id, p.title, p.closure_requested_at
     FROM projects p
     WHERE p.status = 'pending_approval' AND p.closure_requested_at IS NOT NULL
@@ -118,37 +131,35 @@ router.get('/overview', requireManager, async (req, res) => {
     };
   });
 
-  // ── 5. Service Activity SLA, targets configurable per team ───────────
-  const activityStatuses = await getStatusConfig();
-  const completedValue = activityStatuses.find(s => s.is_terminal && /complet/i.test(s.value))?.value || 'completed';
-  const initialValue = activityStatuses[0]?.value || 'planned';
-  const cancelledValue = activityStatuses.find(s => s.is_terminal && /cancel/i.test(s.value))?.value || 'cancelled';
-
-  // Every still-open activity counts regardless of age (an old one is exactly what
-  // should show as badly breached); completed ones are windowed to the last 90 days
-  // so "late complete" stats stay about recent performance, not the whole history.
-  const cutoff90 = new Date(today + 'T12:00:00'); cutoff90.setDate(cutoff90.getDate() - 90);
-  const cutoff90Str = cutoff90.toISOString().slice(0, 10);
-  const openActivities = (await db.prepare(`
-    SELECT sa.id, sa.activity_reference, sa.title, sa.status, sa.team_id, sa.created_at, sa.completed_at,
-           t.name AS team_name, c.name AS customer_name
-    FROM service_activities sa
-    JOIN teams t ON t.id = sa.team_id
-    JOIN customers c ON c.id = sa.customer_id
-    WHERE sa.status NOT IN (?, ?)
-       OR (sa.status = ? AND sa.completed_at >= ?)
-  `).all(cancelledValue, completedValue, completedValue, cutoff90Str));
-
-  const slaTargets = await getTeamSlaTargets(openActivities.map(a => a.team_id));
-  const activityItems = openActivities.map(a => evaluateActivitySla(
-    { ...a, customer_name: decrypt(a.customer_name) },
-    slaTargets[a.team_id],
-    { completedValue, initialValue },
-  ));
+  // ── 5. Tickets: resolved by their Request Tracker due date ───────────
+  // Open tickets past due are breached, those due within the warning window at
+  // risk; resolved tickets of the last 30 days count as on time or late.
+  const warnHours = policy.tickets.limit;
+  const ticketRows = !on('tickets') ? [] : (await db.prepare(`
+    SELECT t.id, t.ticket_number, t.subject, t.status_group, t.normalized_status, t.sla_due_at, t.resolved_at_external, t.owner_name, t.external_url, c.name AS customer_name, u.name AS engineer_name
+    FROM external_tickets t JOIN customers c ON c.id = t.customer_id LEFT JOIN users u ON u.id = t.owner_user_id
+    WHERE t.sla_due_at IS NOT NULL AND (t.status_group = 'open' OR substr(t.resolved_at_external,1,10) >= ?)
+  `).all(require('../appTime').addDays(today, -30)));
+  const nowMs = Date.now();
+  const ticketItems = ticketRows.map(t => {
+    const due = Date.parse(t.sla_due_at), resolved = t.resolved_at_external ? Date.parse(t.resolved_at_external) : null;
+    const open = t.status_group === 'open';
+    return {
+      id: t.id, ticket_number: t.ticket_number, subject: t.subject, customer_name: decrypt(t.customer_name), engineer_name: t.engineer_name || t.owner_name || null,
+      status: t.normalized_status, due_at: t.sla_due_at, resolved_at: t.resolved_at_external, external_url: t.external_url,
+      hours_left: open ? Math.round((due - nowMs) / 360000) / 10 : null,
+      breached: open && due < nowMs,
+      at_risk: open && due >= nowMs && due - nowMs <= warnHours * 3600000,
+      late_complete: !open && resolved !== null && resolved > due,
+      on_time: !open && resolved !== null && resolved <= due,
+    };
+  });
 
   res.json({
     generated_at: new Date().toISOString(),
+    policy,
     mv: {
+      enabled: on('visit_report'),
       sla_days: MV_SLA,
       total:         mvItems.length,
       on_time:       mvItems.filter(r => r.report_sent && !r.late_complete).length,
@@ -158,6 +169,7 @@ router.get('/overview', requireManager, async (req, res) => {
       items:         mvItems,
     },
     project_status: {
+      enabled: on('project_update'),
       sla_days: PROJ_SLA,
       total:    projItems.length,
       ok:       projItems.filter(r => !r.breached && !r.at_risk).length,
@@ -166,6 +178,7 @@ router.get('/overview', requireManager, async (req, res) => {
       items:    projItems,
     },
     high_priority_tasks: {
+      enabled: on('task_response'),
       sla_days: TASK_SLA,
       total:    taskItems.length,
       breached: taskItems.filter(r => r.breached).length,
@@ -174,6 +187,7 @@ router.get('/overview', requireManager, async (req, res) => {
       items:    taskItems,
     },
     closure_approval: {
+      enabled: on('closure_review'),
       sla_days: CLOSURE_SLA,
       total:    closureItems.length,
       ok:       closureItems.filter(r => !r.breached && !r.at_risk).length,
@@ -181,17 +195,16 @@ router.get('/overview', requireManager, async (req, res) => {
       breached: closureItems.filter(r => r.breached).length,
       items:    closureItems,
     },
-    // Targets are per-team (Settings → Teams → SLA), not fixed like the four blocks
-    // above — response_hours/resolution_hours vary per team, defaulting to 8h/48h.
-    service_activities: {
-      total:              activityItems.length,
-      ok:                 activityItems.filter(r => !r.breached && !r.at_risk && !r.response_breached).length,
-      at_risk:            activityItems.filter(r => r.at_risk).length,
-      breached:           activityItems.filter(r => r.breached).length,
-      response_breached:  activityItems.filter(r => r.response_breached).length,
-      late_complete:      activityItems.filter(r => r.late_complete).length,
-      by_team:            summarizeByTeam(activityItems),
-      items:              activityItems,
+    tickets: {
+      enabled: on('tickets'),
+      warning_hours: warnHours,
+      total:         ticketItems.length,
+      open:          ticketItems.filter(r => r.hours_left !== null).length,
+      on_time:       ticketItems.filter(r => r.on_time).length,
+      late_complete: ticketItems.filter(r => r.late_complete).length,
+      at_risk:       ticketItems.filter(r => r.at_risk).length,
+      breached:      ticketItems.filter(r => r.breached).length,
+      items:         ticketItems.filter(r => r.breached || r.at_risk || r.late_complete).sort((a, b) => String(a.due_at).localeCompare(String(b.due_at))).slice(0, 200),
     },
     forecast: {
       predicted_breaches_next_working_day:
@@ -199,19 +212,19 @@ router.get('/overview', requireManager, async (req, res) => {
         projItems.filter(r => r.at_risk).length +
         taskItems.filter(r => r.at_risk).length +
         closureItems.filter(r => r.at_risk).length +
-        activityItems.filter(r => r.at_risk).length,
+        ticketItems.filter(r => r.at_risk).length,
       current_breaches:
         mvItems.filter(r => r.breached).length +
         projItems.filter(r => r.breached).length +
         taskItems.filter(r => r.breached).length +
         closureItems.filter(r => r.breached).length +
-        activityItems.filter(r => r.breached).length,
+        ticketItems.filter(r => r.breached).length,
       escalation_recommended: [
         ...mvItems.filter(r => r.breached).map(r => ({ type: 'maintenance', id: r.id, title: r.title })),
         ...projItems.filter(r => r.breached).map(r => ({ type: 'project', id: r.id, title: r.title })),
         ...taskItems.filter(r => r.breached).map(r => ({ type: 'task', id: r.id, title: r.title })),
         ...closureItems.filter(r => r.breached).map(r => ({ type: 'closure', id: r.id, title: r.title })),
-        ...activityItems.filter(r => r.breached).map(r => ({ type: 'service_activity', id: r.id, title: r.title })),
+        ...ticketItems.filter(r => r.breached).map(r => ({ type: 'ticket', id: r.id, title: `#${r.ticket_number} ${r.subject}` })),
       ].slice(0, 20),
     },
   });

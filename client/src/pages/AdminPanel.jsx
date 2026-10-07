@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Settings, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup } from 'lucide-react';
+import { Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Settings, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer } from 'lucide-react';
 import { api } from '../api';
 import { visiblePages } from '../navigation';
 import { useAuth } from '../App';
@@ -19,17 +19,19 @@ import { ManagedReportTemplatesTab } from './admin/ManagedReportTemplatesTab';
 import { PermissionsTab } from './admin/PermissionsTab';
 import TicketingSettings from './admin/TicketingSettings';
 import { BackupsTab } from './admin/BackupsTab';
+import { SlaSettingsTab } from './admin/SlaSettingsTab';
 
 /* ── MAIN PAGE ───────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
 const TABS = [
   { key: 'overview',       label: 'Overview',           Icon: LayoutDashboard, group: 'overview', desc: 'Health, activity, and items that need a manager' },
   { key: 'users',          label: 'Users',              Icon: UsersIcon,       group: 'people',   desc: 'Accounts, roles, activation, passwords, and 2FA exceptions' },
-  { key: 'teams',          label: 'Teams',              Icon: UsersRound,      group: 'people',   desc: 'Teams, their members, activity tracking and SLA targets' },
+  { key: 'teams',          label: 'Teams',              Icon: UsersRound,      group: 'people',   desc: 'Teams, their members and activity tracking' },
   { key: 'permissions',    label: 'Permissions',        Icon: ShieldCheck,     group: 'people',   desc: 'What each role may do, and exceptions for individual people' },
   { key: 'security',       label: 'Sign-in & passwords', Icon: Shield,         group: 'people',   desc: 'Microsoft 365 sign-in, password expiry and reset policy' },
   { key: 'service_activity_tracking', label: 'Activity categories', Icon: ClipboardList, group: 'work', desc: 'Categories, subcategories and technologies engineers choose when logging activities' },
   { key: 'statuses',       label: 'Project statuses',   Icon: Tag,             group: 'work',     desc: 'Project status names, colours and workflow rules' },
+  { key: 'sla',            label: 'SLAs',               Icon: Timer,           group: 'work',     desc: 'Which SLAs apply and their time limits' },
   { key: 'managed_report_templates', label: 'Customer report templates', Icon: FileSpreadsheet, group: 'work', desc: 'Word templates, sections and default text for customer reports' },
   { key: 'weekly_report',  label: 'Weekly report',      Icon: ScrollText,      group: 'work',     desc: 'When the weekly report is sent, to whom, and a preview' },
   { key: 'notifications',  label: 'Notifications',      Icon: Bell,            group: 'connections', desc: 'The shared Teams channel and Webex space, which events they receive, and alerts about the system' },
@@ -213,6 +215,7 @@ export default function AdminPanel() {
           {tab === 'ticketing' && <TicketingSettings />}
           {tab === 'system_health' && <SystemHealthTab key={part || 'stats'} initial={part} />}
           {tab === 'backups' && <BackupsTab />}
+          {tab === 'sla' && <SlaSettingsTab />}
           {tab === 'notifications' && <><IntegrationsTab /><h3 className="settings-subheading">Alerts about the system</h3><AdminAlertsTab /></>}
           {tab === 'activity_bot'  && <ActivityBotSettings sectionStyle={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 }} />}
           {tab === 'weekly_report' && <WeeklyReportTab />}

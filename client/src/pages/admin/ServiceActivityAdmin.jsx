@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Trash2, Save, Plus, Clock } from 'lucide-react';
+import { Trash2, Plus } from 'lucide-react';
 import { api } from '../../api';
 import { Modal } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
@@ -15,7 +15,6 @@ export function TeamsAdminSection() {
   const [users, setUsers] = useState([]);
   const [name, setName] = useState('');
   const [editingMembers, setEditingMembers] = useState(null);
-  const [editingSla, setEditingSla] = useState(null);
 
   const load = () => Promise.all([api.teams(), api.users()]).then(([t, u]) => { setTeams(t); setUsers(u); });
   useEffect(() => { load(); }, []);
@@ -54,18 +53,6 @@ export function TeamsAdminSection() {
     catch (e2) { toast.error(e2.message); }
   }
 
-  async function openSla(team) {
-    const full = await api.team(team.id);
-    setEditingSla({ id: team.id, name: team.name, response_hours: full.sla.response_hours, resolution_hours: full.sla.resolution_hours });
-  }
-
-  async function saveSla() {
-    try {
-      await api.saveTeamSla(editingSla.id, { response_hours: Number(editingSla.response_hours), resolution_hours: Number(editingSla.resolution_hours) });
-      toast.success('SLA targets updated'); setEditingSla(null); load();
-    } catch (e2) { toast.error(e2.message); }
-  }
-
   return (
     <div className="card mb-16">
       <div className="section-title">Teams</div>
@@ -78,7 +65,7 @@ export function TeamsAdminSection() {
       </form>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Team</th><th>Members</th><th>Workflow emphasis</th><th>Activity tracking</th><th>SLA</th><th></th></tr></thead>
+          <thead><tr><th>Team</th><th>Members</th><th>Workflow emphasis</th><th>Activity tracking</th><th></th></tr></thead>
           <tbody>
             {teams.map(t => (
               <tr key={t.id}>
@@ -91,11 +78,10 @@ export function TeamsAdminSection() {
                   <label className="text-sm u-25b5288"><input type="checkbox" checked={!!t.project_delivery_enabled} onChange={() => toggleCapability(t,'project_delivery_enabled')} className="u-30e741d" /> Project Delivery</label>
                 </div></td>
                 <td><input type="checkbox" checked={!!t.service_activity_enabled} onChange={() => toggleEnabled(t)} className="u-30e741d" /></td>
-                <td><button className="btn btn-sm btn-ghost" onClick={() => openSla(t)}><Clock size={12} /> Targets</button></td>
                 <td><button className="btn btn-sm btn-ghost" onClick={() => remove(t)}><Trash2 size={12} /></button></td>
               </tr>
             ))}
-            {teams.length === 0 && <tr><td colSpan={6} className="text-muted">No teams yet.</td></tr>}
+            {teams.length === 0 && <tr><td colSpan={5} className="text-muted">No teams yet.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -116,30 +102,6 @@ export function TeamsAdminSection() {
         </Modal>
       )}
 
-      {editingSla && (
-        <Modal title={`Service Activity SLA — ${editingSla.name}`} onClose={() => setEditingSla(null)}>
-          <p className="text-sm text-muted mb-12">
-            Response is how long an activity can sit unstarted before it's flagged; resolution is how long it can stay
-            open in total. Shown on the SLA page, broken down per team.
-          </p>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Response target (hours)</label>
-              <input type="number" min="0.5" max="8760" step="0.5" value={editingSla.response_hours}
-                onChange={e => setEditingSla(s => ({ ...s, response_hours: e.target.value }))} />
-            </div>
-            <div className="form-group">
-              <label>Resolution target (hours)</label>
-              <input type="number" min="0.5" max="8760" step="0.5" value={editingSla.resolution_hours}
-                onChange={e => setEditingSla(s => ({ ...s, resolution_hours: e.target.value }))} />
-            </div>
-          </div>
-          <div className="modal-footer u-cc45258">
-            <button className="btn btn-ghost" onClick={() => setEditingSla(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={saveSla}><Save size={13} /> Save Targets</button>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }

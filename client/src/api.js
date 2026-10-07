@@ -527,7 +527,8 @@ export const api = {
   updateTeam: (id, data) => req('PUT', `/teams/${id}`, data),
   deleteTeam: (id) => req('DELETE', `/teams/${id}`),
   setTeamMembers: (id, user_ids) => req('PUT', `/teams/${id}/members`, { user_ids }),
-  saveTeamSla: (id, data) => req('PUT', `/teams/${id}/sla`, data),
+  slaPolicy: options => req('GET', '/sla/policy', undefined, options),
+  saveSlaPolicy: body => req('PUT', '/sla/policy', body),
 
   // activity categories / subcategories
   activityCategories: (options = {}) => req('GET', `/activity-categories${options.includeInactive ? '?include_inactive=1' : ''}`, undefined, options),

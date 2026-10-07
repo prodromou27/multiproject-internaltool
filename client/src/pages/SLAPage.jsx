@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
   ShieldCheck, AlertTriangle, CheckCircle, XCircle,
-  Clock, ChevronDown, ChevronRight, RefreshCw, Activity,
+  Clock, ChevronDown, ChevronRight, RefreshCw, Ticket, Settings2,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { fmtDate, fmtDateTime } from '../components/Shared';
 import { useLiveRefresh } from '../live';
@@ -245,35 +246,31 @@ function ClosureItems({ items }) {
   );
 }
 
-function ServiceActivityItems({ items }) {
-  const show = items.filter(i => i.breached || i.at_risk || i.response_breached || i.late_complete);
-  if (!show.length) return null;
+function TicketItems({ items }) {
+  if (!items.length) return null;
   return (
     <div className="overflow-x-auto">
       <table className="u-2cff907">
         <thead>
           <tr className="u-02c1276">
-            <th className="u-6282c46">Activity</th>
-            <th className="u-6282c46">Team</th>
+            <th className="u-6282c46">Ticket</th>
             <th className="u-6282c46">Customer</th>
-            <th className="u-6282c46">Created</th>
-            <th className="u-856eb7b">Elapsed</th>
+            <th className="u-6282c46">Engineer</th>
+            <th className="u-6282c46">Due</th>
             <th className="u-8c20179" />
           </tr>
         </thead>
         <tbody>
-          {show.map(item => (
+          {items.map(item => (
             <tr key={item.id} className="u-6e42c53">
-              <td className="u-d33fadf">{item.reference} — {item.title}</td>
-              <td className="u-beae6cf">{item.team_name}</td>
+              <td className="u-d33fadf">{item.external_url ? <a href={item.external_url} target="_blank" rel="noreferrer">#{item.ticket_number}</a> : `#${item.ticket_number}`} {item.subject}</td>
               <td className="u-beae6cf">{item.customer_name}</td>
-              <td className="u-beae6cf">{fmtDateTime(item.created_at)}</td>
-              <td className={["u-aa06794", (item.breached || item.response_breached ? 'u-b0eb59c' : 'u-6a6a237')].filter(Boolean).join(' ')}>{item.elapsed_hours}h</td>
+              <td className="u-beae6cf">{item.engineer_name || '—'}</td>
+              <td className="u-beae6cf">{fmtDateTime(item.due_at)}</td>
               <td className="u-8c20179">
-                {item.breached && <span className="u-cd50164">BREACHED</span>}
-                {!item.breached && item.late_complete && <span className="u-cd50164">LATE</span>}
-                {!item.breached && !item.late_complete && item.response_breached && <span className="u-cd50164">NO RESPONSE</span>}
-                {!item.breached && !item.late_complete && !item.response_breached && item.at_risk && <span className="u-5ed8284">AT RISK</span>}
+                {item.breached && <span className="u-cd50164">PAST DUE</span>}
+                {item.late_complete && <span className="u-cd50164">LATE</span>}
+                {item.at_risk && <span className="u-5ed8284">DUE IN {Math.max(0, Math.round(item.hours_left))}H</span>}
               </td>
             </tr>
           ))}
@@ -286,14 +283,14 @@ function ServiceActivityItems({ items }) {
 /* ── Overall health bar ──────────────────────────────────── */
 function OverallHealth({ data }) {
   if (!data) return null;
-  const { mv, project_status, high_priority_tasks, closure_approval, service_activities } = data;
+  const { mv, project_status, high_priority_tasks, closure_approval, tickets } = data;
 
   const counts = [
     { label: 'MV Reports',       breached: mv?.breached || 0,             at_risk: mv?.at_risk || 0 },
     { label: 'Status Updates',   breached: project_status?.breached || 0, at_risk: project_status?.at_risk || 0 },
     { label: 'High-Prio Tasks',  breached: high_priority_tasks?.breached || 0, at_risk: high_priority_tasks?.at_risk || 0 },
     { label: 'Closure Reviews',  breached: closure_approval?.breached || 0,    at_risk: closure_approval?.at_risk || 0 },
-    { label: 'Service Activities', breached: (service_activities?.breached || 0) + (service_activities?.response_breached || 0), at_risk: service_activities?.at_risk || 0 },
+    { label: 'Tickets',          breached: tickets?.breached || 0,         at_risk: tickets?.at_risk || 0 },
   ];
 
   const totalBreached = counts.reduce((s, c) => s + c.breached, 0);
@@ -369,6 +366,7 @@ export default function SLAPage() {
           <RefreshCw size={13} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
           Refresh
         </button>
+        <Link className="btn btn-ghost btn-sm inline-flex items-center gap-5" to="/settings/sla"><Settings2 size={13} /> Change SLAs</Link>
       </div>
 
       {loading && <div className="grid-2"><div className="skeleton-table"><span /><span /><span /></div><div className="skeleton-table"><span /><span /><span /></div></div>}
@@ -390,78 +388,46 @@ export default function SLAPage() {
           </div>
 
           <div className="grid-2 u-f6ce4d1">
-            <SLACard
+            {data.mv?.enabled !== false && <SLACard
               icon={Clock}
               title="MV Report Completed"
-              target="Within 7 working days of visit"
+              target={`Within ${data.mv.sla_days} working days of the visit`}
               metric={data.mv}
               renderItems={items => <MVItems items={items} />}
-            />
+            />}
 
-            <SLACard
+            {data.project_status?.enabled !== false && <SLACard
               icon={RefreshCw}
               title="Project Status Updates"
-              target="At least every 7 days"
+              target={`At least every ${data.project_status.sla_days} days`}
               metric={data.project_status}
               renderItems={items => <ProjectItems items={items} />}
-            />
+            />}
 
-            <SLACard
+            {data.high_priority_tasks?.enabled !== false && <SLACard
               icon={AlertTriangle}
               title="High-Priority Task Response"
-              target="Respond within 1 working day"
+              target={`Picked up within ${data.high_priority_tasks.sla_days} working day${data.high_priority_tasks.sla_days === 1 ? '' : 's'}`}
               metric={data.high_priority_tasks}
               renderItems={items => <TaskItems items={items} />}
-            />
+            />}
 
-            <SLACard
+            {data.closure_approval?.enabled !== false && <SLACard
               icon={ShieldCheck}
               title="Closure Approval Review"
-              target="Reviewed within 3 working days"
+              target={`Reviewed within ${data.closure_approval.sla_days} working days`}
               metric={data.closure_approval}
               renderItems={items => <ClosureItems items={items} />}
-            />
+            />}
 
-            <SLACard
-              icon={Activity}
-              title="Service Activities"
-              target="Per team — Settings → Teams → Targets"
-              metric={data.service_activities}
-              renderItems={items => <ServiceActivityItems items={items} />}
-            />
+            {data.tickets?.enabled && <SLACard
+              icon={Ticket}
+              title="Tickets resolved by their due date"
+              target={`Request Tracker due date; at risk ${data.tickets.warning_hours} hours before it`}
+              metric={{ ...data.tickets, total: data.tickets.on_time + data.tickets.late_complete + data.tickets.open }}
+              renderItems={items => <TicketItems items={items} />}
+            />}
           </div>
-
-          {!!data.service_activities?.by_team?.length && (
-            <div className="card u-55481ae">
-              <div className="u-7441529">Service Activity SLA by team</div>
-              <div className="table-wrap">
-                <table className="u-a1fa259">
-                  <thead><tr>
-                    <th className="u-b7efded">Team</th>
-                    <th className="u-150502c">Response target</th>
-                    <th className="u-150502c">Resolution target</th>
-                    <th className="u-150502c">Open</th>
-                    <th className="u-150502c">Breached</th>
-                    <th className="u-150502c">At risk</th>
-                    <th className="u-150502c">No response</th>
-                  </tr></thead>
-                  <tbody>
-                    {data.service_activities.by_team.map(t => (
-                      <tr key={t.team_id} className="u-5e0211f">
-                        <td className="u-670e933">{t.team_name}</td>
-                        <td className="u-f09f8d4">{t.response_hours}h</td>
-                        <td className="u-f09f8d4">{t.resolution_hours}h</td>
-                        <td className="u-f09f8d4">{t.total}</td>
-                        <td className={["u-f09f8d4", (t.breached ? 'u-b0eb59c' : ''), (t.breached ? 'u-e3ec02a' : 'u-7e3a944')].filter(Boolean).join(' ')}>{t.breached}</td>
-                        <td className={["u-f09f8d4", (t.at_risk ? 'u-6a6a237' : ''), (t.at_risk ? 'u-e3ec02a' : 'u-7e3a944')].filter(Boolean).join(' ')}>{t.at_risk}</td>
-                        <td className={["u-f09f8d4", (t.response_breached ? 'u-b0eb59c' : ''), (t.response_breached ? 'u-e3ec02a' : 'u-7e3a944')].filter(Boolean).join(' ')}>{t.response_breached}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
 
           {/* Legend */}
           <div className="u-9b25793">
@@ -469,7 +435,7 @@ export default function SLAPage() {
             {' '}Working days = Mon–Fri only. &nbsp;
             <span className="u-7ed4c86">Breached</span> = past the deadline. &nbsp;
             <span className="u-71b98aa">At risk</span> = 1 working day remaining. &nbsp;
-            Service activity targets (response/resolution, in hours) are set per team in Settings → Teams → Targets.
+            Which SLAs apply, and their limits, are set in <Link to="/settings/sla">Settings → SLAs</Link>.
           </div>
         </>
       )}
