@@ -1,4 +1,5 @@
 import { CLIENT_ID } from './live.js';
+import { noteServerBuild, pageOutdated } from './appVersion.js';
 
 const BASE = '/api';
 
@@ -32,12 +33,15 @@ async function req(method, path, body, { redirectOnUnauthorized = true, signal }
     },
     body: body != null ? JSON.stringify(body) : undefined
   });
+  noteServerBuild(res.headers.get('X-App-Build'));
   const data = await res.json().catch(() => ({}));
 
   // Token expired or invalid → log out immediately
   if (!res.ok) {
     handleUnauthorized(res.status, data, redirectOnUnauthorized);
-    const error = new Error(data.error || res.statusText);
+    // A page from before an update can ask for something the server no longer has.
+    const outdated = res.status === 404 && pageOutdated();
+    const error = new Error(outdated ? 'TeamHub has been updated. Reload the page (Ctrl+F5) to use the new version.' : data.error || res.statusText);
     error.status = res.status;
     error.code = data.code;
     throw error;

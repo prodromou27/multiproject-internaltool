@@ -409,3 +409,6 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .form-label-text { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--gray-700); }
 .ticket-owners-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
 .ticket-owners-tools .ticketing-search { margin: 0; }
+/* The page is older than the server (appVersion.js). */
+.app-update-bar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 2000; display: flex; align-items: center; gap: 12px;
+  max-width: calc(100vw - 32px); padding: 10px 14px; background: var(--gray-900, #111827); color: #fff; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.25); font-size: 13px; }

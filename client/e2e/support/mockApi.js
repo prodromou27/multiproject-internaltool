@@ -90,6 +90,7 @@ export async function mockApi(page, { role = 'engineer', signedIn = true, teams 
     await route.fulfill({
       status: result.status || 200,
       contentType: 'application/json',
+      headers: result.headers,
       body: JSON.stringify(result.body ?? {}),
     });
   });

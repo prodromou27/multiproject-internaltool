@@ -147,11 +147,19 @@ app.use('/api/customers/import',          importLimiter);
 app.use('/api/maintenance-visits/import', importLimiter);
 
 // ── Routes ───────────────────────────────────────────────────────────────────
+// Which build of the pages this server serves (its entry script). A page open
+// from an older build compares it and asks to be reloaded (client/src/appVersion.js).
+const APP_BUILD = (() => {
+  try { return (fs.readFileSync(path.join(__dirname, '../client/dist/index.html'), 'utf8').match(/\/assets\/(index-[\w-]+\.js)/) || [])[1] || null; }
+  catch { return null; }
+})();
+app.use('/api', (req, res, next) => { if (APP_BUILD) res.setHeader('X-App-Build', APP_BUILD); next(); });
+
 // ── Health check (no auth) — used by Docker/compose healthchecks & load balancers
 app.get('/api/health', async (req, res) => {
   try {
     await db.prepare('SELECT 1 AS ok').get();
-    res.json({ status: 'ok', db: 'up' });
+    res.json({ status: 'ok', db: 'up', build: APP_BUILD });
   } catch (e) {
     res.status(503).json({ status: 'degraded', db: 'down' });
   }
