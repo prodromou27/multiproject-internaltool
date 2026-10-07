@@ -748,6 +748,77 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261023_software_versions', `
+    -- Software versions portal: the latest (and recommended) versions of products we
+    -- support, read from vendors (endoflife.date, Fortinet docs, Check Point Jumbo
+    -- documentation) or entered by hand; plus news from RSS feeds, filtered by keyword.
+    CREATE TABLE IF NOT EXISTS software_products (
+      id              SERIAL PRIMARY KEY,
+      name            TEXT NOT NULL,
+      vendor          TEXT,
+      source          TEXT NOT NULL,
+      config          TEXT NOT NULL DEFAULT '{}',
+      asset_vendor    TEXT,
+      asset_model     TEXT,
+      enabled         INTEGER NOT NULL DEFAULT 1,
+      display_order   INTEGER NOT NULL DEFAULT 0,
+      last_checked_at TEXT,
+      last_error      TEXT,
+      created_at      TEXT DEFAULT ${NOW},
+      updated_at      TEXT DEFAULT ${NOW}
+    );
+    CREATE TABLE IF NOT EXISTS software_releases (
+      id                  SERIAL PRIMARY KEY,
+      product_id          INTEGER NOT NULL REFERENCES software_products(id) ON DELETE CASCADE,
+      branch              TEXT NOT NULL,
+      latest_version      TEXT,
+      latest_date         TEXT,
+      recommended_version TEXT,
+      recommended_date    TEXT,
+      release_date        TEXT,
+      support_end         TEXT,
+      eol                 TEXT,
+      maintained          INTEGER,
+      link                TEXT,
+      note                TEXT,
+      updated_at          TEXT DEFAULT ${NOW},
+      UNIQUE (product_id, branch)
+    );
+    CREATE TABLE IF NOT EXISTS software_release_events (
+      id          SERIAL PRIMARY KEY,
+      product_id  INTEGER NOT NULL REFERENCES software_products(id) ON DELETE CASCADE,
+      branch      TEXT NOT NULL,
+      kind        TEXT NOT NULL,
+      version     TEXT NOT NULL,
+      previous    TEXT,
+      detected_at TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_software_events_detected ON software_release_events(detected_at);
+    CREATE TABLE IF NOT EXISTS software_feeds (
+      id              SERIAL PRIMARY KEY,
+      name            TEXT NOT NULL,
+      url             TEXT NOT NULL,
+      keywords        TEXT NOT NULL DEFAULT '',
+      enabled         INTEGER NOT NULL DEFAULT 1,
+      last_checked_at TEXT,
+      last_error      TEXT,
+      created_at      TEXT DEFAULT ${NOW}
+    );
+    CREATE TABLE IF NOT EXISTS software_feed_items (
+      id           SERIAL PRIMARY KEY,
+      feed_id      INTEGER NOT NULL REFERENCES software_feeds(id) ON DELETE CASCADE,
+      guid         TEXT NOT NULL,
+      title        TEXT NOT NULL,
+      link         TEXT,
+      published_at TEXT,
+      summary      TEXT,
+      fetched_at   TEXT DEFAULT ${NOW},
+      UNIQUE (feed_id, guid)
+    );
+    INSERT INTO software_products (name, vendor, source, config, asset_vendor, display_order) VALUES
+      ('FortiOS', 'Fortinet', 'fortinet', '{"product":"fortigate","document":"fortios-release-notes","eol_slug":"fortios"}', 'Fortinet', 1),
+      ('Check Point Jumbo Hotfix', 'Check Point', 'checkpoint', '{"versions":["R81.10","R81.20","R82","R82.10"]}', 'Check Point', 2);
+  `]);
   migrations.push(['20261022_kpi_sources', `
     -- KPIs: more data sources and scopes (checked by the app), customer and
     -- engineer scopes, and entries managers record (trainings, certifications…).

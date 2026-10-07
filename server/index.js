@@ -208,6 +208,7 @@ app.use('/api/managed-report-templates', require('./routes/managedReportTemplate
 app.use('/api/permissions', require('./routes/permissions'));
 app.use('/api/reminders', require('./routes/reminders'));
 app.use('/api/vulnerabilities', require('./routes/vulnerabilities'));
+app.use('/api/software', require('./routes/software'));
 app.use('/api/visit-planning', require('./routes/visit-planning'));
 app.use('/api/bots', require('./routes/bots'));
 
@@ -300,6 +301,7 @@ const keyFile  = path.join(certDir, 'key.pem');
       activityBotApi.setBase(`https://127.0.0.1:${HTTPS_PORT}`);
       startReminderSchedules();
       require('./cve/sync').startCveSchedule(); // CVEs from NVD and CISA each morning
+      require('./software/sync').startSchedule(); // latest software versions each morning
       liveUpdates.startListening();
       initScheduler();
     }));
@@ -324,6 +326,7 @@ const keyFile  = path.join(certDir, 'key.pem');
       activityBotApi.setBase(`http://127.0.0.1:${PORT}`);
       startReminderSchedules();
       require('./cve/sync').startCveSchedule(); // CVEs from NVD and CISA each morning
+      require('./software/sync').startSchedule(); // latest software versions each morning
       liveUpdates.startListening();
       initScheduler();
     }));

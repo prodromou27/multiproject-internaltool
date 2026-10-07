@@ -5,6 +5,7 @@ export const PAGES = [
   { id: 'myWork', path: '/my-day', label: 'My Work', section: 'Workspace', icon: 'Zap', roles: ['engineer'], description: 'Your assignments, upcoming work and time tracking' },
   { id: 'reminders', path: '/reminders', label: 'Reminders', section: 'Workspace', icon: 'BellRing', roles: everyone, description: 'Your own reminders, and the automatic ones the app sends you' },
   { id: 'vulnerabilities', path: '/vulnerabilities', label: 'Vulnerabilities', section: 'Workspace', icon: 'ShieldAlert', roles: everyone, description: 'CVEs for the vendors and products we support, and which customer devices they affect' },
+  { id: 'softwareVersions', path: '/software', label: 'Software versions', section: 'Workspace', icon: 'PackageCheck', roles: everyone, description: 'The latest and recommended versions of the products we support (FortiOS, Check Point Jumbo…), and vendor news' },
   { id: 'calendar', path: '/calendar', label: 'Calendar', section: 'Workspace', icon: 'CalendarDays', roles: everyone, description: 'Plan project deadlines, tasks and maintenance visits' },
   { id: 'projects', path: '/projects', label: 'Projects', section: 'Operations', icon: 'FolderOpen', roles: ['manager', 'engineer', 'pm'], permission:'projects.access', description: 'Delivery progress, ownership and project commitments' },
   { id: 'tasks', path: '/tasks', label: 'Tasks', section: 'Operations', icon: 'CheckSquare', roles: ['manager', 'engineer'], permission:'tasks.access', badge: 'tasks', description: 'Assigned tasks and operational follow-ups' },
