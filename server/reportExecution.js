@@ -33,8 +33,16 @@ const compare = (a,b) => {
   return String(a).localeCompare(String(b),undefined,{ numeric: true,sensitivity: 'base' });
 };
 
-async function run(definition,limit) {
-  const compiled = compileReport(definition,limit);
+/** What `user` may get from reports (null: everything, for managers and system runs). */
+async function scopeFor(user) {
+  if (!user || user.role==='manager') return null;
+  const { accessibleCustomerIds } = require('./customerAccess');
+  const { hasPermission } = require('./permissions');
+  return { customerIds: await accessibleCustomerIds(user), permissions: new Set(await hasPermission(user,'assets.access') ? ['assets.access'] : []) };
+}
+
+async function run(definition,limit,{ user } = {}) {
+  const compiled = compileReport(definition,limit,new Date(),await scopeFor(user));
   const rows = await db.transaction(async tx => {
     await tx.exec("SET LOCAL statement_timeout = '5s'; SET LOCAL TRANSACTION READ ONLY;");
     const found = await tx.prepare(compiled.sql).all(...compiled.params);
@@ -89,4 +97,4 @@ function pdf(result,title = 'Custom report') {
     doc.end();
   });
 }
-module.exports = { run,csv,pdf };
+module.exports = { run,csv,pdf,scopeFor };

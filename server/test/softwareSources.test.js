@@ -80,3 +80,16 @@ test('source settings are checked', () => {
     ['endoflife', { slug: 'Bad Slug' }], ['nope', {}]])
     assert.throws(() => validateConfig(source, config), error => error.status === 400, `${source} ${JSON.stringify(config)}`);
 });
+
+test('feeds: each redirect is checked, and a redirect to an internal address is refused', async () => {
+  const rss = '<rss><channel><item><title>FortiOS 7.4.13</title><guid>1</guid></item></channel></rss>';
+  const allowed = new Set(['https://feeds.example.com/rss', 'https://cdn.example.com/rss']);
+  const check = async value => { if (!allowed.has(String(value))) throw new Error('Feed address must not point to a local/internal host'); return new URL(value); };
+  const site = { 'https://feeds.example.com/rss': { status: 302, location: 'https://cdn.example.com/rss' }, 'https://cdn.example.com/rss': { status: 200, body: rss } };
+  const get = async url => site[String(url)];
+  assert.equal((await sources.feed('https://feeds.example.com/rss', { get, check }))[0].title, 'FortiOS 7.4.13', 'a redirect to another public address is followed');
+  site['https://feeds.example.com/rss'] = { status: 302, location: 'http://169.254.169.254/latest/meta-data' };
+  await assert.rejects(sources.feed('https://feeds.example.com/rss', { get, check }), /redirected to an address that is not allowed/);
+  site['https://feeds.example.com/rss'] = { status: 302, location: 'https://feeds.example.com/rss' };
+  await assert.rejects(sources.feed('https://feeds.example.com/rss', { get, check }), /too many times/);
+});

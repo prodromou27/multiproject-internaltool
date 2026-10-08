@@ -105,6 +105,13 @@ const authLimiter = rateLimit({
   skipSuccessfulRequests: true, // only count failures toward the limit
 });
 app.use('/api/auth/login',                  authLimiter);
+// Downloading, uploading or restoring a backup asks for the manager's password:
+// failed attempts are limited like sign-in.
+const backupPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, skipSuccessfulRequests: true,
+  message: { error: 'Too many attempts. Please try again in 15 minutes.' },
+});
+app.use(/^\/api\/settings\/backups\/(upload|[^/]+\/(download|restore))$/, backupPasswordLimiter);
 // Per account as well as per address: guesses spread over many addresses still
 // pause after 10 failures on one account. Same message whether or not it exists.
 app.use('/api/auth/login', rateLimit({

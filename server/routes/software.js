@@ -148,6 +148,7 @@ router.delete('/admin/products/:id/releases/:branch', requireManager, async (req
     const product = await db.prepare("SELECT * FROM software_products WHERE id=? AND source='manual'").get(id(req.params.id));
     if (!product) fail('Product not found', 404);
     await db.prepare('DELETE FROM software_releases WHERE product_id=? AND branch=?').run(product.id, String(req.params.branch));
+    await logAudit(db, req, 'software_product', product.id, product.name, 'software_version_deleted', String(req.params.branch).slice(0, 40));
     res.json({ ok: true });
   } catch (error) { send(res, error, 'Could not remove the version'); }
 });
@@ -174,6 +175,7 @@ router.put('/admin/feeds/:id', requireManager, async (req, res) => {
     const feedId = id(req.params.id), f = await feedInput(req.body);
     const result = await db.prepare('UPDATE software_feeds SET name=?, url=?, keywords=?, enabled=? WHERE id=?').run(f.name, f.url, f.keywords, f.enabled ? 1 : 0, feedId);
     if (!result.changes) fail('Feed not found', 404);
+    await logAudit(db, req, 'software_feed', feedId, f.name, 'software_feed_updated', f.url);
     // New keywords: start over with what matches them.
     await db.prepare('DELETE FROM software_feed_items WHERE feed_id=?').run(feedId);
     const check = f.enabled ? await sync.syncFeed(await db.prepare('SELECT * FROM software_feeds WHERE id=?').get(feedId)).then(r => ({ items: r.items }), error => ({ error: error.message })) : {};

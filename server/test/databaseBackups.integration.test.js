@@ -67,7 +67,16 @@ test('a broken backup is refused, and an upload must be a pg_dump backup', real,
   assert.equal(Number((await db.prepare('SELECT COUNT(*) AS n FROM users').get()).n), before);
   const plain = path.join(os.tmpdir(), `not-a-backup-${process.pid}.gz`);
   fs.writeFileSync(plain, require('zlib').gzipSync('hello'));
-  await assert.rejects(backups.importUpload(plain), /not a PostgreSQL backup/);
+  await assert.rejects(backups.importUpload(plain), /not made by pg_dump/);
+  // A dump with a psql command in it (\! runs a shell command) is refused at upload, check and restore.
+  const evil = path.join(os.tmpdir(), `evil-backup-${process.pid}.gz`);
+  fs.writeFileSync(evil, require('zlib').gzipSync('--\n-- PostgreSQL database dump\n--\nSELECT 1;\n\\! echo pwned > /tmp/pwned\n'));
+  await assert.rejects(backups.importUpload(evil), /psql command/);
+  const planted = path.join(process.env.BACKUP_DIR, 'teamhub-20260102-000000-uploaded.sql.gz');
+  fs.copyFileSync(evil, planted);
+  await assert.rejects(backups.verify('teamhub-20260102-000000-uploaded.sql.gz'), /psql command/);
+  await assert.rejects(backups.restore('teamhub-20260102-000000-uploaded.sql.gz'), /psql command/);
+  fs.rmSync(evil, { force: true });
   fs.rmSync(plain, { force: true });
 });
 

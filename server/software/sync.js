@@ -83,11 +83,10 @@ async function syncProduct(product, { fetchImpl, store = db, today = appTime.tod
   }
 }
 
-async function syncFeed(feed, { fetchImpl, store = db } = {}) {
+async function syncFeed(feed, { store = db, feedTransport = {} } = {}) {
   try {
-    const { assertPublicHttpUrl } = require('../security');
-    await assertPublicHttpUrl(feed.url, { label: 'Feed address' });
-    const items = sources.matchKeywords(await sources.feed(feed.url, { fetchImpl }), feed.keywords).slice(0, 100);
+    // Every hop of the request is checked in sources.feed (https, public address, size).
+    const items = sources.matchKeywords(await sources.feed(feed.url, feedTransport), feed.keywords).slice(0, 100);
     for (const item of items)
       await store.prepare(`INSERT INTO software_feed_items (feed_id, guid, title, link, published_at, summary) VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT (feed_id, guid) DO UPDATE SET title=EXCLUDED.title, link=EXCLUDED.link, published_at=EXCLUDED.published_at, summary=EXCLUDED.summary`)

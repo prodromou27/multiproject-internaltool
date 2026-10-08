@@ -207,6 +207,12 @@ into a temporary database), download one, upload one, and restore one. A
 restore first backs up the current data, runs in a single transaction (a
 failure changes nothing) and then restarts the app.
 
+Uploaded backups are checked line by line before use: only SQL as pg_dump
+writes it is accepted (no psql commands, no `COPY … PROGRAM`). For defence in
+depth, have the app connect as a database user that is not a superuser (the
+`POSTGRES_USER` the postgres image creates is one): a role that owns the
+database and has `CREATEDB` (for the backup check) is enough.
+
 Backups are stored in the `backups` Docker volume (`/app/server/backups`).
 Keep copies off this server too: download one regularly, or copy the volume
 (`docker run --rm -v <project>_backups:/b -v "$PWD":/out alpine cp -r /b /out`).

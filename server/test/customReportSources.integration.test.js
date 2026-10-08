@@ -63,3 +63,23 @@ test('a report can be exported as PDF', async () => {
   assert.equal(buffer.subarray(0, 4).toString(), '%PDF');
   assert.ok(suiteFixture.baseUrl);
 });
+
+test('people other than managers only get the customers they may see, and assets only with asset rights', pgOnly, async () => {
+  for (const user of [ids.planner, ids.pm])
+    await db.prepare("INSERT INTO user_permission_overrides (user_id, permission_key, allowed) VALUES (?, 'reports.access', 1) ON CONFLICT (user_id, permission_key) DO UPDATE SET allowed=1").run(user);
+  const assetsBody = { source: 'assets', fields: ['name', 'customer_id'] };
+  // A planner may see every customer, but not assets without the asset right.
+  assert.equal((await api('/api/reports/custom/preview', { method: 'POST', token: ids.tokenPlanner, body: assetsBody })).status, 403);
+  assert.equal((await api('/api/reports/custom/export-csv', { method: 'POST', token: ids.tokenPlanner, body: assetsBody })).status, 403);
+  const plannerSources = (await api('/api/reports/custom/sources', { token: ids.tokenPlanner })).data;
+  assert.ok(!plannerSources.sources.some(source => source.key === 'assets'), 'not offered');
+  assert.ok(plannerSources.lookups.customer.some(row => row.name === 'Acme Corp'));
+  // A PM sees no customers here: customer-linked rows are left out, not shown.
+  const pmTickets = await api('/api/reports/custom/preview', { method: 'POST', token: ids.tokenPm, body: { source: 'tickets', fields: ['ticket_number', 'customer_id'] } });
+  assert.equal(pmTickets.status, 200, JSON.stringify(pmTickets.data));
+  assert.equal(pmTickets.data.rows.length, 0);
+  assert.deepEqual((await api('/api/reports/custom/sources', { token: ids.tokenPm })).data.lookups.customer, []);
+  // Managers are not limited.
+  assert.ok((await api('/api/reports/custom/preview', { method: 'POST', token: ids.tokenManager, body: { source: 'tickets', fields: ['ticket_number'] } })).data.rows.length >= 1);
+  assert.equal((await api('/api/reports/custom/preview', { method: 'POST', token: ids.tokenManager, body: assetsBody })).status, 200);
+});

@@ -51,6 +51,8 @@ function isoDay(value) {
   return `${match[3]}-${String(MONTHS[match[2].toLowerCase()]).padStart(2, '0')}-${match[1].padStart(2, '0')}`;
 }
 const day = value => (value ? String(value).slice(0, 10) : null);
+// Only web links are stored (they become links on the page).
+const httpLink = value => (typeof value === 'string' && /^https?:\/\//i.test(value) ? value.slice(0, 1000) : null);
 
 /* ── endoflife.date ─────────────────────────────────────────────────── */
 async function endoflife(slug, { fetchImpl, includeOld = false, today = new Date().toISOString().slice(0, 10) } = {}) {
@@ -62,7 +64,7 @@ async function endoflife(slug, { fetchImpl, includeOld = false, today = new Date
   return releases.filter(release => includeOld || release.isMaintained || !release.eolFrom || release.eolFrom >= yearAgo).map(release => ({
     branch: String(release.name), release_date: day(release.releaseDate),
     support_end: day(release.eoasFrom) || null, eol: day(release.eolFrom) || null, maintained: release.isMaintained ? 1 : 0,
-    latest_version: release.latest?.name || null, latest_date: day(release.latest?.date), link: release.latest?.link || null,
+    latest_version: release.latest?.name || null, latest_date: day(release.latest?.date), link: httpLink(release.latest?.link),
   }));
 }
 
@@ -152,8 +154,43 @@ function matchKeywords(items, keywords) {
   return items.filter(item => words.some(word => `${item.title} ${item.summary}`.toLowerCase().includes(word)));
 }
 
-async function feed(url, { fetchImpl } = {}) {
-  return parseFeed(await text(url, { fetchImpl, accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5', label: 'The feed' }));
+/* Feed addresses are typed by people, so every hop is checked: https only, a
+   public address (connected to as checked, so DNS cannot switch it), at most
+   3 redirects, and at most 2 MB. */
+const FEED_MAX_BYTES = 2 * 1024 * 1024;
+function httpsGet(url) {
+  const https = require('https');
+  const { pinnedLookup } = require('../security');
+  return new Promise((resolve, reject) => {
+    const request = https.request({ hostname: url.hostname, port: url.port || 443, path: url.pathname + url.search, method: 'GET', lookup: pinnedLookup(url),
+      headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5', 'User-Agent': AGENT } }, response => {
+      const chunks = []; let size = 0;
+      response.on('data', chunk => {
+        size += chunk.length;
+        if (size > FEED_MAX_BYTES) { request.destroy(); reject(new Error('The feed is larger than 2 MB')); return; }
+        chunks.push(chunk);
+      });
+      response.on('end', () => resolve({ status: response.statusCode, location: response.headers.location || null, body: Buffer.concat(chunks).toString('utf8') }));
+      response.on('error', reject);
+    });
+    request.on('error', error => reject(new Error(`The feed could not be reached (${error.code || error.message})`)));
+    request.setTimeout(30000, () => { request.destroy(); reject(new Error('The feed did not respond in time')); });
+    request.end();
+  });
+}
+
+async function feed(url, { get = httpsGet, check } = {}) {
+  const verify = check || ((value, options) => require('../security').assertPublicHttpUrl(value, options));
+  let current = url;
+  for (let hop = 0; hop <= 3; hop++) {
+    let checked;
+    try { checked = await verify(current, { label: 'Feed address' }); } catch (error) { throw new Error(hop ? `The feed redirected to an address that is not allowed: ${error.message}` : error.message); }
+    const response = await get(checked);
+    if ([301, 302, 303, 307, 308].includes(response.status) && response.location) { current = new URL(response.location, checked).toString(); continue; }
+    if (response.status < 200 || response.status >= 300) throw new Error(`The feed returned HTTP ${response.status}`);
+    return parseFeed(response.body);
+  }
+  throw new Error('The feed redirects too many times');
 }
 
 module.exports = { endoflife, endoflifeCatalogue, fortinet, fortinetLatest, checkpoint, checkpointTakes, parseFeed, matchKeywords, feed, isoDay };

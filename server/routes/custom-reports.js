@@ -4,7 +4,7 @@ const ExcelJS = require('exceljs');
 const fs = require('node:fs');
 const path = require('node:path');
 const { requirePermission } = require('../middleware/auth');
-const { metadata,compileReport } = require('../customReports');
+const { SOURCES,metadata,compileReport } = require('../customReports');
 const { decrypt } = require('../fieldCipher');
 const { logAudit } = require('../auditLog');
 const { reportTemplates } = require('../reportTemplates');
@@ -27,10 +27,11 @@ router.get('/sources',async (req,res) => {
     db.prepare('SELECT id,title AS name FROM projects ORDER BY title,id LIMIT 2000').all(),
     db.prepare('SELECT id,name FROM activity_categories ORDER BY name,id LIMIT 500').all(),
   ]);
-  // Choices for filters on customer, engineer, team, project and category fields.
-  const lookups = { customer: customers.map(row => ({ id: row.id,name: decrypt(row.name) })).sort((a,b) => a.name.localeCompare(b.name)),user: users,team: shareTeams,project: projects,category: categories };
+  // Choices for filters on customer, engineer, team, project and category fields: only customers they may see.
+  const scope = await require('../reportExecution').scopeFor(req.user);
+  const lookups = { customer: customers.filter(row => !scope?.customerIds || scope.customerIds.has(Number(row.id))).map(row => ({ id: row.id,name: decrypt(row.name) })).sort((a,b) => a.name.localeCompare(b.name)),user: users,team: shareTeams,project: projects,category: categories };
   if (shareUsers.length>500 || shareTeams.length>500) return res.status(413).json({ error: 'Report sharing directory exceeds 500 entries' });
-  res.json({ sources: metadata(),lookups,templates: reportTemplates(new Date(),config || {}),share_users: shareUsers,share_teams: shareTeams,preview_limit: 100,export_limit: 5000 });
+  res.json({ sources: metadata().filter(source => !scope || !SOURCES[source.key].needs || scope.permissions.has(SOURCES[source.key].needs)),lookups,templates: reportTemplates(new Date(),config || {}),share_users: shareUsers,share_teams: shareTeams,preview_limit: 100,export_limit: 5000 });
 });
 const id = value => typeof value==='string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
 const conflict = res => res.status(409).json({ error: 'Saved report changed. Reload before modifying it.',code: 'REPORT_CONFLICT' });
@@ -99,7 +100,7 @@ router.delete('/saved/:reportId',async (req,res) => {
 });
 router.post('/saved/:reportId/preview',async (req,res) => {
   const row = await visible(req,res);
-  if (row) res.json(await run(JSON.parse(row.definition),100));
+  if (row) res.json(await run(JSON.parse(row.definition),100,{ user: req.user }));
 });
 router.get('/saved/:reportId/schedule',async (req,res) => {
   const report = await visible(req,res);
@@ -133,7 +134,7 @@ router.put('/saved/:reportId/schedule',async (req,res) => {
   res.json({ version: changed.version,next_run: next });
 });
 
-router.post('/preview',async (req,res) => res.json(await run(req.body,100)));
+router.post('/preview',async (req,res) => res.json(await run(req.body,100,{ user: req.user })));
 router.post('/exports',async (req,res) => {
   if (!req.body || !['csv','xlsx','pdf'].includes(req.body.format)) return res.status(400).json({ error:'Export format must be csv, xlsx or pdf' });
   compileReport(req.body.definition,5000);
@@ -168,14 +169,14 @@ router.get('/exports/:jobId/download',async (req,res) => {
   }
 });
 router.post('/export-csv',async (req,res) => {
-  const result = await run(req.body,5000);
+  const result = await run(req.body,5000,{ user: req.user });
   if (result.truncated) return res.status(413).json({ error: 'Report exceeds 5000 rows. Narrow the filters before exporting.' });
   res.setHeader('Content-Type','text/csv; charset=utf-8');
   res.setHeader('Content-Disposition','attachment; filename="custom-report.csv"');
   res.send(csv(result));
 });
 router.post('/export',async (req,res) => {
-  const result = await run(req.body,5000);
+  const result = await run(req.body,5000,{ user: req.user });
   if (result.truncated) return res.status(413).json({ error: 'Report exceeds 5000 rows. Narrow the filters before exporting.' });
   const workbook = new ExcelJS.Workbook(),sheet = workbook.addWorksheet('Report');
   sheet.addRow(result.columns.map(column => column.label));
@@ -185,7 +186,7 @@ router.post('/export',async (req,res) => {
   res.send(await workbook.xlsx.writeBuffer());
 });
 router.use((error,req,res,next) => {
-  if (error.status===400) return res.status(400).json({ error: error.message });
+  if (error.status===400 || error.status===403) return res.status(error.status).json({ error: error.message });
   if (error.code==='57014') return res.status(408).json({ error: 'Report exceeded its execution time budget. Narrow the filters.' });
   next(error);
 });

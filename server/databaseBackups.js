@@ -20,6 +20,7 @@ const { spawn } = require('child_process');
 const { pipeline } = require('stream/promises');
 const db = require('./db');
 const appTime = require('./appTime');
+const { scanFile } = require('./backupScan');
 
 const BACKUP_DIR = path.resolve(process.env.BACKUP_DIR || path.join(__dirname, 'backups'));
 const NAME = /^teamhub-(\d{8})-(\d{6})-(scheduled|manual|before-restore|uploaded)\.sql\.gz$/;
@@ -45,7 +46,9 @@ const tool = name => (process.env.PG_BIN_DIR ? path.join(process.env.PG_BIN_DIR,
 function run(name, args, { env, input, output } = {}) {
   return new Promise((resolve, reject) => {
     let child;
-    try { child = spawn(tool(name), args, { env: { ...process.env, ...env }, stdio: [input ? 'pipe' : 'ignore', output ? 'pipe' : 'ignore', 'pipe'], windowsHide: true }); }
+    // Only what the tool needs: not the app's keys and secrets.
+    const base = Object.fromEntries(['PATH', 'Path', 'SystemRoot', 'TEMP', 'TMP', 'HOME', 'LANG', 'LC_ALL', 'TZ', 'PGSSLROOTCERT'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
+    try { child = spawn(tool(name), args, { env: { ...base, ...env }, stdio: [input ? 'pipe' : 'ignore', output ? 'pipe' : 'ignore', 'pipe'], windowsHide: true }); }
     catch (error) { reject(error); return; }
     let stderr = '';
     child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-4000); });
@@ -120,6 +123,8 @@ async function prune(store = db) {
 /** Restores a backup into a temporary database, checks it holds TeamHub data, then drops it. */
 async function verify(file, store = db) {
   const source = checkName(file);
+  // Only SQL as pg_dump writes it reaches psql.
+  try { await scanFile(source); } catch (error) { writeMeta(file, { ...readMeta(file), verified_at: new Date().toISOString(), verify_result: null, verify_error: error.message }); throw error; }
   const temp = `teamhub_verify_${Date.now()}`;
   const admin = connection('postgres');
   const { Client } = require('pg');
@@ -128,7 +133,7 @@ async function verify(file, store = db) {
   const meta = readMeta(file);
   try {
     await client.query(`CREATE DATABASE "${temp}"`);
-    await run('psql', ['-q', '-v', 'ON_ERROR_STOP=1', '--single-transaction', '-f', '-'], { env: connection(temp), input: fs.createReadStream(source).pipe(zlib.createGunzip()) });
+    await run('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '--single-transaction', '-f', '-'], { env: connection(temp), input: fs.createReadStream(source).pipe(zlib.createGunzip()) });
     const check = new Client({ host: admin.PGHOST, port: Number(admin.PGPORT), user: admin.PGUSER, password: admin.PGPASSWORD, database: temp, ssl: client.connectionParameters.ssl });
     await check.connect();
     let result;
@@ -161,6 +166,7 @@ async function verify(file, store = db) {
  */
 async function restore(file, { userName = null } = {}, store = db) {
   const source = checkName(file);
+  await scanFile(source);
   const safety = await backupNow({ kind: 'before-restore', userName }, store);
   restoring = true;
   try {
@@ -169,7 +175,7 @@ async function restore(file, { userName = null } = {}, store = db) {
     const prefix = require('stream').Readable.from(["SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND backend_type='client backend';\n"]);
     const body = fs.createReadStream(source).pipe(zlib.createGunzip());
     async function* both() { for await (const chunk of prefix) yield chunk; for await (const chunk of body) yield chunk; }
-    await run('psql', ['-q', '-v', 'ON_ERROR_STOP=1', '--single-transaction', '-f', '-'], { env, input: require('stream').Readable.from(both()) });
+    await run('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '--single-transaction', '-f', '-'], { env, input: require('stream').Readable.from(both()) });
     const at = new Date().toISOString();
     await recordSetting('last_restore', { completed_at: at, file, safety_backup: safety.file, by: userName }, store).catch(() => {});
     await recordSetting('last_backup_status', { completed_at: safety.created_at, file: safety.file, size_bytes: safety.size_bytes, kind: safety.kind }, store).catch(() => {});
@@ -183,13 +189,8 @@ async function restore(file, { userName = null } = {}, store = db) {
 
 /** Saves an uploaded backup (gzipped SQL from TeamHub or deploy/backup.sh) after checking it. */
 async function importUpload(tempPath, { userName = null } = {}) {
-  const head = await new Promise((resolve, reject) => {
-    let text = '';
-    const stream = fs.createReadStream(tempPath).pipe(zlib.createGunzip());
-    stream.on('data', chunk => { text += chunk; if (text.length > 4000) { stream.destroy(); resolve(text); } });
-    stream.on('end', () => resolve(text)); stream.on('error', () => reject(Object.assign(new Error('That file is not a gzipped backup (.sql.gz)'), { status: 400 })));
-  });
-  if (!/PostgreSQL database dump/.test(head)) fail('That file is not a PostgreSQL backup made by pg_dump');
+  // The whole file is checked: it must be plain SQL as pg_dump writes it.
+  await scanFile(tempPath);
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
   const file = `teamhub-${stamp()}-uploaded.sql.gz`;
   fs.copyFileSync(tempPath, path.join(BACKUP_DIR, file));
