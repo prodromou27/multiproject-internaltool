@@ -265,9 +265,11 @@ export default function AdminPanel() {
         @media (max-width: 720px) { .sso-copy { grid-template-columns: 1fr auto; } .sso-copy span { grid-column: 1 / -1; } }
         .settings-nav-heading {
           padding: 0 6px 6px;
-          color: var(--gray-500);
-          font-size: 12px;
-          font-weight: 600;
+          color: var(--gray-400);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: .04em;
+          text-transform: uppercase;
         }
         .settings-nav-item {
           width: 100%;
@@ -296,10 +298,9 @@ export default function AdminPanel() {
           color: var(--gray-800);
         }
         .settings-nav-item.active {
-          background: var(--gray-100);
-          border-color: transparent;
-          color: var(--ink-strong);
-          font-weight: 700;
+          background: #eff6ff;
+          border-color: #bfdbfe;
+          color: var(--primary);
         }
         .settings-content { min-width: 0; }
         .settings-content-header {
@@ -318,13 +319,15 @@ export default function AdminPanel() {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: var(--gray-100);
-          color: var(--ink-strong);
+          background: #eff6ff;
+          color: var(--primary);
         }
         .settings-content-kicker {
-          color: var(--gray-500);
-          font-size: 12px;
-          font-weight: 600;
+          color: var(--gray-400);
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: .04em;
+          text-transform: uppercase;
           margin-bottom: 2px;
         }
         .settings-content-header h2 {
