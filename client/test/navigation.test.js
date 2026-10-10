@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PAGES, canAccessPage, visiblePages, primaryPages, quickCreateActions, pageForPath } from '../src/navigation.js';
+import { PAGES, canAccessPage, visiblePages, menuGroups, quickCreateActions, pageForPath } from '../src/navigation.js';
 
 test('navigation and create actions respect existing role and feature boundaries', () => {
   const ids = role => visiblePages(role).map(page => page.id);
@@ -39,20 +39,31 @@ test('navigation and create actions respect existing role and feature boundaries
   assert.equal(canAccessPage(kpiManagement,{ role:'planner',permissions:{ 'kpis.manage':false } }),false);
 });
 
-test('primary navigation stays concise and respects role and feature access', () => {
-  const manager = { role: 'manager', permissions: {} };
-  const engineer = { role: 'engineer', permissions: {} };
-
-  assert.deepEqual(primaryPages(manager, false).map(page => page.id),
-    ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'customers', 'approvals', 'reminders', 'vulnerabilities']);
-  assert.deepEqual(primaryPages(engineer, false).map(page => page.id),
-    ['dashboard', 'myWork', 'projects', 'tasks', 'visits', 'reminders', 'vulnerabilities']);
-  assert.ok(primaryPages(engineer, true).some(page => page.id === 'activities'));
-  assert.deepEqual(primaryPages(engineer,true,{ managedServiceOperations:true }).map(page => page.id),
-    ['dashboard','myWork','activities','projects','tasks','visits','reminders','vulnerabilities']);
-  assert.deepEqual(primaryPages(engineer,true,{ managedServiceOperations:false,projectDelivery:true }).map(page => page.id),
-    ['dashboard','myWork','projects','tasks','visits','activities','reminders','vulnerabilities']);
-  assert.ok(primaryPages(manager, false).every(page => canAccessPage(page, manager, false)));
+test('the menu shows every page a person can open, in a few groups', () => {
+  const menu = user => menuGroups(user, true).map(group => [group.section, group.pages.map(page => page.id)]);
+  assert.deepEqual(menu({ role: 'manager', permissions: {} }), [
+    ['Home', ['dashboard', 'calendar', 'reminders']],
+    ['Work', ['projects', 'tasks', 'visits', 'activities', 'approvals', 'responses']],
+    ['Customers', ['customers', 'vulnerabilities', 'softwareVersions']],
+    ['Team & performance', ['workload', 'skills', 'reports', 'kpiManagement', 'scorecards', 'sla']],
+    ['More', ['notes', 'settings']],
+  ]);
+  assert.deepEqual(menu({ role: 'engineer', permissions: {} }), [
+    ['Home', ['dashboard', 'myWork', 'calendar', 'reminders']],
+    ['Work', ['projects', 'tasks', 'visits', 'activities', 'responses']],
+    ['Customers', ['vulnerabilities', 'softwareVersions']],
+    ['More', ['notes']],
+  ]);
+  // Every reachable page is in the menu, or lights up a parent that is.
+  for (const role of ['manager', 'engineer', 'planner', 'pm']) {
+    const inMenu = new Set(menuGroups(role, true).flatMap(group => group.pages.map(page => page.id)));
+    for (const page of visiblePages(role, true).filter(page => !page.hidden))
+      assert.ok(inMenu.has(page.id) || inMenu.has(page.parent), `${role}: ${page.id} is reachable from the menu`);
+  }
+  assert.deepEqual(menuGroups('engineer', false).find(group => group.section === 'Work').pages.map(page => page.id), ['projects', 'tasks', 'visits', 'responses']);
+  assert.equal(menuGroups('manager').find(group => group.section === 'Home').titled, false);
+  assert.equal(pageForPath('/settings/users').parent, 'settings');
+  assert.equal(pageForPath('/service-operations').parent, 'reports');
 });
 
 test('detail paths inherit the parent page while unknown paths remain unknown', () => {

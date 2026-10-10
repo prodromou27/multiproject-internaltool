@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Settings, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer } from 'lucide-react';
+import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Settings, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer } from 'lucide-react';
 import { api } from '../api';
-import { visiblePages } from '../navigation';
 import { useAuth } from '../App';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { UsersTab } from './admin/UsersTab';
 import { OverviewTab } from './admin/OverviewTab';
 import { IntegrationsTab } from './admin/IntegrationsTab';
@@ -20,6 +19,7 @@ import { PermissionsTab } from './admin/PermissionsTab';
 import TicketingSettings from './admin/TicketingSettings';
 import { BackupsTab } from './admin/BackupsTab';
 import { SlaSettingsTab } from './admin/SlaSettingsTab';
+import Templates from './Templates';
 
 /* ── MAIN PAGE ───────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
@@ -32,6 +32,7 @@ const TABS = [
   { key: 'service_activity_tracking', label: 'Activity categories', Icon: ClipboardList, group: 'work', desc: 'Categories, subcategories and technologies engineers choose when logging activities' },
   { key: 'statuses',       label: 'Project statuses',   Icon: Tag,             group: 'work',     desc: 'Project status names, colours and workflow rules' },
   { key: 'sla',            label: 'SLAs',               Icon: Timer,           group: 'work',     desc: 'Which SLAs apply and their time limits' },
+  { key: 'project_templates', label: 'Project templates', Icon: FolderKanban, group: 'work', desc: 'Reusable project structures with their default tasks' },
   { key: 'managed_report_templates', label: 'Customer report templates', Icon: FileSpreadsheet, group: 'work', desc: 'Word templates, sections and default text for customer reports' },
   { key: 'weekly_report',  label: 'Weekly report',      Icon: ScrollText,      group: 'work',     desc: 'When the weekly report is sent, to whom, and a preview' },
   { key: 'notifications',  label: 'Notifications',      Icon: Bell,            group: 'connections', desc: 'The shared Teams channel and Webex space, which events they receive, and alerts about the system' },
@@ -134,7 +135,6 @@ export default function AdminPanel() {
 
   const activeTab = TABS.find(t => t.key === tab) || TABS[0];
   const activeGroup = TAB_GROUPS.find(g => g.key === activeTab.group);
-  const businessLinks = visiblePages(user).filter(page => ['customers','templates','workload','approvals','reports','kpiManagement'].includes(page.id));
   const q = tabSearch.trim().toLowerCase();
   const filteredTabs = TABS.filter(t => !q || t.label.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q));
   const ActiveIcon = activeTab.Icon;
@@ -188,7 +188,6 @@ export default function AdminPanel() {
             );
           })}
 
-          {!q && businessLinks.length > 0 && <div className="settings-nav-group"><div className="settings-nav-heading">Related pages</div>{businessLinks.map(page => <Link className="settings-nav-item" key={page.id} to={page.path} style={{ display: 'block' }}>{page.label}</Link>)}</div>}
           {filteredTabs.length === 0 && (
             <p className="text-sm text-muted u-cfa1ecf">No settings matched.</p>
           )}
@@ -216,6 +215,7 @@ export default function AdminPanel() {
           {tab === 'system_health' && <SystemHealthTab key={part || 'stats'} initial={part} />}
           {tab === 'backups' && <BackupsTab />}
           {tab === 'sla' && <SlaSettingsTab />}
+          {tab === 'project_templates' && <Templates embedded />}
           {tab === 'notifications' && <><IntegrationsTab /><h3 className="settings-subheading">Alerts about the system</h3><AdminAlertsTab /></>}
           {tab === 'activity_bot'  && <ActivityBotSettings sectionStyle={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 }} />}
           {tab === 'weekly_report' && <WeeklyReportTab />}

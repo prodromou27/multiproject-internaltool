@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
-import { visiblePages, primaryPages, pageForPath } from '../navigation';
+import { menuGroups, pageForPath } from '../navigation';
 import QuickCreate from '../components/QuickCreate';
 import HelpMenu from '../components/HelpMenu';
 import { PRODUCT_WORDMARK } from '../product';
@@ -11,7 +11,6 @@ import { GlobalSearch } from './GlobalSearch';
 import { Hamburger } from './Sidebar';
 import { SidebarContent } from './Sidebar';
 import UserMenu from './UserMenu';
-import { ModuleLauncher } from './ModuleLauncher';
 import { CommandPalette } from './CommandPalette';
 
 /* ── Layout ──────────────────────────────────────────────── */
@@ -19,7 +18,6 @@ export function Layout({ children }) {
   const { user, logout, saAccess } = useAuth();
   const [open, setOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [launcherOpen, setLauncherOpen] = useState(false);
   const [compactNav, setCompactNav] = useState(() => localStorage.getItem(`hub_nav_compact_${user.id}`) === '1');
   const [dense, setDense] = useState(() => localStorage.getItem(`hub_density_${user.id}`) === 'compact');
   const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 900px)').matches);
@@ -27,31 +25,18 @@ export function Layout({ children }) {
   const location = useLocation();
   const currentPage = pageForPath(location.pathname);
   const currentTeams = saAccess.teams.map(team => team.name).join(', ');
-  const availablePages = useMemo(() => visiblePages(user, saAccess.enabled).filter(page => !page.hidden), [user, saAccess.enabled]);
-  const defaultPinnedIds = useMemo(() => primaryPages(user, saAccess.enabled, saAccess.capabilities).map(page => page.id), [user, saAccess.enabled, saAccess.capabilities]);
-  const pinnedStorageKey = `hub_nav_pinned_${user.id}`;
-  const recentStorageKey = `hub_nav_recent_${user.id}`;
-  const pinsInitializedFromStorage = useRef(localStorage.getItem(pinnedStorageKey) !== null);
-  const [pinnedIds, setPinnedIds] = useState(() => {
+  const groups = useMemo(() => menuGroups(user, saAccess.enabled), [user, saAccess.enabled]);
+  const foldedStorageKey = `hub_nav_folded_${user.id}`;
+  const [folded, setFolded] = useState(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(pinnedStorageKey) || 'null');
-      return Array.isArray(saved) ? saved : defaultPinnedIds;
-    } catch { return defaultPinnedIds; }
-  });
-  const [recentIds, setRecentIds] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(recentStorageKey) || '[]');
+      const saved = JSON.parse(localStorage.getItem(foldedStorageKey) || '[]');
       return Array.isArray(saved) ? saved : [];
     } catch { return []; }
   });
-  const validPinnedIds = pinnedIds.filter(id => availablePages.some(page => page.id === id));
-  const sidebarPages = validPinnedIds.map(id => availablePages.find(page => page.id === id)).filter(Boolean);
-
-  const togglePinnedPage = id => {
-    setPinnedIds(current => {
-      const valid = current.filter(pageId => availablePages.some(page => page.id === pageId));
-      const next = valid.includes(id) ? valid.filter(pageId => pageId !== id) : [...valid, id];
-      localStorage.setItem(pinnedStorageKey, JSON.stringify(next));
+  const toggleGroup = section => {
+    setFolded(current => {
+      const next = current.includes(section) ? current.filter(name => name !== section) : [...current, section];
+      try { localStorage.setItem(foldedStorageKey, JSON.stringify(next)); } catch { /* the menu still works without storage */ }
       return next;
     });
   };
@@ -71,18 +56,6 @@ export function Layout({ children }) {
   };
 
   useEffect(() => { setOpen(false); }, [location.pathname]);
-  useEffect(() => {
-    if (pinsInitializedFromStorage.current || !saAccess.loaded) return;
-    setPinnedIds(defaultPinnedIds);
-  }, [defaultPinnedIds, saAccess.loaded]);
-  useEffect(() => {
-    if (!currentPage || currentPage.hidden) return;
-    setRecentIds(current => {
-      const next = [currentPage.id, ...current.filter(id => id !== currentPage.id)].slice(0, 4);
-      localStorage.setItem(recentStorageKey, JSON.stringify(next));
-      return next;
-    });
-  }, [currentPage?.id, recentStorageKey]);
   useEffect(() => {
     const media = window.matchMedia('(max-width: 900px)');
     const change = () => { setMobile(media.matches); if (!media.matches) setOpen(false); };
@@ -112,10 +85,9 @@ export function Layout({ children }) {
   }, [open, mobile]);
   useEffect(() => {
     const handler = e => {
-      if (e.key === 'Escape') { setOpen(false); setPaletteOpen(false); setLauncherOpen(false); return; }
+      if (e.key === 'Escape') { setOpen(false); setPaletteOpen(false); return; }
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
-        setLauncherOpen(false);
         setPaletteOpen(value => !value);
       }
     };
@@ -128,15 +100,13 @@ export function Layout({ children }) {
     <div className={`layout operations-shell${compactNav ? ' nav-compact' : ''}${dense ? ' density-compact' : ''}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <ModuleLauncher open={launcherOpen} pages={availablePages} pinnedIds={validPinnedIds}
-        recentIds={recentIds} onTogglePin={togglePinnedPage} onClose={() => setLauncherOpen(false)} />
       {/* Desktop sidebar */}
       <aside ref={drawerRef} id="primary-navigation" className={`sidebar${open ? ' open' : ''}`} aria-label="Primary navigation"
         role={mobile && open ? 'dialog' : undefined} aria-modal={mobile && open ? true : undefined}
         aria-hidden={mobile && !open ? true : undefined} inert={mobile && !open}>
         {mobile && open && <button className="drawer-close" type="button" onClick={() => setOpen(false)}><X size={18} /> Close navigation</button>}
-        <SidebarContent onNav={() => setOpen(false)} pages={sidebarPages}
-          compact={compactNav && !mobile} onOpenLauncher={() => { setOpen(false); setPaletteOpen(false); setLauncherOpen(true); }}
+        <SidebarContent onNav={() => setOpen(false)} groups={groups} currentPage={currentPage}
+          compact={compactNav && !mobile} collapsed={folded} onToggleGroup={toggleGroup}
           onToggleCompact={toggleCompactNav} />
       </aside>
 

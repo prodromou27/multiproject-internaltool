@@ -1,33 +1,34 @@
 // UI capabilities mirror existing API permissions; the server remains authoritative.
 const everyone = ['manager', 'engineer', 'planner', 'pm'];
 export const PAGES = [
-  { id: 'dashboard', path: '/', label: 'Dashboard', section: 'Workspace', icon: 'LayoutDashboard', roles: everyone, description: 'Operational overview and work that needs attention' },
-  { id: 'myWork', path: '/my-day', label: 'My Work', section: 'Workspace', icon: 'Zap', roles: ['engineer'], description: 'Your assignments, upcoming work and time tracking' },
-  { id: 'reminders', path: '/reminders', label: 'Reminders', section: 'Workspace', icon: 'BellRing', roles: everyone, description: 'Your own reminders, and the automatic ones the app sends you' },
-  { id: 'vulnerabilities', path: '/vulnerabilities', label: 'Vulnerabilities', section: 'Workspace', icon: 'ShieldAlert', roles: everyone, description: 'CVEs for the vendors and products we support, and which customer devices they affect' },
-  { id: 'softwareVersions', path: '/software', label: 'Software versions', section: 'Workspace', icon: 'PackageCheck', roles: everyone, description: 'The latest and recommended versions of the products we support (FortiOS, Check Point Jumbo…), and vendor news' },
-  { id: 'calendar', path: '/calendar', label: 'Calendar', section: 'Workspace', icon: 'CalendarDays', roles: everyone, description: 'Plan project deadlines, tasks and maintenance visits' },
-  { id: 'projects', path: '/projects', label: 'Projects', section: 'Operations', icon: 'FolderOpen', roles: ['manager', 'engineer', 'pm'], permission:'projects.access', description: 'Delivery progress, ownership and project commitments' },
-  { id: 'tasks', path: '/tasks', label: 'Tasks', section: 'Operations', icon: 'CheckSquare', roles: ['manager', 'engineer'], permission:'tasks.access', badge: 'tasks', description: 'Assigned tasks and operational follow-ups' },
-  { id: 'visits', path: '/maintenance-visits', label: 'Maintenance Visits', section: 'Operations', icon: 'Wrench', roles: everyone, permission:'visits.access', badge: 'visits', description: 'Customer visits, engineer assignments and reports' },
-  { id: 'activities', path: '/activity-log', label: 'Activity Log', section: 'Operations', icon: 'ClipboardList', roles: ['manager', 'engineer', 'pm'], permission:'service_activities.access', feature: 'serviceActivity', description: 'Customer service work, evidence and follow-ups' },
-  { id: 'customers', path: '/customers', label: 'Customers', section: 'Management', icon: 'Building2', roles: ['manager'], permission:'customers.access', description: 'Customer profiles, service contracts and team access' },
-  { id: 'skills', path: '/skills', label: 'Skill matrix', section: 'Management', icon: 'GraduationCap', roles: ['manager'], permission:'skills.view', description: 'What the team knows per technology, and where knowledge rests on one person' },
-  { id: 'workload', path: '/workload', label: 'Workload', section: 'Management', icon: 'UsersIcon', roles: ['manager'], description: 'Engineer commitments and upcoming demand' },
-  { id: 'reports', path: '/reports', label: 'Reports', section: 'Management', icon: 'BarChart2', roles: ['manager'], permission:'reports.access', description: 'Operational summaries, delivery trends and reporting' },
-  { id: 'kpiManagement', path: '/kpis', label: 'KPI Management', section: 'Management', icon: 'BarChart2', roles: ['manager'], permission:'kpis.manage', description: 'Define, test and review management performance indicators' },
-  { id: 'approvals', path: '/approvals', label: 'Approvals', section: 'Management', icon: 'CheckCheck', roles: ['manager'], permission: 'managed_reports.review', description: 'Review project closures and managed-service reports' },
-  { id: 'scorecards', path: '/scorecards', label: 'Scorecards', section: 'Management', icon: 'Award', roles: ['manager'], description: 'Project delivery evaluations and engineer performance' },
-  { id: 'serviceOperations', path: '/service-operations', label: 'Service Activity Reports', section: 'Management', icon: 'Activity', roles: ['manager'], permission:'reports.access', description: 'Aggregated reporting over logged service activity — see Customer 360 for per-customer detail' },
-  { id: 'sla', path: '/sla', label: 'SLA', section: 'Management', icon: 'ShieldCheck', roles: ['manager'], description: 'Service commitments and exceptions requiring attention' },
-  { id: 'templates', path: '/templates', label: 'Templates', section: 'Administration', icon: 'FileText', roles: ['manager'], description: 'Reusable project structures and default tasks' },
-  { id: 'users', path: '/users', label: 'Users', section: 'Administration', icon: 'UsersIcon', roles: ['manager'], description: 'User accounts and operational roles' },
-  { id: 'settings', path: '/settings', label: 'Settings', section: 'Administration', icon: 'Settings', roles: ['manager'], description: 'Business configuration, integrations and system settings' },
-  { id: 'notes', path: '/notes', label: 'My Notes', section: 'Personal', icon: 'StickyNote', roles: everyone, description: 'Your private scratchpad and personal to-do list' },
-  // Profile is deliberately not a nav-list entry — it's already one click away
-  // via the account avatar in the sidebar and top bar, on both desktop and mobile.
-  { id: 'responses', path: '/customer-responses', label: 'Customer Responses', section: 'Personal', icon: 'MessageSquare', roles: everyone, description: 'Track work waiting on customer responses' },
-  { id: 'search', path: '/search', label: 'Smart Search', section: 'Workspace', icon: 'Search', roles: everyone, hidden: true, description: 'Search the work and customers you can access' },
+  // The sidebar shows every page a person can open, in this order, grouped by
+  // section. Home and More have no heading. inMenu:false pages stay reachable
+  // (links, Ctrl K) and light up their parent in the menu.
+  { id: 'dashboard', path: '/', label: 'Dashboard', section: 'Home', icon: 'LayoutDashboard', roles: everyone, description: 'Operational overview and work that needs attention' },
+  { id: 'myWork', path: '/my-day', label: 'My Work', section: 'Home', icon: 'Zap', roles: ['engineer'], description: 'Your assignments, upcoming work and time tracking' },
+  { id: 'calendar', path: '/calendar', label: 'Calendar', section: 'Home', icon: 'CalendarDays', roles: everyone, description: 'Plan project deadlines, tasks and maintenance visits' },
+  { id: 'reminders', path: '/reminders', label: 'Reminders', section: 'Home', icon: 'BellRing', roles: everyone, description: 'Your own reminders, and the automatic ones the app sends you' },
+  { id: 'projects', path: '/projects', label: 'Projects', section: 'Work', icon: 'FolderOpen', roles: ['manager', 'engineer', 'pm'], permission:'projects.access', description: 'Delivery progress, ownership and project commitments' },
+  { id: 'tasks', path: '/tasks', label: 'Tasks', section: 'Work', icon: 'CheckSquare', roles: ['manager', 'engineer'], permission:'tasks.access', badge: 'tasks', description: 'Assigned tasks and operational follow-ups' },
+  { id: 'visits', path: '/maintenance-visits', label: 'Maintenance Visits', section: 'Work', icon: 'Wrench', roles: everyone, permission:'visits.access', badge: 'visits', description: 'Customer visits, engineer assignments and reports' },
+  { id: 'activities', path: '/activity-log', label: 'Activity Log', section: 'Work', icon: 'ClipboardList', roles: ['manager', 'engineer', 'pm'], permission:'service_activities.access', feature: 'serviceActivity', description: 'Customer service work, evidence and follow-ups' },
+  { id: 'approvals', path: '/approvals', label: 'Approvals', section: 'Work', icon: 'CheckCheck', roles: ['manager'], permission: 'managed_reports.review', description: 'Review project closures and managed-service reports' },
+  { id: 'responses', path: '/customer-responses', label: 'Customer Responses', section: 'Work', icon: 'MessageSquare', roles: everyone, description: 'Track work waiting on customer responses' },
+  { id: 'customers', path: '/customers', label: 'Customers', section: 'Customers', icon: 'Building2', roles: ['manager'], permission:'customers.access', description: 'Customer profiles, service contracts and team access' },
+  { id: 'vulnerabilities', path: '/vulnerabilities', label: 'Vulnerabilities', section: 'Customers', icon: 'ShieldAlert', roles: everyone, description: 'CVEs for the vendors and products we support, and which customer devices they affect' },
+  { id: 'softwareVersions', path: '/software', label: 'Software versions', section: 'Customers', icon: 'PackageCheck', roles: everyone, description: 'The latest and recommended versions of the products we support (FortiOS, Check Point Jumbo…), and vendor news' },
+  { id: 'workload', path: '/workload', label: 'Workload', section: 'Team & performance', icon: 'UsersIcon', roles: ['manager'], description: 'Engineer commitments and upcoming demand' },
+  { id: 'skills', path: '/skills', label: 'Skill matrix', section: 'Team & performance', icon: 'GraduationCap', roles: ['manager'], permission:'skills.view', description: 'What the team knows per technology, and where knowledge rests on one person' },
+  { id: 'reports', path: '/reports', label: 'Reports', section: 'Team & performance', icon: 'BarChart2', roles: ['manager'], permission:'reports.access', description: 'Operational summaries, delivery trends and reporting' },
+  { id: 'kpiManagement', path: '/kpis', label: 'KPI Management', section: 'Team & performance', icon: 'Gauge', roles: ['manager'], permission:'kpis.manage', description: 'Define, test and review management performance indicators' },
+  { id: 'scorecards', path: '/scorecards', label: 'Scorecards', section: 'Team & performance', icon: 'Award', roles: ['manager'], description: 'Project delivery evaluations and engineer performance' },
+  { id: 'sla', path: '/sla', label: 'SLA', section: 'Team & performance', icon: 'ShieldCheck', roles: ['manager'], description: 'Service commitments and exceptions requiring attention' },
+  { id: 'notes', path: '/notes', label: 'My Notes', section: 'More', icon: 'StickyNote', roles: everyone, description: 'Your private scratchpad and personal to-do list' },
+  { id: 'settings', path: '/settings', label: 'Settings', section: 'More', icon: 'Settings', roles: ['manager'], description: 'Business configuration, integrations and system settings' },
+  { id: 'serviceOperations', path: '/service-operations', label: 'Service Activity Reports', section: 'Team & performance', icon: 'Activity', roles: ['manager'], permission:'reports.access', inMenu: false, parent: 'reports', description: 'Aggregated reporting over logged service activity — see Customer 360 for per-customer detail' },
+  { id: 'users', path: '/settings/users', label: 'Users', section: 'More', icon: 'UsersIcon', roles: ['manager'], inMenu: false, parent: 'settings', description: 'User accounts and operational roles' },
+  { id: 'templates', path: '/settings/project_templates', label: 'Project templates', section: 'More', icon: 'FileText', roles: ['manager'], inMenu: false, parent: 'settings', description: 'Reusable project structures and default tasks' },
+  { id: 'search', path: '/search', label: 'Smart Search', section: 'Home', icon: 'Search', roles: everyone, hidden: true, description: 'Search the work and customers you can access' },
 ];
 
 export function canAccessPage(page, userOrRole, serviceActivityEnabled = false) {
@@ -42,25 +43,14 @@ export function visiblePages(userOrRole, serviceActivityEnabled = false) {
   return PAGES.filter(page => canAccessPage(page, userOrRole, serviceActivityEnabled));
 }
 
-const DEFAULT_PRIMARY_PAGES = {
-  manager: ['dashboard', 'projects', 'tasks', 'visits', 'activities', 'customers', 'approvals', 'reminders', 'vulnerabilities'],
-  engineer: ['dashboard', 'myWork', 'tasks', 'activities', 'projects', 'visits', 'reminders', 'vulnerabilities'],
-  planner: ['dashboard', 'calendar', 'visits', 'reminders', 'vulnerabilities'],
-  pm: ['dashboard', 'projects', 'activities', 'visits', 'reminders', 'vulnerabilities'],
-};
+export const MENU_SECTIONS = ['Home', 'Work', 'Customers', 'Team & performance', 'More'];
+export const UNTITLED_SECTIONS = new Set(['Home', 'More']);
 
-// Keep the persistent navigation intentionally short. Every permitted destination
-// remains available from the module launcher and command palette.
-export function primaryPages(userOrRole, serviceActivityEnabled = false, capabilities = {}) {
-  const user = typeof userOrRole === 'string' ? { role: userOrRole, permissions: {} } : userOrRole;
-  const managed=capabilities.managedServiceOperations===true;
-  const engineerIds=managed
-    ? ['dashboard','myWork','activities','projects','tasks','visits','reminders','vulnerabilities']
-    : ['dashboard','myWork','projects','tasks','visits','activities','reminders','vulnerabilities'];
-  const ids = user?.role==='engineer' ? engineerIds : DEFAULT_PRIMARY_PAGES[user?.role] || ['dashboard'];
-  return ids
-    .map(id => PAGES.find(page => page.id === id))
-    .filter(page => canAccessPage(page, user, serviceActivityEnabled));
+// The sidebar: every page this person can open, grouped by section, in PAGES order.
+export function menuGroups(userOrRole, serviceActivityEnabled = false) {
+  const pages = visiblePages(userOrRole, serviceActivityEnabled).filter(page => !page.hidden && page.inMenu !== false);
+  return MENU_SECTIONS.map(section => ({ section, titled: !UNTITLED_SECTIONS.has(section), pages: pages.filter(page => page.section === section) }))
+    .filter(group => group.pages.length);
 }
 
 export function pageForPath(pathname) {

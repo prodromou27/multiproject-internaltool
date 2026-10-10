@@ -237,7 +237,7 @@ function ApplyTemplateModal({ tpl, onClose, onCreated }) {
 }
 
 /* ── Main page ───────────────────────────────────────────── */
-export default function Templates() {
+export default function Templates({ embedded = false }) {
   const toast   = useToast();
   const confirm = useConfirm();
   const [templates, setTemplates] = useState([]);
@@ -271,12 +271,12 @@ export default function Templates() {
   }
 
   return (
-    <div className="page">
+    <div className={embedded ? undefined : 'page'}>
       <div className="page-header">
-        <div>
+        {!embedded && <div>
           <h1 className="page-title">Project Templates</h1>
           <div className="page-subtitle">Reusable project structures with pre-defined tasks</div>
-        </div>
+        </div>}
         <button className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Template</button>
       </div>
 

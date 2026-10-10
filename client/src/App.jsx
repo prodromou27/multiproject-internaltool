@@ -23,14 +23,12 @@ const ProjectDetail     = lazy(() => import('./pages/ProjectDetail'));
 const Tasks             = lazy(() => import('./pages/Tasks'));
 const Reports           = lazy(() => import('./pages/Reports'));
 const KpiManagement     = lazy(() => import('./pages/KpiManagement'));
-const UsersPage         = lazy(() => import('./pages/Users'));
 const CalendarPage      = lazy(() => import('./pages/CalendarPage'));
 const MaintenanceVisits = lazy(() => import('./pages/MaintenanceVisits'));
 const Customers         = lazy(() => import('./pages/Customers'));
 const AdminPanel        = lazy(() => import('./pages/AdminPanel'));
 const Scorecards        = lazy(() => import('./pages/Scorecards'));
 const CustomerResponses = lazy(() => import('./pages/CustomerResponses'));
-const Templates         = lazy(() => import('./pages/Templates'));
 const Workload          = lazy(() => import('./pages/Workload'));
 const SkillMatrix       = lazy(() => import('./pages/SkillMatrix'));
 const Notes             = lazy(() => import('./pages/Notes'));
@@ -187,12 +185,12 @@ export default function App() {
           <Route path="/reports"             element={<PrivateRoute page="reports"><Reports /></PrivateRoute>} />
           <Route path="/kpis"                element={<PrivateRoute page="kpiManagement"><KpiManagement /></PrivateRoute>} />
           <Route path="/approvals"           element={<PrivateRoute page="approvals"><Approvals /></PrivateRoute>} />
-          <Route path="/users"               element={<PrivateRoute page="users"><UsersPage /></PrivateRoute>} />
+          <Route path="/users"               element={<Navigate to="/settings/users" replace />} />
           <Route path="/settings"            element={<PrivateRoute page="settings"><AdminPanel /></PrivateRoute>} />
           <Route path="/settings/:section"   element={<PrivateRoute page="settings"><AdminPanel /></PrivateRoute>} />
           <Route path="/admin"               element={<LegacySettingsRedirect />} />
           <Route path="/admin/:section"      element={<LegacySettingsRedirect />} />
-          <Route path="/templates"           element={<PrivateRoute page="templates"><Templates /></PrivateRoute>} />
+          <Route path="/templates"           element={<Navigate to="/settings/project_templates" replace />} />
           <Route path="/workload"            element={<PrivateRoute page="workload"><Workload /></PrivateRoute>} />
           <Route path="/skills"              element={<PrivateRoute page="skills"><SkillMatrix /></PrivateRoute>} />
           <Route path="/sla"               element={<PrivateRoute page="sla"><SLAPage /></PrivateRoute>} />

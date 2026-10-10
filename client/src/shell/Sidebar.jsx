@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2, Award, BarChart2, UsersIcon, Settings, Search, MessageSquare, CheckCheck, ClipboardList, FileText, StickyNote, UserCircle, ShieldCheck, Zap, Activity, BellRing, ShieldAlert, PackageCheck, GraduationCap, Grid3X3, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2, Award, BarChart2, UsersIcon, Settings, Search, MessageSquare, CheckCheck, ClipboardList, FileText, StickyNote, UserCircle, ShieldCheck, Zap, Activity, BellRing, ShieldAlert, PackageCheck, GraduationCap, Gauge, ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { api } from '../api';
 import { PRODUCT_WORDMARK } from '../product';
 import { useLiveRefresh } from '../live';
@@ -19,7 +19,7 @@ export function Hamburger({ open, onClick }) {
 /* ── Sidebar content ─────────────────────────────────────── */
 export const PAGE_ICONS = { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2,
   Award, BarChart2, UsersIcon, Settings, Search, ClipboardList, FileText, StickyNote,
-  UserCircle, MessageSquare, ShieldCheck, ShieldAlert, PackageCheck, GraduationCap, Zap, Activity, CheckCheck, BellRing };
+  UserCircle, MessageSquare, ShieldCheck, ShieldAlert, PackageCheck, GraduationCap, Gauge, Zap, Activity, CheckCheck, BellRing };
 
 function OverdueDot({ count }) {
   if (!count) return null;
@@ -28,7 +28,7 @@ function OverdueDot({ count }) {
   );
 }
 
-export function SidebarContent({ onNav, pages, compact, onOpenLauncher, onToggleCompact }) {
+export function SidebarContent({ onNav, groups, currentPage, compact, collapsed, onToggleGroup, onToggleCompact }) {
 
   const [overdue, setOverdue] = useState({ tasks: 0, visits: 0 });
   useLiveRefresh(() => api.overdueCounts().then(setOverdue).catch(() => {}));
@@ -42,6 +42,30 @@ export function SidebarContent({ onNav, pages, compact, onOpenLauncher, onToggle
     return () => { mounted = false; clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, []);
 
+  const link = page => {
+    const Icon = PAGE_ICONS[page.icon];
+    const childActive = currentPage?.parent === page.id;
+    return <NavLink key={page.id} to={page.path} end={page.path === '/'} onClick={onNav}
+      className={({ isActive }) => (isActive || childActive ? 'active' : undefined)}
+      aria-current={childActive ? 'page' : undefined}
+      title={compact ? page.label : undefined} aria-label={compact ? page.label : undefined}>
+      <Icon size={18} aria-hidden="true" /> <span>{page.label}</span>
+      <OverdueDot count={overdue[page.badge]} />
+    </NavLink>;
+  };
+  const more = groups.find(group => group.section === 'More');
+
+  // Keep the current page in view when the menu is longer than the screen.
+  useEffect(() => {
+    // Scroll only the menu itself (scrollIntoView would also move the page and
+    // the keyboard's starting point), and only when the menu is on screen.
+    const nav = document.querySelector('.sidebar-primary-nav'), active = nav?.querySelector('a.active');
+    if (!nav || !active || !nav.offsetParent) return;
+    const box = nav.getBoundingClientRect(), item = active.getBoundingClientRect();
+    if (item.top < box.top) nav.scrollTop -= box.top - item.top;
+    else if (item.bottom > box.bottom) nav.scrollTop += item.bottom - box.bottom;
+  }, [currentPage?.id]);
+
   return (
     <>
       {/* Logo */}
@@ -52,25 +76,29 @@ export function SidebarContent({ onNav, pages, compact, onOpenLauncher, onToggle
         <span className="sidebar-brand-name">{PRODUCT_WORDMARK.prefix}<strong>{PRODUCT_WORDMARK.suffix}</strong></span>
       </div>
 
-      {/* Main nav */}
-      <nav className="sidebar-primary-nav" aria-label="Pinned modules">
-        {pages.map(page => {
-          const Icon = PAGE_ICONS[page.icon];
-          return <NavLink key={page.id} to={page.path} end={page.path === '/'} onClick={onNav}
-            title={compact ? page.label : undefined} aria-label={compact ? page.label : undefined}>
-            <Icon size={18} aria-hidden="true" /> <span>{page.label}</span>
-            <OverdueDot count={overdue[page.badge]} />
-          </NavLink>;
+      {/* Main nav: every page this person can open, in short groups. A group
+          can be folded away, except the one holding the current page. */}
+      <nav className="sidebar-primary-nav" aria-label="Main">
+        {groups.filter(group => group.section !== 'More').map(group => {
+          const id = `nav-${group.section.toLowerCase().replace(/[^a-z]+/g, '-')}`;
+          const holdsCurrent = group.pages.some(page => page.id === currentPage?.id || page.id === currentPage?.parent);
+          const folded = group.titled && !compact && collapsed.includes(group.section) && !holdsCurrent;
+          return <div key={group.section} className={`sidebar-group${group.titled ? '' : ' is-untitled'}`}>
+            {group.titled && !compact && <button type="button" className="sidebar-group-toggle" aria-expanded={!folded} aria-controls={id}
+              onClick={() => onToggleGroup(group.section)} disabled={holdsCurrent}>
+              <span>{group.section}</span><ChevronDown size={14} aria-hidden="true" />
+            </button>}
+            <div id={id} hidden={folded}>
+              {group.pages.map(link)}
+            </div>
+          </div>;
         })}
-        <button type="button" className="sidebar-launcher" onClick={onOpenLauncher}
-          title={compact ? 'All modules' : undefined} aria-label={compact ? 'All modules' : undefined}>
-          <Grid3X3 size={18} aria-hidden="true" /><span>All modules</span>
-        </button>
       </nav>
 
       {/* Footer: only the rail toggle. Account, display preferences and external
           tools live in the account menu in the top bar. */}
       <div className="sidebar-footer">
+        {more && <nav className="sidebar-more-nav" aria-label="Notes and settings">{more.pages.map(link)}</nav>}
         <button onClick={onToggleCompact} className="sidebar-collapse" title={compact ? 'Expand navigation' : 'Collapse navigation'}>
           {compact ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
           <span>{compact ? 'Expand' : 'Collapse'}</span>

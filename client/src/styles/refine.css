@@ -121,12 +121,23 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
   box-shadow: inset 2px 0 0 var(--signal);
 }
 .operations-shell .sidebar nav a.active svg { color: var(--ink); }
-.sidebar-launcher {
-  margin-top: 8px; padding: 8px 10px; min-height: 36px;
-  border: 0; background: transparent; color: var(--gray-600); font-weight: 500;
+.operations-shell .sidebar { overflow: hidden; }
+.operations-shell .sidebar-primary-nav { min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--gray-300) transparent; }
+.operations-shell .sidebar nav a { min-height: 32px; padding: 6px 10px; margin-bottom: 1px; }
+.sidebar-group + .sidebar-group { margin-top: 4px; }
+.sidebar-group.is-untitled + .sidebar-group.is-untitled { padding-top: 6px; border-top: 1px solid var(--gray-200); }
+.operations-shell .sidebar-more-nav { flex: none; margin-bottom: 4px; padding: 0 0 4px; border-bottom: 1px solid var(--gray-200); }
+.sidebar-group-toggle {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  margin: 2px 0 1px; padding: 4px 10px; border: 0; border-radius: var(--radius); background: transparent;
+  color: var(--gray-500); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; text-align: left;
 }
-.sidebar-launcher:hover { background: var(--gray-100); color: var(--ink); border: 0; }
-.sidebar-launcher svg { color: var(--gray-500); }
+.sidebar-group-toggle:hover:not(:disabled) { background: var(--gray-100); color: var(--ink); }
+.sidebar-group-toggle:disabled { cursor: default; }
+.sidebar-group-toggle svg { transition: transform .15s ease; }
+.sidebar-group-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.nav-compact .sidebar-group + .sidebar-group { padding-top: 6px; border-top: 1px solid var(--gray-200); }
+@media (prefers-reduced-motion: reduce) { .sidebar-group-toggle svg { transition: none; } }
 .sidebar-overdue-count { background: var(--signal) !important; color: #fff !important; }
 .operations-shell .sidebar-footer { border-top: 1px solid var(--gray-200); padding: 8px 10px; background: transparent; }
 .operations-shell .sidebar-footer button {
