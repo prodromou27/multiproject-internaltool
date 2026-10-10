@@ -748,6 +748,22 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261024_skill_matrix', `
+    -- Skill matrix: managers rate each engineer per technology (1 Junior, 2 Intermediate,
+    -- 3 Senior, 4 Expert) and set how many Senior-or-better engineers each technology needs.
+    ALTER TABLE technologies ADD COLUMN IF NOT EXISTS skill_target INTEGER NOT NULL DEFAULT 2;
+    CREATE TABLE IF NOT EXISTS engineer_skills (
+      id            SERIAL PRIMARY KEY,
+      user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      technology_id INTEGER NOT NULL REFERENCES technologies(id) ON DELETE CASCADE,
+      level         INTEGER NOT NULL CHECK (level BETWEEN 1 AND 4),
+      note          TEXT,
+      rated_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      rated_at      TEXT DEFAULT ${NOW},
+      UNIQUE (user_id, technology_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_engineer_skills_technology ON engineer_skills(technology_id);
+  `]);
   migrations.push(['20261023_software_versions', `
     -- Software versions portal: the latest (and recommended) versions of products we
     -- support, read from vendors (endoflife.date, Fortinet docs, Check Point Jumbo

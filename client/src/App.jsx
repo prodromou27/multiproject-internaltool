@@ -32,6 +32,7 @@ const Scorecards        = lazy(() => import('./pages/Scorecards'));
 const CustomerResponses = lazy(() => import('./pages/CustomerResponses'));
 const Templates         = lazy(() => import('./pages/Templates'));
 const Workload          = lazy(() => import('./pages/Workload'));
+const SkillMatrix       = lazy(() => import('./pages/SkillMatrix'));
 const Notes             = lazy(() => import('./pages/Notes'));
 const Reminders         = lazy(() => import('./pages/Reminders'));
 const Vulnerabilities   = lazy(() => import('./pages/Vulnerabilities'));
@@ -193,6 +194,7 @@ export default function App() {
           <Route path="/admin/:section"      element={<LegacySettingsRedirect />} />
           <Route path="/templates"           element={<PrivateRoute page="templates"><Templates /></PrivateRoute>} />
           <Route path="/workload"            element={<PrivateRoute page="workload"><Workload /></PrivateRoute>} />
+          <Route path="/skills"              element={<PrivateRoute page="skills"><SkillMatrix /></PrivateRoute>} />
           <Route path="/sla"               element={<PrivateRoute page="sla"><SLAPage /></PrivateRoute>} />
           <Route path="/notes"               element={<PrivateRoute page="notes"><Notes /></PrivateRoute>} />
           <Route path="/reminders"           element={<PrivateRoute page="reminders"><Reminders /></PrivateRoute>} />

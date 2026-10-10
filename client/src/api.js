@@ -563,6 +563,11 @@ export const api = {
   updateTechnology: (id, data) => req('PUT', `/technologies/${id}`, data),
   deleteTechnology: (id) => req('DELETE', `/technologies/${id}`),
 
+  // skill matrix
+  skillMatrix: (options) => req('GET', '/skills', undefined, options),
+  rateSkill: (userId, technologyId, data) => req('PUT', `/skills/ratings/${userId}/${technologyId}`, data),
+  setSkillTarget: (technologyId, data) => req('PUT', `/skills/technologies/${technologyId}/target`, data),
+
   // service activities (Activity Log / MSP Operations Log)
   exportServiceActivities: async (params = {}) => {
     const response = await fetch(`${BASE}/service-activities/export?${new URLSearchParams(params)}`, { credentials: 'same-origin', headers: { 'X-SolutionsHub-Request': '1' } });

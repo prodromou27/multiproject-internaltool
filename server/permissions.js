@@ -6,6 +6,8 @@ const DEFINITIONS=Object.freeze([
   { key:'managed_reports.review',group:'Managed Services',label:'Review managed reports',description:'Submit, approve, reject, finalize, and publish customer reports.' },
   { key:'kpis.view',group:'KPI Management',label:'View management KPIs',description:'View KPI dashboards, current values, and history.',eligible_roles:['manager','planner','pm'] },
   { key:'kpis.manage',group:'KPI Management',label:'Manage KPI definitions',description:'Create, edit, test, activate, and calculate management KPIs.',eligible_roles:['manager','planner','pm'] },
+  { key:'skills.view',group:'Skill Matrix',label:'View the skill matrix',description:'See how each engineer is rated per technology and where knowledge is thin.',eligible_roles:['manager','planner','pm'] },
+  { key:'skills.manage',group:'Skill Matrix',label:'Rate engineers',description:'Rate engineers per technology and set how many skilled engineers each technology needs.',eligible_roles:['manager','planner','pm'] },
   { key:'notifications.manage',group:'Administration',label:'Manage notification rules',description:'Configure organization-wide notification delivery and escalation rules.' },
   { key:'reports.access',group:'Core Modules',label:'Access management reporting',description:'Open operational reports, service activity analytics, and custom report tools.',eligible_roles:['manager','planner','pm'],default_roles:['manager'] },
   { key:'service_activities.access',group:'Core Modules',label:'Access service activity tracking',description:'Open and use Service Activity Tracking within existing team and customer scope.',eligible_roles:['manager','pm','engineer'],default_roles:['manager','pm','engineer'] },

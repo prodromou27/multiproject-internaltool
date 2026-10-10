@@ -134,6 +134,7 @@ if (isSuiteImport) test.before(async () => {
   app.use('/api/reminders', require('../../routes/reminders'));
   app.use('/api/vulnerabilities', require('../../routes/vulnerabilities'));
   app.use('/api/software', require('../../routes/software'));
+  app.use('/api/skills', require('../../routes/skills'));
   app.use('/api/visit-planning', require('../../routes/visit-planning'));
   app.use('/api/bots', require('../../routes/bots'));
   app.use('/api/activity-categories', require('../../routes/activityCategories'));

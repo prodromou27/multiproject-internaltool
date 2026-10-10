@@ -60,7 +60,7 @@ jobs:
         # Each suite seeds the same fixed cast (users, teams, customers), so it
         # gets a freshly created database rather than sharing one.
         run: |
-          for suite in activityCore activityValidation authNotificationsTasks trackingAndReports managedCustomers recommendationsAndCalendar operationsAndCustomer360 customReportSources ticketOwners databaseBackups kpiSources softwareVersions; do
+          for suite in activityCore activityValidation authNotificationsTasks trackingAndReports managedCustomers recommendationsAndCalendar operationsAndCustomer360 customReportSources ticketOwners databaseBackups kpiSources softwareVersions skillMatrix; do
             PGPASSWORD=test_password psql -h localhost -U app -d postgres -v ON_ERROR_STOP=1               -c 'DROP DATABASE IF EXISTS solutionshub_test WITH (FORCE)' -c 'CREATE DATABASE solutionshub_test'
             node --test "test/$suite.integration.test.js"
           done
