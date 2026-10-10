@@ -23,7 +23,7 @@
 .cs-identity-avatar {
   width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  background: #33393f;
   color: #fff; font-size: 16px; font-weight: 700; letter-spacing: .02em;
   margin-bottom: 14px;
 }
@@ -86,7 +86,7 @@
 .msc-hint a { color: inherit; text-decoration: underline; }
 .msc-status-pair { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 .msc-status-pair > div { display: grid; gap: 3px; padding: 10px 12px; background: var(--gray-50); border-radius: var(--radius-md); }
-.msc-status-pair span { font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--gray-500); letter-spacing: .02em; }
+.msc-status-pair span { font-size: 11px;  font-weight: 700; color: var(--gray-500);  }
 .msc-status-pair strong { font-size: 12.5px; font-weight: 600; color: var(--gray-800); word-break: break-word; }
 .msc-status-bad { color: var(--danger) !important; }
 .msc-actions { flex-wrap: wrap; margin-top: 16px; }
@@ -135,7 +135,7 @@
 .cs-overview-status{display:grid;justify-items:end;gap:5px;flex:0 0 auto;font-size:11px;color:var(--gray-500);text-transform:capitalize}
 .cs-command-empty,.cs-module-local-error{padding:26px 16px;margin:0;text-align:center;color:var(--gray-500);font-size:13px}.cs-module-local-error{color:var(--danger)}.cs-module-local-error button{border:0;background:none;color:inherit;text-decoration:underline;cursor:pointer}
 .cs-module-skeleton{display:grid;gap:8px;padding:14px 16px}.cs-module-skeleton span{height:34px;border-radius:7px;background:linear-gradient(90deg,var(--gray-100) 25%,var(--gray-50) 50%,var(--gray-100) 75%);background-size:200% 100%;animation:skeleton-shimmer 1.2s infinite linear}
-.cs-visit-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:16px}.cs-visit-pair>div{display:grid;gap:4px;padding:12px;background:var(--gray-50);border-radius:var(--radius-md)}.cs-visit-pair small{color:var(--gray-500);font-size:11px;text-transform:uppercase;font-weight:700}.cs-visit-pair strong{font-size:13px}.cs-visit-pair span{font-size:12px;color:var(--gray-600)}.cs-attention-link{grid-column:1/-1;border:0;border-radius:7px;background:#fffbeb;color:#92400e;padding:8px;font:inherit;font-size:12px;font-weight:650;cursor:pointer}
+.cs-visit-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:16px}.cs-visit-pair>div{display:grid;gap:4px;padding:12px;background:var(--gray-50);border-radius:var(--radius-md)}.cs-visit-pair small{color:var(--gray-500);font-size:11px;font-weight:700}.cs-visit-pair strong{font-size:13px}.cs-visit-pair span{font-size:12px;color:var(--gray-600)}.cs-attention-link{grid-column:1/-1;border:0;border-radius:7px;background:#fffbeb;color:#92400e;padding:8px;font:inherit;font-size:12px;font-weight:650;cursor:pointer}
 
 /* ── Overview trend chart ────────────────────────────────── */
 .cs-trend-body{padding:10px 12px 14px}
@@ -191,15 +191,15 @@
 .cs-work-filters input,.cs-work-filters select{min-height:38px}
 .cs-work-table-wrap{padding:0;overflow:hidden}
 .cs-work-table{width:100%;border-collapse:collapse;font-size:13px}
-.cs-work-table th{padding:11px 12px;text-align:left;background:var(--gray-50);color:var(--gray-600);font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200)}
+.cs-work-table th{padding:11px 12px;text-align:left;background:var(--gray-50);color:var(--gray-600);font-size:11px;border-bottom:1px solid var(--gray-200)}
 .cs-work-table td{padding:13px 12px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
 .cs-work-table tbody tr:hover{background:var(--gray-50)}
 .cs-progress{display:inline-block;width:64px;height:6px;margin-right:7px;vertical-align:middle;background:var(--gray-200);border-radius:999px;overflow:hidden}
 .cs-progress>span{display:block;height:100%;background:var(--primary);border-radius:inherit}
 .cs-work-pager{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;color:var(--gray-600);font-size:12px}
 .cs-work-pager>div{display:flex;align-items:center;gap:8px}
-.cs-timeline{padding:0;overflow:hidden}.cs-timeline ol{list-style:none;margin:0;padding:8px 18px}.cs-timeline li{position:relative;display:grid;grid-template-columns:34px 1fr;gap:12px;padding:14px 0}.cs-timeline li:not(:last-child)::after{content:"";position:absolute;left:16px;top:44px;bottom:-4px;width:1px;background:var(--gray-200)}.cs-timeline-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--gray-100);color:var(--primary);z-index:1}.cs-timeline li>div{display:grid;gap:4px;min-width:0}.cs-timeline-meta{display:flex;align-items:center;gap:10px;color:var(--gray-500);font-size:11px}.cs-timeline-meta span{text-transform:uppercase;font-weight:700;letter-spacing:.03em}.cs-timeline a,.cs-timeline strong{font-size:13.5px}.cs-timeline p{margin:0;color:var(--gray-600);font-size:12px;text-transform:capitalize}
-.cs-recommendation-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}.cs-recommendation-summary>div{display:grid;gap:4px;padding:12px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-md);background:var(--surface)}.cs-recommendation-summary span{font-size:11px;text-transform:uppercase;font-weight:700;color:var(--gray-500)}.cs-recommendation-summary strong{font-size:20px}
+.cs-timeline{padding:0;overflow:hidden}.cs-timeline ol{list-style:none;margin:0;padding:8px 18px}.cs-timeline li{position:relative;display:grid;grid-template-columns:34px 1fr;gap:12px;padding:14px 0}.cs-timeline li:not(:last-child)::after{content:"";position:absolute;left:16px;top:44px;bottom:-4px;width:1px;background:var(--gray-200)}.cs-timeline-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--gray-100);color:var(--primary);z-index:1}.cs-timeline li>div{display:grid;gap:4px;min-width:0}.cs-timeline-meta{display:flex;align-items:center;gap:10px;color:var(--gray-500);font-size:11px}.cs-timeline-meta span{font-weight:700;}.cs-timeline a,.cs-timeline strong{font-size:13.5px}.cs-timeline p{margin:0;color:var(--gray-600);font-size:12px;text-transform:capitalize}
+.cs-recommendation-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}.cs-recommendation-summary>div{display:grid;gap:4px;padding:12px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-md);background:var(--surface)}.cs-recommendation-summary span{font-size:11px;font-weight:700;color:var(--gray-500)}.cs-recommendation-summary strong{font-size:20px}
 .cs-profile-skeleton { display:grid;gap:12px; }
 .cs-profile-skeleton span { display:block;height:84px;border-radius:var(--radius-lg);background:linear-gradient(90deg,var(--gray-100) 25%,var(--gray-50) 50%,var(--gray-100) 75%);background-size:200% 100%;animation:skeleton-shimmer 1.2s infinite linear; }
 .cs-health-skeleton { min-height:112px;background:linear-gradient(90deg,var(--gray-100) 25%,var(--gray-50) 50%,var(--gray-100) 75%);background-size:200% 100%;animation:skeleton-shimmer 1.2s infinite linear; }
@@ -227,7 +227,7 @@
   .cs-recommendation-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
   .cs-command-grid{grid-template-columns:1fr}
   .cs-work-filters{align-items:stretch}.cs-work-filters label,.cs-work-filters label:first-child{min-width:calc(50% - 5px);flex:1}.cs-work-filters .btn{align-self:end}
-  .cs-work-table thead{display:none}.cs-work-table,.cs-work-table tbody,.cs-work-table tr,.cs-work-table td{display:block;width:100%}.cs-work-table tr{padding:10px 12px;border-bottom:1px solid var(--gray-200)}.cs-work-table td{display:grid;grid-template-columns:minmax(105px,36%) 1fr;gap:10px;padding:5px 0;border:0}.cs-work-table td::before{content:attr(data-label);font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500)}.cs-work-pager{align-items:flex-start;flex-direction:column}
+  .cs-work-table thead{display:none}.cs-work-table,.cs-work-table tbody,.cs-work-table tr,.cs-work-table td{display:block;width:100%}.cs-work-table tr{padding:10px 12px;border-bottom:1px solid var(--gray-200)}.cs-work-table td{display:grid;grid-template-columns:minmax(105px,36%) 1fr;gap:10px;padding:5px 0;border:0}.cs-work-table td::before{content:attr(data-label);font-size:11px;font-weight:700;color:var(--gray-500)}.cs-work-pager{align-items:flex-start;flex-direction:column}
 }
 
 /* ── Dark mode ────────────────────────────────────────────── *

@@ -29,13 +29,13 @@
 .success { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
 .error   { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
 .warning { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
-.info    { background: #eff6ff; border: 1px solid #93c5fd; color: #1e40af; }
+.info    { background: var(--primary-light); border: 1px solid var(--gray-400); color: var(--gray-700); }
 
 .icon { flex-shrink: 0; margin-top: 1px; }
 .success .icon { color: #22c55e; }
 .error   .icon { color: #ef4444; }
 .warning .icon { color: #f59e0b; }
-.info    .icon { color: #3b82f6; }
+.info    .icon { color: var(--primary); }
 
 .message { flex: 1; }
 

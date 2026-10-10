@@ -63,7 +63,7 @@ export function IntegrationsTab() {
   if (!loaded) return <p className="text-muted">Loading…</p>;
 
   const sectionStyle = { background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 };
-  const labelStyle   = { fontSize: 12, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6, display: 'block' };
+  const labelStyle   = { fontSize: 12, fontWeight: 600, color: 'var(--gray-600)', marginBottom: 6, display: 'block' };
 
   return (
     <fieldset disabled={saving || Object.values(testing).some(Boolean)} className="u-af2cbf6">
