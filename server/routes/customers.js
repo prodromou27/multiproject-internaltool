@@ -1,3 +1,4 @@
+const { contractsFor, currentContract } = require('../customerContracts');
 const router  = require('express').Router();
 const multer  = require('multer');
 const ExcelJS = require('exceljs');
@@ -12,6 +13,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 router.use('/:id/overview', require('./customer-overview'));
 router.use('/:id/recommendations', require('./customer-recommendations'));
 router.use('/:id/assets', require('./customer-assets'));
+router.use('/:id/contracts', require('./customer-contracts'));
 router.use('/:id/managed-services', require('./managedCustomerConfiguration'));
 router.use('/:id/operations',require('./customer-operations'));
 router.use('/:id/recurring-tasks', require('./customer-recurring-tasks'));
@@ -77,6 +79,13 @@ router.get('/', requireAuth, async (req, res) => {
   const rows = (await db.prepare(`SELECT c.*, u.name as created_by_name,
     (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = c.id) as visit_count
     FROM customers c LEFT JOIN users u ON c.created_by = u.id ORDER BY c.name`).all()).map(row => ({ ...row, is_managed: managed.has(Number(row.id)) }));
+  // Each customer's current contract (the one in force, else the next or the last).
+  const contracts = await contractsFor();
+  for (const row of rows) {
+    const current = currentContract(contracts.filter(c => c.customer_id === Number(row.id)));
+    row.current_contract = current && { id: current.id, reference: current.reference, description: current.description, service_level: current.service_level,
+      start_date: current.start_date, end_date: current.end_date, status: current.status, days_left: current.days_left };
+  }
   const visible=(candidates ? rows.filter(row => candidates.has(Number(row.id))) : rows).map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name));
   return res.json(listQuery.paged ? customerListPage(visible,listQuery) : visible);
 });

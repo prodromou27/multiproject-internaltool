@@ -25,9 +25,9 @@ test('Customer 360 accepts available deep links and safely rejects unavailable s
   assert.equal(customer360Sections({ role:'engineer' }).some(section => section.id==='service-configuration'),false);
   assert.equal(customer360Sections({ role:'manager' }).some(section => section.id==='service-configuration'),true);
   assert.deepEqual(customer360Sections({ role:'engineer' },{ managedServiceOperations:true,projectDelivery:false }).map(section => section.id),
-    ['activities','timeline','recommendations','projects','tasks','maintenance-visits']);
+    ['activities','contracts','timeline','recommendations','projects','tasks','maintenance-visits']);
   assert.deepEqual(customer360Sections({ role:'engineer' },{ managedServiceOperations:false,projectDelivery:true }).map(section => section.id),
-    ['projects','tasks','maintenance-visits','recommendations','activities','timeline']);
+    ['projects','tasks','maintenance-visits','recommendations','activities','contracts','timeline']);
   assert.equal(customer360Section({ role:'engineer' },null,{ managedServiceOperations:false,projectDelivery:true }),'projects');
   assert.equal(customer360Section({ role:'engineer' },null,{ managedServiceOperations:true,projectDelivery:true }),'activities');
   assert.equal(customer360Section({ role:'engineer' },null,{ managedServiceOperations:false,projectDelivery:false }),'activities');
@@ -63,7 +63,7 @@ test('an engineer on a managed-services team gets the Assets tab for that custom
   assert.equal(ids(false).includes('assets'), false);
   assert.equal(ids(true).includes('assets'), true);
   // Also present in the managed-services ordering, next to the activities they mainly track.
-  assert.deepEqual(ids(true, { managedServiceOperations: true }).slice(0, 3), ['activities', 'assets', 'timeline']);
+  assert.deepEqual(ids(true, { managedServiceOperations: true }).slice(0, 4), ['activities', 'assets', 'contracts', 'timeline']);
   assert.equal(ids(false, { managedServiceOperations: true }).includes('assets'), false);
   // A deep link to Assets falls back to a safe tab without the grant, and works with it.
   assert.equal(customer360Section(engineer, 'assets', {}, false) === 'assets', false);

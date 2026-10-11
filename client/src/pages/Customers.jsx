@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { RefreshCw, Upload } from 'lucide-react';
 import { api } from '../api';
-import { Modal } from '../components/Shared';
+import { Modal, fmtDate } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
 import { PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
@@ -110,13 +110,9 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
             <div className="form-group"><label>Location</label><input value={form.location} onChange={set('location')} /></div>
           </div>
           <div className="form-row">
-            <div className="form-group"><label>Support / MSP Contract</label><input value={form.contract_type} onChange={set('contract_type')} /></div>
             <div className="form-group"><label>Reporting Frequency</label><input value={form.reporting_frequency} onChange={set('reporting_frequency')} placeholder="e.g. Monthly" /></div>
           </div>
-          <div className="form-row">
-            <div className="form-group"><label>Contract Start</label><input type="date" value={form.contract_start_date} onChange={set('contract_start_date')} /></div>
-            <div className="form-group"><label>Contract End</label><input type="date" value={form.contract_end_date} onChange={set('contract_end_date')} /></div>
-          </div>
+          <p className="text-muted text-sm">Contracts (reference, dates, contract type and assets) are kept on the customer’s Contracts tab.</p>
           <div className="form-row">
             <div className="form-group"><label>Included Hours</label><input type="number" min="0" step="0.5" value={form.included_hours} onChange={set('included_hours')} /></div>
             <div className="form-group"><label>Hour Period</label>
@@ -157,6 +153,14 @@ const CUSTOMER_COLUMNS = ['name*', 'contact_name', 'contact_email', 'contact_pho
 const SERVICE_STATUS = { healthy:['Healthy','success'],attention:['Sync issue','danger'],awaiting_sync:['Awaiting first sync','warning'],activity_only:['No ticket integration','info'] };
 // A report owed for the last period and not yet sent; "overdue" once its due date has passed.
 const reportOverdue = due => !!due && due.status!=='not_yet_due' && due.status!=='sent' && due.overdue;
+
+const CONTRACT_STATUS = { active: ['success', 'Active'], ending_soon: ['warning', 'Ending soon'], expired: ['danger', 'Expired'], upcoming: ['info', 'Starts later'], renewed: ['neutral', 'Renewed'] };
+function ContractCell({ contract }) {
+  if (!contract) return <span className="text-muted text-sm">No contract</span>;
+  const [tone, text] = CONTRACT_STATUS[contract.status] || ['neutral', contract.status];
+  return <><strong className="text-sm">{contract.reference || contract.description || 'Contract'}</strong>{contract.service_level && <span className="text-muted text-sm"> · {contract.service_level}</span>}
+    <div className="text-sm"><ToneBadge tone={tone}>{text}</ToneBadge> <span className="text-muted">{contract.status === 'upcoming' ? `starts ${fmtDate(contract.start_date)}` : `ends ${fmtDate(contract.end_date)}`}</span></div></>;
+}
 
 export default function Customers() {
   const { user } = useAuth();
@@ -248,7 +252,7 @@ export default function Customers() {
       {c.notes && <small title={c.notes}>{c.notes}</small>}
     </div> },
     { key:'coverage',label:'Coverage',render:c => c.service_activity_enabled ? <ToneBadge tone="success">Tracked</ToneBadge> : <ToneBadge>Standard</ToneBadge> },
-    { key:'contract',label:'Contract',render:c => <><strong className="text-sm">{c.contract_type || 'No contract'}</strong>{c.contract_end_date && <div className="text-muted text-sm">Ends {c.contract_end_date}</div>}</> },
+    { key:'contract',label:'Contract',render:c => <ContractCell contract={c.current_contract} /> },
     { key:'contact',label:'Primary contact',render:c => <>{c.contact_name || c.primary_contact || '—'}{c.contact_email && <div><a className="text-sm" href={`mailto:${c.contact_email}`}>{c.contact_email}</a></div>}</> },
     { key:'location',label:'Location',className:'text-sm',render:c => c.location || c.address || '—' },
     { key:'visits',label:'Visits',numeric:true,render:c => c.visit_count ?? 0 },

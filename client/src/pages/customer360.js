@@ -7,6 +7,7 @@ export const CUSTOMER_360_SECTIONS=Object.freeze([
   { id:'maintenance-visits',label:'Maintenance Visits',roles:['manager','engineer','planner'] },
   { id:'recommendations',label:'Recommendations',roles:['manager','engineer','planner'] },
   { id:'assets',label:'Assets',roles:['manager'] },
+  { id:'contracts',label:'Contracts',roles:['manager','engineer','planner'] },
   { id:'reports',label:'Reports',roles:['manager'],managed:true },
   { id:'timeline',label:'Timeline',roles:['manager','engineer','planner'] },
   { id:'service-configuration',label:'Service Configuration',roles:['manager'] },
@@ -29,8 +30,8 @@ export function customer360Sections(user,capabilities={},assetsGrant=false,manag
   const delivery=capabilities.projectDelivery===true;
   if (!managed && !delivery) return available;
   const order=managed
-    ? delivery ? ['activities','projects','tasks','maintenance-visits','recommendations','assets','timeline'] : ['activities','assets','timeline','recommendations','projects','tasks','maintenance-visits']
-    : ['projects','tasks','maintenance-visits','recommendations','activities','timeline'];
+    ? delivery ? ['activities','projects','tasks','maintenance-visits','recommendations','assets','contracts','timeline'] : ['activities','assets','contracts','timeline','recommendations','projects','tasks','maintenance-visits']
+    : ['projects','tasks','maintenance-visits','recommendations','activities','contracts','timeline'];
   return order.map(id => available.find(section => section.id===id)).filter(Boolean);
 }
 

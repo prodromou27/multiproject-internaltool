@@ -748,6 +748,43 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (channel, message_id)
     );
   `]);
+  migrations.push(['20261025_customer_contracts', `
+    -- Customer contracts: several per customer, each with a reference, an optional
+    -- description, the contract type for managed customers (24x7, 8x5...), start and
+    -- end dates, notes and the customer's assets it covers. Renewing a contract adds
+    -- the next period (renewed_from_id) and keeps the old one as history.
+    -- Reference, description and notes are encrypted by the app.
+    CREATE TABLE IF NOT EXISTS customer_contracts (
+      id              SERIAL PRIMARY KEY,
+      customer_id     INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      reference       TEXT,
+      description     TEXT,
+      service_level   TEXT,
+      start_date      TEXT NOT NULL,
+      end_date        TEXT NOT NULL,
+      notes           TEXT,
+      renewed_from_id INTEGER REFERENCES customer_contracts(id) ON DELETE SET NULL,
+      created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at      TEXT DEFAULT ${NOW},
+      updated_at      TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_contracts_customer ON customer_contracts(customer_id, end_date);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_contracts_renewal ON customer_contracts(renewed_from_id) WHERE renewed_from_id IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS customer_contract_assets (
+      contract_id INTEGER NOT NULL REFERENCES customer_contracts(id) ON DELETE CASCADE,
+      asset_id    INTEGER NOT NULL REFERENCES customer_assets(id) ON DELETE CASCADE,
+      PRIMARY KEY (contract_id, asset_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_contract_assets_asset ON customer_contract_assets(asset_id);
+    -- The one contract each customer could have so far becomes its first contract
+    -- (only when it has both dates; the old columns stay, unchanged).
+    INSERT INTO customer_contracts (customer_id, description, start_date, end_date, created_at)
+      SELECT id, contract_type, contract_start_date, contract_end_date, ${NOW} FROM customers
+      WHERE contract_start_date IS NOT NULL AND contract_end_date IS NOT NULL
+        AND contract_start_date <> '' AND contract_end_date <> ''
+        AND id NOT IN (SELECT customer_id FROM customer_contracts);
+  `]);
   migrations.push(['20261024_skill_matrix', `
     -- Skill matrix: managers rate each engineer per technology (1 Junior, 2 Intermediate,
     -- 3 Senior, 4 Expert) and set how many Senior-or-better engineers each technology needs.
