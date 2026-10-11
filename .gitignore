@@ -37,8 +37,9 @@ deploy/backups/
 Thumbs.db
 *.swp
 
-# Claude IDE files
-.claude/
+# Claude IDE files: local settings stay private; shared review agents are kept.
+.claude/*
+!.claude/agents/
 
 # Temp / debug scripts
 check_migration.js
