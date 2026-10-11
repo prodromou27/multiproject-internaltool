@@ -6,7 +6,7 @@ test('managers import customers from a CSV, marking managed ones and updating ex
   let upload = null;
   api.override('POST /api/customers/import', ({ request }) => {
     upload = request.postDataBuffer().toString('latin1');
-    return { body: { imported: 2, updated: 1, managed: 2, skipped: 1, errors: [{ row: 5, error: 'Team "Ops" not found' }] } };
+    return { body: { imported: 2, updated: 1, managed: 2, contracts: 1, skipped: 1, errors: [{ row: 5, error: 'Team "Ops" not found' }] } };
   });
   await page.goto('/customers');
   await page.getByRole('button', { name: /Import/ }).first().click();
@@ -18,7 +18,7 @@ test('managers import customers from a CSV, marking managed ones and updating ex
 
   await expect.poll(() => upload).toContain('name="update_existing"');
   expect(upload).toContain('Acme;yes;Security Team');
-  await expect(page.getByText('Updated')).toBeVisible();
-  await expect(page.getByText('2 marked as managed.')).toBeVisible();
+  await expect(page.getByText('Updated', { exact: true })).toBeVisible();
+  await expect(page.getByText('2 marked as managed; 1 contract added or updated.')).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Team "Ops" not found' })).toBeVisible();
 });

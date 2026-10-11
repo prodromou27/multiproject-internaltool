@@ -98,8 +98,8 @@ router.get('/template/download', requireManagerOrPlanner, async (req, res) => {
   const worksheet = workbook.addWorksheet('Customers');
   [
     IMPORT_COLUMNS,
-    ['Acme Corp', 'ACME', 'Jane Smith', 'jane@acme.com', '+357 22 000000', 'Jane Smith', 'Nicosia', '1 Main St', 'VIP customer', 'yes', 'Security Team'],
-    ['Beta Ltd', '', 'Bob Jones', 'bob@beta.com', '', '', 'Limassol', '', '', 'no', ''],
+    ['Acme Corp', 'ACME', 'Jane Smith', 'jane@acme.com', '+357 22 000000', 'Jane Smith', 'Nicosia', '1 Main St', 'VIP customer', 'yes', 'Security Team', 'MSP-2026-014', '24x7', '2026-01-01', '2026-12-31'],
+    ['Beta Ltd', '', 'Bob Jones', 'bob@beta.com', '', '', 'Limassol', '', '', 'no', '', '', '', '', ''],
   ].forEach(row => worksheet.addRow(row));
   IMPORT_COLUMNS.forEach((_, i) => { worksheet.getColumn(i + 1).width = i === 0 ? 26 : 18; });
   const buf = await workbook.xlsx.writeBuffer();
@@ -225,7 +225,7 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
 
   const result = await importCustomers(rows, { user: req.user, updateExisting: req.body?.update_existing === '1' });
   await logAudit(db, req, 'customer', null, 'Customer import', 'customers_imported',
-    `file=${(req.file.originalname || '').slice(0, 100)}; imported=${result.imported}; updated=${result.updated}; managed=${result.managed}; skipped=${result.skipped}`);
+    `file=${(req.file.originalname || '').slice(0, 100)}; imported=${result.imported}; updated=${result.updated}; managed=${result.managed}; contracts=${result.contracts}; skipped=${result.skipped}`);
   res.json(result);
 });
 

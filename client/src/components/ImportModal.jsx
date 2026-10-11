@@ -192,7 +192,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
                 <div className={["u-0907ca8", (result.skipped ? 'u-91ee9a7' : 'u-d311ded')].filter(Boolean).join(' ')}>Skipped / Errors</div>
               </div>
             </div>
-            {result.managed > 0 && <p className="text-sm">{result.managed} marked as managed.</p>}
+            {(result.managed > 0 || result.contracts > 0) && <p className="text-sm">{[result.managed > 0 && `${result.managed} marked as managed`, result.contracts > 0 && `${result.contracts} contract${result.contracts === 1 ? '' : 's'} added or updated`].filter(Boolean).join('; ')}.</p>}
             {result.errors?.length > 0 && (
               <div className="u-5524431">
                 <table className="u-a55f31d">

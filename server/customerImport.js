@@ -3,14 +3,17 @@
  * customers. A row may mark the customer as managed (managed services on, which
  * also turns on activity tracking, as Service Configuration does) and name the
  * team that serves it (linked, and the responsible team when managed). Customers
- * that already exist are skipped, or updated when asked.
+ * that already exist are skipped, or updated when asked. A row may also carry a
+ * contract (reference, contract type, start and end dates): added to the customer,
+ * or updated when the customer already has a contract with that reference.
  */
 const db = require('./db');
-const { encryptCustomer, decryptCustomer } = require('./fieldCipher');
+const { encryptCustomer, decryptCustomer, encrypt, decrypt } = require('./fieldCipher');
 const { replaceCustomerSearchDocument } = require('./customerSearchIndex');
 
 const TEXT_FIELDS = ['customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes'];
-const COLUMNS = ['name*', 'customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes', 'managed', 'team'];
+const COLUMNS = ['name*', 'customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes', 'managed', 'team',
+  'contract_reference', 'contract_type', 'contract_start', 'contract_end'];
 const YES = new Set(['yes', 'y', 'true', '1', 'x', 'managed']);
 const NO = new Set(['', 'no', 'n', 'false', '0', '-']);
 const MAX_LENGTH = { name: 300, customer_code: 100, contact_email: 320, notes: 5000 };
@@ -39,6 +42,43 @@ function parseCsv(text) {
   if (field !== '' || record.length) { record.push(field); records.push(record); }
   const [headers = [], ...rows] = records.filter(r => r.some(cell => cell.trim() !== ''));
   return rows.map(r => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? '']).filter(([h]) => h.trim())));
+}
+
+/** A date as YYYY-MM-DD, from YYYY-MM-DD or DD/MM/YYYY (also with . or -); null when it is not a real date. */
+function parseDay(text) {
+  const value = String(text || '').trim();
+  let y, m, d, match;
+  if ((match = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) [, y, m, d] = match;
+  else if ((match = value.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/))) [, d, m, y] = match;
+  else return null;
+  const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  return !Number.isNaN(Date.parse(`${iso}T00:00:00Z`)) && new Date(`${iso}T00:00:00Z`).toISOString().slice(0, 10) === iso ? iso : null;
+}
+
+/** The contract on a row, checked: null when the row has none. */
+function contractOf(row) {
+  const given = ['contract_reference', 'contract_type', 'contract_start', 'contract_end'].some(key => row[key]);
+  if (!given) return { value: null };
+  if (!row.contract_reference) return { error: 'contract_reference is needed when contract columns are filled in' };
+  if (row.contract_reference.length > 100) return { error: 'contract_reference is longer than 100 characters' };
+  if ((row.contract_type || '').length > 30) return { error: 'contract_type is longer than 30 characters' };
+  const start = parseDay(row.contract_start), end = parseDay(row.contract_end);
+  if (!start || !end) return { error: 'contract_start and contract_end must be dates (YYYY-MM-DD or DD/MM/YYYY)' };
+  if (end < start) return { error: 'contract_end is before contract_start' };
+  return { value: { reference: row.contract_reference, service_level: row.contract_type || null, start_date: start, end_date: end } };
+}
+
+async function saveContract(tx, customerId, contract, userId) {
+  const existing = (await tx.prepare('SELECT id, reference FROM customer_contracts WHERE customer_id = ?').all(customerId))
+    .find(c => (decrypt(c.reference) || '').toLowerCase() === contract.reference.toLowerCase());
+  const now = new Date().toISOString();
+  if (existing) {
+    await tx.prepare('UPDATE customer_contracts SET service_level = COALESCE(?, service_level), start_date = ?, end_date = ?, updated_by = ?, updated_at = ? WHERE id = ?')
+      .run(contract.service_level, contract.start_date, contract.end_date, userId, now, existing.id);
+  } else {
+    await tx.prepare('INSERT INTO customer_contracts (customer_id, reference, service_level, start_date, end_date, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(customerId, encrypt(contract.reference), contract.service_level, contract.start_date, contract.end_date, userId, userId, now, now);
+  }
 }
 
 const normalizeKey = key => key.replace(/\*/g, '').trim().toLowerCase().replace(/[\s-]+/g, '_');
@@ -79,7 +119,7 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
   const existing = new Map((await store.prepare('SELECT * FROM customers').all()).map(decryptCustomer)
     .filter(c => c.name).map(c => [c.name.trim().toLowerCase(), c]));
   const seen = new Set();
-  const result = { imported: 0, updated: 0, managed: 0, skipped: 0, errors: [] };
+  const result = { imported: 0, updated: 0, managed: 0, contracts: 0, skipped: 0, errors: [] };
   const skip = (row, error) => { result.errors.push({ row, error }); result.skipped++; };
 
   for (let i = 0; i < rawRows.length; i++) {
@@ -99,6 +139,8 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
       teamId = teams.get(row.team.toLowerCase());
       if (!teamId) { skip(rowNum, `Team "${row.team}" not found`); continue; }
     }
+    const contract = contractOf(row);
+    if (contract.error) { skip(rowNum, contract.error); continue; }
     const current = existing.get(key);
     if (current && !updateExisting) { skip(rowNum, `Customer "${row.name}" already exists — skipped`); continue; }
     try {
@@ -112,6 +154,7 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
           await replaceCustomerSearchDocument(tx, { id: current.id, name: current.name, contact_name: merged.contact_name, contact_email: merged.contact_email, address: merged.address, location: merged.location, customer_code: merged.customer_code });
           await linkTeam(tx, current.id, teamId);
           if (managed) await enableManaged(tx, current.id, teamId, user.id);
+          if (contract.value) await saveContract(tx, current.id, contract.value, user.id);
         } else {
           const values = Object.fromEntries(TEXT_FIELDS.map(f => [f, row[f] || null]));
           const enc = encryptCustomer({ name: row.name, ...values });
@@ -121,11 +164,13 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
           await replaceCustomerSearchDocument(tx, { id, name: row.name, ...values });
           await linkTeam(tx, id, teamId);
           if (managed) await enableManaged(tx, id, teamId, user.id);
+          if (contract.value) await saveContract(tx, id, contract.value, user.id);
           existing.set(key, { id, name: row.name, ...values });
         }
       });
       if (current) result.updated++; else result.imported++;
       if (managed) result.managed++;
+      if (contract.value) result.contracts++;
     } catch (error) {
       skip(rowNum, error.message);
     }
@@ -133,4 +178,4 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
   return result;
 }
 
-module.exports = { COLUMNS, parseCsv, yesNo, importCustomers };
+module.exports = { COLUMNS, parseCsv, parseDay, yesNo, importCustomers };

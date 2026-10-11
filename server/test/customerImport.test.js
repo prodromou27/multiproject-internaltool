@@ -15,3 +15,11 @@ test('managed accepts yes/no in common spellings and refuses anything else', () 
   for (const v of ['', 'no', 'N', 'false', '0', '-']) assert.equal(yesNo(v), false, v);
   assert.equal(yesNo('maybe'), null);
 });
+
+test('contract dates: YYYY-MM-DD or DD/MM/YYYY, and only real dates', () => {
+  const { parseDay } = require('../customerImport');
+  assert.equal(parseDay('2026-12-31'), '2026-12-31');
+  assert.equal(parseDay('31/12/2026'), '2026-12-31');
+  assert.equal(parseDay('1.2.2026'), '2026-02-01');
+  for (const bad of ['2026-02-30', '12/31/2026', 'next year', '']) assert.equal(parseDay(bad), null, bad);
+});

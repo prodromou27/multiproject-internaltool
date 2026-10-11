@@ -33,7 +33,7 @@ test('a CSV marks customers as managed and links their team', async () => {
   const beta = await customerNamed('Import Beta');
   assert.equal(await managedConfig(beta.id), undefined, 'not managed');
   const audit = await db.prepare("SELECT detail FROM audit_log WHERE action = 'customers_imported' ORDER BY id DESC LIMIT 1").get();
-  assert.match(audit.detail, /imported=2; updated=0; managed=1; skipped=4/);
+  assert.match(audit.detail, /imported=2; updated=0; managed=1; contracts=0; skipped=4/);
 });
 
 test('existing customers are skipped, or updated and marked managed when asked', async () => {
@@ -58,4 +58,25 @@ test('Excel works too; planners may import but not mark customers as managed', a
   assert.match(res.data.errors[0].error, /Only managers/);
   assert.equal((await upload('name\nX\n', 'x.csv', { token: ids.tokenEnabled })).status, 403);
   assert.equal((await upload('', 'empty.csv')).status, 400);
+});
+
+test('a row can carry a contract: added, or updated when the reference already exists', async () => {
+  const { decrypt } = require('../fieldCipher');
+  const csv = 'name;managed;contract_reference;contract_type;contract_start;contract_end\n'
+    + 'Import Theta;yes;MSP-77;24x7;01/01/2026;31/12/2026\n'
+    + 'Import Iota;;;;2026-01-01;\n'
+    + 'Import Kappa;;SUP-1;;2026-05-01;2026-04-01\n';
+  const res = await upload(csv, 'contracts.csv');
+  assert.deepEqual([res.data.imported, res.data.contracts, res.data.skipped], [1, 1, 2]);
+  assert.match(res.data.errors[0].error, /contract_reference is needed/);
+  assert.match(res.data.errors[1].error, /before contract_start/);
+  const theta = await customerNamed('Import Theta');
+  const contracts = async () => (await db.prepare('SELECT reference, service_level, start_date, end_date FROM customer_contracts WHERE customer_id = ?').all(theta.id))
+    .map(c => [decrypt(c.reference), c.service_level, c.start_date, c.end_date]);
+  assert.deepEqual(await contracts(), [['MSP-77', '24x7', '2026-01-01', '2026-12-31']]);
+
+  // Re-importing with the same reference (e.g. after a renewal) updates that contract.
+  const renewed = await upload('name,contract_reference,contract_start,contract_end\nImport Theta,msp-77,2027-01-01,2027-12-31\n', 'renewal.csv', { updateExisting: true });
+  assert.deepEqual([renewed.data.updated, renewed.data.contracts], [1, 1]);
+  assert.deepEqual(await contracts(), [['MSP-77', '24x7', '2027-01-01', '2027-12-31']]);
 });
