@@ -111,7 +111,7 @@ router.put('/backups/schedule', requireManager, async (req, res) => {
   try {
     const value = backups.validateSchedule(req.body);
     await db.prepare("INSERT INTO settings (key, value) VALUES ('backup_schedule', ?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify(value));
-    await logAudit(db, req, 'settings', 'backup_schedule', 'Database backups', 'backup_schedule_updated', `enabled=${value.enabled}; time=${value.time}; retention_days=${value.retention_days}; keep_min=${value.keep_min}`);
+    await logAudit(db, req, 'settings', 'backup_schedule', 'Database backups', 'backup_schedule_updated', `enabled=${value.enabled}; time=${value.time}; retention_days=${value.retention_days}; keep_min=${value.keep_min}; include_files=${value.include_files}`);
     res.json(value);
   } catch (error) { send(res, error, 'Could not save the backup schedule'); }
 });
@@ -151,10 +151,13 @@ router.post('/backups/:file/download', requireManager, async (req, res) => {
     const target = backups.list().find(row => row.file === req.params.file);
     if (!target) throw Object.assign(new Error('Backup not found'), { status: 404 });
     await confirmPassword(req);
-    await logAudit(db, req, 'settings', 'database_backup', target.file, 'database_backup_downloaded', `size=${target.size_bytes}`);
+    // ?part=files downloads the uploaded-files archive that goes with it.
+    const part = req.query.part === 'files' ? target.files?.file : target.file;
+    if (!part) throw Object.assign(new Error('This backup has no uploaded files archive'), { status: 404 });
+    await logAudit(db, req, 'settings', 'database_backup', part, 'database_backup_downloaded', `size=${part === target.file ? target.size_bytes : target.files.size_bytes}`);
     res.setHeader('Content-Type', 'application/gzip');
-    res.setHeader('Content-Disposition', `attachment; filename="${target.file}"`);
-    fs.createReadStream(require('path').join(backups.BACKUP_DIR, target.file)).pipe(res);
+    res.setHeader('Content-Disposition', `attachment; filename="${part}"`);
+    fs.createReadStream(require('path').join(backups.BACKUP_DIR, part)).pipe(res);
   } catch (error) { send(res, error, 'Could not download the backup'); }
 });
 
@@ -163,9 +166,9 @@ router.post('/backups/:file/restore', requireManager, async (req, res) => {
     if (req.body?.confirm !== 'RESTORE') throw Object.assign(new Error('Type RESTORE to confirm'), { status: 400 });
     await confirmPassword(req);
     await logAudit(db, req, 'settings', 'database_backup', req.params.file, 'database_restore_started', '');
-    const result = await backups.exclusive('restore', () => backups.restore(req.params.file, { userName: req.user.name }));
+    const result = await backups.exclusive('restore', () => backups.restore(req.params.file, { userName: req.user.name, withFiles: req.body.with_files !== false }));
     // The audit log was replaced with the backup's; record the restore in the restored one.
-    await logAudit(db, req, 'settings', 'database_backup', req.params.file, 'database_restored', `safety_backup=${result.safety_backup}`).catch(() => {});
+    await logAudit(db, req, 'settings', 'database_backup', req.params.file, 'database_restored', `safety_backup=${result.safety_backup}; files_restored=${result.files_restored}`).catch(() => {});
     res.json(result);
   } catch (error) { send(res, error, 'Could not restore the backup'); }
 });

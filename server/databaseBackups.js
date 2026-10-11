@@ -10,6 +10,11 @@
  *    restores in a single transaction (a failure leaves the database as it
  *    was), and restarts the app so it starts cleanly on the restored data.
  *
+ * Uploaded files (attachments, generated customer reports) are in the backup too:
+ * beside each dump, teamhub-….files.tar.gz holds the uploads folder (except
+ * report exports, which expire within a day). It is checked, restored, pruned,
+ * deleted and copied off the server together with its dump (uploadsArchive.js).
+ *
  * Needs pg_dump and psql (postgresql16-client in the Docker image); PG_BIN_DIR
  * can point at them elsewhere.
  */
@@ -21,10 +26,16 @@ const { pipeline } = require('stream/promises');
 const db = require('./db');
 const appTime = require('./appTime');
 const { scanFile } = require('./backupScan');
+const { createArchive, readArchive } = require('./uploadsArchive');
 
 const BACKUP_DIR = path.resolve(process.env.BACKUP_DIR || path.join(__dirname, 'backups'));
 const NAME = /^teamhub-(\d{8})-(\d{6})-(scheduled|manual|before-restore|uploaded)\.sql\.gz$/;
-const DEFAULT_SCHEDULE = Object.freeze({ enabled: true, time: '02:30', retention_days: 14, keep_min: 3 });
+const DEFAULT_SCHEDULE = Object.freeze({ enabled: true, time: '02:30', retention_days: 14, keep_min: 3, include_files: true });
+const uploadsDir = () => path.resolve(process.env.BACKUP_UPLOADS_DIR || require('./uploadUtils').uploadDir);
+/** The uploaded-files archive that goes with a dump. */
+const filesName = file => file.replace(/\.sql\.gz$/, '.files.tar.gz');
+// Report exports expire within a day; folders starting with "." are TeamHub's own scratch space.
+const skipUpload = name => name === 'exports' || name.startsWith('.');
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 
 let busy = null;            // 'backup' | 'verify' | 'restore' while one is running
@@ -91,7 +102,9 @@ function list() {
     const meta = readMeta(file);
     return { file, kind, size_bytes: fs.statSync(path.join(BACKUP_DIR, file)).size,
       created_at: meta.created_at || `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6)}T${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4)}Z`,
-      created_by: meta.created_by || null, verified_at: meta.verified_at || null, verify_result: meta.verify_result || null, verify_error: meta.verify_error || null };
+      created_by: meta.created_by || null, verified_at: meta.verified_at || null, verify_result: meta.verify_result || null, verify_error: meta.verify_error || null,
+      files: fs.existsSync(path.join(BACKUP_DIR, filesName(file))) ? { file: filesName(file), ...(meta.files || {}), size_bytes: fs.statSync(path.join(BACKUP_DIR, filesName(file))).size } : null,
+      files_error: meta.files_error || null };
   }).sort((a, b) => b.created_at.localeCompare(a.created_at) || b.file.localeCompare(a.file));
 }
 
@@ -105,7 +118,14 @@ async function backupNow({ kind = 'manual', userName = null } = {}, store = db) 
     fs.renameSync(partial, target);
   } catch (error) { fs.rmSync(partial, { force: true }); throw error; }
   const size = fs.statSync(target).size, createdAt = new Date().toISOString();
-  writeMeta(file, { created_at: createdAt, kind, created_by: userName });
+  // The uploaded files, beside the dump. If that fails the dump still counts; the problem is shown with it.
+  let files = null, filesError = null;
+  if ((await schedule(store)).include_files !== false) {
+    const archive = path.join(BACKUP_DIR, filesName(file)), part = `${archive}.partial`;
+    try { const made = await createArchive(uploadsDir(), part, { exclude: skipUpload }); fs.renameSync(part, archive); files = { files: made.files, bytes: made.bytes }; }
+    catch (error) { fs.rmSync(part, { force: true }); filesError = `Uploaded files were not backed up: ${error.message}`; console.error('[backup]', filesError); }
+  }
+  writeMeta(file, { created_at: createdAt, kind, created_by: userName, ...(files ? { files } : {}), ...(filesError ? { files_error: filesError } : {}) });
   await recordSetting('last_backup_status', { completed_at: createdAt, file, size_bytes: size, kind }, store);
   await prune(store);
   await queueOffsiteCopy(file, store);
@@ -126,7 +146,7 @@ async function prune(store = db) {
   const { retention_days: days, keep_min: keep } = await schedule(store);
   const cutoff = Date.now() - days * 86400000;
   list().filter(row => row.kind !== 'uploaded').slice(keep).filter(row => Date.parse(row.created_at) < cutoff).forEach(row => {
-    fs.rmSync(path.join(BACKUP_DIR, row.file), { force: true }); fs.rmSync(metaPath(row.file), { force: true });
+    fs.rmSync(path.join(BACKUP_DIR, row.file), { force: true }); fs.rmSync(path.join(BACKUP_DIR, filesName(row.file)), { force: true }); fs.rmSync(metaPath(row.file), { force: true });
   });
 }
 
@@ -156,6 +176,9 @@ async function verify(file, store = db) {
       result = { tables: tables.rows[0].n, users: users.rows[0].n, migrations: migrations.rows[0].n };
     } finally { await check.end(); }
     if (!result.tables || !result.users) fail('The backup restored, but it has no TeamHub users in it');
+    // The uploaded files must read back whole too.
+    const archive = path.join(BACKUP_DIR, filesName(file));
+    if (fs.existsSync(archive)) result.files = (await readArchive(archive)).files;
     const at = new Date().toISOString();
     writeMeta(file, { ...meta, verified_at: at, verify_result: result, verify_error: null });
     await recordSetting('last_restore_verification', { completed_at: at, file, ...result }, store);
@@ -174,10 +197,17 @@ async function verify(file, store = db) {
  * restore runs in one transaction, so if it fails nothing changes. On success
  * the app restarts (Docker brings it back up) and records the restore.
  */
-async function restore(file, { userName = null } = {}, store = db) {
+async function restore(file, { userName = null, withFiles = true } = {}, store = db) {
   const source = checkName(file);
   await scanFile(source);
+  const archive = path.join(BACKUP_DIR, filesName(file)), restoreFiles = withFiles && fs.existsSync(archive);
   const safety = await backupNow({ kind: 'before-restore', userName }, store);
+  // Unpack the files first (beside the live ones): a bad archive stops here, before anything changes.
+  const staging = restoreFiles ? path.join(uploadsDir(), `.restoring-${stamp()}`) : null;
+  if (staging) {
+    try { fs.mkdirSync(staging, { recursive: true }); await readArchive(archive, { targetDir: staging }); }
+    catch (error) { fs.rmSync(staging, { recursive: true, force: true }); throw Object.assign(new Error(`The uploaded files in this backup could not be read, so nothing was restored. ${error.message}`), { status: 400 }); }
+  }
   restoring = true;
   try {
     const env = { ...connection(), PGOPTIONS: '-c lock_timeout=60000' };
@@ -186,15 +216,25 @@ async function restore(file, { userName = null } = {}, store = db) {
     const body = fs.createReadStream(source).pipe(zlib.createGunzip());
     async function* both() { for await (const chunk of prefix) yield chunk; for await (const chunk of body) yield chunk; }
     await run('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '--single-transaction', '-f', '-'], { env, input: require('stream').Readable.from(both()) });
+    if (staging) swapUploads(staging);
     const at = new Date().toISOString();
-    await recordSetting('last_restore', { completed_at: at, file, safety_backup: safety.file, by: userName }, store).catch(() => {});
+    await recordSetting('last_restore', { completed_at: at, file, safety_backup: safety.file, by: userName, files_restored: !!staging }, store).catch(() => {});
     await recordSetting('last_backup_status', { completed_at: safety.created_at, file: safety.file, size_bytes: safety.size_bytes, kind: safety.kind }, store).catch(() => {});
     exitAfterRestore();
-    return { restored: file, safety_backup: safety.file, restarting: true };
+    return { restored: file, safety_backup: safety.file, files_restored: !!staging, restarting: true };
   } catch (error) {
     restoring = false;
+    if (staging) fs.rmSync(staging, { recursive: true, force: true });
     throw Object.assign(new Error(`The restore did not complete, and the database was left as it was. ${error.message}`), { status: 500 });
   }
+}
+
+/** Replaces the uploaded files with the unpacked ones (same volume: each move is a rename). */
+function swapUploads(staging) {
+  const root = uploadsDir();
+  for (const name of fs.readdirSync(root)) if (!skipUpload(name)) fs.rmSync(path.join(root, name), { recursive: true, force: true });
+  for (const name of fs.readdirSync(staging)) fs.renameSync(path.join(staging, name), path.join(root, name));
+  fs.rmSync(staging, { recursive: true, force: true });
 }
 
 /** Saves an uploaded backup (gzipped SQL from TeamHub or deploy/backup.sh) after checking it. */
@@ -210,7 +250,7 @@ async function importUpload(tempPath, { userName = null } = {}) {
 
 function remove(file) {
   const target = checkName(file);
-  fs.rmSync(target, { force: true }); fs.rmSync(metaPath(file), { force: true });
+  fs.rmSync(target, { force: true }); fs.rmSync(path.join(BACKUP_DIR, filesName(file)), { force: true }); fs.rmSync(metaPath(file), { force: true });
 }
 
 async function schedule(store = db) {
@@ -225,7 +265,8 @@ function validateSchedule(body) {
   const days = Number(body.retention_days), keep = Number(body.keep_min);
   if (!Number.isSafeInteger(days) || days < 1 || days > 3650) fail('Keep backups for 1 to 3650 days');
   if (!Number.isSafeInteger(keep) || keep < 1 || keep > 100) fail('Always keep 1 to 100 backups');
-  return { enabled: body.enabled, time: body.time, retention_days: days, keep_min: keep };
+  if (body.include_files !== undefined && typeof body.include_files !== 'boolean') fail('include_files must be true or false');
+  return { enabled: body.enabled, time: body.time, retention_days: days, keep_min: keep, include_files: body.include_files !== false };
 }
 
 /** Called every minute: takes today's scheduled backup once its time has passed. */
@@ -251,7 +292,7 @@ function start() {
 function stop() { if (timer) clearInterval(timer); timer = null; }
 
 module.exports = {
-  BACKUP_DIR, DEFAULT_SCHEDULE, list, backupNow, queueOffsiteCopy, verify, restore, importUpload, remove, prune, schedule, validateSchedule, runDue, start, stop,
+  BACKUP_DIR, DEFAULT_SCHEDULE, filesName, uploadsDir, list, backupNow, queueOffsiteCopy, verify, restore, importUpload, remove, prune, schedule, validateSchedule, runDue, start, stop,
   status: () => ({ busy, restoring }), isRestoring: () => restoring,
   exclusive, _setExit: fn => { exitAfterRestore = fn; }, _endRestoreForTests: () => { restoring = false; },
 };

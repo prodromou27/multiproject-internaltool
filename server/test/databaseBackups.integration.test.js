@@ -6,6 +6,9 @@ const path = require('path');
 
 // Real backups need PostgreSQL and its pg_dump/psql (set PG_BIN_DIR if they are not on PATH).
 process.env.BACKUP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'teamhub-backups-'));
+// Never the real uploads folder: a restore replaces its contents.
+process.env.BACKUP_UPLOADS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'teamhub-uploads-'));
+const uploads = process.env.BACKUP_UPLOADS_DIR;
 const backups = require('../databaseBackups');
 const tools = (() => { try { return require('child_process').spawnSync(process.env.PG_BIN_DIR ? path.join(process.env.PG_BIN_DIR, 'pg_dump') : 'pg_dump', ['--version']).status === 0; } catch { return false; } })();
 const real = { skip: process.env.TEST_DATABASE_URL && tools ? false : 'needs PostgreSQL and pg_dump' };
@@ -18,22 +21,27 @@ test('schedule settings are checked and the backup list is for managers only', a
   for (const bad of [{ enabled: 'yes', time: '02:30', retention_days: 14, keep_min: 3 }, { enabled: true, time: '25:00', retention_days: 14, keep_min: 3 }, { enabled: true, time: '02:30', retention_days: 0, keep_min: 3 }])
     assert.equal((await api('/api/settings/backups/schedule', { method: 'PUT', token: ids.tokenManager, body: bad })).status, 400, JSON.stringify(bad));
   const saved = await api('/api/settings/backups/schedule', { method: 'PUT', token: ids.tokenManager, body: { enabled: true, time: '03:15', retention_days: 30, keep_min: 5 } });
-  assert.deepEqual(saved.data, { enabled: true, time: '03:15', retention_days: 30, keep_min: 5 });
+  assert.deepEqual(saved.data, { enabled: true, time: '03:15', retention_days: 30, keep_min: 5, include_files: true });
   assert.equal((await api('/api/settings/backups/../../etc/passwd/verify', { method: 'POST', token: ids.tokenManager })).status, 404);
   assert.equal((await api('/api/settings/backups/teamhub-20260101-000000-manual.sql.gz/restore', { method: 'POST', token: ids.tokenManager, body: { confirm: 'RESTORE', password: 'pw' } })).status, 404);
 });
 
 test('back up, check, download and restore the database', real, async () => {
   backups._setExit(() => {});
+  fs.writeFileSync(path.join(uploads, 'attachment-1.bin'), 'encrypted attachment');
+  fs.mkdirSync(path.join(uploads, 'exports'), { recursive: true });
+  fs.writeFileSync(path.join(uploads, 'exports', 'report.xlsx'), 'expires tomorrow');
   const made = await api('/api/settings/backups', { method: 'POST', token: ids.tokenManager });
   assert.equal(made.status, 201, JSON.stringify(made.data));
   assert.match(made.data.file, /^teamhub-\d{8}-\d{6}-manual\.sql\.gz$/);
   assert.ok(made.data.size_bytes > 1000);
+  assert.deepEqual([made.data.files.file, made.data.files.files], [made.data.file.replace('.sql.gz', '.files.tar.gz'), 1], 'uploaded files beside the dump; exports left out');
   assert.equal(JSON.parse((await db.prepare("SELECT value FROM settings WHERE key='last_backup_status'").get()).value).file, made.data.file, 'System Health sees it');
 
   const checked = await api(`/api/settings/backups/${made.data.file}/verify`, { method: 'POST', token: ids.tokenManager });
   assert.equal(checked.status, 200, JSON.stringify(checked.data));
   assert.ok(checked.data.tables > 20 && checked.data.users >= 5);
+  assert.equal(checked.data.files, 1, 'the files archive reads back');
   assert.ok((await db.prepare("SELECT value FROM settings WHERE key='last_restore_verification'").get()), 'System Health sees the check');
 
   // Downloading needs the manager's password.
@@ -42,9 +50,14 @@ test('back up, check, download and restore the database', real, async () => {
   const download = await fetch(`${suiteFixture.baseUrl}/api/settings/backups/${made.data.file}/download`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenManager}`, 'Content-Type': 'application/json', 'X-SolutionsHub-Request': '1' }, body: JSON.stringify({ password: 'Manager#pass1' }) });
   assert.equal(download.status, 200);
   assert.match(require('zlib').gunzipSync(Buffer.from(await download.arrayBuffer())).toString('utf8', 0, 400), /PostgreSQL database dump/);
+  const filesDownload = await fetch(`${suiteFixture.baseUrl}/api/settings/backups/${made.data.file}/download?part=files`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenManager}`, 'Content-Type': 'application/json', 'X-SolutionsHub-Request': '1' }, body: JSON.stringify({ password: 'Manager#pass1' }) });
+  assert.equal(filesDownload.status, 200);
+  assert.match(filesDownload.headers.get('content-disposition'), /\.files\.tar\.gz/);
 
   // Something changes after the backup; restoring brings back the backup's data.
   await db.prepare("INSERT INTO tasks (title, status, created_by) VALUES ('Made after the backup', 'open', ?)").run(ids.manager);
+  fs.writeFileSync(path.join(uploads, 'attachment-1.bin'), 'changed after the backup');
+  fs.writeFileSync(path.join(uploads, 'attachment-2.bin'), 'added after the backup');
   assert.equal((await api(`/api/settings/backups/${made.data.file}/restore`, { method: 'POST', token: ids.tokenManager, body: { confirm: 'restore', password: 'Manager#pass1' } })).status, 400);
   const restored = await api(`/api/settings/backups/${made.data.file}/restore`, { method: 'POST', token: ids.tokenManager, body: { confirm: 'RESTORE', password: 'Manager#pass1' } });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
@@ -53,6 +66,13 @@ test('back up, check, download and restore the database', real, async () => {
   assert.equal(backups.isRestoring(), true, 'the API waits for the restart (index.js answers 503 meanwhile)');
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE title='Made after the backup'").get()).n, 0);
   assert.ok(fs.existsSync(path.join(process.env.BACKUP_DIR, restored.data.safety_backup)), 'a safety backup was taken first');
+  // The files are back as they were: changed ones restored, new ones gone, exports untouched, no scratch left.
+  assert.equal(restored.data.files_restored, true);
+  assert.equal(fs.readFileSync(path.join(uploads, 'attachment-1.bin'), 'utf8'), 'encrypted attachment');
+  assert.equal(fs.existsSync(path.join(uploads, 'attachment-2.bin')), false);
+  assert.equal(fs.readFileSync(path.join(uploads, 'exports', 'report.xlsx'), 'utf8'), 'expires tomorrow');
+  assert.deepEqual(fs.readdirSync(uploads).filter(n => n.startsWith('.')), []);
+  assert.ok(fs.existsSync(path.join(process.env.BACKUP_DIR, restored.data.safety_backup.replace('.sql.gz', '.files.tar.gz'))), 'the safety backup has the files too');
   backups._endRestoreForTests();
 });
 

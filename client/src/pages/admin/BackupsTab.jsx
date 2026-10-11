@@ -54,6 +54,7 @@ function Schedule({ value, onSaved }) {
       <label><span>Keep backups for (days)</span><input type="number" min={1} max={3650} value={form.retention_days} onChange={event => setForm(current => ({ ...current, retention_days: event.target.value }))} /></label>
       <label><span>Always keep at least</span><input type="number" min={1} max={100} value={form.keep_min} onChange={event => setForm(current => ({ ...current, keep_min: event.target.value }))} /></label>
     </div>
+    <label className="bk-include"><input type="checkbox" checked={form.include_files !== false} onChange={event => setForm(current => ({ ...current, include_files: event.target.checked }))} /> Include uploaded files (attachments and customer reports) in every backup</label>
     <p className="text-muted text-sm">Older backups are removed after each new one, except the newest ones you always keep and any you uploaded.</p>
     {changed && <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save schedule'}</button>}
   </section>;
@@ -119,11 +120,13 @@ export function BackupsTab() {
       <h3 id="bk-list-title">Backups on this server</h3>
       {!data.rows.length ? <p className="text-muted text-sm">None yet. Use “Back up now”, or wait for the scheduled one.</p> :
         <div className="table-wrap"><table className="bk-table">
-          <thead><tr><th scope="col">Made</th><th scope="col">Kind</th><th scope="col" className="num">Size</th><th scope="col">Check</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+          <thead><tr><th scope="col">Made</th><th scope="col">Kind</th><th scope="col" className="num">Size</th><th scope="col">Uploaded files</th><th scope="col">Check</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>{data.rows.map(row => <tr key={row.file}>
             <td>{when(row.created_at)}{row.created_by && <div className="text-muted text-sm">by {row.created_by}</div>}</td>
             <td>{KINDS[row.kind] || row.kind}</td>
             <td className="num">{size(row.size_bytes)}</td>
+            <td className="text-sm">{row.files ? <>{row.files.files != null ? `${row.files.files.toLocaleString()} file${row.files.files === 1 ? '' : 's'}, ` : ''}{size(row.files.size_bytes)}</>
+              : row.files_error ? <span className="text-danger" title={row.files_error}><XCircle size={13} /> Not included</span> : <span className="text-muted">Not included</span>}</td>
             <td className="text-sm">{row.verify_error ? <span className="text-danger" title={row.verify_error}><XCircle size={13} /> Failed</span>
               : row.verify_result ? <span className="bk-ok" title={`${row.verify_result.tables} tables, ${row.verify_result.users} users`}><CheckCircle2 size={13} /> Restores ({when(row.verified_at)})</span>
                 : <span className="text-muted">Not checked</span>}</td>
@@ -131,6 +134,7 @@ export function BackupsTab() {
               <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || !data.tools} title="Restore it into a temporary database to prove it works" onClick={() => run(`verify-${row.file}`, () => api.verifyBackup(row.file), result => `The backup restores: ${result.tables} tables, ${result.users} users`)}>
                 <ShieldCheck size={13} /> {busy === `verify-${row.file}` ? 'Checking…' : 'Check'}</button>
               <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => setDialog({ type: 'download', row })}><Download size={13} /> Download</button>
+              {row.files && <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => setDialog({ type: 'download-files', row })}><Download size={13} /> Files</button>}
               {shareOn && <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} title="Encrypt it and copy it to the network share now" onClick={() => run(`share-${row.file}`, () => api.copyBackupToShare(row.file), result => `Copied to ${result.target}`)}><FolderSync size={13} /> {busy === `share-${row.file}` ? 'Copying…' : 'Copy to share'}</button>}
               {offsiteOn && <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} title="Encrypt it and copy it to the SFTP server now" onClick={() => run(`copy-${row.file}`, () => api.copyBackupOffsite(row.file), result => `Copied to ${result.remote}`)}><CloudUpload size={13} /> {busy === `copy-${row.file}` ? 'Copying…' : 'Copy off-server'}</button>}
               <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || !data.tools} onClick={() => setDialog({ type: 'restore', row })}><RotateCcw size={13} /> Restore</button>
@@ -143,16 +147,22 @@ export function BackupsTab() {
       onConfirm={password => api.downloadBackup(dialog.row.file, password)}>
       <p className="text-sm">The backup holds the whole database. Keep the file somewhere safe.</p>
     </PasswordDialog>}
+    {dialog?.type === 'download-files' && <PasswordDialog title="Download uploaded files" action="Download" onClose={() => setDialog(null)}
+      onConfirm={password => api.downloadBackupFiles(dialog.row.file, password)}>
+      <p className="text-sm">The attachments and customer reports as they were at this backup, as a .tar.gz (attachments stay encrypted as stored). Keep the file somewhere safe.</p>
+    </PasswordDialog>}
     {dialog?.type === 'upload' && <PasswordDialog title="Upload a backup" action="Upload" onClose={() => setDialog(null)}
       onConfirm={async password => { await api.uploadBackup(dialog.file, password); toast.success('Backup uploaded. Check it before restoring.'); await load(); }}>
       <p className="text-sm">{dialog.file.name}: a .sql.gz backup from TeamHub or <code>deploy/backup.sh</code>. Uploading adds it to the list; it does not restore it.</p>
     </PasswordDialog>}
     {dialog?.type === 'restore' && <PasswordDialog title="Restore backup" action="Restore" needsWord onClose={() => setDialog(null)}
-      onConfirm={async password => { await api.restoreBackup(dialog.row.file, password); waitForRestart(); }}>
+      onConfirm={async password => { await api.restoreBackup(dialog.row.file, password, dialog.withFiles !== false && !!dialog.row.files); waitForRestart(); }}>
       <div className="alert alert-warning">
         <p><strong>Everything in TeamHub goes back to {when(dialog.row.created_at)}.</strong> Changes made since then are replaced.</p>
         <p className="text-sm">A backup of the current data is made first, so this can be undone. Everyone is signed out while TeamHub restarts, which takes about a minute.</p>
       </div>
+      {dialog.row.files ? <label className="bk-include"><input type="checkbox" checked={dialog.withFiles !== false} onChange={event => setDialog(current => ({ ...current, withFiles: event.target.checked }))} /> Also restore the uploaded files (attachments and customer reports) from this backup</label>
+        : <p className="text-sm text-muted">This backup has no uploaded files; the files stay as they are.</p>}
     </PasswordDialog>}
   </div>;
 }

@@ -27,7 +27,9 @@ const MAGIC = Buffer.from('THBKENC1');
 const SETTING = 'backup_offsite', STATUS = 'backup_offsite_status';
 const SHARE = 'backup_share', SHARE_STATUS = 'backup_share_status';
 const shareRoot = () => path.resolve(process.env.BACKUP_SHARE_ROOT || '/mnt');
-const COPY_NAME = /^teamhub-(\d{8})-(\d{6})-[a-z-]+\.sql\.gz\.enc$/;
+const COPY_NAME = /^teamhub-(\d{8})-(\d{6})-[a-z-]+\.(?:sql\.gz|files\.tar\.gz)\.enc$/;
+/** A backup and its uploaded-files archive, as far as both exist. */
+const partsOf = (file, backupDir) => [file, file.replace(/\.sql\.gz$/, '.files.tar.gz')].filter((name, i) => i === 0 || fs.existsSync(path.join(backupDir, name)));
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
@@ -112,13 +114,13 @@ async function saveConfig(body, store = db) {
   return next;
 }
 
-/** Copies to remove: past the retention by the time in their name, always keeping the newest keepMin. */
+/** Copies to remove: backups past the retention by the time in their name, always keeping the newest keepMin backups (a dump and its files count as one). */
 function expiredCopies(names, retentionDays, keepMin, now = Date.now()) {
   const cutoff = now - retentionDays * 86400000;
-  return names.filter(n => COPY_NAME.test(n)).sort().reverse().slice(keepMin).filter(name => {
-    const [, d, t] = name.match(COPY_NAME);
-    return Date.parse(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}T${t.slice(0, 2)}:${t.slice(2, 4)}:${t.slice(4)}Z`) < cutoff;
-  });
+  const copies = names.filter(n => COPY_NAME.test(n));
+  const stamps = [...new Set(copies.map(n => n.match(COPY_NAME).slice(1, 3).join('-')))].sort().reverse();
+  const expired = new Set(stamps.slice(keepMin).filter(s => Date.parse(`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(9, 11)}:${s.slice(11, 13)}:${s.slice(13)}Z`) < cutoff));
+  return copies.filter(n => expired.has(n.match(COPY_NAME).slice(1, 3).join('-'))).sort().reverse();
 }
 
 // ── SFTP ───────────────────────────────────────────────────────────────────
@@ -178,19 +180,24 @@ async function copyBackup(file, { backupDir, retentionDays, keepMin, store = db 
   const cfg = await config(store);
   if (!cfg.enabled) return { skipped: 'Off-server copies are off' };
   if (!cfg.host_fingerprint) fail('Trust the server key first');
-  const source = path.join(backupDir, file);
-  if (!fs.existsSync(source)) fail('Backup not found', 404);
-  const temp = path.join(backupDir, `.${file}.enc.partial`), remote = `${cfg.remote_dir}/${file}.enc`;
+  if (!fs.existsSync(path.join(backupDir, file))) fail('Backup not found', 404);
+  const remote = `${cfg.remote_dir}/${file}.enc`;
   const started = new Date().toISOString();
+  const temps = [];
   try {
-    await encryptFile(source, temp, decrypt(cfg.encryption_passphrase));
     const { client, sftp } = await connect(cfg);
     try {
       await ensureDir(sftp, cfg.remote_dir);
-      await call(sftp, 'fastPut', temp, `${remote}.partial`);
-      try { await call(sftp, 'unlink', remote); } catch { /* first copy */ }
-      await call(sftp, 'rename', `${remote}.partial`, remote);
-      const size = (await call(sftp, 'stat', remote)).size;
+      let size = 0;
+      for (const part of partsOf(file, backupDir)) {
+        const temp = path.join(backupDir, `.${part}.enc.partial`), target = `${cfg.remote_dir}/${part}.enc`;
+        temps.push(temp);
+        await encryptFile(path.join(backupDir, part), temp, decrypt(cfg.encryption_passphrase));
+        await call(sftp, 'fastPut', temp, `${target}.partial`);
+        try { await call(sftp, 'unlink', target); } catch { /* first copy */ }
+        await call(sftp, 'rename', `${target}.partial`, target);
+        size += (await call(sftp, 'stat', target)).size;
+      }
       const names = (await call(sftp, 'readdir', cfg.remote_dir)).map(e => e.filename);
       const old = expiredCopies(names, retentionDays, keepMin);
       for (const name of old) await call(sftp, 'unlink', `${cfg.remote_dir}/${name}`);
@@ -202,7 +209,7 @@ async function copyBackup(file, { backupDir, retentionDays, keepMin, store = db 
   } catch (error) {
     await writeJson(STATUS, { ok: false, file, error: error.message, started_at: started, completed_at: new Date().toISOString() }, store);
     throw error;
-  } finally { fs.rmSync(temp, { force: true }); }
+  } finally { for (const temp of temps) fs.rmSync(temp, { force: true }); }
 }
 
 // ── Network share ────────────────────────────────────────────────────────────
@@ -262,12 +269,17 @@ async function copyToShare(file, { backupDir, retentionDays, keepMin, store = db
   let partial = null;
   try {
     const folder = checkShareFolder(cfg.path), target = path.join(folder, `${file}.enc`);
-    partial = `${target}.partial`;
-    await encryptFile(source, partial, decrypt(passphrase));
-    fs.renameSync(partial, target); partial = null;
+    let size = 0;
+    for (const part of partsOf(file, backupDir)) {
+      const into = path.join(folder, `${part}.enc`);
+      partial = `${into}.partial`;
+      await encryptFile(path.join(backupDir, part), partial, decrypt(passphrase));
+      fs.renameSync(partial, into); partial = null;
+      size += fs.statSync(into).size;
+    }
     const old = expiredCopies(fs.readdirSync(folder), retentionDays, keepMin);
     for (const name of old) fs.rmSync(path.join(folder, name), { force: true });
-    const status = { ok: true, file, target, size_bytes: fs.statSync(target).size, removed: old.length, started_at: started, completed_at: new Date().toISOString() };
+    const status = { ok: true, file, target, size_bytes: size, removed: old.length, started_at: started, completed_at: new Date().toISOString() };
     await writeJson(SHARE_STATUS, status, store);
     return status;
   } catch (error) {

@@ -207,6 +207,21 @@ into a temporary database), download one, upload one, and restore one. A
 restore first backs up the current data, runs in a single transaction (a
 failure changes nothing) and then restarts the app.
 
+Each backup also holds the **uploaded files** (attachments and generated customer
+reports, from the `uploads` volume; report exports, which expire within a day,
+are left out) in `teamhub-…files.tar.gz` beside the database dump. They are
+checked, restored, pruned, deleted and copied off the server together with it;
+"Include uploaded files" in the schedule turns this off. Attachments stay
+encrypted as stored, so restoring them on a new server needs the same
+`ATTACHMENT_KEY` (and `CUSTOMER_FIELD_KEY` for the database): keep `.env` safe
+too. To put the files back by hand (e.g. after `deploy/restore.sh`):
+
+```bash
+docker run --rm -v <project>_uploads:/u -v "$PWD":/b alpine \
+  sh -c 'rm -rf /u/* && tar -xzf /b/teamhub-YYYYmmdd-HHMMSS-scheduled.files.tar.gz -C /u && chown -R 100:101 /u'
+# use the app user's uid:gid from `docker compose exec app id`
+```
+
 Uploaded backups are checked line by line before use: only SQL as pg_dump
 writes it is accepted (no psql commands, no `COPY … PROGRAM`). For defence in
 depth, have the app connect as a database user that is not a superuser (the
