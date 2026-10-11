@@ -118,3 +118,68 @@ test('backups are uploaded encrypted to a pinned server, old copies are removed,
     } finally { impostor.close(); }
   } finally { if (server.listening) server.close(); }
 });
+
+test('network share: only a folder inside the share root, writable, and with the passphrase set', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'share-root-'));
+  process.env.BACKUP_SHARE_ROOT = root; process.env.BACKUP_SHARE_REQUIRE_MOUNT = '0'; // temp folders are on the same disk
+  try {
+    const store = memoryStore();
+    const share = path.join(root, 'nas');
+    await assert.rejects(offsite.saveShare({ path: 'relative/folder' }, store), /absolute path/);
+    await assert.rejects(offsite.saveShare({ path: os.tmpdir() }, store), /must be inside/);
+    await assert.rejects(offsite.saveShare({ path: root }, store), /must be inside/, 'not the root itself');
+    await assert.rejects(offsite.saveShare({ path: path.join(root, 'nas', '..', '..', 'escape') }, store), /must be inside/);
+    await assert.rejects(offsite.saveShare({ path: share }, store), /does not exist/);
+    fs.mkdirSync(share);
+    assert.equal((await offsite.saveShare({ path: share }, store)).enabled, false);
+    await assert.rejects(offsite.saveShare({ enabled: true }, store), /encryption passphrase/);
+    await offsite.saveConfig({ encryption_passphrase: 'long enough passphrase' }, store);
+    assert.equal((await offsite.saveShare({ enabled: true }, store)).enabled, true);
+    const tested = await offsite.testShare(store);
+    assert.deepEqual([tested.path, tested.copies], [share, 0]);
+  } finally { delete process.env.BACKUP_SHARE_ROOT; delete process.env.BACKUP_SHARE_REQUIRE_MOUNT; }
+});
+
+test('network share: backups are copied encrypted, old copies removed, other files left alone', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'share-root-'));
+  const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), 'share-backups-'));
+  process.env.BACKUP_SHARE_ROOT = root; process.env.BACKUP_SHARE_REQUIRE_MOUNT = '0'; // temp folders are on the same disk
+  try {
+    const store = memoryStore(), share = path.join(root, 'nas');
+    fs.mkdirSync(share);
+    await offsite.saveConfig({ encryption_passphrase: 'long enough passphrase' }, store);
+    await offsite.saveShare({ path: share, enabled: true }, store);
+    fs.writeFileSync(path.join(share, 'teamhub-20200101-023000-scheduled.sql.gz.enc'), 'old');
+    fs.writeFileSync(path.join(share, 'someone-elses-file.txt'), 'keep me');
+    const file = 'teamhub-20261011-023000-scheduled.sql.gz';
+    fs.writeFileSync(path.join(backupDir, file), crypto.randomBytes(40000));
+    const result = await offsite.copyToShare(file, { backupDir, retentionDays: 14, keepMin: 1, store });
+    assert.deepEqual([result.ok, result.removed], [true, 1]);
+    assert.deepEqual(fs.readdirSync(share).sort(), ['someone-elses-file.txt', `${file}.enc`]);
+    const back = path.join(backupDir, 'back.sql.gz');
+    await offsite.decryptFile(path.join(share, `${file}.enc`), back, 'long enough passphrase');
+    assert.ok(fs.readFileSync(back).equals(fs.readFileSync(path.join(backupDir, file))));
+    assert.equal((await offsite.shareStatus(store)).ok, true);
+
+    // A share that has gone away (unmounted) fails, is recorded, and leaves nothing half-written.
+    fs.rmSync(share, { recursive: true });
+    await assert.rejects(offsite.copyToShare(file, { backupDir, retentionDays: 14, keepMin: 1, store }), /does not exist/);
+    assert.equal((await offsite.shareStatus(store)).ok, false);
+  } finally { delete process.env.BACKUP_SHARE_ROOT; delete process.env.BACKUP_SHARE_REQUIRE_MOUNT; }
+});
+
+test('retention keeps the newest copies and removes only expired TeamHub copies', () => {
+  const names = ['teamhub-20260101-000000-scheduled.sql.gz.enc', 'teamhub-20260201-000000-scheduled.sql.gz.enc', 'teamhub-20261010-000000-manual.sql.gz.enc', 'notes.txt'];
+  assert.deepEqual(offsite.expiredCopies(names, 14, 1, Date.parse('2026-10-11T00:00:00Z')), ['teamhub-20260201-000000-scheduled.sql.gz.enc', 'teamhub-20260101-000000-scheduled.sql.gz.enc']);
+  assert.deepEqual(offsite.expiredCopies(names, 14, 3, Date.parse('2026-10-11T00:00:00Z')), [], 'always keeps keepMin');
+});
+
+test('network share: on Linux a folder on the container disk (share not mounted) is refused', { skip: process.platform !== 'linux' && 'Linux only' }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'share-root-'));
+  process.env.BACKUP_SHARE_ROOT = root;
+  try {
+    fs.mkdirSync(path.join(root, 'nas'));
+    const sameDisk = fs.statSync(path.join(root, 'nas')).dev === fs.statSync('/').dev;
+    if (sameDisk) await assert.rejects(offsite.saveShare({ path: path.join(root, 'nas') }, memoryStore()), /not a mounted share/);
+  } finally { delete process.env.BACKUP_SHARE_ROOT; }
+});

@@ -115,8 +115,9 @@ async function backupNow({ kind = 'manual', userName = null } = {}, store = db) 
 /** Queues the off-server copy of a backup when copies are on (backupOffsite.js). */
 async function queueOffsiteCopy(file, store = db) {
   try {
-    if (!(await require('./backupOffsite').config(store)).enabled) return;
-    await require('./backgroundJobs').enqueue('backup_offsite', { file }, { dedupeKey: `backup-offsite:${file}`, maxAttempts: 3 });
+    const offsite = require('./backupOffsite'), jobs = require('./backgroundJobs');
+    if ((await offsite.config(store)).enabled) await jobs.enqueue('backup_offsite', { file }, { dedupeKey: `backup-offsite:${file}`, maxAttempts: 3 });
+    if ((await offsite.shareConfig(store)).enabled) await jobs.enqueue('backup_share', { file }, { dedupeKey: `backup-share:${file}`, maxAttempts: 3 });
   } catch (error) { console.error('[backup] could not queue the off-server copy:', error.message); }
 }
 

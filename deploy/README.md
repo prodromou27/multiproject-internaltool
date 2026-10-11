@@ -226,6 +226,24 @@ BACKUP_PASSPHRASE='…' node deploy/decrypt-backup.js teamhub-YYYYmmdd-HHMMSS-sc
 # → teamhub-YYYYmmdd-HHMMSS-scheduled.sql.gz, restorable as below or via Settings → Backups → Upload
 ```
 
+To copy backups to a **network share** (NAS or file server, SMB or NFS) instead of,
+or as well as, SFTP: mount the share into the container under `/mnt`, then use
+**Settings → Backups → Network share** (folder `/mnt/backup-share`, "Test folder",
+"Turn on"). The same passphrase and retention apply; TeamHub only writes and
+removes its own `teamhub-…sql.gz.enc` files there.
+
+```bash
+cp deploy/backup-share.compose.example.yml docker-compose.override.yml
+# edit it: the share address, user, and uid/gid from `docker compose exec app id`
+echo 'BACKUP_SHARE_PASSWORD=…' >> .env
+./deploy/deploy.sh prod          # picks up docker-compose.override.yml
+```
+
+The app only accepts a folder inside `/mnt` (change with `BACKUP_SHARE_ROOT`) that
+is a mounted filesystem, so copies never land on the container's own disk by
+mistake. If the share is not mounted, the copy fails and shows on the Backups page and in
+System health; the backup itself is unaffected.
+
 Otherwise download a backup regularly, or copy the volume
 (`docker run --rm -v <project>_backups:/b -v "$PWD":/out alpine cp -r /b /out`).
 The files are the same gzipped SQL as the scripts below, so either can restore

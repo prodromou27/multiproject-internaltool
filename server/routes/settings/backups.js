@@ -69,6 +69,33 @@ router.post('/backups/offsite/trust', requireManager, async (req, res) => {
   } catch (error) { send(res, error, 'Could not trust the key'); }
 });
 
+// Copies to a network share mounted into the container.
+const shareView = async () => ({ ...(await offsite.shareConfig()), root: offsite.shareRoot(), last: await offsite.shareStatus(), has_passphrase: !!(await offsite.config()).encryption_passphrase });
+router.get('/backups/share', requireManager, async (req, res) => { res.json(await shareView()); });
+
+router.put('/backups/share', requireManager, async (req, res) => {
+  try {
+    const saved = await offsite.saveShare(req.body || {});
+    await logAudit(db, req, 'settings', 'backup_share', 'Network share backup copies', 'backup_share_updated', `enabled=${saved.enabled}; path=${saved.path}`);
+    res.json(await shareView());
+  } catch (error) { send(res, error, 'Could not save network share settings'); }
+});
+
+router.post('/backups/share/test', requireManager, async (req, res) => {
+  try { res.json(await offsite.testShare()); } catch (error) { send(res, error, 'Could not check the network share'); }
+});
+
+router.post('/backups/:file/share', requireManager, async (req, res) => {
+  try {
+    if (!backups.list().some(row => row.file === req.params.file)) throw Object.assign(new Error('Backup not found'), { status: 404 });
+    const plan = await backups.schedule();
+    const result = await offsite.copyToShare(req.params.file, { backupDir: backups.BACKUP_DIR, retentionDays: plan.retention_days, keepMin: plan.keep_min });
+    if (result.skipped) throw Object.assign(new Error(result.skipped), { status: 400 });
+    await logAudit(db, req, 'settings', 'database_backup', req.params.file, 'database_backup_copied_to_share', `target=${result.target}; size=${result.size_bytes}`);
+    res.json(result);
+  } catch (error) { send(res, error, 'Could not copy the backup to the network share'); }
+});
+
 router.post('/backups/:file/offsite', requireManager, async (req, res) => {
   try {
     if (!backups.list().some(row => row.file === req.params.file)) throw Object.assign(new Error('Backup not found'), { status: 404 });

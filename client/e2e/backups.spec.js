@@ -47,10 +47,11 @@ test('without the PostgreSQL tools the page says what to do', async ({ page }) =
 test('managers set up encrypted off-server copies over SFTP and trust the server key', async ({ page }) => {
   const api = await mockApi(page, { role: 'manager' });
   const schedule = { enabled: true, time: '02:30', retention_days: 14, keep_min: 3 };
-  let view = { enabled: false, host: '', port: 22, username: '', auth_method: 'password', remote_dir: '/teamhub-backups', host_fingerprint: null, has_password: false, has_private_key: false, has_passphrase: false, last: null };
+  let view = { enabled: false, host: '', port: 22, username: '', auth_method: 'password', remote_dir: '/teamhub-backups', host_fingerprint: null, has_password: false, has_private_key: false, has_passphrase: true, last: null };
   let saved = null, trusted = null;
   api.override('GET /api/settings/backups', () => ({ body: { rows: [row('teamhub-20261007-003000-scheduled.sql.gz', 'scheduled')], schedule, busy: null, restoring: false, tools: 'pg_dump 16' } }));
   api.override('GET /api/settings/backups/offsite', () => ({ body: view }));
+  api.override('GET /api/settings/backups/share', () => ({ body: { enabled: false, path: '/mnt/backup-share', root: '/mnt', last: null, has_passphrase: true } }));
   api.override('PUT /api/settings/backups/offsite', ({ body }) => {
     saved = body;
     view = { ...view, ...Object.fromEntries(Object.entries(body).filter(([k]) => ['host', 'port', 'username', 'remote_dir', 'enabled'].includes(k))), has_password: true, has_passphrase: true };
@@ -66,10 +67,9 @@ test('managers set up encrypted off-server copies over SFTP and trust the server
   await section.getByLabel('User').fill('teamhub');
   await section.getByLabel('Folder on the server').fill('/backups/teamhub');
   await section.getByLabel('SFTP password').fill('sftp-secret');
-  await section.getByLabel('Encryption passphrase').fill('a long backup passphrase');
   await section.getByLabel('Your TeamHub password').fill('Manager#pass1');
   await section.getByRole('button', { name: 'Save' }).click();
-  await expect.poll(() => saved).toMatchObject({ host: 'nas.example.local', username: 'teamhub', remote_dir: '/backups/teamhub', sftp_password: 'sftp-secret', encryption_passphrase: 'a long backup passphrase', password: 'Manager#pass1' });
+  await expect.poll(() => saved).toMatchObject({ host: 'nas.example.local', username: 'teamhub', remote_dir: '/backups/teamhub', sftp_password: 'sftp-secret', password: 'Manager#pass1' });
 
   await section.getByRole('button', { name: 'Test connection' }).click();
   await expect(section.getByText('SHA256:abc123')).toBeVisible();
@@ -78,4 +78,33 @@ test('managers set up encrypted off-server copies over SFTP and trust the server
   await section.getByRole('button', { name: 'Turn on' }).click();
   await expect.poll(() => saved.enabled).toBe(true);
   await expect(page.getByRole('button', { name: /Copy off-server/ })).toBeVisible();
+});
+
+test('managers set the encryption passphrase and copy backups to a network share', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  const schedule = { enabled: true, time: '02:30', retention_days: 14, keep_min: 3 };
+  let hasPassphrase = false, passphraseBody = null, share = { enabled: false, path: '/mnt/backup-share', root: '/mnt', last: null }, shareBody = null;
+  api.override('GET /api/settings/backups', () => ({ body: { rows: [row('teamhub-20261007-003000-scheduled.sql.gz', 'scheduled')], schedule, busy: null, restoring: false, tools: 'pg_dump 16' } }));
+  const offsiteView = () => ({ enabled: false, host: '', port: 22, username: '', auth_method: 'password', remote_dir: '/teamhub-backups', host_fingerprint: null, has_password: false, has_private_key: false, has_passphrase: hasPassphrase, last: null });
+  api.override('GET /api/settings/backups/offsite', () => ({ body: offsiteView() }));
+  api.override('PUT /api/settings/backups/offsite', ({ body }) => { passphraseBody = body; hasPassphrase = true; return { body: offsiteView() }; });
+  api.override('GET /api/settings/backups/share', () => ({ body: { ...share, has_passphrase: hasPassphrase } }));
+  api.override('POST /api/settings/backups/share/test', () => ({ body: { path: '/mnt/backup-share', free_bytes: 512e9, copies: 0 } }));
+  api.override('PUT /api/settings/backups/share', ({ body }) => { shareBody = body; share = { ...share, ...body }; return { body: { ...share, has_passphrase: hasPassphrase } }; });
+
+  await page.goto('/settings/backups');
+  const shareSection = page.getByRole('region', { name: 'Network share' });
+  await expect(shareSection.getByRole('button', { name: 'Turn on' })).toBeDisabled();
+
+  const pass = page.getByRole('region', { name: /Off-server copies: encryption/ });
+  await pass.getByLabel('Encryption passphrase').fill('a long backup passphrase');
+  await pass.getByLabel('Your TeamHub password').fill('Manager#pass1');
+  await pass.getByRole('button', { name: 'Save passphrase' }).click();
+  await expect.poll(() => passphraseBody).toEqual({ encryption_passphrase: 'a long backup passphrase', password: 'Manager#pass1' });
+
+  await shareSection.getByRole('button', { name: 'Test folder' }).click();
+  await expect(shareSection).toContainText('/mnt/backup-share can be written. 512.0 GB free.');
+  await shareSection.getByRole('button', { name: 'Turn on' }).click();
+  await expect.poll(() => shareBody).toEqual({ path: '/mnt/backup-share', enabled: true });
+  await expect(page.getByRole('button', { name: /Copy to share/ })).toBeVisible();
 });

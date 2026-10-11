@@ -113,3 +113,22 @@ test('off-server copy settings: managers only, secrets need the password and are
   const audit = await db.prepare("SELECT detail FROM audit_log WHERE action='backup_offsite_updated' ORDER BY id").all();
   assert.ok(audit.some(a => /changed=sftp_password,encryption_passphrase/.test(a.detail)));
 });
+
+test('network share settings: managers only, and only a mounted folder inside the share root', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'share-root-'));
+  process.env.BACKUP_SHARE_ROOT = root; process.env.BACKUP_SHARE_REQUIRE_MOUNT = '0'; // temp folders are on the same disk
+  try {
+    const base = '/api/settings/backups/share';
+    assert.equal((await api(base, { token: ids.tokenEnabled })).status, 403);
+    const view = await api(base, { token: ids.tokenManager });
+    assert.deepEqual([view.status, view.data.enabled, view.data.root], [200, false, root]);
+    assert.equal((await api(base, { method: 'PUT', token: ids.tokenManager, body: { path: os.tmpdir() } })).status, 400);
+    fs.mkdirSync(path.join(root, 'nas'));
+    const saved = await api(base, { method: 'PUT', token: ids.tokenManager, body: { path: path.join(root, 'nas') } });
+    assert.equal(saved.status, 200, JSON.stringify(saved.data));
+    const tested = await api(`${base}/test`, { method: 'POST', token: ids.tokenManager, body: {} });
+    assert.deepEqual([tested.status, tested.data.path], [200, path.join(root, 'nas')]);
+    const audit = await db.prepare("SELECT detail FROM audit_log WHERE action='backup_share_updated'").all();
+    assert.equal(audit.length, 1);
+  } finally { delete process.env.BACKUP_SHARE_ROOT; delete process.env.BACKUP_SHARE_REQUIRE_MOUNT; }
+});

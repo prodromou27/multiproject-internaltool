@@ -72,6 +72,12 @@ router.get('/deployment-health', requireManager, async (req, res) => {
       add('offsite_backup', 'Off-server backup copy', lastOk <= 36 * 60 * 60 * 1000 ? 'ok' : 'warning',
         offsite?.ok ? `${offsite.file} copied to ${offsiteConfig.host} at ${offsite.completed_at}.` : offsite ? `The last copy failed: ${offsite.error}` : 'No backup has been copied off the server yet.');
     }
+    const shareConfig = await operationalRecord('backup_share'), share = await operationalRecord('backup_share_status');
+    if (shareConfig?.enabled) {
+      const lastOk = share?.ok ? Date.now() - Date.parse(share.completed_at) : Infinity;
+      add('share_backup', 'Network share backup copy', lastOk <= 36 * 60 * 60 * 1000 ? 'ok' : 'warning',
+        share?.ok ? `${share.file} copied to ${shareConfig.path} at ${share.completed_at}.` : share ? `The last copy failed: ${share.error}` : 'No backup has been copied to the share yet.');
+    }
     const restore = await operationalRecord('last_restore_verification');
     const restoreAge = restore?.completed_at ? Date.now() - Date.parse(restore.completed_at) : Infinity;
     add('restore_verification', 'Backup restore verification', restoreAge <= 31 * 24 * 60 * 60 * 1000 ? 'ok' : 'warning',

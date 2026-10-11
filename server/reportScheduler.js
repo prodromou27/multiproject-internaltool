@@ -104,6 +104,10 @@ async function initScheduler() {
       const backups=require('./databaseBackups'),plan=await backups.schedule();
       return require('./backupOffsite').copyBackup(String(payload.file),{ backupDir:backups.BACKUP_DIR,retentionDays:plan.retention_days,keepMin:plan.keep_min });
     },
+    backup_share: async payload => {
+      const backups=require('./databaseBackups'),plan=await backups.schedule();
+      return require('./backupOffsite').copyToShare(String(payload.file),{ backupDir:backups.BACKUP_DIR,retentionDays:plan.retention_days,keepMin:plan.keep_min });
+    },
     // Tickets linked engineers own in Request Tracker (any queue), for Workload.
     engineer_ticket_sync: async payload => {
       const owners=require('./ticketOwners');
