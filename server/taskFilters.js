@@ -1,4 +1,5 @@
 const appTime = require('./appTime');
+const { ownTasksSql, ownTasksParams } = require('./taskAccess');
 const FILTERS = new Set(['all', 'open', 'done', 'adhoc', 'waiting_customer', 'overdue', 'due_week', 'due_today', 'pending_approval']);
 const SORTS = { created: 't.created_at', task: 't.title', project: 'p.title', status: 't.status', priority: 't.priority', assignee: 'u.name', deadline: 't.deadline' };
 
@@ -25,7 +26,7 @@ function taskFilters(query, user) {
   const clauses = ['1=1'];
   const params = [];
   const add = (sql, ...values) => { clauses.push(sql); params.push(...values); };
-  if (user.role === 'engineer') add('t.assigned_to=?', user.id);
+  if (user.role === 'engineer') add(ownTasksSql('t'), ...ownTasksParams(user.id));
   else if (query.assigned_to) add('t.assigned_to=?', Number(query.assigned_to));
   if (query.project_id) add('t.project_id=?', Number(query.project_id));
   if (query.customer_id) add('COALESCE(t.customer_id,p.customer_id)=?', Number(query.customer_id));

@@ -22,7 +22,8 @@ test('the next occurrence on or after a day', () => {
 
 test('templates are validated', () => {
   const ok = { title: 'Backup check', frequency: 'monthly', start_date: '2026-11-01' };
-  assert.deepEqual(validateTemplate(ok).value, { title: 'Backup check', priority: 'medium', frequency: 'monthly', start_date: '2026-11-01', lead_days: 7, assigned_to: null, active: 1 });
+  assert.deepEqual(validateTemplate(ok).value, { title: 'Backup check', priority: 'medium', frequency: 'monthly', interval_count: null, interval_unit: null, start_date: '2026-11-01', lead_days: 7,
+    assigned_to: null, team_id: null, asset_id: null, technology_id: null, notify: 0, active: 1 });
   for (const bad of [{ ...ok, title: ' ' }, { ...ok, frequency: 'daily' }, { ...ok, start_date: '2026-02-30' }, { ...ok, lead_days: 91 }, { ...ok, lead_days: 1.5 }, { ...ok, priority: 'urgent' }, { ...ok, assigned_to: 'x' }, { ...ok, active: 'yes' }])
     assert.ok(validateTemplate(bad).error, JSON.stringify(bad));
 });

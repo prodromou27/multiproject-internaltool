@@ -4,6 +4,7 @@ const escapeLike = value => value.replace(/[\\%_]/g, m => '\\' + m);
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
+const { ownTasksSql, ownTasksParams } = require('../taskAccess');
 
 // Customer contact fields are encrypted at rest, so a SQL LIKE on them can't
 // match. Instead we fetch the set the user is allowed to see, decrypt in the
@@ -114,9 +115,9 @@ router.get('/', requireAuth, async (req, res) => {
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN users u ON t.assigned_to = u.id
-      WHERE t.assigned_to = ? AND (t.title ILIKE ? OR t.description ILIKE ?)
+      WHERE ${ownTasksSql('t')} AND (t.title ILIKE ? OR t.description ILIKE ?)
       ORDER BY t.updated_at DESC LIMIT 8
-    `).all(req.user.id, like, like));
+    `).all(...ownTasksParams(req.user.id), like, like));
   }
 
   // Customers — decrypt-and-filter (PII columns are encrypted at rest).
@@ -207,8 +208,8 @@ router.get('/smart', requireAuth, async (req, res) => {
 
     // Role-based security
     if (req.user.role === 'engineer') {
-      c.push('t.assigned_to = ?');
-      p.push(req.user.id);
+      c.push(ownTasksSql('t'));
+      p.push(...ownTasksParams(req.user.id));
     } else if (req.user.role === 'planner' || req.user.role === 'pm') {
       c.push('1=0');
     } else {

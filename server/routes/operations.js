@@ -5,6 +5,7 @@ const { getEnabledTeamIdsForUser } = require('../serviceActivities');
 const { decrypt } = require('../fieldCipher');
 const { listManagedCustomersForUser } = require('../managedCustomerService');
 const { createResponseCache } = require('../responseCache');
+const { ownTasksSql, ownTasksParams } = require('../taskAccess');
 
 const placeholders = values => values.map(() => '?').join(',');
 const numbers = row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, Number(value || 0)]));
@@ -29,8 +30,8 @@ router.get('/overview', requireAuth, overviewCache, async (req, res) => {
   const taskDone = terminal('task', ['completed', 'closed', 'cancelled']);
   const projectDone = terminal('project', ['closed', 'cancelled']);
   const manager = req.user.role === 'manager';
-  const owned = manager ? '' : ' AND t.assigned_to=?';
-  const taskParams = [...taskDone, ...(manager ? [] : [req.user.id])];
+  const owned = manager ? '' : ` AND ${ownTasksSql('t')}`;
+  const taskParams = [...taskDone, ...(manager ? [] : ownTasksParams(req.user.id))];
   const taskWhere = `t.status NOT IN (${placeholders(taskDone)})${owned}`;
   const projectFrom = `projects p${manager ? '' : ' JOIN project_assignments pa ON pa.project_id=p.id AND pa.user_id=?'}`;
   const projectParams = [...(manager ? [] : [req.user.id]), ...projectDone];

@@ -42,7 +42,7 @@ test('managers pause, edit and delete schedules; created tasks stay', async () =
   const today = appTime.today();
   const made = (await api(at(), { method: 'POST', token: ids.tokenManager, body: { title: 'Quarterly review', frequency: 'quarterly', start_date: appTime.addDays(today, 60) } })).data;
   const paused = await api(`${at()}/${made.id}`, { method: 'PUT', token: ids.tokenManager, body: { active: false } });
-  assert.equal(paused.status, 200); assert.equal(paused.data.active, 0);
+  assert.equal(paused.status, 200); assert.equal(paused.data.active, false);
   assert.equal((await api(`${at()}/${made.id}`, { method: 'PUT', token: ids.tokenManager, body: { assigned_to: ids.manager } })).status, 400, 'only engineers');
   assert.equal((await api(`${at()}/${made.id}`, { method: 'PUT', token: ids.tokenManager, body: { frequency: 'hourly' } })).status, 400);
   assert.equal((await api(`/api/customers/${ids.customerUnassigned}/recurring-tasks/${made.id}`, { method: 'PUT', token: ids.tokenManager, body: { active: true } })).status, 404, 'another customer cannot touch it');

@@ -306,3 +306,17 @@
 .cs-recurring header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .cs-recurring h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0; }
 .cs-recurring tr.is-paused td { color: var(--gray-400); }
+
+/* Recurring task form */
+.rt-every { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rt-every > span { font-size: 13px; font-weight: 600; }
+.rt-every input { width: 90px; }
+.rt-every select { width: auto; }
+.rt-every small { flex-basis: 100%; }
+.rt-assignee { display: grid; gap: 6px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--gray-200); border-radius: var(--radius); }
+.rt-assignee legend { padding: 0 4px; font-size: 13px; font-weight: 600; }
+.rt-assignee label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; margin-right: 14px; }
+.rt-assignee label input { width: auto; min-height: 0; }
+.rt-notify { display: flex; align-items: center; gap: 8px; margin: 4px 0 12px; font-size: 13px; }
+.rt-notify input { width: auto; min-height: 0; }
+.rt-overdue { color: var(--danger); }

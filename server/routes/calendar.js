@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
 const { getEnabledTeamIdsForUser } = require('../serviceActivities');
+const { ownTasksSql, ownTasksParams } = require('../taskAccess');
 const placeholders = values => values.map(() => '?').join(',');
 
 // Returns all events for a given month: tasks (by deadline), project deadlines, maintenance visits
@@ -36,7 +37,7 @@ router.get('/', requireAuth, async (req, res) => {
     LEFT JOIN projects p ON t.project_id = p.id
     WHERE t.deadline >= ? AND t.deadline < ? AND t.status NOT IN (${placeholders(taskDone)})`;
   const taskParams = [start, end, ...taskDone];
-  if (!isManager) { taskQ += ' AND t.assigned_to = ?'; taskParams.push(req.user.id); }
+  if (!isManager) { taskQ += ` AND ${ownTasksSql('t')}`; taskParams.push(...ownTasksParams(req.user.id)); }
   const tasks = ['manager', 'engineer'].includes(req.user.role)
     ? (await db.prepare(taskQ).all(...taskParams)).map(r => ({ ...r, type: 'task' })) : [];
 

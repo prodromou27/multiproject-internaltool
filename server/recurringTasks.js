@@ -6,7 +6,16 @@
 const db = require('./db');
 const appTime = require('./appTime');
 
-const FREQUENCIES = Object.freeze({ weekly: { days: 7 }, monthly: { months: 1 }, quarterly: { months: 3 }, semiannual: { months: 6 }, annual: { months: 12 } });
+const FREQUENCIES = Object.freeze({ weekly: { days: 7 }, biweekly: { days: 14 }, monthly: { months: 1 }, quarterly: { months: 3 }, semiannual: { months: 6 }, annual: { months: 12 }, custom: null });
+const UNITS = Object.freeze({ day: 1, week: 7, month: null });
+const MAX_INTERVAL = 365;
+
+/** The repeat rule of a template: a fixed frequency, or custom "every N days/weeks/months". */
+function ruleOf(template) {
+  if (template.frequency !== 'custom') return FREQUENCIES[template.frequency];
+  const count = Number(template.interval_count);
+  return template.interval_unit === 'month' ? { months: count } : { days: count * UNITS[template.interval_unit] };
+}
 const PRIORITIES = new Set(['low', 'medium', 'high', 'critical']);
 const MAX_LEAD_DAYS = 90;
 
@@ -15,7 +24,7 @@ const isDay = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v
 
 /** The `n`th occurrence after `start` (n = 0 is the start itself). Month ends are kept: 31 Jan monthly gives 28/29 Feb, then 31 Mar. */
 function occurrence(start, frequency, n) {
-  const rule = FREQUENCIES[frequency];
+  const rule = typeof frequency === 'string' ? FREQUENCIES[frequency] : frequency;
   if (rule.days) return appTime.addDays(start, rule.days * n);
   const [year, month, day] = start.split('-').map(Number);
   const target = new Date(Date.UTC(year, month - 1 + rule.months * n, 1));
@@ -25,9 +34,10 @@ function occurrence(start, frequency, n) {
 
 /** The first occurrence on or after `from`, with its index. */
 function firstOnOrAfter(start, frequency, from) {
+  const rule = typeof frequency === 'string' ? FREQUENCIES[frequency] : frequency;
   let n = 0;
-  if (FREQUENCIES[frequency].days) n = Math.max(0, Math.floor((Date.parse(from) - Date.parse(start)) / 86400000 / FREQUENCIES[frequency].days));
-  else { const [sy, sm] = start.split('-').map(Number), [fy, fm] = from.split('-').map(Number); n = Math.max(0, Math.floor(((fy - sy) * 12 + (fm - sm)) / FREQUENCIES[frequency].months)); }
+  if (rule.days) n = Math.max(0, Math.floor((Date.parse(from) - Date.parse(start)) / 86400000 / rule.days));
+  else { const [sy, sm] = start.split('-').map(Number), [fy, fm] = from.split('-').map(Number); n = Math.max(0, Math.floor(((fy - sy) * 12 + (fm - sm)) / rule.months)); }
   while (n > 0 && occurrence(start, frequency, n - 1) >= from) n--;
   while (occurrence(start, frequency, n) < from) n++;
   return { n, date: occurrence(start, frequency, n) };
@@ -51,9 +61,17 @@ function validateTemplate(body, current = null) {
     value.priority = priority;
   }
   if (!current || take('frequency')) {
-    if (!FREQUENCIES[body.frequency]) return { error: 'Repeat must be weekly, monthly, quarterly, semiannual or annual' };
+    if (!Object.hasOwn(FREQUENCIES, body.frequency ?? '')) return { error: 'Repeat must be weekly, every 2 weeks, monthly, quarterly, semiannual, annual or custom' };
     value.frequency = body.frequency;
   }
+  if (value.frequency === 'custom') {
+    if (!current || take('interval_count') || take('interval_unit') || current.frequency !== 'custom') {
+      const count = body.interval_count ?? value.interval_count, unit = body.interval_unit ?? value.interval_unit;
+      if (!Number.isSafeInteger(count) || count < 1 || count > MAX_INTERVAL) return { error: `Repeat every: a whole number from 1 to ${MAX_INTERVAL}` };
+      if (!Object.hasOwn(UNITS, unit ?? '')) return { error: 'Repeat every N days, weeks or months' };
+      value.interval_count = count; value.interval_unit = unit;
+    }
+  } else { value.interval_count = null; value.interval_unit = null; }
   if (!current || take('start_date')) {
     if (!isDay(body.start_date)) return { error: 'First due date must be a valid YYYY-MM-DD date' };
     value.start_date = body.start_date;
@@ -63,10 +81,20 @@ function validateTemplate(body, current = null) {
     if (!Number.isSafeInteger(lead) || lead < 0 || lead > MAX_LEAD_DAYS) return { error: `Create it this many days before it is due: a whole number from 0 to ${MAX_LEAD_DAYS}` };
     value.lead_days = lead;
   }
-  if (take('assigned_to')) {
-    if (body.assigned_to !== null && (!Number.isSafeInteger(body.assigned_to) || body.assigned_to < 1)) return { error: 'Engineer must be a user id or null' };
-    value.assigned_to = body.assigned_to;
-  } else if (!current) value.assigned_to = null;
+  for (const [key, label] of [['assigned_to', 'Engineer'], ['team_id', 'Team'], ['asset_id', 'Asset'], ['technology_id', 'Technology']]) {
+    if (take(key)) {
+      if (body[key] !== null && (!Number.isSafeInteger(body[key]) || body[key] < 1)) return { error: `${label} must be an id or null` };
+      value[key] = body[key];
+    } else if (!current) value[key] = null;
+  }
+  // One or the other: a team task is open to the whole team until someone takes it.
+  if (value.assigned_to && value.team_id) {
+    if (take('team_id') && body.team_id) value.assigned_to = null; else value.team_id = null;
+  }
+  if (take('notify')) {
+    if (typeof body.notify !== 'boolean') return { error: 'Notify must be true or false' };
+    value.notify = body.notify ? 1 : 0;
+  } else if (!current) value.notify = 0;
   if (take('active')) {
     if (typeof body.active !== 'boolean') return { error: 'Active must be true or false' };
     value.active = body.active ? 1 : 0;
@@ -85,8 +113,9 @@ async function createDueTasks({ store = db, today = appTime.today(), templateId 
   for (const template of rows) {
     const due = [];
     let next = template.next_due;
-    let { n } = firstOnOrAfter(template.start_date, template.frequency, next);
-    while (appTime.addDays(next, -Number(template.lead_days)) <= today && due.length < 400) { due.push(next); n++; next = occurrence(template.start_date, template.frequency, n); }
+    const rule = ruleOf(template);
+    let { n } = firstOnOrAfter(template.start_date, rule, next);
+    while (appTime.addDays(next, -Number(template.lead_days)) <= today && due.length < 400) { due.push(next); n++; next = occurrence(template.start_date, rule, n); }
     if (!due.length) continue;
     const missed = due.filter(day => day < today), upcoming = due.filter(day => day >= today);
     const toCreate = [...missed.slice(-1), ...upcoming];
@@ -96,21 +125,25 @@ async function createDueTasks({ store = db, today = appTime.today(), templateId 
       if (claimed.changes !== 1) return [];
       const made = [];
       for (const deadline of toCreate) {
-        const result = await tx.prepare(`INSERT INTO tasks (customer_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 0)`).run(template.customer_id, template.title, template.description, template.priority, deadline, template.assigned_to, template.created_by);
+        const result = await tx.prepare(`INSERT INTO tasks (customer_id, title, description, priority, deadline, assigned_to, team_id, asset_id, technology_id, recurring_task_id, created_by, is_adhoc)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).run(template.customer_id, template.title, template.description, template.priority, deadline,
+          template.assigned_to, template.assigned_to ? null : template.team_id, template.asset_id, template.technology_id, template.id, template.created_by);
         made.push({ id: result.lastInsertRowid, deadline });
       }
       await tx.prepare('UPDATE recurring_tasks SET last_task_id = ? WHERE id = ?').run(made.at(-1).id, template.id);
       return made;
     });
     created += ids.length;
-    if (ids.length && template.assigned_to) {
-      const engineer = await store.prepare('SELECT name, email FROM users WHERE id = ? AND active = 1').get(template.assigned_to);
-      for (const task of ids) if (engineer) notify('task.assigned', { engineer_id: template.assigned_to, engineer_name: engineer.name, engineer_email: engineer.email, task_title: template.title, project_title: null, deadline: task.deadline, priority: template.priority, is_adhoc: false });
+    if (ids.length && template.notify) {
+      // The engineer, or every engineer in the team.
+      const people = template.assigned_to
+        ? await store.prepare('SELECT id, name, email FROM users WHERE id = ? AND active = 1').all(template.assigned_to)
+        : template.team_id ? await store.prepare("SELECT u.id, u.name, u.email FROM users u JOIN team_members tm ON tm.user_id = u.id WHERE tm.team_id = ? AND u.active = 1 AND u.role = 'engineer'").all(template.team_id) : [];
+      for (const engineer of people) for (const task of ids) notify('task.assigned', { engineer_id: engineer.id, engineer_name: engineer.name, engineer_email: engineer.email, task_title: template.title, project_title: null, deadline: task.deadline, priority: template.priority, is_adhoc: false });
     }
   }
   if (created) require('./liveUpdates').emitChange('tasks');
   return { created };
 }
 
-module.exports = { FREQUENCIES, MAX_LEAD_DAYS, occurrence, firstOnOrAfter, validateTemplate, createDueTasks };
+module.exports = { FREQUENCIES, UNITS, MAX_LEAD_DAYS, MAX_INTERVAL, ruleOf, occurrence, firstOnOrAfter, validateTemplate, createDueTasks };

@@ -4,6 +4,7 @@ const db     = require('../db');
 const { decrypt } = require('../fieldCipher');
 const { PRODUCT_NAME } = require('../product');
 const { fold } = require('../icalFold');
+const { ownTasksSql, ownTasksParams } = require('../taskAccess');
 
 // Escape special iCal text characters
 function icalEsc(str) {
@@ -112,7 +113,7 @@ router.get('/', async (req, res) => {
   // ── Tasks with deadlines ────────────────────────────────────
   const taskQuery = user.role === 'engineer'
     ? `SELECT id, title, deadline, project_id FROM tasks
-       WHERE assigned_to = ? AND deadline IS NOT NULL AND status NOT IN ('completed','closed','cancelled')
+       WHERE ${ownTasksSql()} AND deadline IS NOT NULL AND status NOT IN ('completed','closed','cancelled')
        ORDER BY deadline`
     : user.role === 'manager'
     ? `SELECT id, title, deadline, project_id FROM tasks
@@ -123,7 +124,7 @@ router.get('/', async (req, res) => {
          AND t.project_id IN (SELECT project_id FROM project_assignments WHERE user_id = ?)
        ORDER BY t.deadline`;
 
-  const taskParams = user.role === 'manager' ? [] : [user.id];
+  const taskParams = user.role === 'manager' ? [] : user.role === 'engineer' ? ownTasksParams(user.id) : [user.id];
   const tasks = (await db.prepare(taskQuery).all(...taskParams));
 
   for (const t of tasks) {

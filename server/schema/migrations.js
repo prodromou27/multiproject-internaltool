@@ -1048,6 +1048,31 @@ async function applyMigrations(pool, transaction) {
       WHERE service_activity_enabled=0 AND id IN (SELECT customer_id FROM managed_customer_configurations WHERE managed_services_enabled=1);
   `]);
 
+  // Runs after 20261015_recurring_tasks (added further up this list).
+  migrations.push(['20261026_recurring_tasks_teams', `
+    -- Recurring customer tasks: every 2 weeks or every N days/weeks/months, for an
+    -- engineer or a whole team, optionally about one asset or technology, with the
+    -- notification optional. The tasks they create keep the link, for reporting.
+    ALTER TABLE recurring_tasks DROP CONSTRAINT IF EXISTS recurring_tasks_frequency_check;
+    -- (The test database, pg-mem, names that inline check recurring_tasks_constraint_2.)
+    ALTER TABLE recurring_tasks DROP CONSTRAINT IF EXISTS recurring_tasks_constraint_2;
+    ALTER TABLE recurring_tasks ADD CONSTRAINT recurring_tasks_frequency_check CHECK(frequency IN ('weekly','biweekly','monthly','quarterly','semiannual','annual','custom'));
+    ALTER TABLE recurring_tasks ADD COLUMN IF NOT EXISTS interval_count INTEGER;
+    ALTER TABLE recurring_tasks ADD COLUMN IF NOT EXISTS interval_unit TEXT;
+    ALTER TABLE recurring_tasks ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL;
+    ALTER TABLE recurring_tasks ADD COLUMN IF NOT EXISTS asset_id INTEGER REFERENCES customer_assets(id) ON DELETE SET NULL;
+    ALTER TABLE recurring_tasks ADD COLUMN IF NOT EXISTS technology_id INTEGER REFERENCES technologies(id) ON DELETE SET NULL;
+    ALTER TABLE recurring_tasks ADD COLUMN IF NOT EXISTS notify INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL;
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurring_task_id INTEGER REFERENCES recurring_tasks(id) ON DELETE SET NULL;
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS asset_id INTEGER REFERENCES customer_assets(id) ON DELETE SET NULL;
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS technology_id INTEGER REFERENCES technologies(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_tasks_team_open ON tasks(team_id) WHERE assigned_to IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_tasks_recurring ON tasks(recurring_task_id);
+    -- When a task was completed (for on-time reporting); set by routes/tasks.js.
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TEXT;
+    UPDATE tasks SET completed_at = updated_at WHERE status IN ('completed','closed') AND completed_at IS NULL;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

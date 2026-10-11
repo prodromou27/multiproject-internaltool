@@ -1,3 +1,4 @@
+const { ownTasksSql, ownTasksParams, worksOnTask } = require('../taskAccess');
 const router  = require('express').Router();
 const appTime = require('../appTime');
 const db      = require('../db');
@@ -41,9 +42,10 @@ router.get('/', requireAuth, async (req, res) => {
   if (pagination?.error) return res.status(400).json({ error: pagination.error });
   if (!['manager', 'engineer'].includes(req.user.role)) return res.json(pagination ? { rows: [], total: 0, counts: {}, page: pagination.page, page_size: pagination.page_size } : []);
   let q = `SELECT t.*, COALESCE(t.customer_id,p.customer_id) AS customer_id,
-    u.name as assigned_to_name, c.name as created_by_name, p.title as project_title FROM tasks t
+    u.name as assigned_to_name, c.name as created_by_name, p.title as project_title, tm.name as team_name FROM tasks t
     LEFT JOIN projects p ON p.id=t.project_id
     LEFT JOIN users u ON t.assigned_to=u.id JOIN users c ON t.created_by=c.id
+    LEFT JOIN teams tm ON tm.id=t.team_id
     WHERE ${filters.where} ORDER BY ${filters.order}`;
   const params = [...filters.params];
   let counts;
@@ -188,16 +190,22 @@ router.post('/', requireAuth, async (req, res) => {
   res.json({ id: taskId });
 });
 
+// Completed tasks remember when (on-time reporting); reopening clears it.
+async function stampCompletion(ids) {
+  if (!ids.length) return;
+  await db.prepare(`UPDATE tasks SET completed_at = CASE WHEN status IN ('completed','closed') THEN COALESCE(completed_at, app_now()) ELSE NULL END
+    WHERE id IN (${ids.map(() => '?').join(',')})`).run(...ids);
+}
+
 router.put('/:id', requireAuth, async (req, res) => {
   const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
   if (!task) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role !== 'manager' && (req.user.role !== 'engineer' || task.assigned_to !== req.user.id))
+  if (req.user.role !== 'manager' && (req.user.role !== 'engineer' || !await worksOnTask(req.user, task)))
     return res.status(403).json({ error: 'Forbidden' });
   const inputError = validateTaskInput(req.body);
   if (inputError) return res.status(400).json({ error: inputError });
 
   if (req.user.role === 'engineer') {
-    if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
     const { status, pending_from_customer, title, description, priority, deadline } = req.body;
     if (status && !VALID_TASK_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status value' });
     if (priority && !VALID_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
@@ -211,7 +219,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     (await db.prepare(`UPDATE tasks SET
       title=COALESCE(?,title), description=COALESCE(?,description),
       priority=COALESCE(?,priority), deadline=?,
-      status=COALESCE(?,status), pending_from_customer=?,
+      status=COALESCE(?,status), pending_from_customer=?, assigned_to=?,
       updated_at=app_now() WHERE id=?`)
       .run(
         title?.trim() || null,
@@ -220,10 +228,13 @@ router.put('/:id', requireAuth, async (req, res) => {
         deadline !== undefined ? (deadline || null) : task.deadline,
         status || null,
         newPfc,
+        // A team task becomes yours when you change its status (records who did it).
+        task.assigned_to ?? (status && status !== task.status ? req.user.id : null),
         task.id
       ));
     if (status && task.status !== status) {
       logActivity(task.project_id, req.user.id, 'task_status', `"${title || task.title}" → ${status}`);
+      await stampCompletion([task.id]);
     }
     return res.json({ ok: true });
   }
@@ -266,6 +277,7 @@ router.put('/:id', requireAuth, async (req, res) => {
 
   // Log status change
   if (status && status !== task.status) {
+    await stampCompletion([task.id]);
     logActivity(task.project_id, req.user.id, 'task_status', `"${title || task.title}" → ${status}`);
   }
 
@@ -318,11 +330,12 @@ router.post('/bulk', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'pending_from_customer must be non-empty text of at most 10000 characters for waiting statuses' });
     }
     const uniqueIds = [...new Set(ids)];
-    const owned = req.user.role === 'engineer' ? ' AND assigned_to=?' : '';
-    const result = await db.prepare(`UPDATE tasks SET status=?,
+    const owned = req.user.role === 'engineer' ? ` AND ${ownTasksSql()}` : '';
+    const result = await db.prepare(`UPDATE tasks SET status=?,${owned ? ' assigned_to=COALESCE(assigned_to,?),' : ''}
       pending_from_customer=CASE WHEN ? IN ('waiting_customer','waiting_vendor') THEN COALESCE(?,pending_from_customer) ELSE NULL END,
       updated_at=app_now() WHERE id IN (${uniqueIds.map(() => '?').join(',')})${owned}`)
-      .run(status, status, pending_from_customer === undefined ? null : pending_from_customer.trim(), ...uniqueIds, ...(owned ? [req.user.id] : []));
+      .run(status, ...(owned ? [req.user.id] : []), status, pending_from_customer === undefined ? null : pending_from_customer.trim(), ...uniqueIds, ...(owned ? ownTasksParams(req.user.id) : []));
+    await stampCompletion(uniqueIds);
     return res.json({ ok: true, affected: result.changes });
   }
 
@@ -363,9 +376,7 @@ router.post('/:id/duplicate', requireAuth, async (req, res) => {
   const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
   if (!task) return res.status(404).json({ error: 'Not found' });
   // Engineers: can only duplicate tasks assigned to them
-  if (req.user.role === 'engineer') {
-    if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-  }
+  if (req.user.role === 'engineer' && !await worksOnTask(req.user, task)) return res.status(403).json({ error: 'Forbidden' });
   const result = (await db.prepare(`
     INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -382,8 +393,8 @@ router.get('/overdue-counts', requireAuth, async (req, res) => {
   if (req.user.role === 'engineer') {
     taskCount = (await db.prepare(`
       SELECT COUNT(*) AS cnt FROM tasks
-      WHERE assigned_to = ? AND deadline < ? AND status NOT IN ('completed','closed','cancelled')
-    `).get(req.user.id, today)).cnt;
+      WHERE ${ownTasksSql()} AND deadline < ? AND status NOT IN ('completed','closed','cancelled')
+    `).get(...ownTasksParams(req.user.id), today)).cnt;
   } else if (req.user.role === 'manager') {
     taskCount = (await db.prepare(`
       SELECT COUNT(*) AS cnt FROM tasks
@@ -422,7 +433,7 @@ async function requireVisibleTask(req, res, next) {
   if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid task ID' });
   const task = await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!task) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role === 'engineer' && task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+  if (req.user.role === 'engineer' && !await worksOnTask(req.user, task)) return res.status(403).json({ error: 'Forbidden' });
   req.task = task;
   next();
 }

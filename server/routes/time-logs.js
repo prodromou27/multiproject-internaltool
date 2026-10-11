@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { worksOnTask } = require('../taskAccess');
 
 function validId(value) {
   return (typeof value === 'number' || typeof value === 'string')
@@ -28,10 +29,10 @@ router.get('/', requireAuth, async (req, res) => {
 
   // ── Access control: verify the caller can see the target task / visit ────
   if (task_id) {
-    const task = (await db.prepare('SELECT assigned_to, project_id FROM tasks WHERE id = ?').get(task_id));
+    const task = (await db.prepare('SELECT assigned_to, team_id, project_id FROM tasks WHERE id = ?').get(task_id));
     if (!task) return res.status(404).json({ error: 'Task not found' });
     if (req.user.role === 'engineer') {
-      if (task.assigned_to !== req.user.id)
+      if (!await worksOnTask(req.user, task))
         return res.status(403).json({ error: 'Forbidden' });
     }
   }
@@ -77,9 +78,9 @@ router.post('/', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Description cannot exceed 2000 characters' });
 
   if (task_id) {
-    const task = (await db.prepare('SELECT assigned_to, project_id FROM tasks WHERE id = ?').get(task_id));
+    const task = (await db.prepare('SELECT assigned_to, team_id, project_id FROM tasks WHERE id = ?').get(task_id));
     if (!task) return res.status(404).json({ error: 'Task not found' });
-    if (req.user.role === 'engineer' && task.assigned_to !== req.user.id)
+    if (req.user.role === 'engineer' && !await worksOnTask(req.user, task))
       return res.status(403).json({ error: 'You can only log time to your own tasks' });
   }
 
