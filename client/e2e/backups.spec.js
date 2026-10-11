@@ -43,3 +43,39 @@ test('without the PostgreSQL tools the page says what to do', async ({ page }) =
   await expect(page.getByText('the PostgreSQL tools (pg_dump, psql) are missing')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Back up now' })).toBeDisabled();
 });
+
+test('managers set up encrypted off-server copies over SFTP and trust the server key', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  const schedule = { enabled: true, time: '02:30', retention_days: 14, keep_min: 3 };
+  let view = { enabled: false, host: '', port: 22, username: '', auth_method: 'password', remote_dir: '/teamhub-backups', host_fingerprint: null, has_password: false, has_private_key: false, has_passphrase: false, last: null };
+  let saved = null, trusted = null;
+  api.override('GET /api/settings/backups', () => ({ body: { rows: [row('teamhub-20261007-003000-scheduled.sql.gz', 'scheduled')], schedule, busy: null, restoring: false, tools: 'pg_dump 16' } }));
+  api.override('GET /api/settings/backups/offsite', () => ({ body: view }));
+  api.override('PUT /api/settings/backups/offsite', ({ body }) => {
+    saved = body;
+    view = { ...view, ...Object.fromEntries(Object.entries(body).filter(([k]) => ['host', 'port', 'username', 'remote_dir', 'enabled'].includes(k))), has_password: true, has_passphrase: true };
+    return { body: view };
+  });
+  api.override('POST /api/settings/backups/offsite/test', () => ({ body: { fingerprint: 'SHA256:abc123', trusted: false } }));
+  api.override('POST /api/settings/backups/offsite/trust', ({ body }) => { trusted = body.fingerprint; view = { ...view, host_fingerprint: body.fingerprint }; return { body: view }; });
+
+  await page.goto('/settings/backups');
+  const section = page.getByRole('region', { name: 'Off-server copies (SFTP)' });
+  await expect(section.getByRole('button', { name: 'Turn on' })).toBeDisabled();
+  await section.getByLabel('SFTP host').fill('nas.example.local');
+  await section.getByLabel('User').fill('teamhub');
+  await section.getByLabel('Folder on the server').fill('/backups/teamhub');
+  await section.getByLabel('SFTP password').fill('sftp-secret');
+  await section.getByLabel('Encryption passphrase').fill('a long backup passphrase');
+  await section.getByLabel('Your TeamHub password').fill('Manager#pass1');
+  await section.getByRole('button', { name: 'Save' }).click();
+  await expect.poll(() => saved).toMatchObject({ host: 'nas.example.local', username: 'teamhub', remote_dir: '/backups/teamhub', sftp_password: 'sftp-secret', encryption_passphrase: 'a long backup passphrase', password: 'Manager#pass1' });
+
+  await section.getByRole('button', { name: 'Test connection' }).click();
+  await expect(section.getByText('SHA256:abc123')).toBeVisible();
+  await section.getByRole('button', { name: 'Trust this key' }).click();
+  await expect.poll(() => trusted).toBe('SHA256:abc123');
+  await section.getByRole('button', { name: 'Turn on' }).click();
+  await expect.poll(() => saved.enabled).toBe(true);
+  await expect(page.getByRole('button', { name: /Copy off-server/ })).toBeVisible();
+});

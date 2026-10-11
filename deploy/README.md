@@ -214,7 +214,19 @@ depth, have the app connect as a database user that is not a superuser (the
 database and has `CREATEDB` (for the backup check) is enough.
 
 Backups are stored in the `backups` Docker volume (`/app/server/backups`).
-Keep copies off this server too: download one regularly, or copy the volume
+Keep copies off this server too. The simplest way is **Off-server copies** on the
+same page: after each backup, TeamHub encrypts it (AES-256-GCM, with a passphrase
+you set) and uploads it over SFTP to a folder on another server, whose SSH host key
+you trust once ("Test connection" → "Trust this key"). Copies past the retention
+are removed from that server. Keep the passphrase in your password manager: to
+restore a copy, for example on a new server, decrypt it first (needs only Node.js):
+
+```bash
+BACKUP_PASSPHRASE='…' node deploy/decrypt-backup.js teamhub-YYYYmmdd-HHMMSS-scheduled.sql.gz.enc
+# → teamhub-YYYYmmdd-HHMMSS-scheduled.sql.gz, restorable as below or via Settings → Backups → Upload
+```
+
+Otherwise download a backup regularly, or copy the volume
 (`docker run --rm -v <project>_backups:/b -v "$PWD":/out alpine cp -r /b /out`).
 The files are the same gzipped SQL as the scripts below, so either can restore
 the other's backups. The scripts remain for use from the host, for example to

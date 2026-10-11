@@ -14,3 +14,15 @@
 @keyframes bk-spin { to { transform: rotate(-360deg); } }
 .bk-spin { animation: bk-spin 1.2s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .bk-spin { animation: none; } }
+
+/* Off-server copies */
+.bk-offsite-form { margin-top: 12px; }
+.bk-offsite .bk-port { max-width: 120px; }
+.bk-auth { display: grid; gap: 6px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--gray-200); border-radius: var(--radius); }
+.bk-auth legend { padding: 0 4px; font-size: 13px; font-weight: 600; }
+.bk-auth label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; margin-right: 14px; }
+.bk-auth label input { width: auto; min-height: 0; }
+.bk-auth textarea { font-family: ui-monospace, monospace; font-size: 12px; }
+.bk-fingerprint { display: grid; gap: 6px; justify-items: start; margin-top: 12px; }
+.bk-fingerprint p { margin: 0; }
+.bk-fingerprint code, .bk-offsite code { word-break: break-all; }

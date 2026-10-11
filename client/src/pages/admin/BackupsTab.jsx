@@ -1,5 +1,6 @@
+import { BackupOffsite } from './BackupOffsite';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, DatabaseBackup, Download, RotateCcw, ShieldCheck, Trash2, Upload, XCircle } from 'lucide-react';
+import { CheckCircle2, CloudUpload, DatabaseBackup, Download, RotateCcw, ShieldCheck, Trash2, Upload, XCircle } from 'lucide-react';
 import { api } from '../../api';
 import { Modal } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
@@ -62,6 +63,8 @@ export function BackupsTab() {
   const toast = useToast(), confirm = useConfirm();
   const [data, setData] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(''), [dialog, setDialog] = useState(null), [restarting, setRestarting] = useState(false);
   const fileInput = useRef(null);
+  const [offsiteOn, setOffsiteOn] = useState(false);
+  useEffect(() => { api.backupOffsite().then(v => setOffsiteOn(!!v.enabled)).catch(() => {}); }, []);
   const load = useCallback(async () => {
     try { setData(await api.backups()); setError(''); } catch (failure) { setError(failure.message); }
   }, []);
@@ -97,7 +100,7 @@ export function BackupsTab() {
       <div>
         <h3>Database backups</h3>
         <p className="text-sm">{latest ? <>Last backup {when(latest.created_at)} ({KINDS[latest.kind]?.toLowerCase()}, {size(latest.size_bytes)}).</> : 'No backups yet.'}{' '}
-          Backups are kept on the server, in the app&apos;s <code>backups</code> volume. Download one now and then to keep a copy somewhere else.</p>
+          Backups are kept on the server, in the app&apos;s <code>backups</code> volume{offsiteOn ? ', and an encrypted copy of each goes to your SFTP server.' : '. Turn on off-server copies below so a lost server does not lose them too.'}</p>
       </div>
       <div className="bk-actions">
         <button type="button" className="btn btn-primary btn-sm" disabled={!!busy || !data.tools || !!data.busy} onClick={() => run('backup', api.createBackup, row => `Backed up (${size(row.size_bytes)})`)}><DatabaseBackup size={14} /> {busy === 'backup' ? 'Backing up…' : 'Back up now'}</button>
@@ -109,6 +112,7 @@ export function BackupsTab() {
       </div>
     </section>
     <Schedule value={data.schedule} onSaved={schedule => setData(current => ({ ...current, schedule }))} />
+    <BackupOffsite onChanged={saved => setOffsiteOn(!!saved.enabled)} />
     <section className="card" aria-labelledby="bk-list-title">
       <h3 id="bk-list-title">Backups on this server</h3>
       {!data.rows.length ? <p className="text-muted text-sm">None yet. Use “Back up now”, or wait for the scheduled one.</p> :
@@ -125,6 +129,7 @@ export function BackupsTab() {
               <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || !data.tools} title="Restore it into a temporary database to prove it works" onClick={() => run(`verify-${row.file}`, () => api.verifyBackup(row.file), result => `The backup restores: ${result.tables} tables, ${result.users} users`)}>
                 <ShieldCheck size={13} /> {busy === `verify-${row.file}` ? 'Checking…' : 'Check'}</button>
               <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => setDialog({ type: 'download', row })}><Download size={13} /> Download</button>
+              {offsiteOn && <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} title="Encrypt it and copy it to the SFTP server now" onClick={() => run(`copy-${row.file}`, () => api.copyBackupOffsite(row.file), result => `Copied to ${result.remote}`)}><CloudUpload size={13} /> {busy === `copy-${row.file}` ? 'Copying…' : 'Copy off-server'}</button>}
               <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || !data.tools} onClick={() => setDialog({ type: 'restore', row })}><RotateCcw size={13} /> Restore</button>
               <button type="button" className="btn btn-ghost btn-sm" aria-label={`Delete backup from ${when(row.created_at)}`} disabled={!!busy} onClick={() => remove(row)}><Trash2 size={13} /></button>
             </div></td>

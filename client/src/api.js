@@ -474,6 +474,11 @@ export const api = {
   // Settings → Backups
   backups: options => req('GET','/settings/backups',undefined,options),
   saveBackupSchedule: body => req('PUT','/settings/backups/schedule',body),
+  backupOffsite: options => req('GET','/settings/backups/offsite',undefined,options),
+  saveBackupOffsite: body => req('PUT','/settings/backups/offsite',body),
+  testBackupOffsite: () => req('POST','/settings/backups/offsite/test',{}),
+  trustBackupOffsite: fingerprint => req('POST','/settings/backups/offsite/trust',{ fingerprint }),
+  copyBackupOffsite: file => req('POST',`/settings/backups/${encodeURIComponent(file)}/offsite`,{}),
   createBackup: () => req('POST','/settings/backups',{}),
   verifyBackup: file => req('POST',`/settings/backups/${encodeURIComponent(file)}/verify`,{}),
   restoreBackup: (file,password) => req('POST',`/settings/backups/${encodeURIComponent(file)}/restore`,{ confirm:'RESTORE',password }),

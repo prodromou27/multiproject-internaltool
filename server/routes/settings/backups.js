@@ -7,6 +7,7 @@ const db = require('../../db');
 const { requireManager } = require('../../middleware/auth');
 const { logAudit } = require('../../auditLog');
 const backups = require('../../databaseBackups');
+const offsite = require('../../backupOffsite');
 
 /* Settings → System → Backups. Managers only. Downloading, uploading and
    restoring a backup expose or replace the whole database, so they also ask
@@ -38,6 +39,45 @@ function toolsAvailable() {
 
 router.get('/backups', requireManager, async (req, res) => {
   res.json({ rows: backups.list(), schedule: await backups.schedule(), ...backups.status(), tools: await toolsAvailable() });
+});
+
+// Off-server copies over SFTP. Secrets are never sent back; changing them needs the manager's password.
+router.get('/backups/offsite', requireManager, async (req, res) => {
+  res.json(offsite.publicView(await offsite.config(), await offsite.status()));
+});
+
+router.put('/backups/offsite', requireManager, async (req, res) => {
+  try {
+    const secrets = ['sftp_password', 'private_key', 'key_passphrase', 'encryption_passphrase'].filter(key => req.body?.[key]);
+    if (secrets.length) await confirmPassword(req);
+    const saved = await offsite.saveConfig(req.body || {});
+    await logAudit(db, req, 'settings', 'backup_offsite', 'Off-server backup copies', 'backup_offsite_updated',
+      `enabled=${saved.enabled}; host=${saved.host || ''}; port=${saved.port}; folder=${saved.remote_dir}; changed=${secrets.join(',') || 'none'}`);
+    res.json(offsite.publicView(saved, await offsite.status()));
+  } catch (error) { send(res, error, 'Could not save off-server copy settings'); }
+});
+
+router.post('/backups/offsite/test', requireManager, async (req, res) => {
+  try { res.json(await offsite.testConnection()); } catch (error) { send(res, error, 'Could not connect to the SFTP server'); }
+});
+
+router.post('/backups/offsite/trust', requireManager, async (req, res) => {
+  try {
+    await offsite.trust(req.body?.fingerprint);
+    await logAudit(db, req, 'settings', 'backup_offsite', 'Off-server backup copies', 'backup_offsite_key_trusted', `fingerprint=${req.body.fingerprint}`);
+    res.json(offsite.publicView(await offsite.config(), await offsite.status()));
+  } catch (error) { send(res, error, 'Could not trust the key'); }
+});
+
+router.post('/backups/:file/offsite', requireManager, async (req, res) => {
+  try {
+    if (!backups.list().some(row => row.file === req.params.file)) throw Object.assign(new Error('Backup not found'), { status: 404 });
+    const plan = await backups.schedule();
+    const result = await offsite.copyBackup(req.params.file, { backupDir: backups.BACKUP_DIR, retentionDays: plan.retention_days, keepMin: plan.keep_min });
+    if (result.skipped) throw Object.assign(new Error(result.skipped), { status: 400 });
+    await logAudit(db, req, 'settings', 'database_backup', req.params.file, 'database_backup_copied_offsite', `remote=${result.remote}; size=${result.size_bytes}`);
+    res.json(result);
+  } catch (error) { send(res, error, 'Could not copy the backup off the server'); }
 });
 
 router.put('/backups/schedule', requireManager, async (req, res) => {

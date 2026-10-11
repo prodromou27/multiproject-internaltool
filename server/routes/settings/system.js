@@ -66,6 +66,12 @@ router.get('/deployment-health', requireManager, async (req, res) => {
     const backupAge = backup?.completed_at ? Date.now() - Date.parse(backup.completed_at) : Infinity;
     add('database_backup', 'Database backup', backupAge <= 36 * 60 * 60 * 1000 ? 'ok' : 'warning',
       backup ? `${backup.file || 'Backup'} completed ${backup.completed_at}; archive ${bytes(Number(backup.size_bytes) || 0)}.` : 'No successful backup has been recorded.');
+    const offsiteConfig = await operationalRecord('backup_offsite'), offsite = await operationalRecord('backup_offsite_status');
+    if (offsiteConfig?.enabled) {
+      const lastOk = offsite?.ok ? Date.now() - Date.parse(offsite.completed_at) : Infinity;
+      add('offsite_backup', 'Off-server backup copy', lastOk <= 36 * 60 * 60 * 1000 ? 'ok' : 'warning',
+        offsite?.ok ? `${offsite.file} copied to ${offsiteConfig.host} at ${offsite.completed_at}.` : offsite ? `The last copy failed: ${offsite.error}` : 'No backup has been copied off the server yet.');
+    }
     const restore = await operationalRecord('last_restore_verification');
     const restoreAge = restore?.completed_at ? Date.now() - Date.parse(restore.completed_at) : Infinity;
     add('restore_verification', 'Backup restore verification', restoreAge <= 31 * 24 * 60 * 60 * 1000 ? 'ok' : 'warning',

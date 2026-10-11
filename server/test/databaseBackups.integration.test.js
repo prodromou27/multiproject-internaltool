@@ -91,3 +91,25 @@ test('the schedule takes one backup a day once its time has passed', async () =>
   await db.prepare("UPDATE settings SET value=? WHERE key='backup_schedule'").run(JSON.stringify({ enabled: false, time: '00:00', retention_days: 14, keep_min: 3 }));
   assert.equal(await backups.runDue(new Date('2027-05-05T10:00:00Z')), null, 'off');
 });
+
+test('off-server copy settings: managers only, secrets need the password and are never sent back', async () => {
+  const base = '/api/settings/backups/offsite';
+  assert.equal((await api(base, { token: ids.tokenEnabled })).status, 403);
+  const view = await api(base, { token: ids.tokenManager });
+  assert.deepEqual([view.status, view.data.enabled, view.data.has_password], [200, false, false]);
+
+  await db.prepare('UPDATE users SET password=? WHERE id=?').run(bcrypt.hashSync('Manager#pass1', 4), ids.manager);
+  const body = { host: 'nas.example.local', username: 'teamhub', sftp_password: 'sftp-secret', encryption_passphrase: 'a long backup passphrase' };
+  assert.equal((await api(base, { method: 'PUT', token: ids.tokenManager, body })).status, 403, 'changing secrets needs the manager password');
+  const saved = await api(base, { method: 'PUT', token: ids.tokenManager, body: { ...body, password: 'Manager#pass1' } });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.deepEqual([saved.data.has_password, saved.data.has_passphrase, saved.data.host], [true, true, 'nas.example.local']);
+  assert.ok(!JSON.stringify(saved.data).includes('sftp-secret') && !JSON.stringify(saved.data).includes('a long backup passphrase'));
+  // Non-secret changes need no password; turning on needs a trusted key.
+  assert.equal((await api(base, { method: 'PUT', token: ids.tokenManager, body: { remote_dir: '/backups/teamhub' } })).status, 200);
+  const on = await api(base, { method: 'PUT', token: ids.tokenManager, body: { enabled: true } });
+  assert.deepEqual([on.status, /trust the server key/.test(on.data.error)], [400, true]);
+  assert.equal((await api(`${base}/trust`, { method: 'POST', token: ids.tokenManager, body: { fingerprint: 'SHA256:x' } })).status, 400);
+  const audit = await db.prepare("SELECT detail FROM audit_log WHERE action='backup_offsite_updated' ORDER BY id").all();
+  assert.ok(audit.some(a => /changed=sftp_password,encryption_passphrase/.test(a.detail)));
+});

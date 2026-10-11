@@ -108,7 +108,16 @@ async function backupNow({ kind = 'manual', userName = null } = {}, store = db) 
   writeMeta(file, { created_at: createdAt, kind, created_by: userName });
   await recordSetting('last_backup_status', { completed_at: createdAt, file, size_bytes: size, kind }, store);
   await prune(store);
+  await queueOffsiteCopy(file, store);
   return list().find(row => row.file === file);
+}
+
+/** Queues the off-server copy of a backup when copies are on (backupOffsite.js). */
+async function queueOffsiteCopy(file, store = db) {
+  try {
+    if (!(await require('./backupOffsite').config(store)).enabled) return;
+    await require('./backgroundJobs').enqueue('backup_offsite', { file }, { dedupeKey: `backup-offsite:${file}`, maxAttempts: 3 });
+  } catch (error) { console.error('[backup] could not queue the off-server copy:', error.message); }
 }
 
 /** Removes backups older than the retention, always keeping the newest `keep_min` (and every uploaded one). */
@@ -241,7 +250,7 @@ function start() {
 function stop() { if (timer) clearInterval(timer); timer = null; }
 
 module.exports = {
-  BACKUP_DIR, DEFAULT_SCHEDULE, list, backupNow, verify, restore, importUpload, remove, prune, schedule, validateSchedule, runDue, start, stop,
+  BACKUP_DIR, DEFAULT_SCHEDULE, list, backupNow, queueOffsiteCopy, verify, restore, importUpload, remove, prune, schedule, validateSchedule, runDue, start, stop,
   status: () => ({ busy, restoring }), isRestoring: () => restoring,
   exclusive, _setExit: fn => { exitAfterRestore = fn; }, _endRestoreForTests: () => { restoring = false; },
 };

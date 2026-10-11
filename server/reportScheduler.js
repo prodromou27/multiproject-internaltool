@@ -100,6 +100,10 @@ async function initScheduler() {
       const row=await backups.exclusive('backup',() => backups.backupNow({ kind:payload.kind==='scheduled' ? 'scheduled' : 'manual' }));
       return { file:row.file,size_bytes:row.size_bytes };
     },
+    backup_offsite: async payload => {
+      const backups=require('./databaseBackups'),plan=await backups.schedule();
+      return require('./backupOffsite').copyBackup(String(payload.file),{ backupDir:backups.BACKUP_DIR,retentionDays:plan.retention_days,keepMin:plan.keep_min });
+    },
     // Tickets linked engineers own in Request Tracker (any queue), for Workload.
     engineer_ticket_sync: async payload => {
       const owners=require('./ticketOwners');
