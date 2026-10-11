@@ -44,12 +44,15 @@ export default function OperationalFocus({ data, error, onRefresh }) {
     {/* Only counts that need someone; a wall of zeros hides the one that matters. */}
     {active.length ? <div className="focus-metrics">{active.map(metric => <Link key={metric.label} to={metric.link} className={`focus-metric${metric.urgent ? ' needs-attention' : ''}`}><strong>{metric.value}</strong><span>{metric.label}</span><ArrowRight size={14} aria-hidden="true" /></Link>)}</div>
       : <p className="focus-all-clear"><CheckCircle2 size={18} aria-hidden="true" /> Nothing needs you right now.</p>}
-    <div className="focus-columns">
-      <section className="card"><h3><CheckSquare size={16} /> Needs attention</h3><WorkList items={attention} empty="Nothing is due or overdue." /></section>
+    <div className={`focus-columns${attention.length ? '' : ' is-single'}`}>
+      {/* When nothing needs attention the line above says so; an empty card would only repeat it. */}
+      {attention.length > 0 && <section className="card"><h3><CheckSquare size={16} /> Needs attention</h3><WorkList items={attention} empty="Nothing is due or overdue." /></section>}
       <section className="card"><h3><CalendarDays size={16} /> Upcoming commitments</h3><WorkList items={upcoming} empty="No deadlines or visits in the next seven days." /><div className="focus-context">
-        <span>{count(data.tasks.waiting_customer) + count(data.projects.waiting_customer)} items waiting for customer</span>
-        <Link to="/tasks?filter=pending_approval">{data.tasks.awaiting_approval} tasks awaiting approval</Link>
-        {manager && <><Link to="/projects">{data.projects.stale} active projects without updates in seven days</Link><Link to="/maintenance-visits">{data.visits.customer_delivery_pending} visit reports awaiting customer delivery</Link></>}
+        {/* Only the ones that are not zero. */}
+        {count(data.tasks.waiting_customer) + count(data.projects.waiting_customer) > 0 && <Link to="/tasks?filter=waiting_customer">{count(data.tasks.waiting_customer) + count(data.projects.waiting_customer)} waiting for the customer</Link>}
+        {count(data.tasks.awaiting_approval) > 0 && <Link to="/tasks?filter=pending_approval">{count(data.tasks.awaiting_approval)} tasks awaiting approval</Link>}
+        {manager && count(data.projects.stale) > 0 && <Link to="/projects">{count(data.projects.stale)} active projects without updates in seven days</Link>}
+        {manager && count(data.visits.customer_delivery_pending) > 0 && <Link to="/maintenance-visits">{count(data.visits.customer_delivery_pending)} visit reports awaiting customer delivery</Link>}
       </div></section>
     </div>
   </section>;

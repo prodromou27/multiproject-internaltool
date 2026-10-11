@@ -13,10 +13,10 @@ export const PAGES = [
   { id: 'visits', path: '/maintenance-visits', label: 'Maintenance Visits', section: 'Work', icon: 'Wrench', roles: everyone, permission:'visits.access', badge: 'visits', description: 'Customer visits, engineer assignments and reports' },
   { id: 'activities', path: '/activity-log', label: 'Activity Log', section: 'Work', icon: 'ClipboardList', roles: ['manager', 'engineer', 'pm'], permission:'service_activities.access', feature: 'serviceActivity', description: 'Customer service work, evidence and follow-ups' },
   { id: 'approvals', path: '/approvals', label: 'Approvals', section: 'Work', icon: 'CheckCheck', roles: ['manager'], permission: 'managed_reports.review', description: 'Review project closures and managed-service reports' },
-  { id: 'responses', path: '/customer-responses', label: 'Customer Responses', section: 'Work', icon: 'MessageSquare', roles: everyone, description: 'Track work waiting on customer responses' },
   { id: 'customers', path: '/customers', label: 'Customers', section: 'Customers', icon: 'Building2', roles: ['manager'], permission:'customers.access', description: 'Customer profiles, service contracts and team access' },
-  { id: 'vulnerabilities', path: '/vulnerabilities', label: 'Vulnerabilities', section: 'Customers', icon: 'ShieldAlert', roles: everyone, description: 'CVEs for the vendors and products we support, and which customer devices they affect' },
-  { id: 'softwareVersions', path: '/software', label: 'Software versions', section: 'Customers', icon: 'PackageCheck', roles: everyone, description: 'The latest and recommended versions of the products we support (FortiOS, Check Point Jumbo…), and vendor news' },
+  { id: 'responses', path: '/customer-responses', label: 'Customer Responses', section: 'Customers', icon: 'MessageSquare', roles: everyone, description: 'Track work waiting on customer responses' },
+  { id: 'vulnerabilities', path: '/vulnerabilities', label: 'Vulnerabilities', section: 'Advisories', icon: 'ShieldAlert', roles: everyone, description: 'CVEs for the vendors and products we support, and which customer devices they affect' },
+  { id: 'softwareVersions', path: '/software', label: 'Software versions', section: 'Advisories', icon: 'PackageCheck', roles: everyone, description: 'The latest and recommended versions of the products we support (FortiOS, Check Point Jumbo…), and vendor news' },
   { id: 'workload', path: '/workload', label: 'Workload', section: 'Team & performance', icon: 'UsersIcon', roles: ['manager'], description: 'Engineer commitments and upcoming demand' },
   { id: 'skills', path: '/skills', label: 'Skill matrix', section: 'Team & performance', icon: 'GraduationCap', roles: ['manager'], permission:'skills.view', description: 'What the team knows per technology, and where knowledge rests on one person' },
   { id: 'reports', path: '/reports', label: 'Reports', section: 'Team & performance', icon: 'BarChart2', roles: ['manager'], permission:'reports.access', description: 'Operational summaries, delivery trends and reporting' },
@@ -43,7 +43,7 @@ export function visiblePages(userOrRole, serviceActivityEnabled = false) {
   return PAGES.filter(page => canAccessPage(page, userOrRole, serviceActivityEnabled));
 }
 
-export const MENU_SECTIONS = ['Home', 'Work', 'Customers', 'Team & performance', 'More'];
+export const MENU_SECTIONS = ['Home', 'Work', 'Customers', 'Advisories', 'Team & performance', 'More'];
 export const UNTITLED_SECTIONS = new Set(['Home', 'More']);
 
 // The sidebar: every page this person can open, grouped by section, in PAGES order.

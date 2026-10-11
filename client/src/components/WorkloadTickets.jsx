@@ -1,3 +1,4 @@
+import { fmtDate } from './Shared';
 import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -37,7 +38,7 @@ export default function WorkloadTickets() {
     <header className="wt-head">
       <div>
         <h2>By engineer</h2>
-        {data && <p className="text-muted text-sm">{data.from} to {data.to}. Tickets resolved in Request Tracker (any queue, not rejected), tasks completed, maintenance visits completed, service activities and time logged.</p>}
+        {data && <p className="text-muted text-sm">{fmtDate(data.from)} – {fmtDate(data.to)}. Tickets resolved in Request Tracker (any queue, not rejected), tasks completed, maintenance visits completed, service activities and time logged.</p>}
       </div>
       <div className="wt-periods" role="group" aria-label="Period">
         {PERIODS.map(value => <button type="button" key={value} className={`btn btn-sm ${months === value ? 'btn-primary' : 'btn-ghost'}`} aria-pressed={months === value} onClick={() => setMonths(value)}>

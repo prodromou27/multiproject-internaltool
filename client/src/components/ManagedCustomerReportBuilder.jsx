@@ -2,17 +2,44 @@ import { useEffect,useState } from 'react';
 import { CalendarCheck,CheckCircle2,Download,FileText,History,MailCheck,RefreshCw,RotateCcw,Send,Undo2,XCircle } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { fmtDate } from './Shared';
+import { fmtDate, fmtDateTime } from './Shared';
 import { reportDueLabel,reportDueTone } from './ReportDue';
 import { ToneBadge } from './EnterpriseUI';
 import { localDateISO } from '../utils/dates';
 import { useLiveRefresh } from '../live';
+import './ManagedCustomerReport.css';
 
 const SECTIONS=[['executive_summary','Executive summary'],['service_overview','Service overview'],['ticket_summary','Ticket summary'],['open_tickets','Open tickets'],['period_tickets','Period tickets'],['service_activities','Service activities'],['tasks','Tasks'],['projects','Projects'],['maintenance_visits','Maintenance Visits'],['recommendations','Recommendations'],['risks','Risks and concerns'],['upcoming_work','Upcoming work'],['management_notes','Management notes'],['changes','Changes and upgrades'],['resolved_tickets','Resolved tickets'],['assets','Assets and support status']];
 const NARRATIVES=[['executive_summary','Executive summary'],['key_highlights','Key highlights'],['risks_concerns','Risks / concerns'],['major_changes','Major changes'],['upcoming_activities','Upcoming activities'],['management_notes','Management notes']];
 const Metric=({ label,value }) => <div className="card u-8ebc437"><div className="text-muted text-sm">{label}</div><strong className="u-d8e25eb">{value ?? 0}</strong></div>;
 const ReportBarChart=({ title,rows }) => { const max=Math.max(1,...rows.map(row => Number(row.count)));return <div className="card u-287f770"><h3 className="u-05b83e9">{title}</h3><div className="u-ef7f9f1">{rows.map(row => <div key={row.name} className="u-edb8b70"><span title={row.name} className="u-fb7680b">{row.name}</span><span className="u-404250b"><span className="u-ddd3270" style={{ width:`${Number(row.count)/max*100}%` }} /></span><strong className="u-54c2afb">{row.count}</strong></div>)}</div></div>; };
 const ThroughputChart=({ trend }) => { const max=Math.max(1,...trend.points.flatMap(point => [point.created,point.resolved]));return <div className="card u-07cf80e"><div className="u-47f85a7"><h3 className="u-433de30">Ticket throughput</h3><span className="text-muted text-sm">Blue created · Green resolved</span></div><div className="u-e26516e" style={{ minWidth:Math.max(420,trend.points.length*18) }}>{trend.points.map(point => <div key={point.date} title={`${point.date}: ${point.created} created, ${point.resolved} resolved`} className="u-fd1dd50"><span className="u-8633faa" style={{ minHeight:point.created?3:0, height:`${point.created/max*100}%` }} /><span className="u-067b5e4" style={{ minHeight:point.resolved?3:0, height:`${point.resolved/max*100}%` }} /></div>)}</div><div className="text-muted text-sm u-e29980b"><span>{trend.points[0]?.date}</span><span>{trend.points.at(-1)?.date}</span></div></div>; };
+
+const FORMAT={ docx:'Word',xlsx:'Excel',pdf:'PDF' };
+const STEPS=[['draft','Draft'],['in_review','In review'],['approved','Approved'],['final','Final'],['sent','Sent to customer']];
+const STATUS_TONE={ draft:'neutral',in_review:'warning',approved:'info',final:'success',sent:'success' };
+const stepOf=report => (report.sent_at ? 4 : ({ draft:0,in_review:1,approved:2,final:3 })[report.status] ?? 0);
+const statusLabel=report => (report.sent_at ? 'Sent' : ({ draft:'Draft',in_review:'In review',approved:'Approved',final:'Final' })[report.status] || report.status);
+// Stored as UTC "YYYY-MM-DD HH:MM:SS"; read it as UTC, not local time.
+const utc=value => (value && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(value) ? `${value.replace(' ','T')}Z` : value);
+function groupByPeriod(rows) {
+  const groups=new Map();
+  for (const report of rows) {
+    const key=`${report.period_start}|${report.period_end}`;
+    if (!groups.has(key)) groups.set(key,{ key,from:report.period_start,to:report.period_end,reports:[] });
+    groups.get(key).reports.push(report);
+  }
+  return [...groups.values()].sort((a,b) => b.to.localeCompare(a.to) || b.from.localeCompare(a.from));
+}
+function nextStepText(report,canGenerate,canReview) {
+  const step=stepOf(report);
+  const text=step===0 ? (canGenerate ? 'Next: submit the draft for review.' : 'Waiting for the draft to be submitted.')
+    : step===1 ? (canReview ? 'Next: approve it, or return it with changes.' : 'Waiting for review.')
+      : step===2 ? (canReview ? 'Next: finalize the approved version.' : 'Approved; waiting to be finalized.')
+        : step===3 ? (canReview ? 'Next: send it to the customer, then mark it as sent.' : 'Final; waiting to be sent.')
+          : 'Done: the customer has the report.';
+  return <span className="rb-next-text">{text}</span>;
+}
 
 export default function ManagedCustomerReportBuilder({ customerId,range,due,onUsePeriod,onChanged }) {
   const { user }=useAuth();
@@ -115,45 +142,90 @@ export default function ManagedCustomerReportBuilder({ customerId,range,due,onUs
     catch(failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
-  const workflowButtons=report => <div className="flex gap-8 u-5a08a00">
+  const workflowButtons=(report,{ compact=false }={}) => <div className="rb-buttons">
     {report.status==='draft' && canGenerate && <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => updateWorkflow(report,'submit')}><Send size={13} /> Submit</button>}
     {report.status==='in_review' && canReview && <><button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => updateWorkflow(report,'approve')}><CheckCircle2 size={13} /> Approve</button><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => updateWorkflow(report,'reject')}><XCircle size={13} /> Return</button></>}
     {report.status==='approved' && canReview && <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => updateWorkflow(report,'finalize')}><CheckCircle2 size={13} /> Finalize</button>}
     {report.status==='final' && !report.sent_at && canReview && <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => setSending({ id:report.id,sent_to:'',sent_on:localDateISO(new Date()),note:'' })}><MailCheck size={13} /> Mark as sent</button>}
-    {report.sent_at && canReview && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => undoSent(report)}><Undo2 size={13} /> Not sent</button>}
-    {report.status==='final' && canReview && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => updateWorkflow(report,'reopen')}><RotateCcw size={13} /> Reopen</button>}
-    <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => toggleWorkflowHistory(report)}><History size={13} /> Activity</button>
+    {!compact && report.sent_at && canReview && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => undoSent(report)}><Undo2 size={13} /> Not sent</button>}
+    {!compact && report.status==='final' && canReview && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => updateWorkflow(report,'reopen')}><RotateCcw size={13} /> Reopen</button>}
+    {!compact && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => toggleWorkflowHistory(report)} aria-expanded={!!workflowEvents[report.id]}><History size={13} /> Activity</button>}
     <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => downloadArchived(report)}><Download size={13} /> Download</button>
   </div>;
 
   const periodChosen=due && range.from===due.from && range.to===due.to;
-  return <div className="u-eecfdda">
-    {due && due.status!=='not_yet_due' && <section className={`card report-due-banner${due.overdue ? ' is-overdue' : ''}`} aria-label="Report owed to the customer">
-      <CalendarCheck size={18} aria-hidden="true" />
-      <div><strong>{due.label} report</strong><p className="text-muted text-sm">{due.status==='sent' ? 'Sent to the customer.' : `Due with the customer by ${fmtDate(due.due_date)}.`}</p></div>
-      <ToneBadge tone={reportDueTone(due)}>{reportDueLabel(due)}</ToneBadge>
-      {due.status!=='sent' && onUsePeriod && (periodChosen ? <span className="text-muted text-sm">This period is selected.</span> : <button type="button" className="btn btn-ghost btn-sm" onClick={() => onUsePeriod(due)}>Use this period</button>)}
-    </section>}
-    <section className="card"><div className="u-5459a74"><div><h2 className="u-1444c6e">Managed Services report</h2><p className="text-muted text-sm mt-4">Choose customer-facing content for {range.from || 'the start date'} to {range.to || 'the end date'}, then review the calculated report data.</p></div><FileText size={20} color="var(--primary)" /></div>
-      {error && <div className="error-msg u-2b583d7" role="alert">{error}</div>}
-      <div className="form-group u-0fd8744"><label htmlFor="managed-report-template">Report template</label><select id="managed-report-template" value={templateId} onChange={event => chooseTemplate(event.target.value)}><option value="">Custom selection</option>{templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</select></div>
-      <div className="info-box u-87c136d">Generated files begin as drafts. Submit a draft for review, approve or return it, then finalize the approved version. Once you've sent the final version to the customer, mark it as sent.</div>
-      <fieldset className="u-9b32c1e"><legend className="u-3be1dd4">Included sections</legend><div className="u-e0076b8">{SECTIONS.map(([key,label]) => <label key={key} className="u-eefe62e"><input type="checkbox" checked={sections.includes(key)} onChange={() => toggle(key)} />{label}</label>)}</div></fieldset>
-      <div className="u-010e439">{NARRATIVES.map(([key,label]) => <div className="form-group" key={key}><label htmlFor={`report-${key}`}>{label}</label><textarea id={`report-${key}`} rows={4} maxLength={10000} value={narratives[key] || ''} onChange={event => setNarratives(current => ({ ...current,[key]:event.target.value }))} placeholder={`Add ${label.toLowerCase()} for this report...`} /></div>)}</div>
-      <div className="flex gap-8 u-62da067"><button type="button" className="btn btn-primary" disabled={busy || !sections.length} onClick={prepare}>{busy ? 'Working...' : preview ? <><RefreshCw size={14} /> Refresh Preview</> : <><FileText size={14} /> Prepare Preview</>}</button>{preview && canGenerate && <><button type="button" className="btn btn-ghost" disabled={busy} onClick={() => downloadReport('docx')}><Download size={14} /> Generate Word Draft</button><button type="button" className="btn btn-ghost" disabled={busy} onClick={() => downloadReport('xlsx')}><Download size={14} /> Export Excel Draft</button><button type="button" className="btn btn-ghost" disabled={busy} onClick={() => downloadReport('pdf')}><Download size={14} /> Generate PDF Draft</button></>}{preview && !canGenerate && <span className="text-muted text-sm">You can preview reports but need report generation permission to create a draft.</span>}</div>
+  const forPeriod=history.filter(report => report.period_start===range.from && report.period_end===range.to);
+  const furthest=forPeriod.reduce((best,report) => (!best || stepOf(report)>stepOf(best) ? report : best),null);
+  const groups=groupByPeriod(history);
+  const written=NARRATIVES.filter(([key]) => (narratives[key] || '').trim()).length;
+  const sentRow=report => sending?.id===report.id && <form className="rb-send" onSubmit={recordSent}>
+    <div className="form-group"><label htmlFor="report-sent-to">Sent to</label><input id="report-sent-to" required maxLength={500} value={sending.sent_to} onChange={event => setSending(current => ({ ...current,sent_to:event.target.value }))} placeholder="Names or email addresses" autoFocus /></div>
+    <div className="form-group"><label htmlFor="report-sent-on">Sent on</label><input id="report-sent-on" type="date" required max={localDateISO(new Date())} value={sending.sent_on} onChange={event => setSending(current => ({ ...current,sent_on:event.target.value }))} /></div>
+    <div className="form-group"><label htmlFor="report-sent-note">Note (optional)</label><input id="report-sent-note" maxLength={2000} value={sending.note} onChange={event => setSending(current => ({ ...current,note:event.target.value }))} placeholder="e.g. sent with the monthly invoice" /></div>
+    <div className="rb-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={busy}>Record as sent</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => setSending(null)}>Cancel</button></div>
+  </form>;
+
+  return <div className="rb">
+    {/* This period's report: owed when, and how far it has got. */}
+    <section className="card rb-status" aria-label="This period's report">
+      <div className="rb-status-head">
+        <div>
+          <h2>{due && periodChosen ? `${due.label} report` : `Report for ${fmtDate(range.from)} – ${fmtDate(range.to)}`}</h2>
+          <p className="text-muted text-sm">{due && periodChosen ? (due.status==='sent' ? 'Sent to the customer.' : `Due with the customer by ${fmtDate(due.due_date)}.`) : furthest ? `Latest: ${FORMAT[furthest.output_format] || furthest.output_format} v${furthest.report_version}, ${statusLabel(furthest).toLowerCase()}.` : 'No report made for this period yet.'}</p>
+        </div>
+        {due && periodChosen && <ToneBadge tone={reportDueTone(due)}>{reportDueLabel(due)}</ToneBadge>}
+        {due && due.status!=='sent' && due.status!=='not_yet_due' && !periodChosen && onUsePeriod && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onUsePeriod(due)}><CalendarCheck size={14} /> Go to the {due.label} report{due.overdue ? ' (overdue)' : ''}</button>}
+      </div>
+      <ol className="rb-steps" aria-label="Report steps">
+        {STEPS.map(([key,label],index) => { const reached=furthest && stepOf(furthest)>=index;return <li key={key} className={`${reached ? 'is-done' : ''}${furthest && stepOf(furthest)===index ? ' is-current' : ''}`} aria-current={furthest && stepOf(furthest)===index ? 'step' : undefined}><span aria-hidden="true">{reached ? <CheckCircle2 size={14} /> : index+1}</span>{label}</li>; })}
+      </ol>
+      {furthest && <div className="rb-next">{nextStepText(furthest,canGenerate,canReview)}{workflowButtons(furthest,{ compact:true })}</div>}
+      {furthest && sentRow(furthest)}
     </section>
-    {preview && <section><div className="u-2dd4861"><div><h2 className="u-1444c6e">Report preview</h2><p className="text-muted text-sm mt-4">{preview.customer.name} {' · '} {preview.period.from} to {preview.period.to}</p></div><span className="badge badge-done">Ready</span></div>
-      <div className="u-95ad883"><Metric label="Open tickets now" value={preview.overview.tickets?.open_now ?? 'Excluded'} /><Metric label="Tickets created" value={preview.overview.tickets?.created_period ?? 'Excluded'} /><Metric label="Service activities" value={preview.overview.activities.activities} /><Metric label="Service hours" value={preview.overview.activities.hours} /><Metric label="Open tasks" value={preview.overview.tasks.open_now} /><Metric label="Active projects" value={preview.overview.projects.active_now} /><Metric label="Maintenance Visits" value={preview.overview.visits.visits_period} /><Metric label="Open recommendations" value={preview.overview.recommendations.open_now} /></div>
-      {preview.tickets.enabled && sections.includes('ticket_summary') && <div className="u-615544c"><div className="u-4ddcfbe"><ThroughputChart trend={preview.tickets.analytics.trend} /></div><ReportBarChart title="Open by status" rows={preview.tickets.analytics.current.statuses} /><ReportBarChart title="Open by priority" rows={preview.tickets.analytics.current.priorities} /><ReportBarChart title="Open ticket aging" rows={preview.tickets.analytics.current.aging} /></div>}
-      <div className="card table-wrap"><table><thead><tr><th>Detail section</th><th>Available records</th><th>Included in preview</th><th>Coverage</th></tr></thead><tbody>{[['Open tickets',preview.tickets.open,preview.truncation.open_tickets],['Period tickets',preview.tickets.period,preview.truncation.period_tickets],['Service activities',preview.activities,preview.truncation.activities],['Tasks',preview.tasks,preview.truncation.tasks],['Projects',preview.projects,preview.truncation.projects],['Recommendations',preview.recommendations,preview.truncation.recommendations]].map(([label,data,truncated]) => <tr key={label}><td>{label}</td><td>{data.total ?? data.summary?.total ?? 0}</td><td>{data.rows?.length || 0}</td><td>{truncated ? 'First 100 shown' : 'Complete'}</td></tr>)}</tbody></table></div>
+
+    {/* Prepare: template, contents, written sections, preview, drafts. */}
+    <section className="card rb-build" aria-labelledby="rb-build-title">
+      <div className="rb-build-head"><h2 id="rb-build-title">Prepare the report</h2><FileText size={18} aria-hidden="true" /></div>
+      {error && <div className="error-msg" role="alert">{error}</div>}
+      <div className="form-group rb-template"><label htmlFor="managed-report-template">Template</label><select id="managed-report-template" value={templateId} onChange={event => chooseTemplate(event.target.value)}><option value="">Custom selection</option>{templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</select></div>
+      <fieldset className="rb-sections"><legend>Contents <span className="text-muted">{sections.length} of {SECTIONS.length}</span>
+        <button type="button" className="btn-link" onClick={() => setSections(SECTIONS.map(([key]) => key))}>All</button><button type="button" className="btn-link" onClick={() => setSections([])}>None</button></legend>
+        <div className="rb-section-grid">{SECTIONS.map(([key,label]) => <label key={key}><input type="checkbox" checked={sections.includes(key)} onChange={() => toggle(key)} /><span>{label}</span></label>)}</div>
+      </fieldset>
+      <details className="rb-written" open={written>0}>
+        <summary>Written sections <span className="text-muted">{written ? `${written} of ${NARRATIVES.length} written` : 'optional'}</span></summary>
+        <div className="rb-written-grid">{NARRATIVES.map(([key,label]) => <div className="form-group" key={key}><label htmlFor={`report-${key}`}>{label}</label><textarea id={`report-${key}`} rows={3} maxLength={10000} value={narratives[key] || ''} onChange={event => setNarratives(current => ({ ...current,[key]:event.target.value }))} /></div>)}</div>
+      </details>
+      <div className="rb-actions">
+        <button type="button" className="btn btn-primary" disabled={busy || !sections.length} onClick={prepare}>{busy ? 'Working…' : preview ? <><RefreshCw size={14} /> Refresh preview</> : <><FileText size={14} /> Preview the data</>}</button>
+        {preview && canGenerate && <><span className="rb-actions-label">Create a draft:</span>{['docx','xlsx','pdf'].map(format => <button key={format} type="button" className="btn btn-ghost" disabled={busy} onClick={() => downloadReport(format)}><Download size={14} /> {FORMAT[format]}</button>)}</>}
+      </div>
+      <p className="text-muted text-sm">Drafts go through review before the final version is sent: submit, approve (or return), finalize, then mark as sent.</p>
+    </section>
+
+    {preview && <section className="rb-preview" aria-labelledby="rb-preview-title"><div className="rb-preview-head"><h2 id="rb-preview-title">Preview</h2><p className="text-muted text-sm">{preview.customer.name} · {fmtDate(preview.period.from)} – {fmtDate(preview.period.to)}</p></div>
+      <div className="rb-metrics"><Metric label="Open tickets now" value={preview.overview.tickets?.open_now ?? 'Excluded'} /><Metric label="Tickets created" value={preview.overview.tickets?.created_period ?? 'Excluded'} /><Metric label="Service activities" value={preview.overview.activities.activities} /><Metric label="Service hours" value={preview.overview.activities.hours} /><Metric label="Open tasks" value={preview.overview.tasks.open_now} /><Metric label="Active projects" value={preview.overview.projects.active_now} /><Metric label="Maintenance visits" value={preview.overview.visits.visits_period} /><Metric label="Open recommendations" value={preview.overview.recommendations.open_now} /></div>
+      {preview.tickets.enabled && sections.includes('ticket_summary') && <div className="rb-charts"><div className="rb-chart-wide"><ThroughputChart trend={preview.tickets.analytics.trend} /></div><ReportBarChart title="Open by status" rows={preview.tickets.analytics.current.statuses} /><ReportBarChart title="Open by priority" rows={preview.tickets.analytics.current.priorities} /><ReportBarChart title="Open ticket aging" rows={preview.tickets.analytics.current.aging} /></div>}
+      <div className="card table-wrap"><table><thead><tr><th>Detail section</th><th>Records</th><th>In the report</th><th>Coverage</th></tr></thead><tbody>{[['Open tickets',preview.tickets.open,preview.truncation.open_tickets],['Period tickets',preview.tickets.period,preview.truncation.period_tickets],['Service activities',preview.activities,preview.truncation.activities],['Tasks',preview.tasks,preview.truncation.tasks],['Projects',preview.projects,preview.truncation.projects],['Recommendations',preview.recommendations,preview.truncation.recommendations]].map(([label,data,truncated]) => { return <tr key={label}><td>{label}</td><td>{data.total ?? data.summary?.total ?? 0}</td><td>{data.rows?.length || 0}</td><td>{truncated ? <ToneBadge tone="warning">First 100 shown</ToneBadge> : <ToneBadge tone="success">Complete</ToneBadge>}</td></tr>; })}</tbody></table></div>
     </section>}
-    <section><div className="u-761d3ad"><h2 className="u-1444c6e">Report history</h2><p className="text-muted text-sm mt-4">The latest 100 generated files are retained as immutable versions.</p></div>
-      <div className="card table-wrap"><table><thead><tr><th>Generated</th><th>Period</th><th>Format</th><th>Version</th><th>Workflow</th><th>Template</th><th>Generated by</th><th></th></tr></thead><tbody>{history.length ? history.flatMap(report => { const events=workflowEvents[report.id];return [<tr key={report.id}><td>{report.generated_at}</td><td>{report.period_start} to {report.period_end}</td><td>{report.output_format.toUpperCase()}</td><td>v{report.report_version}</td><td><span className={`badge ${report.status==='final'?'badge-done':'badge-progress'}`}>{report.sent_at ? 'sent' : report.status.replace('_',' ')}</span>{report.sent_at && <div className="text-sm mt-4">Sent {fmtDate(report.sent_at)} to {report.sent_to}{report.sent_by_name ? ` (recorded by ${report.sent_by_name})` : ''}{report.sent_note ? ` — ${report.sent_note}` : ''}</div>}{report.decision_comment && <div className="text-muted text-sm mt-4">{report.decision_comment}</div>}</td><td>{report.template_name || 'Custom'}</td><td>{report.generated_by_name || 'Former user'}</td><td>{workflowButtons(report)}</td></tr>,...(sending?.id===report.id ? [<tr key={`${report.id}-sent`}><td colSpan="8"><form className="report-sent-form" onSubmit={recordSent}>
-        <div className="form-group"><label htmlFor="report-sent-to">Sent to</label><input id="report-sent-to" required maxLength={500} value={sending.sent_to} onChange={event => setSending(current => ({ ...current,sent_to:event.target.value }))} placeholder="Names or email addresses" autoFocus /></div>
-        <div className="form-group"><label htmlFor="report-sent-on">Sent on</label><input id="report-sent-on" type="date" required max={localDateISO(new Date())} value={sending.sent_on} onChange={event => setSending(current => ({ ...current,sent_on:event.target.value }))} /></div>
-        <div className="form-group"><label htmlFor="report-sent-note">Note (optional)</label><input id="report-sent-note" maxLength={2000} value={sending.note} onChange={event => setSending(current => ({ ...current,note:event.target.value }))} placeholder="e.g. sent with the monthly invoice" /></div>
-        <div className="flex gap-8"><button type="submit" className="btn btn-primary btn-sm" disabled={busy}>Record as sent</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => setSending(null)}>Cancel</button></div>
-      </form></td></tr>] : []),...(events ? [<tr key={`${report.id}-workflow`}><td colSpan="8" className="u-85caad1"><strong className="u-6cb285c">Workflow activity</strong><div className="u-ae0e71a">{events.map(event => <div key={event.id} className="text-sm"><strong>{event.action}</strong> by {event.actor_name || 'Former user'} on {event.created_at}{event.comment ? ` — ${event.comment}` : ''}</div>)}</div></td></tr>] : [])]; }) : <tr><td colSpan="8" className="text-muted">No reports have been generated yet.</td></tr>}</tbody></table></div>
+
+    {/* History, one card per period: every file (Word, Excel, PDF and their versions) with its own review state. */}
+    <section className="rb-history" aria-labelledby="rb-history-title">
+      <div className="rb-preview-head"><h2 id="rb-history-title">Report history</h2><p className="text-muted text-sm">Every generated file is kept as it was (the latest 100).</p></div>
+      {!groups.length ? <p className="card text-muted">No reports have been generated yet.</p> : groups.map(group => <article key={group.key} className={`card rb-period${group.key===`${range.from}|${range.to}` ? ' is-selected' : ''}`}>
+        <header><h3>{fmtDate(group.from)} – {fmtDate(group.to)}</h3><span className="text-muted text-sm">{group.reports.length} file{group.reports.length===1 ? '' : 's'}</span></header>
+        <ul>{group.reports.map(report => { const events=workflowEvents[report.id];return <li key={report.id}>
+          <div className="rb-file">
+            <div className="rb-file-main"><strong>{FORMAT[report.output_format] || report.output_format} v{report.report_version}</strong><ToneBadge tone={STATUS_TONE[report.sent_at ? 'sent' : report.status] || 'neutral'}>{statusLabel(report)}</ToneBadge></div>
+            <div className="rb-file-meta text-sm text-muted">{report.template_name || 'Custom'} · {report.generated_by_name || 'Former user'} · {fmtDateTime(utc(report.generated_at))}
+              {report.sent_at && <> · sent to {report.sent_to} on {fmtDate(report.sent_at)}{report.sent_note ? ` (${report.sent_note})` : ''}</>}</div>
+            {report.decision_comment && <div className="rb-file-comment text-sm">“{report.decision_comment}”</div>}
+            {workflowButtons(report)}
+          </div>
+          {sentRow(report)}
+          {events && <div className="rb-events"><strong>Activity</strong>{events.map(event => <div key={event.id} className="text-sm">{event.action.replace('_',' ')} by {event.actor_name || 'Former user'} · {fmtDateTime(utc(event.created_at))}{event.comment ? ` — ${event.comment}` : ''}</div>)}</div>}
+        </li>; })}</ul>
+      </article>)}
     </section>
   </div>;
 }

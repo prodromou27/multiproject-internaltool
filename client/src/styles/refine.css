@@ -124,14 +124,15 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .operations-shell .sidebar { overflow: hidden; }
 .operations-shell .sidebar-primary-nav { min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--gray-300) transparent; }
 .operations-shell .sidebar nav a { min-height: 32px; padding: 6px 10px; margin-bottom: 1px; }
-.sidebar-group + .sidebar-group { margin-top: 4px; }
+.sidebar-group + .sidebar-group { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--gray-200); }
 .sidebar-group.is-untitled + .sidebar-group.is-untitled { padding-top: 6px; border-top: 1px solid var(--gray-200); }
 .operations-shell .sidebar-more-nav { flex: none; margin-bottom: 4px; padding: 0 0 4px; border-bottom: 1px solid var(--gray-200); }
 .sidebar-group-toggle {
   width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px;
-  margin: 2px 0 1px; padding: 4px 10px; border: 0; border-radius: var(--radius); background: transparent;
-  color: var(--gray-500); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; text-align: left;
+  margin: 0 0 2px; padding: 6px 10px; border: 0; border-radius: var(--radius); background: transparent;
+  color: var(--gray-800); font: inherit; font-size: 12.5px; font-weight: 700; letter-spacing: .01em; cursor: pointer; text-align: left;
 }
+.sidebar-group-toggle svg { color: var(--gray-500); }
 .sidebar-group-toggle:hover:not(:disabled) { background: var(--gray-100); color: var(--ink); }
 .sidebar-group-toggle:disabled { cursor: default; }
 .sidebar-group-toggle svg { transition: transform .15s ease; }
@@ -423,3 +424,27 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 /* The page is older than the server (appVersion.js). */
 .app-update-bar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 2000; display: flex; align-items: center; gap: 12px;
   max-width: calc(100vw - 32px); padding: 10px 14px; background: var(--gray-900, #111827); color: #fff; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.25); font-size: 13px; }
+
+/* ── Consistency (2026-10) ─────────────────────────────────────────────── */
+/* One tab style everywhere: the grey segmented tabs look like the underline tabs. */
+.ui-tabs { gap: 18px; padding: 0; margin-bottom: 16px; background: transparent; border-radius: 0; border-bottom: 1px solid var(--gray-200); }
+.ui-tabs button { padding: 9px 1px; margin-bottom: -1px; border-radius: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--gray-500); font-size: 13.5px; font-weight: 550; box-shadow: none; }
+.ui-tabs button:hover { color: var(--gray-800); }
+.ui-tabs button.is-active { background: transparent; color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; box-shadow: none; }
+
+/* List views (Tasks, Customers, Visits, Projects): one row of view tabs with
+   counts instead of wrapping pills; it scrolls sideways on narrow screens. */
+.list-filter-group { align-items: stretch; }
+.list-filter-group .list-filter-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.list-filter-group .filter-bar { flex-wrap: nowrap; gap: 18px; overflow-x: auto; border-bottom: 1px solid var(--gray-200); scrollbar-width: thin; }
+.list-filter-group .filter-pill { flex: none; padding: 8px 1px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--gray-600); }
+.list-filter-group .filter-pill:hover { background: transparent; color: var(--gray-900); border-color: transparent; }
+.list-filter-group .filter-pill.active { background: transparent; color: var(--primary); border-bottom-color: var(--primary); }
+.list-filter-group .filter-pill.overdue-pill { color: var(--danger); }
+.list-filter-group .filter-pill.overdue-pill.active { background: transparent; color: var(--danger); border-bottom-color: var(--danger); }
+
+/* Phones and narrow windows: the page title stays on the left, its buttons wrap in one row. */
+@media (max-width: 900px) {
+  .operations-page-header { align-items: stretch; }
+  .operations-page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+}

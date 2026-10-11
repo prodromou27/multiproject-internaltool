@@ -28,7 +28,7 @@ const MANAGER_STATUSES  = ['open', 'in_progress', 'waiting_customer', 'waiting_v
 const ENGINEER_STATUSES = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed'];
 const TASK_COLUMNS = [
   ['project', 'Project or customer'], ['status', 'Status'], ['priority', 'Priority'],
-  ['assignee', 'Assigned To'], ['deadline', 'Deadline'], ['update', 'Update Status'],
+  ['assignee', 'Assigned to'], ['deadline', 'Deadline'],
 ];
 
 /* ── Edit Task Modal ──────────────────────────────────────── */
@@ -96,7 +96,7 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
         </div>
         {isManager && (
           <div className="form-group">
-            <label>Assigned To</label>
+            <label>Assigned to</label>
             <select value={form.assigned_to} onChange={set('assigned_to')}>
               <option value="">Unassigned</option>
               {engineers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -520,9 +520,9 @@ export default function Tasks() {
                 {visibleColumns.has('project') && <th><button className="table-sort" onClick={() => changeSort('project')}>Project <ArrowUpDown size={11} /></button></th>}
                 {visibleColumns.has('status') && <th><button className="table-sort" onClick={() => changeSort('status')}>Status <ArrowUpDown size={11} /></button></th>}
                 {visibleColumns.has('priority') && <th><button className="table-sort" onClick={() => changeSort('priority')}>Priority <ArrowUpDown size={11} /></button></th>}
-                {visibleColumns.has('assignee') && <th><button className="table-sort" onClick={() => changeSort('assignee')}>Assigned To <ArrowUpDown size={11} /></button></th>}
+                {visibleColumns.has('assignee') && <th><button className="table-sort" onClick={() => changeSort('assignee')}>Assigned to <ArrowUpDown size={11} /></button></th>}
                 {visibleColumns.has('deadline') && <th><button className="table-sort" onClick={() => changeSort('deadline')}>Deadline <ArrowUpDown size={11} /></button></th>}
-                {visibleColumns.has('update') && <th>Update Status</th>}<th></th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -542,27 +542,22 @@ export default function Tasks() {
                     ) : null}
                   </td>
                   {visibleColumns.has('project') && <td>{t.project_title || projects.find(p => p.id === t.project_id)?.title || (t.customer_name ? <>{t.customer_name} <span className="text-muted text-sm">(customer)</span></> : <span className="text-muted">—</span>)}</td>}
-                  {visibleColumns.has('status') && <td><StatusBadge entityType="task" s={t.status} /></td>}
-                  {visibleColumns.has('priority') && <td><PriorityBadge p={t.priority} /></td>}
-                  {visibleColumns.has('assignee') && <td>{t.assigned_to_name || (t.team_name ? <>{t.team_name} <span className="text-muted text-sm">(team)</span></> : '—')}</td>}
-                  {visibleColumns.has('deadline') && <td className={isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status) ? 'overdue' : ''}>{fmtDate(t.deadline)}</td>}
-                  {visibleColumns.has('update') && <td>
-                    <select
+                  {visibleColumns.has('status') && <td>{isManager || t.assigned_to === user.id || t.assigned_to == null
+                    ? <select
                       value={t.status}
                       onChange={e => handleStatusChange(t, e.target.value)}
                       className={["u-33842f4", (t.status === 'waiting_customer' ? 'u-ec3ed4f' : '')].filter(Boolean).join(' ')}
-                      disabled={!isManager && t.assigned_to !== user.id}
+                      aria-label={`Status of ${t.title}`}
                     >
                       {(isManager ? managerStatuses : engineerStatuses).map(s => (
                         <option key={s} value={s}>{STATUS_LABELS[s]}</option>
                       ))}
                     </select>
-                    {(t.status === 'waiting_customer' || t.status === 'waiting_vendor') && t.pending_from_customer && (
-                      <div className={["u-c37f0d4", (t.status === 'waiting_vendor' ? 'u-2c20239' : 'u-029526a')].filter(Boolean).join(' ')}>
-                        ⏳ {t.pending_from_customer}
-                      </div>
-                    )}
-                  </td>}
+                    : <StatusBadge entityType="task" s={t.status} />}</td>}
+                  {visibleColumns.has('priority') && <td><PriorityBadge p={t.priority} /></td>}
+                  {visibleColumns.has('assignee') && <td>{t.assigned_to_name || (t.team_name ? <>{t.team_name} <span className="text-muted text-sm">(team)</span></> : '—')}</td>}
+                  {visibleColumns.has('deadline') && <td className={isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status) ? 'overdue' : ''}>{fmtDate(t.deadline)}</td>}
+
                   <td className="text-center">
                     {(isManager || t.assigned_to === user.id) && (
                       <button

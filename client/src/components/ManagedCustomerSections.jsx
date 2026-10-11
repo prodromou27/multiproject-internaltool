@@ -2,7 +2,7 @@ import { useEffect,useMemo,useState } from 'react';
 import { ExternalLink,RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import ManagedCustomerReportBuilder from './ManagedCustomerReportBuilder';
-import { fmtDateTime } from './Shared';
+import { fmtDate, fmtDateTime } from './Shared';
 import { Surface } from './EnterpriseUI';
 import { localDateISO } from '../utils/dates';
 import { useLiveRefresh } from '../live';
@@ -78,7 +78,7 @@ function TicketAnalytics({ id,range,refresh }) {
   if (!data) return <div className="skeleton-table"><span /><span /></div>;
   return <div className="u-13f24e7"><h2 className="u-afc5f97">Current ticket backlog</h2><div className="u-e49cec5"><Metric label="Total open" value={data.current.total_open} /><Metric label="High / critical" value={data.current.priorities.filter(row => ['High','Critical'].includes(row.name)).reduce((sum,row) => sum+row.count,0)} /></div>
     <div className="u-b5f0188"><Distribution title="Open by status" rows={data.current.statuses} /><Distribution title="Open by priority" rows={data.current.priorities} /><Distribution title="Open ticket aging" rows={data.current.aging} /><Distribution title="Open by owner" rows={data.current.owners} /></div>
-    <h2 className="u-afc5f97">Selected period, {data.period.from} to {data.period.to}</h2><div className="u-43e3628"><Metric label="Created" value={data.period.created} /><Metric label="Resolved" value={data.period.resolved} /><Metric label="Closed" value={data.period.closed} /><Metric label="Rejected" value={data.period.rejected} /><Metric label="SLA breaches" value={data.period.sla_breaches} /></div>
+    <h2 className="u-afc5f97">Selected period, {fmtDate(data.period.from)} – {fmtDate(data.period.to)}</h2><div className="u-43e3628"><Metric label="Created" value={data.period.created} /><Metric label="Resolved" value={data.period.resolved} /><Metric label="Closed" value={data.period.closed} /><Metric label="Rejected" value={data.period.rejected} /><Metric label="SLA breaches" value={data.period.sla_breaches} /></div>
   </div>;
 }
 

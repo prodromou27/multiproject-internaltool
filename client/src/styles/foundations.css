@@ -31,7 +31,7 @@ p { text-wrap: pretty; }
 input, select, textarea { border-width: 1px; min-height: 36px; }
 input:hover:not(:focus):not(:disabled), select:hover:not(:focus):not(:disabled), textarea:hover:not(:focus):not(:disabled) { border-color: var(--gray-300); }
 input:disabled, select:disabled, textarea:disabled { opacity: .6; cursor: not-allowed; }
-input[type="checkbox"], input[type="radio"] { min-height: 0; accent-color: var(--primary); }
+input[type="checkbox"], input[type="radio"] { width: auto; flex: none; min-height: 0; padding: 0; accent-color: var(--primary); }
 textarea { min-height: 80px; }
 
 /* ── Tables ──────────────────────────────────────────────── */

@@ -43,15 +43,17 @@ test('the menu shows every page a person can open, in a few groups', () => {
   const menu = user => menuGroups(user, true).map(group => [group.section, group.pages.map(page => page.id)]);
   assert.deepEqual(menu({ role: 'manager', permissions: {} }), [
     ['Home', ['dashboard', 'calendar', 'reminders']],
-    ['Work', ['projects', 'tasks', 'visits', 'activities', 'approvals', 'responses']],
-    ['Customers', ['customers', 'vulnerabilities', 'softwareVersions']],
+    ['Work', ['projects', 'tasks', 'visits', 'activities', 'approvals']],
+    ['Customers', ['customers', 'responses']],
+    ['Advisories', ['vulnerabilities', 'softwareVersions']],
     ['Team & performance', ['workload', 'skills', 'reports', 'kpiManagement', 'scorecards', 'sla']],
     ['More', ['notes', 'settings']],
   ]);
   assert.deepEqual(menu({ role: 'engineer', permissions: {} }), [
     ['Home', ['dashboard', 'myWork', 'calendar', 'reminders']],
-    ['Work', ['projects', 'tasks', 'visits', 'activities', 'responses']],
-    ['Customers', ['vulnerabilities', 'softwareVersions']],
+    ['Work', ['projects', 'tasks', 'visits', 'activities']],
+    ['Customers', ['responses']],
+    ['Advisories', ['vulnerabilities', 'softwareVersions']],
     ['More', ['notes']],
   ]);
   // Every reachable page is in the menu, or lights up a parent that is.
@@ -60,7 +62,7 @@ test('the menu shows every page a person can open, in a few groups', () => {
     for (const page of visiblePages(role, true).filter(page => !page.hidden))
       assert.ok(inMenu.has(page.id) || inMenu.has(page.parent), `${role}: ${page.id} is reachable from the menu`);
   }
-  assert.deepEqual(menuGroups('engineer', false).find(group => group.section === 'Work').pages.map(page => page.id), ['projects', 'tasks', 'visits', 'responses']);
+  assert.deepEqual(menuGroups('engineer', false).find(group => group.section === 'Work').pages.map(page => page.id), ['projects', 'tasks', 'visits']);
   assert.equal(menuGroups('manager').find(group => group.section === 'Home').titled, false);
   assert.equal(pageForPath('/settings/users').parent, 'settings');
   assert.equal(pageForPath('/service-operations').parent, 'reports');
