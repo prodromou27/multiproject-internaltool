@@ -4,11 +4,23 @@ const { requireAuth, requireManager } = require('../middleware/auth');
 const { logAudit } = require('../auditLog');
 const sync = require('../software/sync');
 const sources = require('../software/sources');
+const { hasPermission } = require('../permissions');
+const { assetSoftwareStatus } = require('../softwareCompliance');
 
 /* The Software versions page. Everyone sees the latest and recommended
    versions of the products we support, what changed recently and news from
    the feeds; managers choose the products, sources and feeds. */
 router.use(requireAuth);
+
+// Customer assets running older software, across customers. Needs asset access.
+router.get('/estate', async (req, res) => {
+  if (!await hasPermission(req.user, 'assets.access')) return res.status(403).json({ error: 'You do not have permission to see customer assets' });
+  const { products, assets } = await assetSoftwareStatus();
+  const counts = assets.reduce((acc, a) => ({ ...acc, [a.status]: (acc[a.status] || 0) + 1 }), {});
+  const attention = assets.filter(a => ['behind', 'end_of_life'].includes(a.status))
+    .sort((a, b) => (a.status === 'end_of_life' ? -1 : 0) - (b.status === 'end_of_life' ? -1 : 0) || (b.behind || 0) - (a.behind || 0) || a.customer_name.localeCompare(b.customer_name));
+  res.json({ products, checked: assets.length, counts, attention: attention.slice(0, 500) });
+});
 
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const send = (res, error, fallback) => res.status(error.status || 500).json({ error: error.status ? error.message : fallback });

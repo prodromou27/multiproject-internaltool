@@ -11,6 +11,7 @@ const { requireAuth } = require('../middleware/auth');
 const { hasPermission } = require('../permissions');
 const { isManagedServicesEngineer } = require('../customerAccess');
 const { encrypt,decrypt } = require('../fieldCipher');
+const { assetSoftwareStatus } = require('../softwareCompliance');
 const { logAudit } = require('../auditLog');
 const fileCipher = require('../cipher');
 const { uploadDir,upload,safeStoredName,safeDownloadName,hasAllowedMagic } = require('../uploadUtils');
@@ -39,7 +40,7 @@ function requireAssetAccessMiddleware(req,res,next) {
   return requireAuth(req,res,async () => {
     try {
       if (await hasPermission(req.user,'assets.access')) return next();
-      const teamRoute=req.path==='/' && ['GET','POST'].includes(req.method);
+      const teamRoute=(req.path==='/' && ['GET','POST'].includes(req.method)) || (req.path==='/software-status' && req.method==='GET');
       if (teamRoute && positiveId(req.params.id) && await isManagedServicesEngineer(req.user,Number(req.params.id))) return next();
       return res.status(403).json({ error: 'You do not have permission to perform this action' });
     } catch (error) { next(error); }
@@ -157,6 +158,12 @@ router.post('/import',importUpload.single('file'),async (req,res) => {
   try { await db.transaction(async tx => { for(const record of records) await insertRecord(tx,req,Number(req.params.id),record.value); }); }
   catch(error) { if(error.code==='23505') return res.status(409).json({ error:'The import contains an asset tag already used for this customer, or repeats a tag' });throw error; }
   res.status(201).json({ imported:records.length });
+});
+
+// Software status of this customer's assets against the Software versions page (softwareCompliance.js).
+router.get('/software-status',async (req,res) => {
+  const { products,assets }=await assetSoftwareStatus({ customerId:Number(req.params.id) });
+  res.json({ products,assets:assets.map(({ customer_name:_customer,...asset }) => asset) });
 });
 
 router.get('/',async (req,res) => {

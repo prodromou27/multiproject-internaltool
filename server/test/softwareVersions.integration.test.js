@@ -54,3 +54,27 @@ test('managers add a product whose versions they enter by hand', async () => {
   assert.equal((await api('/api/software/admin/feeds', { method: 'POST', token: ids.tokenManager, body: { name: 'Local', url: 'http://127.0.0.1/feed' } })).status, 400, 'feeds must be public https addresses');
   assert.equal((await api(`/api/software/admin/products/${created.data.id}`, { method: 'DELETE', token: ids.tokenManager })).status, 200);
 });
+
+test('customer assets running older software are found, per customer and across customers', async () => {
+  const { encrypt } = require('../fieldCipher');
+  const fortios = await db.prepare("SELECT id FROM software_products WHERE source = 'fortinet'").get();
+  await db.prepare("UPDATE software_products SET asset_vendor = 'Fortinet', enabled = 1 WHERE id = ?").run(fortios.id);
+  await db.exec(`DELETE FROM software_releases WHERE product_id = ${Number(fortios.id)}`);
+  await db.prepare('INSERT INTO software_releases (product_id, branch, latest_version) VALUES (?, ?, ?)').run(fortios.id, '7.4', '7.4.8');
+  const add = (name, version, lifecycle = 'active') => db.prepare(`INSERT INTO customer_assets (customer_id, name, asset_type, vendor, model, software_version, lifecycle_status, created_by)
+    VALUES (?, ?, 'firewall', ?, ?, ?, ?, ?)`).run(ids.customer, encrypt(name), encrypt('Fortinet'), encrypt('FortiGate 100F'), encrypt(version), lifecycle, ids.manager);
+  await add('FW-OLD', '7.4.3'); await add('FW-NEW', '7.4.8'); await add('FW-ODD', '6.4.15'); await add('FW-SPARE', '7.4.1', 'spare');
+
+  const res = await api(`/api/customers/${ids.customer}/assets/software-status`, { token: ids.tokenManager });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  const byName = Object.fromEntries(res.data.assets.map(a => [a.name, a]));
+  assert.deepEqual([byName['FW-OLD'].status, byName['FW-OLD'].behind, byName['FW-OLD'].latest], ['behind', 5, '7.4.8']);
+  assert.deepEqual([byName['FW-NEW'].status, byName['FW-ODD'].status], ['current', 'unknown_line']);
+  assert.equal(byName['FW-SPARE'], undefined, 'spares are not checked');
+
+  const estate = await api('/api/software/estate', { token: ids.tokenManager });
+  assert.equal(estate.status, 200);
+  assert.deepEqual(estate.data.attention.map(a => [a.name, a.customer_name]), [['FW-OLD', 'Acme Corp']]);
+  assert.equal(estate.data.counts.current, 1);
+  assert.equal((await api('/api/software/estate', { token: ids.tokenEnabled })).status, 403);
+});

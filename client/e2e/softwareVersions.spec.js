@@ -34,6 +34,10 @@ test('managers follow a product entered by hand and add a news feed', async ({ p
   let products = [{ id: 1, name: 'FortiOS', source: 'fortinet', enabled: true, config: { product: 'fortigate', document: 'fortios-release-notes', eol_slug: 'fortios', branches: [] }, releases: [] }];
   let created = null, release = null, feed = null;
   api.override('GET /api/software', () => ({ body: page1 }));
+  api.override('GET /api/software/estate', () => ({ body: { products: 2, checked: 3, counts: { current: 1, behind: 1, end_of_life: 1 }, attention: [
+    { id: 7, customer_id: 12, customer_name: 'Northwind Logistics', name: 'FW-HQ-01', product_name: 'FortiOS', software_version: '7.4.3', status: 'behind', behind: 5, behind_unit: 'patch', latest: '7.4.8', line: '7.4' },
+    { id: 8, customer_id: 14, customer_name: 'Contoso Retail', name: 'CP-GW', product_name: 'Check Point Jumbo Hotfix', software_version: 'R81.10 Take 150', status: 'end_of_life', line: 'R81.10' },
+  ] } }));
   api.override('GET /api/software/admin', () => ({ body: { products, feeds: feed ? [{ id: 9, ...feed, enabled: true }] : [], sources: [] } }));
   api.override('POST /api/software/admin/products', ({ body }) => { created = body; products = [...products, { id: 5, ...body, releases: [] }]; return { status: 201, body: { id: 5, check_error: null } }; });
   api.override('PUT /api/software/admin/products/5/releases', ({ body }) => { release = body; return { body: { ok: true } }; });
@@ -61,4 +65,19 @@ test('managers follow a product entered by hand and add a news feed', async ({ p
   await feedDialog.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Saved: 3 matching items')).toBeVisible();
   expect(feed).toMatchObject({ name: 'CheckMates announcements', keywords: 'Jumbo, R81.20' });
+});
+
+test('managers see which customer devices run older versions', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/software', () => ({ body: page1 }));
+  api.override('GET /api/software/estate', () => ({ body: { products: 2, checked: 3, counts: { current: 1, behind: 1, end_of_life: 1 }, attention: [
+    { id: 7, customer_id: 12, customer_name: 'Northwind Logistics', name: 'FW-HQ-01', product_name: 'FortiOS', software_version: '7.4.3', status: 'behind', behind: 5, behind_unit: 'patch', latest: '7.4.8', line: '7.4' },
+    { id: 8, customer_id: 14, customer_name: 'Contoso Retail', name: 'CP-GW', product_name: 'Check Point Jumbo Hotfix', software_version: 'R81.10 Take 150', status: 'end_of_life', line: 'R81.10' },
+  ] } }));
+  await page.goto('/software');
+  const panel = page.getByRole('region', { name: 'Customer devices on older versions' });
+  await expect(panel).toContainText('3 devices checked: 1 up to date, 1 behind, 1 on end-of-life versions.');
+  await expect(panel.getByRole('row', { name: /FW-HQ-01/ })).toContainText('5 patches behind · latest 7.4.8');
+  await expect(panel.getByRole('row', { name: /CP-GW/ })).toContainText('R81.10 is end of life');
+  await expect(panel.getByRole('link', { name: 'Northwind Logistics' })).toHaveAttribute('href', '/customers/12/service-profile?section=assets');
 });

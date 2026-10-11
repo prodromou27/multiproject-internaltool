@@ -247,6 +247,8 @@ export const api = {
   updateCustomerContract: (id, contractId, data) => req('PUT', `/customers/${id}/contracts/${contractId}`, data),
   renewCustomerContract: (id, contractId, data) => req('POST', `/customers/${id}/contracts/${contractId}/renew`, data),
   deleteCustomerContract: (id, contractId) => req('DELETE', `/customers/${id}/contracts/${contractId}`),
+  customerAssetSoftwareStatus: (id, options) => req('GET', `/customers/${id}/assets/software-status`, undefined, options),
+  softwareEstate: (options) => req('GET', '/software/estate', undefined, options),
   customerAssets: (id, params = {}, options) => req('GET', `/customers/${id}/assets?` + new URLSearchParams(params).toString(), undefined, options),
   createCustomerAsset: (id, body) => req('POST', `/customers/${id}/assets`, body),
   updateCustomerAsset: (id, assetId, body) => req('PUT', `/customers/${id}/assets/${assetId}`, body),
