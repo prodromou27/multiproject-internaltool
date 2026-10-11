@@ -1,8 +1,10 @@
 const { contractsFor, currentContract } = require('../customerContracts');
+const { COLUMNS: IMPORT_COLUMNS, parseCsv, importCustomers } = require('../customerImport');
 const router  = require('express').Router();
 const multer  = require('multer');
 const ExcelJS = require('exceljs');
 const db = require('../db');
+const { logAudit } = require('../auditLog');
 const { requireAuth, requireManager, requireManagerOrPlanner, requirePermission } = require('../middleware/auth');
 const { encryptCustomer, decryptCustomer } = require('../fieldCipher');
 const { canAccessCustomer,positiveId }=require('../customerAccess');
@@ -95,11 +97,11 @@ router.get('/template/download', requireManagerOrPlanner, async (req, res) => {
   const workbook  = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Customers');
   [
-    ['name*', 'contact_name', 'contact_email', 'contact_phone', 'address', 'notes'],
-    ['Acme Corp', 'Jane Smith', 'jane@acme.com', '+1-555-0100', '123 Main St', 'VIP customer'],
-    ['Beta Ltd',  'Bob Jones',  'bob@beta.com',  '+1-555-0200', '456 Oak Ave', ''],
+    IMPORT_COLUMNS,
+    ['Acme Corp', 'ACME', 'Jane Smith', 'jane@acme.com', '+357 22 000000', 'Jane Smith', 'Nicosia', '1 Main St', 'VIP customer', 'yes', 'Security Team'],
+    ['Beta Ltd', '', 'Bob Jones', 'bob@beta.com', '', '', 'Limassol', '', '', 'no', ''],
   ].forEach(row => worksheet.addRow(row));
-  [24, 20, 26, 18, 30, 30].forEach((w, i) => { worksheet.getColumn(i + 1).width = w; });
+  IMPORT_COLUMNS.forEach((_, i) => { worksheet.getColumn(i + 1).width = i === 0 ? 26 : 18; });
   const buf = await workbook.xlsx.writeBuffer();
   res.setHeader('Content-Disposition', 'attachment; filename="customers_template.xlsx"');
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -202,75 +204,29 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
 // ── Import — MUST be before /:id (it's POST so no conflict, but kept here for clarity) ─
 router.post('/import', requireManagerOrPlanner, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-
-  const workbook = new ExcelJS.Workbook();
+  // Excel files are zip archives (start with PK); anything else is read as CSV.
+  const isCsv = /\.csv$/i.test(req.file.originalname || '') || req.file.buffer.subarray(0, 2).toString('latin1') !== 'PK';
+  let rows;
   try {
-    require('../uploadUtils').assertSafeSpreadsheet(req.file.buffer);
-    await workbook.xlsx.load(req.file.buffer);
+    if (isCsv) {
+      if (req.file.buffer.includes(0)) return res.status(400).json({ error: 'Could not read the file. Use .xlsx or .csv' });
+      rows = parseCsv(req.file.buffer.toString('utf8'));
+    } else {
+      require('../uploadUtils').assertSafeSpreadsheet(req.file.buffer);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(req.file.buffer);
+      rows = sheetToJson(workbook.worksheets[0]);
+    }
   } catch (e) {
-    return res.status(400).json({ error: e.status === 400 ? e.message : 'Could not parse file. Use .xlsx format' });
+    return res.status(400).json({ error: e.status === 400 ? e.message : 'Could not read the file. Use .xlsx or .csv' });
   }
-
-  const sheet = workbook.worksheets[0];
-  const rows  = sheetToJson(sheet);
-
   if (!rows.length) return res.status(400).json({ error: 'File is empty or has no data rows' });
   if (rows.length > 5000) return res.status(400).json({ error: 'Maximum 5000 rows per import. Please split your file.' });
 
-  const normalize = (obj) => {
-    const out = {};
-    for (const [k, v] of Object.entries(obj)) {
-      out[k.replace(/\*/g, '').trim().toLowerCase().replace(/\s+/g, '_')] = typeof v === 'string' ? v.trim() : String(v ?? '').trim();
-    }
-    return out;
-  };
-
-  // Per-row autocommit (not one big transaction): this import is partial-success
-  // by design — invalid rows are skipped and reported. A single Postgres
-  // transaction would abort entirely on the first failing row.
-  const existingNames = new Set((await db.prepare('SELECT name FROM customers').all())
-    .map(decryptCustomer)
-    .map(c => c.name?.toLowerCase())
-    .filter(Boolean));
-
-  let imported = 0;
-  const errors = [];
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = normalize(rows[i]);
-    const rowNum = i + 2;
-    if (!row.name) {
-      errors.push({ row: rowNum, error: 'Missing required field: name' });
-      continue;
-    }
-    const normalizedName = row.name.toLowerCase();
-    if (existingNames.has(normalizedName)) {
-      errors.push({ row: rowNum, error: `Customer "${row.name}" already exists — skipped` });
-      continue;
-    }
-    try {
-      const enc = encryptCustomer({
-        name:          row.name,
-        contact_name:  row.contact_name  || null,
-        contact_email: row.contact_email || null,
-        contact_phone: row.contact_phone || null,
-        address:       row.address       || null,
-        notes:         row.notes         || null,
-      });
-      await db.transaction(async tx => {
-        const created=await tx.prepare('INSERT INTO customers (name, contact_name, contact_email, contact_phone, address, notes, created_by) VALUES (?,?,?,?,?,?,?)').run(
-          enc.name, enc.contact_name, enc.contact_email, enc.contact_phone,enc.address, enc.notes, req.user.id
-        );
-        await replaceCustomerSearchDocument(tx,{ id:created.lastInsertRowid,name:row.name,contact_name:row.contact_name,contact_email:row.contact_email,address:row.address });
-      });
-      existingNames.add(normalizedName);
-      imported++;
-    } catch (e) {
-      errors.push({ row: rowNum, error: e.message });
-    }
-  }
-
-  res.json({ imported, skipped: errors.length, errors });
+  const result = await importCustomers(rows, { user: req.user, updateExisting: req.body?.update_existing === '1' });
+  await logAudit(db, req, 'customer', null, 'Customer import', 'customers_imported',
+    `file=${(req.file.originalname || '').slice(0, 100)}; imported=${result.imported}; updated=${result.updated}; managed=${result.managed}; skipped=${result.skipped}`);
+  res.json(result);
 });
 
 router.put('/:id', requireManagerOrPlanner, async (req, res) => {

@@ -270,8 +270,8 @@ export const api = {
   updateCustomer: (id, data) => req('PUT', `/customers/${id}`, data),
   deleteCustomer: (id) => req('DELETE', `/customers/${id}`),
   customersTemplateUrl: () => `${BASE}/customers/template/download`,
-  importCustomers: (file) => {
-    return upload('/customers/import', 'file', file);
+  importCustomers: (file, { updateExisting = false } = {}) => {
+    return upload('/customers/import', 'file', file, updateExisting ? { update_existing: '1' } : {});
   },
 
   // maintenance visits

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Upload } from 'lucide-react';
+import { AlertTriangle, Download, FileSpreadsheet, FolderOpen, Upload } from 'lucide-react';
 import { Modal } from './Shared';
 
 async function downloadWithAuth(url) {
@@ -27,14 +27,17 @@ async function downloadWithAuth(url) {
  *  - onClose        fn()
  *  - onDone         fn()     called after a successful import so parent can refresh
  *  - columns        string[] Human-readable list of expected columns (shown as hint)
+ *  - hint           node     Optional note under the columns (what values mean)
+ *  - option         { label, help } Optional checkbox; its value goes to importFn(file, { option })
  */
-export default function ImportModal({ title, templateUrl, importFn, onClose, onDone, columns = [] }) {
+export default function ImportModal({ title, templateUrl, importFn, onClose, onDone, columns = [], hint, option }) {
   const [file,         setFile]         = useState(null);
   const [dragging,     setDragging]     = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [downloading,  setDownloading]  = useState(false);
   const [result,       setResult]       = useState(null);
   const [error,        setError]        = useState('');
+  const [optionOn,     setOptionOn]     = useState(false);
   const inputRef = useRef(null);
 
   const accept = '.xlsx,.xlsm,.csv';
@@ -62,10 +65,10 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
     setLoading(true);
     setError('');
     try {
-      const res = await importFn(file);
+      const res = await importFn(file, { option: optionOn });
       if (res.error) { setError(res.error); return; }
       setResult(res);
-      if (res.imported > 0) onDone();
+      if (res.imported > 0 || res.updated > 0) onDone();
     } catch (e) {
       setError(e.message || 'Import failed');
     } finally {
@@ -102,7 +105,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
               finally { setDownloading(false); }
             }}
           >
-            {downloading ? '⏳ Downloading…' : '⬇ Download Template (.xlsx)'}
+            <Download size={14} aria-hidden="true" /> {downloading ? 'Downloading…' : 'Download template (.xlsx)'}
           </button>
           {columns.length > 0 && (
             <div className="u-84faa37">
@@ -118,6 +121,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
               <span className="u-46cec89">(<span className="u-497726e">*</span> = required)</span>
             </div>
           )}
+          {hint && <div className="u-84faa37">{hint}</div>}
         </div>
 
         {/* File drop zone */}
@@ -139,7 +143,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
             />
             {file ? (
               <div>
-                <div className="u-9ff9df9">📄</div>
+                <div className="u-9ff9df9"><FileSpreadsheet size={28} aria-hidden="true" /></div>
                 <div className="font-semibold">{file.name}</div>
                 <div className="u-4687662">
                   {(file.size / 1024).toFixed(1)} KB — click to change
@@ -147,7 +151,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
               </div>
             ) : (
               <div>
-                <div className="u-9ff9df9">📂</div>
+                <div className="u-9ff9df9"><FolderOpen size={28} aria-hidden="true" /></div>
                 <div className="font-semibold">Drop file here or click to browse</div>
                 <div className="u-4687662">
                   Supported: .xlsx, .xlsm, .csv
@@ -157,10 +161,17 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
           </div>
         </div>
 
+        {option && !result && (
+          <label className="import-option">
+            <input type="checkbox" checked={optionOn} onChange={e => setOptionOn(e.target.checked)} />
+            <span>{option.label}{option.help && <small>{option.help}</small>}</span>
+          </label>
+        )}
+
         {/* Error */}
         {error && (
           <div className="alert alert-danger u-5f7bb55">
-            ⚠ {error}
+            <AlertTriangle size={14} aria-hidden="true" /> {error}
           </div>
         )}
 
@@ -172,11 +183,16 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
                 <div className="u-4b6bd12">{result.imported}</div>
                 <div className="u-9f239db">Imported</div>
               </div>
+              {result.updated != null && <div className="u-6396897">
+                <div className="u-4b6bd12">{result.updated}</div>
+                <div className="u-9f239db">Updated</div>
+              </div>}
               <div className={["u-0ced26f", (result.skipped ? 'u-a342d80' : 'u-725d2d4')].filter(Boolean).join(' ')}>
                 <div className={["u-86ecc8d", (result.skipped ? 'u-91ee9a7' : 'u-d311ded')].filter(Boolean).join(' ')}>{result.skipped}</div>
                 <div className={["u-0907ca8", (result.skipped ? 'u-91ee9a7' : 'u-d311ded')].filter(Boolean).join(' ')}>Skipped / Errors</div>
               </div>
             </div>
+            {result.managed > 0 && <p className="text-sm">{result.managed} marked as managed.</p>}
             {result.errors?.length > 0 && (
               <div className="u-5524431">
                 <table className="u-a55f31d">
@@ -215,7 +231,7 @@ export default function ImportModal({ title, templateUrl, importFn, onClose, onD
                 onClick={handleImport}
                 disabled={!file || loading}
               >
-                {loading ? '⏳ Importing…' : '⬆ Import'}
+                <Upload size={14} aria-hidden="true" /> {loading ? 'Importing…' : 'Import'}
               </button>
             </>
           )}

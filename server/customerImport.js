@@ -1,0 +1,136 @@
+/**
+ * Customer import (Customers → Import): rows from an Excel or CSV file become
+ * customers. A row may mark the customer as managed (managed services on, which
+ * also turns on activity tracking, as Service Configuration does) and name the
+ * team that serves it (linked, and the responsible team when managed). Customers
+ * that already exist are skipped, or updated when asked.
+ */
+const db = require('./db');
+const { encryptCustomer, decryptCustomer } = require('./fieldCipher');
+const { replaceCustomerSearchDocument } = require('./customerSearchIndex');
+
+const TEXT_FIELDS = ['customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes'];
+const COLUMNS = ['name*', 'customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes', 'managed', 'team'];
+const YES = new Set(['yes', 'y', 'true', '1', 'x', 'managed']);
+const NO = new Set(['', 'no', 'n', 'false', '0', '-']);
+const MAX_LENGTH = { name: 300, customer_code: 100, contact_email: 320, notes: 5000 };
+
+/** CSV text → rows of { header: value }. Handles quotes, "" escapes, CRLF, a BOM, and ; or tab separators (Excel in many locales). */
+function parseCsv(text) {
+  const body = text.replace(/^﻿/, '');
+  const firstLine = body.split(/\r?\n/, 1)[0] || '';
+  const counts = [',', ';', '\t'].map(sep => [sep, firstLine.split(sep).length]);
+  const sep = counts.sort((a, b) => b[1] - a[1])[0][0];
+  const records = [];
+  let field = '', record = [], quoted = false;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (quoted) {
+      if (ch === '"' && body[i + 1] === '"') { field += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else field += ch;
+    } else if (ch === '"' && field === '') quoted = true;
+    else if (ch === sep) { record.push(field); field = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && body[i + 1] === '\n') i++;
+      record.push(field); records.push(record); record = []; field = '';
+    } else field += ch;
+  }
+  if (field !== '' || record.length) { record.push(field); records.push(record); }
+  const [headers = [], ...rows] = records.filter(r => r.some(cell => cell.trim() !== ''));
+  return rows.map(r => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? '']).filter(([h]) => h.trim())));
+}
+
+const normalizeKey = key => key.replace(/\*/g, '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+const normalizeRow = row => Object.fromEntries(Object.entries(row).map(([k, v]) => [normalizeKey(k), String(v ?? '').trim()]));
+
+function yesNo(value) {
+  const v = String(value ?? '').trim().toLowerCase();
+  if (YES.has(v)) return true;
+  if (NO.has(v)) return false;
+  return null;
+}
+
+async function enableManaged(tx, customerId, teamId, userId) {
+  const current = await tx.prepare('SELECT version FROM managed_customer_configurations WHERE customer_id = ?').get(customerId);
+  if (current) {
+    await tx.prepare(`UPDATE managed_customer_configurations SET managed_services_enabled = 1, responsible_team_id = COALESCE(?, responsible_team_id),
+      version = version + 1, updated_by = ?, updated_at = app_now() WHERE customer_id = ?`).run(teamId, userId, customerId);
+  } else {
+    await tx.exec(`INSERT INTO managed_customer_configurations (customer_id, managed_services_enabled, responsible_team_id, version, updated_by)
+      VALUES (${Number(customerId)}, 1, ${teamId ? Number(teamId) : 'NULL'}, 1, ${Number(userId)})`);
+  }
+  // A managed customer is always tracked, so its engineers can log work against it.
+  await tx.prepare('UPDATE customers SET service_activity_enabled = 1 WHERE id = ?').run(customerId);
+}
+
+async function linkTeam(tx, customerId, teamId) {
+  if (!teamId) return;
+  if (!await tx.prepare('SELECT 1 FROM customer_teams WHERE customer_id = ? AND team_id = ?').get(customerId, teamId))
+    await tx.exec(`INSERT INTO customer_teams (customer_id, team_id) VALUES (${Number(customerId)}, ${Number(teamId)})`);
+}
+
+/**
+ * Imports rows. Returns { imported, updated, managed, skipped, errors }. Per row,
+ * not all-or-nothing: bad rows are reported and the rest go in.
+ */
+async function importCustomers(rawRows, { user, updateExisting = false, store = db } = {}) {
+  const teams = new Map((await store.prepare('SELECT id, name FROM teams').all()).map(t => [t.name.trim().toLowerCase(), Number(t.id)]));
+  const existing = new Map((await store.prepare('SELECT * FROM customers').all()).map(decryptCustomer)
+    .filter(c => c.name).map(c => [c.name.trim().toLowerCase(), c]));
+  const seen = new Set();
+  const result = { imported: 0, updated: 0, managed: 0, skipped: 0, errors: [] };
+  const skip = (row, error) => { result.errors.push({ row, error }); result.skipped++; };
+
+  for (let i = 0; i < rawRows.length; i++) {
+    const row = normalizeRow(rawRows[i]), rowNum = i + 2;
+    if (!row.name) { skip(rowNum, 'Missing required field: name'); continue; }
+    const key = row.name.toLowerCase();
+    if (seen.has(key)) { skip(rowNum, `"${row.name}" appears more than once in the file`); continue; }
+    seen.add(key);
+    const tooLong = Object.entries(MAX_LENGTH).find(([field, max]) => (row[field] || '').length > max);
+    if (tooLong) { skip(rowNum, `${tooLong[0]} is longer than ${tooLong[1]} characters`); continue; }
+    if (row.contact_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.contact_email)) { skip(rowNum, `"${row.contact_email}" is not an email address`); continue; }
+    const managed = yesNo(row.managed);
+    if (managed === null) { skip(rowNum, `managed must be yes or no, not "${row.managed}"`); continue; }
+    if (managed && user.role !== 'manager') { skip(rowNum, 'Only managers can mark customers as managed'); continue; }
+    let teamId = null;
+    if (row.team) {
+      teamId = teams.get(row.team.toLowerCase());
+      if (!teamId) { skip(rowNum, `Team "${row.team}" not found`); continue; }
+    }
+    const current = existing.get(key);
+    if (current && !updateExisting) { skip(rowNum, `Customer "${row.name}" already exists — skipped`); continue; }
+    try {
+      await store.transaction(async tx => {
+        if (current) {
+          // Only the columns filled in on the row change.
+          const merged = { ...current, ...Object.fromEntries(TEXT_FIELDS.filter(f => row[f]).map(f => [f, row[f]])) };
+          const enc = encryptCustomer(merged);
+          await tx.prepare(`UPDATE customers SET customer_code = ?, contact_name = ?, contact_email = ?, contact_phone = ?, primary_contact = ?, location = ?, address = ?, notes = ? WHERE id = ?`)
+            .run(merged.customer_code || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.primary_contact, enc.location, enc.address, enc.notes, current.id);
+          await replaceCustomerSearchDocument(tx, { id: current.id, name: current.name, contact_name: merged.contact_name, contact_email: merged.contact_email, address: merged.address, location: merged.location, customer_code: merged.customer_code });
+          await linkTeam(tx, current.id, teamId);
+          if (managed) await enableManaged(tx, current.id, teamId, user.id);
+        } else {
+          const values = Object.fromEntries(TEXT_FIELDS.map(f => [f, row[f] || null]));
+          const enc = encryptCustomer({ name: row.name, ...values });
+          const created = await tx.prepare(`INSERT INTO customers (name, customer_code, contact_name, contact_email, contact_phone, primary_contact, location, address, notes, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(enc.name, values.customer_code, enc.contact_name, enc.contact_email, enc.contact_phone, enc.primary_contact, enc.location, enc.address, enc.notes, user.id);
+          const id = created.lastInsertRowid;
+          await replaceCustomerSearchDocument(tx, { id, name: row.name, ...values });
+          await linkTeam(tx, id, teamId);
+          if (managed) await enableManaged(tx, id, teamId, user.id);
+          existing.set(key, { id, name: row.name, ...values });
+        }
+      });
+      if (current) result.updated++; else result.imported++;
+      if (managed) result.managed++;
+    } catch (error) {
+      skip(rowNum, error.message);
+    }
+  }
+  return result;
+}
+
+module.exports = { COLUMNS, parseCsv, yesNo, importCustomers };
