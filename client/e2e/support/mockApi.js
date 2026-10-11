@@ -66,6 +66,10 @@ export async function mockApi(page, { role = 'engineer', signedIn = true, teams 
       service: { enabled: false, due: 0, follow_ups: [] },
     } }),
     'GET /api/operations/my-managed-customers': () => ({ body:{ rows:[] } }),
+    // Dashboard → Insights: a quiet period by default; tests that look at it override this.
+    'GET /api/insights': () => ({ body: { period: { from: '2026-07-14', to: '2026-10-11', days: 90, unit: 'week' },
+      kpis: { hours: 0, activities: 0, tasks_done: 0, on_time_rate: null, open_tasks: 0, overdue_tasks: 0, team_tasks_waiting: 0, visits_done: 0, tickets_created: 0, tickets_resolved: 0, open_tickets: 0, reports_owed: 0, reports_overdue: 0, contracts_ending: 0, devices_behind: 0, devices_eol: 0, skill_gaps: 0 },
+      series: [], hours_by_customer: [], hours_by_category: [], engineers: [], attention: { reports_owed: [], contracts_ending: [], devices: [], skills: [] } } }),
     'GET /api/reports/summary': () => ({ body: { total: 0, overdue: 0, byStatus: [], engineerLoad: [], pendingClosure: [], kpiHealth: [], taskStats: {} } }),
     'GET /api/projects': () => ({ body: [] }),
     'GET /api/users': () => ({ body: [] }),

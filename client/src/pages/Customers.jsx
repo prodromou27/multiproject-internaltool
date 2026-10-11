@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { RefreshCw, Upload } from 'lucide-react';
+import { RefreshCw, Trash2, Upload } from 'lucide-react';
 import { api } from '../api';
 import { Modal, fmtDate } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
@@ -257,9 +257,9 @@ export default function Customers() {
     { key:'location',label:'Location',className:'text-sm',render:c => c.location || c.address || '—' },
     { key:'visits',label:'Visits',numeric:true,render:c => c.visit_count ?? 0 },
     { key:'actions',label:'Actions',render:c => <div className="table-actions">
-      {isManager && <Link className="btn btn-sm btn-ghost" to={`/customers/${c.id}/service-profile`}>Customer 360</Link>}
+      {isManager && <Link className="btn btn-sm btn-ghost" to={`/customers/${c.id}/service-profile`}>Open</Link>}
       {canCreate && <button className="btn btn-sm btn-ghost" onClick={() => openEdit(c)}>Edit</button>}
-      {canCreate && <button className="btn btn-sm btn-danger" onClick={() => handleDelete(c.id)}>Delete</button>}
+      {canCreate && <button className="btn btn-sm btn-ghost btn-icon-danger" onClick={() => handleDelete(c.id)} aria-label={`Delete ${c.name}`} title="Delete customer"><Trash2 size={14} /></button>}
     </div> },
   ];
 

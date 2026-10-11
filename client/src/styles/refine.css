@@ -448,3 +448,5 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
   .operations-page-header { align-items: stretch; }
   .operations-page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 }
+.btn-icon-danger { color: var(--danger); }
+.btn-icon-danger:hover:not(:disabled) { background: var(--danger-light); border-color: var(--danger); color: var(--danger); }

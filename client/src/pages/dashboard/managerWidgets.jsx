@@ -3,10 +3,14 @@ import { CheckCircle2, AlertTriangle, Clock, Wrench, FolderOpen, ListTodo, Send,
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../../components/Shared';
 import { api } from '../../api';
 import StatCard from './StatCard';
+import ManagementInsights from '../../components/ManagementInsights';
 
 export function managerWidget(id, ctx) {
   const { active, incompleteVisits, load, myOpen, pendingClosure, reviewVisits, summary, visits } = ctx;
   switch (id) {
+    case 'insights':
+      return <ManagementInsights key={id} />;
+
     case 'stat_cards':
       return summary ? (
         <div key={id} className="grid-4 mb-20">

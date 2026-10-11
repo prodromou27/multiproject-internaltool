@@ -4,6 +4,7 @@ import { useState } from 'react';
 export const WIDGET_DEFS = {
   manager: [
     { id: 'stat_cards',        label: 'Stats Overview'               },
+    { id: 'insights',          label: 'Insights: charts and what needs attention' },
     { id: 'project_health',    label: 'Project Health (RAG)'         },
     { id: 'task_overview',     label: 'Task Overview & Workload'     },
     { id: 'pending_closure',   label: 'Pending Closure Approvals'    },
@@ -47,9 +48,11 @@ export function useWidgetPrefs(userId, role) {
       const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
       if (saved?.order) {
         const valid   = saved.order.filter(id => defaultIds.includes(id));
-        const missing = defaultIds.filter(id => !valid.includes(id));
+        // Widgets added since the layout was saved go where they belong by default, not at the end.
+        const order = [...valid];
+        defaultIds.forEach((id, index) => { if (!order.includes(id)) order.splice(Math.min(index, order.length), 0, id); });
         return {
-          order:  [...valid, ...missing],
+          order,
           hidden: (saved.hidden ?? []).filter(id => defaultIds.includes(id)),
         };
       }

@@ -582,6 +582,7 @@ export const api = {
 
   // skill matrix
   skillMatrix: (options) => req('GET', '/skills', undefined, options),
+  insights: (days, options) => req('GET', `/insights?days=${days}`, undefined, options),
   rateSkill: (userId, technologyId, data) => req('PUT', `/skills/ratings/${userId}/${technologyId}`, data),
   setSkillTarget: (technologyId, data) => req('PUT', `/skills/technologies/${technologyId}/target`, data),
 

@@ -1,0 +1,49 @@
+/* Dashboard → Insights */
+.mi { display: grid; gap: 14px; margin-bottom: 22px; min-width: 0; }
+.mi-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.mi-head h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 17px; }
+.mi-head p { margin: 2px 0 0; }
+.mi-periods { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--surface); }
+.mi-periods button { padding: 6px 12px; border: 0; border-radius: calc(var(--radius) - 2px); background: transparent; color: var(--gray-600); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.mi-periods button:hover { color: var(--gray-900); }
+.mi-periods button[aria-pressed="true"] { background: var(--primary); color: #fff; }
+.mi-figures { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.mi-figure { display: grid; gap: 4px; padding: 13px 15px; border: 1px solid var(--gray-200); border-radius: var(--radius-lg, 8px); background: var(--surface); color: inherit; text-decoration: none; }
+a.mi-figure:hover { border-color: var(--gray-400); text-decoration: none; }
+.mi-figure-label { display: flex; align-items: center; gap: 6px; color: var(--gray-600); font-size: 12.5px; font-weight: 600; }
+.mi-figure strong { font-size: 24px; line-height: 1.15; color: var(--gray-900); font-variant-numeric: tabular-nums; }
+.mi-figure small { color: var(--gray-500); font-size: 12px; }
+.mi-figure.is-warning { border-color: var(--warning); }
+.mi-figure.is-warning strong { color: var(--tone-warning-text, var(--warning)); }
+.mi-figure.is-danger { border-color: var(--danger); }
+.mi-figure.is-danger strong { color: var(--tone-danger-text, var(--danger)); }
+.mi-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+.mi-chart { display: grid; gap: 10px; min-width: 0; margin: 0; }
+.mi-chart.is-wide { grid-column: 1 / -1; }
+.mi-chart header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; }
+.mi-chart h3, .mi-attention h3 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 14px; }
+.mi-chart-body { min-width: 0; }
+.mi-hbars { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.mi-hbars li { display: grid; grid-template-columns: minmax(90px, 32%) 1fr auto; align-items: center; gap: 10px; font-size: 13px; }
+.mi-hbars li > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mi-hbar { height: 10px; border-radius: 99px; background: var(--gray-100); overflow: hidden; }
+.mi-hbar span { display: block; height: 100%; border-radius: 99px; background: var(--primary); }
+.mi-hbars strong { font-variant-numeric: tabular-nums; }
+.mi-table th[scope="row"] { font-weight: 600; text-align: left; }
+.mi-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.mi-attentions { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.mi-attention { display: grid; align-content: start; gap: 8px; margin: 0; }
+.mi-attention header { display: flex; align-items: center; justify-content: space-between; }
+.mi-count { padding: 1px 8px; border-radius: 99px; background: var(--gray-100); font-size: 12px; font-weight: 700; }
+.mi-attention ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.mi-attention li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; font-size: 13px; }
+.mi-attention li a { font-weight: 600; }
+.mi-attention li span { grid-column: 1; color: var(--gray-500); font-size: 12px; }
+.mi-attention li .ui-badge { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+@media (max-width: 600px) { .mi-charts { grid-template-columns: minmax(0, 1fr); } .mi-periods { width: 100%; } .mi-periods button { flex: 1; padding: 6px 4px; } }
+/* Cards in these grids line up: no stacked-card spacing from the global .card + .card rule. */
+.mi-charts > .card, .mi-attentions > .card { margin: 0; }
+.mi-table tbody th { background: var(--surface); }
+/* Each card as tall as its content: a long list must not stretch the empty ones beside it. */
+.mi-attentions { align-items: start; }
+.mi-chart { align-content: start; }

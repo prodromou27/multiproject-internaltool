@@ -27,6 +27,7 @@ test('dashboard widget order can be changed without drag and drop', async ({ pag
   const dialog = page.getByRole('dialog', { name: 'Arrange workspace' });
   const health = dialog.locator('.dashboard-widget-option').filter({ hasText: 'Project Health' });
   await health.getByRole('button', { name: 'Move Project Health (RAG) up' }).click();
+  await health.getByRole('button', { name: 'Move Project Health (RAG) up' }).click(); // past Insights, then Stats
   const labels = await dialog.locator('.dashboard-widget-option > span').allTextContents();
   expect(labels.slice(0, 2)).toEqual(['Project Health (RAG)', 'Stats Overview']);
 });
