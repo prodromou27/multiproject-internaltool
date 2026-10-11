@@ -151,6 +151,15 @@ jobs:
           APP_URL=http://localhost:8080 \
           docker compose config
 
+      # The network-share example (deploy/README.md) must merge cleanly with the main file.
+      - name: Validate the backup share example
+        run: |
+          POSTGRES_PASSWORD=dummy_password JWT_SECRET=dummy_jwt_secret_value_at_least_32_chars \
+          CUSTOMER_FIELD_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+          ATTACHMENT_KEY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+          APP_URL=http://localhost:8080 BACKUP_SHARE_PASSWORD=dummy \
+          docker compose -f docker-compose.yml -f deploy/backup-share.compose.example.yml config -q
+
       # The image must carry pg_dump/psql 16 for in-app backups.
       - name: Build the app image and check its backup tools
         run: |
