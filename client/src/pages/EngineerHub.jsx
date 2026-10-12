@@ -206,7 +206,7 @@ export default function EngineerHub() {
     (async () => {
       for (const [id, items] of pending) {
         try {
-          const list = await api.addTaskSubtasks(id, { items: items.map(item => ({ title: String(item.title || '').slice(0, 300) || 'Checklist item' })) });
+          const { subtasks: list } = await api.addTaskSubtasks(id, { items: items.map(item => ({ title: String(item.title || '').slice(0, 300) || 'Checklist item' })) });
           const added = list.slice(-items.length);
           for (const [index, item] of items.entries()) if (item.done && added[index]) await api.updateTaskSubtask(id, added[index].id, { done: true });
           delete saved[id];

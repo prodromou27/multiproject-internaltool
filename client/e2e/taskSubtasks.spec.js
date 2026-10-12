@@ -17,17 +17,18 @@ async function customerPage(page, role) {
   api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
   api.override('GET /api/customers/12/operations/tasks', () => ({ body: { rows: [task()], total: 1, page: 1, page_size: 25 } }));
   api.override('GET /api/customers/12/assets/options', () => ({ body: assets }));
-  api.override('GET /api/tasks/61/subtasks', () => ({ body: subtasks }));
+  const reply = () => ({ subtasks, task: { status: subtasks.every(s => s.done) ? 'completed' : 'in_progress' } });
+  api.override('GET /api/tasks/61/subtasks', () => ({ body: reply() }));
   api.override('POST /api/tasks/61/subtasks', ({ body }) => {
     calls.push(['add', body]);
     subtasks = [...subtasks, ...body.items.map((item, index) => ({ id: 10 + subtasks.length + index, title: item.title, asset_id: item.asset_id || null,
       asset_name: assets.find(a => a.id === item.asset_id)?.name || null, asset_version: assets.find(a => a.id === item.asset_id)?.software_version || null, done: false }))];
-    return { status: 201, body: subtasks };
+    return { status: 201, body: reply() };
   });
   for (let id = 1; id <= 20; id++) api.override(`PUT /api/tasks/61/subtasks/${id}`, ({ body }) => {
     calls.push(['tick', id, body]);
     subtasks = subtasks.map(s => s.id === id ? { ...s, ...body } : s);
-    return { body: subtasks };
+    return { body: reply() };
   });
   api.override('POST /api/tasks', ({ body }) => { calls.push(['create', body]); return { body: { id: 70 } }; });
   api.override('GET /api/teams/mine', () => ({ body: { teams: [], capabilities: {} } }));
@@ -57,6 +58,15 @@ test('a task has subtasks: added one per line or one per server, ticked off, and
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(row.getByRole('button', { name: 'Subtasks: 2 of 5 subtasks done' })).toBeVisible();
   await expect(row.getByRole('button', { name: 'Mark Servers upgrades done' })).toBeDisabled();
+
+  // Ticking the last one completes the task.
+  await row.getByRole('button', { name: 'Subtasks: 2 of 5 subtasks done' }).click();
+  for (const name of ['Check monitoring', 'Notify the customer', 'SRV-02']) {
+    await dialog.getByRole('checkbox', { name }).click();
+    await expect(dialog.getByRole('checkbox', { name })).toBeChecked();
+  }
+  await expect(page.getByText('All subtasks are done: the task is completed')).toBeVisible();
+  await expect(dialog).toContainText('task completed');
 });
 
 test('a new customer task can come with subtasks, typed or one per asset', async ({ page }) => {
@@ -99,7 +109,7 @@ test('the Tasks page shows subtask progress, creates tasks with subtasks and edi
   let sent = null;
   api.override('GET /api/tasks', () => ({ body: { rows: [{ id: 61, title: 'Servers upgrades', status: 'open', priority: 'high', created_by_name: 'A', subtasks_total: 3, subtasks_done: 1 }],
     total: 1, counts: { all: 1, open: 1 }, page: 1, page_size: 50 } }));
-  api.override('GET /api/tasks/61/subtasks', () => ({ body: [{ id: 1, title: 'SRV-01', done: true }, { id: 2, title: 'SRV-02', done: false }, { id: 3, title: 'SRV-03', done: false }] }));
+  api.override('GET /api/tasks/61/subtasks', () => ({ body: { subtasks: [{ id: 1, title: 'SRV-01', done: true }, { id: 2, title: 'SRV-02', done: false }, { id: 3, title: 'SRV-03', done: false }], task: { status: 'open' } } }));
   api.override('POST /api/tasks', ({ body }) => { sent = body; return { body: { id: 90 } }; });
   await page.goto('/tasks');
   await page.getByRole('button', { name: 'Subtasks: 1 of 3 subtasks done' }).click();
@@ -118,8 +128,8 @@ test('My Work shows subtask progress, and checklists kept only in this browser m
   const added = [], ticked = [];
   await page.addInitScript(() => localStorage.setItem('hub_checklists_1', JSON.stringify({ 61: [{ id: 1, title: 'Old step', done: true }, { id: 2, title: 'Second step', done: false }], 99: [{ id: 3, title: 'Gone task', done: false }] })));
   api.override('GET /api/tasks', () => ({ body: [{ id: 61, title: 'Servers upgrades', status: 'open', priority: 'high', assigned_to: 1, subtasks_total: 2, subtasks_done: 1 }] }));
-  api.override('POST /api/tasks/61/subtasks', ({ body }) => { added.push(body); return { status: 201, body: [{ id: 5, title: 'Old step', done: false }, { id: 6, title: 'Second step', done: false }] }; });
-  api.override('PUT /api/tasks/61/subtasks/5', ({ body }) => { ticked.push(body); return { body: [] }; });
+  api.override('POST /api/tasks/61/subtasks', ({ body }) => { added.push(body); return { status: 201, body: { subtasks: [{ id: 5, title: 'Old step', done: false }, { id: 6, title: 'Second step', done: false }], task: { status: 'open' } } }; });
+  api.override('PUT /api/tasks/61/subtasks/5', ({ body }) => { ticked.push(body); return { body: { subtasks: [], task: { status: 'open' } } }; });
   await page.goto('/my-day');
   await expect.poll(() => added[0]).toEqual({ items: [{ title: 'Old step' }, { title: 'Second step' }] });
   await expect.poll(() => ticked[0]).toEqual({ done: true });

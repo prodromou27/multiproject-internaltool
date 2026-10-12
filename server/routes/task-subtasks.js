@@ -7,7 +7,9 @@ const { MAX_PER_TASK, checkNewSubtasks, insertSubtasks } = require('../taskSubta
 
 /* Subtasks of one task (/api/tasks/:id/subtasks): a checklist the task cannot be
    completed without. Managers, and engineers who work on the task (theirs, or
-   their team's), list, add, tick, rename and remove them. */
+   their team's), list, add, tick, rename and remove them. When the last open
+   subtask is done the task is completed; opening one again (unticking or adding)
+   puts a completed task back in progress. Replies: { subtasks, task: { status } }. */
 
 const positiveId = value => /^[1-9]\d*$/.test(String(value)) && Number.isSafeInteger(Number(value));
 
@@ -32,7 +34,32 @@ async function list(taskId) {
 
 const changed = () => require('../liveUpdates').emitChange('tasks');
 
-router.get('/', async (req, res) => res.json(await list(req.task.id)));
+// Completes the task when every subtask is done, and reopens a completed one when one is open again.
+async function settleTask(req) {
+  const counts = await db.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN done = 1 THEN 1 ELSE 0 END) AS done FROM task_subtasks WHERE task_id = ?').get(req.task.id);
+  const total = Number(counts.total), done = Number(counts.done || 0);
+  const task = await db.prepare('SELECT status FROM tasks WHERE id = ?').get(req.task.id);
+  let status = task.status;
+  if (total > 0 && done === total && ['open', 'in_progress', 'waiting_customer', 'waiting_vendor'].includes(status)) status = 'completed';
+  else if (done < total && status === 'completed') status = 'in_progress';
+  if (status !== task.status) {
+    // A team task becomes the person's who finished it (records who did it), as when they set its status.
+    await db.prepare(`UPDATE tasks SET status = ?, pending_from_customer = NULL, assigned_to = COALESCE(assigned_to, ?),
+      completed_at = CASE WHEN ? = 'completed' THEN COALESCE(completed_at, app_now()) ELSE NULL END, updated_at = app_now() WHERE id = ?`)
+      .run(status, req.user.role === 'engineer' ? req.user.id : null, status, req.task.id);
+    if (req.task.project_id) await db.prepare('INSERT INTO project_activity (project_id, user_id, action, detail) VALUES (?, ?, ?, ?)')
+      .run(req.task.project_id, req.user.id, 'task_status', `"${req.task.title}" → ${status} (subtasks)`).catch(() => {});
+  }
+  return { status };
+}
+
+async function reply(req, res, code = 200) {
+  const task = await settleTask(req);
+  changed();
+  res.status(code).json({ subtasks: await list(req.task.id), task });
+}
+
+router.get('/', async (req, res) => res.json({ subtasks: await list(req.task.id), task: { status: req.task.status } }));
 
 // One subtask ({ title, asset_id? }) or several ({ items: [...] }, e.g. one per asset).
 router.post('/', async (req, res) => {
@@ -43,8 +70,7 @@ router.post('/', async (req, res) => {
   const existing = await db.prepare('SELECT COUNT(*) AS n, COALESCE(MAX(position), -1) AS last FROM task_subtasks WHERE task_id = ?').get(req.task.id);
   if (Number(existing.n) + checked.value.length > MAX_PER_TASK) return res.status(400).json({ error: `A task can have at most ${MAX_PER_TASK} subtasks` });
   await db.transaction(tx => insertSubtasks(tx, req.task.id, checked.value, req.user.id, Number(existing.last) + 1));
-  changed();
-  res.status(201).json(await list(req.task.id));
+  await reply(req, res, 201);
 });
 
 router.put('/:subtaskId', async (req, res) => {
@@ -57,16 +83,14 @@ router.put('/:subtaskId', async (req, res) => {
   const nowDone = done === undefined ? !!subtask.done : done;
   await db.prepare(`UPDATE task_subtasks SET title = ?, done = ?, done_by = ?, done_at = ${nowDone && !subtask.done ? 'app_now()' : nowDone ? 'done_at' : 'NULL'} WHERE id = ?`)
     .run(title !== undefined ? title.trim() : subtask.title, nowDone ? 1 : 0, nowDone ? (subtask.done ? subtask.done_by : req.user.id) : null, subtask.id);
-  changed();
-  res.json(await list(req.task.id));
+  await reply(req, res);
 });
 
 router.delete('/:subtaskId', async (req, res) => {
   if (!positiveId(req.params.subtaskId)) return res.status(400).json({ error: 'Invalid subtask ID' });
   const removed = await db.prepare('DELETE FROM task_subtasks WHERE id = ? AND task_id = ?').run(Number(req.params.subtaskId), req.task.id);
   if (!removed.changes) return res.status(404).json({ error: 'Subtask not found' });
-  changed();
-  res.json(await list(req.task.id));
+  await reply(req, res);
 });
 
 module.exports = router;

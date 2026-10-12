@@ -7,7 +7,8 @@ import CheckList from './CheckList';
 import './TaskSubtasks.css';
 
 /* Subtasks of a task (a checklist, as in Planner): the task cannot be completed
-   until every one is ticked (server: routes/task-subtasks.js). Several lines
+   until every one is ticked, and is completed when the last one is; opening one
+   again puts it back in progress (server: routes/task-subtasks.js). Several lines
    pasted at once become several subtasks; a customer task can add one per asset. */
 
 /** Lines of text → subtask titles (blank lines dropped). */
@@ -25,11 +26,11 @@ export function SubtaskProgress({ total = 0, done = 0, onClick, compact = false 
 
 export default function TaskSubtasks({ taskId, customerId = null, canEdit = true, onChange }) {
   const toast = useToast();
-  const [items, setItems] = useState(null), [draft, setDraft] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [items, setItems] = useState(null), [status, setStatus] = useState(null), [draft, setDraft] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [assets, setAssets] = useState(null), [picking, setPicking] = useState(false), [chosen, setChosen] = useState([]);
   useEffect(() => {
     const controller = new AbortController();
-    api.taskSubtasks(taskId, { signal: controller.signal }).then(setItems).catch(failure => { if (!controller.signal.aborted) setError(failure.message); });
+    api.taskSubtasks(taskId, { signal: controller.signal }).then(result => { setItems(result.subtasks); setStatus(result.task?.status || null); }).catch(failure => { if (!controller.signal.aborted) setError(failure.message); });
     return () => controller.abort();
   }, [taskId]);
   useEffect(() => {
@@ -38,7 +39,15 @@ export default function TaskSubtasks({ taskId, customerId = null, canEdit = true
     api.customerAssetOptions(customerId, { signal: controller.signal }).then(setAssets).catch(() => setAssets(null));
     return () => controller.abort();
   }, [customerId, canEdit]);
-  const apply = list => { setItems(list); onChange?.({ total: list.length, done: list.filter(item => item.done).length }); };
+  const apply = ({ subtasks: list, task }) => {
+    setItems(list);
+    if (task?.status && status && task.status !== status) {
+      if (task.status === 'completed') toast.success('All subtasks are done: the task is completed');
+      else if (status === 'completed') toast.success('The task is back in progress');
+    }
+    if (task?.status) setStatus(task.status);
+    onChange?.({ total: list.length, done: list.filter(item => item.done).length, status: task?.status });
+  };
   async function run(action) {
     setBusy(true); setError('');
     try { apply(await action()); return true; } catch (failure) { setError(failure.message); return false; } finally { setBusy(false); }
@@ -60,7 +69,7 @@ export default function TaskSubtasks({ taskId, customerId = null, canEdit = true
   return <section className="st" aria-label="Subtasks">
     <header className="st-head">
       <h3><ListChecks size={15} aria-hidden="true" /> Subtasks</h3>
-      {items.length > 0 && <span className="text-sm text-muted">{done} of {items.length} done{done < items.length ? ' · the task closes when all are done' : ''}</span>}
+      {items.length > 0 && <span className="text-sm text-muted">{done} of {items.length} done{done < items.length ? ' · the task is completed when all are done' : status === 'completed' ? ' · task completed' : ''}</span>}
     </header>
     {items.length > 0 && <div className="st-progress" aria-hidden="true"><i style={{ width: `${Math.round(done / items.length * 100)}%` }} /></div>}
     {error && <div className="error-msg" role="alert">{error}</div>}

@@ -2,7 +2,7 @@ const { test, assert, api, db, ids } = require('./lib/activityFixture');
 const appTime = require('../appTime');
 
 const newTask = body => api('/api/tasks', { method: 'POST', token: ids.tokenManager, body: { customer_id: ids.customer, title: 'Servers upgrades', ...body } });
-const subtasksOf = (id, token = ids.tokenManager) => api(`/api/tasks/${id}/subtasks`, { token });
+const subtasksOf = async (id, token = ids.tokenManager) => { const res = await api(`/api/tasks/${id}/subtasks`, { token }); return { status: res.status, data: res.data.subtasks, task: res.data.task }; };
 let asset;
 
 test('a task is created with its subtasks, one per server to upgrade', async () => {
@@ -36,12 +36,20 @@ test('the task cannot be completed, closed or sent for approval until every subt
   const [a, b] = (await subtasksOf(id, ids.tokenEnabled)).data;
   const ticked = await api(`/api/tasks/${id}/subtasks/${a.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { done: true } });
   assert.equal(ticked.status, 200, JSON.stringify(ticked.data));
-  assert.deepEqual([ticked.data[0].done, ticked.data[0].done_by_name], [true, 'Engineer Enabled']);
+  assert.deepEqual([ticked.data.subtasks[0].done, ticked.data.subtasks[0].done_by_name, ticked.data.task.status], [true, 'Engineer Enabled', 'in_progress']);
   assert.equal((await setStatus('completed')).data.error, 'Finish the 1 open subtask first');
-  await api(`/api/tasks/${id}/subtasks/${b.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { done: true } });
-  assert.equal((await setStatus('completed')).status, 200);
+  // The last subtask done completes the task, with its completion time.
+  const last = await api(`/api/tasks/${id}/subtasks/${b.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { done: true } });
+  assert.equal(last.data.task.status, 'completed');
+  const stored = await db.prepare('SELECT status, completed_at FROM tasks WHERE id = ?').get(id);
+  assert.equal(stored.status, 'completed'); assert.ok(stored.completed_at);
+  // Opening one again puts it back in progress.
   const unticked = await api(`/api/tasks/${id}/subtasks/${b.id}`, { method: 'PUT', token: ids.tokenManager, body: { done: false } });
-  assert.deepEqual([unticked.data[1].done, unticked.data[1].done_by_name], [false, null]);
+  assert.deepEqual([unticked.data.subtasks[1].done, unticked.data.subtasks[1].done_by_name, unticked.data.task.status], [false, null, 'in_progress']);
+  assert.equal((await db.prepare('SELECT completed_at FROM tasks WHERE id = ?').get(id)).completed_at, null);
+  // Removing the last open subtask completes it too; adding one reopens it.
+  assert.equal((await api(`/api/tasks/${id}/subtasks/${b.id}`, { method: 'DELETE', token: ids.tokenManager })).data.task.status, 'completed');
+  assert.equal((await api(`/api/tasks/${id}/subtasks`, { method: 'POST', token: ids.tokenManager, body: { title: 'One more' } })).data.task.status, 'in_progress');
 });
 
 test('people working on the task manage its subtasks; others cannot', async () => {
@@ -50,14 +58,14 @@ test('people working on the task manage its subtasks; others cannot', async () =
   const one = await add({ title: 'Check the UPS' });
   assert.equal(one.status, 201, 'a team task: anyone in the team');
   const several = await add({ items: [{ title: 'Upgrade SRV-01', asset_id: asset.id }, 'Write the report'] });
-  assert.deepEqual(several.data.map(s => s.title), ['Check the UPS', 'Upgrade SRV-01', 'Write the report']);
+  assert.deepEqual(several.data.subtasks.map(s => s.title), ['Check the UPS', 'Upgrade SRV-01', 'Write the report']);
   assert.equal((await add({ title: 'Nope' }, ids.tokenDisabled)).status, 403, 'not their team');
   assert.equal((await subtasksOf(id, ids.tokenDisabled)).status, 403);
   assert.equal((await add({ title: '' })).status, 400);
-  const renamed = await api(`/api/tasks/${id}/subtasks/${several.data[2].id}`, { method: 'PUT', token: ids.tokenEnabled, body: { title: 'Send the report' } });
-  assert.equal(renamed.data[2].title, 'Send the report');
-  const removed = await api(`/api/tasks/${id}/subtasks/${several.data[0].id}`, { method: 'DELETE', token: ids.tokenManager });
-  assert.equal(removed.data.length, 2);
+  const renamed = await api(`/api/tasks/${id}/subtasks/${several.data.subtasks[2].id}`, { method: 'PUT', token: ids.tokenEnabled, body: { title: 'Send the report' } });
+  assert.equal(renamed.data.subtasks[2].title, 'Send the report');
+  const removed = await api(`/api/tasks/${id}/subtasks/${several.data.subtasks[0].id}`, { method: 'DELETE', token: ids.tokenManager });
+  assert.equal(removed.data.subtasks.length, 2);
   assert.equal((await api(`/api/tasks/${id}/subtasks/999999`, { method: 'DELETE', token: ids.tokenManager })).status, 404);
 
   const rows = (await api(`/api/customers/${ids.customer}/operations/tasks?filter=open`, { token: ids.tokenManager })).data.rows;
