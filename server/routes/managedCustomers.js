@@ -190,6 +190,50 @@ router.post('/:id/report.pdf',requirePermission('managed_reports.generate'),asyn
   } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the PDF report' }); }
 });
 
+/* The customer report (customerValueReport.js): what we did for the customer in a
+   period, previewed here and downloaded as PDF or Word. No review steps: a report
+   generated for a period is the report for that period. */
+const valueReport=require('../customerValueReport');
+async function valueRequest(req,res) {
+  const id=Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id<1) { res.status(400).json({ error:'Invalid customer ID' });return null; }
+  const { from,to }=req.body || {};
+  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) { res.status(400).json({ error:'from and to must be valid dates with from on or before to' });return null; }
+  try {
+    const options=valueReport.checkRequest(req.body);
+    const report=await valueReport.buildValueReport({ customerId:id,from,to,...options,preparedBy:req.user.name });
+    if (!report) { res.status(404).json({ error:'Managed customer not found' });return null; }
+    return { id,from,to,options,report };
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not prepare the customer report' });return null; }
+}
+router.post('/:id/customer-report/preview',async (req,res) => {
+  const built=await valueRequest(req,res);if (!built) return;
+  res.json(built.report);
+});
+router.post('/:id/customer-report.:format',requirePermission('managed_reports.generate'),async (req,res) => {
+  const format=req.params.format;
+  if (!['pdf','docx'].includes(format)) return res.status(400).json({ error:'Download the report as pdf or docx' });
+  const built=await valueRequest(req,res);if (!built) return;
+  const { id,from,to,options,report }=built;
+  try {
+    // Odyssey's own Word layout when the customer's default report template has one (Settings → Customer report templates).
+    const template=format==='docx' ? await db.prepare(`SELECT t.id,t.word_template FROM managed_customer_configurations mc JOIN managed_report_templates t ON t.id=mc.default_report_template_id
+      WHERE mc.customer_id=? AND t.active=1 AND t.word_template IS NOT NULL`).get(id) : null;
+    let buffer;
+    if (template) {
+      const model=await reporting.buildReportModel({ customerId:id,from,to,narratives:{ executive_summary:options.summary,upcoming_activities:options.coming_next } });
+      buffer=wordTemplates.render(Buffer.from(template.word_template,'base64'),wordTemplates.templateData(model,{ preparedBy:req.user.name }));
+    } else buffer=format==='pdf' ? await valueReport.renderPdf(report) : await valueReport.renderWord(report);
+    const filename=valueReport.fileName(report,format);
+    const history=await reportHistory.archive({ customerId:id,templateId:template?.id || null,from,to,format,status:'draft',filename,sections:report.sections,userId:req.user.id,buffer });
+    await logAudit(db,req,'managed_report',history.id,filename,'customer_report_generated',`customer_id=${id}; period=${from}:${to}; format=${format}; sections=${report.sections.join(',')}`);
+    require('../liveUpdates').emitChange('managed-customers');
+    res.setHeader('Content-Type',format==='pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);res.setHeader('X-Report-Id',String(history.id));
+    res.send(buffer);
+  } catch(error) { console.error('[customer-report]',error.message);res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the customer report',details:error.details }); }
+});
+
 router.get('/:id/reports',async (req,res) => {
   if (!positiveId(req.params.id)) return res.status(400).json({ error:'Invalid customer ID' });
   const customer=await db.prepare('SELECT customer_id FROM managed_customer_configurations WHERE customer_id=? AND managed_services_enabled=1').get(Number(req.params.id));

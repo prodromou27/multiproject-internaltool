@@ -508,6 +508,8 @@ export const api = {
   managedCustomerWordReport: (id,data) => download(`/managed-customers/${id}/report.docx`,data),
   managedCustomerExcelReport: (id,data) => download(`/managed-customers/${id}/report.xlsx`,data),
   managedCustomerPdfReport: (id,data) => download(`/managed-customers/${id}/report.pdf`,data),
+  customerReportPreview: (id,data,options) => req('POST',`/managed-customers/${id}/customer-report/preview`,data,options),
+  customerReportDownload: (id,format,data) => download(`/managed-customers/${id}/customer-report.${format}`,data),
   managedCustomerReportHistory: (id,options) => req('GET',`/managed-customers/${id}/reports`,undefined,options),
   managedReportReviews: (params={},options) => req('GET','/managed-customers/report-reviews?' + new URLSearchParams(params).toString(),undefined,options),
   updateManagedReportReview: (reportId,data) => req('PUT',`/managed-customers/report-reviews/${reportId}`,data),

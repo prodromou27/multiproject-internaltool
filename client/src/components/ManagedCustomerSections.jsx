@@ -1,7 +1,7 @@
 import { useEffect,useMemo,useState } from 'react';
 import { ExternalLink,RefreshCw } from 'lucide-react';
 import { api } from '../api';
-import ManagedCustomerReportBuilder from './ManagedCustomerReportBuilder';
+import CustomerReport from './CustomerReport';
 import { fmtDate, fmtDateTime } from './Shared';
 import { Surface } from './EnterpriseUI';
 import { localDateISO } from '../utils/dates';
@@ -116,7 +116,7 @@ export function CustomerTickets({ customerId }) {
   </div>;
 }
 
-/** Customer 360 → Reports: build, review and send the customer's service reports. */
+/** Customer 360 → Reports: the report for the customer, previewed and downloaded as PDF or Word. */
 export function CustomerReports({ customerId }) {
   const value=usePeriod(),[refresh,setRefresh]=useState(0),[due,setDue]=useState(null);
   useLiveRefresh(() => setRefresh(count => count+1));
@@ -129,6 +129,6 @@ export function CustomerReports({ customerId }) {
   },[customerId,from,to,refresh]);
   return <div className="cs-managed-section">
     <PeriodPicker value={value} onRefresh={() => setRefresh(count => count+1)} />
-    <ManagedCustomerReportBuilder customerId={customerId} range={value.range} due={due} onUsePeriod={value.usePeriodOf} onChanged={() => setRefresh(count => count+1)} />
+    <CustomerReport customerId={customerId} range={value.range} due={due} onUsePeriod={value.usePeriodOf} />
   </div>;
 }

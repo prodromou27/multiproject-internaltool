@@ -1,8 +1,7 @@
 /**
  * Reporting obligations: for each managed customer with a reporting frequency,
- * the most recent complete period a report is owed for, when it is due, and how
- * far the report for that period has got (not started -> draft -> in review ->
- * approved -> final -> sent to the customer).
+ * the most recent complete period a report is owed for, when it is due, and
+ * whether a report has been made for it ('sent') or not ('not_started').
  */
 const db = require('./db');
 
@@ -59,7 +58,8 @@ async function obligations(customers, store = db) {
     let best = null;
     for (const report of reports) {
       if (Number(report.customer_id) !== Number(customer.id) || report.period_start > period.from || report.period_end < period.to) continue;
-      const stage = report.sent_at ? 'sent' : report.workflow_status;
+      // A report generated for the period is the report for that period (no review steps any more).
+      const stage = 'sent';
       if (!best || STAGES.indexOf(stage) > STAGES.indexOf(best.stage)) best = { stage, id: Number(report.id) };
     }
     const status = best?.stage || 'not_started';

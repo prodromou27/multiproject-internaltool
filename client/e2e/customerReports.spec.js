@@ -2,74 +2,73 @@ import { test, expect } from '@playwright/test';
 import { mockApi } from './support/mockApi.js';
 
 const summary = { projects: { active: 0, delayed: 0 }, tasks: { visible: true, open: 0, overdue: 0 }, recommendations: { open: 0, high_risk: 0 },
-  visits: { next: null, reports_pending: 0, this_year: 0 }, managed: { visible: true, state: 'active', open_tickets: 0, closed_tickets: 0 } };
-const file = (id, format, version, status, extra = {}) => ({ id, output_format: format, report_version: version, status, workflow_version: 1, period_start: '2026-09-01', period_end: '2026-09-30',
-  generated_at: '2026-10-05 08:30:00', generated_by_name: 'Alex Mercer', template_name: 'Monthly Managed Services Report', original_name: `report.${format}`, sent_at: null, ...extra });
+  visits: { next: null, reports_pending: 0, this_year: 0 }, managed: { visible: true, state: 'active', open_tickets: 0, closed_tickets: 0 }, is_managed: true };
+const report = body => ({
+  customer: { id: 12, name: 'Northwind Logistics', team: 'Managed Services' }, period: { from: body.from, to: body.to }, generated_at: '2026-10-11T09:00:00Z',
+  sections: body.sections, summary: body.summary, coming_next: body.coming_next,
+  figures: { hours: 36.5, activities: 24, changes: 2, tickets_resolved: 12, tasks_completed: 5, recommendations: 1 },
+  categories: [{ name: 'Monitoring', activities: 14, hours: 20 }, { name: 'Upgrades', activities: 4, hours: 10.5 }],
+  work_log: [{ date: '2026-09-03', title: 'Reviewed firewall policies', category: 'Monitoring', hours: 1.5 }],
+  changes: [{ date: '2026-09-10', device: 'FW-HQ-01', from: '7.4.3', to: '7.4.12', what: 'Firmware upgrade' }],
+  tickets: [{ number: '9001', subject: 'VPN drops', resolved: '2026-09-12' }],
+  tasks: [{ title: 'Imperva upgrade', completed: '2026-09-20' }],
+  recommendations: [{ finding: 'Old switch firmware', recommendation: 'Upgrade SW-CORE', risk: 'high', due: '2026-11-01' }],
+  upcoming: [{ title: 'WAF failover test', due: '2026-10-20' }], assets: null,
+});
 
-test('the customer Reports tab shows where this period\'s report is, and moves it to the next step', async ({ page }) => {
-  await page.clock.setFixedTime(new Date('2026-10-11T09:00:00+03:00'));
-  const api = await mockApi(page, { role: 'manager', permissions: { 'managed_reports.generate': true, 'managed_reports.review': true, 'managed_customers.view': true } });
-  let history = [
-    file(11, 'docx', 2, 'draft'), file(10, 'pdf', 1, 'draft'),
-    file(5, 'docx', 1, 'final', { period_start: '2026-08-01', period_end: '2026-08-31', sent_at: '2026-09-10T08:00:00Z', sent_to: 'it@northwind.example' }),
-  ];
-  let action = null;
+async function reportsTab(page, permissions = { 'managed_reports.generate': true, 'managed_customers.view': true }) {
+  const api = await mockApi(page, { role: 'manager', permissions });
+  const asked = [], downloads = [];
   api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
   api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
   api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
-  api.override('GET /api/managed-customers/12/overview', () => ({ body: { report_due: { label: 'September 2026', from: '2026-09-01', to: '2026-09-30', due_date: '2026-10-15', status: 'draft', overdue: false } } }));
-  api.override('GET /api/managed-report-templates', () => ({ body: { rows: [] } }));
-  api.override('GET /api/customers/12/managed-services', () => ({ body: { default_report_template_id: null } }));
-  api.override('GET /api/managed-customers/12/reports', () => ({ body: { rows: history } }));
-  api.override('PUT /api/managed-customers/12/reports/11/workflow', ({ body }) => {
-    action = body.action; history = history.map(r => (r.id === 11 ? { ...r, status: 'in_review' } : r));
-    return { body: { report: history.find(r => r.id === 11) } };
-  });
+  api.override('GET /api/managed-customers/12/overview', () => ({ body: { report_due: { label: 'September 2026', from: '2026-09-01', to: '2026-09-30', due_date: '2026-10-15', status: 'not_started', overdue: false } } }));
+  api.override('POST /api/managed-customers/12/customer-report/preview', ({ body }) => { asked.push(body); return { body: report(body) }; });
+  for (const format of ['pdf', 'docx']) api.override(`POST /api/managed-customers/12/customer-report.${format}`, ({ body }) => { downloads.push([format, body]); return { body: 'file' }; });
+  return { asked, downloads };
+}
 
+test('the customer report: pick the period, write a summary, see what we did, and download PDF or Word — no review steps', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-11T09:00:00+03:00'));
+  const { asked, downloads } = await reportsTab(page);
   await page.goto('/customers/12/service-profile?section=reports');
-  const status = page.getByRole('region', { name: "This period's report" });
-  await status.getByRole('button', { name: /Go to the September 2026 report/ }).click();
-  await expect(status.getByRole('heading', { name: 'September 2026 report' })).toBeVisible();
-  await expect(status).toContainText('Due with the customer by 15/10/2026');
-  await expect(status.locator('[aria-current="step"]')).toHaveText(/Draft/);
-  await expect(status).toContainText('Next: submit the draft for review.');
-  await status.getByRole('button', { name: 'Submit' }).click();
-  await expect.poll(() => action).toBe('submit');
-  await expect(status.locator('[aria-current="step"]')).toHaveText(/In review/);
+  await expect(page.getByText('Submit')).toHaveCount(0);
+  await expect(page.getByText('Mark as sent')).toHaveCount(0);
+  await expect(page.getByText(/Reports made/)).toHaveCount(0);
 
-  // Contents are a tidy list with All / None; written sections are folded away until used.
-  const build = page.getByRole('region', { name: 'Prepare the report' });
-  await build.getByRole('button', { name: 'None' }).click();
-  await expect(build.getByRole('checkbox', { name: 'Executive summary' })).not.toBeChecked();
-  await expect(build).toContainText('0 of 16');
-  await expect(build.getByRole('button', { name: /Preview the data/ })).toBeDisabled();
-  await build.getByRole('button', { name: 'All' }).click();
-  await expect(build.getByLabel('Key highlights')).toBeHidden();
-  await build.getByText('Written sections').click();
-  await expect(build.getByLabel('Key highlights')).toBeVisible();
+  // The report owed for September is one click away.
+  await page.getByRole('button', { name: 'Use September 2026' }).click();
+  await expect.poll(() => asked.at(-1)).toMatchObject({ from: '2026-09-01', to: '2026-09-30' });
+  const preview = page.getByRole('article', { name: 'Report preview' });
+  await expect(preview).toContainText('Northwind Logistics');
+  await expect(preview).toContainText('36.5');
+  await expect(preview.getByRole('region', { name: 'Changes and upgrades' })).toContainText('7.4.12');
+  await expect(preview.getByRole('region', { name: 'Work delivered' })).toContainText('Monitoring');
 
-  // History: one card per period, formatted dates, each file with its state.
-  const history2 = page.getByRole('region', { name: 'Report history' });
-  const september = history2.getByRole('article').filter({ hasText: '01/09/2026 – 30/09/2026' });
-  await expect(september).toContainText('2 files');
-  await expect(september).toContainText('Word v2');
-  await expect(september).toContainText('PDF v1');
-  await expect(history2.getByRole('article').filter({ hasText: '01/08/2026 – 31/08/2026' })).toContainText('sent to it@northwind.example');
-  await expect(history2).not.toContainText('2026-10-05 08:30');
+  await page.getByLabel('Summary for the customer (optional)').fill('A stable month.');
+  await page.getByLabel('Work log (every activity)').uncheck();
+  await expect.poll(() => asked.at(-1)).toMatchObject({ summary: 'A stable month.', sections: ['changes', 'tickets', 'tasks', 'recommendations', 'upcoming'] });
+  await expect(preview).toContainText('A stable month.');
+  await expect(preview.getByRole('region', { name: 'Work log' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Download PDF' }).click();
+  await expect.poll(() => downloads[0]).toEqual(['pdf', { from: '2026-09-01', to: '2026-09-30', sections: ['changes', 'tickets', 'tasks', 'recommendations', 'upcoming'], summary: 'A stable month.', coming_next: '' }]);
+  await page.getByRole('button', { name: 'Download Word' }).click();
+  await expect.poll(() => downloads[1]?.[0]).toBe('docx');
+});
+
+test('people who may not generate reports see the preview without downloads', async ({ page }) => {
+  await reportsTab(page, { 'managed_customers.view': true, 'managed_reports.generate': false });
+  await page.goto('/customers/12/service-profile?section=reports');
+  await expect(page.getByRole('article', { name: 'Report preview' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download PDF' })).toHaveCount(0);
 });
 
 test('on a phone the Reports tab fits the screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  const api = await mockApi(page, { role: 'manager', permissions: { 'managed_reports.generate': true, 'managed_reports.review': true, 'managed_customers.view': true } });
-  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
-  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
-  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
-  api.override('GET /api/managed-customers/12/overview', () => ({ body: { report_due: null } }));
-  api.override('GET /api/managed-report-templates', () => ({ body: { rows: [] } }));
-  api.override('GET /api/customers/12/managed-services', () => ({ body: {} }));
-  api.override('GET /api/managed-customers/12/reports', () => ({ body: { rows: [file(11, 'docx', 2, 'draft')] } }));
+  await reportsTab(page);
   await page.goto('/customers/12/service-profile?section=reports');
-  await expect(page.getByRole('region', { name: 'Prepare the report' })).toBeVisible();
+  await expect(page.getByRole('article', { name: 'Report preview' })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });

@@ -105,7 +105,8 @@ function Pagination({ page,total,pageSize,onPage }) {
 export default function Approvals() {
   const { user }=useAuth();
   const canReviewClosures=user?.role==='manager';
-  const canReviewReports=!!user?.permissions?.['managed_reports.review'];
+  // Customer reports have no review steps any more (Customer 360 → Reports generates and downloads them).
+  const canReviewReports=false;
   const canViewCustomers=user?.role==='manager' || !!user?.permissions?.['managed_customers.view'];
   const [searchParams,setSearchParams]=useSearchParams();
   const requestedView=searchParams.get('view');

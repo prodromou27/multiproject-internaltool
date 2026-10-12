@@ -1,8 +1,8 @@
 import { fmtDate } from './Shared';
 import { ToneBadge } from './EnterpriseUI';
 
-// How far the report owed for the last complete period has got.
-const LABELS = { not_started: 'Not started', draft: 'Draft', in_review: 'In review', approved: 'Approved', final: 'Ready to send', sent: 'Sent' };
+// Whether the report owed for the last complete period has been made.
+const LABELS = { not_started: 'Not made yet', draft: 'Report made', in_review: 'Report made', approved: 'Report made', final: 'Report made', sent: 'Report made' };
 
 export function reportDueTone(due) {
   if (!due || due.status === 'not_yet_due') return 'neutral';
