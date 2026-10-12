@@ -1,4 +1,4 @@
-const { ownTasksSql, ownTasksParams, worksOnTask } = require('../taskAccess');
+const { ownTasksSql, ownTasksParams, worksOnTask, canReadTask, mentionedUsers } = require('../taskAccess');
 const router  = require('express').Router();
 const appTime = require('../appTime');
 const db      = require('../db');
@@ -135,6 +135,15 @@ async function validateTaskRelationships(projectId, assigneeId) {
   return null;
 }
 
+// The open subtasks someone owns, across tasks (My Work), soonest due first.
+router.get('/my-subtasks', requireAuth, async (req, res) => {
+  const rows = await db.prepare(`SELECT s.id, s.title, s.due_date, s.task_id, t.title AS task_title, t.status AS task_status, COALESCE(t.customer_id, p.customer_id) AS customer_id
+    FROM task_subtasks s JOIN tasks t ON t.id = s.task_id LEFT JOIN projects p ON p.id = t.project_id
+    WHERE s.assigned_to = ? AND s.done = 0 AND t.status NOT IN ('completed','closed','cancelled')
+    ORDER BY CASE WHEN s.due_date IS NULL THEN 1 ELSE 0 END, s.due_date, s.id LIMIT 100`).all(req.user.id);
+  res.json(await withCustomerNames(rows));
+});
+
 router.post('/', requireAuth, async (req, res) => {
   if (req.user.role === 'pm' || req.user.role === 'planner') return res.status(403).json({ error: 'Forbidden' });
   const inputError = validateTaskInput(req.body, true);
@@ -188,7 +197,10 @@ router.post('/', requireAuth, async (req, res) => {
 
   // Log activity
   const taskId = result.lastInsertRowid;
-  if (newSubtasks.value.length) await subtasks.insertSubtasks(db, taskId, newSubtasks.value, req.user.id);
+  if (newSubtasks.value.length) {
+    await subtasks.insertSubtasks(db, taskId, newSubtasks.value, req.user.id);
+    await subtasks.notifyOwners({ id: taskId, title: title.trim(), customer_id: customerId || projectCustomer || null }, newSubtasks.value, req.user);
+  }
   logActivity(project_id, req.user.id, 'task_created', title);
 
   // Notify the engineer it is assigned to, or the team's engineers (except whoever added it).
@@ -480,9 +492,7 @@ async function requireReadableTask(req, res, next) {
   if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid task ID' });
   const task = await db.prepare('SELECT t.*, COALESCE(t.customer_id, p.customer_id) AS task_customer_id FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?').get(req.params.id);
   if (!task) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role === 'engineer' && !await worksOnTask(req.user, task)
-    && !(task.project_id ? await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(task.project_id, req.user.id) : task.task_customer_id && await canAccessCustomer(req.user, task.task_customer_id)))
-    return res.status(403).json({ error: 'Forbidden' });
+  if (!await canReadTask(req.user, { ...task, customer_id: task.task_customer_id })) return res.status(403).json({ error: 'Forbidden' });
   req.task = task;
   next();
 }
@@ -507,24 +517,15 @@ router.post('/:id/comments', requireAuth, requireVisibleTask, async (req, res) =
     .run(req.params.id, req.user.id, message.trim()));
   logActivity(task.project_id, req.user.id, 'task_comment', `"${task.title}"`);
 
-  // Detect @mentions and notify each unique mentioned user
-  const allUsers = await db.prepare("SELECT id, name FROM users WHERE active = 1 AND (role='manager' OR (role='engineer' AND id=?))").all(task.assigned_to);
-  const lower = message.toLowerCase();
-  const notified = new Set();
-  for (const u of allUsers) {
-    if (u.id === req.user.id) continue; // don't self-notify
-    const firstName = u.name.split(' ')[0].toLowerCase();
-    const fullName  = u.name.toLowerCase().replace(/\s+/g, '');
-    if (lower.includes('@' + firstName) || lower.includes('@' + fullName)) {
-      if (!notified.has(u.id)) {
-        notified.add(u.id);
-        try {
-          await db.prepare(`INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)`)
-            .run(u.id, 'mention', `${req.user.name} mentioned you`, `In task "${task.title}": ${message.trim().slice(0, 80)}`,
-              '/tasks');
-        } catch (_) {}
-      }
-    }
+  // @mentions: anyone tagged who may see the task is told (bell and their own channels), once.
+  const candidates = await db.prepare("SELECT id, name FROM users WHERE active = 1 AND role IN ('manager','engineer') AND id <> ?").all(req.user.id);
+  const where = task.customer_id ? `/customers/${task.customer_id}/service-profile?section=tasks&task=${task.id}` : '/tasks';
+  for (const person of mentionedUsers(message, candidates)) {
+    const viewer = await db.prepare('SELECT id, role FROM users WHERE id = ?').get(person.id);
+    if (!await canReadTask(viewer, task)) continue;
+    await require('../notifications').notifyUser(Number(person.id), 'mention',
+      { title: `💬 ${req.user.name} mentioned you`, body: `In **${task.title}**: ${message.trim().slice(0, 300)}`, facts: [{ name: 'Task', value: task.title }] },
+      { title: `${req.user.name} mentioned you`, body: `In task "${task.title}": ${message.trim().slice(0, 80)}`, link: where }).catch(error => console.error('[mention notify]', error.message));
   }
 
   res.json({ id: result.lastInsertRowid });

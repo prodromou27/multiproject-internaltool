@@ -83,6 +83,14 @@ export default function EngineerHub() {
   });
   const [tick, setTick] = useState(Date.now());
   const [subtasksFor, setSubtasksFor] = useState(null);
+  // Subtasks given to this person, on their tasks or colleagues' (routes/tasks.js /my-subtasks).
+  const [mySubtasks, setMySubtasks] = useState([]);
+  const loadMySubtasks = useCallback(() => api.mySubtasks().then(setMySubtasks).catch(() => {}), []);
+  useEffect(() => { loadMySubtasks(); }, [loadMySubtasks]);
+  async function tickSubtask(item) {
+    try { await api.updateTaskSubtask(item.task_id, item.id, { done: true }); toast.success(`Done: ${item.title}`); loadMySubtasks(); load({ quiet: true }); }
+    catch (error) { toast.error(error.message); }
+  }
   const movingChecklists = useRef(false);
   // The next few of the person's reminders; the Reminders page has them all.
   const [reminders, setReminders] = useState([]);
@@ -254,6 +262,14 @@ export default function EngineerHub() {
       </div>
 
       {subtasksFor && <SubtasksDialog task={subtasksFor} onClose={() => { setSubtasksFor(null); load({ quiet: true }); }} />}
+      {mySubtasks.length > 0 && <section className="card mt-16 hub-subtasks" aria-label="My subtasks"><div className="section-header"><h2 className="section-title">My subtasks</h2><span className="text-muted text-sm">{mySubtasks.length} open</span></div>
+        <ul>{mySubtasks.map(item => <li key={item.id}>
+          <input type="checkbox" aria-label={`Done: ${item.title}`} onChange={() => tickSubtask(item)} />
+          <span><strong>{item.title}</strong><small>{item.task_title}{item.customer_name ? ` · ${item.customer_name}` : ''}</small></span>
+          {item.due_date && <span className={`hub-subtask-due${item.due_date < today ? ' is-late' : ''}`}>{item.due_date < today ? 'Overdue · ' : 'Due '}{fmtDate(item.due_date)}</span>}
+          {item.customer_id && <Link className="btn btn-ghost btn-sm" to={`/customers/${item.customer_id}/service-profile?section=tasks&task=${item.task_id}`}>Open task</Link>}
+        </li>)}</ul>
+      </section>}
       <section className="card mt-16"><div className="section-header"><h2 className="section-title">Personal Kanban</h2><Link to="/tasks">All tasks →</Link></div><div className="engineer-kanban">{KANBAN.map(([status, label]) => <div className="kanban-column" key={status} onDragOver={e => e.preventDefault()} onDrop={() => moveTask(dragged, status)}><h3>{label}<span>{tasks.filter(t => t.status === status).length}</span></h3>{tasks.filter(t => t.status === status).map(task => { return <article key={task.id} draggable onDragStart={() => setDragged(task)} className="kanban-card"><div className="kanban-card-title">{task.title}</div><div className="kanban-card-meta"><PriorityBadge p={task.priority} />{task.deadline && <span>{fmtDate(task.deadline)}</span>}</div>{task.subtasks_total > 0 && <div className="kanban-subtasks"><SubtaskProgress total={task.subtasks_total} done={task.subtasks_done} onClick={() => setSubtasksFor(task)} /></div>}<div className="kanban-actions"><button onClick={() => setSubtasksFor(task)} title="Subtasks" aria-label={`Subtasks of ${task.title}`}><Plus size={11} /></button>{!timer && <button onClick={() => startTimer(task)} title="Start timer"><TimerReset size={11} /></button>}<select defaultValue="" onChange={e => { if (e.target.value) quickNote(task, e.target.value); e.target.value = ''; }}><option value="">Quick update…</option>{QUICK_NOTES.map(note => <option key={note}>{note}</option>)}</select></div></article>; })}</div>)}</div></section>
 
       {!managedFocus && saAccess?.enabled && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canLog={saAccess.enabled} />}

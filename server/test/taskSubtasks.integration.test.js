@@ -169,3 +169,35 @@ test('the engineer working on a task posts status updates; colleagues on the cus
   } finally { await db.prepare('DELETE FROM team_members WHERE team_id = ? AND user_id = ?').run(ids.teamEnabled, ids.engineerDisabled); }
   assert.equal((await api(`/api/tasks/${id}/comments`, { token: ids.tokenDisabled })).status, 403, 'not on the customer');
 });
+
+test('mentioning someone in an update tells them, if they may see the task', async () => {
+  const id = (await newTask({ title: 'Imperva upgrade', assigned_to: ids.engineerEnabled })).data.id;
+  const told = async user => (await db.prepare("SELECT title, link FROM notifications WHERE user_id = ? AND type = 'mention' ORDER BY id DESC").get(user)) || null;
+  assert.equal((await api(`/api/tasks/${id}/comments`, { method: 'POST', token: ids.tokenEnabled, body: { message: '@Manager One can you approve the window? @Engineer Disabled FYI' } })).status, 200);
+  const manager = await told(ids.manager);
+  assert.equal(manager.title, 'Engineer Enabled mentioned you');
+  assert.equal(manager.link, `/customers/${ids.customer}/service-profile?section=tasks&task=${id}`);
+  assert.equal(await told(ids.engineerDisabled), null, 'cannot see the task: not told');
+});
+
+test('a subtask has an owner and a due date; the owner ticks it on someone else\'s task and finds it in their list', async () => {
+  const id = (await newTask({ title: 'Meraki replacements', assigned_to: ids.engineerEnabled, subtasks: [{ title: 'Replace MR-01', assigned_to: ids.engineerDisabled, due_date: '2026-11-20' }, 'Replace MR-02'] })).data.id;
+  const [mr1, mr2] = (await subtasksOf(id)).data;
+  assert.deepEqual([mr1.owner_name, mr1.due_date, mr2.owner_name], ['Engineer Disabled', '2026-11-20', null]);
+  assert.ok(await db.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND title = 'Subtask for you: Replace MR-01'").get(ids.engineerDisabled));
+  for (const bad of [{ assigned_to: ids.manager }, { due_date: '2026-02-30' }])
+    assert.equal((await api(`/api/tasks/${id}/subtasks/${mr2.id}`, { method: 'PUT', token: ids.tokenManager, body: bad })).status, 400, JSON.stringify(bad));
+
+  const mine = await api('/api/tasks/my-subtasks', { token: ids.tokenDisabled });
+  assert.deepEqual(mine.data.map(s => [s.title, s.task_title, s.customer_name]), [['Replace MR-01', 'Meraki replacements', 'Acme Corp']]);
+  // The owner reads the checklist and ticks their own, nothing else.
+  assert.equal((await subtasksOf(id, ids.tokenDisabled)).status, 200);
+  assert.equal((await api(`/api/tasks/${id}/subtasks/${mr1.id}`, { method: 'PUT', token: ids.tokenDisabled, body: { done: true } })).status, 200);
+  assert.equal((await api(`/api/tasks/${id}/subtasks/${mr2.id}`, { method: 'PUT', token: ids.tokenDisabled, body: { done: true } })).status, 403);
+  assert.equal((await api(`/api/tasks/${id}/subtasks/${mr1.id}`, { method: 'PUT', token: ids.tokenDisabled, body: { title: 'Renamed' } })).status, 403);
+  assert.equal((await api(`/api/tasks/${id}/subtasks`, { method: 'POST', token: ids.tokenDisabled, body: { title: 'More' } })).status, 403);
+  assert.deepEqual((await api('/api/tasks/my-subtasks', { token: ids.tokenDisabled })).data, []);
+  // Reassigning tells the new owner.
+  await api(`/api/tasks/${id}/subtasks/${mr2.id}`, { method: 'PUT', token: ids.tokenManager, body: { assigned_to: ids.engineerDisabled, due_date: '2026-11-21' } });
+  assert.deepEqual((await api('/api/tasks/my-subtasks', { token: ids.tokenDisabled })).data.map(s => [s.title, s.due_date]), [['Replace MR-02', '2026-11-21']]);
+});

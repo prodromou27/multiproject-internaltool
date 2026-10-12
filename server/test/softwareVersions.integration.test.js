@@ -78,3 +78,21 @@ test('customer assets running older software are found, per customer and across 
   assert.equal(estate.data.counts.current, 1);
   assert.equal((await api('/api/software/estate', { token: ids.tokenEnabled })).status, 403);
 });
+
+test('Check Point\'s newer documentation layout (one page per take) is read too, keeping the recommended take', async () => {
+  const product = await db.prepare("SELECT * FROM software_products WHERE source='checkpoint'").get();
+  await db.prepare("UPDATE software_products SET config=? WHERE id=?").run(JSON.stringify({ versions: ['R81.20'] }), product.id);
+  await db.exec(`DELETE FROM software_releases WHERE product_id = ${Number(product.id)}`);
+  await db.prepare('INSERT INTO software_releases (product_id, branch, latest_version, recommended_version) VALUES (?, ?, ?, ?)').run(product.id, 'R81.20', 'Take 170', 'Take 161');
+  const site = async url => {
+    if (String(url).endsWith('/Data/HelpSystem.xml')) return new Response('Not found', { status: 404 });
+    if (String(url).endsWith('/R81.20/')) return new Response('<a href="Take_170.html">Take 170</a><a href="Take_173.html">Take 173 - Latest</a>');
+    if (String(url).endsWith('/Take_173.html')) return new Response('<h1>Take 173 Released on 12 October 2026</h1>');
+    return new Response('Not found', { status: 404 });
+  };
+  const fresh = await db.prepare('SELECT * FROM software_products WHERE id=?').get(product.id);
+  const result = await sync.syncProduct(fresh, { fetchImpl: site });
+  assert.deepEqual(result.events, [{ branch: 'R81.20', kind: 'latest', version: 'Take 173', previous: 'Take 170' }]);
+  const row = await db.prepare('SELECT latest_version, latest_date, recommended_version, link FROM software_releases WHERE product_id = ?').get(product.id);
+  assert.deepEqual({ ...row }, { latest_version: 'Take 173', latest_date: '2026-10-12', recommended_version: 'Take 161', link: 'https://sc1.checkpoint.com/documents/Jumbo_HFA/R81.20/Take_173.html' });
+});

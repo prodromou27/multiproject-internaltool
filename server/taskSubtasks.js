@@ -45,7 +45,10 @@ async function checkNewSubtasks(list, customerId, store = db) {
     if (!title || title.length > 300) return { error: 'Each subtask needs a title of at most 300 characters' };
     const assetId = item.asset_id == null || item.asset_id === '' ? null : Number(item.asset_id);
     if (assetId !== null && (!Number.isSafeInteger(assetId) || assetId < 1)) return { error: 'Invalid subtask asset' };
-    items.push({ title, asset_id: assetId });
+    const owner = await checkOwner(item.assigned_to, store), due = checkDue(item.due_date);
+    if (owner.error) return owner;
+    if (due.error) return due;
+    items.push({ title, asset_id: assetId, assigned_to: owner.value ?? null, due_date: due.value ?? null });
   }
   const assetIds = [...new Set(items.map(item => item.asset_id).filter(Boolean))];
   if (assetIds.length) {
@@ -59,8 +62,40 @@ async function checkNewSubtasks(list, customerId, store = db) {
 async function insertSubtasks(store, taskId, items, userId, startAt = 0) {
   let position = startAt;
   for (const item of items) {
-    await store.prepare('INSERT INTO task_subtasks (task_id, title, asset_id, position, created_by) VALUES (?, ?, ?, ?, ?)')
-      .run(taskId, item.title, item.asset_id || null, position++, userId || null);
+    await store.prepare('INSERT INTO task_subtasks (task_id, title, asset_id, assigned_to, due_date, position, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(taskId, item.title, item.asset_id || null, item.assigned_to || null, item.due_date || null, position++, userId || null);
+  }
+}
+
+/** A subtask's owner: undefined (unchanged), null (none) or an active engineer's id. */
+async function checkOwner(value, store = db) {
+  if (value === undefined) return { value: undefined };
+  if (value === null || value === '') return { value: null };
+  const id = Number(value);
+  if (!Number.isSafeInteger(id) || id < 1) return { error: 'Invalid subtask owner' };
+  const person = await store.prepare('SELECT role, active FROM users WHERE id = ?').get(id);
+  if (!person || !person.active || person.role !== 'engineer') return { error: 'A subtask is owned by an active engineer' };
+  return { value: id };
+}
+
+/** A subtask's due date: undefined (unchanged), null (none) or YYYY-MM-DD. */
+function checkDue(value) {
+  if (value === undefined) return { value: undefined };
+  if (value === null || value === '') return { value: null };
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`)) || new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) !== value)
+    return { error: 'A subtask due date is a real YYYY-MM-DD date' };
+  return { value };
+}
+
+/** Tells new subtask owners (other than whoever gave it to them). */
+async function notifyOwners(task, items, by) {
+  const { notifyUser } = require('./notifications');
+  for (const item of items) {
+    if (!item.assigned_to || Number(item.assigned_to) === Number(by.id)) continue;
+    const where = task.customer_id ? `/customers/${task.customer_id}/service-profile?section=tasks&task=${task.id}` : '/tasks';
+    await notifyUser(Number(item.assigned_to), 'task_assigned',
+      { title: '☑️ Subtask for you', body: `**${by.name}** gave you **${item.title}** in **${task.title}**${item.due_date ? `, due ${item.due_date}` : ''}.`, facts: [{ name: 'Task', value: task.title }, { name: 'Subtask', value: item.title }] },
+      { title: `Subtask for you: ${item.title}`, body: `In "${task.title}"${item.due_date ? ` · due ${item.due_date}` : ''}`, link: where }).catch(error => console.error('[subtask notify]', error.message));
   }
 }
 
@@ -75,4 +110,4 @@ async function withLastUpdates(rows, store = db) {
   return rows.map(row => ({ ...row, last_update: latest.get(Number(row.id)) || null }));
 }
 
-module.exports = { withLastUpdates, CLOSING, MAX_PER_TASK, subtaskCounts, withSubtaskCounts, withOpenSubtasks, closingBlocked, checkNewSubtasks, insertSubtasks };
+module.exports = { checkOwner, checkDue, notifyOwners, withLastUpdates, CLOSING, MAX_PER_TASK, subtaskCounts, withSubtaskCounts, withOpenSubtasks, closingBlocked, checkNewSubtasks, insertSubtasks };

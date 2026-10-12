@@ -106,11 +106,29 @@ function checkpointTakes(html) {
     .map(match => ({ take: Number(match[1]), released: isoDay(match[2]), recommended: match[4] ? isoDay(match[4]) : null }));
 }
 
+/**
+ * Check Point's newer Jumbo documentation (from October 2026; R81.20 and later): an
+ * index listing one page per take ("Take_173.html"), each saying when it was
+ * released. It no longer says which take is Recommended, so that is left as it was.
+ */
+async function checkpointWebHelp(version, { fetchImpl }) {
+  const index = `${CHECKPOINT_JUMBO}/${version}/`;
+  const takes = [...(await text(index, { fetchImpl, label: 'Check Point documentation' })).matchAll(/Take_(\d{1,4})\.html/g)].map(match => Number(match[1]));
+  if (!takes.length) throw new Error(`No Jumbo Hotfix takes were found for ${version}; Check Point may have changed its documentation`);
+  const latest = Math.max(...takes);
+  const page = await text(`${index}Take_${latest}.html`, { fetchImpl, label: 'Check Point documentation' });
+  const released = checkpointTakes(page).find(take => take.take === latest)?.released || null;
+  return { branch: version, latest_version: `Take ${latest}`, latest_date: released, recommended_version: undefined, recommended_date: undefined, maintained: 1, link: `${index}Take_${latest}.html` };
+}
+
 async function checkpoint(config, { fetchImpl } = {}) {
   const out = [];
   for (const version of config.versions || []) {
-    // Each version's Jumbo documentation names its own start page.
-    const help = await text(`${CHECKPOINT_JUMBO}/${version}/Data/HelpSystem.xml`, { fetchImpl, label: 'Check Point documentation' });
+    // Each version's Jumbo documentation names its own start page; newer versions use the take-per-page layout.
+    let help = null;
+    try { help = await text(`${CHECKPOINT_JUMBO}/${version}/Data/HelpSystem.xml`, { fetchImpl, label: 'Check Point documentation' }); }
+    catch (error) { if (!/HTTP 404/.test(error.message)) throw error; }
+    if (help === null) { out.push(await checkpointWebHelp(version, { fetchImpl })); continue; }
     const start = help.match(/DefaultUrl="([^"]+)"/)?.[1];
     if (!start || /^[a-z]+:|\.\./i.test(start)) throw new Error(`Check Point has no Jumbo Hotfix documentation for ${version}`);
     const link = `${CHECKPOINT_JUMBO}/${version}/${start}`;

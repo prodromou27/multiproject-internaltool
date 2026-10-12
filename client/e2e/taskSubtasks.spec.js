@@ -202,3 +202,52 @@ test('the engineer posts a status update on a task, changing its status with it;
     ['comment', { message: 'Waiting for the maintenance window' }]]);
   await expect(dialog.getByRole('region', { name: 'Updates' })).toContainText('Alex Mercer');
 });
+
+test('clicking a task shows its status, details, subtasks and updates; @ tags a colleague; subtasks get an owner and a due date', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  const sent = [];
+  api.override('GET /api/tasks', () => ({ body: { rows: [{ id: 61, title: 'Patch Cisco ISE', status: 'waiting_customer', pending_from_customer: 'Maintenance window', priority: 'high', deadline: '2026-10-30',
+    assigned_to: 7, assigned_to_name: 'Maria Ioannou', customer_id: 12, customer_name: 'Northwind Logistics', created_by_name: 'A', subtasks_total: 1, subtasks_done: 0 }], total: 1, counts: { all: 1, open: 1 }, page: 1, page_size: 50 } }));
+  api.override('GET /api/auth/users', () => ({ body: [{ id: 7, name: 'Maria Ioannou', role: 'engineer', active: 1 }, { id: 8, name: 'Paul Delivery', role: 'engineer', active: 1 }] }));
+  api.override('GET /api/tasks/61/subtasks', () => ({ body: { subtasks: [{ id: 3, title: 'Patch node 1', done: false, assigned_to: null, due_date: null }], task: { status: 'waiting_customer' } } }));
+  api.override('PUT /api/tasks/61/subtasks/3', ({ body }) => { sent.push(['subtask', body]); return { body: { subtasks: [{ id: 3, title: 'Patch node 1', done: false, ...body, owner_name: body.assigned_to ? 'Paul Delivery' : null }], task: { status: 'waiting_customer' } } }; });
+  api.override('GET /api/tasks/61/comments', () => ({ body: [{ id: 1, user_name: 'Maria Ioannou', message: 'Waiting for @Alex Mercer to confirm', created_at: '2026-10-12 08:00:00' }] }));
+  api.override('POST /api/tasks/61/comments', ({ body }) => { sent.push(['comment', body]); return { body: { id: 2 } }; });
+  await page.goto('/tasks');
+  await page.getByRole('button', { name: 'Patch Cisco ISE', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Patch Cisco ISE' });
+  await expect(dialog).toContainText('Waiting for Customer');
+  await expect(dialog).toContainText('Waiting for: Maintenance window');
+  await expect(dialog).toContainText('Maria Ioannou');
+  await expect(dialog).toContainText('Northwind Logistics');
+  await expect(dialog.getByRole('region', { name: 'Updates' })).toContainText('Waiting for @Alex Mercer to confirm');
+
+  await dialog.getByRole('combobox', { name: 'Owner of Patch node 1' }).selectOption('Paul Delivery');
+  await expect.poll(() => sent[0]).toEqual(['subtask', { assigned_to: 8 }]);
+  await dialog.getByLabel('Due date of Patch node 1').fill('2026-10-25');
+  await expect.poll(() => sent[1]).toEqual(['subtask', { due_date: '2026-10-25' }]);
+
+  const box = dialog.getByRole('textbox', { name: 'Add an update' });
+  await box.fill('Node 1 is next, ');
+  await box.press('End');
+  await box.pressSequentially('@Pau');
+  await page.getByText('Paul Delivery').last().click();
+  await box.pressSequentially('please confirm');
+  await dialog.getByRole('button', { name: 'Post update' }).click();
+  await expect.poll(() => sent.find(item => item[0] === 'comment')).toEqual(['comment', { message: 'Node 1 is next, @Paul Delivery please confirm' }]);
+});
+
+test('My Work lists the subtasks given to me, to tick off', async ({ page }) => {
+  const api = await mockApi(page, { role: 'engineer' });
+  let ticked = null;
+  api.override('GET /api/tasks/my-subtasks', () => ({ body: ticked ? [] : [{ id: 5, title: 'Replace MR-01', due_date: '2020-01-01', task_id: 77, task_title: 'Meraki replacements', customer_id: 12, customer_name: 'Northwind Logistics' }] }));
+  api.override('PUT /api/tasks/77/subtasks/5', ({ body }) => { ticked = body; return { body: { subtasks: [], task: { status: 'open' } } }; });
+  await page.goto('/my-day');
+  const card = page.getByRole('region', { name: 'My subtasks' });
+  await expect(card).toContainText('Meraki replacements · Northwind Logistics');
+  await expect(card).toContainText('Overdue');
+  await expect(card.getByRole('link', { name: 'Open task' })).toHaveAttribute('href', '/customers/12/service-profile?section=tasks&task=77');
+  await card.getByRole('checkbox', { name: 'Done: Replace MR-01' }).check();
+  await expect.poll(() => ticked).toEqual({ done: true });
+  await expect(card).toHaveCount(0);
+});

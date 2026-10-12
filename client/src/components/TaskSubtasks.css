@@ -52,3 +52,24 @@ a.st-ticket:hover { border-color: var(--primary); }
 .st-update-actions select { width: auto; min-width: 190px; }
 .st-last-update { display: inline-flex; align-items: baseline; gap: 4px; max-width: 100%; color: var(--gray-600); font-size: 12px; }
 .st-last-update strong { color: var(--gray-700); font-weight: 600; }
+.st-meta { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.st-owner { width: auto; max-width: 170px; min-height: 30px; padding: 3px 8px; font-size: 12px; }
+.st-due { width: auto; min-height: 30px; padding: 3px 6px; font-size: 12px; }
+.st-due.is-late, .st-meta-read .is-late, .st-summary .is-late { color: var(--tone-danger-text, var(--danger)); font-weight: 600; }
+.st-meta-read { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; color: var(--gray-500); font-size: 12px; }
+.st-meta-read span { display: inline-flex; align-items: center; gap: 4px; }
+.st-summary { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--gray-50); }
+.st-summary dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px 16px; margin: 0; }
+.st-summary dt { color: var(--gray-500); font-size: 12px; font-weight: 600; }
+.st-summary dd { margin: 2px 0 0; font-size: 13px; }
+.st-description { margin: 0; font-size: 13px; white-space: pre-wrap; }
+.st-waiting { margin: 0; color: var(--tone-warning-text, var(--warning)); font-size: 13px; font-weight: 600; }
+.task-title-open { padding: 0; border: 0; background: none; color: var(--gray-900); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.task-title-open:hover { color: var(--primary); text-decoration: underline; }
+.hub-subtasks ul { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.hub-subtasks li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 0; border-bottom: 1px solid var(--gray-100); }
+.hub-subtasks li input { width: auto; min-height: 0; flex: none; }
+.hub-subtasks li > span:first-of-type { display: grid; flex: 1 1 220px; min-width: 0; }
+.hub-subtasks li small { color: var(--gray-500); font-size: 12px; }
+.hub-subtask-due { color: var(--gray-600); font-size: 12px; font-weight: 600; }
+.hub-subtask-due.is-late { color: var(--tone-danger-text, var(--danger)); }

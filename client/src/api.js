@@ -344,6 +344,7 @@ export const api = {
 
   // task comments
   taskComments: (taskId) => req('GET', `/tasks/${taskId}/comments`),
+  mySubtasks: (options) => req('GET', '/tasks/my-subtasks', undefined, options),
   addTaskComment: (taskId, message) => req('POST', `/tasks/${taskId}/comments`, { message }),
   deleteTaskComment: (taskId, cid) => req('DELETE', `/tasks/${taskId}/comments/${cid}`),
 

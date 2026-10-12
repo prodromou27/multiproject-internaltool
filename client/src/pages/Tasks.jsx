@@ -547,7 +547,7 @@ export default function Tasks() {
                       className="u-2cfdba3" />
                   </td>
                   <td>
-                    <span className="font-medium">{t.title}</span>
+                    <button type="button" className="task-title-open" onClick={() => setSubtasksFor(t)} title="Open the task: status, subtasks and updates">{t.title}</button>
                     {t.ticket_reference && <> <TaskTicket task={t} /></>}
                     {t.subtasks_total > 0 && <> <SubtaskProgress total={t.subtasks_total} done={t.subtasks_done} onClick={() => setSubtasksFor(t)} /></>}
                     {t.last_update && <div><LastUpdate update={t.last_update} /></div>}

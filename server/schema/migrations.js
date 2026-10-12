@@ -1118,6 +1118,13 @@ async function applyMigrations(pool, transaction) {
     -- When it matches a synced ticket of the task's customer, the task links to it.
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS ticket_reference TEXT;
   `]);
+  migrations.push(['20261030_subtask_owners', `
+    -- A subtask may have its own owner (an engineer, who may tick it even when the
+    -- task is someone else's) and a due date, as in Wrike and Monday.com.
+    ALTER TABLE task_subtasks ADD COLUMN IF NOT EXISTS assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE task_subtasks ADD COLUMN IF NOT EXISTS due_date TEXT;
+    CREATE INDEX IF NOT EXISTS idx_task_subtasks_owner ON task_subtasks(assigned_to) WHERE done = 0;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

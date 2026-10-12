@@ -59,11 +59,20 @@ const DONE_STATUSES=new Set(['completed','closed','cancelled','pending_approval'
    default) with Start and Done on the ones you work on. Engineers see all the
    customer's tasks: they take an unassigned one, or take one over from a
    colleague (who is told); a team task becomes theirs when they start or finish it. */
-export function CustomerTasks({ customerId,initialFilter='',engineers=[],canManage=false,canAdd=false,isEngineer=false,create=false }) {
+export function CustomerTasks({ customerId,initialFilter='',engineers=[],canManage=false,canAdd=false,isEngineer=false,create=false,openTaskId=null }) {
   const toast=useToast(),confirm=useConfirm(),[mine,setMine]=useState(false),[adding,setAdding]=useState(canAdd && create),[busy,setBusy]=useState(null),[subtasksFor,setSubtasksFor]=useState(null);
   const [page,setPage]=useState(1),[filter,setFilter]=useState(initialFilter || 'open'),[priority,setPriority]=useState(''),[engineer,setEngineer]=useState(''),[draft,setDraft]=useState(''),[search,setSearch]=useState('');
   const state=useCustomerList((params,options) => api.customerOperationTasks(customerId,params,options),{ page,page_size:25,filter,search,...(priority?{priority}:{}),...(engineer?{engineer_id:engineer}:{}),...(mine?{ mine:'1' }:{}) },customerId);
   const update=(setter,value) => { setter(value);setPage(1); };
+  // A link to one task (e.g. from a mention) opens it once its row is loaded; if it is not in the open list, all tasks are listed.
+  const opened=useRef(false);
+  useEffect(() => {
+    if (!openTaskId || opened.current || !state.data) return;
+    const row=state.data.rows.find(item => Number(item.id)===Number(openTaskId));
+    if (row) { opened.current=true;setSubtasksFor(row); }
+    else if (filter!=='all') setFilter('all');
+    else opened.current=true;
+  },[openTaskId,state.data,filter]);
   async function take(row) {
     const over=!!row.assigned_to;
     if (over && !await confirm(`${row.title} is assigned to ${row.assigned_to_name}. Take it over? ${row.assigned_to_name} will be told.`,{ title:'Take over this task',label:'Take over' })) return;

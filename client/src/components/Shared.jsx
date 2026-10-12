@@ -238,7 +238,7 @@ export function renderMentions(text) {
 }
 
 /* ── @Mention autocomplete input ─────────────────────────── */
-export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled, style, users = [], rows }) {
+export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled, style, users = [], rows, ariaLabel, maxLength }) {
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionOpen,  setMentionOpen]  = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -288,7 +288,8 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
       if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIndex(i => Math.min(i + 1, filtered.length - 1)); return; }
       if (e.key === 'ArrowUp')   { e.preventDefault(); setMentionIndex(i => Math.max(i - 1, 0)); return; }
       if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insertMention(filtered[mentionIndex].name); return; }
-      if (e.key === 'Escape')    { setMentionOpen(false); return; }
+      // Escape closes the suggestions only, not the dialog around the input.
+      if (e.key === 'Escape')    { e.preventDefault(); e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); setMentionOpen(false); return; }
     }
     if (onKeyDown) onKeyDown(e);
   }
@@ -314,6 +315,8 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
         placeholder={placeholder || 'Add a comment… (type @name to mention someone)'}
         disabled={disabled}
         rows={rows}
+        aria-label={ariaLabel}
+        maxLength={maxLength}
         style={{ width: '100%', fontSize: 13, boxSizing: 'border-box', ...style }}
       />
       {mentionOpen && filtered.length > 0 && (

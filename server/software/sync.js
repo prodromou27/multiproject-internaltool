@@ -58,7 +58,8 @@ async function storeReleases(product, releases, store = db) {
       const before = existing.get(release.branch);
       for (const [kind, field] of [['latest', 'latest_version'], ['recommended', 'recommended_version']])
         if (before?.[field] && release[field] && before[field] !== release[field]) events.push({ branch: release.branch, kind, version: release[field], previous: before[field] });
-      const values = FIELDS.map(field => release[field] ?? null);
+      // A source that does not publish a field (undefined) keeps what was read before.
+      const values = FIELDS.map(field => (release[field] === undefined ? before?.[field] ?? null : release[field] ?? null));
       await tx.prepare(`INSERT INTO software_releases (product_id, branch, ${FIELDS.join(', ')}, updated_at) VALUES (?, ?, ${FIELDS.map(() => '?').join(', ')}, app_now())
         ON CONFLICT (product_id, branch) DO UPDATE SET ${FIELDS.map(field => `${field}=EXCLUDED.${field}`).join(', ')}, updated_at=app_now()`).run(product.id, release.branch, ...values);
     }

@@ -167,6 +167,7 @@ async function sendWebex(cfg, msg, engineerEmail) {
 // enabling a channel keeps working as it did before these choices existed.
 const PERSONAL_EVENTS = Object.freeze([
   { key: 'task_assigned',    label: 'A task is assigned to me' },
+  { key: 'mention',          label: 'Someone mentions me in a task update' },
   { key: 'project_assigned', label: 'I am added to a project' },
   { key: 'visit_assigned',   label: 'A maintenance visit is assigned to me' },
   { key: 'visit_reminder',   label: 'The day before one of my maintenance visits' },
