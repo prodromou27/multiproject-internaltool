@@ -34,7 +34,7 @@ test('engineers add a task for a customer, for themselves or their team', async 
   await expect(dialog.getByRole('radio', { name: 'Me' })).toBeChecked();
   await dialog.getByRole('button', { name: 'Add task' }).click();
   await expect.poll(() => sent[0]).toEqual({ title: 'Replace failed disk on NAS-01', description: null, priority: 'high', deadline: '2026-10-20', customer_id: 12 });
-  await expect(page.getByRole('cell', { name: 'Replace failed disk on NAS-01', exact: true })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Replace failed disk on NAS-01/ })).toBeVisible();
 
   await page.getByRole('button', { name: 'Add task' }).click();
   dialog = page.getByRole('dialog', { name: 'Add task' });
@@ -43,7 +43,7 @@ test('engineers add a task for a customer, for themselves or their team', async 
   await expect(dialog.getByRole('combobox', { name: 'Team', exact: true })).toHaveValue('1');
   await dialog.getByRole('button', { name: 'Add task' }).click();
   await expect.poll(() => sent[1]).toMatchObject({ title: 'Renew the SSL certificate', customer_id: 12, team_id: 1 });
-  await expect(page.getByRole('cell', { name: 'Security Team (team)' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Security Team (team)', exact: true })).toBeVisible();
 });
 
 test('managers give a customer task to an engineer or any team; the quick action opens the form', async ({ page }) => {

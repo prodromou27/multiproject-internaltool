@@ -3,6 +3,7 @@
  * every month from a start date) creates the next real task a few days before
  * it is due. Runs each morning with the automatic reminders (reminders.js).
  */
+const { insertSubtasks } = require('./taskSubtasks');
 const db = require('./db');
 const appTime = require('./appTime');
 
@@ -95,6 +96,13 @@ function validateTemplate(body, current = null) {
     if (typeof body.notify !== 'boolean') return { error: 'Notify must be true or false' };
     value.notify = body.notify ? 1 : 0;
   } else if (!current) value.notify = 0;
+  // A checklist copied into each task as its subtasks: up to 50 titles.
+  if (take('subtasks')) {
+    const list = body.subtasks;
+    if (list !== null && (!Array.isArray(list) || list.length > 50 || list.some(item => typeof item !== 'string' || !item.trim() || item.trim().length > 300)))
+      return { error: 'The checklist is a list of up to 50 items of at most 300 characters' };
+    value.subtasks = list && list.length ? JSON.stringify(list.map(item => item.trim())) : null;
+  } else if (!current) value.subtasks = null;
   if (take('active')) {
     if (typeof body.active !== 'boolean') return { error: 'Active must be true or false' };
     value.active = body.active ? 1 : 0;
@@ -107,6 +115,8 @@ function validateTemplate(body, current = null) {
  * within its lead days gets a task, and moves on to the following date. After
  * downtime only the most recent missed occurrence becomes a task.
  */
+const checklistOf = template => { try { const list = JSON.parse(template.subtasks || '[]'); return Array.isArray(list) ? list.filter(item => typeof item === 'string') : []; } catch { return []; } };
+
 async function createDueTasks({ store = db, today = appTime.today(), templateId = null, notify = require('./notifications').notify } = {}) {
   const rows = await store.prepare(`SELECT * FROM recurring_tasks WHERE active = 1${templateId ? ' AND id = ?' : ''}`).all(...(templateId ? [templateId] : []));
   let created = 0;
@@ -129,6 +139,7 @@ async function createDueTasks({ store = db, today = appTime.today(), templateId 
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).run(template.customer_id, template.title, template.description, template.priority, deadline,
           template.assigned_to, template.assigned_to ? null : template.team_id, template.asset_id, template.technology_id, template.id, template.created_by);
         made.push({ id: result.lastInsertRowid, deadline });
+        await insertSubtasks(tx, result.lastInsertRowid, checklistOf(template).map(title => ({ title })), template.created_by);
       }
       await tx.prepare('UPDATE recurring_tasks SET last_task_id = ? WHERE id = ?').run(made.at(-1).id, template.id);
       return made;
@@ -146,4 +157,4 @@ async function createDueTasks({ store = db, today = appTime.today(), templateId 
   return { created };
 }
 
-module.exports = { FREQUENCIES, UNITS, MAX_LEAD_DAYS, MAX_INTERVAL, ruleOf, occurrence, firstOnOrAfter, validateTemplate, createDueTasks };
+module.exports = { checklistOf, FREQUENCIES, UNITS, MAX_LEAD_DAYS, MAX_INTERVAL, ruleOf, occurrence, firstOnOrAfter, validateTemplate, createDueTasks };

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pause, Pencil, Play, Plus, Repeat, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import { fmtDate, Modal } from './Shared';
+import { linesOf } from './TaskSubtasks';
 import { useToast } from './Toast';
 import { useConfirm } from './Confirm';
 import { useLiveVersion } from '../live';
@@ -30,7 +31,7 @@ function RecurringForm({ customerId, initial, engineers, onClose, onSaved }) {
     assignee: initial?.team_id ? 'team' : 'engineer',
     assigned_to: initial?.assigned_to ? String(initial.assigned_to) : '', team_id: initial?.team_id ? String(initial.team_id) : '',
     asset_id: initial?.asset_id ? String(initial.asset_id) : '', technology_id: initial?.technology_id ? String(initial.technology_id) : '',
-    notify: initial?.notify ?? false,
+    notify: initial?.notify ?? false, checklist: (initial?.subtasks || []).join('\n'),
   }));
   const [options, setOptions] = useState({ teams: [], assets: [], technologies: [] });
   const [saving, setSaving] = useState(false), [error, setError] = useState('');
@@ -45,7 +46,7 @@ function RecurringForm({ customerId, initial, engineers, onClose, onSaved }) {
     event.preventDefault(); setSaving(true); setError('');
     const team = form.assignee === 'team';
     const body = { title: form.title, priority: form.priority, frequency: form.frequency, start_date: form.start_date, lead_days: Number(form.lead_days),
-      description: form.description.trim() || null, notify: form.notify,
+      description: form.description.trim() || null, notify: form.notify, subtasks: linesOf(form.checklist),
       assigned_to: !team && form.assigned_to ? Number(form.assigned_to) : null, team_id: team && form.team_id ? Number(form.team_id) : null,
       asset_id: form.asset_id ? Number(form.asset_id) : null, technology_id: form.technology_id ? Number(form.technology_id) : null,
       ...(form.frequency === 'custom' ? { interval_count: Number(form.interval_count), interval_unit: form.interval_unit } : {}) };
@@ -86,6 +87,9 @@ function RecurringForm({ customerId, initial, engineers, onClose, onSaved }) {
         <div className="form-group"><label htmlFor="rt-asset">Asset</label><select id="rt-asset" value={form.asset_id} onChange={set('asset_id')}><option value="">Any / none</option>{options.assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></div>
         <div className="form-group"><label htmlFor="rt-technology">Technology</label><select id="rt-technology" value={form.technology_id} onChange={set('technology_id')}><option value="">Any / none</option>{options.technologies.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></div>
       </div>
+      <div className="form-group"><label htmlFor="rt-checklist">Checklist (optional, one item per line)</label>
+        <textarea id="rt-checklist" rows={3} value={form.checklist} onChange={set('checklist')} placeholder={'e.g.\nCheck the backup jobs\nTest a restore'} />
+        <small className="text-muted">Each task this creates gets these as subtasks, and can be completed when all are done.</small></div>
       <label className="rt-notify"><input type="checkbox" checked={form.notify} onChange={set('notify')} /> Notify the engineer (or the team) when each task is created</label>
       <div className="modal-footer"><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : initial ? 'Save changes' : 'Add recurring task'}</button></div>
     </form>
@@ -122,7 +126,7 @@ export default function CustomerRecurringTasks({ customerId, canManage, engineer
     {error ? <div className="error-msg" role="alert">{error}</div> : !rows.length ? <p className="text-muted text-sm">Nothing repeats for this customer yet. Add a task that comes round on a schedule, such as a firewall log review every 2 weeks, for an engineer or a whole team.</p> :
       <table className="cs-work-table"><thead><tr><th>Task</th><th>Repeats</th><th>Next due</th><th>For</th><th>Done so far</th><th>Status</th>{canManage && <th><span className="sr-only">Actions</span></th>}</tr></thead>
         <tbody>{rows.map(row => <tr key={row.id} className={row.active ? '' : 'is-paused'}>
-          <td data-label="Task">{row.title}{row.priority !== 'medium' && <span className={`badge badge-${row.priority}`}> {row.priority}</span>}
+          <td data-label="Task">{row.title}{row.subtasks?.length > 0 && <span className="text-muted text-sm"> · {row.subtasks.length} checklist item{row.subtasks.length === 1 ? '' : 's'}</span>}{row.priority !== 'medium' && <span className={`badge badge-${row.priority}`}> {row.priority}</span>}
             {(row.asset_name || row.technology_name) && <div className="text-muted text-sm">{[row.asset_name, row.technology_name].filter(Boolean).join(' · ')}</div>}</td>
           <td data-label="Repeats">{repeatLabel(row)}<div className="text-muted text-sm">created {row.lead_days === 0 ? 'on the day' : `${row.lead_days} day${row.lead_days === 1 ? '' : 's'} before`}</div></td>
           <td data-label="Next due">{row.active ? fmtDate(row.next_due) : '—'}</td>

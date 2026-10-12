@@ -1,0 +1,31 @@
+/* Subtasks: the progress chip on task rows and cards, and the checklist panel. */
+.st-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 1px solid var(--gray-200); border-radius: 99px; background: var(--surface); color: var(--gray-600); font: inherit; font-size: 12px; font-weight: 600; line-height: 1.5; cursor: default; }
+button.st-chip { cursor: pointer; }
+button.st-chip:hover { border-color: var(--gray-400); color: var(--gray-900); }
+.st-chip.is-done { color: var(--success); border-color: var(--success-light); }
+.st-bar { display: inline-block; width: 34px; height: 5px; border-radius: 99px; background: var(--gray-100); overflow: hidden; }
+.st-bar i { display: block; height: 100%; background: currentColor; }
+.st-chip.is-compact .st-bar { display: none; }
+.st { display: grid; gap: 10px; }
+.st-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; }
+.st-head h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; }
+.st-progress { height: 6px; border-radius: 99px; background: var(--gray-100); overflow: hidden; }
+.st-progress i { display: block; height: 100%; background: var(--success); }
+.st-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; max-height: 340px; overflow-y: auto; }
+.st-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 8px; border-radius: var(--radius); }
+.st-list li:hover { background: var(--gray-50); }
+.st-list label { display: flex; flex: 1 1 200px; align-items: center; gap: 8px; min-width: 0; font-size: 13px; cursor: pointer; }
+.st-list label input { width: auto; flex: none; min-height: 0; }
+.st-list li.is-done label span { color: var(--gray-500); text-decoration: line-through; }
+.st-asset { display: inline-flex; align-items: center; gap: 4px; color: var(--gray-500); font-size: 12px; }
+.st-remove { opacity: .55; }
+.st-list li:hover .st-remove, .st-remove:focus-visible { opacity: 1; }
+.st-add { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.st-add textarea { flex: 1 1 260px; min-height: 36px; resize: vertical; }
+.st-assets { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--gray-200); border-radius: var(--radius); }
+.st-assets-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.task-edit-subtasks { margin: 4px 0 14px; padding-top: 14px; border-top: 1px solid var(--gray-200); }
+.ct-subtasks { display: grid; gap: 8px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--gray-200); border-radius: var(--radius); }
+.ct-subtasks legend { padding: 0 4px; font-size: 13px; font-weight: 600; }
+.ct-subtasks .btn { justify-self: start; }
+.kanban-subtasks { margin-top: 6px; }

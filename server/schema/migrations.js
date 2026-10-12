@@ -1093,6 +1093,26 @@ async function applyMigrations(pool, transaction) {
     );
     CREATE INDEX IF NOT EXISTS idx_customer_asset_versions ON customer_asset_versions(asset_id, id);
   `]);
+  migrations.push(['20261028_task_subtasks', `
+    -- Subtasks (a checklist on a task, as in Planner): the task cannot be completed,
+    -- closed or sent for approval while one is open. A subtask may name one of the
+    -- customer's assets (e.g. one per server to upgrade). A recurring task may carry
+    -- a checklist (JSON list of titles) copied into each task it creates.
+    CREATE TABLE IF NOT EXISTS task_subtasks (
+      id         SERIAL PRIMARY KEY,
+      task_id    INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      title      TEXT NOT NULL,
+      asset_id   INTEGER REFERENCES customer_assets(id) ON DELETE SET NULL,
+      done       INTEGER NOT NULL DEFAULT 0,
+      done_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      done_at    TEXT,
+      position   INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_subtasks_task ON task_subtasks(task_id, position, id);
+    ALTER TABLE recurring_tasks ADD COLUMN IF NOT EXISTS subtasks TEXT;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

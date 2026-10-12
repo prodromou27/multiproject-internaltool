@@ -201,6 +201,9 @@ export default function CustomerAssets({ customerId,restricted=false,isManager=f
   const all=software ? [...software.values()] : [],summary=data?.expiry_summary || {};
   const counts={ '':summary.active,attention:all.filter(a => ['behind','end_of_life'].includes(a.status)).length,end_of_life:all.filter(a => a.status==='end_of_life').length,review:summary.review_due,expiring:summary.due_30 };
   const choose=value => { setView(value);setPage(1); };
+  // One upgrade task for every outdated device, with a subtask per device.
+  const outdated=all.filter(a => ['behind','end_of_life'].includes(a.status)).sort((a,b) => String(a.name).localeCompare(String(b.name)));
+  const upgradeAll=() => setTaskFor({ bulk:outdated });
   const filtered=!!(view || search || coverage || status);
   const columns=[
     { key:'asset',label:'Asset',render:row => <div className="ca-asset"><strong>{row.name}</strong><span>{[row.asset_type,row.hostname || row.ip_address].filter(Boolean).join(' · ')}</span>
@@ -230,6 +233,7 @@ export default function CustomerAssets({ customerId,restricted=false,isManager=f
       <select id="asset-list-coverage" aria-label="Coverage" value={coverage} onChange={event => { setCoverage(event.target.value);setPage(1); }}><option value="">All coverage</option>{COVERAGE.map(value => <option key={value} value={value}>{value==='support' ? 'Under support' : label(value)}</option>)}</select>
       <select id="asset-list-status" aria-label="Status" value={status} onChange={event => { setStatus(event.target.value);setPage(1); }}><option value="">All statuses</option>{STATUSES.map(value => <option key={value} value={value}>{label(value)}</option>)}</select>
       <div className="ca-toolbar-actions">
+        {canAddTask && outdated.length>1 && ['attention','end_of_life'].includes(view) && <button className="btn btn-ghost" onClick={upgradeAll}>Create upgrade task ({outdated.length} devices)</button>}
         {!restricted && <><button className="btn btn-ghost" onClick={() => setImporting(true)}>Import</button><button className="btn btn-ghost" disabled={exporting || loading} onClick={exportAssets}>{exporting ? 'Exporting...' : 'Export Excel'}</button></>}
         <button className="btn btn-primary" disabled={loading || !!error} onClick={() => setEditing({ initial:null })}>Add asset</button>
       </div>
@@ -244,7 +248,12 @@ export default function CustomerAssets({ customerId,restricted=false,isManager=f
     {reviewing && <AssetReview customerId={customerId} asset={reviewing} software={software?.get(reviewing.id)} canAddTask={canAddTask} onClose={() => setReviewing(null)}
       onSaved={message => { setReviewing(null);toast.success(message);load(); }}
       onUpgradeTask={(asset,found) => { setReviewing(null);setTaskFor({ asset,found }); }} />}
-    {taskFor && <CustomerTaskForm customerId={customerId} isManager={isManager} engineers={engineers}
+    {taskFor?.bulk && <CustomerTaskForm customerId={customerId} isManager={isManager} engineers={engineers}
+      initial={{ title:`Upgrade ${taskFor.bulk.length} outdated devices`, description:'One subtask per device; the task can be completed when every device is upgraded.',
+        priority:taskFor.bulk.some(a => a.status==='end_of_life') ? 'high' : 'medium',
+        subtasks:taskFor.bulk.map(a => ({ title:`${a.name}: ${a.software_version} → ${a.recommended || a.latest || 'a supported version'}`, asset_id:a.id })) }}
+      onClose={() => setTaskFor(null)} onSaved={() => { setTaskFor(null);toast.success('Upgrade task added'); }} />}
+    {taskFor && !taskFor.bulk && <CustomerTaskForm customerId={customerId} isManager={isManager} engineers={engineers}
       initial={{ title:`Upgrade ${taskFor.asset.name} to ${taskFor.found.recommended || taskFor.found.latest}`, description:`${taskFor.asset.name} runs ${taskFor.asset.software_version}; the latest on the ${taskFor.found.line} line is ${taskFor.found.latest}.`, priority:taskFor.found.status==='end_of_life' ? 'high' : 'medium', asset_id:taskFor.asset.id, asset_name:taskFor.asset.name }}
       onClose={() => setTaskFor(null)} onSaved={() => { setTaskFor(null);toast.success('Upgrade task added'); }} />}
     {importing && <ImportModal title="Import customer assets" templateUrl={api.customerAssetTemplateUrl(customerId)} importFn={file => api.importCustomerAssets(customerId,file)} columns={['name*','asset_type*','asset_tag','technology','hostname','ip_address','software_version','coverage_type','support_end_date']} onClose={() => setImporting(false)} onDone={() => { toast.success('Assets imported');load(); }} />}

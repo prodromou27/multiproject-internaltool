@@ -40,7 +40,7 @@ function requireAssetAccessMiddleware(req,res,next) {
   return requireAuth(req,res,async () => {
     try {
       if (await hasPermission(req.user,'assets.access')) return next();
-      const teamRoute=(req.path==='/' && ['GET','POST'].includes(req.method)) || (req.path==='/software-status' && req.method==='GET')
+      const teamRoute=(req.path==='/' && ['GET','POST'].includes(req.method)) || (['/software-status','/options'].includes(req.path) && req.method==='GET')
         || (/^\/\d+\/review$/.test(req.path) && req.method==='POST') || (/^\/\d+\/versions$/.test(req.path) && req.method==='GET');
       if (teamRoute && positiveId(req.params.id) && await isManagedServicesEngineer(req.user,Number(req.params.id))) return next();
       return res.status(403).json({ error: 'You do not have permission to perform this action' });
@@ -175,6 +175,12 @@ router.post('/import',importUpload.single('file'),async (req,res) => {
   try { await db.transaction(async tx => { for(const record of records) await insertRecord(tx,req,Number(req.params.id),record.value); }); }
   catch(error) { if(error.code==='23505') return res.status(409).json({ error:'The import contains an asset tag already used for this customer, or repeats a tag' });throw error; }
   res.status(201).json({ imported:records.length });
+});
+
+// Active assets for pickers (e.g. one subtask per server to upgrade): id, name, type and version.
+router.get('/options',async (req,res) => {
+  const rows=await db.prepare("SELECT id,name,asset_type,software_version FROM customer_assets WHERE customer_id=? AND lifecycle_status='active' ORDER BY id LIMIT 2000").all(Number(req.params.id));
+  res.json(rows.map(row => ({ id:Number(row.id),name:decrypt(row.name),asset_type:row.asset_type,software_version:decrypt(row.software_version) || null })).sort((a,b) => String(a.name).localeCompare(String(b.name))));
 });
 
 // Software status of this customer's assets against the Software versions page (softwareCompliance.js).

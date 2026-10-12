@@ -12,6 +12,7 @@ import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { useLiveRefresh } from '../live';
 import AddToCalendarButton from '../components/AddToCalendarButton';
+import { SubtaskProgress, SubtasksDialog } from '../components/TaskSubtasks';
 
 const KANBAN = [
   ['open', 'To do'], ['in_progress', 'In progress'],
@@ -81,9 +82,8 @@ export default function EngineerHub() {
     } catch { return null; }
   });
   const [tick, setTick] = useState(Date.now());
-  const [checklists, setChecklists] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(`hub_checklists_${user.id}`) || '{}'); } catch { return {}; }
-  });
+  const [subtasksFor, setSubtasksFor] = useState(null);
+  const movingChecklists = useRef(false);
   // The next few of the person's reminders; the Reminders page has them all.
   const [reminders, setReminders] = useState([]);
   // Due team reminders come first: they stay open until someone in the team completes them.
@@ -194,17 +194,29 @@ export default function EngineerHub() {
     } catch (error) { toast.error(error.message); }
   }
 
-  function addChecklistItem(task) {
-    const title = window.prompt('Checklist item')?.trim();
-    if (!title) return;
-    const next = { ...checklists, [task.id]: [...(checklists[task.id] || []), { id: Date.now(), title, done: false }] };
-    setChecklists(next); localStorage.setItem(`hub_checklists_${user.id}`, JSON.stringify(next));
-  }
-
-  function toggleChecklist(taskId, itemId) {
-    const next = { ...checklists, [taskId]: (checklists[taskId] || []).map(item => item.id === itemId ? { ...item, done: !item.done } : item) };
-    setChecklists(next); localStorage.setItem(`hub_checklists_${user.id}`, JSON.stringify(next));
-  }
+  // Checklists used to live only in this browser; they now are the task's subtasks,
+  // which everyone working on it sees. Move any left here to their tasks, once.
+  useEffect(() => {
+    const key = `hub_checklists_${user.id}`;
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch { saved = {}; }
+    const pending = Object.entries(saved).filter(([id, items]) => Array.isArray(items) && items.length && tasks.some(task => String(task.id) === id));
+    if (!pending.length || movingChecklists.current) return;
+    movingChecklists.current = true;
+    (async () => {
+      for (const [id, items] of pending) {
+        try {
+          const list = await api.addTaskSubtasks(id, { items: items.map(item => ({ title: String(item.title || '').slice(0, 300) || 'Checklist item' })) });
+          const added = list.slice(-items.length);
+          for (const [index, item] of items.entries()) if (item.done && added[index]) await api.updateTaskSubtask(id, added[index].id, { done: true });
+          delete saved[id];
+        } catch { /* left for the next visit */ }
+      }
+      try { if (Object.keys(saved).length) localStorage.setItem(key, JSON.stringify(saved)); else localStorage.removeItem(key); } catch { /* nothing more to do */ }
+      movingChecklists.current = false;
+      load({ quiet: true });
+    })();
+  }, [tasks, user.id]);
 
   async function completeReminder(reminder) {
     try {
@@ -241,7 +253,8 @@ export default function EngineerHub() {
         <section className="card"><div className="section-header"><h2 className="section-title">Timesheet</h2><Clock size={16} /></div><div className="timesheet-total"><strong>{weekTotal.toFixed(1)}h</strong><span>This week · {fmtDate(from)} – {fmtDate(to)}</span></div>{todayTotal < 7 && <div className="alert alert-warning">Missing-time reminder: {Math.max(0, 7 - todayTotal).toFixed(1)}h remaining for today.</div>}{logs.slice(0, 6).map(log => <div className="time-row" key={log.id}><span>{log.task_title || log.visit_title || 'Work log'}</span><strong>{Number(log.hours).toFixed(2)}h</strong></div>)}</section>
       </div>
 
-      <section className="card mt-16"><div className="section-header"><h2 className="section-title">Personal Kanban</h2><Link to="/tasks">All tasks →</Link></div><div className="engineer-kanban">{KANBAN.map(([status, label]) => <div className="kanban-column" key={status} onDragOver={e => e.preventDefault()} onDrop={() => moveTask(dragged, status)}><h3>{label}<span>{tasks.filter(t => t.status === status).length}</span></h3>{tasks.filter(t => t.status === status).map(task => { const list = checklists[task.id] || []; const done = list.filter(i => i.done).length; return <article key={task.id} draggable onDragStart={() => setDragged(task)} className="kanban-card"><div className="kanban-card-title">{task.title}</div><div className="kanban-card-meta"><PriorityBadge p={task.priority} />{task.deadline && <span>{fmtDate(task.deadline)}</span>}</div>{list.map(item => <label className="checklist-item" key={item.id}><input type="checkbox" checked={item.done} onChange={() => toggleChecklist(task.id, item.id)} />{item.title}</label>)}{list.length > 0 && <div className="checklist-progress"><span style={{ width: `${done / list.length * 100}%` }} /></div>}<div className="kanban-actions"><button onClick={() => addChecklistItem(task)} title="Add checklist item"><Plus size={11} /></button>{!timer && <button onClick={() => startTimer(task)} title="Start timer"><TimerReset size={11} /></button>}<select defaultValue="" onChange={e => { if (e.target.value) quickNote(task, e.target.value); e.target.value = ''; }}><option value="">Quick update…</option>{QUICK_NOTES.map(note => <option key={note}>{note}</option>)}</select></div></article>; })}</div>)}</div></section>
+      {subtasksFor && <SubtasksDialog task={subtasksFor} onClose={() => { setSubtasksFor(null); load({ quiet: true }); }} />}
+      <section className="card mt-16"><div className="section-header"><h2 className="section-title">Personal Kanban</h2><Link to="/tasks">All tasks →</Link></div><div className="engineer-kanban">{KANBAN.map(([status, label]) => <div className="kanban-column" key={status} onDragOver={e => e.preventDefault()} onDrop={() => moveTask(dragged, status)}><h3>{label}<span>{tasks.filter(t => t.status === status).length}</span></h3>{tasks.filter(t => t.status === status).map(task => { return <article key={task.id} draggable onDragStart={() => setDragged(task)} className="kanban-card"><div className="kanban-card-title">{task.title}</div><div className="kanban-card-meta"><PriorityBadge p={task.priority} />{task.deadline && <span>{fmtDate(task.deadline)}</span>}</div>{task.subtasks_total > 0 && <div className="kanban-subtasks"><SubtaskProgress total={task.subtasks_total} done={task.subtasks_done} onClick={() => setSubtasksFor(task)} /></div>}<div className="kanban-actions"><button onClick={() => setSubtasksFor(task)} title="Subtasks" aria-label={`Subtasks of ${task.title}`}><Plus size={11} /></button>{!timer && <button onClick={() => startTimer(task)} title="Start timer"><TimerReset size={11} /></button>}<select defaultValue="" onChange={e => { if (e.target.value) quickNote(task, e.target.value); e.target.value = ''; }}><option value="">Quick update…</option>{QUICK_NOTES.map(note => <option key={note}>{note}</option>)}</select></div></article>; })}</div>)}</div></section>
 
       {!managedFocus && saAccess?.enabled && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canLog={saAccess.enabled} />}
 

@@ -8,6 +8,7 @@ const { requireAuth, requireManager, requireDownloadAuth } = require('../middlew
 const { notify } = require('../notifications');
 const { canAccessCustomer } = require('../customerAccess');
 const { decrypt } = require('../fieldCipher');
+const subtasks = require('../taskSubtasks');
 
 // A task shows its own customer or its project's. Names are stored encrypted.
 async function withCustomerNames(rows) {
@@ -94,6 +95,7 @@ router.get('/', requireAuth, async (req, res) => {
     }));
   }
 
+  rows = await subtasks.withSubtaskCounts(rows);
   res.json(pagination ? { rows, total: counts[req.query.filter || 'all'], counts, page: pagination.page, page_size: pagination.page_size } : rows);
 });
 
@@ -174,12 +176,16 @@ router.post('/', requireAuth, async (req, res) => {
 
   const relationshipError = await validateTaskRelationships(project_id, assigned_to);
   if (relationshipError) return res.status(400).json({ error: relationshipError });
+  const projectCustomer = project_id ? (await db.prepare('SELECT customer_id FROM projects WHERE id = ?').get(project_id))?.customer_id : null;
+  const newSubtasks = await subtasks.checkNewSubtasks(req.body.subtasks, customerId || projectCustomer);
+  if (newSubtasks.error) return res.status(400).json({ error: newSubtasks.error });
 
   const result = (await db.prepare(`INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, team_id, asset_id, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(project_id || null, customerId, title.trim(), description, priority || 'medium', deadline || null, assigned_to || null, teamId, assetId, req.user.id, is_adhoc ? 1 : 0));
 
   // Log activity
   const taskId = result.lastInsertRowid;
+  if (newSubtasks.value.length) await subtasks.insertSubtasks(db, taskId, newSubtasks.value, req.user.id);
   logActivity(project_id, req.user.id, 'task_created', title);
 
   // Notify the engineer it is assigned to, or the team's engineers (except whoever added it).
@@ -216,6 +222,10 @@ router.put('/:id', requireAuth, async (req, res) => {
   if (req.user.role !== 'manager' && (req.user.role !== 'engineer' || !await worksOnTask(req.user, task)))
     return res.status(403).json({ error: 'Forbidden' });
   const inputError = validateTaskInput(req.body);
+  if (req.body.status && req.body.status !== task.status && subtasks.CLOSING.has(req.body.status)) {
+    const open = (await subtasks.withOpenSubtasks([task.id])).get(Number(task.id));
+    if (open) return res.status(409).json({ error: subtasks.closingBlocked(open), code: 'OPEN_SUBTASKS', open_subtasks: open });
+  }
   if (inputError) return res.status(400).json({ error: inputError });
 
   if (req.user.role === 'engineer') {
@@ -342,14 +352,17 @@ router.post('/bulk', requireAuth, async (req, res) => {
     if (pending_from_customer !== undefined && (typeof pending_from_customer !== 'string' || pending_from_customer.length > 10000 || waiting && !pending_from_customer.trim())) {
       return res.status(400).json({ error: 'pending_from_customer must be non-empty text of at most 10000 characters for waiting statuses' });
     }
-    const uniqueIds = [...new Set(ids)];
+    const requested = [...new Set(ids)];
+    const blocked = subtasks.CLOSING.has(status) ? await subtasks.withOpenSubtasks(requested) : new Map();
+    const uniqueIds = requested.filter(id => !blocked.has(id));
+    if (!uniqueIds.length) return res.status(409).json({ error: `${blocked.size === 1 ? 'This task has' : 'These tasks have'} open subtasks; finish them first`, code: 'OPEN_SUBTASKS', blocked: blocked.size });
     const owned = req.user.role === 'engineer' ? ` AND ${ownTasksSql()}` : '';
     const result = await db.prepare(`UPDATE tasks SET status=?,${owned ? ' assigned_to=COALESCE(assigned_to,?),' : ''}
       pending_from_customer=CASE WHEN ? IN ('waiting_customer','waiting_vendor') THEN COALESCE(?,pending_from_customer) ELSE NULL END,
       updated_at=app_now() WHERE id IN (${uniqueIds.map(() => '?').join(',')})${owned}`)
       .run(status, ...(owned ? [req.user.id] : []), status, pending_from_customer === undefined ? null : pending_from_customer.trim(), ...uniqueIds, ...(owned ? ownTasksParams(req.user.id) : []));
     await stampCompletion(uniqueIds);
-    return res.json({ ok: true, affected: result.changes });
+    return res.json({ ok: true, affected: result.changes, blocked: blocked.size });
   }
 
   res.status(400).json({ error: 'Unknown action' });
@@ -396,6 +409,8 @@ router.post('/:id/duplicate', requireAuth, async (req, res) => {
   `).run(task.project_id, task.customer_id, task.title + ' (copy)', task.description, task.priority, task.deadline,
          task.assigned_to, req.user.id, task.is_adhoc));
   logActivity(task.project_id, req.user.id, 'task_created', task.title + ' (copy)');
+  const checklist = await db.prepare('SELECT title, asset_id FROM task_subtasks WHERE task_id = ? ORDER BY position, id').all(task.id);
+  if (checklist.length) await subtasks.insertSubtasks(db, result.lastInsertRowid, checklist, req.user.id);
   res.json({ id: result.lastInsertRowid });
 });
 
@@ -559,5 +574,7 @@ router.delete('/:id/dependencies/:depId', requireManager, requireVisibleTask, as
   (await db.prepare('DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?').run(req.params.id, req.params.depId));
   res.json({ ok: true });
 });
+
+router.use('/:id/subtasks', require('./task-subtasks'));
 
 module.exports = router;

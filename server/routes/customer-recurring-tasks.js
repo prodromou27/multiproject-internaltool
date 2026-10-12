@@ -4,7 +4,7 @@ const appTime = require('../appTime');
 const { requireAuth, requireManager } = require('../middleware/auth');
 const { logAudit } = require('../auditLog');
 const { positiveId, canAccessCustomer } = require('../customerAccess');
-const { validateTemplate, firstOnOrAfter, createDueTasks, ruleOf } = require('../recurringTasks');
+const { validateTemplate, firstOnOrAfter, createDueTasks, ruleOf, checklistOf } = require('../recurringTasks');
 const { decrypt } = require('../fieldCipher');
 
 /* Customer 360 → Tasks → Recurring tasks. Everyone who can see the customer
@@ -18,7 +18,7 @@ router.use(requireAuth, async (req, res, next) => {
 // With the names of the engineer, team, asset and technology, and how its tasks went.
 async function list(customerId) {
   const rows = await db.prepare(`SELECT id, title, description, priority, assigned_to, team_id, asset_id, technology_id, frequency, interval_count, interval_unit,
-    start_date, lead_days, next_due, active, notify, last_task_id FROM recurring_tasks WHERE customer_id = ? ORDER BY active DESC, next_due, id`).all(customerId);
+    start_date, lead_days, next_due, active, notify, last_task_id, subtasks FROM recurring_tasks WHERE customer_id = ? ORDER BY active DESC, next_due, id`).all(customerId);
   const [users, teams, assets, technologies, tasks] = await Promise.all([
     db.prepare('SELECT id, name FROM users').all(), db.prepare('SELECT id, name FROM teams').all(),
     db.prepare('SELECT id, name FROM customer_assets WHERE customer_id = ?').all(customerId), db.prepare('SELECT id, name FROM technologies').all(),
@@ -30,7 +30,7 @@ async function list(customerId) {
   return rows.map(row => {
     const mine = tasks.filter(t => Number(t.recurring_task_id) === Number(row.id));
     const done = mine.filter(t => ['completed', 'closed'].includes(t.status));
-    return { ...row, active: !!row.active, notify: !!row.notify,
+    return { ...row, active: !!row.active, notify: !!row.notify, subtasks: checklistOf(row),
       assigned_to_name: name(users, row.assigned_to), team_name: name(teams, row.team_id),
       asset_name: row.asset_id ? decrypt(name(assets, row.asset_id)) : null, technology_name: name(technologies, row.technology_id),
       history: { created: mine.length, completed: done.length,
@@ -64,9 +64,9 @@ router.post('/', requireManager, async (req, res) => {
   if (problem) return res.status(400).json({ error: problem });
   const nextDue = firstOnOrAfter(value.start_date, ruleOf(value), appTime.today()).date;
   const result = await db.prepare(`INSERT INTO recurring_tasks (customer_id, title, description, priority, assigned_to, team_id, asset_id, technology_id, frequency, interval_count, interval_unit,
-    start_date, lead_days, next_due, active, notify, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    start_date, lead_days, next_due, active, notify, subtasks, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(customerId, value.title, value.description || null, value.priority, value.assigned_to, value.team_id, value.asset_id, value.technology_id, value.frequency, value.interval_count, value.interval_unit,
-      value.start_date, value.lead_days, nextDue, value.active, value.notify, req.user.id);
+      value.start_date, value.lead_days, nextDue, value.active, value.notify, value.subtasks, req.user.id);
   await logAudit(db, req, 'recurring_task', result.lastInsertRowid, value.title, 'recurring_task_created', `customer_id=${customerId}; frequency=${value.frequency}; next_due=${nextDue}`);
   // If the first one is already within its lead time, create it now rather than tomorrow morning.
   await createDueTasks({ templateId: result.lastInsertRowid });
@@ -88,9 +88,9 @@ router.put('/:recurringId', requireManager, async (req, res) => {
     || Number(value.interval_count) !== Number(current.interval_count) || value.interval_unit !== current.interval_unit;
   const nextDue = rescheduled ? firstOnOrAfter(value.start_date, ruleOf(value), appTime.today()).date : current.next_due;
   await db.prepare(`UPDATE recurring_tasks SET title = ?, description = ?, priority = ?, assigned_to = ?, team_id = ?, asset_id = ?, technology_id = ?, frequency = ?,
-    interval_count = ?, interval_unit = ?, start_date = ?, lead_days = ?, next_due = ?, active = ?, notify = ?, updated_at = app_now() WHERE id = ?`)
+    interval_count = ?, interval_unit = ?, start_date = ?, lead_days = ?, next_due = ?, active = ?, notify = ?, subtasks = ?, updated_at = app_now() WHERE id = ?`)
     .run(value.title, value.description || null, value.priority, value.assigned_to, value.team_id, value.asset_id, value.technology_id, value.frequency,
-      value.interval_count, value.interval_unit, value.start_date, value.lead_days, nextDue, value.active, value.notify, id);
+      value.interval_count, value.interval_unit, value.start_date, value.lead_days, nextDue, value.active, value.notify, value.subtasks, id);
   await logAudit(db, req, 'recurring_task', id, value.title, 'recurring_task_updated', `customer_id=${customerId}; frequency=${value.frequency}; next_due=${nextDue}; active=${!!value.active}`);
   if (value.active) await createDueTasks({ templateId: id });
   res.json((await list(customerId)).find(row => row.id === id));

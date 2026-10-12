@@ -6,6 +6,7 @@ import { FilterGroup, ListSearch } from '../components/ListWorkspace';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import WaitingReasonDialog from '../components/WaitingReasonDialog';
+import TaskSubtasks, { SubtaskProgress, SubtasksDialog, linesOf } from '../components/TaskSubtasks';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
@@ -126,6 +127,7 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
             />
           </div>
         )}
+        <div className="task-edit-subtasks"><TaskSubtasks taskId={task.id} customerId={task.customer_id} /></div>
         <div className="modal-footer u-cc45258">
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={saving}>
@@ -180,6 +182,7 @@ export default function Tasks() {
   const [form, setForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
   const [loading, setLoading]   = useState(true);
   const [editTask, setEditTask] = useState(null);
+  const [subtasksFor, setSubtasksFor] = useState(null);
   const [createErr, setCreateErr] = useState('');
   const [bulkErr,   setBulkErr]   = useState('');
 
@@ -294,7 +297,7 @@ export default function Tasks() {
       // A project's task takes the project's customer; otherwise it belongs to the chosen customer.
       const team = String(form.assigned_to).startsWith('t:') ? Number(form.assigned_to.slice(2)) : null;
       await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, customer_id: !form.project_id && form.customer_id ? Number(form.customer_id) : null,
-        assigned_to: !team && form.assigned_to ? Number(form.assigned_to) : null, team_id: team });
+        assigned_to: !team && form.assigned_to ? Number(form.assigned_to) : null, team_id: team, subtasks: linesOf(form.subtasks) });
       setShowCreate(false);
       setCreateCustomerId(null);
       setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
@@ -541,6 +544,7 @@ export default function Tasks() {
                   </td>
                   <td>
                     <span className="font-medium">{t.title}</span>
+                    {t.subtasks_total > 0 && <> <SubtaskProgress total={t.subtasks_total} done={t.subtasks_done} onClick={() => setSubtasksFor(t)} /></>}
                     {t.is_adhoc ? <span className="badge badge-adhoc u-391ef12">adhoc</span> : null}
                     {t.is_blocked ? (
                       <span className="badge badge-blocked u-391ef12" title={`Blocked by ${t.dep_count || 1} unfinished task(s)`}>
@@ -609,6 +613,8 @@ export default function Tasks() {
         />
       )}
 
+      {subtasksFor && <SubtasksDialog task={subtasksFor} onClose={() => { setSubtasksFor(null); load(); }} />}
+
       {editTask && (
         <EditTaskModal
           task={editTask}
@@ -655,6 +661,10 @@ export default function Tasks() {
                 {isManager && <optgroup label="Engineers">{engineers.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</optgroup>}
                 {createTeams.length > 0 && <optgroup label={isManager ? 'Teams' : 'My teams'}>{createTeams.map(t => <option key={t.id} value={`t:${t.id}`}>{t.name} (team)</option>)}</optgroup>}
               </select>
+            </div>
+            <div className="form-group"><label htmlFor="task-subtasks">Subtasks (optional, one per line)</label>
+              <textarea id="task-subtasks" rows={3} value={form.subtasks || ''} onChange={set('subtasks')} placeholder={'e.g.\nUpgrade SRV-01\nUpgrade SRV-02'} />
+              <small className="text-muted">The task can be completed when all its subtasks are done.</small>
             </div>
             <div className="form-group">
               <label className="u-ea06b0c">
