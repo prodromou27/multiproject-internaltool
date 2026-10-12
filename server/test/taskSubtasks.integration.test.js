@@ -143,3 +143,29 @@ test('engineers take an unassigned task, or take over one assigned to someone el
   await api(`/api/tasks/${unassigned}`, { method: 'PUT', token: ids.tokenEnabled, body: { status: 'completed' } });
   assert.equal((await take(unassigned, { take_over: true }, ids.tokenDisabled)).status, 409);
 });
+
+test('subtasks are put in a new order', async () => {
+  const id = (await newTask({ subtasks: ['A', 'B', 'C'] })).data.id;
+  const [a, b, c] = (await subtasksOf(id)).data;
+  const moved = await api(`/api/tasks/${id}/subtasks/order`, { method: 'PUT', token: ids.tokenManager, body: { ids: [c.id, a.id, b.id] } });
+  assert.deepEqual(moved.data.subtasks.map(s => s.title), ['C', 'A', 'B']);
+  assert.equal((await api(`/api/tasks/${id}/subtasks/order`, { method: 'PUT', token: ids.tokenManager, body: { ids: [c.id, a.id] } })).status, 400);
+});
+
+test('the engineer working on a task posts status updates; colleagues on the customer read them', async () => {
+  const id = (await newTask({ title: 'Configure the new Synology', assigned_to: ids.engineerEnabled })).data.id;
+  const post = (message, token = ids.tokenEnabled) => api(`/api/tasks/${id}/comments`, { method: 'POST', token, body: { message } });
+  assert.equal((await post('Unboxed and racked')).status, 200);
+  assert.equal((await post('Volumes created; waiting for the customer to confirm shares')).status, 200);
+  const rows = (await api(`/api/customers/${ids.customer}/operations/tasks?filter=open&search=Synology`, { token: ids.tokenManager })).data.rows;
+  assert.deepEqual([rows[0].last_update.message, rows[0].last_update.user_name], ['Volumes created; waiting for the customer to confirm shares', 'Engineer Enabled']);
+  // A colleague who works with the customer reads them, but does not post on someone else's task.
+  await db.prepare('INSERT INTO team_members (team_id, user_id) VALUES (?, ?)').run(ids.teamEnabled, ids.engineerDisabled);
+  try {
+    const read = await api(`/api/tasks/${id}/comments`, { token: ids.tokenDisabled });
+    assert.equal(read.status, 200);
+    assert.equal(read.data.length, 2);
+    assert.equal((await post('Not mine', ids.tokenDisabled)).status, 403);
+  } finally { await db.prepare('DELETE FROM team_members WHERE team_id = ? AND user_id = ?').run(ids.teamEnabled, ids.engineerDisabled); }
+  assert.equal((await api(`/api/tasks/${id}/comments`, { token: ids.tokenDisabled })).status, 403, 'not on the customer');
+});

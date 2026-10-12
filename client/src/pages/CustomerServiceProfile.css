@@ -327,3 +327,6 @@
 .rt-overdue { color: var(--danger); }
 .cs-work-filters label.cs-mine { display: flex; flex-direction: row; align-items: center; gap: 6px; align-self: end; min-height: 38px; }
 .cs-work-filters label.cs-mine input { width: auto; min-height: 0; }
+.cs-task-title { padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.cs-task-title:hover { text-decoration: underline; }
+.cs-task-update { margin-top: 3px; }

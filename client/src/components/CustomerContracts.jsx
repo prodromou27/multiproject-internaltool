@@ -155,12 +155,13 @@ export default function CustomerContracts({ customerId }) {
   const card = c => <ContractCard key={c.id} contract={c} data={data} onEdit={contract => setEditing({ contract })} onRenew={contract => setEditing({ contract, renewing: true })} onDelete={remove} />;
 
   return <div className="cc-page">
-    <Surface title="Contracts" label="Contracts" description={data.is_managed ? 'Managed customer: set the contract type (24x7, 8x5…) on each contract.' : undefined}
+    <Surface title={data.active_only ? 'Active contracts' : 'Contracts'} label="Contracts" description={data.active_only ? 'The contracts in force for this customer.' : data.is_managed ? 'Managed customer: set the contract type (24x7, 8x5…) on each contract.' : undefined}
       actions={data.can_manage && <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing({ contract: null })}><Plus size={14} /> Add contract</button>}>
       {uncovered > 0 && data.contracts.length > 0 && <p className="cc-uncovered" role="status">
         {plural(uncovered, 'active asset is', 'active assets are')} not under a current contract{data.uncovered_assets ? `: ${data.uncovered_assets.slice(0, 5).map(a => a.name).join(', ')}${uncovered > 5 ? '…' : ''}` : ''}.
       </p>}
-      {!data.contracts.length ? <p className="text-muted">No contracts recorded yet.{data.can_manage ? ' Add the first one with its reference, dates and the assets it covers.' : ''}</p>
+      {!data.contracts.length && data.active_only ? <p className="text-muted">No contract is in force for this customer.</p>
+        : !data.contracts.length ? <p className="text-muted">No contracts recorded yet.{data.can_manage ? ' Add the first one with its reference, dates and the assets it covers.' : ''}</p>
         : !current.length ? <p className="text-muted">No contract is in force. The last ones are under History.</p>
         : <div className="cc-grid">{current.map(card)}</div>}
     </Surface>

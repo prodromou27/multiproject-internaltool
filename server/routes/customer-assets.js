@@ -9,7 +9,7 @@ const ExcelJS = require('exceljs');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { hasPermission } = require('../permissions');
-const { isManagedServicesEngineer } = require('../customerAccess');
+const { engineerOnCustomer } = require('../customerAccess');
 const { encrypt,decrypt } = require('../fieldCipher');
 const { assetSoftwareStatus } = require('../softwareCompliance');
 const { logAudit } = require('../auditLog');
@@ -33,8 +33,8 @@ const hashTag = value => value ? crypto.createHash('sha256').update(value.trim()
 const excelText=value => value==null ? '' : value instanceof Date ? value.toISOString().slice(0,10) : typeof value==='object' && value.richText ? value.richText.map(part => part.text || '').join('') : typeof value==='object' && value.formula!==undefined ? excelText(value.result) : String(value);
 const safeCell=value => /^[=+\-@]/.test(String(value ?? '')) ? `'${value}` : value;
 
-// Full asset access is the assets.access permission. Separately, an engineer on
-// a managed customer's responsible team may list that customer's assets, add new
+// Full asset access is the assets.access permission. Separately, an engineer who
+// works with the customer (customerAccess.engineerOnCustomer) may list its assets, add new
 // ones, review one (confirm or update the version it runs) and read its version history.
 function requireAssetAccessMiddleware(req,res,next) {
   return requireAuth(req,res,async () => {
@@ -42,7 +42,7 @@ function requireAssetAccessMiddleware(req,res,next) {
       if (await hasPermission(req.user,'assets.access')) return next();
       const teamRoute=(req.path==='/' && ['GET','POST'].includes(req.method)) || (['/software-status','/options'].includes(req.path) && req.method==='GET')
         || (/^\/\d+\/review$/.test(req.path) && req.method==='POST') || (/^\/\d+\/versions$/.test(req.path) && req.method==='GET');
-      if (teamRoute && positiveId(req.params.id) && await isManagedServicesEngineer(req.user,Number(req.params.id))) return next();
+      if (teamRoute && positiveId(req.params.id) && await engineerOnCustomer(req.user,Number(req.params.id))) return next();
       return res.status(403).json({ error: 'You do not have permission to perform this action' });
     } catch (error) { next(error); }
   });

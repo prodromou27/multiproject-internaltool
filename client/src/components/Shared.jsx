@@ -159,7 +159,8 @@ export function Modal({ title, onClose, children, footer, wide, width }) {
   }, []);
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    // Only Cancel, the close button or Escape close it: a click outside must not lose what was typed.
+    <div className="modal-overlay">
       <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} style={width ? { maxWidth: width } : wide ? { maxWidth: 700 } : {}}>
         <div className="modal-header">
           <span id={titleId} className="modal-title">{title}</span>

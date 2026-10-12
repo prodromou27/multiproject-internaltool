@@ -39,4 +39,13 @@ async function accessibleCustomerIds(user,store=db) {
   return new Set(rows.map(row => Number(row.customer_id)));
 }
 
-module.exports={ positiveId,canAccessCustomer,isManagedServicesEngineer,accessibleCustomerIds };
+/**
+ * An engineer who works with the customer (canAccessCustomer) may view and add its
+ * assets, review them (version) and see their software status, without the
+ * assets.access permission (which also allows editing, deleting, import and export).
+ */
+async function engineerOnCustomer(user,customerId,store=db) {
+  return user?.role==='engineer' && positiveId(customerId) && await canAccessCustomer(user,Number(customerId),store);
+}
+
+module.exports={ positiveId,canAccessCustomer,isManagedServicesEngineer,engineerOnCustomer,accessibleCustomerIds };

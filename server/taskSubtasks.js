@@ -64,4 +64,15 @@ async function insertSubtasks(store, taskId, items, userId, startAt = 0) {
   }
 }
 
-module.exports = { CLOSING, MAX_PER_TASK, subtaskCounts, withSubtaskCounts, withOpenSubtasks, closingBlocked, checkNewSubtasks, insertSubtasks };
+/** Adds last_update ({ message, user_name, created_at }) to task rows: the newest status comment. */
+async function withLastUpdates(rows, store = db) {
+  const ids = [...new Set(rows.map(row => Number(row.id)).filter(Boolean))];
+  if (!ids.length) return rows;
+  const comments = await store.prepare(`SELECT tc.id, tc.task_id, tc.message, tc.created_at, u.name AS user_name FROM task_comments tc JOIN users u ON u.id = tc.user_id
+    WHERE tc.task_id IN (${ids.map(() => '?').join(',')}) ORDER BY tc.id DESC`).all(...ids);
+  const latest = new Map();
+  for (const comment of comments) if (!latest.has(Number(comment.task_id))) latest.set(Number(comment.task_id), { message: comment.message, user_name: comment.user_name, created_at: comment.created_at });
+  return rows.map(row => ({ ...row, last_update: latest.get(Number(row.id)) || null }));
+}
+
+module.exports = { withLastUpdates, CLOSING, MAX_PER_TASK, subtaskCounts, withSubtaskCounts, withOpenSubtasks, closingBlocked, checkNewSubtasks, insertSubtasks };

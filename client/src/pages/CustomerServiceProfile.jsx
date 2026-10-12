@@ -30,12 +30,15 @@ function HealthCard({ icon:Icon,label,value,note,state='default',onClick,href,ba
   return <section className={className}>{body}</section>;
 }
 
-function QuickAdd({ customer,user,saAccess,onRecommendation,onReminder }) {
+// A customer receiving managed services (they have no maintenance visits).
+const managedCustomerState=summary => summary?.is_managed===true || ['active','sync_attention','setup_required'].includes(summary?.managed?.state);
+
+function QuickAdd({ customer,user,saAccess,onRecommendation,onReminder,managed=false }) {
   const items=[];
   if (user.role==='manager' || (saAccess.enabled && user.role==='engineer')) items.push(['activity','Log Service Activity',`/activity-log?create=1&customer_id=${customer.id}`,Activity]);
   if (['manager','engineer'].includes(user.role)) items.push(['task','Create Task',`/customers/${customer.id}/service-profile?section=tasks&create=1`,CheckSquare]);
   if (user.role==='manager') items.push(['project','Create Project',`/projects?create=1&customer_id=${customer.id}`,BriefcaseBusiness]);
-  if (['manager','planner'].includes(user.role)) items.push(['visit','Schedule Maintenance Visit',`/maintenance-visits?create=1&customer_id=${customer.id}`,Wrench]);
+  if (['manager','planner'].includes(user.role) && !managed) items.push(['visit','Schedule Maintenance Visit',`/maintenance-visits?create=1&customer_id=${customer.id}`,Wrench]);
   if (['manager','planner','engineer'].includes(user.role)) items.push(['recommendation','Add Recommendation',null,ClipboardList]);
   if (onReminder) items.push(['reminder','Add Reminder',null,BellRing]);
   if (user.role==='engineer' && saAccess.capabilities?.projectDelivery && !saAccess.capabilities?.managedServiceOperations) {
@@ -79,7 +82,7 @@ function CustomerHeader({ customer,operations,user,saAccess,onRecommendation,onR
         {managed?.responsible_team && <span><Layers size={13} />{managed.responsible_team}</span>}
       </div>
     </div>
-    <div className="cs-header-actions">{health && <HealthRing health={health} />}<QuickAdd customer={customer} user={user} saAccess={saAccess} onRecommendation={onRecommendation} onReminder={onReminder} /></div>
+    <div className="cs-header-actions">{health && <HealthRing health={health} />}<QuickAdd customer={customer} user={user} saAccess={saAccess} managed={managedCustomerState(operations)} onRecommendation={onRecommendation} onReminder={onReminder} /></div>
   </header>;
 }
 
@@ -101,7 +104,7 @@ function CustomerHealthStrip({ customerId,data,error,onSelectTab }) {
     <HealthCard icon={BriefcaseBusiness} label="Active Projects" value={data.projects.active} note={`${data.projects.delayed} delayed or overdue`} state={data.projects.delayed?'danger':'default'} onClick={() => onSelectTab('projects',data.projects.delayed?'delayed':'active')} />
     {data.tasks.visible!==false && <HealthCard icon={CheckSquare} label="Open Tasks" value={data.tasks.open} note={`${data.tasks.overdue} overdue`} state={data.tasks.overdue?'danger':'default'} onClick={() => onSelectTab('tasks',data.tasks.overdue?'overdue':'open')} />}
     <HealthCard icon={ClipboardList} label="Recommendations" value={data.recommendations.open} note={`${data.recommendations.high_risk} high risk`} state={data.recommendations.high_risk?'warning':'default'} onClick={() => onSelectTab('recommendations')} />
-    <HealthCard icon={CalendarDays} label="Maintenance Visits" value={data.visits.next ? fmtDate(data.visits.next.scheduled_date) : 'None scheduled'} note={data.visits.reports_pending ? `${data.visits.reports_pending} reports pending` : `${data.visits.this_year} this year`} state={data.visits.reports_pending?'warning':'default'} onClick={() => onSelectTab('maintenance-visits',data.visits.reports_pending?'report_pending':'upcoming')} />
+    {!managedCustomerState(data) && <HealthCard icon={CalendarDays} label="Maintenance Visits" value={data.visits.next ? fmtDate(data.visits.next.scheduled_date) : 'None scheduled'} note={data.visits.reports_pending ? `${data.visits.reports_pending} reports pending` : `${data.visits.this_year} this year`} state={data.visits.reports_pending?'warning':'default'} onClick={() => onSelectTab('maintenance-visits',data.visits.reports_pending?'report_pending':'upcoming')} />}
     {data.managed?.visible && <HealthCard icon={Settings2} label="Managed Services" value={managedValue} note={managedNote} bar={managedBar} state={data.managed.state==='sync_attention'?'danger':data.managed.state==='setup_required'?'warning':'default'} onClick={() => onSelectTab(['active','sync_attention'].includes(data.managed.state)?'tickets':'service-configuration')} />}
     {data.assets>0 && <HealthCard icon={Layers} label="Assets" value={data.assets} note="Recorded customer assets" onClick={() => onSelectTab('assets')} />}
   </div>;
@@ -135,8 +138,9 @@ export default function CustomerServiceProfile() {
   const [customer,setCustomer]=useState(null),[operations,setOperations]=useState(null),[operationsError,setOperationsError]=useState(''),[profileError,setProfileError]=useState(''),[retry,setRetry]=useState(0);
   const assetsGrant=operations?.assets_access==='team'; // engineer on a managed-services team serving this customer
   const managedCustomer=['active','sync_attention','setup_required'].includes(operations?.managed?.state); // adds Tickets and Reports
+  const noVisits=managedCustomerState(operations); // managed customers have no maintenance visits
   const hasTickets=!!operations?.tickets_mapped; // a Request Tracker queue, managed customer or not
-  const tab=customer360Section(user,query.get('section'),saAccess.capabilities,assetsGrant,managedCustomer,hasTickets);
+  const tab=customer360Section(user,query.get('section'),saAccess.capabilities,assetsGrant,managedCustomer,hasTickets,noVisits);
   const [engineers,setEngineers]=useState([]),[categories,setCategories]=useState([]),[addingReminder,setAddingReminder]=useState(false);
   // Someone else's change re-reads the customer in place; a different customer starts afresh.
   useLiveRefresh(() => setRetry(value => value+1));
@@ -144,12 +148,12 @@ export default function CustomerServiceProfile() {
   useEffect(() => { const controller=new AbortController();setCustomer(current => current && String(current.id)===String(id) ? current : null);setProfileError('');api.customer(id,{ signal:controller.signal }).then(result => { if (!controller.signal.aborted) setCustomer(result); }).catch(failure => { if (!controller.signal.aborted) setProfileError(failure.message); });return () => controller.abort(); },[id,retry]);
   useEffect(() => { const controller=new AbortController();if (operationsFor.current!==id) setOperations(null);operationsFor.current=id;setOperationsError('');api.customerOperationsSummary(id,{ signal:controller.signal }).then(result => { if (!controller.signal.aborted) setOperations(result); }).catch(failure => { if (!controller.signal.aborted) setOperationsError(failure.message); });return () => controller.abort(); },[id,retry]);
   useEffect(() => { if (!['activities','tasks'].includes(tab)) return undefined;const controller=new AbortController();Promise.all([api.users({ signal:controller.signal }),tab==='activities'?api.activityCategories({ signal:controller.signal }):Promise.resolve([])]).then(([users,cats]) => { if (!controller.signal.aborted) { setEngineers(users.filter(item => item.role==='engineer'));setCategories(cats); } }).catch(() => {});return () => controller.abort(); },[tab]);
-  function selectTab(section,filter=null,create=false) { const params=new URLSearchParams(location.search);params.set('section',customer360Section(user,section,saAccess.capabilities,assetsGrant,managedCustomer,hasTickets));if (filter) params.set('filter',filter);else params.delete('filter');if (create) params.set('create','1');else params.delete('create');if (section!=='recommendations') params.delete('source_visit');navigate({ pathname:location.pathname,search:`?${params}` }); }
+  function selectTab(section,filter=null,create=false) { const params=new URLSearchParams(location.search);params.set('section',customer360Section(user,section,saAccess.capabilities,assetsGrant,managedCustomer,hasTickets,noVisits));if (filter) params.set('filter',filter);else params.delete('filter');if (create) params.set('create','1');else params.delete('create');if (section!=='recommendations') params.delete('source_visit');navigate({ pathname:location.pathname,search:`?${params}` }); }
   function moveTab(event,index) { if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?sections.length-1:(index+(event.key==='ArrowRight'?1:-1)+sections.length)%sections.length;selectTab(sections[next].id);requestAnimationFrame(() => document.getElementById(`customer-tab-${sections[next].id}`)?.focus()); }
-  useEffect(() => { if (!saAccess.loaded) return;const requested=query.get('section');if (['assets','tickets','reports'].includes(requested) && !operations && !operationsError) return; /* wait: the assets grant and managed state arrive with the summary */const safe=customer360Section(user,requested,saAccess.capabilities,assetsGrant,managedCustomer,hasTickets);if (requested!==safe) { const params=new URLSearchParams(location.search);params.set('section',safe);navigate({ pathname:location.pathname,search:`?${params}` },{ replace:true }); } },[location.pathname,location.search,navigate,user,saAccess.capabilities,saAccess.loaded,operations,operationsError,assetsGrant,managedCustomer,hasTickets]);
+  useEffect(() => { if (!saAccess.loaded) return;const requested=query.get('section');if (['assets','tickets','reports'].includes(requested) && !operations && !operationsError) return; /* wait: the assets grant and managed state arrive with the summary */const safe=customer360Section(user,requested,saAccess.capabilities,assetsGrant,managedCustomer,hasTickets,noVisits);if (requested!==safe) { const params=new URLSearchParams(location.search);params.set('section',safe);navigate({ pathname:location.pathname,search:`?${params}` },{ replace:true }); } },[location.pathname,location.search,navigate,user,saAccess.capabilities,saAccess.loaded,operations,operationsError,assetsGrant,managedCustomer,hasTickets,noVisits]);
   if (profileError) return <div className="page"><div className="error-msg" role="alert">{profileError} <button className="btn btn-ghost" onClick={() => setRetry(value => value+1)}>Retry</button></div></div>;
   if (!saAccess.loaded || !customer || customer.id!==Number(id)) return <div className="page"><div className="cs-profile-skeleton"><span /><span /><span /></div></div>;
-  const sections=customer360Sections(user,saAccess.capabilities,assetsGrant,managedCustomer,hasTickets);
+  const sections=customer360Sections(user,saAccess.capabilities,assetsGrant,managedCustomer,hasTickets,noVisits);
   const assetAccess=Object.prototype.hasOwnProperty.call(user.permissions || {},'assets.access') ? user.permissions['assets.access']===true : user.role==='manager';
   return <div className="page cs-page"><Link to={user.role==='manager'?'/customers':'/'} className="cs-back"><ArrowLeft size={12} /> {user.role==='manager'?'Back to Customers':'Back to Dashboard'}</Link>
     <CustomerHeader customer={customer} operations={operations} user={user} saAccess={saAccess} onRecommendation={() => selectTab('recommendations',null,true)} onReminder={() => setAddingReminder(true)} />

@@ -5,9 +5,9 @@ import { fmtDate,StatusBadge } from './Shared';
 import { useLiveVersion } from '../live';
 import CustomerRecurringTasks from './CustomerRecurringTasks';
 import CustomerTaskForm from './CustomerTaskForm';
-import { SubtaskProgress, SubtasksDialog, TaskTicket } from './TaskSubtasks';
+import { LastUpdate, SubtaskProgress, SubtasksDialog, TaskTicket } from './TaskSubtasks';
 import { useToast } from './Toast';
-import { Check, Hand, Play, Plus, Repeat } from 'lucide-react';
+import { Check, Hand, MessageSquare, Play, Plus, Repeat } from 'lucide-react';
 import { useConfirm } from './Confirm';
 import AddToCalendarButton from './AddToCalendarButton';
 
@@ -84,14 +84,16 @@ export function CustomerTasks({ customerId,initialFilter='',engineers=[],canMana
     <ResultState {...state} empty={filter==='open' ? 'No open tasks' : 'No tasks found'}>{state.data && <div className="card cs-work-table-wrap"><table className="cs-work-table"><thead><tr><th>Task</th><th>For</th><th>Status</th><th>Priority</th><th>Due date</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{state.data.rows.map(row => {
       const done=DONE_STATUSES.has(row.status),canUpdate=row.can_update!==false,openSubtasks=(row.subtasks_total || 0)-(row.subtasks_done || 0),overdue=!done && row.deadline && row.deadline.slice(0,10)<new Date().toISOString().slice(0,10);
       return <tr key={row.id}>
-        <td data-label="Task">{row.project_id ? <Link to={`/projects/${row.project_id}`}>{row.title}</Link> : <Link to={`/tasks?customer_id=${customerId}`}>{row.title}</Link>}
-          <div className="cs-task-meta"><SubtaskProgress total={row.subtasks_total} done={row.subtasks_done} compact={!row.subtasks_total} onClick={canUpdate || row.subtasks_total ? () => setSubtasksFor(row) : undefined} /><TaskTicket task={row} />{row.recurring_task_id && <span title="Created by a recurring task"><Repeat size={12} aria-hidden="true" /> Repeats</span>}{row.asset_name && <span>Asset: {row.asset_name}</span>}{row.project_title && <span>Project: {row.project_title}</span>}</div></td>
+        <td data-label="Task"><button type="button" className="cs-task-title" onClick={() => setSubtasksFor(row)} title="Open the task: subtasks and updates">{row.title}</button>
+          <div className="cs-task-meta"><SubtaskProgress total={row.subtasks_total} done={row.subtasks_done} compact={!row.subtasks_total} onClick={canUpdate || row.subtasks_total ? () => setSubtasksFor(row) : undefined} /><TaskTicket task={row} />{row.recurring_task_id && <span title="Created by a recurring task"><Repeat size={12} aria-hidden="true" /> Repeats</span>}{row.asset_name && <span>Asset: {row.asset_name}</span>}{row.project_title && <span>Project: <Link to={`/projects/${row.project_id}`}>{row.project_title}</Link></span>}</div>
+          {row.last_update && <div className="cs-task-update"><LastUpdate update={row.last_update} /></div>}</td>
         <td data-label="For">{row.assigned_to_name || (row.team_name ? `${row.team_name} (team)` : 'Unassigned')}</td>
         <td data-label="Status"><StatusBadge entityType="task" s={row.status} /></td>
         <td data-label="Priority"><span className={`badge badge-${row.priority}`}>{row.priority}</span></td>
         <td data-label="Due date" className={overdue ? 'cs-overdue' : ''}>{fmtDate(row.deadline)}{overdue && <div className="text-sm">Overdue</div>}</td>
         <td><div className="table-actions">{!done && !canUpdate && isEngineer && <button type="button" className="btn btn-ghost btn-sm" disabled={busy===row.id} onClick={() => take(row)}
           aria-label={`${row.assigned_to ? 'Take over' : 'Take'} ${row.title}`}><Hand size={13} /> {row.assigned_to ? 'Take over' : 'Take'}</button>}
+          {canUpdate && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSubtasksFor(row)} aria-label={`Post an update on ${row.title}`}><MessageSquare size={13} /> Update</button>}
           {!done && canUpdate && <>
           {row.status!=='in_progress' && <button type="button" className="btn btn-ghost btn-sm" disabled={busy===row.id} onClick={() => setStatus(row,'in_progress')} aria-label={`Start ${row.title}`}><Play size={13} /> Start</button>}
           <button type="button" className="btn btn-ghost btn-sm" disabled={busy===row.id || openSubtasks>0} onClick={() => setStatus(row,'completed')} aria-label={`Mark ${row.title} done`}

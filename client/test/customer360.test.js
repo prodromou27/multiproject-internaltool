@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { customer360Section,customer360Sections } from '../src/pages/customer360.js';
 import { customerIdFromCreateIntent } from '../src/hooks/useCreateIntent.js';
 
-test('Customer 360 defaults managers to overview and engineers to service activities',() => {
+test('Customer 360 opens on the overview, for managers and engineers',() => {
   assert.equal(customer360Section({ role:'manager' }), 'overview');
-  assert.equal(customer360Section({ role:'engineer' }), 'activities');
+  assert.equal(customer360Section({ role:'engineer' }), 'overview');
 });
 
 test('Customer 360 quick-create intents preserve only safe customer IDs',() => {
@@ -20,17 +20,16 @@ test('Customer 360 accepts available deep links and safely rejects unavailable s
   assert.equal(customer360Section({ role:'manager' },'timeline'),'timeline');
   assert.equal(customer360Section({ role:'engineer' },'timeline'),'timeline');
   assert.equal(customer360Section({ role:'manager' },'managed-services'),'service-configuration');
-  assert.equal(customer360Section({ role:'engineer' },'assets'),'activities');
-  assert.equal(customer360Section({ role:'engineer' },'not-real'),'activities');
+  assert.equal(customer360Section({ role:'engineer' },'assets'),'overview');
+  assert.equal(customer360Section({ role:'engineer' },'not-real'),'overview');
   assert.equal(customer360Sections({ role:'engineer' }).some(section => section.id==='service-configuration'),false);
   assert.equal(customer360Sections({ role:'manager' }).some(section => section.id==='service-configuration'),true);
   assert.deepEqual(customer360Sections({ role:'engineer' },{ managedServiceOperations:true,projectDelivery:false }).map(section => section.id),
-    ['activities','contracts','timeline','recommendations','projects','tasks','maintenance-visits']);
+    ['overview','tasks','maintenance-visits','recommendations','contracts','activities','timeline','projects']);
   assert.deepEqual(customer360Sections({ role:'engineer' },{ managedServiceOperations:false,projectDelivery:true }).map(section => section.id),
-    ['projects','tasks','maintenance-visits','recommendations','activities','contracts','timeline']);
-  assert.equal(customer360Section({ role:'engineer' },null,{ managedServiceOperations:false,projectDelivery:true }),'projects');
-  assert.equal(customer360Section({ role:'engineer' },null,{ managedServiceOperations:true,projectDelivery:true }),'activities');
-  assert.equal(customer360Section({ role:'engineer' },null,{ managedServiceOperations:false,projectDelivery:false }),'activities');
+    ['overview','projects','tasks','maintenance-visits','recommendations','activities','contracts','timeline']);
+  for (const capabilities of [{ managedServiceOperations:false,projectDelivery:true },{ managedServiceOperations:true,projectDelivery:true },{ managedServiceOperations:false,projectDelivery:false }])
+    assert.equal(customer360Section({ role:'engineer' },null,capabilities),'overview');
 });
 
 import { customerHealth, customerHue } from '../src/pages/customer360.js';
@@ -57,13 +56,13 @@ test('customer hue is stable per name and within 0-359', () => {
   for (const name of ['', 'x', 'A very long customer name Ltd.']) assert.ok(customerHue(name) >= 0 && customerHue(name) < 360);
 });
 
-test('an engineer on a managed-services team gets the Assets tab for that customer only when the server grants it', () => {
+test('an engineer who works with the customer gets the Assets tab only when the server grants it', () => {
   const engineer = { role: 'engineer', permissions: { 'assets.access': false } };
   const ids = (grant, capabilities = {}) => customer360Sections(engineer, capabilities, grant).map(section => section.id);
   assert.equal(ids(false).includes('assets'), false);
   assert.equal(ids(true).includes('assets'), true);
-  // Also present in the managed-services ordering, next to the activities they mainly track.
-  assert.deepEqual(ids(true, { managedServiceOperations: true }).slice(0, 4), ['activities', 'assets', 'contracts', 'timeline']);
+  // Also present in the managed-services ordering, next to the tasks.
+  assert.deepEqual(ids(true, { managedServiceOperations: true }).slice(0, 4), ['overview', 'tasks', 'assets', 'maintenance-visits']);
   assert.equal(ids(false, { managedServiceOperations: true }).includes('assets'), false);
   // A deep link to Assets falls back to a safe tab without the grant, and works with it.
   assert.equal(customer360Section(engineer, 'assets', {}, false) === 'assets', false);
@@ -89,4 +88,18 @@ test('a customer with a Request Tracker queue gets Tickets even when not managed
   assert.ok(!ids(false, true).includes('reports'));
   assert.ok(!ids(false, false).includes('tickets'));
   assert.ok(ids(true, false).includes('tickets') && ids(true, false).includes('reports'));
+});
+
+test('managed customers have no Maintenance Visits tab', () => {
+  const ids = (role, managed) => customer360Sections({ role, permissions: { 'managed_customers.view': true } }, {}, false, managed).map(section => section.id);
+  for (const role of ['manager', 'engineer', 'planner']) {
+    assert.equal(ids(role, true).includes('maintenance-visits'), false, role);
+    assert.equal(ids(role, false).includes('maintenance-visits'), true, role);
+  }
+});
+
+test('a customer the server marks as managed has no Maintenance Visits tab, whatever the viewer may see', () => {
+  const ids = customer360Sections({ role: 'engineer' }, {}, true, false, false, true).map(section => section.id);
+  assert.equal(ids.includes('maintenance-visits'), false);
+  assert.equal(ids.includes('tasks'), true);
 });

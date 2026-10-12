@@ -73,6 +73,17 @@ router.post('/', async (req, res) => {
   await reply(req, res, 201);
 });
 
+// New order: { ids: [...] }, every subtask of the task once.
+router.put('/order', async (req, res) => {
+  const ids = req.body.ids;
+  const current = (await db.prepare('SELECT id FROM task_subtasks WHERE task_id = ?').all(req.task.id)).map(row => Number(row.id));
+  if (!Array.isArray(ids) || ids.length !== current.length || new Set(ids.map(Number)).size !== ids.length || !ids.every(id => current.includes(Number(id))))
+    return res.status(400).json({ error: 'Give every subtask of the task once, in the new order' });
+  await db.transaction(async tx => { for (const [position, id] of ids.entries()) await tx.prepare('UPDATE task_subtasks SET position = ? WHERE id = ? AND task_id = ?').run(position, Number(id), req.task.id); });
+  changed();
+  res.json({ subtasks: await list(req.task.id), task: { status: (await db.prepare('SELECT status FROM tasks WHERE id = ?').get(req.task.id)).status } });
+});
+
 router.put('/:subtaskId', async (req, res) => {
   if (!positiveId(req.params.subtaskId)) return res.status(400).json({ error: 'Invalid subtask ID' });
   const subtask = await db.prepare('SELECT * FROM task_subtasks WHERE id = ? AND task_id = ?').get(Number(req.params.subtaskId), req.task.id);

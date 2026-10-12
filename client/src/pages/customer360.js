@@ -1,5 +1,5 @@
 export const CUSTOMER_360_SECTIONS=Object.freeze([
-  { id:'overview',label:'Overview',roles:['manager'] },
+  { id:'overview',label:'Overview',roles:['manager','engineer'] },
   { id:'activities',label:'Service Activities',roles:['manager','engineer','planner'] },
   { id:'tickets',label:'Tickets',roles:['manager'],tickets:true },
   { id:'projects',label:'Projects',roles:['manager','engineer','planner'] },
@@ -15,28 +15,29 @@ export const CUSTOMER_360_SECTIONS=Object.freeze([
 
 const permitted=(user,permission) => Object.prototype.hasOwnProperty.call(user?.permissions || {},permission) ? user.permissions[permission]===true : user?.role==='manager';
 
-/* `assetsGrant`: the server says this engineer is on a managed-services team
-   serving this customer, which earns the Assets tab (view + add) without the
-   assets.access permission. `managedCustomer`: the customer receives managed
+/* `assetsGrant`: the server says this engineer works with this customer, which
+   earns the Assets tab (view, add, review) without the assets.access permission. `managedCustomer`: the customer receives managed
    services, which adds the Reports tab. `hasTickets`: it has a Request Tracker
    queue (managed or not), which adds the Tickets tab. */
-export function customer360Sections(user,capabilities={},assetsGrant=false,managedCustomer=false,hasTickets=false) {
+export function customer360Sections(user,capabilities={},assetsGrant=false,managedCustomer=false,hasTickets=false,noVisits=false) {
   const assetAllowed=assetsGrant===true || permitted(user,'assets.access');
   const managedAllowed=managedCustomer===true && permitted(user,'managed_customers.view');
   const ticketsAllowed=(managedCustomer===true || hasTickets===true) && permitted(user,'managed_customers.view');
   const available=CUSTOMER_360_SECTIONS.filter(section => !section.pending && (section.tickets ? ticketsAllowed && section.roles.includes(user?.role) : section.managed ? managedAllowed && section.roles.includes(user?.role) : section.id==='assets' ? assetAllowed : section.roles.includes(user?.role)));
+  // Managed customers do not have maintenance visits.
+  if (managedCustomer===true || noVisits===true) available.splice(0,available.length,...available.filter(section => section.id!=='maintenance-visits'));
   if (user?.role!=='engineer' || (capabilities.managedServiceOperations===undefined && capabilities.projectDelivery===undefined)) return available;
   const managed=capabilities.managedServiceOperations===true;
   const delivery=capabilities.projectDelivery===true;
   if (!managed && !delivery) return available;
   const order=managed
-    ? delivery ? ['activities','projects','tasks','maintenance-visits','recommendations','assets','contracts','timeline'] : ['activities','assets','contracts','timeline','recommendations','projects','tasks','maintenance-visits']
-    : ['projects','tasks','maintenance-visits','recommendations','activities','contracts','timeline'];
+    ? delivery ? ['overview','activities','projects','tasks','maintenance-visits','recommendations','assets','contracts','timeline'] : ['overview','tasks','assets','maintenance-visits','recommendations','contracts','activities','timeline','projects']
+    : ['overview','projects','tasks','maintenance-visits','recommendations','assets','activities','contracts','timeline'];
   return order.map(id => available.find(section => section.id===id)).filter(Boolean);
 }
 
-export function customer360Section(user,requested,capabilities={},assetsGrant=false,managedCustomer=false,hasTickets=false) {
-  const available=customer360Sections(user,capabilities,assetsGrant,managedCustomer,hasTickets);
+export function customer360Section(user,requested,capabilities={},assetsGrant=false,managedCustomer=false,hasTickets=false,noVisits=false) {
+  const available=customer360Sections(user,capabilities,assetsGrant,managedCustomer,hasTickets,noVisits);
   const aliases={ 'managed-services':'service-configuration' };
   const normalized=aliases[requested] || requested;
   return available.some(section => section.id===normalized) ? normalized : available[0]?.id || 'overview';

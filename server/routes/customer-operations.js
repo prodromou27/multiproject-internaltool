@@ -1,7 +1,7 @@
 const router=require('express').Router({ mergeParams:true });
 const db=require('../db');
 const { requireAuth }=require('../middleware/auth');
-const { positiveId,canAccessCustomer,isManagedServicesEngineer }=require('../customerAccess');
+const { positiveId,canAccessCustomer,engineerOnCustomer }=require('../customerAccess');
 const { ownTasksSql, ownTasksParams } = require('../taskAccess');
 const { decrypt } = require('../fieldCipher');
 
@@ -40,10 +40,11 @@ router.get('/summary',requireAuth,async (req,res) => {
   const projectJoin=projectRestricted ? ' JOIN project_assignments pa_scope ON pa_scope.project_id=p.id AND pa_scope.user_id=?' : '';
   // Engineers who work with the customer see all its tasks: they may take an unassigned one or take one over (routes/tasks.js).
   const taskScope='';
-  const visitJoin=engineer ? ' JOIN maintenance_visit_engineers mve_scope ON mve_scope.visit_id=mv.id AND mve_scope.user_id=?' : '';
+  // Engineers who work with the customer see all its maintenance visits, like its tasks.
+  const visitJoin='';
   const activityScope=engineer ? ' AND sa.engineer_id=?' : '';
-  // 'full' = manage assets; 'team' = an engineer on this customer's managed-services team (view + add).
-  const assetsAccess=req.user.role==='manager' ? 'full' : await isManagedServicesEngineer(req.user,customerId) ? 'team' : null;
+  // 'full' = manage assets; 'team' = an engineer who works with this customer (view, add, review).
+  const assetsAccess=req.user.role==='manager' ? 'full' : await engineerOnCustomer(req.user,customerId) ? 'team' : null;
   const activeRecommendations="r.status NOT IN ('implemented','rejected','closed','converted_to_project')";
   const [projects,tasks,recommendations,visits,lastVisit,nextVisit,activities,configuration,assets,tickets_ext]=await Promise.all([
     db.prepare(`SELECT COUNT(*) FILTER (WHERE p.status NOT IN ('closed','cancelled')) AS active,
@@ -61,13 +62,13 @@ router.get('/summary',requireAuth,async (req,res) => {
       FROM customer_recommendations r WHERE r.customer_id=?`).get(customerId),
     db.prepare(`SELECT COUNT(*) FILTER (WHERE substr(mv.scheduled_date,1,4)=substr(app_today(),1,4)) AS this_year,
       COUNT(*) FILTER (WHERE mv.report_sent=0 AND mv.status NOT IN ('scheduled','cancelled')) AS reports_pending
-      FROM maintenance_visits mv${visitJoin} WHERE mv.customer_id=?`).get(...(engineer?[userId]:[]),customerId),
+      FROM maintenance_visits mv${visitJoin} WHERE mv.customer_id=?`).get(customerId),
     db.prepare(`SELECT mv.id,mv.title,mv.scheduled_date,mv.status,mv.report_sent,mv.report_sent_to_customer,mv.report_sent_at
       FROM maintenance_visits mv${visitJoin} WHERE mv.customer_id=? AND mv.scheduled_date<=app_today()
-      ORDER BY mv.scheduled_date DESC,mv.id DESC LIMIT 1`).get(...(engineer?[userId]:[]),customerId),
+      ORDER BY mv.scheduled_date DESC,mv.id DESC LIMIT 1`).get(customerId),
     db.prepare(`SELECT mv.id,mv.title,mv.scheduled_date,mv.status,mv.report_sent,mv.report_sent_to_customer,mv.report_sent_at
       FROM maintenance_visits mv${visitJoin} WHERE mv.customer_id=? AND mv.scheduled_date>=app_today() AND mv.status<>'completed' AND mv.status<>'cancelled'
-      ORDER BY mv.scheduled_date,mv.id LIMIT 1`).get(...(engineer?[userId]:[]),customerId),
+      ORDER BY mv.scheduled_date,mv.id LIMIT 1`).get(customerId),
     db.prepare(`SELECT sa.id,sa.activity_date,sa.title,sa.duration_minutes,sa.status,sa.engineer_id,u.name AS engineer_name,cat.name AS category_name
       FROM service_activities sa JOIN users u ON u.id=sa.engineer_id JOIN activity_categories cat ON cat.id=sa.category_id
       WHERE sa.customer_id=?${activityScope} ORDER BY sa.activity_date DESC,sa.id DESC LIMIT 6`).all(customerId,...(engineer?[userId]:[])),
@@ -96,6 +97,8 @@ router.get('/summary',requireAuth,async (req,res) => {
   res.json({ projects:numbers(projects),tasks:{ ...numbers(tasks),visible:!planner },recommendations:numbers(recommendations),
     visits:{ ...numbers(visits),last:lastVisit || null,next:nextVisit || null },activities:{ recent:activities },
     assets:Number(assets.total || 0),assets_access:assetsAccess,managed,
+    // Whether the customer receives managed services, for everyone (managed customers have no maintenance visits).
+    is_managed:!!await db.prepare('SELECT 1 FROM managed_customer_configurations WHERE customer_id=? AND managed_services_enabled=1').get(customerId),
     // Any customer with a Request Tracker queue gets the Tickets tab, managed or not.
     tickets_mapped:req.user.role==='manager' && !!await db.prepare("SELECT 1 FROM customer_ticketing_configurations WHERE customer_id=? AND provider_type='request_tracker' AND enabled=1").get(customerId) });
 });
@@ -170,7 +173,7 @@ router.get('/tasks',requireAuth,async (req,res) => {
     FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to LEFT JOIN teams tm ON tm.id=t.team_id LEFT JOIN customer_assets ca ON ca.id=t.asset_id WHERE ${where}
     ORDER BY CASE WHEN t.deadline IS NULL THEN 1 ELSE 0 END,t.deadline,t.id LIMIT ? OFFSET ?`).all(...params,paging.pageSize,paging.offset))
     .map(row => ({ ...row,asset_name:row.asset_name ? decrypt(row.asset_name) : null }));
-  const withProgress=(await require('../taskTickets').withTickets(await require('../taskSubtasks').withSubtaskCounts(rows))).map(row => ({ ...row,can_update:canUpdate(row) }));
+  const withProgress=(await require('../taskSubtasks').withLastUpdates(await require('../taskTickets').withTickets(await require('../taskSubtasks').withSubtaskCounts(rows)))).map(row => ({ ...row,can_update:canUpdate(row) }));
   const count=await db.prepare(`SELECT COUNT(*) AS total FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to WHERE ${where}`).get(...params);
   res.json({ rows:withProgress,total:Number(count.total),page:paging.page,page_size:paging.pageSize });
 });
@@ -179,8 +182,7 @@ router.get('/visits',requireAuth,async (req,res) => {
   const customerId=await authorizedCustomer(req,res);if (!customerId) return;
   const paging=validateListQuery(req.query,['all','upcoming','past','report_pending','awaiting_review','cancelled']);if (paging.error) return res.status(400).json({ error:paging.error });
   const clauses=['mv.customer_id=?'],params=[customerId],filter=req.query.filter || 'all';
-  const join=req.user.role==='engineer' ? ' JOIN maintenance_visit_engineers mve_scope ON mve_scope.visit_id=mv.id AND mve_scope.user_id=?' : '';
-  if (req.user.role==='engineer') params.unshift(req.user.id);
+  const join='';
   if (filter==='upcoming') clauses.push("mv.status='scheduled' AND mv.scheduled_date>=app_today()");
   if (filter==='past') clauses.push("(mv.scheduled_date<app_today() OR mv.status='completed')");
   if (filter==='report_pending') clauses.push("mv.report_sent=0 AND mv.status<>'scheduled' AND mv.status<>'cancelled'");

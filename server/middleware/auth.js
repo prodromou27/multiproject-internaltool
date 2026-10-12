@@ -52,16 +52,16 @@ function modulePermission(req) {
   return null;
 }
 
-// An engineer on a managed customer's responsible team may, without holding
+// An engineer who works with the customer may, without holding
 // assets.access, list and add that customer's assets, see their software status,
 // review one and read its version history; the asset router (routes/customer-assets.js)
-// applies the same rule. See customerAccess.isManagedServicesEngineer.
+// applies the same rule. See customerAccess.engineerOnCustomer.
 const TEAM_ASSET_CALLS=[['GET',/^$/],['POST',/^$/],['GET',/^\/software-status$/],['GET',/^\/options$/],['POST',/^\/\d+\/review$/],['GET',/^\/\d+\/versions$/]];
 async function isManagedTeamAssetCall(req,user) {
   if (user?.role!=='engineer') return false;
   const match=/^\/api\/customers\/(\d+)\/assets(\/.*)?$/.exec((req.baseUrl || '') + (req.path && req.path!=='/' ? req.path : ''));
   if (!match || !TEAM_ASSET_CALLS.some(([method,rest]) => method===req.method && rest.test(match[2] || ''))) return false;
-  return require('../customerAccess').isManagedServicesEngineer(user,Number(match[1]));
+  return require('../customerAccess').engineerOnCustomer(user,Number(match[1]));
 }
 
 async function enforceModulePermission(req,res,user) {

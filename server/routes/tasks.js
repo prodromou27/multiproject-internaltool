@@ -96,7 +96,7 @@ router.get('/', requireAuth, async (req, res) => {
     }));
   }
 
-  rows = await taskTickets.withTickets(await subtasks.withSubtaskCounts(rows));
+  rows = await subtasks.withLastUpdates(await taskTickets.withTickets(await subtasks.withSubtaskCounts(rows)));
   res.json(pagination ? { rows, total: counts[req.query.filter || 'all'], counts, page: pagination.page, page_size: pagination.page_size } : rows);
 });
 
@@ -473,7 +473,21 @@ async function requireVisibleTask(req, res, next) {
   next();
 }
 
-router.get('/:id/comments', requireAuth, requireVisibleTask, async (req, res) => {
+// Updates (status comments) are read by anyone who may see the task: managers, those
+// working on it, and engineers who work with its customer or are on its project.
+async function requireReadableTask(req, res, next) {
+  if (!['manager', 'engineer'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+  if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid task ID' });
+  const task = await db.prepare('SELECT t.*, COALESCE(t.customer_id, p.customer_id) AS task_customer_id FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?').get(req.params.id);
+  if (!task) return res.status(404).json({ error: 'Not found' });
+  if (req.user.role === 'engineer' && !await worksOnTask(req.user, task)
+    && !(task.project_id ? await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(task.project_id, req.user.id) : task.task_customer_id && await canAccessCustomer(req.user, task.task_customer_id)))
+    return res.status(403).json({ error: 'Forbidden' });
+  req.task = task;
+  next();
+}
+
+router.get('/:id/comments', requireAuth, requireReadableTask, async (req, res) => {
   const rows = (await db.prepare(`
     SELECT tc.*, u.name as user_name, u.role as user_role
     FROM task_comments tc

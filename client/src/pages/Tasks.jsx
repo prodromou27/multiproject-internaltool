@@ -6,7 +6,7 @@ import { FilterGroup, ListSearch } from '../components/ListWorkspace';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import WaitingReasonDialog from '../components/WaitingReasonDialog';
-import TaskSubtasks, { SubtaskProgress, SubtasksDialog, TaskTicket, linesOf } from '../components/TaskSubtasks';
+import TaskSubtasks, { DraftChecklist, LastUpdate, SubtaskProgress, SubtasksDialog, TaskTicket, TaskUpdates } from '../components/TaskSubtasks';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
@@ -131,6 +131,7 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
         )}
 <div className="form-group"><label htmlFor="edit-task-ticket">Ticket (optional)</label><input id="edit-task-ticket" value={form.ticket_reference} onChange={set('ticket_reference')} maxLength={50} placeholder="e.g. RT#12345" /></div>
         <div className="task-edit-subtasks"><TaskSubtasks taskId={task.id} customerId={task.customer_id} /></div>
+        <div className="task-edit-subtasks"><TaskUpdates task={task} /></div>
         <div className="modal-footer u-cc45258">
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={saving}>
@@ -300,7 +301,7 @@ export default function Tasks() {
       // A project's task takes the project's customer; otherwise it belongs to the chosen customer.
       const team = String(form.assigned_to).startsWith('t:') ? Number(form.assigned_to.slice(2)) : null;
       await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, customer_id: !form.project_id && form.customer_id ? Number(form.customer_id) : null,
-        assigned_to: !team && form.assigned_to ? Number(form.assigned_to) : null, team_id: team, subtasks: linesOf(form.subtasks), ticket_reference: form.ticket_reference?.trim() || null });
+        assigned_to: !team && form.assigned_to ? Number(form.assigned_to) : null, team_id: team, subtasks: form.subtasks || [], ticket_reference: form.ticket_reference?.trim() || null });
       setShowCreate(false);
       setCreateCustomerId(null);
       setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
@@ -549,6 +550,7 @@ export default function Tasks() {
                     <span className="font-medium">{t.title}</span>
                     {t.ticket_reference && <> <TaskTicket task={t} /></>}
                     {t.subtasks_total > 0 && <> <SubtaskProgress total={t.subtasks_total} done={t.subtasks_done} onClick={() => setSubtasksFor(t)} /></>}
+                    {t.last_update && <div><LastUpdate update={t.last_update} /></div>}
                     {t.is_adhoc ? <span className="badge badge-adhoc u-391ef12">adhoc</span> : null}
                     {t.is_blocked ? (
                       <span className="badge badge-blocked u-391ef12" title={`Blocked by ${t.dep_count || 1} unfinished task(s)`}>
@@ -667,10 +669,10 @@ export default function Tasks() {
               </select>
             </div>
 <div className="form-group"><label htmlFor="task-ticket">Ticket (optional)</label><input id="task-ticket" value={form.ticket_reference || ''} onChange={set('ticket_reference')} maxLength={50} placeholder="e.g. RT#12345" /></div>
-            <div className="form-group"><label htmlFor="task-subtasks">Subtasks (optional, one per line)</label>
-              <textarea id="task-subtasks" rows={3} value={form.subtasks || ''} onChange={set('subtasks')} placeholder={'e.g.\nUpgrade SRV-01\nUpgrade SRV-02'} />
-              <small className="text-muted">The task can be completed when all its subtasks are done.</small>
-            </div>
+            <fieldset className="ct-subtasks"><legend>Subtasks</legend>
+              <small className="text-muted">Optional. The task is completed when all its subtasks are done.</small>
+              <DraftChecklist value={form.subtasks || []} onChange={list => setForm(current => ({ ...current, subtasks: list }))} customerId={!form.project_id && form.customer_id ? Number(form.customer_id) : null} />
+            </fieldset>
             <div className="form-group">
               <label className="u-ea06b0c">
                 <input type="checkbox" checked={form.is_adhoc} onChange={e => setForm(f => ({ ...f, is_adhoc: e.target.checked }))} className="u-30e741d" />

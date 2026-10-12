@@ -3,7 +3,7 @@ const db = require('../db');
 const appTime = require('../appTime');
 const { requireAuth, requireManager } = require('../middleware/auth');
 const { hasPermission } = require('../permissions');
-const { canAccessCustomer, isManagedServicesEngineer, positiveId } = require('../customerAccess');
+const { canAccessCustomer, engineerOnCustomer, positiveId } = require('../customerAccess');
 const { encrypt, decrypt } = require('../fieldCipher');
 const { logAudit } = require('../auditLog');
 const { contractTypes, contractsFor } = require('../customerContracts');
@@ -41,7 +41,7 @@ router.get('/', async (req, res) => {
     db.prepare('SELECT ca.contract_id, ca.asset_id FROM customer_contract_assets ca JOIN customer_contracts c ON c.id = ca.contract_id WHERE c.customer_id = ?').all(customerId),
     db.prepare("SELECT id, name, asset_type, lifecycle_status FROM customer_assets WHERE customer_id = ? ORDER BY id").all(customerId),
     isManaged(customerId),
-    hasPermission(req.user, 'assets.access').then(ok => ok || isManagedServicesEngineer(req.user, customerId)),
+    hasPermission(req.user, 'assets.access').then(ok => ok || engineerOnCustomer(req.user, customerId)),
     contractTypes(),
   ]);
   const assetView = new Map(assets.map(a => [Number(a.id), { id: Number(a.id), name: decrypt(a.name), asset_type: a.asset_type, lifecycle_status: a.lifecycle_status }]));
@@ -49,7 +49,9 @@ router.get('/', async (req, res) => {
   const covered = new Set(contracts.filter(c => LIVE.has(c.status)).flatMap(c => assetIdsOf(c.id)));
   const uncovered = assets.filter(a => a.lifecycle_status === 'active' && !covered.has(Number(a.id)));
   res.json({
-    contracts: contracts.map(c => ({ ...c, asset_count: assetIdsOf(c.id).length, ...(assetAccess ? { assets: assetIdsOf(c.id).map(id => assetView.get(id)).filter(Boolean) } : {}) })),
+    // Engineers see the contracts in force (active or ending soon); managers and planners all of them, with history.
+    active_only: req.user.role === 'engineer',
+    contracts: contracts.filter(c => req.user.role !== 'engineer' || ['active', 'ending_soon'].includes(c.status)).map(c => ({ ...c, asset_count: assetIdsOf(c.id).length, ...(assetAccess ? { assets: assetIdsOf(c.id).map(id => assetView.get(id)).filter(Boolean) } : {}) })),
     is_managed: managed,
     service_levels: types,
     can_manage: req.user.role === 'manager',

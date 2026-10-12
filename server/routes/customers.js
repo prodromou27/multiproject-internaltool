@@ -54,9 +54,11 @@ router.get('/', requireAuth, async (req, res) => {
   if (listQuery.error) return res.status(400).json({ error:listQuery.error });
   const candidates=listQuery.paged && listQuery.search ? await candidateCustomerIds(db,listQuery.search) : null;
   // Engineers see the customers they work with: their visits, projects, direct
-  // assignments and their teams' customers (the same as canAccessCustomer).
+  // assignments and their teams' customers (the same as canAccessCustomer), with
+  // the same details as managers (managed, contract, status) for those customers.
+  let allowed = null;
   if (req.user.role === 'engineer') {
-    const allowed = [...new Set((await db.prepare(`
+    allowed = new Set((await db.prepare(`
       SELECT mv.customer_id FROM maintenance_visits mv
       JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
       WHERE mve.user_id = ?
@@ -68,19 +70,13 @@ router.get('/', requireAuth, async (req, res) => {
       SELECT ce.customer_id FROM customer_engineers ce WHERE ce.user_id = ?
       UNION
       SELECT ct.customer_id FROM customer_teams ct JOIN team_members tm ON tm.team_id = ct.team_id WHERE tm.user_id = ?
-    `).all(req.user.id, req.user.id, req.user.id, req.user.id)).map(row => Number(row.customer_id)))];
-    const marks = allowed.map(() => '?').join(',');
-    const visits = allowed.length ? new Map((await db.prepare(`SELECT customer_id, COUNT(*) AS n FROM maintenance_visits WHERE customer_id IN (${marks}) GROUP BY customer_id`)
-      .all(...allowed)).map(row => [Number(row.customer_id), Number(row.n)])) : new Map();
-    const rows = allowed.length ? (await db.prepare(`SELECT id, name, contact_name, contact_email, contact_phone, address FROM customers WHERE id IN (${marks})`)
-      .all(...allowed)).map(row => ({ ...row, visit_count: visits.get(Number(row.id)) || 0 })) : [];
-    const visible=(candidates ? rows.filter(row => candidates.has(Number(row.id))) : rows).map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name));
-    return res.json(listQuery.paged ? customerListPage(visible,listQuery) : visible);
+    `).all(req.user.id, req.user.id, req.user.id, req.user.id)).map(row => Number(row.customer_id)));
   }
   const managed = new Set((await db.prepare('SELECT customer_id FROM managed_customer_configurations WHERE managed_services_enabled = 1').all()).map(row => Number(row.customer_id)));
-  const rows = (await db.prepare(`SELECT c.*, u.name as created_by_name,
-    (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = c.id) as visit_count
-    FROM customers c LEFT JOIN users u ON c.created_by = u.id ORDER BY c.name`).all()).map(row => ({ ...row, is_managed: managed.has(Number(row.id)) }));
+  const visits = new Map((await db.prepare('SELECT customer_id, COUNT(*) AS n FROM maintenance_visits GROUP BY customer_id').all()).map(row => [Number(row.customer_id), Number(row.n)]));
+  const rows = (await db.prepare(`SELECT c.*, u.name as created_by_name
+    FROM customers c LEFT JOIN users u ON c.created_by = u.id ORDER BY c.name`).all()).filter(row => !allowed || allowed.has(Number(row.id)))
+    .map(row => ({ ...row, visit_count: visits.get(Number(row.id)) || 0, is_managed: managed.has(Number(row.id)) }));
   // Each customer's current contract (the one in force, else the next or the last).
   const contracts = await contractsFor();
   for (const row of rows) {

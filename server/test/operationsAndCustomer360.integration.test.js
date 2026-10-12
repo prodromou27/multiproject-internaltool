@@ -169,11 +169,13 @@ test('customer operational work lists paginate, filter, and enforce role scope',
   const projects=await api(`${root}/projects`,{ token:ids.tokenEnabled });
   assert.equal(projects.status,200);
   for (const project of projects.data.rows) assert.ok(await db.prepare('SELECT 1 FROM project_assignments WHERE project_id=? AND user_id=?').get(project.id,ids.engineerEnabled));
-  const tasks=await api(`${root}/tasks`,{ token:ids.tokenEnabled });
-  assert.equal(tasks.status,200);assert.equal(tasks.data.rows.every(row => row.assigned_to===ids.engineerEnabled),true);
-  const visits=await api(`${root}/visits`,{ token:ids.tokenEnabled });
-  assert.equal(visits.status,200);
-  for (const visit of visits.data.rows) assert.ok(await db.prepare('SELECT 1 FROM maintenance_visit_engineers WHERE visit_id=? AND user_id=?').get(visit.id,ids.engineerEnabled));
+  // Engineers who work with the customer see all its tasks and visits (mine=1: only their own tasks).
+  const tasks=await api(`${root}/tasks`,{ token:ids.tokenEnabled }),allTasks=await api(`${root}/tasks`,{ token:ids.tokenManager });
+  assert.equal(tasks.status,200);assert.equal(tasks.data.total,allTasks.data.total);
+  const mine=await api(`${root}/tasks?mine=1`,{ token:ids.tokenEnabled });
+  assert.equal(mine.data.rows.every(row => row.assigned_to===ids.engineerEnabled || (row.assigned_to==null && row.team_id)),true);
+  const visits=await api(`${root}/visits`,{ token:ids.tokenEnabled }),allVisits=await api(`${root}/visits`,{ token:ids.tokenManager });
+  assert.equal(visits.status,200);assert.equal(visits.data.total,allVisits.data.total);
   assert.equal((await api(`${root}/tasks`,{ token:ids.tokenPlanner })).status,403);
   const privateCustomer=(await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Private work-list customer')).lastInsertRowid;
   for (const resource of ['projects','tasks','visits']) assert.equal((await api(`/api/customers/${privateCustomer}/operations/${resource}`,{ token:ids.tokenEnabled })).status,403);

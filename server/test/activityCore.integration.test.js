@@ -36,9 +36,9 @@ test('workload pressure enforces manager access, policy versions and independent
   assert.equal(result.pressure_points,7.75);
 });
 
-test('customer assets validate technical identifiers, enforce versions and remain manager-only', async () => {
+test('customer assets validate technical identifiers, enforce versions and are managed by managers', async () => {
   const base=`/api/customers/${ids.customer}/assets`;
-  assert.equal((await api(base,{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api(base,{ token:ids.tokenDisabled })).status,403,'an engineer who does not work with the customer');
   assert.equal((await api('/api/customers/not-an-id/assets',{ token:ids.tokenManager })).status,400);
   const body={ name:'Primary Gateway',asset_tag:'GW-001',asset_type:'Security gateway',technology_id:ids.technology,vendor:'Check Point',model:'6200',serial_number:'CP123',hostname:'gw01.example.local',ip_address:'192.0.2.10',mac_address:'00:11:22:33:44:55',software_version:'R81.20',location:'Primary DC',environment:'production',criticality:'critical',lifecycle_status:'active',coverage_type:'managed',support_provider:'Partner',support_reference:'SUP-1',support_start_date:'2026-01-01',support_end_date:'2026-12-31',warranty_expiry_date:'2027-12-31',management_url:'https://gw01.example.local',notes:'Cluster member one' };
   for (const change of [{ ip_address:'999.1.1.1' },{ hostname:'bad host' },{ mac_address:'not-a-mac' },{ coverage_type:'leased' },{ support_end_date:'2025-01-01' },{ management_url:'https://user:secret@example.test' },{ technology_id:true }]) assert.equal((await api(base,{ method:'POST',token:ids.tokenManager,body:{ ...body,...change,asset_tag:`BAD-${JSON.stringify(change)}` } })).status,400);
@@ -187,7 +187,7 @@ test('activities link only authorized same-customer assets and preserve asset hi
   assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets/${otherAsset.data.id}`,{ method:'DELETE',token:ids.tokenManager,body:{ version:1 } })).status,200);
 });
 
-test('managed-services team engineers can list and add assets for customers their team serves, and nothing else', async () => {
+test('engineers who work with a customer can list, add and review its assets, and nothing else', async () => {
   const customer = (await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Managed assets fixture')).lastInsertRowid;
   const path = `/api/customers/${customer}/assets`;
   const body = { name: 'Edge firewall', asset_type: 'Firewall', environment: 'production', criticality: 'high', lifecycle_status: 'active', coverage_type: 'managed' };
@@ -214,9 +214,9 @@ test('managed-services team engineers can list and add assets for customers thei
     // Other teams and other customers are refused.
     assert.equal((await api(path, { token: ids.tokenDisabled })).status, 403);
     assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets`, { token: ids.tokenEnabled })).status, 403);
-    // Without the managed-services capability the same team member has no asset access.
+    // Any engineer who works with the customer, with or without the managed-services capability.
     await setCapability(0);
-    assert.equal((await api(path, { token: ids.tokenEnabled })).status, 403);
+    assert.equal((await api(path, { token: ids.tokenEnabled })).status, 200);
     // Managers keep full control throughout.
     assert.equal((await api(assetPath, { method: 'DELETE', token: ids.tokenManager, body: { version: 1 } })).status, 200);
   } finally { await setCapability(0); }

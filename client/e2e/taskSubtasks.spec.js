@@ -41,27 +41,41 @@ test('a task has subtasks: added one per line or one per server, ticked off, and
   const row = page.getByRole('row', { name: /Servers upgrades/ });
   await expect(row.getByRole('button', { name: 'Mark Servers upgrades done' })).toBeEnabled();
   await row.getByRole('button', { name: 'Subtasks: 1 of 1 subtasks done' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Subtasks: Servers upgrades' });
+  const dialog = page.getByRole('dialog', { name: 'Servers upgrades', exact: true });
   await expect(dialog.getByRole('checkbox', { name: 'Take a backup' })).toBeChecked();
-  await dialog.getByLabel('New subtasks').fill('Check monitoring\nNotify the customer');
-  await dialog.getByRole('button', { name: 'Add', exact: true }).click();
-  await expect.poll(() => calls[0]).toEqual(['add', { items: [{ title: 'Check monitoring' }, { title: 'Notify the customer' }] }]);
-  await dialog.getByRole('button', { name: 'From assets' }).click();
+  // Planner-style: type an item, press Enter, and it is on the list.
+  const addItem = dialog.getByRole('textbox', { name: 'Add an item' });
+  await addItem.fill('Check monitoring');
+  await addItem.press('Enter');
+  await expect.poll(() => calls[0]).toEqual(['add', { items: [{ title: 'Check monitoring' }] }]);
+  await expect(addItem).toHaveValue('');
+  await addItem.fill('Notify the customer');
+  await addItem.press('Enter');
+  await expect.poll(() => calls[1]).toEqual(['add', { items: [{ title: 'Notify the customer' }] }]);
+  await dialog.getByRole('button', { name: 'Add from assets' }).click();
   await dialog.getByRole('checkbox', { name: /SRV-01/ }).check();
   await dialog.getByRole('checkbox', { name: /SRV-02/ }).check();
-  await dialog.getByRole('button', { name: 'Add 2 as subtasks' }).click();
-  await expect.poll(() => calls[1]).toEqual(['add', { items: [{ title: 'SRV-01', asset_id: 1 }, { title: 'SRV-02', asset_id: 2 }] }]);
+  await dialog.getByRole('button', { name: 'Add 2 items' }).click();
+  await expect.poll(() => calls[2]).toEqual(['add', { items: [{ title: 'SRV-01', asset_id: 1 }, { title: 'SRV-02', asset_id: 2 }] }]);
   await expect(dialog).toContainText('1 of 5 done');
+  // Click an item to rename it.
+  await dialog.getByRole('button', { name: 'Notify the customer', exact: true }).click();
+  await dialog.getByRole('textbox', { name: 'Rename Notify the customer' }).fill('Email the customer');
+  await dialog.getByRole('textbox', { name: 'Rename Notify the customer' }).press('Enter');
+  await expect.poll(() => calls[3]).toEqual(['tick', 12, { title: 'Email the customer' }]);
   await dialog.getByRole('checkbox', { name: 'SRV-01' }).click();
   await expect(dialog.getByRole('checkbox', { name: 'SRV-01' })).toBeChecked();
-  await expect.poll(() => calls[2]).toEqual(['tick', 13, { done: true }]);
-  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect.poll(() => calls[4]).toEqual(['tick', 13, { done: true }]);
+  // A click outside the dialog does not close it.
+  await page.mouse.click(5, 5);
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).last().click();
   await expect(row.getByRole('button', { name: 'Subtasks: 2 of 5 subtasks done' })).toBeVisible();
   await expect(row.getByRole('button', { name: 'Mark Servers upgrades done' })).toBeDisabled();
 
   // Ticking the last one completes the task.
   await row.getByRole('button', { name: 'Subtasks: 2 of 5 subtasks done' }).click();
-  for (const name of ['Check monitoring', 'Notify the customer', 'SRV-02']) {
+  for (const name of ['Check monitoring', 'Email the customer', 'SRV-02']) {
     await dialog.getByRole('checkbox', { name }).click();
     await expect(dialog.getByRole('checkbox', { name })).toBeChecked();
   }
@@ -75,11 +89,19 @@ test('a new customer task can come with subtasks, typed or one per asset', async
   await page.getByRole('button', { name: 'Add task' }).click();
   const form = page.getByRole('dialog', { name: 'Add task' });
   await form.getByLabel('Task *').fill('Servers upgrades');
-  await form.getByLabel('Subtasks, one per line').fill('Take a backup');
-  await form.getByRole('button', { name: /Add one per asset/ }).click();
+  const addItem = form.getByRole('textbox', { name: 'Add an item' });
+  await addItem.fill('Take a backup');
+  await addItem.press('Enter');
+  await expect(form.getByRole('button', { name: 'Take a backup', exact: true })).toBeVisible();
+  await form.getByRole('button', { name: 'Add from assets' }).click();
   await form.getByRole('checkbox', { name: /SRV-02/ }).check();
+  await form.getByRole('button', { name: 'Add 1 item' }).click();
+  await form.getByRole('button', { name: 'Remove Take a backup' }).click();
+  await addItem.fill('Check the backup');
+  await addItem.press('Enter');
+  await expect(form).toBeVisible();
   await form.getByRole('button', { name: 'Add task' }).click();
-  await expect.poll(() => calls.find(c => c[0] === 'create')?.[1]).toMatchObject({ title: 'Servers upgrades', subtasks: [{ title: 'SRV-02', asset_id: 2 }, { title: 'Take a backup' }] });
+  await expect.poll(() => calls.find(c => c[0] === 'create')?.[1]).toMatchObject({ title: 'Servers upgrades', subtasks: [{ title: 'SRV-02', asset_id: 2 }, { title: 'Check the backup' }] });
 });
 
 test('outdated devices become one upgrade task with a subtask per device', async ({ page }) => {
@@ -113,14 +135,17 @@ test('the Tasks page shows subtask progress, creates tasks with subtasks and edi
   api.override('POST /api/tasks', ({ body }) => { sent = body; return { body: { id: 90 } }; });
   await page.goto('/tasks');
   await page.getByRole('button', { name: 'Subtasks: 1 of 3 subtasks done' }).click();
-  await expect(page.getByRole('dialog', { name: 'Subtasks: Servers upgrades' })).toContainText('1 of 3 done');
-  await page.getByRole('dialog').getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Servers upgrades', exact: true })).toContainText('1 of 3 done');
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).last().click();
   await page.getByRole('button', { name: '+ New Task' }).click();
   const form = page.getByRole('dialog', { name: 'New Task' });
   await form.getByRole('textbox').first().fill('Patch round');
-  await form.getByLabel('Subtasks (optional, one per line)').fill('Firewalls\n\nServers');
+  for (const item of ['Firewalls', 'Servers']) {
+    await form.getByRole('textbox', { name: 'Add an item' }).fill(item);
+    await form.getByRole('textbox', { name: 'Add an item' }).press('Enter');
+  }
   await form.getByRole('button', { name: 'Create' }).click();
-  await expect.poll(() => sent).toMatchObject({ title: 'Patch round', subtasks: ['Firewalls', 'Servers'] });
+  await expect.poll(() => sent).toMatchObject({ title: 'Patch round', subtasks: [{ title: 'Firewalls' }, { title: 'Servers' }] });
 });
 
 test('My Work shows subtask progress, and checklists kept only in this browser move to their tasks', async ({ page }) => {
@@ -155,4 +180,25 @@ test('a task may name a ticket: linked when it is a synced ticket of the custome
   await dialog.getByLabel('Ticket (optional)').fill('RT#5003');
   await dialog.getByRole('button', { name: 'Save Changes' }).click();
   await expect.poll(() => sent[0]).toMatchObject({ ticket_reference: 'RT#5003' });
+});
+
+test('the engineer posts a status update on a task, changing its status with it; the latest shows on the row', async ({ page }) => {
+  const calls = await customerPage(page, 'engineer');
+  const api = { comments: [{ id: 1, user_name: 'Paul Delivery', message: 'Racked', created_at: '2026-10-12 08:00:00' }] };
+  await page.route('**/api/tasks/61/comments', async route => {
+    if (route.request().method() === 'POST') { api.comments.push({ id: 2, user_name: 'Alex Mercer', message: route.request().postDataJSON().message, created_at: '2026-10-12 09:00:00' }); calls.push(['comment', route.request().postDataJSON()]); return route.fulfill({ json: { id: 2 } }); }
+    return route.fulfill({ json: api.comments });
+  });
+  await page.route('**/api/tasks/61', async route => { calls.push(['status', route.request().postDataJSON()]); return route.fulfill({ json: { ok: true } }); });
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await page.getByRole('button', { name: 'Post an update on Servers upgrades' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Servers upgrades', exact: true });
+  await expect(dialog.getByRole('region', { name: 'Updates' })).toContainText('Racked');
+  await dialog.getByRole('textbox', { name: 'Add an update' }).fill('Waiting for the maintenance window');
+  await dialog.getByRole('combobox', { name: 'Status with this update' }).selectOption('waiting_customer');
+  await dialog.getByRole('button', { name: 'Post update' }).click();
+  await expect.poll(() => calls.filter(c => ['status', 'comment'].includes(c[0]))).toEqual([
+    ['status', { status: 'waiting_customer', pending_from_customer: 'Waiting for the maintenance window' }],
+    ['comment', { message: 'Waiting for the maintenance window' }]]);
+  await expect(dialog.getByRole('region', { name: 'Updates' })).toContainText('Alex Mercer');
 });

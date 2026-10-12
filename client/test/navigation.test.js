@@ -5,7 +5,7 @@ import { PAGES, canAccessPage, visiblePages, menuGroups, quickCreateActions, pag
 test('navigation and create actions respect existing role and feature boundaries', () => {
   const ids = role => visiblePages(role).map(page => page.id);
   for (const role of ['engineer', 'planner', 'pm']) {
-    for (const id of ['customers', 'reports', 'workload', 'users', 'settings', 'scorecards', 'approvals']) {
+    for (const id of [...(role === 'engineer' ? [] : ['customers']), 'reports', 'workload', 'users', 'settings', 'scorecards', 'approvals']) {
       assert.ok(!ids(role).includes(id), `${role} cannot discover ${id}`);
     }
     assert.ok(ids(role).includes('calendar'), `${role} can reach the existing calendar`);
@@ -52,7 +52,7 @@ test('the menu shows every page a person can open, in a few groups', () => {
   assert.deepEqual(menu({ role: 'engineer', permissions: {} }), [
     ['Home', ['dashboard', 'myWork', 'calendar', 'reminders']],
     ['Work', ['projects', 'tasks', 'visits', 'activities']],
-    ['Customers', ['responses']],
+    ['Customers', ['customers', 'responses']],
     ['Advisories', ['vulnerabilities', 'softwareVersions']],
     ['More', ['notes']],
   ]);

@@ -169,6 +169,7 @@ export default function Customers() {
   const confirm  = useConfirm();
   const isManager  = user?.role === 'manager';
   const isPlanner  = user?.role === 'planner';
+  const isEngineer = user?.role === 'engineer'; // sees the customers they work with (server-side) and opens their pages
   const canCreate  = isManager || isPlanner;   // add & edit customers
   const [customers,   setCustomers]   = useState([]);
   const [teams,       setTeams]       = useState([]);
@@ -255,7 +256,7 @@ export default function Customers() {
   ];
   const columns = [
     { key:'customer',label:'Customer',render:c => <div className="customer-identity">
-      {isManager ? <Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link> : <strong>{c.name}</strong>}
+      {isManager || isEngineer ? <Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link> : <strong>{c.name}</strong>}
       {(!!c.is_managed || !!c.is_internal) && <div className="customer-tags">
         {!!c.is_managed && <ToneBadge tone="managed">Managed</ToneBadge>}
         {!!c.is_internal && <ToneBadge tone="info">In-house</ToneBadge>}
@@ -269,7 +270,7 @@ export default function Customers() {
     { key:'location',label:'Location',className:'text-sm',render:c => c.location || c.address || '—' },
     { key:'visits',label:'Visits',numeric:true,render:c => c.visit_count ?? 0 },
     { key:'actions',label:'Actions',render:c => <div className="table-actions">
-      {isManager && <Link className="btn btn-sm btn-ghost" to={`/customers/${c.id}/service-profile`}>Open</Link>}
+      {(isManager || isEngineer) && <Link className="btn btn-sm btn-ghost" to={`/customers/${c.id}/service-profile`}>Open</Link>}
       {canCreate && <button className="btn btn-sm btn-ghost" onClick={() => openEdit(c)}>Edit</button>}
       {canCreate && (c.active
         ? <button className="btn btn-sm btn-ghost" onClick={() => handleArchive(c)} aria-label={`Archive ${c.name}`} title="Archive customer"><Archive size={14} /></button>
