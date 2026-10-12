@@ -29,6 +29,8 @@ export default function CustomerReminders({ customer, adding, onAddingChange }) 
 
   const now = new Date().toISOString();
   const rows = data ? [...data.team.active.map(row => ({ ...row, team: true })), ...data.own.active].sort((a, b) => a.due_at.localeCompare(b.due_at)) : [];
+  // Nothing to show until there is a reminder: new ones are added from the page's Add menu.
+  if (!error && !adding && (!data || !rows.length)) return null;
   return <section className="card cs-reminders" aria-label="Customer reminders">
     <div className="cs-reminders-head">
       <h2><BellRing size={15} aria-hidden="true" /> Reminders</h2>

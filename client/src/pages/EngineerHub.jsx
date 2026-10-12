@@ -36,18 +36,16 @@ function formatElapsed(seconds) {
   return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
 }
 
-function ServiceActivityCard({ stats, customers=[], canLog=false }) {
+// canLog: the Log activity button (left out where the page banner already has it);
+// canOpenLog: the link to the Activity Log.
+function ServiceActivityCard({ stats, customers=[], canLog=false, canOpenLog=canLog }) {
   if (!stats?.enabled && !customers.length) return null;
 
   return (
     <section className="card workflow-service-workspace">
-      <div className="section-header"><div><p className="operations-eyebrow">Managed Services</p><h2 className="section-title">Customer operations</h2></div>{canLog && <div className="flex gap-8"><Link className="btn btn-primary btn-sm" to="/activity-log?create=1"><Plus size={13} /> Log activity</Link><Link className="btn btn-ghost btn-sm" to="/activity-log">Activity Log <ArrowRight size={13} /></Link></div>}</div>
-      {stats?.enabled && <div className="grid-4 mb-12">
-        <div className="stat-card"><strong>{stats.today}</strong><span>Today</span></div>
-        <div className="stat-card"><strong>{stats.week}</strong><span>This week</span></div>
-        <div className="stat-card"><strong>{stats.hours}h</strong><span>Hours logged</span></div>
-        <div className="stat-card"><strong className={stats.pending ? 'overdue' : ''}>{stats.pending}</strong><span>Follow-ups pending</span></div>
-      </div>}
+      <div className="section-header"><h2 className="section-title">Customer operations</h2>{(canLog || canOpenLog) && <div className="flex gap-8">{canLog && <Link className="btn btn-primary btn-sm" to="/activity-log?create=1"><Plus size={13} /> Log activity</Link>}{canOpenLog && <Link className="btn btn-ghost btn-sm" to="/activity-log">Activity Log <ArrowRight size={13} /></Link>}</div>}</div>
+      {/* One line of counts rather than four tiles. */}
+      {stats?.enabled && <p className="workflow-service-stats"><span><strong>{stats.today}</strong> today</span><span><strong>{stats.week}</strong> this week</span><span><strong>{stats.hours}h</strong> logged</span><span className={stats.pending ? 'is-due' : ''}><strong>{stats.pending}</strong> follow-ups pending</span></p>}
       <div className="workflow-service-columns">
         <div><h3 className="hub-subheading">My managed customers</h3>{customers.slice(0,5).map(customer => <Link className="workflow-customer-row" key={customer.id} to={`/customers/${customer.id}/service-profile`}><Building2 size={14} /><span><strong>{customer.name}</strong><small>{customer.activities_this_month || 0} activities this month{customer.ticketing_enabled ? ` · ${customer.open_tickets || 0} open tickets` : ''}</small></span><ArrowRight size={13} /></Link>)}{!customers.length && <p className="text-muted text-sm">No managed customers are assigned to your teams.</p>}</div>
         <div><h3 className="hub-subheading">Follow-ups and recent work</h3>{(stats?.follow_ups || []).map(item => <Link className="my-day-row" key={`follow-${item.id}`} to={`/activity-log?activity=${item.id}`}><CheckCircle2 size={14} /><span>{item.title}</span><small>Due {fmtDate(item.follow_up_date)}</small></Link>)}{(stats?.recent || []).slice(0,5).map(item => <Link className="my-day-row" key={`recent-${item.id}`} to={`/activity-log?activity=${item.id}`}><ClipboardList size={14} /><span>{item.title}</span><small>{fmtDate(item.activity_date)}</small></Link>)}{!(stats?.follow_ups || []).length && !(stats?.recent || []).length && <p className="text-muted text-sm">No recent activity or due follow-ups.</p>}</div>
@@ -241,14 +239,9 @@ export default function EngineerHub() {
       <PageHeader title="My Work"
         actions={<button className="btn btn-ghost" onClick={load}><RotateCw size={15} /> Refresh</button>} />
       {loadError && <p className="error-msg" role="alert">{loadError}</p>}
-      <section className={`workflow-banner is-${workflowProfile}`}><div><p className="operations-eyebrow">{workflowCopy.eyebrow}</p><h2>{workflowCopy.title}</h2><p>{workflowCopy.description}</p></div><div className="workflow-banner-actions">{managedFocus && saAccess.enabled && <Link className="btn btn-primary" to="/activity-log?create=1"><ClipboardList size={15} /> Log activity</Link>}<Link className={managedFocus && saAccess.enabled?'btn btn-ghost':'btn btn-primary'} to="/tasks"><CheckCircle2 size={15} /> Open tasks</Link><Link className="btn btn-ghost" to="/projects"><FolderOpen size={15} /> My projects</Link></div></section>
-      {managedFocus && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canLog={saAccess.enabled} />}
+      <section className={`workflow-banner is-${workflowProfile}`} title={workflowCopy.description}><p className="operations-eyebrow">{workflowCopy.eyebrow}</p><div className="workflow-banner-actions">{managedFocus && saAccess.enabled && <Link className="btn btn-primary" to="/activity-log?create=1"><ClipboardList size={15} /> Log activity</Link>}<Link className={managedFocus && saAccess.enabled?'btn btn-ghost':'btn btn-primary'} to="/tasks"><CheckCircle2 size={15} /> Open tasks</Link><Link className="btn btn-ghost" to="/projects"><FolderOpen size={15} /> My projects</Link></div></section>
+      {managedFocus && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canOpenLog={saAccess.enabled} />}
       <OperationalFocus data={overview} error={overviewError} onRefresh={load} />
-
-      <div className="grid-2 mb-16">
-        <div className="stat-card"><strong>{todayVisits.length}</strong><span>Visits today</span></div>
-        <div className="stat-card"><strong>{todayTotal.toFixed(1)}h</strong><span>Logged today</span></div>
-      </div>
 
       {timer && <div className="active-timer"><Play size={15} /><div><strong>{timer.title}</strong><span>{formatElapsed(elapsed)}</span></div><button className="btn btn-danger btn-sm" disabled={timerSaving} onClick={stopTimer}><Pause size={12} /> {timerSaving ? 'Saving…' : 'Stop & log'}</button><button className="btn btn-ghost btn-sm" disabled={timerSaving} onClick={discardTimer}><TimerReset size={12} /> Discard</button></div>}
 
@@ -258,7 +251,7 @@ export default function EngineerHub() {
           {todayVisits.map(visit => <div className="my-day-row" key={`v${visit.id}`}><Wrench size={14} /><span>{visit.title}</span><small>{visit.customer_name}</small><AddToCalendarButton visitId={visit.id} title={visit.title} compact /></div>)}
           {!overdue.length && !todayTasks.length && !todayVisits.length && <p className="text-muted">Nothing urgent today.</p>}
         </section>
-        <section className="card"><div className="section-header"><h2 className="section-title">Timesheet</h2><Clock size={16} /></div><div className="timesheet-total"><strong>{weekTotal.toFixed(1)}h</strong><span>This week · {fmtDate(from)} – {fmtDate(to)}</span></div>{todayTotal < 7 && <div className="alert alert-warning">Missing-time reminder: {Math.max(0, 7 - todayTotal).toFixed(1)}h remaining for today.</div>}{logs.slice(0, 6).map(log => <div className="time-row" key={log.id}><span>{log.task_title || log.visit_title || 'Work log'}</span><strong>{Number(log.hours).toFixed(2)}h</strong></div>)}</section>
+        <section className="card"><div className="section-header"><h2 className="section-title">Timesheet</h2><Clock size={16} /></div><div className="timesheet-total"><strong>{weekTotal.toFixed(1)}h</strong><span>This week · {fmtDate(from)} – {fmtDate(to)}</span></div><p className={`timesheet-today${todayTotal < 7 ? ' is-short' : ''}`}><strong>{todayTotal.toFixed(1)}h</strong> logged today{todayTotal < 7 ? ` · ${Math.max(0, 7 - todayTotal).toFixed(1)}h still to log` : ''}</p>{logs.slice(0, 6).map(log => <div className="time-row" key={log.id}><span>{log.task_title || log.visit_title || 'Work log'}</span><strong>{Number(log.hours).toFixed(2)}h</strong></div>)}</section>
       </div>
 
       {subtasksFor && <SubtasksDialog task={subtasksFor} onClose={() => { setSubtasksFor(null); load({ quiet: true }); }} />}
@@ -274,7 +267,8 @@ export default function EngineerHub() {
 
       {!managedFocus && saAccess?.enabled && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canLog={saAccess.enabled} />}
 
-      <div className="grid-2 mt-16"><section className="card"><div className="section-header"><h2 className="section-title">Reminders</h2><Link className="btn btn-ghost btn-sm" to="/reminders"><Plus size={12} /> Add</Link></div>{reminders.slice(0, 5).map(reminder => <div className="reminder-row" key={`${reminder.team ? 't' : 'p'}${reminder.id}`}><BellRing size={13} /><span>{reminder.title}<small>{reminder.team ? `${reminder.team_name} team · due now` : new Date(reminder.due_at) <= new Date() ? 'Due now' : `Next ${fmtDate(reminder.due_at)}`}</small></span><button className="btn btn-success btn-sm" aria-label={`Done: ${reminder.title}`} onClick={() => completeReminder(reminder)}><CheckCircle2 size={11} /></button></div>)}{!reminders.length && <p className="text-muted">No reminders set.</p>}{reminders.length > 5 && <Link to="/reminders" className="text-sm">All {reminders.length} reminders</Link>}</section><section className="card"><div className="section-header"><h2 className="section-title">Projects</h2><FolderOpen size={16} /></div><h3 className="hub-subheading">Bookmarked</h3>{pinned.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}{!pinned.length && <p className="text-muted">Pin projects from the Projects page.</p>}<h3 className="hub-subheading">Recently viewed</h3>{recentProjects.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}</section></div>
+      {/* Only what has something in it: reminders come from the Reminders page, bookmarks from Projects. */}
+      {(reminders.length > 0 || pinned.length > 0 || recentProjects.length > 0) && <div className={`${reminders.length && (pinned.length || recentProjects.length) ? 'grid-2 ' : ''}mt-16`}>{reminders.length > 0 && <section className="card"><div className="section-header"><h2 className="section-title">Reminders</h2><Link className="btn btn-ghost btn-sm" to="/reminders"><Plus size={12} /> Add</Link></div>{reminders.slice(0, 5).map(reminder => <div className="reminder-row" key={`${reminder.team ? 't' : 'p'}${reminder.id}`}><BellRing size={13} /><span>{reminder.title}<small>{reminder.team ? `${reminder.team_name} team · due now` : new Date(reminder.due_at) <= new Date() ? 'Due now' : `Next ${fmtDate(reminder.due_at)}`}</small></span><button className="btn btn-success btn-sm" aria-label={`Done: ${reminder.title}`} onClick={() => completeReminder(reminder)}><CheckCircle2 size={11} /></button></div>)}{reminders.length > 5 && <Link to="/reminders" className="text-sm">All {reminders.length} reminders</Link>}</section>}{(pinned.length > 0 || recentProjects.length > 0) && <section className="card"><div className="section-header"><h2 className="section-title">Projects</h2><FolderOpen size={16} /></div>{pinned.length > 0 && <h3 className="hub-subheading">Bookmarked</h3>}{pinned.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}{recentProjects.length > 0 && <h3 className="hub-subheading">Recently viewed</h3>}{recentProjects.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}</section>}</div>}
     </div>
   );
 }

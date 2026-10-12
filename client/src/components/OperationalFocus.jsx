@@ -38,22 +38,23 @@ export default function OperationalFocus({ data, error, onRefresh }) {
   ].map(metric => ({ ...metric, value: Number(metric.value) || 0 }));
   const active = metrics.filter(metric => metric.value > 0);
   const count = value => Number(value) || 0;
+  const context = [
+    count(data.tasks.waiting_customer) + count(data.projects.waiting_customer) > 0 && <Link key="waiting" to="/tasks?filter=waiting_customer">{count(data.tasks.waiting_customer) + count(data.projects.waiting_customer)} waiting for the customer</Link>,
+    count(data.tasks.awaiting_approval) > 0 && <Link key="approval" to="/tasks?filter=pending_approval">{count(data.tasks.awaiting_approval)} tasks awaiting approval</Link>,
+    manager && count(data.projects.stale) > 0 && <Link key="stale" to="/projects">{count(data.projects.stale)} active projects without updates in seven days</Link>,
+    manager && count(data.visits.customer_delivery_pending) > 0 && <Link key="delivery" to="/maintenance-visits">{count(data.visits.customer_delivery_pending)} visit reports awaiting customer delivery</Link>,
+  ].filter(Boolean);
+  // Empty cards only repeat the all-clear line, so each list shows only when it has something in it.
+  const showUpcoming = upcoming.length > 0 || context.length > 0;
   return <section className="operational-focus" aria-label={manager ? 'Management exceptions' : 'Personal work priorities'}>
     {error && <p className="error-msg" role="alert">{error} Showing the last loaded overview. <button className="btn btn-ghost btn-sm" onClick={onRefresh}>Retry</button></p>}
     <div className="focus-heading"><h2>{manager ? 'Where attention is needed' : 'What needs you'}</h2></div>
     {/* Only counts that need someone; a wall of zeros hides the one that matters. */}
     {active.length ? <div className="focus-metrics">{active.map(metric => <Link key={metric.label} to={metric.link} className={`focus-metric${metric.urgent ? ' needs-attention' : ''}`}><strong>{metric.value}</strong><span>{metric.label}</span><ArrowRight size={14} aria-hidden="true" /></Link>)}</div>
       : <p className="focus-all-clear"><CheckCircle2 size={18} aria-hidden="true" /> Nothing needs you right now.</p>}
-    <div className={`focus-columns${attention.length ? '' : ' is-single'}`}>
-      {/* When nothing needs attention the line above says so; an empty card would only repeat it. */}
+    {(attention.length > 0 || showUpcoming) && <div className={`focus-columns${attention.length && showUpcoming ? '' : ' is-single'}`}>
       {attention.length > 0 && <section className="card"><h3><CheckSquare size={16} /> Needs attention</h3><WorkList items={attention} empty="Nothing is due or overdue." /></section>}
-      <section className="card"><h3><CalendarDays size={16} /> Upcoming commitments</h3><WorkList items={upcoming} empty="No deadlines or visits in the next seven days." /><div className="focus-context">
-        {/* Only the ones that are not zero. */}
-        {count(data.tasks.waiting_customer) + count(data.projects.waiting_customer) > 0 && <Link to="/tasks?filter=waiting_customer">{count(data.tasks.waiting_customer) + count(data.projects.waiting_customer)} waiting for the customer</Link>}
-        {count(data.tasks.awaiting_approval) > 0 && <Link to="/tasks?filter=pending_approval">{count(data.tasks.awaiting_approval)} tasks awaiting approval</Link>}
-        {manager && count(data.projects.stale) > 0 && <Link to="/projects">{count(data.projects.stale)} active projects without updates in seven days</Link>}
-        {manager && count(data.visits.customer_delivery_pending) > 0 && <Link to="/maintenance-visits">{count(data.visits.customer_delivery_pending)} visit reports awaiting customer delivery</Link>}
-      </div></section>
-    </div>
+      {showUpcoming && <section className="card"><h3><CalendarDays size={16} /> Upcoming commitments</h3>{upcoming.length > 0 && <WorkList items={upcoming} empty="" />}{context.length > 0 && <div className="focus-context">{context}</div>}</section>}
+    </div>}
   </section>;
 }

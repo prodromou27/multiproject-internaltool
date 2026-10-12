@@ -42,6 +42,7 @@ export function engineerWidget(id, ctx) {
           return dl >= now && dl <= weekEnd;
         })
         .sort((a, b) => a.deadline < b.deadline ? -1 : 1);
+      if (!dueThisWeek.length) return null; // "What needs you" already says when nothing is due
       return (
         <div key={id} className="card mb-20">
           <div className="section-header">
@@ -76,7 +77,7 @@ export function engineerWidget(id, ctx) {
     }
 
     case 'pending_reports':
-      return (
+      return pendingReports.length === 0 ? null : (
         <div key={id} className="card u-49f14f8"
           style={{ borderLeft:`3px solid ${pendingReports.length ? 'var(--danger)' : 'var(--success)'}` }}>
           <div className="section-header">

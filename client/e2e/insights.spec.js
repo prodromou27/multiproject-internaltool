@@ -28,7 +28,12 @@ test('managers see the whole operation on the dashboard: figures, charts and wha
   await expect(section).toContainText('75% on time');
   await expect(section.getByRole('link', { name: /Overdue tasks\s*3/ })).toBeVisible();
   await expect(section).toContainText('36 / 40');
+  // On the dashboard the charts open on request, and stay open next time.
+  await expect(section.getByRole('region', { name: 'Work logged' })).toHaveCount(0);
+  await section.getByRole('button', { name: 'Show charts' }).click();
   for (const chart of ['Work logged', 'Tasks finished', 'Tickets', 'Hours by customer', 'Engineers']) await expect(section.getByRole('region', { name: chart })).toBeVisible();
+  await page.reload();
+  await expect(section.getByRole('button', { name: 'Hide charts' })).toHaveAttribute('aria-expanded', 'true');
   await expect(section.getByRole('region', { name: 'Hours by customer' }).getByRole('link', { name: 'Northwind Logistics' })).toHaveAttribute('href', '/customers/12/service-profile');
   await expect(section.getByRole('region', { name: 'Customer reports owed' })).toContainText('Overdue');
   await expect(section.getByRole('region', { name: 'Contracts ending' })).toContainText('19 days');

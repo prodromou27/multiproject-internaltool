@@ -44,15 +44,22 @@ function HorizontalBars({ rows, empty, link }) {
   </li>)}</ul>;
 }
 
-export function Attention({ title, icon: Icon, items, empty, render, to }) {
+export function Attention({ title, icon: Icon, items, empty, render, to, limit, hidden }) {
+  if (hidden) return null;
+  const shown = limit ? items.slice(0, limit) : items;
   return <section className="card mi-attention" aria-label={title}>
     <header><h3><Icon size={15} aria-hidden="true" /> {title}</h3>{items.length > 0 && <span className="mi-count">{items.length}</span>}</header>
-    {items.length ? <ul>{items.map(render)}</ul> : <p className="text-muted text-sm">{empty}</p>}
-    {to && items.length > 0 && <Link className="text-sm" to={to}>View all</Link>}
+    {items.length ? <ul>{shown.map(render)}</ul> : <p className="text-muted text-sm">{empty}</p>}
+    {to && items.length > 0 ? <Link className="text-sm" to={to}>View all</Link> : items.length > shown.length && <span className="text-muted text-sm">and {items.length - shown.length} more</span>}
   </section>;
 }
 
-export default function ManagementInsights({ filterable = false }) {
+/* compact (the dashboard): the figures and what needs attention; the charts open
+   on request. Reports → Overview shows everything. */
+export default function ManagementInsights({ filterable = false, compact = false }) {
+  const [chartsOpen, setChartsOpen] = useState(() => { try { return localStorage.getItem('insights_charts') === 'open'; } catch { return false; } });
+  const toggleCharts = () => setChartsOpen(open => { try { localStorage.setItem('insights_charts', open ? 'closed' : 'open'); } catch { /* not remembered */ } return !open; });
+  const showCharts = !compact || chartsOpen;
   const [days, setDays] = useState(() => { try { return Number(localStorage.getItem('insights_days')) || 90; } catch { return 90; } });
   const [data, setData] = useState(null), [error, setError] = useState('');
   const [filters, setFilters] = useState({ customer_id: '', team_id: '', engineer_id: '' }), [options, setOptions] = useState(null);
@@ -79,7 +86,10 @@ export default function ManagementInsights({ filterable = false }) {
       <label>Team<select value={filters.team_id} onChange={e => setFilters(f => ({ ...f, team_id: e.target.value }))}><option value="">All teams</option>{options.teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
       <label>Engineer<select value={filters.engineer_id} onChange={e => setFilters(f => ({ ...f, engineer_id: e.target.value }))}><option value="">All engineers</option>{options.engineers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
     </div>}
-    <div className="mi-periods" role="group" aria-label="Period">{PERIODS.map(([value, label]) => <button key={value} type="button" aria-pressed={days === value} onClick={() => choose(value)}>{label}</button>)}</div>
+    <div className="mi-head-actions">
+      {compact && <button type="button" className="btn btn-ghost btn-sm" aria-expanded={chartsOpen} aria-controls="mi-charts" onClick={toggleCharts}><BarChart3 size={13} aria-hidden="true" /> {chartsOpen ? 'Hide charts' : 'Show charts'}</button>}
+      <div className="mi-periods" role="group" aria-label="Period">{PERIODS.map(([value, label]) => <button key={value} type="button" aria-pressed={days === value} onClick={() => choose(value)}>{label}</button>)}</div>
+    </div>
   </div>;
   if (data === 'forbidden') return null; // no reporting access: nothing to show
   if (error) return <section className="mi">{header}<p className="error-msg" role="alert">{error}</p></section>;
@@ -97,12 +107,12 @@ export default function ManagementInsights({ filterable = false }) {
       <Figure icon={AlertTriangle} label="Overdue tasks" value={k.overdue_tasks} note={`${k.open_tasks} open${k.team_tasks_waiting ? `, ${k.team_tasks_waiting} waiting for a team member` : ''}`} to="/tasks?filter=overdue" tone={k.overdue_tasks ? 'danger' : undefined} />
       <Figure icon={Wrench} label="Visits done" value={k.visits_done} to="/maintenance-visits" />
       {hasTickets && <Figure icon={Ticket} label="Tickets" value={`${k.tickets_resolved} / ${k.tickets_created}`} note={`resolved / created · ${k.open_tickets} open now`} />}
-      <Figure icon={FileClock} label="Customer reports owed" value={k.reports_owed} note={k.reports_overdue ? `${k.reports_overdue} overdue` : 'none overdue'} to="/approvals?view=reports" tone={k.reports_overdue ? 'danger' : k.reports_owed ? 'warning' : undefined} />
-      <Figure icon={CalendarClock} label="Contracts ending" value={k.contracts_ending} note="ending within 30 days or just expired" tone={k.contracts_ending ? 'warning' : undefined} />
+      <Figure icon={FileClock} label="Reports owed" value={k.reports_owed} note={k.reports_overdue ? `${k.reports_overdue} overdue` : 'none overdue'} to="/approvals?view=reports" tone={k.reports_overdue ? 'danger' : k.reports_owed ? 'warning' : undefined} />
+      <Figure icon={CalendarClock} label="Contracts ending" value={k.contracts_ending} note="within 30 days, or just ended" tone={k.contracts_ending ? 'warning' : undefined} />
       <Figure icon={PackageCheck} label="Devices behind" value={k.devices_behind + k.devices_eol} note={k.devices_eol ? `${k.devices_eol} on end-of-life versions` : 'on older software'} to="/software" tone={k.devices_eol ? 'danger' : k.devices_behind ? 'warning' : undefined} />
     </div>
 
-    <div className="mi-charts">
+    {showCharts && <div className="mi-charts" id="mi-charts">
       <Chart title="Work logged" note={`hours ${by}`}>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={series} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
@@ -153,16 +163,17 @@ export default function ManagementInsights({ filterable = false }) {
           <tbody>{data.engineers.map(e => <tr key={e.id}><th scope="row">{e.name}</th><td className="num">{e.open_tasks}</td><td className="num">{e.overdue_tasks ? <ToneBadge tone="danger">{e.overdue_tasks}</ToneBadge> : 0}</td><td className="num">{e.done_tasks}</td><td className="num">{e.hours}</td><td className="num">{e.activities}</td></tr>)}</tbody>
         </table></div>}
       </Chart>
-    </div>
+    </div>}
 
+    {/* On the dashboard only the lists with something in them, a few rows each. */}
     <div className="mi-attentions">
-      <Attention title="Customer reports owed" icon={FileClock} items={data.attention.reports_owed} empty="Every managed customer has its report." to="/approvals?view=reports"
+      <Attention title="Customer reports owed" icon={FileClock} items={data.attention.reports_owed} limit={compact ? 5 : undefined} hidden={compact && !data.attention.reports_owed.length} empty="Every managed customer has its report." to="/approvals?view=reports"
         render={r => <li key={r.customer_id}><Link to={`/customers/${r.customer_id}/service-profile?section=reports`}>{r.customer_name}</Link><span>{r.label} · due {fmtDate(r.due_date)}</span>{r.overdue ? <ToneBadge tone="danger">Overdue</ToneBadge> : <ToneBadge tone="warning">{r.status.replace('_', ' ')}</ToneBadge>}</li>} />
-      <Attention title="Contracts ending" icon={CalendarClock} items={data.attention.contracts_ending} empty="No contract ends in the next 30 days."
+      <Attention title="Contracts ending" icon={CalendarClock} items={data.attention.contracts_ending} limit={compact ? 5 : undefined} hidden={compact && !data.attention.contracts_ending.length} empty="No contract ends in the next 30 days."
         render={c => <li key={c.id}><Link to={`/customers/${c.customer_id}/service-profile?section=contracts`}>{c.customer_name}</Link><span>{c.reference || 'Contract'} · {c.status === 'expired' ? `ended ${fmtDate(c.end_date)}` : `ends ${fmtDate(c.end_date)}`}</span><ToneBadge tone={c.status === 'expired' ? 'danger' : 'warning'}>{c.status === 'expired' ? 'Expired' : `${c.days_left} days`}</ToneBadge></li>} />
-      <Attention title="Devices on old software" icon={PackageCheck} items={data.attention.devices} empty="Every checked device is up to date." to="/software"
+      <Attention title="Devices on old software" icon={PackageCheck} items={data.attention.devices} limit={compact ? 5 : undefined} hidden={compact && !data.attention.devices.length} empty="Every checked device is up to date." to="/software"
         render={d => <li key={d.id}><Link to={`/customers/${d.customer_id}/service-profile?section=assets`}>{d.customer_name}</Link><span>{d.name} · {d.product_name} {d.software_version}</span><ToneBadge tone={d.status === 'end_of_life' ? 'danger' : 'warning'}>{d.status === 'end_of_life' ? 'End of life' : d.behind ? `${d.behind} behind` : 'Behind'}</ToneBadge></li>} />
-      <Attention title="Knowledge gaps" icon={GraduationCap} items={data.attention.skills} empty="Every technology has enough skilled engineers." to="/skills"
+      <Attention title="Knowledge gaps" icon={GraduationCap} items={data.attention.skills} limit={compact ? 5 : undefined} hidden={compact && !data.attention.skills.length} empty="Every technology has enough skilled engineers." to="/skills"
         render={s => <li key={s.technology_id}><Link to="/skills">{s.name}</Link><span>{s.skilled} of {s.target} skilled</span><ToneBadge tone={s.status === 'gap' ? 'danger' : 'warning'}>{s.status === 'gap' ? 'Gap' : s.single_point ? 'One person' : 'At risk'}</ToneBadge></li>} />
     </div>
   </section>;

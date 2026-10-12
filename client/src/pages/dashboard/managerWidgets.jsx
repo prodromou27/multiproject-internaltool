@@ -9,7 +9,7 @@ export function managerWidget(id, ctx) {
   const { active, incompleteVisits, load, myOpen, pendingClosure, reviewVisits, summary, visits } = ctx;
   switch (id) {
     case 'insights':
-      return <ManagementInsights key={id} />;
+      return <ManagementInsights key={id} compact />;
 
     case 'stat_cards':
       return summary ? (

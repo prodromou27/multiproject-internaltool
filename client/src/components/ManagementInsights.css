@@ -3,11 +3,13 @@
 .mi-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px; }
 .mi-head h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 17px; }
 .mi-head p { margin: 2px 0 0; }
+.mi-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mi-attentions:empty { display: none; }
 .mi-periods { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--surface); }
 .mi-periods button { padding: 6px 12px; border: 0; border-radius: calc(var(--radius) - 2px); background: transparent; color: var(--gray-600); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .mi-periods button:hover { color: var(--gray-900); }
 .mi-periods button[aria-pressed="true"] { background: var(--primary); color: #fff; }
-.mi-figures { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.mi-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
 .mi-figure { display: grid; gap: 4px; padding: 13px 15px; border: 1px solid var(--gray-200); border-radius: var(--radius-lg, 8px); background: var(--surface); color: inherit; text-decoration: none; }
 a.mi-figure:hover { border-color: var(--gray-400); text-decoration: none; }
 .mi-figure-label { display: flex; align-items: center; gap: 6px; color: var(--gray-600); font-size: 12.5px; font-weight: 600; }

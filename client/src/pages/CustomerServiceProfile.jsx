@@ -89,11 +89,11 @@ function CustomerHeader({ customer,operations,user,saAccess,onRecommendation,onR
 function CustomerHealthStrip({ customerId,data,error,onSelectTab }) {
   if (error) return <div className="cs-module-warning" role="status">Operational summary unavailable. Detailed sections remain available.</div>;
   if (!data) return <div className="cs-health-strip" aria-label="Loading customer summary">{Array.from({ length:5 },(_,index) => <div className="card cs-health-card cs-health-skeleton" key={index} />)}</div>;
-  const managedLabels={ not_enabled:['Not enabled','Configure Managed Services'],setup_required:['Setup required','Choose a responsible team'],active:['Active','Open Managed Services dashboard'],sync_attention:['Needs attention','Last ticket sync failed'],unavailable:['Unavailable','Configuration could not be loaded'] };
+  const managedLabels={ not_enabled:['Not enabled','Configure Managed Services'],setup_required:['Setup required','Choose a responsible team'],active:['Active',''],sync_attention:['Needs attention','Last ticket sync failed'],unavailable:['Unavailable','Configuration could not be loaded'] };
   const ticketsKnown=['active','sync_attention'].includes(data.managed?.state) && data.managed?.open_tickets!=null;
   const managed=managedLabels[data.managed?.state] || managedLabels.unavailable;
   const managedValue=ticketsKnown ? `${data.managed.open_tickets} open` : managed[0];
-  const managedNote=ticketsKnown ? `${data.managed.closed_tickets} closed${data.managed.state==='sync_attention' ? ' · Last sync failed' : ' · Open Managed Services dashboard'}` : managed[1];
+  const managedNote=ticketsKnown ? `${data.managed.closed_tickets} closed${data.managed.state==='sync_attention' ? ' · Last sync failed' : ''}` : managed[1];
   const managedBar=ticketsKnown && (data.managed.open_tickets+data.managed.closed_tickets)>0
     ? <div className="cs-health-bar" role="img" aria-label={`${data.managed.open_tickets} open, ${data.managed.closed_tickets} closed`}>
         {data.managed.open_tickets>0 && <span className="u-15dd949" style={{ flexGrow:data.managed.open_tickets }} />}
@@ -106,7 +106,7 @@ function CustomerHealthStrip({ customerId,data,error,onSelectTab }) {
     <HealthCard icon={ClipboardList} label="Recommendations" value={data.recommendations.open} note={`${data.recommendations.high_risk} high risk`} state={data.recommendations.high_risk?'warning':'default'} onClick={() => onSelectTab('recommendations')} />
     {!managedCustomerState(data) && <HealthCard icon={CalendarDays} label="Maintenance Visits" value={data.visits.next ? fmtDate(data.visits.next.scheduled_date) : 'None scheduled'} note={data.visits.reports_pending ? `${data.visits.reports_pending} reports pending` : `${data.visits.this_year} this year`} state={data.visits.reports_pending?'warning':'default'} onClick={() => onSelectTab('maintenance-visits',data.visits.reports_pending?'report_pending':'upcoming')} />}
     {data.managed?.visible && <HealthCard icon={Settings2} label="Managed Services" value={managedValue} note={managedNote} bar={managedBar} state={data.managed.state==='sync_attention'?'danger':data.managed.state==='setup_required'?'warning':'default'} onClick={() => onSelectTab(['active','sync_attention'].includes(data.managed.state)?'tickets':'service-configuration')} />}
-    {data.assets>0 && <HealthCard icon={Layers} label="Assets" value={data.assets} note="Recorded customer assets" onClick={() => onSelectTab('assets')} />}
+    {data.assets>0 && <HealthCard icon={Layers} label="Assets" value={data.assets} onClick={() => onSelectTab('assets')} />}
   </div>;
 }
 
