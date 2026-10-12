@@ -1,3 +1,4 @@
+import TaskDashboard from '../components/TaskDashboard';
 import ManagementInsights from '../components/ManagementInsights';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -14,7 +15,7 @@ import ReportBuilder from '../components/ReportBuilder';
 import { PageHeader } from '../components/PageLayout';
 import { useAuth } from '../App';
 
-const REPORT_VIEWS = ['overview', 'builder', 'projects', 'kpis', 'trends', 'service_activity'];
+const REPORT_VIEWS = ['overview', 'tasks', 'builder', 'projects', 'kpis', 'trends', 'service_activity'];
 
 function KpiHealthRow({ k }) {
   const color = k.pct >= 100 ? 'var(--success)' : k.pct >= 70 ? 'var(--primary)' : k.pct >= 40 ? 'var(--warning)' : 'var(--danger)';
@@ -359,10 +360,12 @@ export default function Reports() {
         actions={<Link className="btn btn-ghost" to="/service-operations">Service activity overview</Link>} />
 
       <div className="tabs" aria-label="Report sections">
-        {[['overview','Overview'],['builder','Report Builder'],['projects','Projects'],...(canViewKpis ? [['kpis','KPIs']] : []),['trends','Trends'],['service_activity','Service Activity']].map(([k, l]) => (
+        {[['overview','Overview'],['tasks','Tasks'],['builder','Report Builder'],['projects','Projects'],...(canViewKpis ? [['kpis','KPIs']] : []),['trends','Trends'],['service_activity','Service Activity']].map(([k, l]) => (
           <button key={k} className={'tab' + (tab === k ? ' active' : '')} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
+
+      {tab === 'tasks' && <TaskDashboard />}
 
       {tab === 'overview' && (
         <>

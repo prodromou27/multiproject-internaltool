@@ -597,6 +597,7 @@ export const api = {
   // skill matrix
   skillMatrix: (options) => req('GET', '/skills', undefined, options),
   insights: (days, filters = {}, options) => req('GET', `/insights?${new URLSearchParams({ days, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) })}`, undefined, options),
+  taskInsights: (days, filters = {}, options) => req('GET', `/insights/tasks?${new URLSearchParams({ days, ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value != null)) })}`, undefined, options),
   rateSkill: (userId, technologyId, data) => req('PUT', `/skills/ratings/${userId}/${technologyId}`, data),
   setSkillTarget: (technologyId, data) => req('PUT', `/skills/technologies/${technologyId}/target`, data),
 

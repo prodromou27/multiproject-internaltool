@@ -49,3 +49,24 @@ test('the report builder reports on tickets, filters by customer name and export
   await page.getByRole('button', { name: 'Add filter' }).click();
   await expect(page.getByLabel('Filter field 1').locator('option')).toHaveText(['Criticality']);
 });
+
+test('a grouped report is charted: bars, horizontal bars, line or pie, of a chosen measure', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/reports/custom/sources', () => ({ body: { sources, lookups: {}, templates: { as_of: '2026-10-07', rows: [] }, share_users: [], share_teams: [], preview_limit: 100, export_limit: 5000 } }));
+  api.override('GET /api/reports/custom/saved', () => ({ body: { rows: [], total: 0, page: 1, page_size: 25 } }));
+  api.override('POST /api/reports/custom/preview', () => ({ body: { columns: [{ key: 'status', label: 'Status' }, { key: 'metric_0', label: 'count *' }, { key: 'metric_1', label: 'count id' }],
+    rows: [{ status: 'open', metric_0: 6, metric_1: 6 }, { status: 'in_progress', metric_0: 4, metric_1: 4 }, { status: 'completed', metric_0: 12, metric_1: 12 }], truncated: false, limit: 100 } }));
+  await page.goto('/reports?view=builder');
+  await page.getByLabel('Group and aggregate').check();
+  await page.getByRole('checkbox', { name: 'Status' }).check();
+  await page.getByRole('button', { name: 'Add aggregation' }).click();
+  await page.getByRole('button', { name: 'Preview' }).click();
+  const chart = page.getByRole('region', { name: 'Report chart' });
+  await expect(chart).toContainText('count * by Status');
+  await expect(chart.locator('.recharts-bar-rectangle')).toHaveCount(3);
+  await chart.getByRole('button', { name: 'Pie' }).click();
+  await expect(chart.locator('.recharts-pie-sector')).toHaveCount(3);
+  await chart.getByRole('combobox', { name: 'Measure' }).selectOption('count id');
+  await expect(chart).toContainText('count id by Status');
+  await expect(page.getByRole('cell', { name: 'in_progress' })).toBeVisible();
+});

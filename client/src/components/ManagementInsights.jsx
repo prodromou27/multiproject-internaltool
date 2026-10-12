@@ -11,23 +11,23 @@ import './ManagementInsights.css';
 /* Dashboard → Insights (managers): the whole operation over a period — figures,
    charts and what needs attention. Server: insights.js (/api/insights). */
 
-const PERIODS = [[30, '30 days'], [90, '90 days'], [180, '6 months'], [365, '12 months']];
+export const PERIODS = [[30, '30 days'], [90, '90 days'], [180, '6 months'], [365, '12 months']];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const tick = { fontSize: 11, fill: 'var(--gray-500)' };
-const tooltip = { contentStyle: { fontSize: 12, borderRadius: 8, border: '1px solid var(--gray-200)' }, cursor: { fill: 'var(--gray-50)' } };
-const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+export const tick = { fontSize: 11, fill: 'var(--gray-500)' };
+export const tooltip = { contentStyle: { fontSize: 12, borderRadius: 8, border: '1px solid var(--gray-200)' }, cursor: { fill: 'var(--gray-50)' } };
+export const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-function bucketLabel(key, unit) {
+export function bucketLabel(key, unit) {
   if (unit === 'month') return MONTHS[Number(key.slice(5, 7)) - 1];
   return `${Number(key.slice(8, 10))} ${MONTHS[Number(key.slice(5, 7)) - 1]}`;
 }
 
-function Figure({ icon: Icon, label, value, note, to, tone }) {
+export function Figure({ icon: Icon, label, value, note, to, tone }) {
   const body = <><span className="mi-figure-label"><Icon size={14} aria-hidden="true" /> {label}</span><strong>{value}</strong>{note && <small>{note}</small>}</>;
   return to ? <Link to={to} className={`mi-figure${tone ? ` is-${tone}` : ''}`}>{body}</Link> : <div className={`mi-figure${tone ? ` is-${tone}` : ''}`}>{body}</div>;
 }
 
-function Chart({ title, note, children, wide }) {
+export function Chart({ title, note, children, wide }) {
   return <section className={`card mi-chart${wide ? ' is-wide' : ''}`} aria-label={title}>
     <header><h3>{title}</h3>{note && <span className="text-muted text-sm">{note}</span>}</header>
     <div className="mi-chart-body">{children}</div>
@@ -44,7 +44,7 @@ function HorizontalBars({ rows, empty, link }) {
   </li>)}</ul>;
 }
 
-function Attention({ title, icon: Icon, items, empty, render, to }) {
+export function Attention({ title, icon: Icon, items, empty, render, to }) {
   return <section className="card mi-attention" aria-label={title}>
     <header><h3><Icon size={15} aria-hidden="true" /> {title}</h3>{items.length > 0 && <span className="mi-count">{items.length}</span>}</header>
     {items.length ? <ul>{items.map(render)}</ul> : <p className="text-muted text-sm">{empty}</p>}
