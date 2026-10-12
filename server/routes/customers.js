@@ -509,20 +509,40 @@ router.get('/:id/service-summary', requireAuth, async (req, res) => {
   res.json({ ...totals, byCategory, byEngineer, byTechnology, byBillable, monthly });
 });
 
-router.delete('/:id', requireManagerOrPlanner, async (req, res) => {
+// Archive instead of delete: an archived customer leaves lists and pickers, but its
+// visits, activities, reports and assets stay. It can be restored at any time.
+async function setActive(req, res, active) {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  const customer = await db.prepare('SELECT id, name, active FROM customers WHERE id = ?').get(id);
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  await db.prepare('UPDATE customers SET active = ? WHERE id = ?').run(active ? 1 : 0, id);
+  await logAudit(db, req, 'customer', id, decryptCustomer(customer).name, active ? 'customer_restored' : 'customer_archived', '');
+  res.json({ ok: true, active });
+}
+router.post('/:id/archive', requireManagerOrPlanner, (req, res) => setActive(req, res, false));
+router.post('/:id/restore', requireManagerOrPlanner, (req, res) => setActive(req, res, true));
+
+// Deleting removes the customer and its maintenance visits for good, so only managers
+// may, and only once the customer is archived.
+router.delete('/:id', requireManager, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  const customer = await db.prepare('SELECT id, name, active FROM customers WHERE id = ?').get(id);
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  if (customer.active) return res.status(409).json({ error: 'Archive the customer first. Archiving keeps its history and can be undone; deleting cannot.' });
   try {
     await db.prepare('DELETE FROM customers WHERE id = ?').run(id);
-    res.json({ ok: true });
   } catch (e) {
     // service_activities.customer_id is ON DELETE RESTRICT (Postgres error code 23503)
     // so a customer with logged service activity history cannot be silently deleted.
     if (e.code === '23503') {
-      return res.status(409).json({ error: 'Cannot delete this customer: it has retained service activity, recommendation, or asset history. Deactivate it instead.' });
+      return res.status(409).json({ error: 'Cannot delete this customer: it has service activity, recommendation or asset history. Keep it archived instead.' });
     }
     throw e;
   }
+  await logAudit(db, req, 'customer', id, decryptCustomer(customer).name, 'customer_deleted', '');
+  res.json({ ok: true });
 });
 
 module.exports = router;

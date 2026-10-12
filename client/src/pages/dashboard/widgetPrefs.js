@@ -6,7 +6,8 @@ export const WIDGET_DEFS = {
     { id: 'stat_cards',        label: 'Stats Overview'               },
     { id: 'insights',          label: 'Insights: charts and what needs attention' },
     { id: 'project_health',    label: 'Project Health (RAG)'         },
-    { id: 'task_overview',     label: 'Task Overview & Workload'     },
+    // Insights shows tasks and engineers' work in more detail, so this starts hidden.
+    { id: 'task_overview',     label: 'Task Overview & Workload', hiddenByDefault: true },
     { id: 'pending_closure',   label: 'Pending Closure Approvals'    },
     { id: 'incomplete_visits', label: 'Incomplete Maintenance Visits' },
     { id: 'mv_review',         label: 'Reports to Approve for PM'    },
@@ -42,6 +43,7 @@ export function useWidgetPrefs(userId, role) {
   const storageKey = `dash_widgets_${userId}_${role}`;
   const defs       = WIDGET_DEFS[role] ?? WIDGET_DEFS.engineer;
   const defaultIds = defs.map(d => d.id);
+  const defaultHidden = defs.filter(d => d.hiddenByDefault).map(d => d.id);
 
   const [prefs, setPrefsState] = useState(() => {
     try {
@@ -57,7 +59,7 @@ export function useWidgetPrefs(userId, role) {
         };
       }
     } catch {}
-    return { order: defaultIds, hidden: [] };
+    return { order: defaultIds, hidden: defaultHidden };
   });
 
   function persist(p) {
@@ -80,6 +82,6 @@ export function useWidgetPrefs(userId, role) {
       o.splice(to, 0, o.splice(from, 1)[0]);
       persist({ ...prefs, order: o });
     },
-    reset: () => persist({ order: defaultIds, hidden: [] }),
+    reset: () => persist({ order: defaultIds, hidden: defaultHidden }),
   };
 }

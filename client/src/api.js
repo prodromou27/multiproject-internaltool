@@ -271,6 +271,8 @@ export const api = {
   createCustomer: (data) => req('POST', '/customers', data),
   updateCustomer: (id, data) => req('PUT', `/customers/${id}`, data),
   deleteCustomer: (id) => req('DELETE', `/customers/${id}`),
+  archiveCustomer: (id) => req('POST', `/customers/${id}/archive`, {}),
+  restoreCustomer: (id) => req('POST', `/customers/${id}/restore`, {}),
   customersTemplateUrl: () => `${BASE}/customers/template/download`,
   importCustomers: (file, { updateExisting = false } = {}) => {
     return upload('/customers/import', 'file', file, updateExisting ? { update_existing: '1' } : {});
@@ -582,7 +584,7 @@ export const api = {
 
   // skill matrix
   skillMatrix: (options) => req('GET', '/skills', undefined, options),
-  insights: (days, options) => req('GET', `/insights?days=${days}`, undefined, options),
+  insights: (days, filters = {}, options) => req('GET', `/insights?${new URLSearchParams({ days, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) })}`, undefined, options),
   rateSkill: (userId, technologyId, data) => req('PUT', `/skills/ratings/${userId}/${technologyId}`, data),
   setSkillTarget: (technologyId, data) => req('PUT', `/skills/technologies/${technologyId}/target`, data),
 

@@ -1,3 +1,4 @@
+import ManagementInsights from '../components/ManagementInsights';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -365,36 +366,13 @@ export default function Reports() {
 
       {tab === 'overview' && (
         <>
+          <ManagementInsights filterable />
+          <h2 className="section-title">Projects</h2>
           <div className="operations-metric-strip">
             <div className="operations-metric"><strong>{summary.total}</strong><span>Total Projects</span></div>
             <div className="operations-metric is-primary"><strong>{activeCount}</strong><span>Active</span></div>
             <div className="operations-metric is-success"><strong>{byStatus.closed || 0}</strong><span>Closed</span></div>
             <div className="operations-metric is-danger"><strong>{summary.overdue}</strong><span>Overdue</span></div>
-          </div>
-
-          <div className="grid-2 u-8677744">
-            <div className="card">
-              <div className="section-title">Task Breakdown</div>
-              <div className="grid-3">
-                <div className="stat"><div className="stat-value u-81351bd">{summary.taskStats?.open || 0}</div><div className="stat-label">Open</div></div>
-                <div className="stat"><div className="stat-value u-c903459">{summary.taskStats?.in_progress || 0}</div><div className="stat-label">In Progress</div></div>
-                <div className="stat"><div className="stat-value u-508ce2e">{summary.taskStats?.done || 0}</div><div className="stat-label">Done</div></div>
-              </div>
-              {summary.taskStats && <p className="text-sm text-muted mt-8">{summary.taskStats.adhoc} ad-hoc tasks total</p>}
-            </div>
-
-            <div className="card">
-              <div className="section-title">Engineer Workload</div>
-              {summary.engineerLoad.length === 0 ? <p className="text-muted text-sm">No engineers</p> : summary.engineerLoad.map(e => (
-                <div key={e.name} className="u-8d44620">
-                  <span className="u-e2624e2">{e.name}</span>
-                  <div className="progress-bar flex-1">
-                    <div className="progress-bar-fill" style={{ width: e.task_count ? `${(e.done_count / e.task_count) * 100}%` : '0%' }} />
-                  </div>
-                  <span className="text-sm text-muted">{e.done_count}/{e.task_count} done</span>
-                </div>
-              ))}
-            </div>
           </div>
 
           {summary.pendingClosure.length > 0 && (

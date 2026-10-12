@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { RefreshCw, Trash2, Upload } from 'lucide-react';
+import { Archive, ArchiveRestore, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { api } from '../api';
 import { Modal, fmtDate } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
@@ -228,10 +228,19 @@ export default function Customers() {
 
   const filtered = customers;
 
-  async function handleDelete(id) {
-    const ok = await confirm('Delete this customer and all their maintenance visits?', { title: 'Delete Customer' });
+  // Archiving keeps everything and can be undone; deleting (archived customers only, managers only) cannot.
+  async function handleArchive(c) {
+    const ok = await confirm(`Archive ${c.name}? It leaves the customer lists and pickers, but its visits, activities, reports and assets are kept. You can restore it from Archived.`, { title: 'Archive customer', label: 'Archive' });
     if (!ok) return;
-    try { await api.deleteCustomer(id); toast.success('Customer deleted'); load(); } catch (e) { toast.error(e.message); }
+    try { await api.archiveCustomer(c.id); toast.success(`${c.name} archived`); load(); } catch (e) { toast.error(e.message); }
+  }
+  async function handleRestore(c) {
+    try { await api.restoreCustomer(c.id); toast.success(`${c.name} restored`); load(); } catch (e) { toast.error(e.message); }
+  }
+  async function handleDelete(c) {
+    const ok = await confirm(`Delete ${c.name} for good? Its maintenance visits are deleted with it, and this cannot be undone. Customers with service activity, recommendation or asset history cannot be deleted; keep them archived.`, { title: 'Delete customer permanently', label: 'Delete permanently' });
+    if (!ok) return;
+    try { await api.deleteCustomer(c.id); toast.success(`${c.name} deleted`); load(); } catch (e) { toast.error(e.message); }
   }
 
   const managedRows = [...managed.values()];
@@ -248,7 +257,7 @@ export default function Customers() {
     { key:'customer',label:'Customer',render:c => <div className="customer-identity">
       {isManager ? <Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link> : <strong>{c.name}</strong>}
       {!!c.is_internal && <ToneBadge tone="info">In-house</ToneBadge>}
-      <span>{c.customer_code || 'No customer code'} · {c.active ? 'Active' : 'Inactive'}</span>
+      <span>{c.customer_code || 'No customer code'} · {c.active ? 'Active' : 'Archived'}</span>
       {c.notes && <small title={c.notes}>{c.notes}</small>}
     </div> },
     { key:'coverage',label:'Coverage',render:c => c.service_activity_enabled ? <ToneBadge tone="success">Tracked</ToneBadge> : <ToneBadge>Standard</ToneBadge> },
@@ -259,7 +268,10 @@ export default function Customers() {
     { key:'actions',label:'Actions',render:c => <div className="table-actions">
       {isManager && <Link className="btn btn-sm btn-ghost" to={`/customers/${c.id}/service-profile`}>Open</Link>}
       {canCreate && <button className="btn btn-sm btn-ghost" onClick={() => openEdit(c)}>Edit</button>}
-      {canCreate && <button className="btn btn-sm btn-ghost btn-icon-danger" onClick={() => handleDelete(c.id)} aria-label={`Delete ${c.name}`} title="Delete customer"><Trash2 size={14} /></button>}
+      {canCreate && (c.active
+        ? <button className="btn btn-sm btn-ghost" onClick={() => handleArchive(c)} aria-label={`Archive ${c.name}`} title="Archive customer"><Archive size={14} /></button>
+        : <button className="btn btn-sm btn-ghost" onClick={() => handleRestore(c)}><ArchiveRestore size={14} /> Restore</button>)}
+      {isManager && !c.active && <button className="btn btn-sm btn-ghost btn-icon-danger" onClick={() => handleDelete(c)} aria-label={`Delete ${c.name} permanently`} title="Delete permanently"><Trash2 size={14} /></button>}
     </div> },
   ];
 
@@ -281,7 +293,7 @@ export default function Customers() {
             ['active', 'Active', counts.active || 0],
             ['tracked', 'Service tracking', counts.tracked || 0],
             ...(canSeeManaged ? [['managed', 'Managed', counts.managed || 0]] : []),
-            ['inactive', 'Inactive', counts.inactive || 0],
+            ['inactive', 'Archived', counts.inactive || 0],
           ].map(([key, label, count]) => <button key={key} className={`filter-pill${view === key ? ' active' : ''}`} onClick={() => setView(key)}>
             {label} <span className="u-383082b">({count})</span>
           </button>)}

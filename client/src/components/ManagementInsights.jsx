@@ -52,20 +52,33 @@ function Attention({ title, icon: Icon, items, empty, render, to }) {
   </section>;
 }
 
-export default function ManagementInsights() {
+export default function ManagementInsights({ filterable = false }) {
   const [days, setDays] = useState(() => { try { return Number(localStorage.getItem('insights_days')) || 90; } catch { return 90; } });
   const [data, setData] = useState(null), [error, setError] = useState('');
+  const [filters, setFilters] = useState({ customer_id: '', team_id: '', engineer_id: '' }), [options, setOptions] = useState(null);
+  useEffect(() => {
+    if (!filterable) return;
+    Promise.all([api.customers().catch(() => []), api.teams().catch(() => []), api.users().catch(() => [])]).then(([customers, teams, users]) => setOptions({
+      customers: (Array.isArray(customers) ? customers : customers.rows || []).filter(c => c.active !== 0).sort((a, b) => a.name.localeCompare(b.name)),
+      teams: teams || [], engineers: (users || []).filter(u => u.role === 'engineer' && u.active !== 0),
+    }));
+  }, [filterable]);
   const live = useLiveVersion();
   useEffect(() => {
     const controller = new AbortController();
-    api.insights(days, { signal: controller.signal }).then(result => { if (!controller.signal.aborted) { setData(result); setError(''); } })
+    api.insights(days, filters, { signal: controller.signal }).then(result => { if (!controller.signal.aborted) { setData(result); setError(''); } })
       .catch(failure => { if (!controller.signal.aborted) { if (failure.status === 403) setData('forbidden'); else setError(failure.message); } });
     return () => controller.abort();
-  }, [days, live]);
+  }, [days, live, filters]);
   const choose = value => { setDays(value); try { localStorage.setItem('insights_days', String(value)); } catch { /* not remembered */ } };
 
   const header = <div className="mi-head">
     <div><h2><BarChart3 size={18} aria-hidden="true" /> Insights</h2>{data && <p className="text-muted text-sm">{fmtDate(data.period.from)} – {fmtDate(data.period.to)}</p>}</div>
+    {filterable && options && <div className="mi-filters">
+      <label>Customer<select value={filters.customer_id} onChange={e => setFilters(f => ({ ...f, customer_id: e.target.value }))}><option value="">All customers</option>{options.customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+      <label>Team<select value={filters.team_id} onChange={e => setFilters(f => ({ ...f, team_id: e.target.value }))}><option value="">All teams</option>{options.teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+      <label>Engineer<select value={filters.engineer_id} onChange={e => setFilters(f => ({ ...f, engineer_id: e.target.value }))}><option value="">All engineers</option>{options.engineers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
+    </div>}
     <div className="mi-periods" role="group" aria-label="Period">{PERIODS.map(([value, label]) => <button key={value} type="button" aria-pressed={days === value} onClick={() => choose(value)}>{label}</button>)}</div>
   </div>;
   if (data === 'forbidden') return null; // no reporting access: nothing to show

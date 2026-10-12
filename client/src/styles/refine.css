@@ -105,7 +105,7 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
   border-right: 1px solid var(--gray-200);
   color: var(--gray-700);
 }
-.operations-shell .sidebar-logo { height: 60px; border-bottom: 0; }
+.operations-shell .sidebar-logo { height: 56px; border-bottom: 0; }
 .sidebar-logo .sidebar-brand-name { color: var(--ink); font-weight: 600; letter-spacing: -.01em; }
 .sidebar-logo .sidebar-brand-name strong { color: var(--signal); }
 .sidebar-logo-mark { border: 1px solid var(--gray-200); }
@@ -123,13 +123,13 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .operations-shell .sidebar nav a.active svg { color: var(--ink); }
 .operations-shell .sidebar { overflow: hidden; }
 .operations-shell .sidebar-primary-nav { min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--gray-300) transparent; }
-.operations-shell .sidebar nav a { min-height: 32px; padding: 6px 10px; margin-bottom: 1px; }
-.sidebar-group + .sidebar-group { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--gray-200); }
+.operations-shell .sidebar nav a { min-height: 30px; padding: 5px 10px; margin-bottom: 1px; }
+.sidebar-group + .sidebar-group { margin-top: 5px; padding-top: 4px; border-top: 1px solid var(--gray-200); }
 .sidebar-group.is-untitled + .sidebar-group.is-untitled { padding-top: 6px; border-top: 1px solid var(--gray-200); }
 .operations-shell .sidebar-more-nav { flex: none; margin-bottom: 4px; padding: 0 0 4px; border-bottom: 1px solid var(--gray-200); }
 .sidebar-group-toggle {
   width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px;
-  margin: 0 0 2px; padding: 6px 10px; border: 0; border-radius: var(--radius); background: transparent;
+  margin: 0 0 1px; padding: 4px 10px; border: 0; border-radius: var(--radius); background: transparent;
   color: var(--gray-800); font: inherit; font-size: 12.5px; font-weight: 700; letter-spacing: .01em; cursor: pointer; text-align: left;
 }
 .sidebar-group-toggle svg { color: var(--gray-500); }
@@ -450,3 +450,15 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 }
 .btn-icon-danger { color: var(--danger); }
 .btn-icon-danger:hover:not(:disabled) { background: var(--danger-light); border-color: var(--danger); color: var(--danger); }
+
+/* Rail toggle beside the logo (desktop only; on phones the menu is a drawer). */
+.operations-shell .sidebar-logo { display: flex; align-items: center; gap: 10px; }
+.sidebar-rail-toggle { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: none;
+  border: 0; border-radius: var(--radius); background: transparent; color: var(--gray-500); cursor: pointer; }
+.sidebar-rail-toggle:hover { background: var(--gray-100); color: var(--ink); }
+.operations-shell .sidebar-more-nav { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+@media (max-width: 900px) { .sidebar-rail-toggle { display: none; } }
+@media (min-width: 901px) {
+  .nav-compact .sidebar-logo { flex-direction: column; height: auto; gap: 6px; padding: 12px 0 8px; }
+  .nav-compact .sidebar-rail-toggle { margin-left: 0; }
+}

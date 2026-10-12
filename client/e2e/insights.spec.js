@@ -45,3 +45,22 @@ test('engineers do not get the insights', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'My work' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Insights' })).toHaveCount(0);
 });
+
+test('Reports → Overview narrows the insights to one customer, team or engineer', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  const asked = [];
+  api.override('GET /api/insights', ({ request }) => { const params = new URL(request.url()).searchParams; asked.push(Object.fromEntries(params)); return { body: insights(Number(params.get('days'))) }; });
+  api.override('GET /api/customers', () => ({ body: [{ id: 12, name: 'Northwind Logistics', active: 1 }, { id: 15, name: 'Old Customer', active: 0 }] }));
+  api.override('GET /api/auth/users', () => ({ body: [{ id: 7, name: 'Maria Ioannou', role: 'engineer', active: 1 }, { id: 2, name: 'Pat Manager', role: 'manager', active: 1 }] }));
+  api.override('GET /api/teams', () => ({ body: [{ id: 1, name: 'Security Team' }] }));
+  await page.goto('/reports');
+  const section = page.getByRole('region', { name: 'Insights' });
+  await expect(section.getByRole('link', { name: /Hours logged\s*42.5/ })).toBeVisible();
+  await expect(section.getByRole('combobox', { name: 'Customer' }).locator('option')).toHaveText(['All customers', 'Northwind Logistics']);
+  await expect(section.getByRole('combobox', { name: 'Engineer' }).locator('option')).toHaveText(['All engineers', 'Maria Ioannou']);
+  await section.getByRole('combobox', { name: 'Customer' }).selectOption('Northwind Logistics');
+  await expect.poll(() => asked.at(-1)).toMatchObject({ customer_id: '12' });
+  await section.getByRole('combobox', { name: 'Team' }).selectOption('Security Team');
+  await section.getByRole('combobox', { name: 'Engineer' }).selectOption('Maria Ioannou');
+  await expect.poll(() => asked.at(-1)).toEqual({ days: '90', customer_id: '12', team_id: '1', engineer_id: '7' });
+});

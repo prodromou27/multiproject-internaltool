@@ -47,3 +47,7 @@ a.mi-figure:hover { border-color: var(--gray-400); text-decoration: none; }
 /* Each card as tall as its content: a long list must not stretch the empty ones beside it. */
 .mi-attentions { align-items: start; }
 .mi-chart { align-content: start; }
+
+.mi-filters { display: flex; flex-wrap: wrap; gap: 10px; margin-left: auto; }
+.mi-filters label { display: grid; gap: 3px; font-size: 12px; font-weight: 600; color: var(--gray-600); }
+.mi-filters select { min-width: 170px; }

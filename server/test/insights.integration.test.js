@@ -44,3 +44,20 @@ test('insights are for people with reporting access, and the period is checked',
   assert.equal((await api('/api/insights', { token: ids.tokenEnabled })).status, 403);
   assert.equal((await api('/api/insights?days=45', { token: ids.tokenManager })).status, 400);
 });
+
+test('insights filter by customer, team and engineer', async () => {
+  const q = async params => (await api(`/api/insights?days=30&${new URLSearchParams(params)}`, { token: ids.tokenManager })).data;
+  const all = await q({});
+  assert.ok(all.kpis.hours > 0, 'the earlier test logged work');
+  const other = await q({ customer_id: ids.customerUnassigned });
+  assert.deepEqual([other.kpis.hours, other.kpis.tasks_done, other.kpis.contracts_ending], [0, 0, 0], 'another customer has none of it');
+  const mine = await q({ engineer_id: ids.engineerEnabled });
+  assert.deepEqual([mine.kpis.hours, mine.kpis.tasks_done], [all.kpis.hours, all.kpis.tasks_done]);
+  assert.deepEqual(mine.engineers.map(e => e.id), [Number(ids.engineerEnabled)]);
+  const someoneElse = await q({ engineer_id: ids.engineerDisabled });
+  assert.deepEqual([someoneElse.kpis.hours, someoneElse.kpis.tasks_done], [0, 0]);
+  const team = await q({ team_id: ids.teamEnabled });
+  assert.equal(team.kpis.hours, all.kpis.hours, 'the team is its members');
+  assert.ok(!team.engineers.some(e => e.id === Number(ids.engineerDisabled)), 'only the team\'s engineers');
+  assert.equal((await api('/api/insights?customer_id=abc', { token: ids.tokenManager })).status, 400);
+});

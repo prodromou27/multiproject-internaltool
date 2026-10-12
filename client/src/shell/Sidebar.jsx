@@ -74,6 +74,10 @@ export function SidebarContent({ onNav, groups, currentPage, compact, collapsed,
           <img src="/logo.png" alt="Odyssey" className="u-94aaddb" />
         </div>
         <span className="sidebar-brand-name">{PRODUCT_WORDMARK.prefix}<strong>{PRODUCT_WORDMARK.suffix}</strong></span>
+        {/* The rail toggle sits by the logo, so the menu keeps its height for pages. */}
+        <button type="button" onClick={onToggleCompact} className="sidebar-rail-toggle" aria-label={compact ? 'Expand navigation' : 'Collapse navigation'} title={compact ? 'Expand navigation' : 'Collapse navigation'}>
+          {compact ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+        </button>
       </div>
 
       {/* Main nav: every page this person can open, in short groups. A group
@@ -95,15 +99,11 @@ export function SidebarContent({ onNav, groups, currentPage, compact, collapsed,
         })}
       </nav>
 
-      {/* Footer: only the rail toggle. Account, display preferences and external
-          tools live in the account menu in the top bar. */}
-      <div className="sidebar-footer">
-        {more && <nav className="sidebar-more-nav" aria-label="Notes and settings">{more.pages.map(link)}</nav>}
-        <button onClick={onToggleCompact} className="sidebar-collapse" title={compact ? 'Expand navigation' : 'Collapse navigation'}>
-          {compact ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
-          <span>{compact ? 'Expand' : 'Collapse'}</span>
-        </button>
-      </div>
+      {/* Footer: notes and settings, always in view. Account, display preferences and
+          external tools live in the account menu in the top bar. */}
+      {more && <div className="sidebar-footer">
+        <nav className="sidebar-more-nav" aria-label="Notes and settings">{more.pages.map(link)}</nav>
+      </div>}
     </>
   );
 }
