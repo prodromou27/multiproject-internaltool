@@ -325,3 +325,5 @@
 .rt-notify { display: flex; align-items: center; gap: 8px; margin: 4px 0 12px; font-size: 13px; }
 .rt-notify input { width: auto; min-height: 0; }
 .rt-overdue { color: var(--danger); }
+.cs-work-filters label.cs-mine { display: flex; flex-direction: row; align-items: center; gap: 6px; align-self: end; min-height: 38px; }
+.cs-work-filters label.cs-mine input { width: auto; min-height: 0; }

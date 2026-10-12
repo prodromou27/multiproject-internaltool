@@ -141,6 +141,7 @@ export const api = {
   tasks: (params = {}, options) => req('GET', '/tasks?' + new URLSearchParams(params).toString(), undefined, options),
   createTask: (data) => req('POST', '/tasks', data),
   updateTask: (id, data) => req('PUT', `/tasks/${id}`, data),
+  takeTask: (id, body = {}) => req('POST', `/tasks/${id}/take`, body),
   taskSubtasks: (id, options) => req('GET', `/tasks/${id}/subtasks`, undefined, options),
   addTaskSubtasks: (id, body) => req('POST', `/tasks/${id}/subtasks`, body),
   updateTaskSubtask: (id, subtaskId, body) => req('PUT', `/tasks/${id}/subtasks/${subtaskId}`, body),

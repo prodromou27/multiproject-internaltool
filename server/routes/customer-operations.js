@@ -38,7 +38,8 @@ router.get('/summary',requireAuth,async (req,res) => {
   const engineer=req.user.role==='engineer',planner=req.user.role==='planner',userId=req.user.id;
   const projectRestricted=engineer || planner;
   const projectJoin=projectRestricted ? ' JOIN project_assignments pa_scope ON pa_scope.project_id=p.id AND pa_scope.user_id=?' : '';
-  const taskScope=engineer ? ` AND ${ownTasksSql('t')}` : '';
+  // Engineers who work with the customer see all its tasks: they may take an unassigned one or take one over (routes/tasks.js).
+  const taskScope='';
   const visitJoin=engineer ? ' JOIN maintenance_visit_engineers mve_scope ON mve_scope.visit_id=mv.id AND mve_scope.user_id=?' : '';
   const activityScope=engineer ? ' AND sa.engineer_id=?' : '';
   // 'full' = manage assets; 'team' = an engineer on this customer's managed-services team (view + add).
@@ -52,7 +53,7 @@ router.get('/summary',requireAuth,async (req,res) => {
       COUNT(*) FILTER (WHERE t.status NOT IN ('completed','closed','cancelled') AND t.deadline IS NOT NULL AND t.deadline<app_today()) AS overdue,
       COUNT(*) FILTER (WHERE t.status='in_progress') AS in_progress,
       COUNT(*) FILTER (WHERE t.status IN ('completed','closed') AND t.updated_at>=(app_now()::timestamp-INTERVAL '30 days')::text) AS recently_completed
-      FROM tasks t LEFT JOIN projects p ON p.id=t.project_id WHERE COALESCE(t.customer_id,p.customer_id)=?${taskScope}`).get(customerId,...(engineer?ownTasksParams(userId):[])),
+      FROM tasks t LEFT JOIN projects p ON p.id=t.project_id WHERE COALESCE(t.customer_id,p.customer_id)=?${taskScope}`).get(customerId),
     db.prepare(`SELECT COUNT(*) FILTER (WHERE ${activeRecommendations}) AS open,
       COUNT(*) FILTER (WHERE ${activeRecommendations} AND r.risk_level IN ('high','critical')) AS high_risk,
       COUNT(*) FILTER (WHERE r.status='in_progress') AS in_progress,
@@ -151,8 +152,9 @@ router.get('/tasks',requireAuth,async (req,res) => {
   if (req.query.priority && !['low','medium','high','critical'].includes(req.query.priority)) return res.status(400).json({ error:'Invalid priority' });
   if (req.query.status && !['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','cancelled','closed'].includes(req.query.status)) return res.status(400).json({ error:'Invalid status' });
   const clauses=['COALESCE(t.customer_id,p.customer_id)=?'],params=[customerId],filter=req.query.filter || 'all';
-  if (req.user.role==='engineer') { clauses.push(ownTasksSql('t'));params.push(...ownTasksParams(req.user.id)); }
-  else if (req.query.engineer_id) { clauses.push('t.assigned_to=?');params.push(Number(req.query.engineer_id)); }
+  // Engineers see all of this customer's tasks (?mine=1: only theirs and their teams'); managers may pick an engineer.
+  if (req.user.role==='engineer' && req.query.mine==='1') { clauses.push(ownTasksSql('t'));params.push(...ownTasksParams(req.user.id)); }
+  else if (req.user.role==='manager' && req.query.engineer_id) { clauses.push('t.assigned_to=?');params.push(Number(req.query.engineer_id)); }
   if (filter==='open') clauses.push("t.status NOT IN ('completed','closed','cancelled')");
   if (filter==='in_progress') clauses.push("t.status='in_progress'");
   if (filter==='overdue') clauses.push("t.status NOT IN ('completed','closed','cancelled') AND t.deadline IS NOT NULL AND t.deadline<app_today()");
@@ -161,11 +163,14 @@ router.get('/tasks',requireAuth,async (req,res) => {
   if (req.query.priority) { clauses.push('t.priority=?');params.push(req.query.priority); }
   if (req.query.search?.trim()) { const pattern=searchPattern(req.query.search);clauses.push('(LOWER(t.title) ILIKE ? OR LOWER(COALESCE(p.title,\'\')) ILIKE ? OR LOWER(COALESCE(u.name,\'\')) ILIKE ? OR LOWER(COALESCE(t.ticket_reference,\'\')) ILIKE ?)');params.push(pattern,pattern,pattern,pattern); }
   const where=clauses.join(' AND ');
+  // Whether this person may change the task (start, finish, subtasks): managers; engineers for theirs and their teams' unassigned ones.
+  const myTeams=req.user.role==='engineer' ? new Set((await db.prepare('SELECT team_id FROM team_members WHERE user_id=?').all(req.user.id)).map(r => Number(r.team_id))) : null;
+  const canUpdate=row => req.user.role==='manager' || (row.assigned_to!=null ? Number(row.assigned_to)===Number(req.user.id) : !!row.team_id && myTeams.has(Number(row.team_id)));
   const rows=(await db.prepare(`SELECT t.id,t.project_id,t.title,t.status,t.priority,t.deadline,t.updated_at,t.assigned_to,t.team_id,t.recurring_task_id,t.asset_id,t.ticket_reference,ca.name AS asset_name,u.name AS assigned_to_name,tm.name AS team_name,p.title AS project_title,COALESCE(t.customer_id,p.customer_id) AS customer_id
     FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to LEFT JOIN teams tm ON tm.id=t.team_id LEFT JOIN customer_assets ca ON ca.id=t.asset_id WHERE ${where}
     ORDER BY CASE WHEN t.deadline IS NULL THEN 1 ELSE 0 END,t.deadline,t.id LIMIT ? OFFSET ?`).all(...params,paging.pageSize,paging.offset))
     .map(row => ({ ...row,asset_name:row.asset_name ? decrypt(row.asset_name) : null }));
-  const withProgress=await require('../taskTickets').withTickets(await require('../taskSubtasks').withSubtaskCounts(rows));
+  const withProgress=(await require('../taskTickets').withTickets(await require('../taskSubtasks').withSubtaskCounts(rows))).map(row => ({ ...row,can_update:canUpdate(row) }));
   const count=await db.prepare(`SELECT COUNT(*) AS total FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to WHERE ${where}`).get(...params);
   res.json({ rows:withProgress,total:Number(count.total),page:paging.page,page_size:paging.pageSize });
 });

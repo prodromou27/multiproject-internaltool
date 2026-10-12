@@ -7,7 +7,8 @@ import CustomerRecurringTasks from './CustomerRecurringTasks';
 import CustomerTaskForm from './CustomerTaskForm';
 import { SubtaskProgress, SubtasksDialog, TaskTicket } from './TaskSubtasks';
 import { useToast } from './Toast';
-import { Check, Play, Plus, Repeat } from 'lucide-react';
+import { Check, Hand, Play, Plus, Repeat } from 'lucide-react';
+import { useConfirm } from './Confirm';
 import AddToCalendarButton from './AddToCalendarButton';
 
 function useCustomerList(load,params,customerId) {
@@ -55,13 +56,21 @@ export function CustomerProjects({ customerId,initialFilter='' }) {
 const DONE_STATUSES=new Set(['completed','closed','cancelled','pending_approval']);
 
 /* Customer 360 → Tasks: recurring tasks, then this customer's tasks (open first by
-   default) with Start and Done on each row; engineers see their own and their
-   teams' tasks, and a team task becomes theirs when they start or finish it. */
-export function CustomerTasks({ customerId,initialFilter='',engineers=[],canManage=false,canAdd=false,create=false }) {
-  const toast=useToast(),[adding,setAdding]=useState(canAdd && create),[busy,setBusy]=useState(null),[subtasksFor,setSubtasksFor]=useState(null);
+   default) with Start and Done on the ones you work on. Engineers see all the
+   customer's tasks: they take an unassigned one, or take one over from a
+   colleague (who is told); a team task becomes theirs when they start or finish it. */
+export function CustomerTasks({ customerId,initialFilter='',engineers=[],canManage=false,canAdd=false,isEngineer=false,create=false }) {
+  const toast=useToast(),confirm=useConfirm(),[mine,setMine]=useState(false),[adding,setAdding]=useState(canAdd && create),[busy,setBusy]=useState(null),[subtasksFor,setSubtasksFor]=useState(null);
   const [page,setPage]=useState(1),[filter,setFilter]=useState(initialFilter || 'open'),[priority,setPriority]=useState(''),[engineer,setEngineer]=useState(''),[draft,setDraft]=useState(''),[search,setSearch]=useState('');
-  const state=useCustomerList((params,options) => api.customerOperationTasks(customerId,params,options),{ page,page_size:25,filter,search,...(priority?{priority}:{}),...(engineer?{engineer_id:engineer}:{}) },customerId);
+  const state=useCustomerList((params,options) => api.customerOperationTasks(customerId,params,options),{ page,page_size:25,filter,search,...(priority?{priority}:{}),...(engineer?{engineer_id:engineer}:{}),...(mine?{ mine:'1' }:{}) },customerId);
   const update=(setter,value) => { setter(value);setPage(1); };
+  async function take(row) {
+    const over=!!row.assigned_to;
+    if (over && !await confirm(`${row.title} is assigned to ${row.assigned_to_name}. Take it over? ${row.assigned_to_name} will be told.`,{ title:'Take over this task',label:'Take over' })) return;
+    setBusy(row.id);
+    try { await api.takeTask(row.id,over ? { take_over:true } : {});toast.success(over ? `You took over: ${row.title}` : `Yours now: ${row.title}`);state.retry(); }
+    catch (failure) { toast.error(failure.message); } finally { setBusy(null); }
+  }
   async function setStatus(row,status) {
     setBusy(row.id);
     try { await api.updateTask(row.id,{ status });toast.success(status==='in_progress' ? `Started: ${row.title}` : `Done: ${row.title}`);state.retry(); }
@@ -69,19 +78,21 @@ export function CustomerTasks({ customerId,initialFilter='',engineers=[],canMana
   }
   return <section><CustomerRecurringTasks customerId={customerId} canManage={canManage} engineers={engineers} />
     {canAdd && <div className="cs-tasks-head"><h2>Tasks</h2><button type="button" className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Plus size={14} /> Add task</button></div>}
-    {subtasksFor && <SubtasksDialog task={subtasksFor} customerId={customerId} onClose={() => { setSubtasksFor(null);state.retry(); }} />}
+    {subtasksFor && <SubtasksDialog task={subtasksFor} customerId={customerId} canEdit={subtasksFor.can_update!==false} onClose={() => { setSubtasksFor(null);state.retry(); }} />}
     {adding && <CustomerTaskForm customerId={customerId} isManager={canManage} engineers={engineers} onClose={() => setAdding(false)} onSaved={() => { setAdding(false);toast.success('Task added');state.retry(); }} />}
-    <SearchFilter value={draft} onChange={setDraft} onSubmit={() => { setSearch(draft.trim());setPage(1); }}><label><span>Status</span><select value={filter} onChange={event => update(setFilter,event.target.value)}><option value="open">Open</option><option value="in_progress">In progress</option><option value="overdue">Overdue</option><option value="recently_completed">Recently completed</option><option value="all">All</option></select></label><label><span>Priority</span><select value={priority} onChange={event => update(setPriority,event.target.value)}><option value="">All priorities</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>{engineers.length>0 && <label><span>Engineer</span><select value={engineer} onChange={event => update(setEngineer,event.target.value)}><option value="">All engineers</option>{engineers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}</SearchFilter>
+    <SearchFilter value={draft} onChange={setDraft} onSubmit={() => { setSearch(draft.trim());setPage(1); }}><label><span>Status</span><select value={filter} onChange={event => update(setFilter,event.target.value)}><option value="open">Open</option><option value="in_progress">In progress</option><option value="overdue">Overdue</option><option value="recently_completed">Recently completed</option><option value="all">All</option></select></label><label><span>Priority</span><select value={priority} onChange={event => update(setPriority,event.target.value)}><option value="">All priorities</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>{isEngineer && <label className="cs-mine"><input type="checkbox" checked={mine} onChange={event => update(setMine,event.target.checked)} /> Mine only</label>}{engineers.length>0 && <label><span>Engineer</span><select value={engineer} onChange={event => update(setEngineer,event.target.value)}><option value="">All engineers</option>{engineers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}</SearchFilter>
     <ResultState {...state} empty={filter==='open' ? 'No open tasks' : 'No tasks found'}>{state.data && <div className="card cs-work-table-wrap"><table className="cs-work-table"><thead><tr><th>Task</th><th>For</th><th>Status</th><th>Priority</th><th>Due date</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{state.data.rows.map(row => {
-      const done=DONE_STATUSES.has(row.status),openSubtasks=(row.subtasks_total || 0)-(row.subtasks_done || 0),overdue=!done && row.deadline && row.deadline.slice(0,10)<new Date().toISOString().slice(0,10);
+      const done=DONE_STATUSES.has(row.status),canUpdate=row.can_update!==false,openSubtasks=(row.subtasks_total || 0)-(row.subtasks_done || 0),overdue=!done && row.deadline && row.deadline.slice(0,10)<new Date().toISOString().slice(0,10);
       return <tr key={row.id}>
         <td data-label="Task">{row.project_id ? <Link to={`/projects/${row.project_id}`}>{row.title}</Link> : <Link to={`/tasks?customer_id=${customerId}`}>{row.title}</Link>}
-          <div className="cs-task-meta"><SubtaskProgress total={row.subtasks_total} done={row.subtasks_done} compact={!row.subtasks_total} onClick={() => setSubtasksFor(row)} /><TaskTicket task={row} />{row.recurring_task_id && <span title="Created by a recurring task"><Repeat size={12} aria-hidden="true" /> Repeats</span>}{row.asset_name && <span>Asset: {row.asset_name}</span>}{row.project_title && <span>Project: {row.project_title}</span>}</div></td>
+          <div className="cs-task-meta"><SubtaskProgress total={row.subtasks_total} done={row.subtasks_done} compact={!row.subtasks_total} onClick={canUpdate || row.subtasks_total ? () => setSubtasksFor(row) : undefined} /><TaskTicket task={row} />{row.recurring_task_id && <span title="Created by a recurring task"><Repeat size={12} aria-hidden="true" /> Repeats</span>}{row.asset_name && <span>Asset: {row.asset_name}</span>}{row.project_title && <span>Project: {row.project_title}</span>}</div></td>
         <td data-label="For">{row.assigned_to_name || (row.team_name ? `${row.team_name} (team)` : 'Unassigned')}</td>
         <td data-label="Status"><StatusBadge entityType="task" s={row.status} /></td>
         <td data-label="Priority"><span className={`badge badge-${row.priority}`}>{row.priority}</span></td>
         <td data-label="Due date" className={overdue ? 'cs-overdue' : ''}>{fmtDate(row.deadline)}{overdue && <div className="text-sm">Overdue</div>}</td>
-        <td><div className="table-actions">{!done && <>
+        <td><div className="table-actions">{!done && !canUpdate && isEngineer && <button type="button" className="btn btn-ghost btn-sm" disabled={busy===row.id} onClick={() => take(row)}
+          aria-label={`${row.assigned_to ? 'Take over' : 'Take'} ${row.title}`}><Hand size={13} /> {row.assigned_to ? 'Take over' : 'Take'}</button>}
+          {!done && canUpdate && <>
           {row.status!=='in_progress' && <button type="button" className="btn btn-ghost btn-sm" disabled={busy===row.id} onClick={() => setStatus(row,'in_progress')} aria-label={`Start ${row.title}`}><Play size={13} /> Start</button>}
           <button type="button" className="btn btn-ghost btn-sm" disabled={busy===row.id || openSubtasks>0} onClick={() => setStatus(row,'completed')} aria-label={`Mark ${row.title} done`}
             title={openSubtasks>0 ? `${openSubtasks} subtask${openSubtasks===1?'':'s'} still open` : undefined}><Check size={13} /> Done</button>

@@ -110,3 +110,36 @@ test('a task may name a ticket; a ticket of the same customer is linked', async 
   await api(`/api/tasks/${made.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { ticket_reference: null } });
   assert.equal((await db.prepare('SELECT ticket_reference FROM tasks WHERE id = ?').get(made.data.id)).ticket_reference, null);
 });
+
+test('engineers take an unassigned task, or take over one assigned to someone else, who is told', async () => {
+  const take = (id, body = {}, token = ids.tokenEnabled) => api(`/api/tasks/${id}/take`, { method: 'POST', token, body });
+  const unassigned = (await newTask({ title: 'Imperva upgrade' })).data.id;
+  const theirs = (await newTask({ title: 'Patch Cisco ISE', assigned_to: ids.engineerDisabled })).data.id;
+
+  // Engineers who work with the customer see all its tasks, and which they may change.
+  const rows = (await api(`/api/customers/${ids.customer}/operations/tasks?filter=open&page_size=100`, { token: ids.tokenEnabled })).data.rows;
+  assert.ok(rows.some(r => r.id === Number(theirs)), 'a colleague\'s task is listed');
+  assert.equal(rows.find(r => r.id === Number(theirs)).can_update, false);
+  const mine = (await api(`/api/customers/${ids.customer}/operations/tasks?filter=open&mine=1&page_size=100`, { token: ids.tokenEnabled })).data.rows;
+  assert.ok(!mine.some(r => r.id === Number(theirs)), 'mine=1: only theirs');
+
+  const taken = await take(unassigned);
+  assert.equal(taken.status, 200, JSON.stringify(taken.data));
+  assert.equal(Number((await db.prepare('SELECT assigned_to FROM tasks WHERE id = ?').get(unassigned)).assigned_to), Number(ids.engineerEnabled));
+
+  const ask = await take(theirs);
+  assert.deepEqual([ask.status, ask.data.code, ask.data.assigned_to_name], [409, 'ASSIGNED', 'Engineer Disabled']);
+  const over = await take(theirs, { take_over: true });
+  assert.deepEqual([over.status, over.data.previous], [200, 'Engineer Disabled']);
+  assert.equal(Number((await db.prepare('SELECT assigned_to FROM tasks WHERE id = ?').get(theirs)).assigned_to), Number(ids.engineerEnabled));
+  const told = await db.prepare("SELECT title FROM notifications WHERE user_id = ? AND type = 'task_assigned' ORDER BY id DESC").get(ids.engineerDisabled);
+  assert.equal(told.title, 'Engineer Enabled took over: Patch Cisco ISE');
+  assert.ok(await db.prepare("SELECT 1 FROM audit_log WHERE action = 'task_taken_over'").get());
+
+  // Not for managers, other customers' engineers, or finished tasks.
+  assert.equal((await take(theirs, {}, ids.tokenManager)).status, 403);
+  const elsewhere = (await api('/api/tasks', { method: 'POST', token: ids.tokenManager, body: { customer_id: ids.customerUnassigned, title: 'Configure the new Synology' } })).data.id;
+  assert.equal((await take(elsewhere)).status, 403);
+  await api(`/api/tasks/${unassigned}`, { method: 'PUT', token: ids.tokenEnabled, body: { status: 'completed' } });
+  assert.equal((await take(unassigned, { take_over: true }, ids.tokenDisabled)).status, 409);
+});

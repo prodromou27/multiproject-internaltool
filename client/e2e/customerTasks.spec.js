@@ -89,3 +89,36 @@ test('tasks are started and finished from the customer page, open ones first', a
   await page.getByRole('button', { name: 'Mark Upgrade FW-HQ-01 to 7.4.8 done' }).click();
   await expect.poll(() => updates).toEqual([['61', { status: 'in_progress' }], ['62', { status: 'completed' }]]);
 });
+
+test('engineers take an unassigned customer task, or take one over from a colleague after confirming', async ({ page }) => {
+  const api = await mockApi(page, { role: 'engineer' });
+  const taken = [], asked = [];
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
+  api.override('GET /api/customers/12/operations/tasks', ({ request }) => {
+    asked.push(new URL(request.url()).searchParams.get('mine'));
+    return { body: { rows: [
+      { id: 71, title: 'Imperva upgrade', status: 'open', priority: 'high', assigned_to: null, customer_id: 12, can_update: false },
+      { id: 72, title: 'Patch Cisco ISE', status: 'open', priority: 'medium', assigned_to: 9, assigned_to_name: 'Paul Delivery', customer_id: 12, can_update: false },
+      { id: 73, title: 'Meraki replacements', status: 'in_progress', priority: 'medium', assigned_to: 1, assigned_to_name: 'Alex Mercer', customer_id: 12, can_update: true },
+    ], total: 3, page: 1, page_size: 25 } };
+  });
+  for (const id of [71, 72]) api.override(`POST /api/tasks/${id}/take`, ({ body }) => { taken.push([id, body]); return { body: { ok: true } }; });
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await expect(page.getByRole('button', { name: 'Start Imperva upgrade' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Mark Meraki replacements done' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Take.*Meraki/ })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Take Imperva upgrade' }).click();
+  await expect.poll(() => taken[0]).toEqual([71, {}]);
+  await page.getByRole('button', { name: 'Take over Patch Cisco ISE' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Take over this task' });
+  await expect(dialog).toContainText('Paul Delivery will be told');
+  await dialog.getByRole('button', { name: 'Take over' }).click();
+  await expect.poll(() => taken[1]).toEqual([72, { take_over: true }]);
+
+  await page.getByLabel('Mine only').check();
+  await expect.poll(() => asked.at(-1)).toBe('1');
+});

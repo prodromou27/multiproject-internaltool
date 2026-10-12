@@ -582,6 +582,39 @@ router.delete('/:id/dependencies/:depId', requireManager, requireVisibleTask, as
   res.json({ ok: true });
 });
 
+// An engineer takes a task: an unassigned one, or (with take_over) one assigned to someone
+// else, who is told. They must be able to work on it: a customer they work with, a project
+// they are on, or their team's task. Finished tasks cannot be taken.
+router.post('/:id/take', requireAuth, async (req, res) => {
+  if (req.user.role !== 'engineer') return res.status(403).json({ error: 'Engineers take tasks; managers assign them' });
+  if (!/^[1-9]\d*$/.test(String(req.params.id))) return res.status(400).json({ error: 'Invalid task ID' });
+  const task = await db.prepare('SELECT t.*, COALESCE(t.customer_id, p.customer_id) AS task_customer_id FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?').get(Number(req.params.id));
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  if (['completed', 'closed', 'cancelled', 'pending_approval'].includes(task.status)) return res.status(409).json({ error: 'This task is already finished' });
+  if (Number(task.assigned_to) === Number(req.user.id)) return res.json({ ok: true, assigned_to: req.user.id });
+  const allowed = task.project_id
+    ? !!await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(task.project_id, req.user.id)
+    : (task.task_customer_id && await canAccessCustomer(req.user, task.task_customer_id)) || await worksOnTask(req.user, { ...task, assigned_to: null });
+  if (!allowed) return res.status(403).json({ error: task.project_id ? 'You can take tasks of projects you are on' : 'You can take tasks of customers you work with' });
+  const previous = task.assigned_to ? await db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(task.assigned_to) : null;
+  if (previous && req.body?.take_over !== true) return res.status(409).json({ error: `This task is assigned to ${previous.name}. Take it over?`, code: 'ASSIGNED', assigned_to_name: previous.name });
+  // Only if nobody changed the assignee meanwhile.
+  const updated = task.assigned_to == null
+    ? await db.prepare('UPDATE tasks SET assigned_to = ?, updated_at = app_now() WHERE id = ? AND assigned_to IS NULL').run(req.user.id, task.id)
+    : await db.prepare('UPDATE tasks SET assigned_to = ?, updated_at = app_now() WHERE id = ? AND assigned_to = ?').run(req.user.id, task.id, task.assigned_to);
+  if (!updated.changes) return res.status(409).json({ error: 'Someone else changed this task; reload and try again' });
+  const detail = previous ? `taken over from ${previous.name}` : 'taken (was unassigned)';
+  logActivity(task.project_id, req.user.id, 'task_assigned', `"${task.title}" ${detail} by ${req.user.name}`);
+  await require('../auditLog').logAudit(db, req, 'task', task.id, task.title, previous ? 'task_taken_over' : 'task_taken', detail);
+  if (previous) {
+    await require('../notifications').notifyUser(Number(previous.id), 'task_assigned',
+      { title: '🔁 Task taken over', body: `**${req.user.name}** took over **${task.title}**.`, facts: [{ name: 'Task', value: task.title }, { name: 'Now with', value: req.user.name }] },
+      { title: `${req.user.name} took over: ${task.title}`, body: null, link: '/tasks' }).catch(error => console.error('[task take over notify]', error.message));
+  }
+  require('../liveUpdates').emitChange('tasks');
+  res.json({ ok: true, assigned_to: req.user.id, previous: previous ? previous.name : null });
+});
+
 router.use('/:id/subtasks', require('./task-subtasks'));
 
 module.exports = router;
