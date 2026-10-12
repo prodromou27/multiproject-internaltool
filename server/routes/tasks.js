@@ -9,6 +9,7 @@ const { notify } = require('../notifications');
 const { canAccessCustomer } = require('../customerAccess');
 const { decrypt } = require('../fieldCipher');
 const subtasks = require('../taskSubtasks');
+const taskTickets = require('../taskTickets');
 
 // A task shows its own customer or its project's. Names are stored encrypted.
 async function withCustomerNames(rows) {
@@ -95,7 +96,7 @@ router.get('/', requireAuth, async (req, res) => {
     }));
   }
 
-  rows = await subtasks.withSubtaskCounts(rows);
+  rows = await taskTickets.withTickets(await subtasks.withSubtaskCounts(rows));
   res.json(pagination ? { rows, total: counts[req.query.filter || 'all'], counts, page: pagination.page, page_size: pagination.page_size } : rows);
 });
 
@@ -179,9 +180,11 @@ router.post('/', requireAuth, async (req, res) => {
   const projectCustomer = project_id ? (await db.prepare('SELECT customer_id FROM projects WHERE id = ?').get(project_id))?.customer_id : null;
   const newSubtasks = await subtasks.checkNewSubtasks(req.body.subtasks, customerId || projectCustomer);
   if (newSubtasks.error) return res.status(400).json({ error: newSubtasks.error });
+  const ticketReference = taskTickets.checkReference(req.body.ticket_reference);
+  if (ticketReference.error) return res.status(400).json({ error: ticketReference.error });
 
-  const result = (await db.prepare(`INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, team_id, asset_id, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(project_id || null, customerId, title.trim(), description, priority || 'medium', deadline || null, assigned_to || null, teamId, assetId, req.user.id, is_adhoc ? 1 : 0));
+  const result = (await db.prepare(`INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, team_id, asset_id, ticket_reference, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(project_id || null, customerId, title.trim(), description, priority || 'medium', deadline || null, assigned_to || null, teamId, assetId, ticketReference.value ?? null, req.user.id, is_adhoc ? 1 : 0));
 
   // Log activity
   const taskId = result.lastInsertRowid;
@@ -222,6 +225,9 @@ router.put('/:id', requireAuth, async (req, res) => {
   if (req.user.role !== 'manager' && (req.user.role !== 'engineer' || !await worksOnTask(req.user, task)))
     return res.status(403).json({ error: 'Forbidden' });
   const inputError = validateTaskInput(req.body);
+  const ticketReference = taskTickets.checkReference(req.body.ticket_reference);
+  if (ticketReference.error) return res.status(400).json({ error: ticketReference.error });
+  const nextTicket = ticketReference.value === undefined ? task.ticket_reference : ticketReference.value;
   if (req.body.status && req.body.status !== task.status && subtasks.CLOSING.has(req.body.status)) {
     const open = (await subtasks.withOpenSubtasks([task.id])).get(Number(task.id));
     if (open) return res.status(409).json({ error: subtasks.closingBlocked(open), code: 'OPEN_SUBTASKS', open_subtasks: open });
@@ -242,7 +248,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     (await db.prepare(`UPDATE tasks SET
       title=COALESCE(?,title), description=COALESCE(?,description),
       priority=COALESCE(?,priority), deadline=?,
-      status=COALESCE(?,status), pending_from_customer=?, assigned_to=?,
+      status=COALESCE(?,status), pending_from_customer=?, assigned_to=?, ticket_reference=?,
       updated_at=app_now() WHERE id=?`)
       .run(
         title?.trim() || null,
@@ -253,6 +259,7 @@ router.put('/:id', requireAuth, async (req, res) => {
         newPfc,
         // A team task becomes yours when you change its status (records who did it).
         task.assigned_to ?? (status && status !== task.status ? req.user.id : null),
+        nextTicket,
         task.id
       ));
     if (status && task.status !== status) {
@@ -294,9 +301,9 @@ router.put('/:id', requireAuth, async (req, res) => {
   (await db.prepare(`UPDATE tasks SET title=COALESCE(?,title), description=COALESCE(?,description),
     priority=COALESCE(?,priority), deadline=?, assigned_to=?,
     status=COALESCE(?,status), is_adhoc=COALESCE(?,is_adhoc),
-    pending_from_customer=?, updated_at=app_now() WHERE id=?`)
+    pending_from_customer=?, ticket_reference=?, updated_at=app_now() WHERE id=?`)
     .run(title?.trim(), description, priority, deadline === undefined ? task.deadline : (deadline || null), nextAssignee, status,
-         is_adhoc != null ? (is_adhoc ? 1 : 0) : null, newPfc, task.id));
+         is_adhoc != null ? (is_adhoc ? 1 : 0) : null, newPfc, nextTicket, task.id));
 
   // Log status change
   if (status && status !== task.status) {
@@ -404,10 +411,10 @@ router.post('/:id/duplicate', requireAuth, async (req, res) => {
   // Engineers: can only duplicate tasks assigned to them
   if (req.user.role === 'engineer' && !await worksOnTask(req.user, task)) return res.status(403).json({ error: 'Forbidden' });
   const result = (await db.prepare(`
-    INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc, ticket_reference)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(task.project_id, task.customer_id, task.title + ' (copy)', task.description, task.priority, task.deadline,
-         task.assigned_to, req.user.id, task.is_adhoc));
+         task.assigned_to, req.user.id, task.is_adhoc, task.ticket_reference || null));
   logActivity(task.project_id, req.user.id, 'task_created', task.title + ' (copy)');
   const checklist = await db.prepare('SELECT title, asset_id FROM task_subtasks WHERE task_id = ? ORDER BY position, id').all(task.id);
   if (checklist.length) await subtasks.insertSubtasks(db, result.lastInsertRowid, checklist, req.user.id);

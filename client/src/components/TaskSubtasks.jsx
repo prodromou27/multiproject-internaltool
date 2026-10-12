@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ListChecks, Plus, Server, Trash2 } from 'lucide-react';
+import { ListChecks, Plus, Server, Ticket, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import { fmtDate, Modal } from './Shared';
 import { useToast } from './Toast';
@@ -99,4 +99,15 @@ export function SubtasksDialog({ task, customerId, canEdit = true, onClose, onCh
     <TaskSubtasks taskId={task.id} customerId={customerId ?? task.customer_id ?? null} canEdit={canEdit} onChange={onChange} />
     <div className="modal-footer"><button type="button" className="btn btn-primary" onClick={onClose}>Done</button></div>
   </Modal>;
+}
+
+/** A task's ticket, when it names one: linked to Request Tracker when it is a synced ticket of the customer. */
+export function TaskTicket({ task }) {
+  if (!task?.ticket_reference) return null;
+  if (!task.ticket) return <span className="st-chip" title="Ticket reference"><Ticket size={12} aria-hidden="true" /> {task.ticket_reference}</span>;
+  const label = <><Ticket size={12} aria-hidden="true" /> #{task.ticket.number}{task.ticket.status_group === 'closed' ? ' · closed' : ''}</>;
+  const title = `Ticket #${task.ticket.number}: ${task.ticket.subject}`;
+  return task.ticket.url
+    ? <a className="st-chip st-ticket" href={task.ticket.url} target="_blank" rel="noreferrer noopener" title={title} aria-label={title}>{label}</a>
+    : <span className="st-chip" title={title}>{label}</span>;
 }

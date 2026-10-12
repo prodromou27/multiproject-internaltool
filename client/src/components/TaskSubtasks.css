@@ -29,3 +29,5 @@ button.st-chip:hover { border-color: var(--gray-400); color: var(--gray-900); }
 .ct-subtasks legend { padding: 0 4px; font-size: 13px; font-weight: 600; }
 .ct-subtasks .btn { justify-self: start; }
 .kanban-subtasks { margin-top: 6px; }
+a.st-ticket { color: var(--primary); text-decoration: none; }
+a.st-ticket:hover { border-color: var(--primary); }

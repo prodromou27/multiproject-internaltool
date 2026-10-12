@@ -5,7 +5,7 @@ import { fmtDate,StatusBadge } from './Shared';
 import { useLiveVersion } from '../live';
 import CustomerRecurringTasks from './CustomerRecurringTasks';
 import CustomerTaskForm from './CustomerTaskForm';
-import { SubtaskProgress, SubtasksDialog } from './TaskSubtasks';
+import { SubtaskProgress, SubtasksDialog, TaskTicket } from './TaskSubtasks';
 import { useToast } from './Toast';
 import { Check, Play, Plus, Repeat } from 'lucide-react';
 import AddToCalendarButton from './AddToCalendarButton';
@@ -76,7 +76,7 @@ export function CustomerTasks({ customerId,initialFilter='',engineers=[],canMana
       const done=DONE_STATUSES.has(row.status),openSubtasks=(row.subtasks_total || 0)-(row.subtasks_done || 0),overdue=!done && row.deadline && row.deadline.slice(0,10)<new Date().toISOString().slice(0,10);
       return <tr key={row.id}>
         <td data-label="Task">{row.project_id ? <Link to={`/projects/${row.project_id}`}>{row.title}</Link> : <Link to={`/tasks?customer_id=${customerId}`}>{row.title}</Link>}
-          <div className="cs-task-meta"><SubtaskProgress total={row.subtasks_total} done={row.subtasks_done} compact={!row.subtasks_total} onClick={() => setSubtasksFor(row)} />{row.recurring_task_id && <span title="Created by a recurring task"><Repeat size={12} aria-hidden="true" /> Repeats</span>}{row.asset_name && <span>Asset: {row.asset_name}</span>}{row.project_title && <span>Project: {row.project_title}</span>}</div></td>
+          <div className="cs-task-meta"><SubtaskProgress total={row.subtasks_total} done={row.subtasks_done} compact={!row.subtasks_total} onClick={() => setSubtasksFor(row)} /><TaskTicket task={row} />{row.recurring_task_id && <span title="Created by a recurring task"><Repeat size={12} aria-hidden="true" /> Repeats</span>}{row.asset_name && <span>Asset: {row.asset_name}</span>}{row.project_title && <span>Project: {row.project_title}</span>}</div></td>
         <td data-label="For">{row.assigned_to_name || (row.team_name ? `${row.team_name} (team)` : 'Unassigned')}</td>
         <td data-label="Status"><StatusBadge entityType="task" s={row.status} /></td>
         <td data-label="Priority"><span className={`badge badge-${row.priority}`}>{row.priority}</span></td>

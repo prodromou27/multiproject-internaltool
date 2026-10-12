@@ -126,3 +126,23 @@ test('My Work shows subtask progress, and checklists kept only in this browser m
   await expect.poll(() => page.evaluate(() => localStorage.getItem('hub_checklists_1'))).toBe(JSON.stringify({ 99: [{ id: 3, title: 'Gone task', done: false }] }));
   await expect(page.getByRole('button', { name: 'Subtasks: 1 of 2 subtasks done' })).toBeVisible();
 });
+
+test('a task may name a ticket: linked when it is a synced ticket of the customer, never required', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  const sent = [];
+  api.override('GET /api/tasks', () => ({ body: { rows: [
+    { id: 61, title: 'Firewall upgrade', status: 'open', priority: 'high', created_by_name: 'A', customer_id: 12, ticket_reference: 'RT#5001', ticket: { number: '5001', subject: 'Firewall upgrade request', status_group: 'open', url: 'https://rt.example.com/Ticket/Display.html?id=5001' } },
+    { id: 62, title: 'Internal clean-up', status: 'open', priority: 'low', created_by_name: 'A', ticket_reference: 'INC-77' },
+    { id: 63, title: 'No ticket', status: 'open', priority: 'low', created_by_name: 'A' },
+  ], total: 3, counts: { all: 3, open: 3 }, page: 1, page_size: 50 } }));
+  api.override('PUT /api/tasks/63', ({ body }) => { sent.push(body); return { body: { ok: true } }; });
+  await page.goto('/tasks');
+  await expect(page.getByRole('link', { name: 'Ticket #5001: Firewall upgrade request' })).toHaveAttribute('href', 'https://rt.example.com/Ticket/Display.html?id=5001');
+  await expect(page.getByRole('row', { name: /Internal clean-up/ })).toContainText('INC-77');
+  await page.getByRole('row', { name: /No ticket/ }).getByRole('button', { name: /Edit/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit Task' });
+  await expect(dialog.getByLabel('Ticket (optional)')).toHaveValue('');
+  await dialog.getByLabel('Ticket (optional)').fill('RT#5003');
+  await dialog.getByRole('button', { name: 'Save Changes' }).click();
+  await expect.poll(() => sent[0]).toMatchObject({ ticket_reference: 'RT#5003' });
+});

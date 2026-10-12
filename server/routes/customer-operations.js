@@ -159,13 +159,13 @@ router.get('/tasks',requireAuth,async (req,res) => {
   if (filter==='recently_completed') clauses.push("t.status IN ('completed','closed') AND t.updated_at>=app_now()-INTERVAL '30 days'");
   if (req.query.status) { clauses.push('t.status=?');params.push(req.query.status); }
   if (req.query.priority) { clauses.push('t.priority=?');params.push(req.query.priority); }
-  if (req.query.search?.trim()) { const pattern=searchPattern(req.query.search);clauses.push('(LOWER(t.title) ILIKE ? OR LOWER(COALESCE(p.title,\'\')) ILIKE ? OR LOWER(COALESCE(u.name,\'\')) ILIKE ?)');params.push(pattern,pattern,pattern); }
+  if (req.query.search?.trim()) { const pattern=searchPattern(req.query.search);clauses.push('(LOWER(t.title) ILIKE ? OR LOWER(COALESCE(p.title,\'\')) ILIKE ? OR LOWER(COALESCE(u.name,\'\')) ILIKE ? OR LOWER(COALESCE(t.ticket_reference,\'\')) ILIKE ?)');params.push(pattern,pattern,pattern,pattern); }
   const where=clauses.join(' AND ');
-  const rows=(await db.prepare(`SELECT t.id,t.project_id,t.title,t.status,t.priority,t.deadline,t.updated_at,t.assigned_to,t.team_id,t.recurring_task_id,t.asset_id,ca.name AS asset_name,u.name AS assigned_to_name,tm.name AS team_name,p.title AS project_title,COALESCE(t.customer_id,p.customer_id) AS customer_id
+  const rows=(await db.prepare(`SELECT t.id,t.project_id,t.title,t.status,t.priority,t.deadline,t.updated_at,t.assigned_to,t.team_id,t.recurring_task_id,t.asset_id,t.ticket_reference,ca.name AS asset_name,u.name AS assigned_to_name,tm.name AS team_name,p.title AS project_title,COALESCE(t.customer_id,p.customer_id) AS customer_id
     FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to LEFT JOIN teams tm ON tm.id=t.team_id LEFT JOIN customer_assets ca ON ca.id=t.asset_id WHERE ${where}
     ORDER BY CASE WHEN t.deadline IS NULL THEN 1 ELSE 0 END,t.deadline,t.id LIMIT ? OFFSET ?`).all(...params,paging.pageSize,paging.offset))
     .map(row => ({ ...row,asset_name:row.asset_name ? decrypt(row.asset_name) : null }));
-  const withProgress=await require('../taskSubtasks').withSubtaskCounts(rows);
+  const withProgress=await require('../taskTickets').withTickets(await require('../taskSubtasks').withSubtaskCounts(rows));
   const count=await db.prepare(`SELECT COUNT(*) AS total FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to WHERE ${where}`).get(...params);
   res.json({ rows:withProgress,total:Number(count.total),page:paging.page,page_size:paging.pageSize });
 });

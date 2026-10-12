@@ -76,3 +76,29 @@ test('a recurring task carries a checklist into each task it creates', async () 
   const task = await db.prepare('SELECT id FROM tasks WHERE recurring_task_id = ?').get(made.data.id);
   assert.deepEqual((await subtasksOf(task.id)).data.map(s => s.title), ['Firewalls', 'Servers']);
 });
+
+test('a task may name a ticket; a ticket of the same customer is linked', async () => {
+  const ticket = (customer, number, subject) => db.prepare(`INSERT INTO external_tickets (customer_id, external_queue_id, external_queue_name, external_ticket_id, ticket_number, subject, external_status, normalized_status, status_group, external_url)
+    VALUES (?, 'q1', 'Support', ?, ?, ?, 'open', 'open', 'open', ?)`).run(customer, `${customer}-${number}`, number, subject, `https://rt.example.com/Ticket/Display.html?id=${number}`);
+  await ticket(ids.customer, '5001', 'Firewall upgrade request');
+  await ticket(ids.customerUnassigned, '5002', 'Another customer');
+  const made = await newTask({ assigned_to: ids.engineerEnabled, ticket_reference: 'RT#5001' });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+  const plain = await newTask({ title: 'No ticket at all' });
+  assert.equal(plain.status, 200, 'a ticket is never required');
+  assert.equal((await newTask({ ticket_reference: 'x'.repeat(51) })).status, 400);
+
+  const rows = (await api(`/api/customers/${ids.customer}/operations/tasks?filter=open&search=5001`, { token: ids.tokenManager })).data.rows;
+  assert.deepEqual(rows.map(r => [r.id, r.ticket_reference, r.ticket?.subject, r.ticket?.url]),
+    [[Number(made.data.id), 'RT#5001', 'Firewall upgrade request', 'https://rt.example.com/Ticket/Display.html?id=5001']]);
+
+  // An engineer working on it changes the reference; another customer's ticket is not linked.
+  assert.equal((await api(`/api/tasks/${made.data.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { ticket_reference: '5002' } })).status, 200);
+  const after = (await api(`/api/customers/${ids.customer}/operations/tasks?filter=open&search=5002`, { token: ids.tokenManager })).data.rows[0];
+  assert.deepEqual([after.ticket_reference, after.ticket], ['5002', undefined]);
+  // A status change alone keeps it; a manager clears it.
+  await api(`/api/tasks/${made.data.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { status: 'in_progress' } });
+  assert.equal((await db.prepare('SELECT ticket_reference FROM tasks WHERE id = ?').get(made.data.id)).ticket_reference, '5002');
+  await api(`/api/tasks/${made.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { ticket_reference: null } });
+  assert.equal((await db.prepare('SELECT ticket_reference FROM tasks WHERE id = ?').get(made.data.id)).ticket_reference, null);
+});

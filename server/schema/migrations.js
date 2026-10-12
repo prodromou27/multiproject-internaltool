@@ -1113,6 +1113,11 @@ async function applyMigrations(pool, transaction) {
     CREATE INDEX IF NOT EXISTS idx_task_subtasks_task ON task_subtasks(task_id, position, id);
     ALTER TABLE recurring_tasks ADD COLUMN IF NOT EXISTS subtasks TEXT;
   `]);
+  migrations.push(['20261029_task_ticket_reference', `
+    -- A task may name a ticket (optional; tasks are not tied to tickets), e.g. "RT#12345".
+    -- When it matches a synced ticket of the task's customer, the task links to it.
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS ticket_reference TEXT;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

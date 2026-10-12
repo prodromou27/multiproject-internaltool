@@ -14,7 +14,7 @@ import { linesOf } from './TaskSubtasks';
 const PRIORITIES = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['critical', 'Critical']];
 
 export default function CustomerTaskForm({ customerId, isManager, engineers = [], initial = {}, onClose, onSaved }) {
-  const [form, setForm] = useState({ title: initial.title || '', description: initial.description || '', priority: initial.priority || 'medium', deadline: '', assignee: isManager ? 'engineer' : 'me', assigned_to: '', team_id: '' });
+  const [form, setForm] = useState({ title: initial.title || '', description: initial.description || '', priority: initial.priority || 'medium', deadline: '', assignee: isManager ? 'engineer' : 'me', assigned_to: '', team_id: '', ticket_reference: '' });
   const [teams, setTeams] = useState([]), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const [lines, setLines] = useState(''), [assets, setAssets] = useState(null), [picking, setPicking] = useState(!!initial.subtasks?.length);
   // Chosen assets, each with its subtask title (an asset's name unless prefilled).
@@ -35,7 +35,7 @@ export default function CustomerTaskForm({ customerId, isManager, engineers = []
   async function submit(event) {
     event.preventDefault();
     setSaving(true); setError('');
-    const body = { title: form.title, description: form.description || null, priority: form.priority, deadline: form.deadline || null, customer_id: Number(customerId), ...(initial.asset_id ? { asset_id: initial.asset_id } : {}), ...(subtasks.length ? { subtasks } : {}) };
+    const body = { title: form.title, description: form.description || null, priority: form.priority, deadline: form.deadline || null, customer_id: Number(customerId), ...(initial.asset_id ? { asset_id: initial.asset_id } : {}), ...(subtasks.length ? { subtasks } : {}), ...(form.ticket_reference.trim() ? { ticket_reference: form.ticket_reference.trim() } : {}) };
     if (form.assignee === 'team') body.team_id = Number(form.team_id);
     else if (form.assignee === 'engineer' && form.assigned_to) body.assigned_to = Number(form.assigned_to);
     try { await api.createTask(body); onSaved(); } catch (failure) { setError(failure.message); } finally { setSaving(false); }
@@ -47,6 +47,7 @@ export default function CustomerTaskForm({ customerId, isManager, engineers = []
       {initial.asset_name && <p className="text-sm text-muted">About asset <strong>{initial.asset_name}</strong></p>}
       <div className="form-group"><label htmlFor="ct-title">Task *</label><input id="ct-title" value={form.title} onChange={set('title')} maxLength={500} required placeholder="For example, Replace the failed disk on NAS-01" /></div>
       <div className="form-group"><label htmlFor="ct-description">Description</label><textarea id="ct-description" value={form.description} onChange={set('description')} rows={3} maxLength={10000} /></div>
+      <div className="form-group"><label htmlFor="ct-ticket">Ticket (optional)</label><input id="ct-ticket" value={form.ticket_reference} onChange={set('ticket_reference')} maxLength={50} placeholder="e.g. RT#12345" /></div>
       <div className="form-row">
         <div className="form-group"><label htmlFor="ct-deadline">Due date</label><input id="ct-deadline" type="date" value={form.deadline} onChange={set('deadline')} /></div>
         <div className="form-group"><label htmlFor="ct-priority">Priority</label><select id="ct-priority" value={form.priority} onChange={set('priority')}>{PRIORITIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
