@@ -4,6 +4,9 @@ import { api } from '../api';
 import { fmtDate,StatusBadge } from './Shared';
 import { useLiveVersion } from '../live';
 import CustomerRecurringTasks from './CustomerRecurringTasks';
+import CustomerTaskForm from './CustomerTaskForm';
+import { useToast } from './Toast';
+import { Plus } from 'lucide-react';
 import AddToCalendarButton from './AddToCalendarButton';
 
 function useCustomerList(load,params,customerId) {
@@ -48,11 +51,15 @@ export function CustomerProjects({ customerId,initialFilter='' }) {
   </section>;
 }
 
-export function CustomerTasks({ customerId,initialFilter='',engineers=[],canManage=false }) {
+export function CustomerTasks({ customerId,initialFilter='',engineers=[],canManage=false,canAdd=false,create=false }) {
+  const toast=useToast(),[adding,setAdding]=useState(canAdd && create);
   const [page,setPage]=useState(1),[filter,setFilter]=useState(initialFilter || 'all'),[priority,setPriority]=useState(''),[engineer,setEngineer]=useState(''),[draft,setDraft]=useState(''),[search,setSearch]=useState('');
   const state=useCustomerList((params,options) => api.customerOperationTasks(customerId,params,options),{ page,page_size:25,filter,search,...(priority?{priority}:{}),...(engineer?{engineer_id:engineer}:{}) },customerId);
   const update=(setter,value) => { setter(value);setPage(1); };
-  return <section><CustomerRecurringTasks customerId={customerId} canManage={canManage} engineers={engineers} /><SearchFilter value={draft} onChange={setDraft} onSubmit={() => { setSearch(draft.trim());setPage(1); }}><label><span>Status</span><select value={filter} onChange={event => update(setFilter,event.target.value)}><option value="all">All</option><option value="open">Open</option><option value="in_progress">In progress</option><option value="overdue">Overdue</option><option value="recently_completed">Recently completed</option></select></label><label><span>Priority</span><select value={priority} onChange={event => update(setPriority,event.target.value)}><option value="">All priorities</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>{engineers.length>0 && <label><span>Engineer</span><select value={engineer} onChange={event => update(setEngineer,event.target.value)}><option value="">All engineers</option>{engineers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}</SearchFilter>
+  return <section><CustomerRecurringTasks customerId={customerId} canManage={canManage} engineers={engineers} />
+    {canAdd && <div className="cs-tasks-head"><h2>Tasks</h2><button type="button" className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Plus size={14} /> Add task</button></div>}
+    {adding && <CustomerTaskForm customerId={customerId} isManager={canManage} engineers={engineers} onClose={() => setAdding(false)} onSaved={() => { setAdding(false);toast.success('Task added');state.retry(); }} />}
+    <SearchFilter value={draft} onChange={setDraft} onSubmit={() => { setSearch(draft.trim());setPage(1); }}><label><span>Status</span><select value={filter} onChange={event => update(setFilter,event.target.value)}><option value="all">All</option><option value="open">Open</option><option value="in_progress">In progress</option><option value="overdue">Overdue</option><option value="recently_completed">Recently completed</option></select></label><label><span>Priority</span><select value={priority} onChange={event => update(setPriority,event.target.value)}><option value="">All priorities</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>{engineers.length>0 && <label><span>Engineer</span><select value={engineer} onChange={event => update(setEngineer,event.target.value)}><option value="">All engineers</option>{engineers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}</SearchFilter>
     <ResultState {...state} empty="No tasks found">{state.data && <div className="card cs-work-table-wrap"><table className="cs-work-table"><thead><tr><th>Task</th><th>Engineer</th><th>Project</th><th>Status</th><th>Priority</th><th>Due date</th></tr></thead><tbody>{state.data.rows.map(row => <tr key={row.id}><td data-label="Task">{row.project_id ? <Link to={`/projects/${row.project_id}`}>{row.title}</Link> : <Link to={`/tasks?customer_id=${customerId}`}>{row.title}</Link>}</td><td data-label="Engineer">{row.assigned_to_name || (row.team_name ? `${row.team_name} (team)` : 'Unassigned')}</td><td data-label="Project">{row.project_id ? <Link to={`/projects/${row.project_id}`}>{row.project_title}</Link> : <span className="text-muted">Customer task</span>}</td><td data-label="Status"><StatusBadge entityType="task" s={row.status} /></td><td data-label="Priority"><span className={`badge badge-${row.priority}`}>{row.priority}</span></td><td data-label="Due date">{fmtDate(row.deadline)}</td></tr>)}</tbody></table><Pager data={state.data} onPage={setPage} /></div>}</ResultState>
   </section>;
 }

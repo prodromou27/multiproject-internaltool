@@ -116,7 +116,7 @@ function validateTaskInput(body, creating = false) {
       || Number.isNaN(Date.parse(body.deadline)) || new Date(body.deadline).toISOString().slice(0, 10) !== body.deadline)
       return 'Deadline must be a valid YYYY-MM-DD date';
   }
-  for (const field of ['project_id', 'customer_id', 'assigned_to']) {
+  for (const field of ['project_id', 'customer_id', 'assigned_to', 'team_id']) {
     if (body[field] != null && body[field] !== '' && (!Number.isSafeInteger(Number(body[field])) || Number(body[field]) < 1))
       return `${field} must be a positive integer`;
   }
@@ -147,8 +147,18 @@ router.post('/', requireAuth, async (req, res) => {
   if (req.user.role === 'engineer' && !project_id && !customerId) return res.status(400).json({ error: 'Choose the project or customer this task is for' });
   if (customerId && !await db.prepare('SELECT 1 FROM customers WHERE id = ?').get(customerId)) return res.status(400).json({ error: 'Customer not found' });
 
+  // A task may be given to a team instead of a person: anyone in the team takes it
+  // by starting or completing it (taskAccess.js). Engineers may give one only to
+  // a team they are in; managers to any team.
+  const teamId = !assigned_to && req.body.team_id ? Number(req.body.team_id) : null;
+  if (teamId) {
+    if (!await db.prepare('SELECT 1 FROM teams WHERE id = ?').get(teamId)) return res.status(400).json({ error: 'Team not found' });
+    if (req.user.role === 'engineer' && !await db.prepare('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?').get(teamId, req.user.id))
+      return res.status(403).json({ error: 'You can only give tasks to a team you are in' });
+  }
+
   // Engineers may only create tasks on projects they are assigned to, or for
-  // customers they work with, and always self-assign regardless of what was passed.
+  // customers they work with, and take the task themselves unless they give it to their team.
   if (req.user.role === 'engineer') {
     if (project_id) {
       const member = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(project_id, req.user.id));
@@ -156,35 +166,35 @@ router.post('/', requireAuth, async (req, res) => {
     } else if (!await canAccessCustomer(req.user, customerId)) {
       return res.status(403).json({ error: 'You can only add tasks for customers you work with' });
     }
-    assigned_to = req.user.id;
+    assigned_to = teamId ? null : req.user.id;
   }
 
   const relationshipError = await validateTaskRelationships(project_id, assigned_to);
   if (relationshipError) return res.status(400).json({ error: relationshipError });
 
-  const result = (await db.prepare(`INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(project_id || null, customerId, title.trim(), description, priority || 'medium', deadline || null, assigned_to || null, req.user.id, is_adhoc ? 1 : 0));
+  const result = (await db.prepare(`INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, team_id, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(project_id || null, customerId, title.trim(), description, priority || 'medium', deadline || null, assigned_to || null, teamId, req.user.id, is_adhoc ? 1 : 0));
 
   // Log activity
   const taskId = result.lastInsertRowid;
   logActivity(project_id, req.user.id, 'task_created', title);
 
-  // Notify if engineer is assigned
-  if (assigned_to) {
-    const engineer = (await db.prepare('SELECT name, email FROM users WHERE id = ?').get(assigned_to));
-    const project  = project_id ? (await db.prepare('SELECT title FROM projects WHERE id = ?').get(project_id)) : null;
-    if (engineer) {
-      notify('task.assigned', {
-        engineer_id:    assigned_to,
-        engineer_name:  engineer.name,
-        engineer_email: engineer.email,
-        task_title:     title,
-        project_title:  project?.title || null,
-        deadline:       deadline || null,
-        priority:       priority || 'medium',
-        is_adhoc:       !!is_adhoc,
-      });
-    }
+  // Notify the engineer it is assigned to, or the team's engineers (except whoever added it).
+  const people = assigned_to ? await db.prepare('SELECT id, name, email FROM users WHERE id = ?').all(assigned_to)
+    : teamId ? (await db.prepare("SELECT u.id, u.name, u.email FROM users u JOIN team_members tm ON tm.user_id = u.id WHERE tm.team_id = ? AND u.active = 1 AND u.role = 'engineer'").all(teamId))
+      .filter(person => Number(person.id) !== Number(req.user.id)) : [];
+  const project = people.length && project_id ? (await db.prepare('SELECT title FROM projects WHERE id = ?').get(project_id)) : null;
+  for (const engineer of people) {
+    notify('task.assigned', {
+      engineer_id:    engineer.id,
+      engineer_name:  engineer.name,
+      engineer_email: engineer.email,
+      task_title:     title,
+      project_title:  project?.title || null,
+      deadline:       deadline || null,
+      priority:       priority || 'medium',
+      is_adhoc:       !!is_adhoc,
+    });
   }
 
   res.json({ id: taskId });

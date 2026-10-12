@@ -306,6 +306,8 @@
 .cs-recurring header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .cs-recurring h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0; }
 .cs-recurring tr.is-paused td { color: var(--gray-400); }
+.cs-tasks-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
+.cs-tasks-head h2 { margin: 0; font-size: 15px; }
 
 /* Recurring task form */
 .rt-every { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
