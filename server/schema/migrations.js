@@ -1073,6 +1073,26 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TEXT;
     UPDATE tasks SET completed_at = updated_at WHERE status IN ('completed','closed') AND completed_at IS NULL;
   `]);
+  migrations.push(['20261027_asset_reviews', `
+    -- Asset reviews: an engineer confirms what an asset runs now (and when), and
+    -- every version change is kept. reviewed_at/by is the last review; the log
+    -- has each review and each change of software version, with an optional note.
+    -- Versions and notes are encrypted by the app, like the asset's own version.
+    ALTER TABLE customer_assets ADD COLUMN IF NOT EXISTS reviewed_at TEXT;
+    ALTER TABLE customer_assets ADD COLUMN IF NOT EXISTS reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    CREATE TABLE IF NOT EXISTS customer_asset_versions (
+      id           SERIAL PRIMARY KEY,
+      asset_id     INTEGER NOT NULL REFERENCES customer_assets(id) ON DELETE CASCADE,
+      customer_id  INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      kind         TEXT NOT NULL CHECK(kind IN ('reviewed','changed')),
+      from_version TEXT,
+      to_version   TEXT,
+      note         TEXT,
+      user_id      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_asset_versions ON customer_asset_versions(asset_id, id);
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

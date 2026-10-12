@@ -62,8 +62,8 @@ function CustomerEstate() {
     {data.attention.length > 0 && <div className="table-wrap"><table className="sv-table">
       <thead><tr><th scope="col">Customer</th><th scope="col">Device</th><th scope="col">Product</th><th scope="col">Running</th><th scope="col">Status</th></tr></thead>
       <tbody>{data.attention.map(a => <tr key={a.id}>
-        <td><Link to={`/customers/${a.customer_id}/service-profile?section=assets`}>{a.customer_name}</Link></td>
-        <th scope="row">{a.name}</th><td>{a.product_name}</td><td>{a.software_version}</td><td><SoftwareStatusBadge status={a} /></td>
+        <td>{a.customer_name}</td>
+        <th scope="row"><Link to={`/customers/${a.customer_id}/service-profile?section=assets&view=attention`} title="Review it in the customer's assets">{a.name}</Link></th><td>{a.product_name}</td><td>{a.software_version}</td><td><SoftwareStatusBadge status={a} /></td>
       </tr>)}</tbody>
     </table></div>}
   </Surface>;

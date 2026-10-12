@@ -308,6 +308,9 @@
 .cs-recurring tr.is-paused td { color: var(--gray-400); }
 .cs-tasks-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
 .cs-tasks-head h2 { margin: 0; font-size: 15px; }
+.cs-task-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 3px; color: var(--gray-500); font-size: 12px; }
+.cs-task-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.cs-work-table td.cs-overdue { color: var(--tone-danger-text, var(--danger)); font-weight: 600; }
 
 /* Recurring task form */
 .rt-every { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

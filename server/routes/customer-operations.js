@@ -3,6 +3,7 @@ const db=require('../db');
 const { requireAuth }=require('../middleware/auth');
 const { positiveId,canAccessCustomer,isManagedServicesEngineer }=require('../customerAccess');
 const { ownTasksSql, ownTasksParams } = require('../taskAccess');
+const { decrypt } = require('../fieldCipher');
 
 const parsePage=query => {
   for (const key of ['page','page_size']) if (query[key]!==undefined && (typeof query[key]!=='string' || !positiveId(query[key]))) return null;
@@ -160,9 +161,10 @@ router.get('/tasks',requireAuth,async (req,res) => {
   if (req.query.priority) { clauses.push('t.priority=?');params.push(req.query.priority); }
   if (req.query.search?.trim()) { const pattern=searchPattern(req.query.search);clauses.push('(LOWER(t.title) ILIKE ? OR LOWER(COALESCE(p.title,\'\')) ILIKE ? OR LOWER(COALESCE(u.name,\'\')) ILIKE ?)');params.push(pattern,pattern,pattern); }
   const where=clauses.join(' AND ');
-  const rows=await db.prepare(`SELECT t.id,t.project_id,t.title,t.status,t.priority,t.deadline,t.updated_at,t.assigned_to,u.name AS assigned_to_name,tm.name AS team_name,p.title AS project_title,COALESCE(t.customer_id,p.customer_id) AS customer_id
-    FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to LEFT JOIN teams tm ON tm.id=t.team_id WHERE ${where}
-    ORDER BY CASE WHEN t.deadline IS NULL THEN 1 ELSE 0 END,t.deadline,t.id LIMIT ? OFFSET ?`).all(...params,paging.pageSize,paging.offset);
+  const rows=(await db.prepare(`SELECT t.id,t.project_id,t.title,t.status,t.priority,t.deadline,t.updated_at,t.assigned_to,t.team_id,t.recurring_task_id,t.asset_id,ca.name AS asset_name,u.name AS assigned_to_name,tm.name AS team_name,p.title AS project_title,COALESCE(t.customer_id,p.customer_id) AS customer_id
+    FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to LEFT JOIN teams tm ON tm.id=t.team_id LEFT JOIN customer_assets ca ON ca.id=t.asset_id WHERE ${where}
+    ORDER BY CASE WHEN t.deadline IS NULL THEN 1 ELSE 0 END,t.deadline,t.id LIMIT ? OFFSET ?`).all(...params,paging.pageSize,paging.offset))
+    .map(row => ({ ...row,asset_name:row.asset_name ? decrypt(row.asset_name) : null }));
   const count=await db.prepare(`SELECT COUNT(*) AS total FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to WHERE ${where}`).get(...params);
   res.json({ rows,total:Number(count.total),page:paging.page,page_size:paging.pageSize });
 });

@@ -170,6 +170,11 @@ export default function Tasks() {
   });
   const [sort, setSort] = useState({ key: 'deadline', direction: 'asc' });
   const [showCreate, setShowCreate] = useState(false);
+  const [createTeams, setCreateTeams] = useState([]);
+  useEffect(() => {
+    if (!showCreate) return;
+    (isManager ? api.teams() : api.teamsMine().then(result => result.teams || [])).then(setCreateTeams).catch(() => setCreateTeams([]));
+  }, [showCreate, isManager]);
   const [createCustomerId,setCreateCustomerId]=useState(null);
   const [customers,setCustomers]=useState([]);
   const [form, setForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
@@ -287,7 +292,9 @@ export default function Tasks() {
     if (!isManager && !form.project_id && !form.customer_id) { setCreateErr('Choose the customer or project this task is for'); return; }
     try {
       // A project's task takes the project's customer; otherwise it belongs to the chosen customer.
-      await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, customer_id: !form.project_id && form.customer_id ? Number(form.customer_id) : null, assigned_to: form.assigned_to ? Number(form.assigned_to) : null });
+      const team = String(form.assigned_to).startsWith('t:') ? Number(form.assigned_to.slice(2)) : null;
+      await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, customer_id: !form.project_id && form.customer_id ? Number(form.customer_id) : null,
+        assigned_to: !team && form.assigned_to ? Number(form.assigned_to) : null, team_id: team });
       setShowCreate(false);
       setCreateCustomerId(null);
       setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
@@ -641,12 +648,14 @@ export default function Tasks() {
                 </select>
               </div>
             </div>
-            {isManager && <div className="form-group"><label>Assign To</label>
-              <select value={form.assigned_to} onChange={set('assigned_to')}>
-                <option value="">Unassigned</option>
-                {engineers.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            <div className="form-group"><label htmlFor="task-assignee">Who does it</label>
+              {/* An engineer or a team ("t:<id>"): a team task is taken by whoever in the team starts or completes it. */}
+              <select id="task-assignee" value={form.assigned_to} onChange={set('assigned_to')}>
+                <option value="">{isManager ? 'Unassigned' : 'Me'}</option>
+                {isManager && <optgroup label="Engineers">{engineers.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</optgroup>}
+                {createTeams.length > 0 && <optgroup label={isManager ? 'Teams' : 'My teams'}>{createTeams.map(t => <option key={t.id} value={`t:${t.id}`}>{t.name} (team)</option>)}</optgroup>}
               </select>
-            </div>}
+            </div>
             <div className="form-group">
               <label className="u-ea06b0c">
                 <input type="checkbox" checked={form.is_adhoc} onChange={e => setForm(f => ({ ...f, is_adhoc: e.target.checked }))} className="u-30e741d" />

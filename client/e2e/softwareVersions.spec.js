@@ -79,5 +79,5 @@ test('managers see which customer devices run older versions', async ({ page }) 
   await expect(panel).toContainText('3 devices checked: 1 up to date, 1 behind, 1 on end-of-life versions.');
   await expect(panel.getByRole('row', { name: /FW-HQ-01/ })).toContainText('5 patches behind · latest 7.4.8');
   await expect(panel.getByRole('row', { name: /CP-GW/ })).toContainText('R81.10 is end of life');
-  await expect(panel.getByRole('link', { name: 'Northwind Logistics' })).toHaveAttribute('href', '/customers/12/service-profile?section=assets');
+  await expect(panel.getByRole('link', { name: 'FW-HQ-01' })).toHaveAttribute('href', '/customers/12/service-profile?section=assets&view=attention');
 });

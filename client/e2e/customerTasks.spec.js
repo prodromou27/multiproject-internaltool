@@ -34,7 +34,7 @@ test('engineers add a task for a customer, for themselves or their team', async 
   await expect(dialog.getByRole('radio', { name: 'Me' })).toBeChecked();
   await dialog.getByRole('button', { name: 'Add task' }).click();
   await expect.poll(() => sent[0]).toEqual({ title: 'Replace failed disk on NAS-01', description: null, priority: 'high', deadline: '2026-10-20', customer_id: 12 });
-  await expect(page.getByRole('cell', { name: 'Replace failed disk on NAS-01' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Replace failed disk on NAS-01', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Add task' }).click();
   dialog = page.getByRole('dialog', { name: 'Add task' });
@@ -62,4 +62,30 @@ test('managers give a customer task to an engineer or any team; the quick action
   await dialog.getByRole('combobox', { name: 'Team', exact: true }).selectOption('Network Team');
   await dialog.getByRole('button', { name: 'Add task' }).click();
   await expect.poll(() => sent[1]).toMatchObject({ title: 'Network review', team_id: 2 });
+});
+
+test('tasks are started and finished from the customer page, open ones first', async ({ page }) => {
+  const api = await mockApi(page, { role: 'engineer' });
+  const asked = [], updates = [];
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
+  api.override('GET /api/customers/12/operations/tasks', ({ request }) => {
+    asked.push(new URL(request.url()).searchParams.get('filter'));
+    return { body: { rows: [
+      { id: 61, title: 'Monthly backup check', status: 'open', priority: 'medium', deadline: '2026-10-15', team_name: 'Security Team', recurring_task_id: 4, customer_id: 12 },
+      { id: 62, title: 'Upgrade FW-HQ-01 to 7.4.8', status: 'in_progress', priority: 'high', deadline: null, assigned_to_name: 'Alex Mercer', asset_name: 'FW-HQ-01', customer_id: 12 },
+    ], total: 2, page: 1, page_size: 25 } };
+  });
+  api.override('PUT /api/tasks/61', ({ body }) => { updates.push(['61', body]); return { body: { ok: true } }; });
+  api.override('PUT /api/tasks/62', ({ body }) => { updates.push(['62', body]); return { body: { ok: true } }; });
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await expect.poll(() => asked[0]).toBe('open');
+  await expect(page.getByRole('row', { name: /Monthly backup check/ })).toContainText('Repeats');
+  await expect(page.getByRole('row', { name: /Upgrade FW-HQ-01/ })).toContainText('Asset: FW-HQ-01');
+  await expect(page.getByRole('button', { name: 'Start Upgrade FW-HQ-01 to 7.4.8' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Start Monthly backup check' }).click();
+  await page.getByRole('button', { name: 'Mark Upgrade FW-HQ-01 to 7.4.8 done' }).click();
+  await expect.poll(() => updates).toEqual([['61', { status: 'in_progress' }], ['62', { status: 'completed' }]]);
 });

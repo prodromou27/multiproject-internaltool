@@ -34,13 +34,14 @@ const excelText=value => value==null ? '' : value instanceof Date ? value.toISOS
 const safeCell=value => /^[=+\-@]/.test(String(value ?? '')) ? `'${value}` : value;
 
 // Full asset access is the assets.access permission. Separately, an engineer on
-// a managed customer's responsible team may list that customer's assets and add
-// new ones — those two routes only.
+// a managed customer's responsible team may list that customer's assets, add new
+// ones, review one (confirm or update the version it runs) and read its version history.
 function requireAssetAccessMiddleware(req,res,next) {
   return requireAuth(req,res,async () => {
     try {
       if (await hasPermission(req.user,'assets.access')) return next();
-      const teamRoute=(req.path==='/' && ['GET','POST'].includes(req.method)) || (req.path==='/software-status' && req.method==='GET');
+      const teamRoute=(req.path==='/' && ['GET','POST'].includes(req.method)) || (req.path==='/software-status' && req.method==='GET')
+        || (/^\/\d+\/review$/.test(req.path) && req.method==='POST') || (/^\/\d+\/versions$/.test(req.path) && req.method==='GET');
       if (teamRoute && positiveId(req.params.id) && await isManagedServicesEngineer(req.user,Number(req.params.id))) return next();
       return res.status(403).json({ error: 'You do not have permission to perform this action' });
     } catch (error) { next(error); }
@@ -98,22 +99,38 @@ function filters(req) {
   if (req.query.status!==undefined && (typeof req.query.status!=='string' || !LIFECYCLE.has(req.query.status))) return { error:'Invalid status filter' };
   if (req.query.search!==undefined && (typeof req.query.search!=='string' || req.query.search.trim().length<2 || req.query.search.trim().length>100)) return { error:'Search must contain 2 to 100 characters' };
   if (req.query.expiry!==undefined && !['expired','30','60','90'].includes(req.query.expiry)) return { error:'Invalid expiry filter' };
+  if (req.query.review!==undefined && req.query.review!=='due') return { error:'Invalid review filter' };
+  if (req.query.software!==undefined && !['behind','end_of_life','attention'].includes(req.query.software)) return { error:'Invalid software filter' };
   const customer=Number(req.params.id),page=Number(rawPage),clauses=['a.customer_id=?'],params=[customer];
   if (req.query.coverage) { clauses.push('a.coverage_type=?'); params.push(req.query.coverage); }
   if (req.query.status) { clauses.push('a.lifecycle_status=?'); params.push(req.query.status); }
   const today=appTime.today();
   if (req.query.expiry==='expired') { clauses.push("a.lifecycle_status='active' AND ((a.support_end_date IS NOT NULL AND a.support_end_date<?) OR (a.warranty_expiry_date IS NOT NULL AND a.warranty_expiry_date<?))"); params.push(today,today); }
   else if (req.query.expiry) { const end=new Date(`${today}T00:00:00Z`);end.setUTCDate(end.getUTCDate()+Number(req.query.expiry));const date=end.toISOString().slice(0,10);clauses.push("a.lifecycle_status='active' AND ((a.support_end_date BETWEEN ? AND ?) OR (a.warranty_expiry_date BETWEEN ? AND ?))");params.push(today,date,today,date); }
-  return { customer,page,where:clauses.join(' AND '),params,search:req.query.search?.trim().toLowerCase() };
+  if (req.query.review==='due') { clauses.push("a.lifecycle_status='active' AND (a.reviewed_at IS NULL OR a.reviewed_at<?)"); params.push(reviewCutoff()); }
+  return { customer,page,where:clauses.join(' AND '),params,search:req.query.search?.trim().toLowerCase(),software:req.query.software };
 }
+const LIST_SELECT='SELECT a.*,t.name AS technology_name,u.name AS updated_by_name,rv.name AS reviewed_by_name,COALESCE(sac.activity_count,0) AS activity_count,COALESCE(att.attachment_count,0) AS attachment_count FROM customer_assets a LEFT JOIN technologies t ON t.id=a.technology_id LEFT JOIN users u ON u.id=COALESCE(a.updated_by,a.created_by) LEFT JOIN users rv ON rv.id=a.reviewed_by LEFT JOIN (SELECT asset_id,COUNT(*) AS activity_count FROM service_activity_assets GROUP BY asset_id) sac ON sac.asset_id=a.id LEFT JOIN (SELECT customer_asset_id,COUNT(*) AS attachment_count FROM attachments WHERE customer_asset_id IS NOT NULL GROUP BY customer_asset_id) att ON att.customer_asset_id=a.id';
+// An active asset is due a review when nobody has reviewed it in this many days.
+const REVIEW_DAYS=90;
+const reviewCutoff=() => { const day=new Date(`${appTime.today()}T00:00:00Z`);day.setUTCDate(day.getUTCDate()-REVIEW_DAYS);return day.toISOString().slice(0,10); };
 const matchesSearch=(row,search) => !search || ['name','asset_tag','asset_type','vendor','model','serial_number','hostname','ip_address','mac_address','software_version','location','technology_name'].some(field => String(row[field] || '').toLowerCase().includes(search));
+/** Narrows a filter to assets whose software is behind or end of life (softwareCompliance.js). */
+async function withSoftware(filter) {
+  if (!filter.software) return filter;
+  const wanted=filter.software==='attention' ? ['behind','end_of_life'] : [filter.software];
+  const ids=(await assetSoftwareStatus({ customerId:filter.customer })).assets.filter(a => wanted.includes(a.status)).map(a => a.id);
+  return { ...filter,where:`${filter.where} AND a.id IN (${ids.length ? ids.map(() => '?').join(',') : 'NULL'})`,params:[...filter.params,...ids] };
+}
 async function expirySummary(customer) {
   const today=appTime.today(),end=new Date(`${today}T00:00:00Z`);end.setUTCDate(end.getUTCDate()+30);const within=end.toISOString().slice(0,10);
   const row=await db.prepare(`SELECT
     SUM(CASE WHEN lifecycle_status='active' AND ((support_end_date IS NOT NULL AND support_end_date<?) OR (warranty_expiry_date IS NOT NULL AND warranty_expiry_date<?)) THEN 1 ELSE 0 END) AS expired,
-    SUM(CASE WHEN lifecycle_status='active' AND ((support_end_date BETWEEN ? AND ?) OR (warranty_expiry_date BETWEEN ? AND ?)) THEN 1 ELSE 0 END) AS due_30
-    FROM customer_assets WHERE customer_id=?`).get(today,today,today,within,today,within,customer);
-  return { expired:Number(row.expired || 0),due_30:Number(row.due_30 || 0),as_of:today };
+    SUM(CASE WHEN lifecycle_status='active' AND ((support_end_date BETWEEN ? AND ?) OR (warranty_expiry_date BETWEEN ? AND ?)) THEN 1 ELSE 0 END) AS due_30,
+    SUM(CASE WHEN lifecycle_status='active' AND (reviewed_at IS NULL OR reviewed_at<?) THEN 1 ELSE 0 END) AS review_due,
+    SUM(CASE WHEN lifecycle_status='active' THEN 1 ELSE 0 END) AS active
+    FROM customer_assets WHERE customer_id=?`).get(today,today,today,within,today,within,reviewCutoff(),customer);
+  return { expired:Number(row.expired || 0),due_30:Number(row.due_30 || 0),review_due:Number(row.review_due || 0),active:Number(row.active || 0),review_days:REVIEW_DAYS,as_of:today };
 }
 
 router.get('/template',async (req,res) => {
@@ -167,16 +184,17 @@ router.get('/software-status',async (req,res) => {
 });
 
 router.get('/',async (req,res) => {
-  const filter=filters(req);if(filter.error) return res.status(400).json({ error:filter.error });
+  const checked=filters(req);if(checked.error) return res.status(400).json({ error:checked.error });
+  const filter=await withSoftware(checked);
   const { customer,page,where,params,search }=filter;
   if (search) {
-    const [raw,technologies,expiry_summary]=await Promise.all([db.prepare(`SELECT a.*,t.name AS technology_name,u.name AS updated_by_name,COALESCE(sac.activity_count,0) AS activity_count,COALESCE(att.attachment_count,0) AS attachment_count FROM customer_assets a LEFT JOIN technologies t ON t.id=a.technology_id LEFT JOIN users u ON u.id=COALESCE(a.updated_by,a.created_by) LEFT JOIN (SELECT asset_id,COUNT(*) AS activity_count FROM service_activity_assets GROUP BY asset_id) sac ON sac.asset_id=a.id LEFT JOIN (SELECT customer_asset_id,COUNT(*) AS attachment_count FROM attachments WHERE customer_asset_id IS NOT NULL GROUP BY customer_asset_id) att ON att.customer_asset_id=a.id WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT 5001`).all(...params),db.prepare('SELECT id,name FROM technologies WHERE active=1 ORDER BY sort_order,name LIMIT 500').all(),expirySummary(customer)]);
+    const [raw,technologies,expiry_summary]=await Promise.all([db.prepare(`${LIST_SELECT} WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT 5001`).all(...params),db.prepare('SELECT id,name FROM technologies WHERE active=1 ORDER BY sort_order,name LIMIT 500').all(),expirySummary(customer)]);
     if (raw.length>5000) return res.status(413).json({ error:'Search exceeds 5000 candidate assets; narrow the filters' });
     const found=raw.map(decryptAsset).filter(row => matchesSearch(row,search));
     return res.json({ rows:found.slice((page-1)*25,page*25),total:found.length,page,page_size:25,technologies,expiry_summary,search_scope:'Up to 5000 assets matching the selected customer filters' });
   }
   const [rows,count,technologies,expiry_summary]=await Promise.all([
-    db.prepare(`SELECT a.*,t.name AS technology_name,u.name AS updated_by_name,COALESCE(sac.activity_count,0) AS activity_count,COALESCE(att.attachment_count,0) AS attachment_count FROM customer_assets a LEFT JOIN technologies t ON t.id=a.technology_id LEFT JOIN users u ON u.id=COALESCE(a.updated_by,a.created_by) LEFT JOIN (SELECT asset_id,COUNT(*) AS activity_count FROM service_activity_assets GROUP BY asset_id) sac ON sac.asset_id=a.id LEFT JOIN (SELECT customer_asset_id,COUNT(*) AS attachment_count FROM attachments WHERE customer_asset_id IS NOT NULL GROUP BY customer_asset_id) att ON att.customer_asset_id=a.id WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?`).all(...params,25,(page-1)*25),
+    db.prepare(`${LIST_SELECT} WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?`).all(...params,25,(page-1)*25),
     db.prepare(`SELECT COUNT(*) AS total FROM customer_assets a WHERE ${where}`).get(...params),
     db.prepare('SELECT id,name FROM technologies WHERE active=1 ORDER BY sort_order,name LIMIT 500').all(),
     expirySummary(customer),
@@ -261,6 +279,42 @@ router.delete('/:assetId/attachments/:attachmentId',async (req,res) => {
   res.json({ ok:true });
 });
 
+async function logVersion(runner,{ asset,kind,from,to,note,userId }) {
+  await runner.prepare('INSERT INTO customer_asset_versions (asset_id,customer_id,kind,from_version,to_version,note,user_id) VALUES (?,?,?,?,?,?,?)')
+    .run(asset.id,asset.customer_id,kind,encrypt(from || null),encrypt(to || null),encrypt(note || null),userId);
+}
+
+// A review: what the asset runs now (unchanged, or a new version) and when it was checked.
+router.post('/:assetId/review',async (req,res) => {
+  if (!positiveId(req.params.assetId) || !positiveId(req.body.version)) return res.status(400).json({ error: 'Valid asset ID and version are required' });
+  const customer=Number(req.params.id),id=Number(req.params.assetId);
+  const existing=await db.prepare('SELECT * FROM customer_assets WHERE id=? AND customer_id=?').get(id,customer);
+  if (!existing) return res.status(404).json({ error: 'Asset not found' });
+  const before=decrypt(existing.software_version) || null;
+  const given=req.body.software_version;
+  if (given!==undefined && given!==null && (typeof given!=='string' || given.trim().length>500)) return res.status(400).json({ error: 'software_version must be text of at most 500 characters' });
+  if (req.body.note!=null && (typeof req.body.note!=='string' || req.body.note.length>2000)) return res.status(400).json({ error: 'note must be text of at most 2000 characters' });
+  const after=given===undefined ? before : (given?.trim() || null), note=req.body.note?.trim() || null;
+  const row=await db.transaction(async tx => {
+    const updated=(await tx.prepare('UPDATE customer_assets SET software_version=?,reviewed_at=app_now(),reviewed_by=?,updated_by=?,updated_at=app_now(),version=version+1 WHERE id=? AND customer_id=? AND version=? RETURNING *')
+      .all(encrypt(after),req.user.id,req.user.id,id,customer,Number(req.body.version)))[0];
+    if (!updated) return null;
+    await logVersion(tx,{ asset:updated,kind:'reviewed',from:before,to:after,note,userId:req.user.id });
+    await tx.prepare('INSERT INTO customer_asset_history (asset_id,customer_id,user_id,action,lifecycle_status,coverage_type,version) VALUES (?,?,?,?,?,?,?)')
+      .run(updated.id,updated.customer_id,req.user.id,'updated',updated.lifecycle_status,updated.coverage_type,updated.version);
+    return updated;
+  });
+  if (!row) return res.status(409).json({ error: 'This asset changed. Reload before saving.',code:'ASSET_CONFLICT' });
+  await logAudit(db,req,'customer_asset',id,decrypt(existing.name),'customer_asset_reviewed',before===after ? `version ${after || 'not recorded'} confirmed` : `version ${before || 'not recorded'} → ${after || 'not recorded'}`);
+  res.json(decryptAsset(row));
+});
+
+router.get('/:assetId/versions',async (req,res) => {
+  const asset=await assetForCustomer(req,res);if (!asset) return;
+  const rows=await db.prepare('SELECT v.id,v.kind,v.from_version,v.to_version,v.note,v.created_at,u.name AS user_name FROM customer_asset_versions v LEFT JOIN users u ON u.id=v.user_id WHERE v.asset_id=? ORDER BY v.id DESC LIMIT 200').all(asset.id);
+  res.json(rows.map(row => ({ ...row,from_version:decrypt(row.from_version) || null,to_version:decrypt(row.to_version) || null,note:decrypt(row.note) || null })));
+});
+
 router.put('/:assetId',async (req,res) => {
   if (!positiveId(req.params.assetId) || !positiveId(req.body.version)) return res.status(400).json({ error: 'Valid asset ID and version are required' });
   const customer=Number(req.params.id),id=Number(req.params.assetId),existing=await db.prepare('SELECT * FROM customer_assets WHERE id=? AND customer_id=?').get(id,customer);
@@ -271,7 +325,12 @@ router.put('/:assetId',async (req,res) => {
   try {
     const row=await db.transaction(async tx => {
       const updated=(await tx.prepare(`UPDATE customer_assets SET technology_id=?,name=?,asset_tag=?,asset_tag_hash=?,asset_type=?,vendor=?,model=?,serial_number=?,hostname=?,ip_address=?,mac_address=?,software_version=?,location=?,environment=?,criticality=?,lifecycle_status=?,coverage_type=?,support_provider=?,support_reference=?,support_start_date=?,support_end_date=?,warranty_expiry_date=?,management_url=?,notes=?,updated_by=?,updated_at=app_now(),version=version+1 WHERE id=? AND customer_id=? AND version=? RETURNING *`).all(value.technology_id,value.name,value.asset_tag,value.asset_tag_hash,value.asset_type,value.vendor,value.model,value.serial_number,value.hostname,value.ip_address,value.mac_address,value.software_version,value.location,value.environment,value.criticality,value.lifecycle_status,value.coverage_type,value.support_provider,value.support_reference,value.support_start_date,value.support_end_date,value.warranty_expiry_date,value.management_url,value.notes,req.user.id,id,customer,Number(req.body.version)))[0];
-      if (updated) await history(req,{ ...updated,name:input.value.name },'updated',tx); return updated;
+      if (updated) {
+        await history(req,{ ...updated,name:input.value.name },'updated',tx);
+        const before=decrypt(existing.software_version) || null;
+        if (before!==input.value.software_version) await logVersion(tx,{ asset:updated,kind:'changed',from:before,to:input.value.software_version,userId:req.user.id });
+      }
+      return updated;
     });
     if (!row) return res.status(409).json({ error: 'This asset changed. Reload before saving.',code:'ASSET_CONFLICT' });
     res.json(decryptAsset(row));

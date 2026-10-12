@@ -5,11 +5,12 @@ import { Modal } from './Shared';
 /* Customer 360 → Tasks → Add task: a one-off task for this customer. Managers
    give it to any engineer or team (or leave it unassigned); engineers take it
    themselves or give it to a team they are in, where whoever starts or
-   completes it takes it (server: routes/tasks.js). */
+   completes it takes it (server: routes/tasks.js). `initial` prefills it, e.g.
+   an upgrade task for one asset from an asset review. */
 const PRIORITIES = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['critical', 'Critical']];
 
-export default function CustomerTaskForm({ customerId, isManager, engineers = [], onClose, onSaved }) {
-  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assignee: isManager ? 'engineer' : 'me', assigned_to: '', team_id: '' });
+export default function CustomerTaskForm({ customerId, isManager, engineers = [], initial = {}, onClose, onSaved }) {
+  const [form, setForm] = useState({ title: initial.title || '', description: initial.description || '', priority: initial.priority || 'medium', deadline: '', assignee: isManager ? 'engineer' : 'me', assigned_to: '', team_id: '' });
   const [teams, setTeams] = useState([]), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const set = key => event => setForm(current => ({ ...current, [key]: event.target.value }));
   useEffect(() => {
@@ -20,7 +21,7 @@ export default function CustomerTaskForm({ customerId, isManager, engineers = []
   async function submit(event) {
     event.preventDefault();
     setSaving(true); setError('');
-    const body = { title: form.title, description: form.description || null, priority: form.priority, deadline: form.deadline || null, customer_id: Number(customerId) };
+    const body = { title: form.title, description: form.description || null, priority: form.priority, deadline: form.deadline || null, customer_id: Number(customerId), ...(initial.asset_id ? { asset_id: initial.asset_id } : {}) };
     if (form.assignee === 'team') body.team_id = Number(form.team_id);
     else if (form.assignee === 'engineer' && form.assigned_to) body.assigned_to = Number(form.assigned_to);
     try { await api.createTask(body); onSaved(); } catch (failure) { setError(failure.message); } finally { setSaving(false); }
@@ -29,6 +30,7 @@ export default function CustomerTaskForm({ customerId, isManager, engineers = []
   return <Modal title="Add task" onClose={onClose}>
     <form onSubmit={submit} className="rt-form">
       {error && <div className="error-msg" role="alert">{error}</div>}
+      {initial.asset_name && <p className="text-sm text-muted">About asset <strong>{initial.asset_name}</strong></p>}
       <div className="form-group"><label htmlFor="ct-title">Task *</label><input id="ct-title" value={form.title} onChange={set('title')} maxLength={500} required placeholder="For example, Replace the failed disk on NAS-01" /></div>
       <div className="form-group"><label htmlFor="ct-description">Description</label><textarea id="ct-description" value={form.description} onChange={set('description')} rows={3} maxLength={10000} /></div>
       <div className="form-row">

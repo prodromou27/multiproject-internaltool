@@ -252,6 +252,8 @@ export const api = {
   customerAssets: (id, params = {}, options) => req('GET', `/customers/${id}/assets?` + new URLSearchParams(params).toString(), undefined, options),
   createCustomerAsset: (id, body) => req('POST', `/customers/${id}/assets`, body),
   updateCustomerAsset: (id, assetId, body) => req('PUT', `/customers/${id}/assets/${assetId}`, body),
+  reviewCustomerAsset: (id, assetId, body) => req('POST', `/customers/${id}/assets/${assetId}/review`, body),
+  customerAssetVersions: (id, assetId, options) => req('GET', `/customers/${id}/assets/${assetId}/versions`, undefined, options),
   deleteCustomerAsset: (id, assetId, version) => req('DELETE', `/customers/${id}/assets/${assetId}`, { version }),
   customerAssetAttachments: (id,assetId) => req('GET',`/customers/${id}/assets/${assetId}/attachments`),
   uploadCustomerAssetAttachment: (id,assetId,file) => upload(`/customers/${id}/assets/${assetId}/attachments`,'file',file),

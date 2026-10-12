@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ClipboardCheck, Paperclip, Pencil, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import { fmtDate, Modal } from './Shared';
 import { useConfirm } from './Confirm';
@@ -7,6 +8,9 @@ import { useToast } from './Toast';
 import SoftwareStatusBadge from './SoftwareStatusBadge';
 import ImportModal from './ImportModal';
 import { useLiveRefresh } from '../live';
+import { DataTable, Pagination, ToneBadge } from './EnterpriseUI';
+import CustomerTaskForm from './CustomerTaskForm';
+import './CustomerAssets.css';
 
 const COVERAGE=['managed','support','neither'];
 const STATUSES=['active','spare','retired','decommissioned'];
@@ -96,52 +100,153 @@ function AssetFiles({ customerId,asset,onClose,onChanged }) {
   </Modal>;
 }
 
-/* `restricted`: an engineer on a managed-services team — may list and add
-   assets, but not edit, delete, import, export or manage files (the server
-   enforces the same). */
-export default function CustomerAssets({ customerId,restricted=false }) {
+const today=() => new Date().toISOString().slice(0,10);
+const daysUntil=date => Math.round((Date.parse(`${date}T00:00:00Z`)-Date.parse(`${today()}T00:00:00Z`))/86400000);
+const reviewDue=(row,days) => row.lifecycle_status==='active' && (!row.reviewed_at || daysUntil(row.reviewed_at.slice(0,10)) < -days);
+
+function SupportCell({ row }) {
+  const dates=[['Support',row.support_end_date],['Warranty',row.warranty_expiry_date]].filter(([,date]) => date);
+  if (!dates.length) return <span className="text-muted">—</span>;
+  return dates.map(([what,date]) => { const left=daysUntil(date);
+    return <div key={what} className={`text-sm${left<0 ? ' ca-expired' : left<=30 ? ' ca-expiring' : ''}`}>{what} {left<0 ? 'ended' : 'ends'} {fmtDate(date)}</div>; });
+}
+
+/* Review one asset: confirm or update the version it runs (one click to the
+   latest for its line), with a note; every review and version change is kept.
+   An engineer may also turn what they found into an upgrade task. */
+function AssetReview({ customerId,asset,software,canAddTask,onClose,onSaved,onUpgradeTask }) {
+  const [version,setVersion]=useState(asset.software_version || ''),[note,setNote]=useState(''),[saving,setSaving]=useState(false),[error,setError]=useState('');
+  const [log,setLog]=useState(null);
+  useEffect(() => { const controller=new AbortController();
+    api.customerAssetVersions(customerId,asset.id,{ signal:controller.signal }).then(setLog).catch(() => { if (!controller.signal.aborted) setLog([]); });
+    return () => controller.abort(); },[customerId,asset.id]);
+  const changed=version.trim()!==(asset.software_version || '');
+  async function submit(event) {
+    event.preventDefault();setSaving(true);setError('');
+    try { await api.reviewCustomerAsset(customerId,asset.id,{ version:asset.version,software_version:version.trim() || null,note:note.trim() || null });onSaved(changed ? `${asset.name}: version updated to ${version.trim() || 'none'}` : `${asset.name}: review recorded`); }
+    catch (failure) { setError(failure.message); } finally { setSaving(false); }
+  }
+  const outdated=software && ['behind','end_of_life'].includes(software.status);
+  return <Modal title={`Review ${asset.name}`} onClose={saving ? () => {} : onClose} wide>
+    <form onSubmit={submit} className="ca-review">
+      {error && <div className="error-msg" role="alert">{error}</div>}
+      <dl className="ca-review-facts">
+        <div><dt>Product</dt><dd>{[asset.vendor,asset.model].filter(Boolean).join(' ') || <span className="text-muted">Not recorded</span>}</dd></div>
+        <div><dt>Recorded version</dt><dd>{asset.software_version || <span className="text-muted">Not recorded</span>}</dd></div>
+        <div><dt>Compared with the latest</dt><dd>{software ? <SoftwareStatusBadge status={software} /> : <span className="text-muted">Not a followed product</span>}</dd></div>
+        <div><dt>Last reviewed</dt><dd>{asset.reviewed_at ? `${fmtDate(asset.reviewed_at)}${asset.reviewed_by_name ? ` by ${asset.reviewed_by_name}` : ''}` : <span className="text-muted">Never</span>}</dd></div>
+      </dl>
+      <div className="form-group"><label htmlFor="ca-version">Version it runs now</label>
+        <input id="ca-version" value={version} maxLength={500} onChange={event => setVersion(event.target.value)} placeholder="e.g. 7.4.12" />
+        {software?.latest && <div className="ca-version-picks">
+          {software.latest!==version.trim() && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setVersion(software.latest)}>Use latest {software.latest}</button>}
+          {software.recommended && software.recommended!==software.latest && software.recommended!==version.trim() && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setVersion(software.recommended)}>Use recommended {software.recommended}</button>}
+          <span className="text-muted text-sm">{software.line} line</span>
+        </div>}
+      </div>
+      <div className="form-group"><label htmlFor="ca-note">Note (optional)</label><textarea id="ca-note" rows={2} maxLength={2000} value={note} onChange={event => setNote(event.target.value)} placeholder="e.g. Upgrade planned for the next maintenance window" /></div>
+      <div className="modal-footer">
+        {canAddTask && outdated && !changed && <button type="button" className="btn btn-ghost mr-auto" onClick={() => onUpgradeTask(asset,software)}>Create upgrade task</button>}
+        <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : changed ? 'Save new version' : 'Confirm review'}</button>
+      </div>
+    </form>
+    <h3 className="ca-history-title">Version history</h3>
+    {!log ? <p className="text-muted text-sm" role="status">Loading…</p> : !log.length ? <p className="text-muted text-sm">No reviews or version changes recorded yet.</p> :
+      <ol className="ca-history">{log.map(entry => <li key={entry.id}>
+        <span className="text-muted text-sm">{fmtDate(entry.created_at)}{entry.user_name ? ` · ${entry.user_name}` : ''}</span>
+        <span>{entry.from_version===entry.to_version ? <>Reviewed: <strong>{entry.to_version || 'no version'}</strong> confirmed</>
+          : <>{entry.kind==='reviewed' ? 'Reviewed' : 'Edited'}: {entry.from_version || 'no version'} → <strong>{entry.to_version || 'no version'}</strong></>}</span>
+        {entry.note && <span className="text-sm">{entry.note}</span>}
+      </li>)}</ol>}
+  </Modal>;
+}
+
+const VIEWS=[['','All'],['attention','Needs update'],['end_of_life','End of life'],['review','Review due'],['expiring','Support ending']];
+
+/* `restricted`: an engineer on a managed-services team — may list, add and
+   review assets, but not edit, delete, import, export or manage files (the
+   server enforces the same). */
+export default function CustomerAssets({ customerId,restricted=false,isManager=false,canAddTask=false,initialView='' }) {
   const toast=useToast(),confirm=useConfirm();
-  const [page,setPage]=useState(1),[coverage,setCoverage]=useState(''),[status,setStatus]=useState('');
-  const [searchInput,setSearchInput]=useState(''),[search,setSearch]=useState(''),[expiry,setExpiry]=useState('');
+  const [page,setPage]=useState(1),[coverage,setCoverage]=useState(''),[status,setStatus]=useState(''),[view,setView]=useState(VIEWS.some(([key]) => key===initialView) ? initialView : '');
+  const [searchInput,setSearchInput]=useState(''),[search,setSearch]=useState('');
   const [data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[editing,setEditing]=useState(null),[filesFor,setFilesFor]=useState(null),[importing,setImporting]=useState(false),[exporting,setExporting]=useState(false);
-  const [software,setSoftware]=useState(null);
-  const scope=`${customerId}:${page}:${coverage}:${status}:${search}:${expiry}`;
+  const [software,setSoftware]=useState(null),[reviewing,setReviewing]=useState(null),[taskFor,setTaskFor]=useState(null),[engineers,setEngineers]=useState([]);
+  const query=useMemo(() => ({ ...(coverage ? { coverage } : {}),...(status ? { status } : {}),...(search ? { search } : {}),
+    ...(view==='attention' ? { software:'attention' } : view==='end_of_life' ? { software:'end_of_life' } : view==='review' ? { review:'due' } : view==='expiring' ? { expiry:'30' } : {}) }),[coverage,status,search,view]);
+  const scope=`${customerId}:${page}:${JSON.stringify(query)}`;
   const { begin,isCurrent }=useLatestRequest(scope);
   const load=useCallback(() => {
     const request=begin(); if (request.signal.aborted) return;
     setLoading(true); setError('');
-    api.customerAssets(customerId,{ page,...(coverage ? { coverage } : {}),...(status ? { status } : {}),...(search ? { search } : {}),...(expiry ? { expiry } : {}) },{ signal:request.signal }).then(result => {
+    api.customerAssets(customerId,{ page,...query },{ signal:request.signal }).then(result => {
       if (!isCurrent(request)) return; setData(result);
       const last=Math.max(1,Math.ceil(result.total/result.page_size)); if (page>last) setPage(last);
     }).catch(failure => { if (isCurrent(request)) setError(failure.message); }).finally(() => { if (isCurrent(request)) setLoading(false); });
-  },[customerId,page,coverage,status,search,expiry,begin,isCurrent]);
+  },[customerId,page,query,begin,isCurrent]);
   useEffect(() => { load(); },[load]);
   useEffect(() => { api.customerAssetSoftwareStatus(customerId).then(result => setSoftware(new Map(result.assets.map(a => [a.id,a])))).catch(() => setSoftware(null)); },[customerId,data]);
+  useEffect(() => { if (isManager) api.users().then(users => setEngineers(users.filter(u => u.role==='engineer' && u.active!==0))).catch(() => {}); },[isManager]);
   async function remove(row) {
-    if (!await confirm(`Delete ${row.name}? Its audit event will be retained.`,{ title:'Delete customer asset?' })) return;
+    if (!await confirm(`Delete ${row.name}? Its audit event will be retained. To keep its history, set it to Retired or Decommissioned instead.`,{ title:'Delete customer asset?' })) return;
     try { await api.deleteCustomerAsset(customerId,row.id,row.version); toast.success('Asset deleted'); load(); } catch (failure) { setError(failure.message); }
   }
   async function exportAssets() {
     setExporting(true);setError('');
-    try { const blob=await api.exportCustomerAssets(customerId,{ ...(coverage ? { coverage } : {}),...(status ? { status } : {}),...(search ? { search } : {}),...(expiry ? { expiry } : {}) });const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`customer-${customerId}-assets.xlsx`;document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url); }
+    try { const { software:_software,review:_review,...plain }=query;const blob=await api.exportCustomerAssets(customerId,plain);const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`customer-${customerId}-assets.xlsx`;document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url); }
     catch(failure) { setError(failure.message); }
     finally { setExporting(false); }
   }
-  return <section>
-    <form onSubmit={event => { event.preventDefault();setSearch(searchInput.trim());setPage(1); }} className="flex gap-8 mb-12 flex-wrap"><label htmlFor="asset-search">Search assets</label><input id="asset-search" value={searchInput} minLength={2} maxLength={100} onChange={event => setSearchInput(event.target.value)} placeholder="Name, tag, hostname, IP, serial..." className="u-3521b3d" /><button className="btn btn-ghost" disabled={!!searchInput.trim() && searchInput.trim().length<2}>Search</button>{search && <button type="button" className="btn btn-ghost" onClick={() => { setSearchInput('');setSearch('');setPage(1); }}>Clear</button>}</form>
-    <div className="flex gap-8 mb-16 flex-wrap"><label htmlFor="asset-list-coverage">Coverage</label><select id="asset-list-coverage" value={coverage} onChange={event => { setCoverage(event.target.value);setPage(1); }} className="u-30e741d"><option value="">All coverage</option>{COVERAGE.map(value => <option key={value} value={value}>{value==='support' ? 'Under support' : label(value)}</option>)}</select><label htmlFor="asset-list-status">Status</label><select id="asset-list-status" value={status} onChange={event => { setStatus(event.target.value);setPage(1); }} className="u-30e741d"><option value="">All statuses</option>{STATUSES.map(value => <option key={value} value={value}>{label(value)}</option>)}</select><label htmlFor="asset-list-expiry">Expiry</label><select id="asset-list-expiry" value={expiry} onChange={event => { setExpiry(event.target.value);setPage(1); }} className="u-30e741d"><option value="">All dates</option><option value="expired">Expired</option><option value="30">Due within 30 days</option><option value="60">Due within 60 days</option><option value="90">Due within 90 days</option></select><button className="btn btn-primary" disabled={loading || !!error} onClick={() => setEditing({ initial:null })}>Add asset</button>{!restricted && <><button className="btn btn-ghost" onClick={() => setImporting(true)}>Import</button><button className="btn btn-ghost" disabled={exporting || loading} onClick={exportAssets}>{exporting ? 'Exporting...' : 'Export Excel'}</button></>}<button className="btn btn-ghost" disabled={loading} onClick={load}>Refresh</button></div>
-    {error ? <div className="error-msg" role="alert">{error} <button className="btn btn-ghost" onClick={load}>Retry</button></div> : loading || !data ? <p role="status">Loading customer assets...</p> : <>
-      {(data.expiry_summary?.expired>0 || data.expiry_summary?.due_30>0) && <div className="alert alert-warning mb-16" role="status">{data.expiry_summary.expired} active assets have expired support or warranty; {data.expiry_summary.due_30} expire within 30 days. Use the Expiry filter to review them.</div>}
-      {software && (() => { const all=[...software.values()],behind=all.filter(a => a.status==='behind').length,eol=all.filter(a => a.status==='end_of_life').length;
-        return (behind || eol) ? <div className="alert alert-warning mb-16" role="status">{behind ? `${behind} asset${behind===1?' runs':'s run'} older software than the latest` : ''}{behind && eol ? '; ' : ''}{eol ? `${eol} on end-of-life versions` : ''}. See the Software versions page for what is current.</div> : null; })()}
-      {!data.rows.length && <p className="text-muted">No customer assets in this view.</p>}
-      <div className="u-3324e14">
-        {data.rows.map(row => <article className="card u-115422e" key={row.id}><h2 className="u-2b99ca6">{row.name}</h2><p><strong>{row.asset_type}</strong> / {row.coverage_type==='support' ? 'Under support' : label(row.coverage_type)} / {label(row.lifecycle_status)}</p><p className="text-muted">{[row.vendor,row.model,row.software_version].filter(Boolean).join(' / ') || 'Vendor, model and version not recorded'}</p>{software?.get(row.id) && <p><SoftwareStatusBadge status={software.get(row.id)} /></p>}<p>{row.hostname || 'No hostname'}{row.ip_address ? ` / ${row.ip_address}` : ''}</p><p className="text-muted text-sm">Tag: {row.asset_tag || 'none'} / Serial: {row.serial_number || 'none'} / {label(row.environment)} / {label(row.criticality)} criticality</p>{Number(row.activity_count)>0 && <p><strong>{row.activity_count}</strong> linked service {Number(row.activity_count)===1 ? 'activity' : 'activities'}</p>}{row.support_end_date && <p>Support ends {fmtDate(row.support_end_date)}</p>}{row.warranty_expiry_date && <p>Warranty expires {fmtDate(row.warranty_expiry_date)}</p>}{row.notes && <p className="u-a548ea7">{row.notes}</p>}{!restricted && <div className="flex gap-8 u-62da067"><button className="btn btn-ghost" onClick={() => setFilesFor(row)}>Files ({Number(row.attachment_count || 0)})</button><button className="btn btn-ghost" onClick={() => setEditing({ initial:row })}>Edit</button><button className="btn btn-danger" onClick={() => remove(row)}>Delete</button></div>}</article>)}
+  const all=software ? [...software.values()] : [],summary=data?.expiry_summary || {};
+  const counts={ '':summary.active,attention:all.filter(a => ['behind','end_of_life'].includes(a.status)).length,end_of_life:all.filter(a => a.status==='end_of_life').length,review:summary.review_due,expiring:summary.due_30 };
+  const choose=value => { setView(value);setPage(1); };
+  const filtered=!!(view || search || coverage || status);
+  const columns=[
+    { key:'asset',label:'Asset',render:row => <div className="ca-asset"><strong>{row.name}</strong><span>{[row.asset_type,row.hostname || row.ip_address].filter(Boolean).join(' · ')}</span>
+      {row.lifecycle_status!=='active' && <ToneBadge>{label(row.lifecycle_status)}</ToneBadge>}</div> },
+    { key:'version',label:'Version',render:row => <div className="ca-version"><strong>{row.software_version || <span className="text-muted">Not recorded</span>}</strong><span>{[row.vendor,row.model].filter(Boolean).join(' ')}</span></div> },
+    { key:'software',label:'Compared with latest',render:row => software?.get(row.id) ? <SoftwareStatusBadge status={software.get(row.id)} /> : <span className="text-muted text-sm">{row.software_version ? 'Not a followed product' : '—'}</span> },
+    { key:'support',label:'Support / warranty',render:row => <SupportCell row={row} /> },
+    { key:'reviewed',label:'Last reviewed',render:row => <div className="ca-reviewed">{row.reviewed_at ? <span>{fmtDate(row.reviewed_at)}{row.reviewed_by_name && <small>{row.reviewed_by_name}</small>}</span> : <span className="text-muted">Never</span>}
+      {reviewDue(row,summary.review_days || 90) && <ToneBadge tone="warning">Review due</ToneBadge>}</div> },
+    { key:'actions',label:'Actions',render:row => <div className="table-actions">
+      <button type="button" className="btn btn-sm btn-ghost" onClick={() => setReviewing(row)} aria-label={`Review ${row.name}`}><ClipboardCheck size={14} /> Review</button>
+      {!restricted && <>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing({ initial:row })} aria-label={`Edit ${row.name}`} title="Edit"><Pencil size={14} /></button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setFilesFor(row)} aria-label={`Files for ${row.name}`} title="Files"><Paperclip size={14} />{Number(row.attachment_count)>0 && <span className="ca-count">{row.attachment_count}</span>}</button>
+        <button type="button" className="btn btn-sm btn-ghost btn-icon-danger" onClick={() => remove(row)} aria-label={`Delete ${row.name}`} title="Delete"><Trash2 size={14} /></button>
+      </>}
+    </div> },
+  ];
+  return <section className="ca">
+    <div className="ca-views" role="group" aria-label="Asset views">{VIEWS.map(([key,text]) => <button key={key || 'all'} type="button" className={`filter-pill${view===key ? ' active' : ''}`} aria-pressed={view===key} onClick={() => choose(key)}>
+      {text}{counts[key]!=null && <span className="u-383082b"> ({counts[key]})</span>}</button>)}</div>
+    <div className="ca-toolbar">
+      <form onSubmit={event => { event.preventDefault();setSearch(searchInput.trim());setPage(1); }} className="ca-search">
+        <input id="asset-search" aria-label="Search assets" value={searchInput} minLength={2} maxLength={100} onChange={event => setSearchInput(event.target.value)} placeholder="Search name, tag, hostname, IP, serial, version…" />
+        <button className="btn btn-ghost" disabled={!!searchInput.trim() && searchInput.trim().length<2}>Search</button>{search && <button type="button" className="btn btn-ghost" onClick={() => { setSearchInput('');setSearch('');setPage(1); }}>Clear</button>}
+      </form>
+      <select id="asset-list-coverage" aria-label="Coverage" value={coverage} onChange={event => { setCoverage(event.target.value);setPage(1); }}><option value="">All coverage</option>{COVERAGE.map(value => <option key={value} value={value}>{value==='support' ? 'Under support' : label(value)}</option>)}</select>
+      <select id="asset-list-status" aria-label="Status" value={status} onChange={event => { setStatus(event.target.value);setPage(1); }}><option value="">All statuses</option>{STATUSES.map(value => <option key={value} value={value}>{label(value)}</option>)}</select>
+      <div className="ca-toolbar-actions">
+        {!restricted && <><button className="btn btn-ghost" onClick={() => setImporting(true)}>Import</button><button className="btn btn-ghost" disabled={exporting || loading} onClick={exportAssets}>{exporting ? 'Exporting...' : 'Export Excel'}</button></>}
+        <button className="btn btn-primary" disabled={loading || !!error} onClick={() => setEditing({ initial:null })}>Add asset</button>
       </div>
-      <div className="flex gap-8 mt-16"><button className="btn btn-ghost" disabled={page<=1} onClick={() => setPage(value => value-1)}>Previous</button><span>Page {page} / {data.total} assets</span><button className="btn btn-ghost" disabled={page*data.page_size>=data.total} onClick={() => setPage(value => value+1)}>Next</button></div>
-    </>}
+    </div>
+    {summary.expired>0 && view!=='expiring' && <div className="alert alert-warning mb-12" role="status">{summary.expired} active asset{summary.expired===1 ? ' has' : 's have'} expired support or warranty.</div>}
+    <DataTable columns={columns} rows={data?.rows || []} loading={loading} error={error} onRetry={load} caption="Customer assets"
+      empty={filtered ? 'No assets in this view' : 'No assets recorded for this customer yet'}
+      emptyAction={filtered && <button className="btn btn-ghost btn-sm" onClick={() => { setView('');setSearch('');setSearchInput('');setCoverage('');setStatus('');setPage(1); }}>Show all assets</button>} />
+    {data && data.total>data.page_size && <Pagination page={page} total={data.total} pageSize={data.page_size} loading={loading} onPageChange={setPage} label="Asset pages" />}
     {editing && data && <AssetForm customerId={customerId} initial={editing.initial} technologies={data.technologies} onClose={() => setEditing(null)} onSaved={() => { toast.success('Asset saved');load(); }} />}
     {filesFor && <AssetFiles customerId={customerId} asset={filesFor} onClose={() => setFilesFor(null)} onChanged={load} />}
+    {reviewing && <AssetReview customerId={customerId} asset={reviewing} software={software?.get(reviewing.id)} canAddTask={canAddTask} onClose={() => setReviewing(null)}
+      onSaved={message => { setReviewing(null);toast.success(message);load(); }}
+      onUpgradeTask={(asset,found) => { setReviewing(null);setTaskFor({ asset,found }); }} />}
+    {taskFor && <CustomerTaskForm customerId={customerId} isManager={isManager} engineers={engineers}
+      initial={{ title:`Upgrade ${taskFor.asset.name} to ${taskFor.found.recommended || taskFor.found.latest}`, description:`${taskFor.asset.name} runs ${taskFor.asset.software_version}; the latest on the ${taskFor.found.line} line is ${taskFor.found.latest}.`, priority:taskFor.found.status==='end_of_life' ? 'high' : 'medium', asset_id:taskFor.asset.id, asset_name:taskFor.asset.name }}
+      onClose={() => setTaskFor(null)} onSaved={() => { setTaskFor(null);toast.success('Upgrade task added'); }} />}
     {importing && <ImportModal title="Import customer assets" templateUrl={api.customerAssetTemplateUrl(customerId)} importFn={file => api.importCustomerAssets(customerId,file)} columns={['name*','asset_type*','asset_tag','technology','hostname','ip_address','software_version','coverage_type','support_end_date']} onClose={() => setImporting(false)} onDone={() => { toast.success('Assets imported');load(); }} />}
   </section>;
 }

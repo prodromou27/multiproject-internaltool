@@ -116,7 +116,7 @@ function validateTaskInput(body, creating = false) {
       || Number.isNaN(Date.parse(body.deadline)) || new Date(body.deadline).toISOString().slice(0, 10) !== body.deadline)
       return 'Deadline must be a valid YYYY-MM-DD date';
   }
-  for (const field of ['project_id', 'customer_id', 'assigned_to', 'team_id']) {
+  for (const field of ['project_id', 'customer_id', 'assigned_to', 'team_id', 'asset_id']) {
     if (body[field] != null && body[field] !== '' && (!Number.isSafeInteger(Number(body[field])) || Number(body[field]) < 1))
       return `${field} must be a positive integer`;
   }
@@ -146,6 +146,9 @@ router.post('/', requireAuth, async (req, res) => {
   if (priority && !VALID_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
   if (req.user.role === 'engineer' && !project_id && !customerId) return res.status(400).json({ error: 'Choose the project or customer this task is for' });
   if (customerId && !await db.prepare('SELECT 1 FROM customers WHERE id = ?').get(customerId)) return res.status(400).json({ error: 'Customer not found' });
+  // A customer task may be about one of the customer's assets (e.g. an upgrade found in an asset review).
+  const assetId = customerId && req.body.asset_id ? Number(req.body.asset_id) : null;
+  if (assetId && !await db.prepare('SELECT 1 FROM customer_assets WHERE id = ? AND customer_id = ?').get(assetId, customerId)) return res.status(400).json({ error: 'The asset must belong to this customer' });
 
   // A task may be given to a team instead of a person: anyone in the team takes it
   // by starting or completing it (taskAccess.js). Engineers may give one only to
@@ -172,8 +175,8 @@ router.post('/', requireAuth, async (req, res) => {
   const relationshipError = await validateTaskRelationships(project_id, assigned_to);
   if (relationshipError) return res.status(400).json({ error: relationshipError });
 
-  const result = (await db.prepare(`INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, team_id, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(project_id || null, customerId, title.trim(), description, priority || 'medium', deadline || null, assigned_to || null, teamId, req.user.id, is_adhoc ? 1 : 0));
+  const result = (await db.prepare(`INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, team_id, asset_id, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(project_id || null, customerId, title.trim(), description, priority || 'medium', deadline || null, assigned_to || null, teamId, assetId, req.user.id, is_adhoc ? 1 : 0));
 
   // Log activity
   const taskId = result.lastInsertRowid;
