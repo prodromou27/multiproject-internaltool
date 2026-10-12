@@ -72,6 +72,18 @@ async function reschedule() {
   }, ms);
 }
 
+// A backup job that fails for the last time (no retry left) alerts the managers (backupAlerts.js).
+function alertingBackup(kind,handler) {
+  return async (payload,job) => {
+    try { return await handler(payload,job); }
+    catch (error) {
+      const alerts=require('./backupAlerts');
+      if (alerts.isFinalAttempt(job,error)) await alerts.alertBackupFailure(kind,{ file:payload?.file || null,error:error.message });
+      throw error;
+    }
+  };
+}
+
 // ── Init on startup ───────────────────────────────────────────────────────────
 async function initScheduler() {
   // Ensure default config exists if none set
@@ -95,19 +107,20 @@ async function initScheduler() {
       return { run_id:result.run_id,tickets_found:result.tickets_found,tickets_created:result.tickets_created,tickets_updated:result.tickets_updated };
     },
     custom_report_export: (payload,job) => require('./customReportExport').generate(payload,job),
-    database_backup: async payload => {
+    database_backup: alertingBackup('database',async payload => {
       const backups=require('./databaseBackups');
       const row=await backups.exclusive('backup',() => backups.backupNow({ kind:payload.kind==='scheduled' ? 'scheduled' : 'manual' }));
+      if (row.files_error) await require('./backupAlerts').alertBackupFailure('files',{ file:row.file,error:row.files_error });
       return { file:row.file,size_bytes:row.size_bytes };
-    },
-    backup_offsite: async payload => {
+    }),
+    backup_offsite: alertingBackup('offsite',async payload => {
       const backups=require('./databaseBackups'),plan=await backups.schedule();
       return require('./backupOffsite').copyBackup(String(payload.file),{ backupDir:backups.BACKUP_DIR,retentionDays:plan.retention_days,keepMin:plan.keep_min });
-    },
-    backup_share: async payload => {
+    }),
+    backup_share: alertingBackup('share',async payload => {
       const backups=require('./databaseBackups'),plan=await backups.schedule();
       return require('./backupOffsite').copyToShare(String(payload.file),{ backupDir:backups.BACKUP_DIR,retentionDays:plan.retention_days,keepMin:plan.keep_min });
-    },
+    }),
     // Tickets linked engineers own in Request Tracker (any queue), for Workload.
     engineer_ticket_sync: async payload => {
       const owners=require('./ticketOwners');

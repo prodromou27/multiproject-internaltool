@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Settings, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer } from 'lucide-react';
+import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Settings, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer, FileSignature } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -19,6 +19,7 @@ import { PermissionsTab } from './admin/PermissionsTab';
 import TicketingSettings from './admin/TicketingSettings';
 import { BackupsTab } from './admin/BackupsTab';
 import { SlaSettingsTab } from './admin/SlaSettingsTab';
+import { ContractTypesTab } from './admin/ContractTypesTab';
 import Templates from './Templates';
 
 /* ── MAIN PAGE ───────────────────────────────────────────── */
@@ -31,6 +32,7 @@ const TABS = [
   { key: 'security',       label: 'Sign-in & passwords', Icon: Shield,         group: 'people',   desc: 'Microsoft 365 sign-in, password expiry and reset policy' },
   { key: 'service_activity_tracking', label: 'Activity categories', Icon: ClipboardList, group: 'work', desc: 'Categories, subcategories and technologies engineers choose when logging activities' },
   { key: 'statuses',       label: 'Project statuses',   Icon: Tag,             group: 'work',     desc: 'Project status names, colours and workflow rules' },
+  { key: 'contract_types', label: 'Contract types',     Icon: FileSignature,   group: 'work',     desc: 'The contract types offered for managed customers, such as 24x7 or 8x5' },
   { key: 'sla',            label: 'SLAs',               Icon: Timer,           group: 'work',     desc: 'Which SLAs apply and their time limits' },
   { key: 'project_templates', label: 'Project templates', Icon: FolderKanban, group: 'work', desc: 'Reusable project structures with their default tasks' },
   { key: 'managed_report_templates', label: 'Customer report templates', Icon: FileSpreadsheet, group: 'work', desc: 'Word templates, sections and default text for customer reports' },
@@ -215,6 +217,7 @@ export default function AdminPanel() {
           {tab === 'system_health' && <SystemHealthTab key={part || 'stats'} initial={part} />}
           {tab === 'backups' && <BackupsTab />}
           {tab === 'sla' && <SlaSettingsTab />}
+          {tab === 'contract_types' && <ContractTypesTab />}
           {tab === 'project_templates' && <Templates embedded />}
           {tab === 'notifications' && <><IntegrationsTab /><h3 className="settings-subheading">Alerts about the system</h3><AdminAlertsTab /></>}
           {tab === 'activity_bot'  && <ActivityBotSettings sectionStyle={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 }} />}

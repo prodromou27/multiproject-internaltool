@@ -9,7 +9,7 @@ import { fmtDateTime } from '../../components/Shared';
 export const ALERT_TYPES = [
   { key: 'background_job_failed',      label: 'Background job failed',           desc: 'A scheduled or background task did not complete successfully.' },
   { key: 'email_queue_failed',         label: 'Email queue has failed messages',  desc: 'One or more outbound emails could not be delivered.' },
-  { key: 'db_backup_failed',           label: 'Database backup failed',           desc: 'The automatic database backup job failed.' },
+  { key: 'db_backup_failed',           label: 'Database backup failed',           desc: 'A database backup failed, its uploaded files could not be included, or its off-server copy (SFTP or network share) failed.' },
   { key: 'storage_almost_full',        label: 'File storage almost full',         desc: 'Upload storage is approaching the configured threshold.' },
   { key: 'high_error_rate',            label: 'High error rate detected',         desc: 'The number of application errors has exceeded the threshold.' },
   { key: 'unauthorized_access',        label: 'Unauthorized access attempt',      desc: 'Repeated failed login attempts or forbidden access detected.' },

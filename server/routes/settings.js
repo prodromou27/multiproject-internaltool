@@ -14,5 +14,6 @@ router.use(require('./settings/backups'));
 router.use(require('./settings/security'));
 router.use(require('./settings/activityBot'));
 router.use(require('./settings/sso'));
+router.use(require('./settings/contracts'));
 
 module.exports = router;

@@ -1,7 +1,7 @@
 /**
  * Reminders: personal ones people set for themselves, and automatic ones the app
  * raises (visit tomorrow, task due or overdue, customer report due, asset support
- * or warranty expiring). Both go to the bell and the person's own channels.
+ * or warranty expiring, contract ending). Both go to the bell and the person's own channels.
  *
  * A personal reminder's time is stored as a UTC instant with the person's time
  * zone, so a weekly 09:00 reminder stays at 09:00 local across daylight saving.
@@ -18,6 +18,7 @@ const AUTOMATIC = Object.freeze([
   { key: 'task_due', label: 'A task assigned to me is due tomorrow, or has just become overdue' },
   { key: 'report_due', label: 'A customer report is due within 3 days, or is overdue', roles: ['manager'] },
   { key: 'asset_expiring', label: 'A managed customer\'s asset support or warranty expires within 30 days', roles: ['manager'] },
+  { key: 'contract_ending', label: 'A customer contract ends within 30 days, or has expired without a renewal', roles: ['manager'] },
 ]);
 
 function automaticSettings(raw, role) {
@@ -156,7 +157,7 @@ async function managersFor(store, serviceManagerId) {
 async function sendAutomaticReminders(store = db) {
   const { today } = await store.prepare('SELECT app_today() AS today').get();
   const tomorrow = addDays(today, 1), yesterday = addDays(today, -1);
-  const counts = { visit_tomorrow: 0, task_due: 0, report_due: 0, asset_expiring: 0 };
+  const counts = { visit_tomorrow: 0, task_due: 0, report_due: 0, asset_expiring: 0, contract_ending: 0 };
 
   // Maintenance visits tomorrow (the existing visit reminder, now per-person optional).
   const visits = await store.prepare(`SELECT mv.id, mv.title, mv.scheduled_date, cu.name AS customer_name, mve.user_id, u.name AS engineer_name, u.email AS engineer_email
@@ -236,6 +237,29 @@ async function sendAutomaticReminders(store = db) {
         }, { title: `${what} expiring: ${name}`, body: `${customer} · ends ${day}`, link: `/customers/${asset.customer_id}/service-profile?section=assets` });
         counts.asset_expiring++;
       }
+    }
+  }
+  // Contracts: 30 and 7 days before the end, and the day after it ends, unless renewed.
+  const contracts = await store.prepare(`SELECT k.id, k.customer_id, k.reference, k.description, k.service_level, k.end_date, c.name AS customer_name, mc.service_manager_id
+    FROM customer_contracts k JOIN customers c ON c.id = k.customer_id
+    LEFT JOIN managed_customer_configurations mc ON mc.customer_id = k.customer_id AND mc.managed_services_enabled = 1
+    WHERE c.active = 1 AND k.end_date IN (?, ?, ?)
+      AND k.id NOT IN (SELECT renewed_from_id FROM customer_contracts WHERE renewed_from_id IS NOT NULL)`)
+    .all(addDays(today, 30), addDays(today, 7), yesterday);
+  for (const contract of contracts) {
+    const customer = decrypt(contract.customer_name), name = decrypt(contract.reference) || decrypt(contract.description) || `Contract #${contract.id}`;
+    const occasion = contract.end_date === yesterday ? 'expired' : contract.end_date === addDays(today, 7) ? '7_days' : '30_days';
+    const expired = occasion === 'expired';
+    const msg = { title: expired ? '⚠️ Contract expired' : '📑 Contract ending soon',
+      body: expired ? `Contract **${name}** for **${customer}** ended on ${contract.end_date} and has not been renewed.`
+        : `Contract **${name}** for **${customer}** ends on ${contract.end_date} (in ${occasion === '7_days' ? 7 : 30} days).`,
+      facts: [{ name: 'Customer', value: customer }, { name: 'Contract', value: name }, ...(contract.service_level ? [{ name: 'Type', value: contract.service_level }] : []), { name: 'Ends', value: contract.end_date }] };
+    notifyShared('contract_ending', msg, { dedupeKey: `${contract.id}:${occasion}` });
+    for (const userId of await managersFor(store, contract.service_manager_id)) {
+      if (!await wants(userId, 'contract_ending', store) || !await firstDelivery(store, userId, 'contract_ending', contract.id, occasion)) continue;
+      await notifyUser(userId, 'contract_ending', msg, { title: `${customer}: contract ${name} ${expired ? 'expired' : 'ending soon'}`,
+        body: expired ? `Ended ${contract.end_date}` : `Ends ${contract.end_date}`, link: `/customers/${contract.customer_id}/service-profile?section=contracts` });
+      counts.contract_ending++;
     }
   }
   return counts;

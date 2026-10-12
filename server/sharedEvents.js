@@ -20,7 +20,9 @@ const SHARED_EVENTS = Object.freeze([
   { key: 'customer_report_sent', group: 'Customers', label: 'A customer report is marked as sent', default: true },
   { key: 'customer_report_due', group: 'Customers', label: 'A customer report is due within 3 days, or is overdue', default: true },
   { key: 'asset_expiring', group: 'Customers', label: 'A managed customer\'s asset support or warranty expires within 30 days', default: true },
+  { key: 'contract_ending', group: 'Customers', label: 'A customer contract ends within 30 days, or has expired without a renewal', default: true },
   { key: 'ticket_sync_failed', group: 'System', label: 'Request Tracker ticket synchronisation stops working, or starts working again', default: true },
+  { key: 'backup_failed', group: 'System', label: 'A database backup, or its copy off the server, fails', default: true },
 ]);
 
 const SHARED_EVENT_KEYS = SHARED_EVENTS.map(event => event.key);

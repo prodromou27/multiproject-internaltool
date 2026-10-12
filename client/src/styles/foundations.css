@@ -230,6 +230,9 @@ tbody tr:hover td { background: var(--highlight); }
 .customer-identity > a, .customer-identity > strong { display: block; color: var(--gray-900); font-size: 13px; font-weight: 700; }
 .customer-identity > span { display: block; margin-top: 2px; color: var(--gray-500); font-size: 11px; }
 .customer-identity > small { display: block; max-width: 260px; margin-top: 3px; overflow: hidden; color: var(--gray-500); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+/* Managed and In-house labels under the customer name; Managed is solid so managed customers stand out in the list. */
+.customer-identity .customer-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.ui-badge.is-managed { background: var(--primary); color: var(--surface); }
 .table-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .managed-customer-filters { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 .managed-filter-selects { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(150px,1fr)); gap: 8px; }

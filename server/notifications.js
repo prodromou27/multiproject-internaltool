@@ -175,6 +175,7 @@ const PERSONAL_EVENTS = Object.freeze([
   { key: 'task_due',         label: 'A task of mine is due tomorrow or has become overdue' },
   { key: 'report_due',       label: 'A customer report is due soon or overdue', roles: ['manager'] },
   { key: 'asset_expiring',   label: 'Asset support or warranty is expiring', roles: ['manager'] },
+  { key: 'contract_ending',  label: 'A customer contract is ending or has expired', roles: ['manager'] },
   { key: 'project_closure',  label: 'A project closure needs my review, or a closure on my project is decided' },
   { key: 'managed_report_review', label: 'A customer report needs my review, or my customer report is reviewed' },
   { key: 'recommendation_assigned', label: 'A high or critical recommendation is assigned to me' },

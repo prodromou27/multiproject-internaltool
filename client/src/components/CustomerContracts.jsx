@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Plus, RefreshCw, Pencil, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import { fmtDate, Modal } from './Shared';
@@ -33,8 +34,9 @@ function timing(contract) {
 
 function ContractForm({ data, contract, renewing, onSaved, onClose }) {
   const toast = useToast();
-  const presets = data.service_levels;
+  // The configured types (Settings → Contract types), plus the contract's own if no longer offered.
   const initialLevel = contract?.service_level || '';
+  const presets = initialLevel && !data.service_levels.includes(initialLevel) ? [...data.service_levels, initialLevel] : data.service_levels;
   const [form, setForm] = useState(() => renewing ? {
     reference: contract.reference || '', description: contract.description || '', notes: contract.notes || '',
     start_date: nextDay(contract.end_date), end_date: addYear(nextDay(contract.end_date)),
@@ -42,8 +44,7 @@ function ContractForm({ data, contract, renewing, onSaved, onClose }) {
     reference: contract?.reference || '', description: contract?.description || '', notes: contract?.notes || '',
     start_date: contract?.start_date || '', end_date: contract?.end_date || '',
   });
-  const [level, setLevel] = useState(presets.includes(initialLevel) || !initialLevel ? initialLevel : 'other');
-  const [otherLevel, setOtherLevel] = useState(presets.includes(initialLevel) ? '' : initialLevel);
+  const [level, setLevel] = useState(initialLevel);
   const [assetIds, setAssetIds] = useState(() => new Set((contract?.assets || []).map(a => a.id)));
   const [saving, setSaving] = useState(false), [error, setError] = useState('');
   const set = key => event => setForm(current => ({ ...current, [key]: event.target.value }));
@@ -53,7 +54,7 @@ function ContractForm({ data, contract, renewing, onSaved, onClose }) {
   async function submit(event) {
     event.preventDefault();
     setSaving(true); setError('');
-    const body = { ...form, service_level: data.is_managed ? (level === 'other' ? otherLevel : level) : (contract?.service_level || null) };
+    const body = { ...form, service_level: data.is_managed ? level : (contract?.service_level || null) };
     if (data.can_see_assets) body.asset_ids = [...assetIds];
     try {
       if (renewing) await api.renewCustomerContract(data.customerId, contract.id, body);
@@ -77,10 +78,9 @@ function ContractForm({ data, contract, renewing, onSaved, onClose }) {
       {data.is_managed && <div className="form-group"><label htmlFor="cc-level">Contract type</label>
         <select id="cc-level" value={level} onChange={e => setLevel(e.target.value)}>
           <option value="">Not set</option>
-          {presets.map(p => <option key={p} value={p}>{p}</option>)}
-          <option value="other">Other…</option>
+          {presets.map(p => <option key={p} value={p}>{p}{data.service_levels.includes(p) ? '' : ' (no longer offered)'}</option>)}
         </select>
-        {level === 'other' && <input aria-label="Other contract type" value={otherLevel} onChange={e => setOtherLevel(e.target.value)} maxLength={30} placeholder="e.g. 24x5" />}
+        {data.can_manage && <small className="text-muted"><Link to="/settings/contract_types">Change the contract types</Link></small>}
       </div>}
       <div className="cc-dates">
         <div className="form-group"><label htmlFor="cc-start">Start date *</label><input id="cc-start" type="date" value={form.start_date} onChange={set('start_date')} required /></div>

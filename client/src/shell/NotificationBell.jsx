@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckSquare, X, Bell, BellRing, CheckCheck, Trash2, Briefcase, WrenchIcon, FileText, AtSign, ShieldAlert } from 'lucide-react';
+import { CheckSquare, X, Bell, BellRing, CheckCheck, Trash2, Briefcase, WrenchIcon, FileText, AtSign, ShieldAlert, FileSignature, AlertTriangle } from 'lucide-react';
 import { api } from '../api';
 import { useLiveRefresh } from '../live';
 
@@ -22,6 +22,8 @@ const NOTIF_ICONS = {
   'task_due':         <CheckSquare size={14} color="var(--warning)" />,
   'report_due':       <FileText    size={14} color="var(--warning)" />,
   'asset_expiring':   <ShieldAlert size={14} color="var(--warning)" />,
+  'contract_ending':  <FileSignature size={14} color="var(--warning)" />,
+  'system_alert':     <AlertTriangle size={14} color="var(--danger)" />,
 };
 
 function timeSinceNotif(dt) {

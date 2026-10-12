@@ -566,6 +566,8 @@ export const api = {
   setTeamMembers: (id, user_ids) => req('PUT', `/teams/${id}/members`, { user_ids }),
   slaPolicy: options => req('GET', '/sla/policy', undefined, options),
   saveSlaPolicy: body => req('PUT', '/sla/policy', body),
+  contractTypes: options => req('GET', '/settings/contract-types', undefined, options),
+  saveContractTypes: body => req('PUT', '/settings/contract-types', body),
 
   // activity categories / subcategories
   activityCategories: (options = {}) => req('GET', `/activity-categories${options.includeInactive ? '?include_inactive=1' : ''}`, undefined, options),

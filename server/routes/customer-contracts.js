@@ -6,7 +6,7 @@ const { hasPermission } = require('../permissions');
 const { canAccessCustomer, isManagedServicesEngineer, positiveId } = require('../customerAccess');
 const { encrypt, decrypt } = require('../fieldCipher');
 const { logAudit } = require('../auditLog');
-const { SERVICE_LEVELS, contractsFor } = require('../customerContracts');
+const { contractTypes, contractsFor } = require('../customerContracts');
 
 /* Contracts of one customer (/api/customers/:id/contracts). Anyone who may open
    the customer sees its contracts; asset names only with asset access (the same
@@ -36,12 +36,13 @@ async function isManaged(customerId) {
 
 router.get('/', async (req, res) => {
   const customerId = req.customer.id;
-  const [contracts, links, assets, managed, assetAccess] = await Promise.all([
+  const [contracts, links, assets, managed, assetAccess, types] = await Promise.all([
     contractsFor([customerId]),
     db.prepare('SELECT ca.contract_id, ca.asset_id FROM customer_contract_assets ca JOIN customer_contracts c ON c.id = ca.contract_id WHERE c.customer_id = ?').all(customerId),
     db.prepare("SELECT id, name, asset_type, lifecycle_status FROM customer_assets WHERE customer_id = ? ORDER BY id").all(customerId),
     isManaged(customerId),
     hasPermission(req.user, 'assets.access').then(ok => ok || isManagedServicesEngineer(req.user, customerId)),
+    contractTypes(),
   ]);
   const assetView = new Map(assets.map(a => [Number(a.id), { id: Number(a.id), name: decrypt(a.name), asset_type: a.asset_type, lifecycle_status: a.lifecycle_status }]));
   const assetIdsOf = id => links.filter(l => Number(l.contract_id) === id).map(l => Number(l.asset_id));
@@ -50,7 +51,7 @@ router.get('/', async (req, res) => {
   res.json({
     contracts: contracts.map(c => ({ ...c, asset_count: assetIdsOf(c.id).length, ...(assetAccess ? { assets: assetIdsOf(c.id).map(id => assetView.get(id)).filter(Boolean) } : {}) })),
     is_managed: managed,
-    service_levels: SERVICE_LEVELS,
+    service_levels: types,
     can_manage: req.user.role === 'manager',
     can_see_assets: assetAccess,
     ...(assetAccess ? { assets: [...assetView.values()], uncovered_assets: uncovered.map(a => assetView.get(Number(a.id))) } : { uncovered_count: uncovered.length }),
@@ -69,6 +70,12 @@ async function validate(body, customerId, existing = {}) {
   const reference = text('reference', 100, 'Reference'), description = text('description', 200, 'Description');
   const level = text('service_level', 30, 'Contract type'), notes = text('notes', 2000, 'Notes');
   for (const field of [reference, description, level, notes]) if (field.error) return field;
+  // A contract type from the configured list; a contract keeps a type that is no longer offered.
+  if (level.value && level.value !== existing.service_level) {
+    const offered = (await contractTypes()).find(t => t.toLowerCase() === level.value.toLowerCase());
+    if (!offered) return { error: `"${level.value}" is not one of the contract types (Settings → Contract types)` };
+    level.value = offered;
+  }
   if (!reference.value) return { error: 'Contract reference is required' };
   const start = pick('start_date'), end = pick('end_date');
   if (!realDate(start) || !realDate(end)) return { error: 'Start and end dates are required (YYYY-MM-DD)' };

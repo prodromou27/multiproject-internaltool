@@ -462,3 +462,6 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
   .nav-compact .sidebar-logo { flex-direction: column; height: auto; gap: 6px; padding: 12px 0 8px; }
   .nav-compact .sidebar-rail-toggle { margin-left: 0; }
 }
+
+/* Settings → Contract types: a short list, kept to a readable width. */
+.contract-types .table-wrap, .contract-types form { max-width: 620px; }

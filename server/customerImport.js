@@ -56,16 +56,17 @@ function parseDay(text) {
 }
 
 /** The contract on a row, checked: null when the row has none. */
-function contractOf(row) {
+function contractOf(row, types) {
   const given = ['contract_reference', 'contract_type', 'contract_start', 'contract_end'].some(key => row[key]);
   if (!given) return { value: null };
   if (!row.contract_reference) return { error: 'contract_reference is needed when contract columns are filled in' };
   if (row.contract_reference.length > 100) return { error: 'contract_reference is longer than 100 characters' };
-  if ((row.contract_type || '').length > 30) return { error: 'contract_type is longer than 30 characters' };
+  const type = row.contract_type ? types.find(t => t.toLowerCase() === row.contract_type.toLowerCase()) : null;
+  if (row.contract_type && !type) return { error: `contract_type "${row.contract_type}" is not one of the contract types (${types.join(', ') || 'none set up'})` };
   const start = parseDay(row.contract_start), end = parseDay(row.contract_end);
   if (!start || !end) return { error: 'contract_start and contract_end must be dates (YYYY-MM-DD or DD/MM/YYYY)' };
   if (end < start) return { error: 'contract_end is before contract_start' };
-  return { value: { reference: row.contract_reference, service_level: row.contract_type || null, start_date: start, end_date: end } };
+  return { value: { reference: row.contract_reference, service_level: type, start_date: start, end_date: end } };
 }
 
 async function saveContract(tx, customerId, contract, userId) {
@@ -118,6 +119,7 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
   const teams = new Map((await store.prepare('SELECT id, name FROM teams').all()).map(t => [t.name.trim().toLowerCase(), Number(t.id)]));
   const existing = new Map((await store.prepare('SELECT * FROM customers').all()).map(decryptCustomer)
     .filter(c => c.name).map(c => [c.name.trim().toLowerCase(), c]));
+  const types = await require('./customerContracts').contractTypes(store);
   const seen = new Set();
   const result = { imported: 0, updated: 0, managed: 0, contracts: 0, skipped: 0, errors: [] };
   const skip = (row, error) => { result.errors.push({ row, error }); result.skipped++; };
@@ -139,7 +141,7 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
       teamId = teams.get(row.team.toLowerCase());
       if (!teamId) { skip(rowNum, `Team "${row.team}" not found`); continue; }
     }
-    const contract = contractOf(row);
+    const contract = contractOf(row, types);
     if (contract.error) { skip(rowNum, contract.error); continue; }
     const current = existing.get(key);
     if (current && !updateExisting) { skip(rowNum, `Customer "${row.name}" already exists — skipped`); continue; }

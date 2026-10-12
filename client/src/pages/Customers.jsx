@@ -256,7 +256,10 @@ export default function Customers() {
   const columns = [
     { key:'customer',label:'Customer',render:c => <div className="customer-identity">
       {isManager ? <Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link> : <strong>{c.name}</strong>}
-      {!!c.is_internal && <ToneBadge tone="info">In-house</ToneBadge>}
+      {(!!c.is_managed || !!c.is_internal) && <div className="customer-tags">
+        {!!c.is_managed && <ToneBadge tone="managed">Managed</ToneBadge>}
+        {!!c.is_internal && <ToneBadge tone="info">In-house</ToneBadge>}
+      </div>}
       <span>{c.customer_code || 'No customer code'} · {c.active ? 'Active' : 'Archived'}</span>
       {c.notes && <small title={c.notes}>{c.notes}</small>}
     </div> },

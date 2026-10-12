@@ -11,7 +11,33 @@ const appTime = require('./appTime');
 const { decrypt } = require('./fieldCipher');
 
 const ENDING_SOON_DAYS = 30;
+// The contract types managers pick from (Settings → Contract types); these until they change them.
 const SERVICE_LEVELS = Object.freeze(['24x7', '12x5', '8x5']);
+const CONTRACT_TYPES_KEY = 'contract_types';
+
+async function contractTypes(store = db) {
+  const row = await store.prepare('SELECT value FROM settings WHERE key = ?').get(CONTRACT_TYPES_KEY);
+  try { const list = JSON.parse(row?.value || 'null'); if (Array.isArray(list)) return list.filter(t => typeof t === 'string'); } catch { /* defaults */ }
+  return [...SERVICE_LEVELS];
+}
+
+/** Checks a new list of contract types: names of 1 to 30 characters, no repeats, at most 50. */
+function checkContractTypes(body) {
+  const list = body?.types;
+  if (!Array.isArray(list) || list.length > 50) return { error: 'A list of up to 50 contract types is required' };
+  const names = [], seen = new Set();
+  for (const item of list) {
+    const name = typeof item === 'string' ? item.trim() : '';
+    if (!name || name.length > 30) return { error: 'Each contract type needs a name of at most 30 characters' };
+    if (seen.has(name.toLowerCase())) return { error: `"${name}" is listed twice` };
+    seen.add(name.toLowerCase()); names.push(name);
+  }
+  return { value: names };
+}
+
+async function saveContractTypes(names, store = db) {
+  await store.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value').run(CONTRACT_TYPES_KEY, JSON.stringify(names));
+}
 
 const dayNumber = iso => Math.round(Date.parse(`${iso}T00:00:00Z`) / 86400000);
 
@@ -58,4 +84,4 @@ async function contractsFor(customerIds = null, store = db, today = appTime.toda
   return rows.map(row => present(row, renewedIds, today));
 }
 
-module.exports = { ENDING_SOON_DAYS, SERVICE_LEVELS, contractStatus, currentContract, contractsFor };
+module.exports = { ENDING_SOON_DAYS, SERVICE_LEVELS, contractTypes, checkContractTypes, saveContractTypes, contractStatus, currentContract, contractsFor };
