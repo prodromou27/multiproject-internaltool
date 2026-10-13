@@ -87,7 +87,7 @@ test('search treats % and _ literally and respects task visibility', realDb, asy
   assert.ok(!(await titles('Rollout', alice)).includes('Rollout secret'));
   assert.ok((await titles('Rollout', manager)).includes('Rollout secret'));
 
-  assert.deepEqual((await h.api('/api/search?q=a', { token: alice.token })).data, { projects: [], tasks: [], customers: [] });
+  assert.deepEqual((await h.api('/api/search?q=a', { token: alice.token })).data, { projects: [], tasks: [], customers: [], assets: [], visits: [], tickets: [] });
   assert.equal((await h.api(`/api/search?q=${'x'.repeat(201)}`, { token: alice.token })).status, 400);
   assert.equal((await h.api('/api/search/smart?entity=bogus', { token: alice.token })).status, 400);
   for (const query of ['page=0','page=1.5','page_size=0','page_size=51','page=9007199254740991&page_size=50'])
