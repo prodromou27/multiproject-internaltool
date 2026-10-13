@@ -34,7 +34,7 @@ function PreviewTable({ title, columns, rows, empty }) {
 
 function Preview({ report }) {
   const f = report.figures, has = key => report.sections.includes(key);
-  // The wording and colour of the customer's report template (Settings → Customer report templates).
+  // The wording and colour of the company report template (Settings → Customer report template).
   const W = report.wording || BUILT_IN, H = W.headings, E = W.empty, L = W.figures;
   const figures = [[L.hours, f.hours], [L.activities, f.activities], [L.changes, f.changes], ...(f.tickets_resolved == null ? [] : [[L.tickets, f.tickets_resolved]]), [L.tasks, f.tasks_completed]];
   const max = Math.max(...report.categories.map(c => c.hours), 0.1);

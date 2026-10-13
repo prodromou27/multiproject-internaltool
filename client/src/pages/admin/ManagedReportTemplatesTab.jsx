@@ -1,13 +1,12 @@
 import { useEffect,useState } from 'react';
-import { Download,FileText,Plus,RotateCcw,Save,Trash2,Upload } from 'lucide-react';
+import { Download,FileText,RotateCcw,Save,Trash2,Upload } from 'lucide-react';
 import { api } from '../../api';
-import { Toggle } from './shared';
 import './ReportTableColumns.css';
 
-/* Settings → Customer report templates: the wording, colour and default sections
-   of the customer report (Customer 360 → Reports), per template. A customer's
-   report uses the template chosen in its Service Configuration, else the first
-   active one. Server: customerValueReport.js (WORDING_DEFAULTS, checkWording). */
+/* Settings → Customer report template: the company's one template for the
+   customer report (Customer 360 → Reports) — wording, colour, default sections
+   and an optional Word layout. Every customer's report uses it.
+   Server: customerValueReport.js (WORDING_DEFAULTS, checkWording, companyTemplate). */
 
 const SECTION_LABELS={ changes:'Changes and upgrades',tickets:'Tickets resolved',tasks:'Tasks completed',work_log:'Work log (every activity)',recommendations:'Our recommendations',upcoming:'Coming next',assets:'Devices we look after' };
 const HEADING_LABELS={ summary:'Summary',work:'Work delivered (hours by type of work)',changes:'Changes and upgrades',tickets:'Tickets resolved',tasks:'Tasks completed',work_log:'Work log',recommendations:'Recommendations',assets:'Devices',upcoming:'Coming next' };
@@ -15,7 +14,7 @@ const FIGURE_LABELS={ hours:'Hours of work',activities:'Activities',changes:'Cha
 const EMPTY_LABELS={ work:'Work delivered',changes:'Changes and upgrades',tickets:'Tickets resolved',tasks:'Tasks completed',work_log:'Work log',recommendations:'Recommendations',assets:'Devices' };
 // Fields the old report builder used; kept as they are so saving does not change them.
 const LEGACY={ sections:['executive_summary','service_overview','ticket_summary','service_activities','tasks','recommendations','upcoming_work'],default_narratives:{},tables:{} };
-const empty={ name:'',description:'',active:true,version:0,wording:{},...LEGACY };
+const empty={ name:'Customer report',description:'',active:true,version:0,wording:{},...LEGACY };
 const saveBlob=(blob,name) => { const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(() => URL.revokeObjectURL(url),1000); };
 const EDITABLE=['name','description','sections','default_narratives','tables','active','version','wording'];
 
@@ -74,11 +73,12 @@ function LabelGrid({ names,values,defaults,onChange,long=false }) {
 }
 
 export function ManagedReportTemplatesTab() {
-  const [rows,setRows]=useState([]),[defaults,setDefaults]=useState(null),[form,setForm]=useState(empty),[selected,setSelected]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
-  const load=async () => { const result=await api.managedReportTemplates();setRows(result.rows || []);setDefaults(result.wording_defaults || null);return result; };
+  const [defaults,setDefaults]=useState(null),[form,setForm]=useState(empty),[selected,setSelected]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
+  const load=async () => { const result=await api.managedReportTemplates();setDefaults(result.wording_defaults || null);return result; };
+  // The company template (the first created); none yet means the first save creates it.
+  const companyOf=result => (result.rows || []).find(row => row.id === result.company_template_id) || null;
   const edit=(row,wordingDefaults=defaults) => { setSelected(row.id);setForm({ ...row,wording:effective(row.wording,wordingDefaults) });setError('');setMessage(''); };
-  useEffect(() => { load().then(result => { const first=(result.rows || [])[0];if (first) edit(first,result.wording_defaults); }).catch(failure => setError(failure.message)); },[]);
-  const reset=() => { setSelected(null);setForm({ ...empty,wording:effective({},defaults) });setError('');setMessage(''); };
+  useEffect(() => { load().then(result => { const company=companyOf(result);if (company) edit(company,result.wording_defaults); else { setSelected(null);setForm({ ...empty,wording:effective({},result.wording_defaults) }); } }).catch(failure => setError(failure.message)); },[]);
   const w=form.wording || {};
   const setWording=(key,value) => setForm(current => ({ ...current,wording:{ ...current.wording,[key]:value } }));
   const setIn=group => (key,value) => setForm(current => ({ ...current,wording:{ ...current.wording,[group]:{ ...current.wording[group],[key]:value } } }));
@@ -91,22 +91,14 @@ export function ManagedReportTemplatesTab() {
       await load();edit(saved);setMessage('Saved. New customer reports use this wording.');
     } catch(failure) { setError(failure.message); } finally { setBusy(false); }
   }
-  async function remove() { setBusy(true);setError('');try { await api.deleteManagedReportTemplate(selected);const result=await load();if (result.rows?.[0]) edit(result.rows[0]); else reset();setMessage('Report template deleted.'); } catch(failure) { setError(failure.message); } finally { setBusy(false); } }
   const placeholders='You can use {customer}, {from}, {to} and {team}.';
 
-  return <div className="u-cf23e32"><aside className="card u-cc781ba"><button className="btn btn-primary btn-sm u-31b5119" onClick={reset}><Plus size={13} /> New template</button>{rows.map(row => <button key={row.id} className={`settings-nav-item report-template-item${selected===row.id?' active':''}`} onClick={() => edit(row)}><span>{row.name}</span>{!row.active && <small>Inactive</small>}</button>)}</aside>
-    <section className="card rtw" aria-label="Report template">
+  return <section className="card rtw" aria-label="Report template">
       {error && <div className="error-msg" role="alert">{error}</div>}{message && <div className="alert alert-success">{message}</div>}
-      <p className="text-muted text-sm">The wording of the customer report (Customer 360 → Reports). A customer uses the template chosen in its Service Configuration, otherwise the first active template.</p>
 
-      <div className="rtw-grid">
-        <Field label="Template name"><input maxLength={120} value={form.name} onChange={event => setForm(current => ({ ...current,name:event.target.value }))} /></Field>
-        <Field label="Report title" hint="On the cover, e.g. Monthly service report."><input maxLength={120} value={w.title || ''} onChange={event => setWording('title',event.target.value)} /></Field>
-      </div>
-      <Field label="Description (for you, not in the report)"><textarea rows={2} maxLength={1000} value={form.description} onChange={event => setForm(current => ({ ...current,description:event.target.value }))} /></Field>
       <div className="rtw-row">
+        <div className="rtw-grow"><Field label="Report title" hint="On the cover, e.g. Monthly service report."><input maxLength={120} value={w.title || ''} onChange={event => setWording('title',event.target.value)} /></Field></div>
         <label className="rtw-color">Colour <input type="color" value={w.color || '#1f3a5f'} onChange={event => setWording('color',event.target.value)} aria-label="Report colour" /></label>
-        <Toggle checked={form.active} onChange={active => setForm(current => ({ ...current,active }))} label="Active template" />
       </div>
 
       <h3 className="u-999b629">Sections ticked by default</h3>
@@ -131,11 +123,10 @@ export function ManagedReportTemplatesTab() {
       </>}
 
       <div className="flex gap-8 flex-wrap u-1b0f499">
-        <button className="btn btn-primary" disabled={busy || !form.name.trim()} onClick={save}><Save size={14} /> Save template</button>
+        <button className="btn btn-primary" disabled={busy} onClick={save}><Save size={14} /> Save template</button>
         <button className="btn btn-ghost" disabled={busy || !defaults} onClick={() => setForm(current => ({ ...current,wording:effective({},defaults) }))}><RotateCcw size={14} /> Built-in wording</button>
-        {selected && <button className="btn btn-danger" disabled={busy} onClick={remove}><Trash2 size={14} /> Delete</button>}
       </div>
-      {selected ? <WordLayout template={form} onChanged={saved => { setRows(current => current.map(row => row.id===saved.id ? saved : row));setForm(current => ({ ...current,has_word_template:saved.has_word_template,word_template_name:saved.word_template_name,word_template_uploaded_at:saved.word_template_uploaded_at })); }} />
+      {selected ? <WordLayout template={form} onChanged={saved => setForm(current => ({ ...current,has_word_template:saved.has_word_template,word_template_name:saved.word_template_name,word_template_uploaded_at:saved.word_template_uploaded_at }))} />
         : <p className="text-muted text-sm">Save the template first, then you can attach a Word layout to it.</p>}
-    </section></div>;
+    </section>;
 }

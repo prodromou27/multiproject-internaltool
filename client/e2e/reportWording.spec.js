@@ -9,11 +9,11 @@ const defaults = {
   empty: { work: 'No activities were recorded in this period.', changes: 'No changes or upgrades in this period.', tickets: 'No tickets were resolved in this period.', tasks: 'No tasks were completed in this period.', work_log: 'No activities were recorded in this period.', recommendations: 'We have no open recommendations.', assets: 'No devices are recorded.' },
 };
 
-test('managers change the wording, colour and default sections of the customer report in Settings', async ({ page }) => {
+test('managers change the wording, colour and default sections of the company report template in Settings', async ({ page }) => {
   const api = await mockApi(page, { role: 'manager' });
   const template = { id: 3, name: 'Monthly report', description: '', sections: ['executive_summary'], default_narratives: {}, tables: {}, wording: {}, active: true, version: 1, has_word_template: false };
   let saved = null;
-  api.override('GET /api/managed-report-templates', () => ({ body: { rows: [template], wording_defaults: defaults } }));
+  api.override('GET /api/managed-report-templates', () => ({ body: { rows: [template], wording_defaults: defaults, company_template_id: 3 } }));
   api.override('PUT /api/managed-report-templates/3', ({ request }) => { saved = request.postDataJSON(); return { body: { ...template, ...saved, version: 2 } }; });
 
   await page.goto('/settings/managed_report_templates');

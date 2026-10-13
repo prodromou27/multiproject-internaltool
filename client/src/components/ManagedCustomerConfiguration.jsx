@@ -33,7 +33,7 @@ function SaveStatus({ status,message,onRetry }) {
 }
 
 export default function ManagedCustomerConfiguration({ customerId }) {
-  const [form,setForm]=useState(DEFAULTS),[allTeams,setAllTeams]=useState([]),[queues,setQueues]=useState([]),[queueError,setQueueError]=useState(''),[reportTemplates,setReportTemplates]=useState([]);
+  const [form,setForm]=useState(DEFAULTS),[allTeams,setAllTeams]=useState([]),[queues,setQueues]=useState([]),[queueError,setQueueError]=useState('');
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState(''),[status,setStatus]=useState('idle'),[saveError,setSaveError]=useState(''),[busy,setBusy]=useState('');
   const [message,setMessage]=useState('');
   const [creatingTeam,setCreatingTeam]=useState(false),[newTeamName,setNewTeamName]=useState(''),[teamError,setTeamError]=useState('');
@@ -74,12 +74,12 @@ export default function ManagedCustomerConfiguration({ customerId }) {
 
   useEffect(() => {
     const controller=new AbortController();setLoading(true);setLoadError('');
-    Promise.all([api.managedCustomerConfiguration(customerId,{ signal:controller.signal }),api.customerTeams(customerId),api.teams({ signal:controller.signal }),api.managedReportTemplates({ signal:controller.signal }),api.users({ signal:controller.signal })])
-      .then(([configuration,assigned,teams,templates,users]) => {
+    Promise.all([api.managedCustomerConfiguration(customerId,{ signal:controller.signal }),api.customerTeams(customerId),api.teams({ signal:controller.signal }),api.users({ signal:controller.signal })])
+      .then(([configuration,assigned,teams,users]) => {
         if (controller.signal.aborted) return;
         formRef.current={ ...DEFAULTS,...configuration };setForm(formRef.current);
         assignedRef.current=(assigned || []).map(team => team.id);
-        setAllTeams(teams || []);setEngineers((users || []).filter(user => user.role==='engineer' && user.active!==0));setReportTemplates((templates.rows || []).filter(template => template.active));
+        setAllTeams(teams || []);setEngineers((users || []).filter(user => user.role==='engineer' && user.active!==0));;
       })
       .catch(failure => { if (!controller.signal.aborted) setLoadError(failure.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -214,11 +214,6 @@ export default function ManagedCustomerConfiguration({ customerId }) {
                   onChange={event => update({ report_due_days:event.target.value === '' ? null : Number(event.target.value) })} />
                 <small className="text-muted">days after the period ends{form.report_due_days == null ? ' (standard: 10)' : ''}</small>
               </span>
-            </label>
-            <label className="msc-field"><span>Default template</span>
-              <select value={form.default_report_template_id || ''} onChange={event => update({ default_report_template_id:event.target.value ? Number(event.target.value) : null },{ delay:0 })}>
-                <option value="">No default</option>{reportTemplates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}
-              </select>
             </label>
           </div>
           <ToggleRow label="Include this customer in managed reports" value={form.include_in_managed_services_reports} onChange={value => update({ include_in_managed_services_reports:value })} />

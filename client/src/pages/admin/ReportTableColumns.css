@@ -31,3 +31,4 @@
 .rtw-more { margin-top: 6px; padding: 8px 12px; border: 1px solid var(--gray-200); border-radius: var(--radius); }
 .rtw-more > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
 .rtw-more[open] > summary { margin-bottom: 10px; }
+.rtw-grow { flex: 1 1 320px; }

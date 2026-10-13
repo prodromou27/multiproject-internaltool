@@ -216,9 +216,9 @@ router.post('/:id/customer-report.:format',requirePermission('managed_reports.ge
   const built=await valueRequest(req,res);if (!built) return;
   const { id,from,to,options,report }=built;
   try {
-    // Odyssey's own Word layout when the customer's default report template has one (Settings → Customer report templates).
-    const template=format==='docx' ? await db.prepare(`SELECT t.id,t.word_template FROM managed_customer_configurations mc JOIN managed_report_templates t ON t.id=mc.default_report_template_id
-      WHERE mc.customer_id=? AND t.active=1 AND t.word_template IS NOT NULL`).get(id) : null;
+    // The company's own Word layout, when one is uploaded (Settings → Customer report template).
+    const company=format==='docx' ? await valueReport.companyTemplate() : null;
+    const template=company?.word_template ? company : null;
     let buffer;
     if (template) {
       const model=await reporting.buildReportModel({ customerId:id,from,to,narratives:{ executive_summary:options.summary,upcoming_activities:options.coming_next } });

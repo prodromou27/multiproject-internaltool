@@ -21,8 +21,8 @@ const SECTIONS = Object.freeze(['work_log', 'changes', 'tickets', 'tasks', 'reco
 const DEFAULT_SECTIONS = Object.freeze(['work_log', 'changes', 'tickets', 'tasks', 'recommendations', 'upcoming']);
 const MAX_ROWS = 500;
 
-/* The report's wording, editable per report template (Settings → Customer report
-   templates). Text may use {customer}, {from}, {to} and {team}. */
+/* The report's wording: one company template for every customer (Settings →
+   Customer report template). Text may use {customer}, {from}, {to} and {team}. */
 const WORDING_DEFAULTS = Object.freeze({
   title: 'Service report',
   intro: '',
@@ -81,11 +81,9 @@ function resolveWording(saved) {
   };
 }
 
-/** The template a customer's report uses: their default (if active), else the first active one. */
-async function templateFor(customerId, store = db) {
-  return await store.prepare(`SELECT t.id, t.name, t.wording FROM managed_customer_configurations mc JOIN managed_report_templates t ON t.id = mc.default_report_template_id
-      WHERE mc.customer_id = ? AND t.active = 1`).get(customerId)
-    || await store.prepare('SELECT id, name, wording FROM managed_report_templates WHERE active = 1 ORDER BY id LIMIT 1').get() || null;
+/** The company's report template, used for every customer: the first one created. */
+async function companyTemplate(store = db) {
+  return await store.prepare('SELECT id, name, wording, word_template FROM managed_report_templates ORDER BY id LIMIT 1').get() || null;
 }
 const hours = minutes => Math.round(Number(minutes || 0) / 6) / 10;
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -112,7 +110,7 @@ async function buildValueReport({ customerId, from, to, sections = null, summary
     WHERE mc.customer_id = ? AND mc.managed_services_enabled = 1 AND c.active = 1`).get(customerId);
   if (!config) return null;
   if (!config.include_in_managed_services_reports) fail('This customer is excluded from customer reports', 409);
-  const template = await templateFor(customerId, store);
+  const template = await companyTemplate(store);
   const wording = resolveWording(template?.wording);
   const include = new Set(sections || wording.sections);
   const ticketsOn = !!config.ticketing && config.tickets_in_reporting !== 0;
@@ -364,4 +362,4 @@ async function renderWord(report) {
   return Packer.toBuffer(doc);
 }
 
-module.exports = { SECTIONS, DEFAULT_SECTIONS, WORDING_DEFAULTS, checkRequest, checkWording, resolveWording, buildValueReport, renderPdf, renderWord, fileName };
+module.exports = { SECTIONS, DEFAULT_SECTIONS, WORDING_DEFAULTS, companyTemplate, checkRequest, checkWording, resolveWording, buildValueReport, renderPdf, renderWord, fileName };

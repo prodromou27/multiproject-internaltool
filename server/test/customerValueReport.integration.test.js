@@ -54,17 +54,17 @@ test('a report made for the period owed counts as done', async () => {
   assert.deepEqual([after.status, after.overdue], ['sent', false]);
 });
 
-test('the report wording comes from the customer report template set in Settings', async () => {
+test('every report uses the company report template set in Settings', async () => {
   const templates = (await api('/api/managed-report-templates', { token: ids.tokenManager })).data;
   assert.equal(templates.wording_defaults.title, 'Service report');
-  const template = templates.rows.find(row => row.active);
+  const template = templates.rows.find(row => row.id === templates.company_template_id);
+  assert.ok(template, 'one company template');
   const wording = { title: 'Monthly value report', intro: 'Dear {customer}, here is our work.', show_overview: false, closing: 'Questions? Call us.',
     footer: 'Odyssey · {customer}', color: '#0b6e4f', sections: ['changes', 'tasks'], default_summary: 'Summary for {customer}',
     headings: { work: 'What we did', tasks: 'Finished tasks' }, figures: { hours: 'Hours' }, empty: { changes: 'Nothing changed.' } };
   const saved = await api(`/api/managed-report-templates/${template.id}`, { method: 'PUT', token: ids.tokenManager, body: { ...template, wording } });
   assert.equal(saved.status, 200, JSON.stringify(saved.data));
   assert.equal(saved.data.wording.title, 'Monthly value report');
-  await db.prepare('UPDATE managed_customer_configurations SET default_report_template_id = ? WHERE customer_id = ?').run(template.id, ids.customer);
 
   const today = appTime.today();
   const r = (await api(`${base()}/customer-report/preview`, { method: 'POST', token: ids.tokenManager, body: { from: appTime.addDays(today, -5), to: today } })).data;
