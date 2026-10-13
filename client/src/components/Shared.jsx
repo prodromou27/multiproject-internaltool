@@ -1,4 +1,4 @@
-import { useContext, useRef, useState, useEffect, useId } from 'react';
+import { useContext, useRef, useState, useEffect, useId, useLayoutEffect } from 'react';
 import { X } from 'lucide-react';
 import { StatusContext, getStatusDef } from '../hooks/useStatuses';
 import { formatDate, formatDateTime, formatNumber } from '../utils/locale';
@@ -243,6 +243,16 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
   const [mentionOpen,  setMentionOpen]  = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
   const inputRef = useRef(null);
+  // Where the caret goes once the text with the chosen name is on screen. Set
+  // before the browser handles the next key, so fast typing after picking a
+  // name lands after it (a delayed timer let those keys end up before it).
+  const pendingCaret = useRef(null);
+  useLayoutEffect(() => {
+    if (pendingCaret.current == null || !inputRef.current) return;
+    const pos = pendingCaret.current;
+    pendingCaret.current = null;
+    inputRef.current.setSelectionRange(pos, pos);
+  }, [value]);
 
   // Detect @-trigger on change
   function handleChange(e) {
@@ -272,15 +282,10 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
     const textBefore = value.slice(0, cursor);
     const textAfter  = value.slice(cursor);
     const replaced   = textBefore.replace(/@(\w*)$/, `@${name} `);
+    pendingCaret.current = replaced.length;
+    inputRef.current?.focus();
     onChange(replaced + textAfter);
     setMentionOpen(false);
-    setTimeout(() => {
-      if (inputRef.current) {
-        inputRef.current.focus();
-        const pos = replaced.length;
-        inputRef.current.setSelectionRange(pos, pos);
-      }
-    }, 0);
   }
 
   function handleKeyDown(e) {
