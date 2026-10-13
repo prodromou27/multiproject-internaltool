@@ -222,9 +222,11 @@ router.post('/:id/customer-report.:format',requirePermission('managed_reports.ge
     let buffer;
     if (template) {
       // The parts ticked on the Reports tab switch the template's {#include_…} sections on or off.
-      const picked={ changes:'changes',tickets:'resolved_tickets',assets:'assets',recommendations:'recommendations',work_log:'service_activities' };
-      const sections=['executive_summary','service_overview','upcoming_work',...report.sections.map(key => picked[key]).filter(Boolean)];
+      // "Tickets" covers both the tickets resolved and the tickets still open.
+      const picked={ changes:['changes'],tickets:['resolved_tickets','open_tickets'],assets:['assets'],recommendations:['recommendations'],work_log:['service_activities'] };
+      const sections=['executive_summary','service_overview','upcoming_work',...report.sections.flatMap(key => picked[key] || [])];
       const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives:{ executive_summary:options.summary,upcoming_activities:options.coming_next } });
+      model.tasks_completed_count=report.figures.tasks_completed; // the same count as the preview and the PDF
       buffer=wordTemplates.render(Buffer.from(template.word_template,'base64'),{ ...wordTemplates.templateData(model,{ preparedBy:req.user.name }),report_title:report.wording.title });
     } else buffer=format==='pdf' ? await valueReport.renderPdf(report) : await valueReport.renderWord(report);
     const filename=valueReport.fileName(report,format);

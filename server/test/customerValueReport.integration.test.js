@@ -89,7 +89,8 @@ test('every report uses the company report template set in Settings', async () =
 test('the company Word template gets the report title, and its sections follow the parts ticked', async () => {
   const { Document, Packer, Paragraph } = require('docx');
   const PizZip = require('pizzip');
-  const lines = ['{report_title} for {customer_name}', '{#include_changes}', 'CHANGES-SECTION', '{/include_changes}', '{#include_recommendations}', 'RECOMMENDATIONS-SECTION', '{/include_recommendations}', '{executive_summary}'];
+  const lines = ['{report_title} for {customer_name}', '{#include_changes}', 'CHANGES-SECTION', '{/include_changes}', '{#include_recommendations}', 'RECOMMENDATIONS-SECTION', '{/include_recommendations}', '{executive_summary}',
+    '{#include_open_tickets}OPEN-TICKETS-SECTION{/include_open_tickets}', 'TASKS-DONE={tasks_completed_count} OPEN={open_ticket_count}'];
   const file = await Packer.toBuffer(new Document({ sections: [{ children: lines.map(text => new Paragraph(text)) }] }));
   const { company_template_id: id } = (await api('/api/managed-report-templates', { token: ids.tokenManager })).data;
   const form = new FormData(); form.append('file', new Blob([file]), 'company.docx');
@@ -104,4 +105,8 @@ test('the company Word template gets the report title, and its sections follow t
   assert.match(xml, /RECOMMENDATIONS-SECTION/);
   assert.doesNotMatch(xml, /CHANGES-SECTION/, 'parts not ticked are left out');
   assert.match(xml, /Quiet month\./);
+  assert.match(xml, /TASKS-DONE=\d+ OPEN=0/, 'the headline counts');
+  assert.doesNotMatch(xml, /OPEN-TICKETS-SECTION/, 'open tickets follow the Tickets part');
+  const withTickets = await download('docx', { from: appTime.addDays(today, -5), to: today, sections: ['tickets'] });
+  assert.match(new PizZip(Buffer.from(await withTickets.arrayBuffer())).file('word/document.xml').asText(), /OPEN-TICKETS-SECTION/);
 });

@@ -21,7 +21,7 @@ const value = (description, example) => ({ kind: 'value', description, example }
 const list = (description, fields) => ({ kind: 'list', description, fields });
 const flag = description => ({ kind: 'flag', description });
 
-const OPTIONAL_SECTIONS = ['changes', 'resolved_tickets', 'assets', 'recommendations'];
+const OPTIONAL_SECTIONS = ['changes', 'resolved_tickets', 'open_tickets', 'assets', 'recommendations'];
 
 const PLACEHOLDERS = {
   report_title: value('The report title set in Settings → Customer report template', 'Service report'),
@@ -46,6 +46,8 @@ const PLACEHOLDERS = {
   total_hours: value('Hours logged in the period', '36.5'),
   change_count: value('Number of changes and upgrades', '5'),
   resolved_ticket_count: value('Tickets resolved in the period', '12'),
+  open_ticket_count: value('Tickets open now', '4'),
+  tasks_completed_count: value('Tasks completed in the period', '5'),
   asset_count: value('Assets in service', '18'),
   assets_needing_attention: value('Assets whose support or warranty has expired or expires within 90 days', '2'),
 
@@ -61,6 +63,7 @@ const PLACEHOLDERS = {
     risk: 'Risk', approval_reference: 'Customer approval reference', engineer: 'Engineer', status: 'Status',
   }),
   resolved_tickets: list('Tickets resolved in the period', { number: 'Ticket number', subject: 'Subject', priority: 'Priority', owner: 'Owner', resolved_date: 'Resolved on' }),
+  open_tickets: list('Tickets open now (not yet resolved)', { number: 'Ticket number', subject: 'Subject', status: 'Status', priority: 'Priority', owner: 'Owner', opened_date: 'Opened on' }),
   assets: list('Assets in service', {
     name: 'Name', type: 'Type', vendor: 'Vendor', model: 'Model', version: 'Software version', environment: 'Environment',
     criticality: 'Criticality', support_end: 'Support ends', support_status: 'Support status', warranty_end: 'Warranty ends', warranty_status: 'Warranty status',
@@ -70,6 +73,7 @@ const PLACEHOLDERS = {
   has_activities: flag('True when there are activities'),
   has_changes: flag('True when there are changes or upgrades'),
   has_resolved_tickets: flag('True when tickets were resolved'),
+  has_open_tickets: flag('True when tickets are open'),
   has_assets: flag('True when there are assets'),
   has_recommendations: flag('True when there are open recommendations'),
   has_risks_or_next_steps: flag('True when risks or upcoming work were written for this report'),
@@ -96,6 +100,8 @@ function templateData(model, { preparedBy } = {}) {
     change_type: row.change_type || '', approval_reference: row.approval_reference || '' }));
   const resolved = rowsOf('resolved_tickets').map(row => ({ number: row.ticket_number, subject: row.subject, priority: row.normalized_priority || '',
     owner: row.owner_name || '', resolved_date: dmy(row.resolved_at) }));
+  const open = rowsOf('open_tickets').map(row => ({ number: row.ticket_number, subject: row.subject, status: titleCase(row.normalized_status), priority: titleCase(row.normalized_priority),
+    owner: row.owner_name || '', opened_date: dmy(row.created_at_external) }));
   const assets = rowsOf('assets').map(row => ({ ...row, type: row.type || '', vendor: row.vendor || '', model: row.model || '', version: row.version || '',
     environment: titleCase(row.environment), criticality: titleCase(row.criticality), support_end: dmy(row.support_end), support_status: row.support_status || '',
     warranty_end: dmy(row.warranty_end), warranty_status: row.warranty_status || '' }));
@@ -114,11 +120,12 @@ function templateData(model, { preparedBy } = {}) {
     risks_concerns: narratives.risks_concerns || '', upcoming_activities: narratives.upcoming_activities || '', management_notes: narratives.management_notes || '',
     activity_count: String(model.activities?.total ?? activities.length),
     total_hours: String(model.activities?.summary?.hours ?? 0),
-    change_count: String(changes.length), resolved_ticket_count: String(resolved.length),
+    change_count: String(changes.length), resolved_ticket_count: String(resolved.length), open_ticket_count: String(open.length),
+    tasks_completed_count: model.tasks_completed_count != null ? String(model.tasks_completed_count) : '',
     asset_count: String(assets.length), assets_needing_attention: String((model.assets || []).filter(a => a.needs_attention).length),
     activities, hours_by_category: breakdown(model.activities?.breakdowns?.categories), hours_by_engineer: breakdown(model.activities?.breakdowns?.engineers),
-    changes, resolved_tickets: resolved, assets, recommendations,
-    has_activities: activities.length > 0, has_changes: changes.length > 0, has_resolved_tickets: resolved.length > 0,
+    changes, resolved_tickets: resolved, open_tickets: open, assets, recommendations,
+    has_activities: activities.length > 0, has_changes: changes.length > 0, has_resolved_tickets: resolved.length > 0, has_open_tickets: open.length > 0,
     has_assets: assets.length > 0, has_recommendations: recommendations.length > 0,
     has_risks_or_next_steps: !!(narratives.risks_concerns || narratives.upcoming_activities),
     ...Object.fromEntries(OPTIONAL_SECTIONS.map(section => [`include_${section}`, sections.has(section)])),
