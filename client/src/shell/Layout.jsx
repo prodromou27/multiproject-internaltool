@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
-import { menuGroups, pageForPath, placedPages } from '../navigation';
+import { menuGroups, pageForPath } from '../navigation';
 import QuickCreate from '../components/QuickCreate';
 import HelpMenu from '../components/HelpMenu';
 import { PRODUCT_WORDMARK } from '../product';
@@ -11,7 +11,6 @@ import { GlobalSearch } from './GlobalSearch';
 import { Hamburger } from './Sidebar';
 import { SidebarContent } from './Sidebar';
 import UserMenu from './UserMenu';
-import TopbarLinks from './TopbarLinks';
 import { CommandPalette } from './CommandPalette';
 
 /* ── Layout ──────────────────────────────────────────────── */
@@ -108,7 +107,7 @@ export function Layout({ children }) {
         {mobile && open && <button className="drawer-close" type="button" onClick={() => setOpen(false)}><X size={18} /> Close navigation</button>}
         <SidebarContent onNav={() => setOpen(false)} groups={groups} currentPage={currentPage}
           compact={compactNav && !mobile} collapsed={folded} onToggleGroup={toggleGroup}
-          onToggleCompact={toggleCompactNav} extraPages={mobile ? placedPages('topbar', user, saAccess.enabled) : []} />
+          onToggleCompact={toggleCompactNav} />
       </aside>
 
       {/* Mobile overlay */}
@@ -137,7 +136,6 @@ export function Layout({ children }) {
           <div className="u-2f5dfa5">
             <QuickCreate user={user} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
             <GlobalSearch />
-            <TopbarLinks user={user} serviceActivityEnabled={saAccess.enabled} />
             <HelpMenu role={user.role} />
             <NotificationBell />
             <UserMenu user={user} team={currentTeams} logout={logout} dense={dense} onToggleDensity={toggleDensity} />

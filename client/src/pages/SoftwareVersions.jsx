@@ -3,7 +3,6 @@ import { ExternalLink, PackageCheck, RefreshCw, Settings2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { HeaderMenu, PageHeader } from '../components/PageLayout';
-import AdvisoryNav from '../components/AdvisoryNav';
 import { Surface, ToneBadge } from '../components/EnterpriseUI';
 import { fmtDate, fmtDateTime } from '../components/Shared';
 import { useToast } from '../components/Toast';
@@ -98,7 +97,6 @@ export default function SoftwareVersions() {
     <PageHeader title="Software versions"
       meta={data?.last_sync?.at ? `The latest versions of the products we support, checked every morning. Last checked ${fmtDateTime(data.last_sync.at)}.` : 'The latest versions of the products we support, checked every morning.'}
       actions={<>
-        <AdvisoryNav />
         {manager && <HeaderMenu>
           <button type="button" disabled={checking || data?.last_sync?.running} onClick={checkNow}><RefreshCw size={14} className={checking ? 'spin' : ''} aria-hidden="true" /> {checking ? 'Checking…' : 'Check now'}</button>
           <button type="button" onClick={() => setManaging(value => !value)}><Settings2 size={14} aria-hidden="true" /> {managing ? 'Close settings' : 'Products and feeds'}</button>

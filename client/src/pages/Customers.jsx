@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Archive, ArchiveRestore, MessageSquare, RefreshCw, Trash2, Upload } from 'lucide-react';
+import { Archive, ArchiveRestore, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { api } from '../api';
 import { Modal, fmtDate } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
@@ -286,7 +286,6 @@ export default function Customers() {
           {canCreate && <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>+ New Customer</button>}
           {/* Customer Responses opens from here rather than the menu. */}
           <HeaderMenu>
-            <Link to="/customer-responses"><MessageSquare size={14} aria-hidden="true" /> Customer responses</Link>
             {canCreate && <button type="button" onClick={() => setShowImport(true)}><Upload size={14} aria-hidden="true" /> Import customers</button>}
             <button type="button" onClick={() => load()} disabled={loading}><RefreshCw size={14} aria-hidden="true" /> Refresh</button>
           </HeaderMenu>

@@ -12,9 +12,8 @@ import { fmtDuration, mixOf } from '../components/activityLedger';
 import './ServiceReport.css';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../components/Shared';
 import ReportBuilder from '../components/ReportBuilder';
-import { HeaderMenu, PageHeader } from '../components/PageLayout';
+import { PageHeader } from '../components/PageLayout';
 import { useAuth } from '../App';
-import { childPages } from '../navigation';
 
 const REPORT_VIEWS = ['overview', 'tasks', 'builder', 'projects', 'kpis', 'trends', 'service_activity'];
 
@@ -321,8 +320,7 @@ function ServiceActivityReportTab() {
 }
 
 export default function Reports() {
-  const { user, saAccess } = useAuth();
-  const related = childPages('reports', user, saAccess?.enabled);
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [summary, setSummary] = useState(null);
   const [projects, setProjects] = useState([]);
@@ -359,12 +357,7 @@ export default function Reports() {
   return (
     <div className="page">
       <PageHeader title="Reports"
-        actions={/* Related reports and the team pages (Workload, Skill matrix, KPIs, Scorecards, SLA) open from one menu. */
-          <HeaderMenu text="More reports">
-            <Link to="/service-operations">Service activity overview</Link>
-            {related.length > 0 && <hr />}
-            {related.map(page => <Link key={page.id} to={page.path}>{page.label}</Link>)}
-          </HeaderMenu>} />
+        actions={<Link className="btn btn-ghost" to="/service-operations">Service activity overview</Link>} />
 
       <div className="tabs" aria-label="Report sections">
         {[['overview','Overview'],['tasks','Tasks'],['builder','Report Builder'],['projects','Projects'],...(canViewKpis ? [['kpis','KPIs']] : []),['trends','Trends'],['service_activity','Service Activity']].map(([k, l]) => (
