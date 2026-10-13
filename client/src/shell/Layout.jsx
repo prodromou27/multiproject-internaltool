@@ -7,7 +7,6 @@ import HelpMenu from '../components/HelpMenu';
 import { PRODUCT_WORDMARK } from '../product';
 import { useAuth } from '../auth';
 import { NotificationBell } from './NotificationBell';
-import { GlobalSearch } from './GlobalSearch';
 import { Hamburger } from './Sidebar';
 import { SidebarContent } from './Sidebar';
 import UserMenu from './UserMenu';
@@ -119,7 +118,7 @@ export function Layout({ children }) {
         <div className="topbar-logo">{PRODUCT_WORDMARK.prefix}<span>{PRODUCT_WORDMARK.suffix}</span></div>
         <div className="u-6bb9e7a">
           <QuickCreate user={user} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
-          <GlobalSearch />
+          <button type="button" className="topbar-action u-83eb2d8" onClick={() => setPaletteOpen(true)} aria-label="Search" title="Search"><Search size={18} aria-hidden="true" /></button>
           <HelpMenu role={user.role} />
           <NotificationBell />
           <UserMenu user={user} team={currentTeams} logout={logout} dense={dense} onToggleDensity={toggleDensity} />
@@ -130,12 +129,12 @@ export function Layout({ children }) {
         {/* Desktop-only top bar: find, create, alerts, account. The page names
             itself with its own heading, so it is not repeated here. */}
         <div className="desktop-topbar">
-          <button type="button" className="workspace-command" onClick={() => setPaletteOpen(true)} aria-label="Open page navigation">
-            <Search size={15} aria-hidden="true" /> Go to a page <kbd>Ctrl K</kbd>
+          {/* One search for everything: pages and records (customers, assets by serial or hostname, tasks…). */}
+          <button type="button" className="workspace-command" onClick={() => setPaletteOpen(true)} aria-label="Search" aria-keyshortcuts="Control+K">
+            <Search size={15} aria-hidden="true" /> <span>Search customers, assets, serials, hostnames…</span> <kbd>Ctrl K</kbd>
           </button>
           <div className="u-2f5dfa5">
             <QuickCreate user={user} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
-            <GlobalSearch />
             <HelpMenu role={user.role} />
             <NotificationBell />
             <UserMenu user={user} team={currentTeams} logout={logout} dense={dense} onToggleDensity={toggleDensity} />

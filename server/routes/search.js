@@ -5,6 +5,36 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
 const { ownTasksSql, ownTasksParams } = require('../taskAccess');
+const { accessibleCustomerIds } = require('../customerAccess');
+const { hasPermission } = require('../permissions');
+
+/* Assets: name, hostname, serial, tag, IP, MAC and model are encrypted at rest, so
+   they are decrypted and matched here. Managers (assets.access) search every
+   customer's assets; engineers those of the customers they work with — the same
+   rule as Customer 360 → Assets. Each hit says which field matched. */
+const ASSET_FIELDS = [['name', 'Name'], ['hostname', 'Hostname'], ['serial_number', 'Serial'], ['asset_tag', 'Asset tag'], ['ip_address', 'IP'], ['mac_address', 'MAC'], ['model', 'Model']];
+async function searchAssets(user, term, limit) {
+  const needle = term.toLowerCase();
+  const all = await hasPermission(user, 'assets.access');
+  const allowed = all ? null : user.role === 'engineer' ? await accessibleCustomerIds(user) : new Set();
+  if (allowed && !allowed.size) return [];
+  const rows = await db.prepare(`SELECT a.id, a.customer_id, a.asset_type, a.lifecycle_status, ${ASSET_FIELDS.map(([f]) => `a.${f}`).join(', ')}, c.name AS customer_name
+    FROM customer_assets a JOIN customers c ON c.id = a.customer_id WHERE c.active = 1 ORDER BY a.id DESC`).all();
+  const out = [];
+  for (const row of rows) {
+    if (allowed && !allowed.has(Number(row.customer_id))) continue;
+    for (const [field, label] of ASSET_FIELDS) {
+      const value = decrypt(row[field]);
+      if (value && String(value).toLowerCase().includes(needle)) {
+        out.push({ id: row.id, customer_id: row.customer_id, customer_name: decrypt(row.customer_name), name: decrypt(row.name), asset_type: row.asset_type,
+          retired: ['retired', 'decommissioned'].includes(row.lifecycle_status), matched: field === 'name' ? null : { field: label, value } });
+        break;
+      }
+    }
+    if (out.length >= limit) break;
+  }
+  return out;
+}
 
 // Customer contact fields are encrypted at rest, so a SQL LIKE on them can't
 // match. Instead we fetch the set the user is allowed to see, decrypt in the
@@ -14,29 +44,24 @@ const { ownTasksSql, ownTasksParams } = require('../taskAccess');
 async function searchCustomers(req, term, limit, offset = 0) {
   const needle = (term || '').trim().toLowerCase();
 
+  // Names are encrypted, so rows are sorted by the decrypted name below.
   let rows;
-  if (req.user.role === 'manager' || req.user.role === 'planner') {
-    rows = (await db.prepare(`
-      SELECT cu.id, cu.name, cu.contact_name, cu.contact_email, cu.contact_phone,
-             (SELECT COUNT(*) FROM projects           WHERE customer_id = cu.id) AS project_count,
-             (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = cu.id) AS visit_count
-      FROM customers cu ORDER BY cu.name ASC
-    `).all());
+  if (req.user.role === 'engineer') {
+    // The customers an engineer works with (customerAccess.js), as on Customers and Customer 360.
+    const allowed = await accessibleCustomerIds(req.user);
+    rows = (await db.prepare('SELECT id, name, contact_name, contact_email, contact_phone FROM customers').all()).filter(row => allowed.has(Number(row.id)));
+  } else if (req.user.role === 'manager' || req.user.role === 'planner') {
+    rows = await db.prepare('SELECT id, name, contact_name, contact_email, contact_phone FROM customers').all();
   } else {
-    rows = (await db.prepare(`
-      SELECT DISTINCT cu.id, cu.name, cu.contact_name, cu.contact_email, cu.contact_phone,
-             (SELECT COUNT(*) FROM projects           WHERE customer_id = cu.id) AS project_count,
-             (SELECT COUNT(*) FROM maintenance_visits WHERE customer_id = cu.id) AS visit_count
-      FROM customers cu
-      WHERE EXISTS (SELECT 1 FROM projects p JOIN project_assignments pa ON pa.project_id = p.id WHERE p.customer_id = cu.id AND pa.user_id = ?)
-         OR EXISTS (SELECT 1 FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id WHERE mv.customer_id = cu.id AND mve.user_id = ?)
-      ORDER BY cu.name ASC
-    `).all(req.user.id, req.user.id));
+    rows = await db.prepare(`SELECT id, name, contact_name, contact_email, contact_phone FROM customers
+      WHERE id IN (SELECT p.customer_id FROM projects p JOIN project_assignments pa ON pa.project_id = p.id WHERE pa.user_id = ?)
+         OR id IN (SELECT mv.customer_id FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id WHERE mve.user_id = ?)`).all(req.user.id, req.user.id);
   }
+  rows = rows.map(row => ({ ...row, sortName: String(decrypt(row.name) || '').toLowerCase() })).sort((a, b) => a.sortName.localeCompare(b.sortName));
 
   const out = [];
   let matched=0;
-  for (const r of rows) {
+  for (const { sortName, ...r } of rows) {
     const dec = {
       ...r,
       name:          decrypt(r.name),
@@ -71,7 +96,7 @@ router.get('/', requireAuth, async (req, res) => {
   if (req.query.q !== undefined && (typeof req.query.q !== 'string' || req.query.q.length > 200))
     return res.status(400).json({ error: 'Search must be text of at most 200 characters' });
   const q = (req.query.q || '').trim();
-  if (q.length < 2) return res.json({ projects: [], tasks: [], customers: [] });
+  if (q.length < 2) return res.json({ projects: [], tasks: [], customers: [], assets: [], visits: [], tickets: [] });
 
   const like = `%${escapeLike(q)}%`;
 
@@ -98,7 +123,7 @@ router.get('/', requireAuth, async (req, res) => {
   let tasks;
   if (req.user.role === 'manager') {
     tasks = (await db.prepare(`
-      SELECT t.id, t.title, t.status, t.priority, t.deadline, t.project_id,
+      SELECT t.id, t.title, t.status, t.priority, t.deadline, t.project_id, COALESCE(t.customer_id, p.customer_id) AS customer_id,
              p.title as project_title, u.name as assigned_to_name
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
@@ -110,7 +135,7 @@ router.get('/', requireAuth, async (req, res) => {
     tasks = [];
   } else {
     tasks = (await db.prepare(`
-      SELECT t.id, t.title, t.status, t.priority, t.deadline, t.project_id,
+      SELECT t.id, t.title, t.status, t.priority, t.deadline, t.project_id, COALESCE(t.customer_id, p.customer_id) AS customer_id,
              p.title as project_title, u.name as assigned_to_name
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
@@ -123,10 +148,32 @@ router.get('/', requireAuth, async (req, res) => {
   // Customers — decrypt-and-filter (PII columns are encrypted at rest).
   // Visibility is enforced inside searchCustomers().
   const customers = (await searchCustomers(req, q, 5))
-    .map(({ contact_phone, project_count, visit_count, ...rest }) => rest);
+    .map(({ contact_phone, ...rest }) => rest);
 
   projects = projects.map(p => ({ ...p, customer_name: decrypt(p.customer_name) }));
-  res.json({ projects, tasks, customers });
+
+  const assets = await searchAssets(req.user, q, 8);
+
+  // Maintenance visits: by title or customer; engineers see the visits they are on.
+  const visitCustomers = await matchingCustomerIds(q);
+  const visitWhere = `(mv.title ILIKE ?${visitCustomers.length ? ` OR mv.customer_id IN (${visitCustomers.map(() => '?').join(',')})` : ''})`;
+  const visits = req.user.role === 'engineer'
+    ? await db.prepare(`SELECT mv.id, mv.title, mv.status, mv.scheduled_date, mv.customer_id, cu.name AS customer_name FROM maintenance_visits mv JOIN maintenance_visit_engineers e ON e.visit_id = mv.id AND e.user_id = ? JOIN customers cu ON cu.id = mv.customer_id
+        WHERE ${visitWhere} ORDER BY mv.scheduled_date DESC LIMIT 6`).all(req.user.id, like, ...visitCustomers)
+    : await hasPermission(req.user, 'visits.access')
+      ? await db.prepare(`SELECT mv.id, mv.title, mv.status, mv.scheduled_date, mv.customer_id, cu.name AS customer_name FROM maintenance_visits mv JOIN customers cu ON cu.id = mv.customer_id
+          WHERE ${visitWhere} ORDER BY mv.scheduled_date DESC LIMIT 6`).all(like, ...visitCustomers)
+      : [];
+
+  // Tickets synced from Request Tracker: by number or subject (people who may see managed customers).
+  const tickets = await hasPermission(req.user, 'managed_customers.view')
+    ? await db.prepare(`SELECT t.id, t.ticket_number, t.subject, t.status_group, t.customer_id, cu.name AS customer_name FROM external_tickets t JOIN customers cu ON cu.id = t.customer_id
+        WHERE t.ticket_number ILIKE ? OR t.subject ILIKE ? ORDER BY t.id DESC LIMIT 6`).all(like, like)
+    : [];
+
+  res.json({ projects, tasks, customers, assets,
+    visits: visits.map(v => ({ ...v, customer_name: decrypt(v.customer_name) })),
+    tickets: tickets.map(t => ({ ...t, customer_name: decrypt(t.customer_name) })) });
 });
 
 // ── Smart structured search ──────────────────────────────────────────────────

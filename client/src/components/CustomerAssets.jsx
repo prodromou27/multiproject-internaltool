@@ -167,10 +167,11 @@ const VIEWS=[['','All'],['attention','Needs update'],['end_of_life','End of life
 /* `restricted`: an engineer on a managed-services team — may list, add and
    review assets, but not edit, delete, import, export or manage files (the
    server enforces the same). */
-export default function CustomerAssets({ customerId,restricted=false,isManager=false,canAddTask=false,initialView='' }) {
+// initialSearch: from the top-bar search (?q=), so the asset found is the one listed.
+export default function CustomerAssets({ customerId,restricted=false,isManager=false,canAddTask=false,initialView='',initialSearch='' }) {
   const toast=useToast(),confirm=useConfirm();
   const [page,setPage]=useState(1),[coverage,setCoverage]=useState(''),[status,setStatus]=useState(''),[view,setView]=useState(VIEWS.some(([key]) => key===initialView) ? initialView : '');
-  const [searchInput,setSearchInput]=useState(''),[search,setSearch]=useState('');
+  const [searchInput,setSearchInput]=useState(initialSearch),[search,setSearch]=useState(initialSearch.trim().length>=2 ? initialSearch.trim() : '');
   const [data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[editing,setEditing]=useState(null),[filesFor,setFilesFor]=useState(null),[importing,setImporting]=useState(false),[exporting,setExporting]=useState(false);
   const [software,setSoftware]=useState(null),[reviewing,setReviewing]=useState(null),[taskFor,setTaskFor]=useState(null),[engineers,setEngineers]=useState([]);
   const query=useMemo(() => ({ ...(coverage ? { coverage } : {}),...(status ? { status } : {}),...(search ? { search } : {}),

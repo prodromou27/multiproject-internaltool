@@ -76,3 +76,24 @@ test('a customer task can be about one of the customer\'s assets', async () => {
   const rows = (await api(`/api/customers/${ids.customer}/operations/tasks?filter=open`, { token: ids.tokenManager })).data.rows;
   assert.equal(rows.find(r => r.id === Number(made.data.id)).asset_name, 'FW-NEW');
 });
+
+test('the search bar finds assets by serial, hostname or IP, within what each person may see', async () => {
+  const make = (customer, body) => api(`/api/customers/${customer}/assets`, { method: 'POST', token: ids.tokenManager, body: { asset_type: 'Firewall', ...body } });
+  assert.equal((await make(ids.customer, { name: 'EDGE-FW-77', serial_number: 'FGT60FTK2209XYZ', hostname: 'edge-fw-77.acme.local', ip_address: '10.77.0.1' })).status, 201);
+  assert.equal((await make(ids.customerUnassigned, { name: 'OTHER-FW-77', serial_number: 'FGT60FTK2209ABC' })).status, 201);
+  const search = (q, token = ids.tokenManager) => api(`/api/search?q=${encodeURIComponent(q)}`, { token }).then(r => r.data);
+
+  const bySerial = await search('tk2209xyz');
+  assert.deepEqual(bySerial.assets.map(a => [a.name, a.matched?.field]), [['EDGE-FW-77', 'Serial']]);
+  assert.equal(bySerial.assets[0].customer_id, ids.customer);
+  assert.equal((await search('edge-fw-77.acme')).assets[0].matched.field, 'Hostname');
+  assert.equal((await search('10.77.0.1')).assets[0].matched.field, 'IP');
+  assert.equal((await search('FGT60FTK2209')).assets.length, 2, 'managers see every customer');
+
+  // The engineer works with Acme (team) but not Other Corp.
+  assert.deepEqual((await search('FGT60FTK2209', ids.tokenEnabled)).assets.map(a => a.name), ['EDGE-FW-77']);
+  assert.ok((await search('Acme', ids.tokenEnabled)).customers.some(c => c.id === ids.customer));
+  assert.ok(!(await search('Other Corp', ids.tokenEnabled)).customers.length);
+  // Planners without assets.access find no assets.
+  assert.deepEqual((await search('FGT60FTK2209', ids.tokenPlanner)).assets, []);
+});
