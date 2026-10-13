@@ -357,6 +357,7 @@ export default function SLAPage() {
           </h1>
           {genTime && <div className="u-f48fc2c">Last updated at {genTime}</div>}
         </div>
+        <div className="flex gap-8">
         <button
           className="btn btn-ghost btn-sm inline-flex items-center gap-5"
           onClick={() => load(true)}
@@ -367,6 +368,7 @@ export default function SLAPage() {
           Refresh
         </button>
         <Link className="btn btn-ghost btn-sm inline-flex items-center gap-5" to="/settings/sla"><Settings2 size={13} /> Change SLAs</Link>
+        </div>
       </div>
 
       {loading && <div className="grid-2"><div className="skeleton-table"><span /><span /><span /></div><div className="skeleton-table"><span /><span /><span /></div></div>}

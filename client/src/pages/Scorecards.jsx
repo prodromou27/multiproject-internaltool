@@ -413,7 +413,7 @@ export default function Scorecards() {
           {/* Performance distribution */}
           {summary.length > 0 && (
             <>
-              <div className="u-49fb0f5">
+              <div className="u-49fb0f5 scorecard-team">
                 {summary.map(eng => <EngineerSummaryCard key={eng.id} eng={eng} />)}
               </div>
               {/* Target attainment bar */}

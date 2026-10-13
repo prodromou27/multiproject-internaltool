@@ -111,7 +111,7 @@ export function AdminAlertsTab() {
           </h3>
           <span className="u-d65cb71">In-App / Email</span>
         </div>
-        <table className="u-a55f31d">
+        <div className="table-wrap"><table className="u-a55f31d">
           <thead>
             <tr>
               <th className="u-a295c4b">Alert</th>
@@ -140,7 +140,7 @@ export function AdminAlertsTab() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {/* Recent system alerts */}

@@ -499,3 +499,34 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
   background: var(--danger-light) !important; color: var(--danger) !important; }
 .operations-shell .sidebar-footer { border-top: 0; padding: 4px 12px 10px; }
 .operations-shell .sidebar-more-nav a { color: var(--gray-500); }
+
+/* ── Tab and filter rows: scroll sideways only ─────────────────
+   They scroll sideways on narrow screens; scrolling sideways also lets the
+   browser scroll up and down, and the active tab's underline (drawn 1–2px
+   below the row) then gave a small vertical scrollbar. The row's line is
+   drawn inside it instead, so nothing sticks out and nothing is clipped. */
+.tabs, .list-filter-group .filter-bar { overflow-y: hidden; border-bottom: 0; box-shadow: inset 0 -1px 0 var(--gray-200); }
+.tabs .tab, .list-filter-group .filter-bar .filter-pill { margin-bottom: 0; }
+.cs-tabs { border-bottom: 0; }
+.cs-tabs > .tabs { margin: 0; }
+
+/* Small tables inside cards (KPI "Each engineer") fit the card: the app-wide
+   520px minimum is for full tables, which scroll inside .table-wrap. */
+.kpi-card-breakdown table, .kpi-breakdown { min-width: 0; }
+.kpi-card { min-width: 0; }
+/* Cards side by side don't take the stacked-card top margin. */
+.scorecard-team > .card + .card { margin-top: 0; }
+/* A CVE number stays on one line. */
+.vuln-id { white-space: nowrap; }
+.u-b5f0188 > .card + .card, .u-70cfa37 > .card + .card { margin-top: 0; }
+
+/* Customer 360 on phones: the Add menu and the health "See why" list open
+   inside the screen, under the header, instead of off its edge. */
+@media (max-width: 600px) {
+  .cs-page .cs-customer-header { position: relative; }
+  .cs-page .cs-customer-header .cs-quick-add, .cs-page .cs-customer-header .cs-health-ring { position: static; }
+  .cs-page .cs-customer-header .cs-quick-menu, .cs-page .cs-customer-header .cs-ring-factors { left: 12px; right: 12px; min-width: 0; }
+}
+/* Customer 360 work lists on phones are stacked cards, not tables: the
+   app-wide 520px table minimum would cut off their right side. */
+@media (max-width: 760px) { .cs-page .cs-work-table { min-width: 0; } .cs-page .cs-work-table td > * { flex-wrap: wrap; } }

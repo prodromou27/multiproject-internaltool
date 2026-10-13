@@ -48,9 +48,11 @@ function age(ticket) {
 }
 const Metric=({ label,value,note }) => <article className="ui-metric"><span>{label}</span><strong>{value ?? 0}</strong>{note && <small>{note}</small>}</article>;
 
+// Status and priority codes (in_progress) read as words (In progress).
+const words=name => { const text=String(name ?? '').replace(/_/g,' ');return text.charAt(0).toUpperCase()+text.slice(1); };
 function Distribution({ title,rows,valueKey='count',format=value => value }) {
   const max=Math.max(...rows.map(row => row[valueKey]),1);
-  return <section className="card u-8e11ed6"><h3 className="u-53fc0b5">{title}</h3>{rows.some(row => row[valueKey]) ? <div className="u-9aa121f">{rows.filter(row => row[valueKey]).map(row => <div key={row.name}><div className="text-sm u-20fee6b"><span>{row.name}</span><strong>{format(row[valueKey])}</strong></div><div className="progress-bar u-fcfb7a6"><div className="progress-bar-fill" style={{ width:`${row[valueKey]/max*100}%` }} /></div></div>)}</div> : <p className="text-muted text-sm">No matching records.</p>}</section>;
+  return <section className="card u-8e11ed6"><h3 className="u-53fc0b5">{title}</h3>{rows.some(row => row[valueKey]) ? <div className="u-9aa121f">{rows.filter(row => row[valueKey]).map(row => <div key={words(row.name)}><div className="text-sm u-20fee6b"><span>{words(row.name)}</span><strong>{format(row[valueKey])}</strong></div><div className="progress-bar u-fcfb7a6"><div className="progress-bar-fill" style={{ width:`${row[valueKey]/max*100}%` }} /></div></div>)}</div> : <p className="text-muted text-sm">No matching records.</p>}</section>;
 }
 
 function TicketFilters({ filters,setFilters,facets }) {
