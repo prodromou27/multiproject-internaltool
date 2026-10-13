@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Users as UsersIcon, UserX, CheckCircle2, Pencil, KeyRound, UserCheck, Trash2, ShieldAlert, LogOut } from 'lucide-react';
 import { api } from '../../api';
-import { fmtDate, Modal } from '../../components/Shared';
+import { fmtDate, Modal, sentenceCase } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
 import { timeSince } from './shared';
@@ -186,7 +186,7 @@ export function UsersTab({ currentUser }) {
                       <div className="font-semibold">{u.name}</div>
                       <div className="u-5be3ef4">{u.email || '—'}</div>
                     </td>
-                    <td><span className={`badge badge-${u.role}`}>{u.role}</span></td>
+                    <td><span className={`badge badge-${u.role}`}>{sentenceCase(u.role)}</span></td>
                     <td>
                       {u.active ? <span className="badge badge-done">Active</span> : <span className="badge badge-cancelled">Inactive</span>}
                       {u.must_change_password ? (

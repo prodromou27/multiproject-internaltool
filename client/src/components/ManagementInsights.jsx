@@ -175,8 +175,12 @@ export default function ManagementInsights({ filterable = false, compact = false
         render={c => <li key={c.id}><Link to={`/customers/${c.customer_id}/service-profile?section=contracts`}>{c.customer_name}</Link><span>{c.reference || 'Contract'} · {c.status === 'expired' ? `ended ${fmtDate(c.end_date)}` : `ends ${fmtDate(c.end_date)}`}</span><ToneBadge tone={c.status === 'expired' ? 'danger' : 'warning'}>{c.status === 'expired' ? 'Expired' : `${c.days_left} days`}</ToneBadge></li>} />
       <Attention title="Devices on old software" icon={PackageCheck} items={data.attention.devices} limit={5} hidden={!data.attention.devices.length} empty="Every checked device is up to date." to="/software"
         render={d => <li key={d.id}><Link to={`/customers/${d.customer_id}/service-profile?section=assets`}>{d.customer_name}</Link><span>{d.name} · {d.product_name} {d.software_version}</span><ToneBadge tone={d.status === 'end_of_life' ? 'danger' : 'warning'}>{d.status === 'end_of_life' ? 'End of life' : d.behind ? `${d.behind} behind` : 'Behind'}</ToneBadge></li>} />
-      <Attention title="Knowledge gaps" icon={GraduationCap} items={data.attention.skills} limit={5} hidden={!data.attention.skills.length} empty="Every technology has enough skilled engineers." to="/skills"
-        render={s => <li key={s.technology_id}><Link to="/skills">{s.name}</Link><span>{s.skilled} of {s.target} skilled</span><ToneBadge tone={s.status === 'gap' ? 'danger' : 'warning'}>{s.status === 'gap' ? 'Gap' : s.single_point ? 'One person' : 'At risk'}</ToneBadge></li>} />
+      {/* On the dashboard the gaps are one line; the Skill matrix (and Reports → Overview) list them. */}
+      {compact ? data.attention.skills.length > 0 && <Link className="card mi-attention mi-oneline" to="/skills" aria-label="Knowledge gaps">
+        <GraduationCap size={15} aria-hidden="true" /> <span><strong>{plural(data.attention.skills.length, 'technology', 'technologies')}</strong> {data.attention.skills.length === 1 ? 'has' : 'have'} a knowledge gap</span><span className="mi-oneline-go">Skill matrix →</span>
+      </Link>
+      : <Attention title="Knowledge gaps" icon={GraduationCap} items={data.attention.skills} limit={5} hidden={!data.attention.skills.length} empty="Every technology has enough skilled engineers." to="/skills"
+        render={s => <li key={s.technology_id}><Link to="/skills">{s.name}</Link><span>{s.skilled} of {s.target} skilled</span><ToneBadge tone={s.status === 'gap' ? 'danger' : 'warning'}>{s.status === 'gap' ? 'Gap' : s.single_point ? 'One person' : 'At risk'}</ToneBadge></li>} />}
     </div>
   </section>;
 }

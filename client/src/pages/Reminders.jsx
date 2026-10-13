@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { BellRing, Check, Clock, Pencil, Plus, Repeat, Trash2, UserRound, Users } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { Modal } from '../components/Shared';
+import { Modal, fmtDate, fmtTime } from '../components/Shared';
 import { PageHeader } from '../components/PageLayout';
 import { Surface } from '../components/EnterpriseUI';
 import { Toggle } from './admin/shared';
@@ -24,9 +24,9 @@ const dayLabel = date => {
   if (diff === 0) return 'Today';
   if (diff === 1) return 'Tomorrow';
   if (diff === -1) return 'Yesterday';
-  return day.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', ...(day.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}) });
+  return `${day.toLocaleDateString('en-GB', { weekday: 'short' })} ${fmtDate(`${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`)}`;
 };
-const whenLabel = iso => { const date = new Date(iso); return `${dayLabel(date)}, ${localTime(date)}`; };
+const whenLabel = iso => { const date = new Date(iso); return `${dayLabel(date)}, ${fmtTime(iso)}`; };
 
 // Snooze choices, worked out in the viewer's own time zone.
 function snoozeOptions() {

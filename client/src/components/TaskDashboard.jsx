@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, CalendarClock, CheckCheck, CheckSquare, Clock, Hourglass, ListChecks, ListTodo, UserX } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api } from '../api';
-import { fmtDate } from './Shared';
+import { fmtDate, sentenceCase } from './Shared';
 import { Attention, Chart, Figure, PERIODS, bucketLabel, plural, tick, tooltip } from './ManagementInsights';
 import { useLiveVersion } from '../live';
 import './ManagementInsights.css';
@@ -122,7 +122,7 @@ export default function TaskDashboard() {
           <span className="ui-badge is-danger">{plural(t.days_overdue, 'day')} late</span></li>} />
       <Attention title={`Waiting more than ${data.stuck_days} days`} icon={CalendarClock} items={data.stuck} empty="Nothing has been waiting that long."
         render={t => <li key={t.id}><Link to={taskLink(t)}>{t.title}</Link><span>{t.reason ? `Waiting for: ${t.reason}` : STATUS_LABELS[t.status]}{t.customer_name ? ` · ${t.customer_name}` : ''}</span>
-          <span className="ui-badge is-warning">{plural(t.waiting_days, 'day')}</span></li>} />
+          <span className="ui-badge is-warning">{sentenceCase(plural(t.waiting_days, 'day'))}</span></li>} />
     </div>
   </section>;
 }

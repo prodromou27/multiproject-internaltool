@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import { fmtDate,StatusBadge } from './Shared';
+import { fmtDate,StatusBadge, sentenceCase } from './Shared';
 import { useLiveVersion } from '../live';
 import CustomerRecurringTasks from './CustomerRecurringTasks';
 import CustomerTaskForm from './CustomerTaskForm';
@@ -98,7 +98,7 @@ export function CustomerTasks({ customerId,initialFilter='',engineers=[],canMana
           {row.last_update && <div className="cs-task-update"><LastUpdate update={row.last_update} /></div>}</td>
         <td data-label="For">{row.assigned_to_name || (row.team_name ? `${row.team_name} (team)` : 'Unassigned')}</td>
         <td data-label="Status"><StatusBadge entityType="task" s={row.status} /></td>
-        <td data-label="Priority"><span className={`badge badge-${row.priority}`}>{row.priority}</span></td>
+        <td data-label="Priority"><span className={`badge badge-${row.priority}`}>{sentenceCase(row.priority)}</span></td>
         <td data-label="Due date" className={overdue ? 'cs-overdue' : ''}>{fmtDate(row.deadline)}{overdue && <div className="text-sm">Overdue</div>}</td>
         <td><div className="table-actions">{!done && !canUpdate && isEngineer && <button type="button" className="btn btn-ghost btn-sm" disabled={busy===row.id} onClick={() => take(row)}
           aria-label={`${row.assigned_to ? 'Take over' : 'Take'} ${row.title}`}><Hand size={13} /> {row.assigned_to ? 'Take over' : 'Take'}</button>}

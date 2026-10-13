@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
-  ShieldCheck, AlertTriangle, CheckCircle, XCircle,
+  AlertTriangle, CheckCircle, XCircle,
   Clock, ChevronDown, ChevronRight, RefreshCw, Ticket, Settings2,
+  ShieldCheck,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import { fmtDate, fmtDateTime } from '../components/Shared';
+import { fmtDate, fmtDateTime, fmtTime } from '../components/Shared';
 import { useLiveRefresh } from '../live';
 
 /* ── helpers ─────────────────────────────────────────────── */
@@ -345,7 +346,7 @@ export default function SLAPage() {
   useLiveRefresh(() => load(true));
 
   const genTime = data?.generated_at
-    ? new Date(data.generated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    ? fmtTime(data.generated_at)
     : null;
 
   return (
@@ -353,7 +354,7 @@ export default function SLAPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title flex-center gap-8">
-            <ShieldCheck size={22} /> SLA Compliance
+            SLA Compliance
           </h1>
           {genTime && <div className="u-f48fc2c">Last updated at {genTime}</div>}
         </div>

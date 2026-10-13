@@ -62,3 +62,8 @@ a.mi-figure:hover { border-color: var(--gray-400); text-decoration: none; }
 
 .mi-figure.is-zero strong { color: var(--gray-500); font-weight: 600; }
 .mi-figure.is-zero .mi-figure-label, .mi-figure.is-zero small { color: var(--gray-500); }
+/* Dashboard: knowledge gaps as one line that opens the Skill matrix. */
+.mi-oneline { display: flex; align-items: center; gap: 10px; grid-column: 1 / -1; padding: 12px 16px; color: var(--gray-700); text-decoration: none; }
+.mi-oneline:hover { border-color: var(--gray-400); text-decoration: none; }
+.mi-oneline > svg { color: var(--tone-danger-text); flex: none; }
+.mi-oneline-go { margin-left: auto; color: var(--primary); font-weight: 600; font-size: 13px; }

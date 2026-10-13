@@ -349,7 +349,7 @@ export default function Workload() {
       <div className="page-header">
         <div>
           <h1 className="page-title flex-center gap-8">
-            <Users size={20} /> Engineer Workload
+            Engineer Workload
           </h1>
           <div className="page-subtitle">Live snapshot of all engineers — {monthLabel}</div>
         </div>

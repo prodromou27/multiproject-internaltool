@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, X, FolderOpen, CheckSquare, Wrench, Building2, ChevronDown, ChevronUp, Zap, ArrowRight } from 'lucide-react';
+import { Search, X, FolderOpen, CheckSquare, Wrench, Building2, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { parseQuery } from './search/parseQuery';
@@ -170,7 +170,7 @@ export default function SearchPage() {
       {/* Page header */}
       <div className="u-8677744">
         <h1 className="page-title u-143e030">
-          <Zap size={20} color="var(--primary)" /> Smart Search
+          Smart Search
         </h1>
         <p className="u-b5e2607">
           Search in plain English — by status, customer, engineer, date and more.

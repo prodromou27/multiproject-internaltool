@@ -38,7 +38,8 @@ test('managers see the whole operation on the dashboard: figures, charts and wha
   await expect(section.getByRole('region', { name: 'Customer reports owed' })).toContainText('Overdue');
   await expect(section.getByRole('region', { name: 'Contracts ending' })).toContainText('19 days');
   await expect(section.getByRole('region', { name: 'Devices on old software' })).toContainText('5 behind');
-  await expect(section.getByRole('region', { name: 'Knowledge gaps' })).toContainText('Gap');
+  // On the dashboard the knowledge gaps are one line that opens the Skill matrix.
+  await expect(section.getByRole('link', { name: 'Knowledge gaps' })).toHaveAttribute('href', '/skills');
   await section.getByRole('button', { name: '12 months' }).click();
   await expect.poll(() => asked.at(-1)).toBe(365);
   await expect(section.getByRole('button', { name: '12 months' })).toHaveAttribute('aria-pressed', 'true');

@@ -587,7 +587,7 @@ export default function Profile() {
       <div className="page-header">
         <div>
           <h1 className="page-title flex-center gap-8">
-            <User size={20} /> My Profile
+            My Profile
           </h1>
           <div className="page-subtitle">Manage your account details and password</div>
         </div>

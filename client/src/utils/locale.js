@@ -120,6 +120,12 @@ export function formatDateTime(value, cfg = config) {
   return assemble(parts, cfg);
 }
 
+/** The time of day of a timestamp, in the configured timezone and 12/24-hour format. */
+export function formatTime(value, cfg = config) {
+  const text = formatDateTime(value, cfg);
+  return text.includes(', ') ? text.slice(text.lastIndexOf(', ') + 2) : text;
+}
+
 /** Formats a number using the configured group/decimal separators. */
 export function formatNumber(value, cfg = config, { decimals } = {}) {
   if (value === null || value === undefined || value === '') return '—';

@@ -2,7 +2,7 @@ import { BackupOffsite, BackupShare, CopyPassphrase } from './BackupOffsite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, CloudUpload, DatabaseBackup, FolderSync, Download, RotateCcw, ShieldCheck, Trash2, Upload, XCircle } from 'lucide-react';
 import { api } from '../../api';
-import { Modal } from '../../components/Shared';
+import { Modal, fmtDateTime } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
 import { Toggle } from './shared';
@@ -15,7 +15,7 @@ import './BackupsTab.css';
 
 const KINDS = { scheduled: 'Scheduled', manual: 'Manual', 'before-restore': 'Before a restore', uploaded: 'Uploaded' };
 const size = bytes => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
-const when = iso => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+const when = iso => fmtDateTime(iso);
 
 /* Asks for the manager's password (and, to restore, the word RESTORE). */
 function PasswordDialog({ title, children, action, needsWord = false, onConfirm, onClose }) {

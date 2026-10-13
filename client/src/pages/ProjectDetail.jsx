@@ -6,7 +6,7 @@ import { PageState } from '../components/PageLayout';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { StatusBadge, PriorityBadge, RagBadge, fmtDate, fmtRelative, isOverdue, Modal, MentionInput, renderMentions } from '../components/Shared';
+import { StatusBadge, PriorityBadge, RagBadge, fmtDate, fmtRelative, isOverdue, Modal, MentionInput, renderMentions, sentenceCase } from '../components/Shared';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { AttachmentsSection, KpiSection } from './project/AttachmentsKpi';
@@ -539,7 +539,7 @@ export default function ProjectDetail() {
                 <tbody>{project.members?.map(m => (
                   <tr key={m.id}>
                     <td>{m.name}</td><td>{m.email || '—'}</td>
-                    <td><span className={`badge badge-${m.role}`}>{m.role}</span></td>
+                    <td><span className={`badge badge-${m.role}`}>{sentenceCase(m.role)}</span></td>
                     {isManager && <td><button className="btn btn-sm btn-danger" onClick={async () => {
                       const ok = await confirm(`Remove ${m.name} from this project?`, { title: 'Remove Member', label: 'Remove' });
                       if (!ok) return;

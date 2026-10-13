@@ -1,3 +1,4 @@
+import { sentenceCase } from './Shared';
 import './EnterpriseUI.css';
 
 // `label` names a section for assistive technology without a visible header
@@ -17,7 +18,8 @@ export function MetricStrip({ items,className='' }) {
   </article>)}</div>;
 }
 
-export function ToneBadge({ tone='neutral',children }) { return <span className={`ui-badge is-${tone}`}><i aria-hidden="true" />{children}</span>; }
+// Text badges read in sentence case ("High risk"); anything else is shown as given.
+export function ToneBadge({ tone='neutral',children }) { return <span className={`ui-badge is-${tone}`}><i aria-hidden="true" />{typeof children === 'string' ? sentenceCase(children) : children}</span>; }
 
 export function DataTable({ columns,rows,rowKey='id',loading=false,error='',empty='No records found.',emptyAction,onRetry,caption,rowProps }) {
   if (error) return <div className="ui-async-state is-error" role="alert"><strong>Unable to load this view</strong><span>{error}</span>{onRetry && <button className="btn btn-ghost btn-sm" onClick={onRetry}>Retry</button>}</div>;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckSquare, Download, Trash2, UserCheck, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown, RefreshCw } from 'lucide-react';
+import { Check, CheckSquare, ChevronDown, Download, Trash2, UserCheck, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown, RefreshCw } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch } from '../components/ListWorkspace';
@@ -9,7 +9,7 @@ import WaitingReasonDialog from '../components/WaitingReasonDialog';
 import TaskSubtasks, { DraftChecklist, LastUpdate, SubtaskProgress, SubtasksDialog, TaskTicket, TaskUpdates } from '../components/TaskSubtasks';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
+import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal, sentenceCase } from '../components/Shared';
 import { localDateISO } from '../utils/dates';
 import { TASK_FILTERS } from '../utils/taskFilters';
 import { useSavedFilter } from '../hooks/useSavedFilter';
@@ -27,6 +27,37 @@ const STATUS_LABELS = {
 
 const MANAGER_STATUSES  = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed', 'pending_approval', 'closed', 'cancelled'];
 const ENGINEER_STATUSES = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed'];
+const FINISHED = ['completed', 'closed', 'cancelled', 'pending_approval'];
+
+/* A task's status in the list: the badge opens a short menu to change it, and
+   the tick beside it marks the task done in one click. */
+function TaskStatusControl({ task, statuses, onChange }) {
+  const menu = useRef(null);
+  const pick = (event, status) => { menu.current.open = false; if (status !== task.status) onChange(task, status); };
+  // The table scrolls inside its box, so the menu is placed on the screen (not inside the box)
+  // and closes on a click elsewhere or when the page scrolls.
+  const place = () => {
+    const details = menu.current; if (!details?.open) return;
+    const at = details.querySelector('summary').getBoundingClientRect(), list = details.querySelector('.task-status-options');
+    const below = window.innerHeight - at.bottom > list.offsetHeight + 12;
+    Object.assign(list.style, { position: 'fixed', left: `${Math.min(at.left, window.innerWidth - list.offsetWidth - 8)}px`, top: `${below ? at.bottom + 4 : at.top - list.offsetHeight - 4}px` });
+  };
+  useEffect(() => {
+    const close = event => { if (menu.current?.open && !menu.current.contains(event.target)) menu.current.open = false; };
+    const closeOnScroll = () => { if (menu.current?.open) menu.current.open = false; };
+    document.addEventListener('pointerdown', close); window.addEventListener('scroll', closeOnScroll, true);
+    return () => { document.removeEventListener('pointerdown', close); window.removeEventListener('scroll', closeOnScroll, true); };
+  }, []);
+  return <div className="task-status">
+    <details className="task-status-menu" ref={menu} onToggle={place}>
+      <summary aria-label={`Status of ${task.title}: ${STATUS_LABELS[task.status] || task.status}. Change status`}><StatusBadge entityType="task" s={task.status} /><ChevronDown size={12} aria-hidden="true" /></summary>
+      <div className="task-status-options" role="menu">
+        {statuses.map(status => <button key={status} type="button" role="menuitemradio" aria-checked={status === task.status} onClick={event => pick(event, status)}>{sentenceCase(STATUS_LABELS[status])}</button>)}
+      </div>
+    </details>
+    {!FINISHED.includes(task.status) && statuses.includes('completed') && <button type="button" className="task-done" aria-label={`Mark ${task.title} as done`} title="Mark as done" onClick={() => onChange(task, 'completed')}><Check size={14} aria-hidden="true" /></button>}
+  </div>;
+}
 const TASK_COLUMNS = [
   ['project', 'Project or customer'], ['status', 'Status'], ['priority', 'Priority'],
   ['assignee', 'Assigned to'], ['deadline', 'Deadline'],
@@ -556,16 +587,7 @@ export default function Tasks() {
                   </td>
                   {visibleColumns.has('project') && <td>{t.project_title || projects.find(p => p.id === t.project_id)?.title || (t.customer_name ? <>{t.customer_name} <span className="text-muted text-sm">(customer)</span></> : <span className="text-muted">—</span>)}</td>}
                   {visibleColumns.has('status') && <td>{isManager || t.assigned_to === user.id || t.assigned_to == null
-                    ? <select
-                      value={t.status}
-                      onChange={e => handleStatusChange(t, e.target.value)}
-                      className={["u-33842f4", (t.status === 'waiting_customer' ? 'u-ec3ed4f' : '')].filter(Boolean).join(' ')}
-                      aria-label={`Status of ${t.title}`}
-                    >
-                      {(isManager ? managerStatuses : engineerStatuses).map(s => (
-                        <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                      ))}
-                    </select>
+                    ? <TaskStatusControl task={t} statuses={isManager ? managerStatuses : engineerStatuses} onChange={handleStatusChange} />
                     : <StatusBadge entityType="task" s={t.status} />}</td>}
                   {visibleColumns.has('priority') && <td><PriorityBadge p={t.priority} /></td>}
                   {visibleColumns.has('assignee') && <td>{t.assigned_to_name || (t.team_name ? <>{t.team_name} <span className="text-muted text-sm">(team)</span></> : '—')}</td>}

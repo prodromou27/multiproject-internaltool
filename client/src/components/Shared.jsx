@@ -1,7 +1,7 @@
 import { useContext, useRef, useState, useEffect, useId, useLayoutEffect } from 'react';
 import { X } from 'lucide-react';
 import { StatusContext, getStatusDef } from '../hooks/useStatuses';
-import { formatDate, formatDateTime, formatNumber } from '../utils/locale';
+import { formatDate, formatDateTime, formatNumber, formatTime } from '../utils/locale';
 
 // Fallback labels for when config isn't loaded yet
 const STATUS_LABELS = {
@@ -31,7 +31,7 @@ export function StatusBadge({ s, entityType }) {
     return (
       <span className="u-d2215a4" style={{ background: def.bg, color: def.text }}>
         <span className="u-19c4840" style={{ background: def.dot }} />
-        {def.label}
+        {sentenceCase(def.label)}
       </span>
     );
   }
@@ -40,7 +40,7 @@ export function StatusBadge({ s, entityType }) {
   return (
     <span className={`badge badge-${s}`}>
       <span className="badge-dot" />
-      {STATUS_LABELS[s] || s}
+      {sentenceCase(STATUS_LABELS[s] || s)}
     </span>
   );
 }
@@ -67,7 +67,7 @@ export function PriorityBadge({ p }) {
   const icons = { critical: '‼', high: '↑', medium: '→', low: '↓' };
   return (
     <span className={`badge badge-${p}`}>
-      {icons[p] || ''} {p}
+      {icons[p] || ''} {sentenceCase(p)}
     </span>
   );
 }
@@ -80,8 +80,23 @@ export function fmtDate(d) { return formatDate(d); }
 // Actual timestamps (created_at, sent_at, …) are converted into the configured timezone.
 export function fmtDateTime(d) { return formatDateTime(d); }
 
+// The time of day of a timestamp ("14:05" or "2:05 PM", per the settings).
+export function fmtTime(d) { return formatTime(d); }
+
 // Formats a number using the admin-configured group/decimal separators.
 export function fmtNumber(n, opts) { return formatNumber(n, undefined, opts); }
+
+/* Badge text in sentence case: the first letter a capital, the other words in
+   lower case ("in_progress" → "In progress", "High Risk" → "High risk"), while
+   acronyms stay as they are ("Sent to PM"). */
+export function sentenceCase(value) {
+  const text = String(value ?? '').replace(/_/g, ' ').trim();
+  if (!text) return text;
+  return text.split(/(\s+)/).map((word, index) => {
+    if (index === 0) return word.charAt(0).toUpperCase() + word.slice(1);
+    return /^[A-Z][a-z]+$/.test(word) ? word.toLowerCase() : word;
+  }).join('');
+}
 
 export function isOverdue(d) {
   if (!d) return false;

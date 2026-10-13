@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Upload, X, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle } from 'lucide-react';
+import { Upload, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { HeaderMenu, PageHeader } from '../components/PageLayout';
@@ -11,7 +11,7 @@ import { api } from '../api';
 import AddToCalendarButton from '../components/AddToCalendarButton';
 import { TeamAvailability, VisitCalendar } from './maintenanceVisits/VisitViews';
 import { useAuth } from '../App';
-import { fmtDate, isOverdue, Modal } from '../components/Shared';
+import { fmtDate, isOverdue, Modal, sentenceCase } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
@@ -151,7 +151,7 @@ function VisitForm({ initial, defaults, customers, engineers, onSave, onClose })
 /* ── PDF / Print helper ──────────────────────────────────── */
 function generatePDF(visit, onError) {
   const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const fmtD = s => s ? new Date(s + (s.length === 10 ? 'T12:00:00' : '')).toLocaleDateString([], { year:'numeric', month:'long', day:'numeric' }) : '—';
+  const fmtD = s => s ? fmtDate(s) : '—';
   const statusLabel = (visit.status || '').replace('_',' ');
   const reportLine = visit.report_sent_to_customer
     ? `&#10003; Sent to Project Management${visit.report_sent_to_customer_at ? ' on ' + fmtD(visit.report_sent_to_customer_at) : ''}`
@@ -191,7 +191,7 @@ function generatePDF(visit, onError) {
 </head><body>
   <div class="hdr">
     <div><div class="logo">${PRODUCT_NAME}</div><div class="doc-type">Maintenance Visit Report</div></div>
-    <div style="font-size:11px;color:var(--gray-500);text-align:right">Generated ${new Date().toLocaleDateString([], { year:'numeric', month:'long', day:'numeric' })}</div>
+    <div style="font-size:11px;color:var(--gray-500);text-align:right">Generated ${fmtDate(localDateISO())}</div>
   </div>
 
   <h1>${esc(visit.title)}</h1>
@@ -305,7 +305,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
           </div>
           <div>
             <div className="text-sm text-muted u-fce9611">Status</div>
-            <span className={`badge ${STATUS_COLORS[visit.status]}`}>{visit.status.replace('_', ' ')}</span>
+            <span className={`badge ${STATUS_COLORS[visit.status]}`}>{sentenceCase(visit.status.replace('_', ' '))}</span>
           </div>
           <div>
             <div className="text-sm text-muted u-fce9611">
@@ -394,6 +394,16 @@ const MV_COLUMNS = ['customer_name*', 'title*', 'description', 'scheduled_date*'
 const VISIT_FILTERS = new Set(['upcoming', 'past', 'report_pending', 'awaiting_review', 'cancelled', 'all']);
 
 /* ── Main Page ───────────────────────────────────────────── */
+// The next 6 months and the last 12, newest first, for the month filter.
+const MONTH_CHOICES = () => {
+  const now = new Date(), out = [];
+  for (let offset = 6; offset >= -12; offset--) {
+    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    out.push({ value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) });
+  }
+  return out;
+};
+
 export default function MaintenanceVisits() {
   const { user }   = useAuth();
   const toast      = useToast();
@@ -588,8 +598,12 @@ export default function MaintenanceVisits() {
               <button key={k} className={'filter-pill' + (filter === k ? ' active' : '')} onClick={() => setFilter(k)}>{l}</button>
             ))}
           </FilterGroup>
-          <input type="month" value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="u-19324d0" title="Filter by month" />
-          {monthFilter && <button className="btn btn-sm btn-ghost inline-flex items-center gap-4" onClick={() => setMonthFilter('')}><X size={12} /> Clear month</button>}
+          {/* A list of months, not the browser's month field (which shows "--------- ----" when empty). */}
+          <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="visit-month" aria-label="Month">
+            <option value="">Any month</option>
+            {monthFilter && !MONTH_CHOICES().some(m => m.value === monthFilter) && <option value={monthFilter}>{monthFilter}</option>}
+            {MONTH_CHOICES().map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
         </div>
       </Surface>
 
@@ -643,7 +657,7 @@ export default function MaintenanceVisits() {
                         ? <span className="text-sm">{v.engineer_names}</span>
                         : <span className="text-muted">Unassigned</span>}
                     </td>
-                    <td><span className={`badge ${STATUS_COLORS[v.status]}`}>{v.status.replace('_', ' ')}</span></td>
+                    <td><span className={`badge ${STATUS_COLORS[v.status]}`}>{sentenceCase(v.status.replace('_', ' '))}</span></td>
                     <td>
                       {v.report_sent_to_customer
                         ? <span className="badge badge-done u-4d9efe7"><Send size={10} /> Sent to PM</span>

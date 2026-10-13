@@ -216,7 +216,7 @@ test('clicking a task shows its status, details, subtasks and updates; @ tags a 
   await page.goto('/tasks');
   await page.getByRole('button', { name: 'Patch Cisco ISE', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Patch Cisco ISE' });
-  await expect(dialog).toContainText('Waiting for Customer');
+  await expect(dialog).toContainText('Waiting for customer');
   await expect(dialog).toContainText('Waiting for: Maintenance window');
   await expect(dialog).toContainText('Maria Ioannou');
   await expect(dialog).toContainText('Northwind Logistics');

@@ -319,7 +319,7 @@ export default function Scorecards() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title flex-center gap-8"><BarChart2 size={22} /> Project Quality Scorecards</h1>
+          <h1 className="page-title flex-center gap-8">Project Quality Scorecards</h1>
           <p className="text-sm text-muted mt-4">Target: <strong>80%</strong> · Weighted across 5 dimensions · Difficulty-adjusted</p>
         </div>
         {isManager && (
@@ -419,6 +419,11 @@ export default function Scorecards() {
               {/* Target attainment bar */}
               <div className="card mb-20">
                 <div className="section-title">Target Attainment (≥ 80%)</div>
+                {/* Nothing scored yet: say so, instead of an empty chart. */}
+                {!summary.some(e => e.scorecard_count > 0) && <div className="scorecard-empty">
+                  <p className="text-muted">No scorecards yet. Each engineer's score against the 80% target appears here once projects are scored.</p>
+                  {isManager && <button type="button" className="btn btn-primary btn-sm" onClick={() => { setEditing(null); setShowForm(true); }}>+ New Scorecard</button>}
+                </div>}
                 {summary.filter(e => e.scorecard_count > 0).map(eng => {
                   const r = getRating(eng.avg_adjusted);
                   return (
@@ -437,7 +442,7 @@ export default function Scorecards() {
                     </div>
                   );
                 })}
-                <div className="text-sm text-muted mt-4">Dashed line = 80% target</div>
+                {summary.some(e => e.scorecard_count > 0) && <div className="text-sm text-muted mt-4">Dashed line = 80% target</div>}
               </div>
             </>
           )}

@@ -1,3 +1,4 @@
+import { fmtDateTime } from '../components/Shared';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import {
   StickyNote, CheckSquare, Plus, Trash2, Save, 
@@ -130,7 +131,7 @@ export default function Notes() {
   function fmtUpdated(dt) {
     if (!dt) return '';
     const d = new Date(dt);
-    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return fmtDateTime(d);
   }
 
   return (
@@ -138,7 +139,7 @@ export default function Notes() {
       <div className="page-header">
         <div>
           <h1 className="page-title flex-center gap-8">
-            <StickyNote size={20} /> My Notes
+            My Notes
           </h1>
           <div className="page-subtitle">Private scratchpad and to-do list — only visible to you</div>
         </div>

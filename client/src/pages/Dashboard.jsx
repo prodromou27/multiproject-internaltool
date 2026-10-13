@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { RefreshCw, AlertTriangle, Settings2 } from 'lucide-react';
 import { HeaderMenu, PageHeader } from '../components/PageLayout';
+import { fmtDate, fmtTime } from '../components/Shared';
 import { PAGES, canAccessPage } from '../navigation';
 import OperationalFocus from '../components/OperationalFocus';
 import { localDateISO } from '../utils/dates';
@@ -124,7 +125,7 @@ function RoleDashboard() {
     <div className="page dashboard-page">
       {/* Page header */}
       <PageHeader title={isManager ? 'Operations overview' : isPlanner ? 'Maintenance planning' : 'Project overview'}
-        meta={`${new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}${lastUpdated ? ` · updated ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`}
+        meta={`${new Intl.DateTimeFormat('en-GB', { weekday: 'long' }).format(new Date())} ${fmtDate(localDateISO())}${lastUpdated ? ` · updated ${fmtTime(lastUpdated)}` : ''}`}
         actions={<>
           {/* Approvals has no place in the menu: it opens from here. */}
           {canAccessPage(PAGES.find(page => page.id === 'approvals'), user) && <Link to="/approvals" className="btn btn-primary">Review approvals</Link>}

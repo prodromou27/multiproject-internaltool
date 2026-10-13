@@ -4,10 +4,11 @@ import { BellRing, Check, Clock, Plus, Repeat, Users } from 'lucide-react';
 import { api } from '../api';
 import { useToast } from './Toast';
 import { ReminderForm } from '../pages/Reminders';
+import { fmtDateTime } from './Shared';
 import { useLiveRefresh } from '../live';
 
 const REPEAT_LABELS = { daily: 'Every day', weekly: 'Every week', monthly: 'Every month', yearly: 'Every year' };
-const when = iso => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const when = iso => fmtDateTime(iso);
 
 /* Reminders about one customer (e.g. certificate or licence renewals), on Customer 360.
    New ones default to the customer's team, shared until someone completes them. */
