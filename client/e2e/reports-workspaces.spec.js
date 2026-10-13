@@ -6,9 +6,9 @@ test('report sections are deep-linkable and overview metrics use the shared ledg
   await page.goto('/reports?view=projects');
 
   await expect(page.getByRole('button', { name: 'Projects' })).toHaveClass(/active/);
+  await expect(page.locator('.operations-metric-strip .operations-metric')).toHaveCount(4);
   await page.getByRole('button', { name: 'Overview' }).click();
   await expect(page).toHaveURL(/\/reports$/);
-  await expect(page.locator('.operations-metric-strip .operations-metric')).toHaveCount(4);
 
   await page.getByRole('button', { name: 'Report Builder' }).click();
   await expect(page).toHaveURL(/view=builder/);

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
-import { menuGroups, pageForPath } from '../navigation';
+import { menuGroups, pageForPath, placedPages } from '../navigation';
 import QuickCreate from '../components/QuickCreate';
 import HelpMenu from '../components/HelpMenu';
 import { PRODUCT_WORDMARK } from '../product';
@@ -108,7 +108,7 @@ export function Layout({ children }) {
         {mobile && open && <button className="drawer-close" type="button" onClick={() => setOpen(false)}><X size={18} /> Close navigation</button>}
         <SidebarContent onNav={() => setOpen(false)} groups={groups} currentPage={currentPage}
           compact={compactNav && !mobile} collapsed={folded} onToggleGroup={toggleGroup}
-          onToggleCompact={toggleCompactNav} />
+          onToggleCompact={toggleCompactNav} extraPages={mobile ? placedPages('topbar', user, saAccess.enabled) : []} />
       </aside>
 
       {/* Mobile overlay */}
@@ -121,7 +121,6 @@ export function Layout({ children }) {
         <div className="u-6bb9e7a">
           <QuickCreate user={user} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
           <GlobalSearch />
-          <TopbarLinks user={user} serviceActivityEnabled={saAccess.enabled} />
           <HelpMenu role={user.role} />
           <NotificationBell />
           <UserMenu user={user} team={currentTeams} logout={logout} dense={dense} onToggleDensity={toggleDensity} />

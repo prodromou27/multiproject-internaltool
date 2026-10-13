@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Settings, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer, FileSignature } from 'lucide-react';
+import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer, FileSignature } from 'lucide-react';
+import { PageHeader } from '../components/PageLayout';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -136,31 +137,24 @@ export default function AdminPanel() {
   }
 
   const activeTab = TABS.find(t => t.key === tab) || TABS[0];
-  const activeGroup = TAB_GROUPS.find(g => g.key === activeTab.group);
   const q = tabSearch.trim().toLowerCase();
   const filteredTabs = TABS.filter(t => !q || t.label.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q));
-  const ActiveIcon = activeTab.Icon;
 
   return (
     <div className="page">
-      <div className="page-header u-ef0b7a1">
-        <div>
-          <h1 className="page-title flex-center gap-8">
-            <Settings size={22} /> Settings
-          </h1>
-          <p className="text-sm text-muted mt-4">System configuration, access control, security, and operations</p>
-        </div>
-      </div>
+      <PageHeader title="Settings" />
 
       <div className="settings-shell">
         <aside className="settings-nav" aria-label="Settings sections">
+          <select className="settings-nav-select" aria-label="Settings section" value={tab} onChange={event => selectTab(event.target.value)}>
+            {TAB_GROUPS.map(group => <optgroup key={group.key} label={group.label}>{TABS.filter(t => t.group === group.key).map(t => <option key={t.key} value={t.key}>{t.label}</option>)}</optgroup>)}
+          </select>
           <div className="settings-search">
             <input
               value={tabSearch}
               onChange={e => setTabSearch(e.target.value)}
               placeholder="Search settings"
               aria-label="Search settings"
-              autoFocus
             />
           </div>
 
@@ -169,7 +163,8 @@ export default function AdminPanel() {
             if (!groupTabs.length) return null;
             return (
               <div key={group.key} className="settings-nav-group">
-                <div className="settings-nav-heading">{group.label}</div>
+                {/* Overview stands alone; a heading would only repeat it. */}
+                {group.key !== 'overview' && <div className="settings-nav-heading">{group.label}</div>}
                 {groupTabs.map(({ key, label, Icon }) => (
                   <button
                     key={key}
@@ -194,9 +189,7 @@ export default function AdminPanel() {
 
         <section className="settings-content">
           <div className="settings-content-header">
-            <div className="settings-content-icon"><ActiveIcon size={18} /></div>
             <div>
-              <div className="settings-content-kicker">{activeGroup?.label || 'Settings'}</div>
               <h2>{activeTab.label}</h2>
               <p>{activeTab.desc}</p>
             </div>
@@ -305,30 +298,12 @@ export default function AdminPanel() {
         .settings-content { min-width: 0; }
         .settings-content-header {
           display: grid;
-          grid-template-columns: 42px minmax(0, 1fr) auto;
+          grid-template-columns: minmax(0, 1fr) auto;
           gap: 12px;
           align-items: center;
           margin-bottom: 16px;
           padding-bottom: 14px;
           border-bottom: 1px solid var(--gray-100);
-        }
-        .settings-content-icon {
-          width: 42px;
-          height: 42px;
-          border-radius: 8px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #eff6ff;
-          color: var(--primary);
-        }
-        .settings-content-kicker {
-          color: var(--gray-400);
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: .04em;
-          text-transform: uppercase;
-          margin-bottom: 2px;
         }
         .settings-content-header h2 {
           margin: 0;
@@ -347,7 +322,11 @@ export default function AdminPanel() {
             max-height: none;
             overflow: visible;
           }
+          /* Phones: one dropdown instead of the full list above the content. */
+          .settings-nav > :not(.settings-nav-select) { display: none; }
+          .settings-nav-select { display: block !important; }
         }
+        .settings-nav-select { display: none; width: 100%; }
       `}</style>
     </div>
   );

@@ -28,6 +28,8 @@ export function pmWidget(id, ctx) {
     }
 
     case 'pm_visits':
+      // Empty lists only repeat the figures above, so they show when they have something.
+      if (!incompleteVisits.length) return null;
       return (
         <div key={id} className="card u-49f14f8" style={{ borderLeft: `3px solid ${incompleteVisits.length ? 'var(--warning)' : 'var(--success)'}` }}>
           <div className="section-header">
@@ -85,6 +87,7 @@ export function pmWidget(id, ctx) {
       );
 
     case 'projects':
+      if (!activeProjects.length) return null;
       return (
         <div key={id} className="card mb-20">
           <div className="section-header">

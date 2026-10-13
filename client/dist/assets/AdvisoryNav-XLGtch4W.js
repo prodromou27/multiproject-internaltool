@@ -1,1 +1,0 @@
-import{u as e}from"./vendor-react-TCezswau.js";import{A as t}from"./index-W2uVMpxg.js";var n=e();function r(){return(0,n.jsxs)(`nav`,{className:`advisory-nav`,"aria-label":`Advisories`,children:[(0,n.jsx)(t,{to:`/vulnerabilities`,children:`Vulnerabilities`}),(0,n.jsx)(t,{to:`/software`,children:`Software versions`})]})}export{r as t};

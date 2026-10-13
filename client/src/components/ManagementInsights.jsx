@@ -167,15 +167,15 @@ export default function ManagementInsights({ filterable = false, compact = false
       </Chart>
     </div>}
 
-    {/* On the dashboard only the lists with something in them, a few rows each. */}
+    {/* Only the lists with something in them, a few rows each (View all has the rest). */}
     <div className="mi-attentions">
-      <Attention title="Customer reports owed" icon={FileClock} items={data.attention.reports_owed} limit={compact ? 5 : undefined} hidden={compact && !data.attention.reports_owed.length} empty="Every managed customer has its report." to="/approvals?view=reports"
+      <Attention title="Customer reports owed" icon={FileClock} items={data.attention.reports_owed} limit={5} hidden={!data.attention.reports_owed.length} empty="Every managed customer has its report." to="/approvals?view=reports"
         render={r => <li key={r.customer_id}><Link to={`/customers/${r.customer_id}/service-profile?section=reports`}>{r.customer_name}</Link><span>{r.label} · due {fmtDate(r.due_date)}</span>{r.overdue ? <ToneBadge tone="danger">Overdue</ToneBadge> : <ToneBadge tone="warning">{r.status.replace('_', ' ')}</ToneBadge>}</li>} />
-      <Attention title="Contracts ending" icon={CalendarClock} items={data.attention.contracts_ending} limit={compact ? 5 : undefined} hidden={compact && !data.attention.contracts_ending.length} empty="No contract ends in the next 30 days."
+      <Attention title="Contracts ending" icon={CalendarClock} items={data.attention.contracts_ending} limit={5} hidden={!data.attention.contracts_ending.length} empty="No contract ends in the next 30 days."
         render={c => <li key={c.id}><Link to={`/customers/${c.customer_id}/service-profile?section=contracts`}>{c.customer_name}</Link><span>{c.reference || 'Contract'} · {c.status === 'expired' ? `ended ${fmtDate(c.end_date)}` : `ends ${fmtDate(c.end_date)}`}</span><ToneBadge tone={c.status === 'expired' ? 'danger' : 'warning'}>{c.status === 'expired' ? 'Expired' : `${c.days_left} days`}</ToneBadge></li>} />
-      <Attention title="Devices on old software" icon={PackageCheck} items={data.attention.devices} limit={compact ? 5 : undefined} hidden={compact && !data.attention.devices.length} empty="Every checked device is up to date." to="/software"
+      <Attention title="Devices on old software" icon={PackageCheck} items={data.attention.devices} limit={5} hidden={!data.attention.devices.length} empty="Every checked device is up to date." to="/software"
         render={d => <li key={d.id}><Link to={`/customers/${d.customer_id}/service-profile?section=assets`}>{d.customer_name}</Link><span>{d.name} · {d.product_name} {d.software_version}</span><ToneBadge tone={d.status === 'end_of_life' ? 'danger' : 'warning'}>{d.status === 'end_of_life' ? 'End of life' : d.behind ? `${d.behind} behind` : 'Behind'}</ToneBadge></li>} />
-      <Attention title="Knowledge gaps" icon={GraduationCap} items={data.attention.skills} limit={compact ? 5 : undefined} hidden={compact && !data.attention.skills.length} empty="Every technology has enough skilled engineers." to="/skills"
+      <Attention title="Knowledge gaps" icon={GraduationCap} items={data.attention.skills} limit={5} hidden={!data.attention.skills.length} empty="Every technology has enough skilled engineers." to="/skills"
         render={s => <li key={s.technology_id}><Link to="/skills">{s.name}</Link><span>{s.skilled} of {s.target} skilled</span><ToneBadge tone={s.status === 'gap' ? 'danger' : 'warning'}>{s.status === 'gap' ? 'Gap' : s.single_point ? 'One person' : 'At risk'}</ToneBadge></li>} />
     </div>
   </section>;

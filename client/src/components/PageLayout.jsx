@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useEffect, useRef } from 'react';
-import { ArrowLeft, AlertCircle, MoreHorizontal } from 'lucide-react';
+import { ArrowLeft, AlertCircle, ChevronDown, MoreHorizontal } from 'lucide-react';
 
 /* One heading per page. `meta` is an optional short fact about the view (the date,
    the sort order), not a tagline restating the title. */
@@ -26,7 +26,8 @@ export function PageState({ title, description, children }) {
 /* The page's less frequent actions (export, import, related pages) behind one
    "⋯" button, so the header shows only the main action. Children are links or
    buttons; choosing one closes the menu. */
-export function HeaderMenu({ label = 'More actions', children }) {
+// `text`: show the label on the button instead of the bare "⋯" (for a menu people look for by name).
+export function HeaderMenu({ label = 'More actions', text, children }) {
   const ref = useRef(null);
   useEffect(() => {
     const close = event => { if (ref.current?.open && (event.type === 'pointerdown' ? !ref.current.contains(event.target) : event.key === 'Escape')) ref.current.open = false; };
@@ -34,7 +35,8 @@ export function HeaderMenu({ label = 'More actions', children }) {
     return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close); };
   }, []);
   return <details className="header-menu" ref={ref}>
-    <summary className="btn btn-ghost" aria-label={label} title={label}><MoreHorizontal size={16} aria-hidden="true" /></summary>
+    {text ? <summary className="btn btn-ghost">{text} <ChevronDown size={14} aria-hidden="true" /></summary>
+      : <summary className="btn btn-ghost" aria-label={label} title={label}><MoreHorizontal size={16} aria-hidden="true" /></summary>}
     <div className="header-menu-panel" onClick={event => { if (event.target.closest('a,button')) ref.current.open = false; }}>{children}</div>
   </details>;
 }

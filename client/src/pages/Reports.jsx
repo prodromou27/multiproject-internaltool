@@ -12,7 +12,7 @@ import { fmtDuration, mixOf } from '../components/activityLedger';
 import './ServiceReport.css';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../components/Shared';
 import ReportBuilder from '../components/ReportBuilder';
-import { PageHeader } from '../components/PageLayout';
+import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import { useAuth } from '../App';
 import { childPages } from '../navigation';
 
@@ -359,13 +359,12 @@ export default function Reports() {
   return (
     <div className="page">
       <PageHeader title="Reports"
-        actions={<>
-          <Link className="btn btn-ghost" to="/service-operations">Service activity overview</Link>
-          {/* Workload, Skill matrix, KPI Management, Scorecards and SLA open from here rather than the menu. */}
-          {related.length > 0 && <details className="preset-manage task-presets"><summary>Team and performance</summary><div className="preset-menu">
-            {related.map(page => <Link key={page.id} className="preset-link" to={page.path}>{page.label}</Link>)}
-          </div></details>}
-        </>} />
+        actions={/* Related reports and the team pages (Workload, Skill matrix, KPIs, Scorecards, SLA) open from one menu. */
+          <HeaderMenu text="More reports">
+            <Link to="/service-operations">Service activity overview</Link>
+            {related.length > 0 && <hr />}
+            {related.map(page => <Link key={page.id} to={page.path}>{page.label}</Link>)}
+          </HeaderMenu>} />
 
       <div className="tabs" aria-label="Report sections">
         {[['overview','Overview'],['tasks','Tasks'],['builder','Report Builder'],['projects','Projects'],...(canViewKpis ? [['kpis','KPIs']] : []),['trends','Trends'],['service_activity','Service Activity']].map(([k, l]) => (
@@ -378,6 +377,11 @@ export default function Reports() {
       {tab === 'overview' && (
         <>
           <ManagementInsights filterable />
+        </>
+      )}
+
+      {/* The project figures and closures waiting for approval lead the Projects report. */}
+      {tab === 'projects' && <>
           <h2 className="section-title">Projects</h2>
           <div className="operations-metric-strip">
             <div className="operations-metric"><strong>{summary.total}</strong><span>Total Projects</span></div>
@@ -404,9 +408,7 @@ export default function Reports() {
               </div>
             </div>
           )}
-        </>
-      )}
-
+      </>}
       {tab === 'projects' && (
         <div className="card table-wrap">
           <table>

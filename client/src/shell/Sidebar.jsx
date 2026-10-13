@@ -28,7 +28,8 @@ function OverdueDot({ count }) {
   );
 }
 
-export function SidebarContent({ onNav, groups, currentPage, compact, collapsed, onToggleGroup, onToggleCompact }) {
+// extraPages: on phones the top bar has no room for Calendar and Reminders, so they join the menu's foot.
+export function SidebarContent({ onNav, groups, currentPage, compact, collapsed, onToggleGroup, onToggleCompact, extraPages = [] }) {
 
   const [overdue, setOverdue] = useState({ tasks: 0, visits: 0 });
   useLiveRefresh(() => api.overdueCounts().then(setOverdue).catch(() => {}));
@@ -101,8 +102,8 @@ export function SidebarContent({ onNav, groups, currentPage, compact, collapsed,
 
       {/* Footer: notes and settings, always in view. Account, display preferences and
           external tools live in the account menu in the top bar. */}
-      {more && <div className="sidebar-footer">
-        <nav className="sidebar-more-nav" aria-label="Notes and settings">{more.pages.map(link)}</nav>
+      {(more || extraPages.length > 0) && <div className="sidebar-footer">
+        <nav className="sidebar-more-nav" aria-label="Notes and settings">{extraPages.map(link)}{more?.pages.map(link)}</nav>
       </div>}
     </>
   );
