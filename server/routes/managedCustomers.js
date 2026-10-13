@@ -221,8 +221,11 @@ router.post('/:id/customer-report.:format',requirePermission('managed_reports.ge
     const template=company?.word_template ? company : null;
     let buffer;
     if (template) {
-      const model=await reporting.buildReportModel({ customerId:id,from,to,narratives:{ executive_summary:options.summary,upcoming_activities:options.coming_next } });
-      buffer=wordTemplates.render(Buffer.from(template.word_template,'base64'),wordTemplates.templateData(model,{ preparedBy:req.user.name }));
+      // The parts ticked on the Reports tab switch the template's {#include_…} sections on or off.
+      const picked={ changes:'changes',tickets:'resolved_tickets',assets:'assets',recommendations:'recommendations',work_log:'service_activities' };
+      const sections=['executive_summary','service_overview','upcoming_work',...report.sections.map(key => picked[key]).filter(Boolean)];
+      const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives:{ executive_summary:options.summary,upcoming_activities:options.coming_next } });
+      buffer=wordTemplates.render(Buffer.from(template.word_template,'base64'),{ ...wordTemplates.templateData(model,{ preparedBy:req.user.name }),report_title:report.wording.title });
     } else buffer=format==='pdf' ? await valueReport.renderPdf(report) : await valueReport.renderWord(report);
     const filename=valueReport.fileName(report,format);
     const history=await reportHistory.archive({ customerId:id,templateId:template?.id || null,from,to,format,status:'draft',filename,sections:report.sections,userId:req.user.id,buffer });

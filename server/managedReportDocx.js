@@ -24,6 +24,7 @@ const flag = description => ({ kind: 'flag', description });
 const OPTIONAL_SECTIONS = ['changes', 'resolved_tickets', 'assets', 'recommendations'];
 
 const PLACEHOLDERS = {
+  report_title: value('The report title set in Settings → Customer report template', 'Service report'),
   customer_name: value('Customer name', 'Northwind Logistics'),
   period_from: value('First day of the reporting period', '01/10/2026'),
   period_to: value('Last day of the reporting period', '31/10/2026'),

@@ -85,3 +85,23 @@ test('every report uses the company report template set in Settings', async () =
   assert.equal((await api(`/api/managed-report-templates/${template.id}`, { method: 'PUT', token: ids.tokenManager, body: { ...saved.data, wording: { headings: { nonsense: 'x' } } } })).status, 400);
   assert.equal((await api(`/api/managed-report-templates/${template.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { ...saved.data, wording } })).status, 403);
 });
+
+test('the company Word template gets the report title, and its sections follow the parts ticked', async () => {
+  const { Document, Packer, Paragraph } = require('docx');
+  const PizZip = require('pizzip');
+  const lines = ['{report_title} for {customer_name}', '{#include_changes}', 'CHANGES-SECTION', '{/include_changes}', '{#include_recommendations}', 'RECOMMENDATIONS-SECTION', '{/include_recommendations}', '{executive_summary}'];
+  const file = await Packer.toBuffer(new Document({ sections: [{ children: lines.map(text => new Paragraph(text)) }] }));
+  const { company_template_id: id } = (await api('/api/managed-report-templates', { token: ids.tokenManager })).data;
+  const form = new FormData(); form.append('file', new Blob([file]), 'company.docx');
+  const upload = await fetch(`${suiteFixture.baseUrl}/api/managed-report-templates/${id}/word-template`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenManager}`, 'X-SolutionsHub-Request': '1' }, body: form });
+  assert.equal(upload.status, 200, await upload.text());
+
+  const today = appTime.today();
+  const word = await download('docx', { from: appTime.addDays(today, -5), to: today, sections: ['recommendations'], summary: 'Quiet month.' });
+  assert.equal(word.status, 200);
+  const xml = new PizZip(Buffer.from(await word.arrayBuffer())).file('word/document.xml').asText();
+  assert.match(xml, /Monthly value report for /, 'the title set in Settings');
+  assert.match(xml, /RECOMMENDATIONS-SECTION/);
+  assert.doesNotMatch(xml, /CHANGES-SECTION/, 'parts not ticked are left out');
+  assert.match(xml, /Quiet month\./);
+});
