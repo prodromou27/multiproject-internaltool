@@ -3,7 +3,7 @@ import { mockApi } from './support/mockApi.js';
 
 const inDays = days => { const d = new Date(); d.setDate(d.getDate() + days); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
-test('engineers have one place to work from: Dashboard opens My Work, which has what the dashboard had', async ({ page }) => {
+test('My Work has what engineers need for the week; their Dashboard stays in the menu', async ({ page }) => {
   const api = await mockApi(page, { role: 'engineer' });
   api.override('GET /api/tasks', () => ({ body: [{ id: 7, title: 'Patch Cisco ISE', status: 'open', priority: 'high', deadline: inDays(3), assigned_to: 1 }] }));
   api.override('GET /api/maintenance-visits', ({ request }) => {
@@ -14,10 +14,9 @@ test('engineers have one place to work from: Dashboard opens My Work, which has 
   let sent = 0;
   api.override('POST /api/maintenance-visits/4/report-sent', () => { sent++; return { body: {} }; });
 
-  await page.goto('/');
-  await expect(page).toHaveURL(/\/my-day$/);
+  await page.goto('/my-day');
   const nav = page.getByRole('navigation', { name: 'Main' });
-  await expect(nav.getByRole('link', { name: 'Dashboard' })).toHaveCount(0);
+  await expect(nav.getByRole('link', { name: 'Dashboard' })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'My Work' })).toBeVisible();
 
   await expect(page.getByText('Overdue and due this week')).toBeVisible();

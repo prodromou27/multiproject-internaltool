@@ -140,6 +140,12 @@ app.use('/api/auth/forgot-password', rateLimit({
   message: { error: 'Too many reset requests. Please try again in 15 minutes.' },
 }));
 app.use('/api/auth/reset-password',        authLimiter);
+// Password checks inside a session (turning 2FA off, changing the email) and
+// email confirmation links count failures per address too; routes/auth.js also
+// limits them per account.
+app.delete('/api/auth/2fa',                authLimiter);
+app.put('/api/auth/profile',               authLimiter);
+app.use('/api/auth/confirm-email',         authLimiter);
 
 // ── Rate limiting on bulk-import endpoints ───────────────────────────────────
 // Each import can insert up to 5,000 rows; cap the burst rate to protect the DB.

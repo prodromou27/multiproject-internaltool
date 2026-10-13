@@ -70,7 +70,7 @@ export default function Login() {
       setStep('set_password');
     } else {
       login(user);
-      navigate('/');
+      navigate(user.role === 'engineer' ? '/my-day' : '/'); // engineers start on My Work
     }
   }
 
@@ -121,7 +121,7 @@ export default function Login() {
     try {
       await api.firstTimeChangePassword(newPw);
       login({ ...pendingUser, must_change_password: 0 });
-      navigate('/');
+      navigate(pendingUser?.role === 'engineer' ? '/my-day' : '/');
     } catch (err) {
       setError(err.message || 'Failed to set password');
     } finally {

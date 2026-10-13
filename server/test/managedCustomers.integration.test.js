@@ -265,7 +265,7 @@ test('managed reports follow a conflict-safe reviewed workflow with an audit tra
 
 test('managed report templates are manager-only, validated and versioned',async () => {
   assert.equal((await api('/api/managed-report-templates',{ token:ids.tokenEnabled })).status,403);
-  const seeded=await api('/api/managed-report-templates',{ token:ids.tokenManager });assert.equal(seeded.status,200);assert.equal(seeded.data.rows.length>=3,true);
+  const seeded=await api('/api/managed-report-templates',{ token:ids.tokenManager });assert.equal(seeded.status,200);assert.equal(seeded.data.rows.length>=1,true); // the company template (the two unused seeds were removed)
   assert.equal((await api('/api/managed-report-templates',{ method:'POST',token:ids.tokenManager,body:{ name:'Bad',description:'',sections:['unknown'],default_narratives:{},active:true } })).status,400);
   const created=await api('/api/managed-report-templates',{ method:'POST',token:ids.tokenManager,body:{ name:'Customer Security Review',description:'Reusable security review',sections:['executive_summary','ticket_summary','risks'],default_narratives:{ executive_summary:'Security services review.' },active:true } });
   assert.equal(created.status,201);assert.equal(created.data.version,1);assert.deepEqual(created.data.sections,['executive_summary','ticket_summary','risks']);

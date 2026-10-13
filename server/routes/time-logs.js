@@ -2,6 +2,16 @@ const router = require('express').Router();
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { worksOnTask } = require('../taskAccess');
+const { hasPermission } = require('../permissions');
+
+// A log belongs to a task (tasks.access) or a visit (visits.access); revoking the
+// module also closes its time logs.
+const moduleOf = target => (target.task_id ? 'tasks.access' : 'visits.access');
+async function moduleDenied(req, res, target) {
+  if (await hasPermission(req.user, moduleOf(target))) return false;
+  res.status(403).json({ error: 'You do not have permission to access this module' });
+  return true;
+}
 
 function validId(value) {
   return (typeof value === 'number' || typeof value === 'string')
@@ -23,6 +33,7 @@ function targetError(task_id, visit_id) {
 router.get('/', requireAuth, async (req, res) => {
   const { task_id, visit_id } = req.query;
   const error = targetError(task_id, visit_id);
+  if (!error && await moduleDenied(req, res, { task_id, visit_id })) return;
   if (error) return res.status(400).json({ error });
   if (task_id && req.user.role !== 'manager' && req.user.role !== 'engineer')
     return res.status(403).json({ error: 'Forbidden' });
@@ -63,6 +74,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.post('/', requireAuth, async (req, res) => {
   const { task_id, visit_id, hours, description } = req.body;
   const error = targetError(task_id, visit_id);
+  if (!error && await moduleDenied(req, res, { task_id, visit_id })) return;
   if (error) return res.status(400).json({ error });
   if (task_id && req.user.role !== 'manager' && req.user.role !== 'engineer')
     return res.status(403).json({ error: 'Forbidden' });
@@ -116,7 +128,8 @@ router.get('/mine', requireAuth, async (req, res) => {
     WHERE tl.user_id = ? AND substr(tl.logged_at, 1, 10) BETWEEN ? AND ?
     ORDER BY tl.logged_at DESC
   `).all(req.user.id, from, to);
-  res.json(rows);
+  const [tasks, visits] = await Promise.all([hasPermission(req.user, 'tasks.access'), hasPermission(req.user, 'visits.access')]);
+  res.json(rows.filter(row => (row.task_id ? tasks : visits)));
 });
 
 // DELETE /api/time-logs/:id
@@ -124,6 +137,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Invalid time log ID' });
   const log = (await db.prepare('SELECT * FROM time_logs WHERE id = ?').get(req.params.id));
   if (!log) return res.status(404).json({ error: 'Not found' });
+  if (await moduleDenied(req, res, log)) return;
   // Only managers can delete other people's logs; everyone else must own the log
   if (req.user.role !== 'manager' && log.user_id !== req.user.id)
     return res.status(403).json({ error: "Cannot delete another user's time log" });
@@ -142,6 +156,8 @@ router.get('/summary', requireAuth, async (req, res) => {
   const params = [];
   if (uid) { q += ' AND user_id = ?'; params.push(uid); }
   if (month) { q += " AND substr(logged_at,1,7) = ?"; params.push(month); }
+  if (!await hasPermission(req.user, 'tasks.access')) q += ' AND task_id IS NULL';
+  if (!await hasPermission(req.user, 'visits.access')) q += ' AND visit_id IS NULL';
   res.json((await db.prepare(q).get(...params)));
 });
 

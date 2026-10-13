@@ -38,7 +38,8 @@ export function BackupOffsite({ onChanged }) {
   }
   async function trust() {
     const saved = await act('trust', () => api.trustBackupOffsite(tested.fingerprint), 'Server key trusted');
-    if (saved) { fill(saved); setTested(current => ({ ...current, trusted: true })); }
+    // Only now does TeamHub sign in, so test again to check the folder can be written.
+    if (saved) { fill(saved); await test(); }
   }
 
   if (!view) return error ? <section className="card"><h3>Off-server copies</h3><p className="error-msg" role="alert">{error}</p></section> : null;
@@ -77,8 +78,10 @@ export function BackupOffsite({ onChanged }) {
       </div>
     </form>
     {tested && <div className={`alert ${tested.trusted ? 'alert-success' : 'alert-warning'} bk-fingerprint`} role="status">
-      <p><KeyRound size={14} /> Connected, and the folder can be written. The server&apos;s key is <code>{tested.fingerprint}</code>.</p>
-      {tested.trusted ? <p className="text-sm">This is the trusted key.</p> : <>
+      {tested.trusted
+        ? <p><KeyRound size={14} /> Connected, and the folder can be written. The server&apos;s key is the trusted key <code>{tested.fingerprint}</code>.</p>
+        : <p><KeyRound size={14} /> {tested.changed ? 'The server’s key has changed:' : 'The server’s key is'} <code>{tested.fingerprint}</code>. TeamHub has not signed in to it.</p>}
+      {!tested.trusted && <>
         <p className="text-sm">Check it matches the server (e.g. <code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code> on it), then trust it. Copies only go to a server with this key.</p>
         <button type="button" className="btn btn-primary btn-sm" disabled={!!busy} onClick={trust}><ShieldCheck size={14} /> Trust this key</button>
       </>}

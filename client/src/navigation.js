@@ -4,8 +4,7 @@ export const PAGES = [
   // The sidebar shows every page a person can open, in this order, grouped by
   // section. Home and More have no heading. inMenu:false pages stay reachable
   // (links, Ctrl K) and light up their parent in the menu.
-  // Engineers open My Work instead (Dashboard.jsx sends them there), so it is not in their menu.
-  { id: 'dashboard', path: '/', label: 'Dashboard', section: 'Home', icon: 'LayoutDashboard', roles: everyone, notInMenuFor: ['engineer'], parent: 'myWork', description: 'Operational overview and work that needs attention' },
+  { id: 'dashboard', path: '/', label: 'Dashboard', section: 'Home', icon: 'LayoutDashboard', roles: everyone, description: 'Operational overview and work that needs attention' },
   { id: 'myWork', path: '/my-day', label: 'My Work', section: 'Home', icon: 'Zap', roles: ['engineer'], description: 'Your assignments, upcoming work and time tracking' },
   { id: 'calendar', path: '/calendar', label: 'Calendar', section: 'Home', icon: 'CalendarDays', roles: everyone, description: 'Plan project deadlines, tasks and maintenance visits' },
   { id: 'reminders', path: '/reminders', label: 'Reminders', section: 'Home', icon: 'BellRing', roles: everyone, description: 'Your own reminders, and the automatic ones the app sends you' },

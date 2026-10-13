@@ -20,11 +20,12 @@ function memoryStore() {
 // A small SFTP server backed by a temporary folder, with a fixed host key and a password.
 function sftpServer(root, hostKey, port = 0) {
   const handles = new Map(); let next = 0;
+  const attempts = [];
   const local = p => path.join(root, p.replace(/^\/+/, ''));
   const statOf = p => { const s = fs.statSync(p); return { mode: s.mode, uid: 0, gid: 0, size: s.size, atime: s.atimeMs / 1000 | 0, mtime: s.mtimeMs / 1000 | 0 }; };
   const server = new Server({ hostKeys: [hostKey] }, client => {
     client.on('error', () => {}); // e.g. our client refusing an impostor's key
-    client.on('authentication', ctx => (ctx.method === 'password' && ctx.username === 'backup' && ctx.password === 'secret' ? ctx.accept() : ctx.reject()));
+    client.on('authentication', ctx => attempts.push(ctx.method) && (ctx.method === 'password' && ctx.username === 'backup' && ctx.password === 'secret' ? ctx.accept() : ctx.reject()));
     client.on('ready', () => client.on('session', accept => accept().on('sftp', acceptSftp => {
       const sftp = acceptSftp();
       const ok = id => sftp.status(id, STATUS_CODE.OK), failure = id => sftp.status(id, STATUS_CODE.FAILURE), none = id => sftp.status(id, STATUS_CODE.NO_SUCH_FILE);
@@ -47,6 +48,7 @@ function sftpServer(root, hostKey, port = 0) {
       sftp.on('REALPATH', (id, p) => sftp.name(id, [{ filename: path.posix.resolve('/', p), longname: p, attrs: {} }]));
     })));
   });
+  server.attempts = attempts;
   return new Promise(resolve => server.listen(port, '127.0.0.1', () => resolve(server)));
 }
 
@@ -91,8 +93,12 @@ test('backups are uploaded encrypted to a pinned server, old copies are removed,
     const tested = await offsite.testConnection(store);
     assert.equal(tested.fingerprint, fingerprintOfServer(hostKey));
     assert.equal(tested.trusted, false);
+    assert.equal(tested.writable, undefined, 'no write check before the key is trusted');
+    assert.deepEqual(server.attempts.filter(m => m !== 'none'), [], 'no password is sent to an untrusted key');
     await assert.rejects(offsite.trust('SHA256:somethingelse', store), /Test the connection first/);
     await offsite.trust(tested.fingerprint, store);
+    const retested = await offsite.testConnection(store);
+    assert.deepEqual([retested.trusted, retested.writable], [true, true]);
     await offsite.saveConfig({ enabled: true }, store);
 
     // An old copy on the server, past a 14-day retention; keep_min 1 keeps only the newest.
@@ -115,6 +121,9 @@ test('backups are uploaded encrypted to a pinned server, old copies are removed,
     try {
       await assert.rejects(offsite.copyBackup(file, { backupDir, retentionDays: 14, keepMin: 1, store }), /key changed/);
       assert.equal((await offsite.status(store)).ok, false);
+      const changed = await offsite.testConnection(store);
+      assert.deepEqual([changed.trusted, changed.changed], [false, true], 'a changed key is reported');
+      assert.deepEqual(impostor.attempts.filter(m => m !== 'none'), [], 'and nothing is sent to it');
     } finally { impostor.close(); }
   } finally { if (server.listening) server.close(); }
 });

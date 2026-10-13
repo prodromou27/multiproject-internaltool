@@ -121,6 +121,7 @@ const { runSeeds } = require('./schema/seeds');
 async function init() {
   await createBaseTables(pool);
   await applyMigrations(pool, transaction);
+  await require('./totpSeeds').encryptStoredSeeds(poolApi);
   await require('./customerSearchIndex').ensureCustomerSearchIndex({ ...poolApi,transaction });
   await createIndexes(pool);
   await runSeeds(pool);

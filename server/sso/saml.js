@@ -13,6 +13,7 @@ const { DOMParser } = require('@xmldom/xmldom');
 const { SAML } = require('@node-saml/node-saml');
 const { InMemoryCacheProvider } = require('@node-saml/node-saml/lib/in-memory-cache-provider');
 const db = require('../db');
+const { assertPublicHttpUrl, pinnedFetch } = require('../security');
 
 const KEY = 'sso_saml';
 const DEFAULTS = Object.freeze({ enabled: false, metadata_url: '', entry_point: '', idp_issuer: '', idp_certs: [], sp_entity_id: '', button_label: 'Sign in with Microsoft', metadata_fetched_at: null });
@@ -57,16 +58,24 @@ function parseMetadata(xml) {
   return { idp_issuer: entity.getAttribute('entityID') || '', entry_point: redirect.getAttribute('Location'), idp_certs: [...new Set(certs)] };
 }
 
-/** Downloads metadata from Entra's App Federation Metadata Url. */
-async function fetchMetadata(url, { fetchImpl = global.fetch } = {}) {
+/** Downloads metadata from Entra's App Federation Metadata Url: https only, no
+ *  credentials in the address, a public address connected to as checked (DNS
+ *  cannot switch it), no redirects, and at most 1 MB. ALLOW_PRIVATE_SAML_METADATA=true
+ *  allows an identity provider on the local network (e.g. AD FS). */
+const METADATA_MAX_BYTES = 1024 * 1024;
+async function fetchMetadata(url, { fetchImpl = pinnedFetch, validateUrl = assertPublicHttpUrl } = {}) {
   let parsed;
   try { parsed = new URL(url); } catch { throw Object.assign(new Error('The metadata URL is not a valid URL'), { status: 400 }); }
   if (parsed.protocol !== 'https:') throw Object.assign(new Error('The metadata URL must use https'), { status: 400 });
+  try { parsed = await validateUrl(parsed.href, { label: 'The metadata URL', allowPrivate: process.env.ALLOW_PRIVATE_SAML_METADATA === 'true' }); }
+  catch (error) { throw Object.assign(new Error(error.message), { status: 400 }); }
   let response;
-  try { response = await fetchImpl(parsed, { headers: { Accept: 'application/xml, text/xml' }, redirect: 'follow', signal: AbortSignal.timeout(20000) }); }
-  catch (error) { throw Object.assign(new Error(`Could not download the metadata (${error?.cause?.code || error.name})`), { status: 502 }); }
+  try { response = await fetchImpl(parsed, { headers: { Accept: 'application/xml, text/xml' }, redirect: 'error', addresses: parsed.validatedAddresses, maxBytes: METADATA_MAX_BYTES, signal: AbortSignal.timeout(20000) }); }
+  catch (error) { throw Object.assign(new Error(`Could not download the metadata (${error?.cause?.message || error?.cause?.code || error.name})`), { status: 502 }); }
   if (!response.ok) throw Object.assign(new Error(`Downloading the metadata returned HTTP ${response.status}`), { status: 502 });
-  return parseMetadata(await response.text());
+  const xml = await response.text();
+  if (xml.length > METADATA_MAX_BYTES) throw Object.assign(new Error('The metadata is larger than 1 MB'), { status: 502 });
+  return parseMetadata(xml);
 }
 
 /** Whether Microsoft sign-in can be offered: on, and fully configured. */
@@ -103,6 +112,16 @@ function emailOf(profile = {}) {
   return (candidates.find(value => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) || '').trim().toLowerCase();
 }
 
+/** The identity that does not change: the issuer with Entra's object ID, else the name ID. */
+function subjectOf(profile = {}) {
+  const id = [profile['http://schemas.microsoft.com/identity/claims/objectidentifier'], profile.nameID].flat()
+    .find(value => typeof value === 'string' && value.trim());
+  if (!id) return '';
+  // An email-style name ID is the same identity whatever its case.
+  const value = id.includes('@') ? id.trim().toLowerCase() : id.trim();
+  return `${profile.issuer || ''}|${value}`.slice(0, 500);
+}
+
 /** Where to go after sign-in: a path on this app only. */
 function safeNext(value) {
   const next = String(value || '/');
@@ -134,4 +153,4 @@ function publicView(settings) {
   };
 }
 
-module.exports = { KEY, DEFAULTS, stored, save, cleanCert, parseMetadata, fetchMetadata, ready, client, emailOf, safeNext, refreshIfStale, publicView, acsUrl, defaultEntityId };
+module.exports = { KEY, DEFAULTS, stored, save, cleanCert, parseMetadata, fetchMetadata, ready, client, emailOf, subjectOf, safeNext, refreshIfStale, publicView, acsUrl, defaultEntityId };

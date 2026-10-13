@@ -1,4 +1,4 @@
-const { assertPublicHttpUrl } = require('../security');
+const { assertPublicHttpUrl, pinnedFetch } = require('../security');
 
 /* Why a request to Request Tracker never got an answer, in words a manager can
    act on. fetch() reports every network failure as "fetch failed"; the cause
@@ -32,7 +32,7 @@ function httpError(status) {
 }
 
 class RequestTrackerProvider {
-  constructor(config,{ fetchImpl=global.fetch,validateUrl=assertPublicHttpUrl,timeoutMs=15000 }={}) {
+  constructor(config,{ fetchImpl=pinnedFetch,validateUrl=assertPublicHttpUrl,timeoutMs=15000 }={}) {
     this.config=config || {};this.fetchImpl=fetchImpl;this.validateUrl=validateUrl;this.timeoutMs=timeoutMs;this.ready=null;
     const root=String(this.config.base_url || '').replace(/\/+$/,'').replace(/\/REST\/2\.0$/i,'');
     this.apiRoot=`${root}/REST/2.0`;
@@ -40,15 +40,23 @@ class RequestTrackerProvider {
 
   async validate() {
     if (!this.config.base_url || !this.config.api_token || this.config.api_token.startsWith('[')) throw Object.assign(new Error('Request Tracker is not fully configured'),{ status:400 });
-    await this.validateUrl(this.config.base_url,{ label:'RT base URL',allowPrivate:process.env.ALLOW_PRIVATE_TICKETING_URLS!=='false' });
+    const checked=await this.validateUrl(this.config.base_url,{ label:'RT base URL',allowPrivate:process.env.ALLOW_PRIVATE_TICKETING_URLS!=='false' });
+    // Requests connect only to the addresses that passed the check (no DNS switch afterwards).
+    this.addresses=checked?.validatedAddresses;
+  }
+
+  /** Validates once; a failed check is forgotten so the next call tries again. */
+  async ensureReady() {
+    this.ready ||= this.validate().catch(error => { this.ready=null;throw error; });
+    await this.ready;
   }
 
   async request(path,params={}) {
-    this.ready ||= this.validate();await this.ready;
+    await this.ensureReady();
     const url=new URL(this.apiRoot+path);
     for (const [key,value] of Object.entries(params)) if (value!==undefined) url.searchParams.set(key,String(value));
     let response;
-    try { response=await this.fetchImpl(url,{ headers:{ Accept:'application/json',Authorization:`token ${this.config.api_token}` },redirect:'error',signal:AbortSignal.timeout(this.timeoutMs) }); }
+    try { response=await this.fetchImpl(url,{ headers:{ Accept:'application/json',Authorization:`token ${this.config.api_token}` },redirect:'error',addresses:this.addresses,signal:AbortSignal.timeout(this.timeoutMs) }); }
     catch(error) { throw Object.assign(new Error(connectionError(error,url.hostname)),{ status:502 }); }
     if (!response.ok) throw Object.assign(new Error(httpError(response.status)),{ status:502 });
     const type=response.headers.get('content-type') || '';
@@ -61,7 +69,7 @@ class RequestTrackerProvider {
     const id=String(ticketId ?? '');
     if (!/^\d+$/.test(id)) throw Object.assign(new Error('Invalid Request Tracker ticket identifier'),{ status:400 });
     if (!status || typeof status!=='string' || status.length>100) throw Object.assign(new Error('Invalid Request Tracker status value'),{ status:400 });
-    this.ready ||= this.validate();await this.ready;
+    await this.ensureReady();
     const url=new URL(`${this.apiRoot}/ticket/${encodeURIComponent(id)}`);
     let response;
     try {
@@ -70,6 +78,7 @@ class RequestTrackerProvider {
         headers:{ Accept:'application/json','Content-Type':'application/json',Authorization:`token ${this.config.api_token}` },
         body:JSON.stringify({ Status:status }),
         redirect:'error',
+        addresses:this.addresses,
         signal:AbortSignal.timeout(this.timeoutMs),
       });
     } catch(error) { throw Object.assign(new Error(connectionError(error,url.hostname)),{ status:502 }); }

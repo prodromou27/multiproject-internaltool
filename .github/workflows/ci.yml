@@ -60,7 +60,7 @@ jobs:
         # Each suite seeds the same fixed cast (users, teams, customers), so it
         # gets a freshly created database rather than sharing one.
         run: |
-          for suite in activityCore activityValidation authNotificationsTasks trackingAndReports managedCustomers recommendationsAndCalendar operationsAndCustomer360 customReportSources ticketOwners databaseBackups kpiSources softwareVersions skillMatrix customerContracts recurringTeamTasks customerImport insights customerArchive customerTasksAndAlerts assetReviews taskSubtasks customerValueReport; do
+          for suite in activityCore activityValidation authNotificationsTasks trackingAndReports managedCustomers recommendationsAndCalendar operationsAndCustomer360 customReportSources ticketOwners databaseBackups kpiSources softwareVersions skillMatrix customerContracts recurringTeamTasks customerImport insights customerArchive customerTasksAndAlerts assetReviews taskSubtasks customerValueReport moduleRevocation accountSecurity; do
             PGPASSWORD=test_password psql -h localhost -U app -d postgres -v ON_ERROR_STOP=1               -c 'DROP DATABASE IF EXISTS solutionshub_test WITH (FORCE)' -c 'CREATE DATABASE solutionshub_test'
             node --test "test/$suite.integration.test.js"
           done
@@ -150,6 +150,12 @@ jobs:
           ATTACHMENT_KEY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
           APP_URL=http://localhost:8080 \
           docker compose config
+
+      # Production must not publish PostgreSQL on the host.
+      - name: Production config publishes no database port
+        run: |
+          POSTGRES_PASSWORD=dummy_password JWT_SECRET=dummy_jwt_secret_value_at_least_32_chars           CUSTOMER_FIELD_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa           ATTACHMENT_KEY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb           APP_URL=http://localhost:8080           docker compose -f docker-compose.yml -f docker-compose.prod.yml config --format json > /tmp/prod.json
+          node -e "const ports = require('/tmp/prod.json').services.db.ports || []; if (ports.length) { console.error('db ports published in production:', JSON.stringify(ports)); process.exit(1); }"
 
       # The network-share example (deploy/README.md) must merge cleanly with the main file.
       - name: Validate the backup share example

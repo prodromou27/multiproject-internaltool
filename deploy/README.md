@@ -222,11 +222,26 @@ docker run --rm -v <project>_uploads:/u -v "$PWD":/b alpine \
 # use the app user's uid:gid from `docker compose exec app id`
 ```
 
-Uploaded backups are checked line by line before use: only SQL as pg_dump
-writes it is accepted (no psql commands, no `COPY … PROGRAM`). For defence in
-depth, have the app connect as a database user that is not a superuser (the
-`POSTGRES_USER` the postgres image creates is one): a role that owns the
-database and has `CREATEDB` (for the backup check) is enough.
+Uploaded backups are checked statement by statement before use: only the kinds
+of statement pg_dump writes are accepted (no psql commands, no `DO` blocks or
+other queries, no `COPY` to or from a program or server file, no `ALTER SYSTEM`,
+no roles, no languages other than sql/plpgsql, no extensions other than
+`pg_trgm`). That check narrows what a file can do but is not a sandbox, so only
+upload backups you made yourself, and have the app connect as a database user
+that is **not a superuser** (the `POSTGRES_USER` the postgres image creates is
+one). A role that owns the database and has `CREATEDB` (for the backup check) is
+enough, for example:
+
+```sql
+CREATE ROLE teamhub LOGIN PASSWORD '…' CREATEDB NOSUPERUSER NOCREATEROLE;
+ALTER DATABASE app OWNER TO teamhub;
+\c app
+ALTER SCHEMA public OWNER TO teamhub;
+REASSIGN OWNED BY app TO teamhub;  -- the tables made so far
+```
+
+Then set `DATABASE_URL` to that user. Without superuser rights, a backup cannot
+run programs or read files on the database server even if one got past the check.
 
 Backups are stored in the `backups` Docker volume (`/app/server/backups`).
 Keep copies off this server too. The simplest way is **Off-server copies** on the

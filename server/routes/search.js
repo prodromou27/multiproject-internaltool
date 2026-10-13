@@ -99,9 +99,12 @@ router.get('/', requireAuth, async (req, res) => {
   if (q.length < 2) return res.json({ projects: [], tasks: [], customers: [], assets: [], visits: [], tickets: [] });
 
   const like = `%${escapeLike(q)}%`;
+  // Every group follows its module permission, as the module's own pages do.
+  const [canProjects, canTasks, canCustomers, canVisits] = await Promise.all(['projects.access', 'tasks.access', 'customers.access', 'visits.access'].map(key => hasPermission(req.user, key)));
 
   let projects;
-  if (req.user.role === 'manager' || req.user.role === 'pm') {
+  if (!canProjects) projects = [];
+  else if (req.user.role === 'manager' || req.user.role === 'pm') {
     projects = (await db.prepare(`
       SELECT p.id, p.title, p.status, p.priority, p.deadline, cu.name as customer_name
       FROM projects p
@@ -121,7 +124,8 @@ router.get('/', requireAuth, async (req, res) => {
   }
 
   let tasks;
-  if (req.user.role === 'manager') {
+  if (!canTasks) tasks = [];
+  else if (req.user.role === 'manager') {
     tasks = (await db.prepare(`
       SELECT t.id, t.title, t.status, t.priority, t.deadline, t.project_id, COALESCE(t.customer_id, p.customer_id) AS customer_id,
              p.title as project_title, u.name as assigned_to_name
@@ -147,7 +151,7 @@ router.get('/', requireAuth, async (req, res) => {
 
   // Customers — decrypt-and-filter (PII columns are encrypted at rest).
   // Visibility is enforced inside searchCustomers().
-  const customers = (await searchCustomers(req, q, 5))
+  const customers = !canCustomers ? [] : (await searchCustomers(req, q, 5))
     .map(({ contact_phone, ...rest }) => rest);
 
   projects = projects.map(p => ({ ...p, customer_name: decrypt(p.customer_name) }));
@@ -157,13 +161,11 @@ router.get('/', requireAuth, async (req, res) => {
   // Maintenance visits: by title or customer; engineers see the visits they are on.
   const visitCustomers = await matchingCustomerIds(q);
   const visitWhere = `(mv.title ILIKE ?${visitCustomers.length ? ` OR mv.customer_id IN (${visitCustomers.map(() => '?').join(',')})` : ''})`;
-  const visits = req.user.role === 'engineer'
+  const visits = !canVisits ? [] : req.user.role === 'engineer'
     ? await db.prepare(`SELECT mv.id, mv.title, mv.status, mv.scheduled_date, mv.customer_id, cu.name AS customer_name FROM maintenance_visits mv JOIN maintenance_visit_engineers e ON e.visit_id = mv.id AND e.user_id = ? JOIN customers cu ON cu.id = mv.customer_id
         WHERE ${visitWhere} ORDER BY mv.scheduled_date DESC LIMIT 6`).all(req.user.id, like, ...visitCustomers)
-    : await hasPermission(req.user, 'visits.access')
-      ? await db.prepare(`SELECT mv.id, mv.title, mv.status, mv.scheduled_date, mv.customer_id, cu.name AS customer_name FROM maintenance_visits mv JOIN customers cu ON cu.id = mv.customer_id
-          WHERE ${visitWhere} ORDER BY mv.scheduled_date DESC LIMIT 6`).all(like, ...visitCustomers)
-      : [];
+    : await db.prepare(`SELECT mv.id, mv.title, mv.status, mv.scheduled_date, mv.customer_id, cu.name AS customer_name FROM maintenance_visits mv JOIN customers cu ON cu.id = mv.customer_id
+          WHERE ${visitWhere} ORDER BY mv.scheduled_date DESC LIMIT 6`).all(like, ...visitCustomers);
 
   // Tickets synced from Request Tracker: by number or subject (people who may see managed customers).
   const tickets = await hasPermission(req.user, 'managed_customers.view')

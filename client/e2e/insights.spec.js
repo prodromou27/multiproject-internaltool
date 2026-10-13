@@ -48,8 +48,7 @@ test('managers see the whole operation on the dashboard: figures, charts and wha
 test('engineers do not get the insights', async ({ page }) => {
   await mockApi(page, { role: 'engineer' });
   await page.goto('/');
-  await expect(page).toHaveURL(/\/my-day$/); // engineers work from My Work
-  await expect(page.getByRole('heading', { name: 'My Work' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'My dashboard' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Insights' })).toHaveCount(0);
 });
 

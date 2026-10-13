@@ -17,6 +17,17 @@ export const WIDGET_DEFS = {
     { id: 'projects',          label: 'Active Projects', hiddenByDefault: true },
     { id: 'tasks',             label: 'Open Tasks', hiddenByDefault: true },
   ],
+  engineer: [
+    { id: 'stat_cards',        label: 'Stats Overview', hiddenByDefault: true },
+    { id: 'due_week',          label: 'Due This Week'                },
+    // Renders nothing unless your team is the responsible team for a managed customer.
+    { id: 'managed_customers', label: 'My Managed Customers'         },
+    { id: 'pending_reports',   label: 'Reports Pending (→ Mgmt)'    },
+    { id: 'mv_this_month',     label: 'Visits This Month'            },
+    // My Work has the task board; these lists are available on request.
+    { id: 'projects',          label: 'My Projects', hiddenByDefault: true },
+    { id: 'tasks',             label: 'My Open Tasks', hiddenByDefault: true },
+  ],
   planner: [
     { id: 'stat_cards',        label: 'Stats Overview'               },
     { id: 'upcoming_visits',   label: 'Upcoming Visits'              },
@@ -36,7 +47,7 @@ const HIDDEN_IN_VERSION_2 = ['stat_cards', 'projects', 'tasks'];
 
 export function useWidgetPrefs(userId, role) {
   const storageKey = `dash_widgets_${userId}_${role}`;
-  const defs       = WIDGET_DEFS[role] ?? []; // engineers have My Work instead of a dashboard
+  const defs       = WIDGET_DEFS[role] ?? WIDGET_DEFS.engineer;
   const defaultIds = defs.map(d => d.id);
   const defaultHidden = defs.filter(d => d.hiddenByDefault).map(d => d.id);
 

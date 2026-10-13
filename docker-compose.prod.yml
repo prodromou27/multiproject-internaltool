@@ -8,7 +8,9 @@
 
 services:
   db:
-    ports: []          # do not expose Postgres on the host in production
+    # !reset removes the base file's port (a plain [] is merged, leaving it published).
+    # Needs Docker Compose 2.24 or later.
+    ports: !reset []
     logging:
       driver: json-file
       options:

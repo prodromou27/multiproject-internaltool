@@ -5,6 +5,7 @@ const { decrypt } = require('../fieldCipher');
 const { PRODUCT_NAME } = require('../product');
 const { fold } = require('../icalFold');
 const { ownTasksSql, ownTasksParams } = require('../taskAccess');
+const { hasPermission } = require('../permissions');
 
 // Escape special iCal text characters
 function icalEsc(str) {
@@ -87,7 +88,11 @@ router.get('/', async (req, res) => {
        WHERE mv.status NOT IN ('cancelled','completed')
        ORDER BY mv.scheduled_date`;
 
-  const visits = user.role === 'engineer'
+  // Permissions are checked every time the feed is fetched, so revoking a module
+  // removes its events from calendars that subscribed earlier.
+  const [canVisits, canTasks] = [await hasPermission(user, 'visits.access'), await hasPermission(user, 'tasks.access')];
+  const visits = !canVisits ? []
+    : user.role === 'engineer'
     ? (await db.prepare(visitQuery).all(user.id))
     : (user.role === 'planner' || user.role === 'pm')
     ? (await db.prepare(visitQuery).all(user.id))
@@ -125,7 +130,7 @@ router.get('/', async (req, res) => {
        ORDER BY t.deadline`;
 
   const taskParams = user.role === 'manager' ? [] : user.role === 'engineer' ? ownTasksParams(user.id) : [user.id];
-  const tasks = (await db.prepare(taskQuery).all(...taskParams));
+  const tasks = canTasks ? (await db.prepare(taskQuery).all(...taskParams)) : [];
 
   for (const t of tasks) {
     const dtstart = icalDate(t.deadline);

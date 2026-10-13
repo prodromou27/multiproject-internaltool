@@ -119,6 +119,8 @@ if (isSuiteImport) test.before(async () => {
   app.use('/api/attachments', require('../../routes/attachments'));
   app.use('/api/operations', require('../../routes/operations'));
   app.use('/api/calendar', require('../../routes/calendar'));
+  app.use('/api/calendar/ical', require('../../routes/ical'));
+  app.use('/api/milestones', require('../../routes/milestones'));
   app.use('/api/maintenance-visits', require('../../routes/maintenance-visits'));
   app.use('/api/time-logs', require('../../routes/time-logs'));
   app.use('/api/teams', require('../../routes/teams'));

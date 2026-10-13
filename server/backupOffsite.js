@@ -126,8 +126,29 @@ function expiredCopies(names, retentionDays, keepMin, now = Date.now()) {
 // ── SFTP ───────────────────────────────────────────────────────────────────
 const fingerprintOf = key => `SHA256:${crypto.createHash('sha256').update(key).digest('base64').replace(/=+$/, '')}`;
 
-/** Opens an SFTP session. With `pinned`, refuses a server whose key differs. Resolves { client, sftp, fingerprint }. */
+/** Reads the server's host key without signing in: the verifier records the key and
+ *  refuses it, so the connection ends before any password or key is sent. */
+function discoverHostKey(cfg, { timeoutMs = 15000 } = {}) {
+  const { Client } = require('ssh2');
+  return new Promise((resolve, reject) => {
+    const client = new Client();
+    let seen = null, settled = false;
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      if (seen) resolve(seen);
+      else reject(Object.assign(new Error(`Could not connect: ${error?.message || 'the server closed the connection'}`), { status: 400 }));
+    };
+    client.on('error', finish);
+    client.on('close', () => finish());
+    client.on('ready', () => { client.end(); finish(); });
+    client.connect({ host: cfg.host, port: Number(cfg.port) || 22, username: cfg.username, readyTimeout: timeoutMs, hostVerifier: key => { seen = fingerprintOf(key); return false; } });
+  });
+}
+
+/** Opens an SFTP session to the server with the trusted key `pinned`; credentials are only sent to it. Resolves { client, sftp, fingerprint }. */
 function connect(cfg, { pinned = cfg.host_fingerprint, timeoutMs = 15000 } = {}) {
+  if (!pinned) return Promise.reject(Object.assign(new Error('Trust the server key first'), { status: 400 }));
   const { Client } = require('ssh2');
   return new Promise((resolve, reject) => {
     const client = new Client();
@@ -139,7 +160,7 @@ function connect(cfg, { pinned = cfg.host_fingerprint, timeoutMs = 15000 } = {})
     client.connect({
       host: cfg.host, port: Number(cfg.port) || 22, username: cfg.username, readyTimeout: timeoutMs,
       ...(cfg.auth_method === 'key' ? { privateKey: decrypt(cfg.private_key), passphrase: cfg.key_passphrase ? decrypt(cfg.key_passphrase) : undefined } : { password: decrypt(cfg.password) }),
-      hostVerifier: key => { seen = fingerprintOf(key); return !pinned || seen === pinned; },
+      hostVerifier: key => { seen = fingerprintOf(key); return seen === pinned; },
     });
   });
 }
@@ -153,11 +174,18 @@ async function ensureDir(sftp, dir) {
   }
 }
 
-/** Connects without trusting yet, checks the folder can be written, and remembers the key it saw. */
+/** Reads the server key first, without signing in. Only when it is the trusted key does it
+ *  sign in and check the folder can be written; otherwise it remembers the key for the
+ *  manager to compare and trust (a changed key is reported and never signed in to). */
 async function testConnection(store = db) {
   const cfg = await config(store);
   if (!cfg.host || !cfg.username) fail('Enter the host and user first');
-  const { client, sftp, fingerprint } = await connect(cfg, { pinned: null });
+  const fingerprint = await discoverHostKey(cfg);
+  if (fingerprint !== cfg.host_fingerprint) {
+    await writeJson(SETTING, { ...cfg, seen_fingerprint: fingerprint }, store);
+    return { fingerprint, trusted: false, changed: !!cfg.host_fingerprint };
+  }
+  const { client, sftp } = await connect(cfg);
   try {
     await ensureDir(sftp, cfg.remote_dir);
     const probe = `${cfg.remote_dir}/.teamhub-write-test-${Date.now()}`;
@@ -166,7 +194,7 @@ async function testConnection(store = db) {
   } catch (error) { fail(`Connected, but could not write to ${cfg.remote_dir}: ${error.message}`); }
   finally { client.end(); }
   await writeJson(SETTING, { ...cfg, seen_fingerprint: fingerprint }, store);
-  return { fingerprint, trusted: fingerprint === cfg.host_fingerprint };
+  return { fingerprint, trusted: true, changed: false, writable: true };
 }
 
 async function trust(fingerprint, store = db) {

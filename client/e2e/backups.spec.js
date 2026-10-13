@@ -59,7 +59,8 @@ test('managers set up encrypted off-server copies over SFTP and trust the server
     view = { ...view, ...Object.fromEntries(Object.entries(body).filter(([k]) => ['host', 'port', 'username', 'remote_dir', 'enabled'].includes(k))), has_password: true, has_passphrase: true };
     return { body: view };
   });
-  api.override('POST /api/settings/backups/offsite/test', () => ({ body: { fingerprint: 'SHA256:abc123', trusted: false } }));
+  // The test signs in only once the key is trusted: before that it just reports the key.
+  api.override('POST /api/settings/backups/offsite/test', () => ({ body: trusted ? { fingerprint: trusted, trusted: true, writable: true } : { fingerprint: 'SHA256:abc123', trusted: false } }));
   api.override('POST /api/settings/backups/offsite/trust', ({ body }) => { trusted = body.fingerprint; view = { ...view, host_fingerprint: body.fingerprint }; return { body: view }; });
 
   await page.goto('/settings/backups');
@@ -75,8 +76,10 @@ test('managers set up encrypted off-server copies over SFTP and trust the server
 
   await section.getByRole('button', { name: 'Test connection' }).click();
   await expect(section.getByText('SHA256:abc123')).toBeVisible();
+  await expect(section.getByText(/has not signed in/)).toBeVisible();
   await section.getByRole('button', { name: 'Trust this key' }).click();
   await expect.poll(() => trusted).toBe('SHA256:abc123');
+  await expect(section.getByText(/folder can be written/)).toBeVisible();
   await section.getByRole('button', { name: 'Turn on' }).click();
   await expect.poll(() => saved.enabled).toBe(true);
   await expect(page.getByRole('button', { name: /Copy off-server/ })).toBeVisible();

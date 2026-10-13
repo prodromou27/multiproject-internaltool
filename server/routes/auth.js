@@ -16,6 +16,7 @@ const { assertPublicHttpUrl } = require('../security');
 const { effectivePermissions } = require('../permissions');
 const { parseUserDirectoryQuery,escapeLike } = require('../userDirectory');
 const { PRODUCT_NAME } = require('../product');
+const totpSeeds = require('../totpSeeds');
 const { sendPersonalTest, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable } = require('../notifications');
 
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('not-the-real-password', 12);
@@ -145,6 +146,26 @@ function _markTotpUsed(userId, code) {
   _usedTotpCodes.set(`${userId}:${code}`, Date.now() + 90_000); // 90 s TTL (window=1 × 30 s × 3)
 }
 
+/* Failed codes and passwords per account, on top of the per-address limits in
+   index.js: guesses spread over many addresses still stop after 5 in 15 minutes. */
+const FAILURE_LIMIT = 5, FAILURE_WINDOW_MS = 15 * 60_000;
+const _failures = new Map(); // `${kind}:${userId}` → { count, resetAt }
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, f] of _failures) if (f.resetAt < now) _failures.delete(k);
+}, 60_000).unref();
+function tooManyFailures(kind, userId) {
+  const f = _failures.get(`${kind}:${userId}`);
+  return !!f && f.resetAt >= Date.now() && f.count >= FAILURE_LIMIT;
+}
+function recordFailure(kind, userId) {
+  const key = `${kind}:${userId}`, f = _failures.get(key);
+  if (f && f.resetAt >= Date.now()) f.count += 1;
+  else _failures.set(key, { count: 1, resetAt: Date.now() + FAILURE_WINDOW_MS });
+}
+const clearFailures = (kind, userId) => _failures.delete(`${kind}:${userId}`);
+const TOO_MANY = 'Too many attempts. Please try again in 15 minutes.';
+
 /* ── Avatar upload storage ───────────────────────────────── */
 const avatarStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -160,7 +181,9 @@ const avatarStorage = multer.diskStorage({
       'image/webp': '.webp',
     };
     const ext = extByType[file.mimetype] || '.jpg';
-    cb(null, `avatar_${req.user.id}${ext}`);
+    // A new name for every upload: a rejected file never replaces the current
+    // picture, and a new picture gets a new address (no stale cached image).
+    cb(null, `avatar_${req.user.id}_${Date.now().toString(36)}${crypto.randomBytes(4).toString('hex')}${ext}`);
   },
 });
 // Explicit allowlist — SVG intentionally excluded (can carry XSS payloads)
@@ -186,12 +209,10 @@ function hasValidImageMagic(filePath, mimeType) {
   return false;
 }
 
-function removeOldAvatarFiles(userId, keepPath) {
-  const dir = path.join(__dirname, '../uploads/avatars');
-  for (const ext of ['.jpg', '.png', '.gif', '.webp']) {
-    const p = path.join(dir, `avatar_${userId}${ext}`);
-    if (p !== keepPath) fs.unlink(p, () => {});
-  }
+/** Removes a previous picture's file (only ever a file in the avatars folder). */
+function removeAvatarFile(url) {
+  const name = typeof url === 'string' && url.startsWith('/uploads/avatars/') ? path.basename(url) : '';
+  if (/^avatar_[\w.-]+$/.test(name)) fs.unlink(path.join(__dirname, '../uploads/avatars', name), () => {});
 }
 
 /* ── Login ───────────────────────────────────────────────── */
@@ -295,9 +316,21 @@ router.post('/saml/acs', express.urlencoded({ extended: false, limit: '512kb' })
   try { ({ profile } = await saml.client(settings).validatePostResponseAsync({ SAMLResponse: String(req.body?.SAMLResponse || '') })); }
   catch (error) { console.error('[sso] rejected SAML response:', error.message); return fail('invalid'); }
   const email = saml.emailOf(profile || {});
-  if (!email) return fail('no_email');
-  const user = await db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(email);
-  if (!user) return fail('no_account', email);
+  // The account is found by the identity provider's subject once it is linked, so
+  // changing an email here never hands the account to another Microsoft identity.
+  const subject = saml.subjectOf(profile || {});
+  let user = subject ? await db.prepare('SELECT * FROM users WHERE saml_subject = ?').get(subject) : null;
+  if (!user) {
+    if (!email) return fail('no_email');
+    user = await db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(email);
+    if (!user) return fail('no_account', email);
+    // An account already linked to another Microsoft identity is not taken over by email.
+    if (user.saml_subject && user.saml_subject !== subject) return fail('no_account', email, user);
+    if (subject && !user.saml_subject && user.active) {
+      await db.prepare('UPDATE users SET saml_subject = ? WHERE id = ? AND saml_subject IS NULL').run(subject, user.id);
+      await recordAuthEvent(req, 'sso_linked', `saml; ${email}`, user);
+    }
+  }
   if (!user.active) return fail('inactive', email, user);
   // Entra proved who this is. A temporary password nobody changed is retired rather than left usable;
   // a local password can be set again with "Forgot password".
@@ -328,6 +361,7 @@ router.post('/2fa/verify', async (req, res) => {
     return res.status(401).json({ error: 'Session expired — please log in again.' });
   if (!user.totp_enabled || !user.totp_secret)
     return res.status(400).json({ error: '2FA not configured for this account' });
+  if (tooManyFailures('totp', user.id)) return res.status(429).json({ error: TOO_MANY });
 
   const normalizedCode = String(code).replace(/\s/g, '');
 
@@ -336,11 +370,16 @@ router.post('/2fa/verify', async (req, res) => {
     return res.status(401).json({ error: 'Authentication code already used — wait for the next code' });
 
   const valid = speakeasy.totp.verify({
-    secret: user.totp_secret, encoding: 'base32',
+    secret: totpSeeds.open(user.totp_secret), encoding: 'base32',
     token: normalizedCode, window: 1,
   });
-  if (!valid) return res.status(401).json({ error: 'Invalid authentication code' });
+  if (!valid) {
+    recordFailure('totp', user.id);
+    await recordAuthEvent(req, 'totp_failed', null, user);
+    return res.status(401).json({ error: 'Invalid authentication code' });
+  }
 
+  clearFailures('totp', user.id);
   _markTotpUsed(user.id, normalizedCode);
   await recordSuccessfulLogin(req, user);
 
@@ -357,8 +396,11 @@ router.post('/2fa/verify', async (req, res) => {
   });
 });
 
-/* ── 2FA: generate setup QR code ─────────────────────────── */
-router.get('/2fa/setup', requireAuth, async (req, res) => {
+/* ── 2FA: generate setup QR code ─────────────────────────────
+   A POST (it creates a seed), never cached. The new seed waits apart from the
+   active one until a code from it is confirmed. */
+router.post('/2fa/setup', requireAuth, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   const user = (await db.prepare('SELECT name, email, totp_enabled FROM users WHERE id = ?').get(req.user.id));
   if (user.totp_enabled) return res.status(400).json({ error: '2FA is already enabled' });
 
@@ -367,7 +409,7 @@ router.get('/2fa/setup', requireAuth, async (req, res) => {
     issuer: PRODUCT_NAME,
     length: 20,
   });
-  (await db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?').run(secret.base32, req.user.id));
+  (await db.prepare('UPDATE users SET totp_pending_secret = ? WHERE id = ? AND totp_enabled = 0').run(totpSeeds.seal(secret.base32), req.user.id));
   const qr_data_url = await QRCode.toDataURL(secret.otpauth_url);
   // Return only the QR code — the raw base32 secret is NOT included in the response
   // to prevent it from being captured in browser history or logs.
@@ -377,16 +419,23 @@ router.get('/2fa/setup', requireAuth, async (req, res) => {
 /* ── 2FA: confirm setup (enable) ─────────────────────────── */
 router.post('/2fa/enable', requireAuth, async (req, res) => {
   const { code } = req.body;
-  const user = (await db.prepare('SELECT totp_secret FROM users WHERE id = ?').get(req.user.id));
-  if (!user?.totp_secret) return res.status(400).json({ error: 'Run setup first' });
+  const user = (await db.prepare('SELECT totp_pending_secret, totp_enabled FROM users WHERE id = ?').get(req.user.id));
+  if (user?.totp_enabled) return res.status(400).json({ error: '2FA is already enabled' });
+  if (!user?.totp_pending_secret) return res.status(400).json({ error: 'Run setup first' });
+  if (tooManyFailures('totp', req.user.id)) return res.status(429).json({ error: TOO_MANY });
 
   const valid = speakeasy.totp.verify({
-    secret: user.totp_secret, encoding: 'base32',
+    secret: totpSeeds.open(user.totp_pending_secret), encoding: 'base32',
     token: String(code).replace(/\s/g, ''), window: 1,
   });
-  if (!valid) return res.status(400).json({ error: 'Invalid code — check your authenticator app' });
+  if (!valid) { recordFailure('totp', req.user.id); return res.status(400).json({ error: 'Invalid code — check your authenticator app' }); }
 
-  (await db.prepare('UPDATE users SET totp_enabled = 1 WHERE id = ?').run(req.user.id));
+  clearFailures('totp', req.user.id);
+  const enabled = await db.prepare('UPDATE users SET totp_secret = totp_pending_secret, totp_pending_secret = NULL, totp_enabled = 1 WHERE id = ? AND totp_pending_secret = ? AND totp_enabled = 0')
+    .run(req.user.id, user.totp_pending_secret);
+  if (!enabled.changes) return res.status(409).json({ error: 'Setup changed in another window. Start again.' });
+  await recordAuthEvent(req, 'totp_enabled', null, req.user);
+  notifyAccountChange(req.user, 'Two-factor authentication was turned on for your account.');
   res.json({ ok: true });
 });
 
@@ -394,11 +443,20 @@ router.post('/2fa/enable', requireAuth, async (req, res) => {
 router.delete('/2fa', requireAuth, async (req, res) => {
   const { password } = req.body;
   if (!password) return res.status(400).json({ error: 'Current password is required to disable 2FA' });
+  if (tooManyFailures('password', req.user.id)) return res.status(429).json({ error: TOO_MANY });
   const u = (await db.prepare('SELECT password FROM users WHERE id = ?').get(req.user.id));
-  if (typeof password !== 'string' || !await bcrypt.compare(password, u.password))
+  if (typeof password !== 'string' || !await bcrypt.compare(password, u.password)) {
+    recordFailure('password', req.user.id);
+    await recordAuthEvent(req, 'totp_disable_failed', 'incorrect password', req.user);
     return res.status(400).json({ error: 'Incorrect password' });
-  (await db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL WHERE id = ?').run(req.user.id));
-  res.json({ ok: true });
+  }
+  clearFailures('password', req.user.id);
+  // Other sessions end: they were signed in with the second factor that is now gone.
+  (await db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_pending_secret = NULL, token_version = token_version + 1 WHERE id = ?').run(req.user.id));
+  await recordAuthEvent(req, 'totp_disabled', null, req.user);
+  notifyAccountChange(req.user, 'Two-factor authentication was turned off for your account.');
+  const updated = await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id);
+  res.json({ ok: true, token: issueSession(req, res, updated) });
 });
 
 /* ── List users ──────────────────────────────────────────────
@@ -448,7 +506,7 @@ router.get('/users', requireAuth, async (req, res) => {
 
 // GET /api/auth/me — current user profile
 router.get('/me', requireAuth, async (req, res) => {
-  const u = (await db.prepare('SELECT id, name, email, role, avatar_url, created_at, last_login, totp_enabled, must_change_password, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled, notify_events FROM users WHERE id = ?').get(req.user.id));
+  const u = (await db.prepare('SELECT id, name, email, pending_email, role, avatar_url, created_at, last_login, totp_enabled, must_change_password, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled, notify_events FROM users WHERE id = ?').get(req.user.id));
   if (!u) return res.status(404).json({ error: 'User not found' });
   res.setHeader('Cache-Control', 'no-store');
   res.json({ ...(await notificationPrefsView(u)), permissions: await effectivePermissions(u) });
@@ -568,22 +626,89 @@ router.get('/permissions',requireAuth,async (req,res) => {
   res.json({ permissions:await effectivePermissions(req.user) });
 });
 
-// PUT /api/auth/profile — update name and/or email
+/* Emails about a change to the account, sent to its current address when email
+   is set up. Never blocks or fails the change itself. */
+function notifyAccountChange(user, message, to = user?.email) {
+  if (!to) return;
+  getSmtpSettings().then(smtp => smtp?.host && sendEmail({
+    to,
+    subject: `[${PRODUCT_NAME}] Your account was changed`,
+    html: `<div style="font-family:sans-serif;max-width:480px;padding:24px"><p>Hi ${escHtml(user.name || '')},</p><p>${escHtml(message)}</p><p style="color:#64748b;font-size:13px">If this was not you, tell your administrator straight away.</p></div>`,
+  })).catch(error => console.error('[account] change notice failed:', error.message));
+}
+
+const EMAIL_CONFIRM_HOURS = 24;
+
+// PUT /api/auth/profile — update name and/or email. A new email (it is how people
+// sign in and recover the account) needs the current password; when email is set
+// up it only takes effect once its owner opens the link sent to it.
 router.put('/profile', requireAuth, async (req, res) => {
-  const { name, email } = req.body;
+  const { name, email, current_password } = req.body;
   if (typeof name !== 'string' || !name.trim() || name.trim().length > 120) return res.status(400).json({ error: 'Name must contain 1 to 120 characters' });
   if (email != null && typeof email !== 'string') return res.status(400).json({ error: 'Email must be text' });
-  if (email?.trim()) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
+  const current = await db.prepare('SELECT id, name, email, password FROM users WHERE id = ?').get(req.user.id);
+  const newEmail = email?.trim().toLowerCase() || null;
+  const changingEmail = !!newEmail && newEmail !== String(current.email || '').toLowerCase();
+  if (changingEmail) {
+    if (newEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail))
       return res.status(400).json({ error: 'Invalid email format' });
-    const clash = (await db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email.trim().toLowerCase(), req.user.id));
+    const clash = (await db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(newEmail, req.user.id));
     if (clash) return res.status(400).json({ error: 'Email already in use by another account' });
+    if (tooManyFailures('password', req.user.id)) return res.status(429).json({ error: TOO_MANY });
+    if (typeof current_password !== 'string' || !current_password || !await bcrypt.compare(current_password, current.password)) {
+      recordFailure('password', req.user.id);
+      await recordAuthEvent(req, 'email_change_failed', 'incorrect password', req.user);
+      return res.status(400).json({ error: 'Enter your current password to change your email' });
+    }
+    clearFailures('password', req.user.id);
   }
+
+  let pendingEmail = null;
+  if (changingEmail && (await getSmtpSettings())?.host) {
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + EMAIL_CONFIRM_HOURS * 3600_000).toISOString();
+    await db.prepare('UPDATE users SET pending_email = ?, pending_email_token_hash = ?, pending_email_expires_at = ? WHERE id = ?')
+      .run(newEmail, crypto.createHash('sha256').update(rawToken).digest('hex'), expires, req.user.id);
+    const link = `${process.env.APP_URL || 'https://localhost'}/confirm-email?token=${rawToken}`;
+    try {
+      await sendEmail({
+        to: newEmail,
+        subject: `[${PRODUCT_NAME}] Confirm your new email address`,
+        html: `<div style="font-family:sans-serif;max-width:480px;padding:24px"><p>Hi ${escHtml(name.trim())},</p><p>Open this link to use this address for ${PRODUCT_NAME}:</p><p><a href="${link}">Confirm my email address</a></p><p style="color:#64748b;font-size:13px">The link works for ${EMAIL_CONFIRM_HOURS} hours. If you did not ask for this, ignore this email.</p></div>`,
+      });
+    } catch (error) {
+      console.error('[profile] confirmation email failed:', error.message);
+      await db.prepare('UPDATE users SET pending_email = NULL, pending_email_token_hash = NULL, pending_email_expires_at = NULL WHERE id = ?').run(req.user.id);
+      return res.status(502).json({ error: 'The confirmation email could not be sent, so the email was not changed' });
+    }
+    await recordAuthEvent(req, 'email_change_requested', newEmail, req.user);
+    notifyAccountChange(current, `Someone asked to change your sign-in email to ${newEmail}. It changes only once that address confirms it.`);
+    pendingEmail = newEmail;
+  }
+  const emailNow = changingEmail && !pendingEmail ? newEmail : null;
   (await db.prepare('UPDATE users SET name = ?, email = COALESCE(?, email), token_version = token_version + 1 WHERE id = ?')
-    .run(name.trim(), email?.trim().toLowerCase() || null, req.user.id));
+    .run(name.trim(), emailNow, req.user.id));
+  if (emailNow) await recordAuthEvent(req, 'email_changed', `${current.email || '(none)'} -> ${emailNow}`, req.user);
   const u = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
   const token = issueSession(req, res, u);
-  res.json({ user: await sessionUser(u), token });
+  res.json({ user: await sessionUser(u), token, pending_email: pendingEmail });
+});
+
+// POST /api/auth/confirm-email — the link sent to a new address makes it the account's email.
+router.post('/confirm-email', async (req, res) => {
+  const { token } = req.body || {};
+  if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ error: 'This confirmation link is not valid' });
+  const hash = crypto.createHash('sha256').update(token).digest('hex');
+  const user = await db.prepare('SELECT id, name, email, role, pending_email, pending_email_expires_at FROM users WHERE pending_email_token_hash = ?').get(hash);
+  if (!user?.pending_email) return res.status(400).json({ error: 'This confirmation link is not valid or was already used' });
+  if (new Date(user.pending_email_expires_at) < new Date()) return res.status(400).json({ error: 'This confirmation link has expired. Change the email again from your profile.' });
+  if (await db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(user.pending_email, user.id))
+    return res.status(400).json({ error: 'That email is now used by another account' });
+  const changed = await db.prepare('UPDATE users SET email = pending_email, pending_email = NULL, pending_email_token_hash = NULL, pending_email_expires_at = NULL WHERE id = ? AND pending_email_token_hash = ?').run(user.id, hash);
+  if (!changed.changes) return res.status(400).json({ error: 'This confirmation link is not valid or was already used' });
+  await recordAuthEvent(req, 'email_changed', `${user.email || '(none)'} -> ${user.pending_email}`, user);
+  notifyAccountChange(user, `Your sign-in email was changed to ${user.pending_email}.`);
+  res.json({ ok: true, email: user.pending_email });
 });
 
 // POST /api/auth/change-password
@@ -769,9 +894,12 @@ router.post('/avatar', requireAuth, async (req, res, next) => {
       fs.unlink(req.file.path, () => {});
       return res.status(400).json({ error: 'Uploaded file content does not match an allowed image type' });
     }
-    removeOldAvatarFiles(req.user.id, req.file.path);
     const url = `/uploads/avatars/${req.file.filename}`;
-    (await db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(url, req.user.id));
+    const previous = (await db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.id))?.avatar_url;
+    try { (await db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(url, req.user.id)); }
+    catch (error) { fs.unlink(req.file.path, () => {}); throw error; }
+    // The old picture goes only once the new one is saved.
+    if (previous && previous !== url) removeAvatarFile(previous);
     const u = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
     const token = issueSession(req, res, u);
     res.json({ avatar_url: url, user: await sessionUser({ ...u,avatar_url:url }), token });
@@ -781,11 +909,8 @@ router.post('/avatar', requireAuth, async (req, res, next) => {
 // DELETE /api/auth/avatar — remove profile picture
 router.delete('/avatar', requireAuth, async (req, res) => {
   const u = (await db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.id));
-  if (u?.avatar_url) {
-    const filePath = path.join(__dirname, '..', u.avatar_url);
-    fs.unlink(filePath, () => {});
-  }
   (await db.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?').run(req.user.id));
+  if (u?.avatar_url) removeAvatarFile(u.avatar_url);
   const updated = (await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id));
   const token = issueSession(req, res, updated);
   res.json({ user: await sessionUser({ ...updated,avatar_url:null }), token });

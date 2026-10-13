@@ -132,3 +132,38 @@ test("Entra's federation metadata gives the sign-in URL, identifier and signing 
   assert.throws(() => saml.parseMetadata('<html>not metadata</html>'), /not SAML identity provider metadata/);
   assert.equal(saml.cleanCert('garbage'), null);
 });
+
+test('a Microsoft identity stays linked to its account: an email change here neither breaks nor transfers it', async () => {
+  await db.prepare('UPDATE users SET active = 1 WHERE email = ?').run('sso.user@test.local');
+  const linked = await db.prepare('SELECT id, saml_subject FROM users WHERE email = ?').get('sso.user@test.local');
+  assert.equal(linked.saml_subject, `${IDP_ISSUER}|sso.user@test.local`, 'linked at the first sign-in');
+
+  // The account's email changes here; the same Microsoft identity still signs in to it.
+  await db.prepare('UPDATE users SET email = ? WHERE id = ?').run('renamed.sso@test.local', linked.id);
+  let s = await startSignIn();
+  const again = await finish({ SAMLResponse: samlResponse({ inResponseTo: s.requestId, email: 'sso.user@test.local' }), RelayState: s.relay, cookie: s.cookie });
+  assert.ok(again.session, 'found by its subject');
+
+  // Another account taking an email whose account is linked to someone else is not entered by that email.
+  await db.prepare('INSERT INTO users (name, email, password, role, saml_subject) VALUES (?, ?, ?, ?, ?)').run('Linked Elsewhere', 'linked.elsewhere@test.local', bcrypt.hashSync('x', 4), 'engineer', `${IDP_ISSUER}|someone-else`);
+  s = await startSignIn();
+  const other = await finish({ SAMLResponse: samlResponse({ inResponseTo: s.requestId, email: 'linked.elsewhere@test.local' }), RelayState: s.relay, cookie: s.cookie });
+  assert.equal(other.target, '/login?sso_error=no_account');
+  assert.equal(other.session, undefined);
+});
+
+test('metadata is only downloaded from a public https address, without redirects', async () => {
+  await assert.rejects(saml.fetchMetadata('http://login.microsoftonline.com/x'), /must use https/);
+  await assert.rejects(saml.fetchMetadata('https://user:pass@login.microsoftonline.com/x'), /credentials/);
+  await assert.rejects(saml.fetchMetadata('https://127.0.0.1/metadata'), /private\/internal/);
+  await assert.rejects(saml.fetchMetadata('https://[::ffff:7f00:1]/metadata'), /private\/internal/);
+  let seen;
+  const xml = '<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="https://sts.example/"><IDPSSODescriptor><KeyDescriptor use="signing"><X509Certificate xmlns="http://www.w3.org/2000/09/xmldsig#">'
+    + IDP_CERT.replace(/-----[^-]+-----|\s/g, '') + '</X509Certificate></KeyDescriptor><SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="https://sts.example/saml2"/></IDPSSODescriptor></EntityDescriptor>';
+  const parsed = await saml.fetchMetadata('https://login.example/metadata', {
+    validateUrl: async raw => Object.assign(new URL(raw), { validatedAddresses: ['203.0.113.9'] }),
+    fetchImpl: async (url, init) => { seen = init; return { ok: true, status: 200, text: async () => xml }; },
+  });
+  assert.equal(parsed.entry_point, 'https://sts.example/saml2');
+  assert.deepEqual([seen.redirect, seen.addresses], ['error', ['203.0.113.9']]);
+});

@@ -120,7 +120,10 @@ function AvatarSection({ user, onRefresh }) {
 function PersonalInfoSection({ user, onRefresh }) {
   const { login } = useAuth();
   const isEngineer = user.role === 'engineer';
-  const [form, setForm]   = useState({ name: user.name || '', email: user.email || '' });
+  const [form, setForm]   = useState({ name: user.name || '', email: user.email || '', current_password: '' });
+  const [pendingEmail, setPendingEmail] = useState(user.pending_email || '');
+  // A new email is how this account signs in and is recovered, so it needs the password.
+  const changingEmail = form.email.trim().toLowerCase() !== String(user.email || '').toLowerCase() && !!form.email.trim();
   const [saving, setSaving] = useState(false);
   const [msg, setMsg]       = useState({ type: '', text: '' });
 
@@ -129,9 +132,11 @@ function PersonalInfoSection({ user, onRefresh }) {
     if (!form.name.trim()) { setMsg({ type: 'error', text: 'Name cannot be empty' }); return; }
     setSaving(true); setMsg({ type: '', text: '' });
     try {
-      const data = await api.updateProfile({ name: form.name.trim(), email: form.email.trim() });
+      const data = await api.updateProfile({ name: form.name.trim(), email: form.email.trim(), ...(changingEmail ? { current_password: form.current_password } : {}) });
       login({ ...user, name: data.user.name, email: data.user.email, avatar_url: data.user.avatar_url }, data.token);
-      setMsg({ type: 'success', text: 'Profile updated successfully!' });
+      setPendingEmail(data.pending_email || '');
+      setForm(f => ({ ...f, email: data.user.email || '', current_password: '' }));
+      setMsg({ type: 'success', text: data.pending_email ? `Saved. Open the link sent to ${data.pending_email} to start using it.` : 'Profile updated.' });
       onRefresh(data.user);
     } catch (err) {
       setMsg({ type: 'error', text: err.message });
@@ -188,8 +193,15 @@ function PersonalInfoSection({ user, onRefresh }) {
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 placeholder="your@email.com"
               />
+              {pendingEmail && !changingEmail && <small className="text-muted">Waiting for {pendingEmail} to be confirmed from the email sent to it.</small>}
             </div>
           </div>
+          {changingEmail && <div className="form-group">
+            <label htmlFor="profile-current-password">Current password</label>
+            <input id="profile-current-password" type="password" value={form.current_password} required autoComplete="current-password"
+              onChange={e => setForm(f => ({ ...f, current_password: e.target.value }))} />
+            <small className="text-muted">Needed to change the email you sign in with.</small>
+          </div>}
           <div className="flex-center gap-12">
             <button
               type="submit"

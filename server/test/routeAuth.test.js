@@ -27,6 +27,7 @@ const PUBLIC = new Set([
   'auth POST /2fa/verify',          // completes login with a short-lived challenge token
   'auth POST /forgot-password',
   'auth POST /reset-password',      // authorised by a single-use reset token
+  'auth POST /confirm-email',       // authorised by a single-use token emailed to the new address
   'auth GET /saml/status',          // whether to show "Sign in with Microsoft" on the login page
   'auth GET /saml/metadata',        // service-provider metadata for setting up Entra
   'auth GET /saml/login',           // starts a Microsoft sign-in

@@ -231,6 +231,8 @@ async function stampCompletion(ids) {
     WHERE id IN (${ids.map(() => '?').join(',')})`).run(...ids);
 }
 
+const CHANGED_MEANWHILE = 'Someone else changed this task; reload and try again';
+
 router.put('/:id', requireAuth, async (req, res) => {
   const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
   if (!task) return res.status(404).json({ error: 'Not found' });
@@ -257,11 +259,13 @@ router.put('/:id', requireAuth, async (req, res) => {
     } else if (newStatus !== task.status) {
       newPfc = null;
     }
-    (await db.prepare(`UPDATE tasks SET
+    // Only if the assignee and status are still what was checked above: a task
+    // claimed or reassigned meanwhile is not silently taken back (409).
+    const updated = (await db.prepare(`UPDATE tasks SET
       title=COALESCE(?,title), description=COALESCE(?,description),
       priority=COALESCE(?,priority), deadline=?,
       status=COALESCE(?,status), pending_from_customer=?, assigned_to=?, ticket_reference=?,
-      updated_at=app_now() WHERE id=?`)
+      updated_at=app_now() WHERE id=? AND COALESCE(assigned_to,0)=? AND status=?`)
       .run(
         title?.trim() || null,
         description !== undefined ? description : null,
@@ -272,8 +276,9 @@ router.put('/:id', requireAuth, async (req, res) => {
         // A team task becomes yours when you change its status (records who did it).
         task.assigned_to ?? (status && status !== task.status ? req.user.id : null),
         nextTicket,
-        task.id
+        task.id, Number(task.assigned_to) || 0, task.status
       ));
+    if (!updated.changes) return res.status(409).json({ error: CHANGED_MEANWHILE });
     if (status && task.status !== status) {
       logActivity(task.project_id, req.user.id, 'task_status', `"${title || task.title}" → ${status}`);
       await stampCompletion([task.id]);
@@ -310,12 +315,13 @@ router.put('/:id', requireAuth, async (req, res) => {
     newPfc = pending_from_customer !== undefined ? pending_from_customer : task.pending_from_customer;
   }
 
-  (await db.prepare(`UPDATE tasks SET title=COALESCE(?,title), description=COALESCE(?,description),
+  const updated = (await db.prepare(`UPDATE tasks SET title=COALESCE(?,title), description=COALESCE(?,description),
     priority=COALESCE(?,priority), deadline=?, assigned_to=?,
     status=COALESCE(?,status), is_adhoc=COALESCE(?,is_adhoc),
-    pending_from_customer=?, ticket_reference=?, updated_at=app_now() WHERE id=?`)
+    pending_from_customer=?, ticket_reference=?, updated_at=app_now() WHERE id=? AND COALESCE(assigned_to,0)=? AND status=?`)
     .run(title?.trim(), description, priority, deadline === undefined ? task.deadline : (deadline || null), nextAssignee, status,
-         is_adhoc != null ? (is_adhoc ? 1 : 0) : null, newPfc, nextTicket, task.id));
+         is_adhoc != null ? (is_adhoc ? 1 : 0) : null, newPfc, nextTicket, task.id, Number(task.assigned_to) || 0, task.status));
+  if (!updated.changes) return res.status(409).json({ error: CHANGED_MEANWHILE });
 
   // Log status change
   if (status && status !== task.status) {
@@ -422,15 +428,20 @@ router.post('/:id/duplicate', requireAuth, async (req, res) => {
   if (!task) return res.status(404).json({ error: 'Not found' });
   // Engineers: can only duplicate tasks assigned to them
   if (req.user.role === 'engineer' && !await worksOnTask(req.user, task)) return res.status(403).json({ error: 'Forbidden' });
-  const result = (await db.prepare(`
-    INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc, ticket_reference)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(task.project_id, task.customer_id, task.title + ' (copy)', task.description, task.priority, task.deadline,
-         task.assigned_to, req.user.id, task.is_adhoc, task.ticket_reference || null));
-  logActivity(task.project_id, req.user.id, 'task_created', task.title + ' (copy)');
+  // The copy keeps the team and asset (so a team task stays the team's), and the
+  // checklist titles and assets (not who ticked them). All or nothing.
   const checklist = await db.prepare('SELECT title, asset_id FROM task_subtasks WHERE task_id = ? ORDER BY position, id').all(task.id);
-  if (checklist.length) await subtasks.insertSubtasks(db, result.lastInsertRowid, checklist, req.user.id);
-  res.json({ id: result.lastInsertRowid });
+  const id = await db.transaction(async tx => {
+    const result = (await tx.prepare(`
+      INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, team_id, asset_id, created_by, is_adhoc, ticket_reference)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(task.project_id, task.customer_id, task.title + ' (copy)', task.description, task.priority, task.deadline,
+           task.assigned_to, task.team_id ?? null, task.asset_id ?? null, req.user.id, task.is_adhoc, task.ticket_reference || null));
+    if (checklist.length) await subtasks.insertSubtasks(tx, result.lastInsertRowid, checklist, req.user.id);
+    return result.lastInsertRowid;
+  });
+  logActivity(task.project_id, req.user.id, 'task_created', task.title + ' (copy)');
+  res.json({ id });
 });
 
 /* ── Overdue counts (lightweight — used by sidebar badges) ── */

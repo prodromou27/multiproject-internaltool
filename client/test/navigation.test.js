@@ -50,7 +50,7 @@ test('the menu shows every page a person can open, in a few groups', () => {
     ['More', ['notes', 'settings']],
   ]);
   assert.deepEqual(menu({ role: 'engineer', permissions: {} }), [
-    ['Home', ['myWork', 'calendar', 'reminders']],
+    ['Home', ['dashboard', 'myWork', 'calendar', 'reminders']],
     ['Work', ['projects', 'tasks', 'visits', 'activities']],
     ['Customers', ['customers', 'responses']],
     ['Advisories', ['vulnerabilities', 'softwareVersions']],

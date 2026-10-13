@@ -42,7 +42,8 @@ async function freshActiveUser(payload) {
 
 function modulePermission(req) {
   const base=req.baseUrl || '';
-  if (base.startsWith('/api/projects')) return 'projects.access';
+  // Attachments and milestones belong to projects, so the same capability applies.
+  if (base.startsWith('/api/projects') || base.startsWith('/api/attachments') || base.startsWith('/api/milestones')) return 'projects.access';
   if (base.startsWith('/api/tasks')) return 'tasks.access';
   if (base.startsWith('/api/maintenance-visits')) return 'visits.access';
   if (base.startsWith('/api/service-activities')) return 'service_activities.access';

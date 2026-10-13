@@ -18,6 +18,18 @@ test('IPv4-mapped IPv6 literals are checked against the same private ranges as I
   assert.equal(isPrivateIp('::ffff:8.8.8.8'), false);
 });
 
+test('every spelling of an internal IPv6 address is private, including embedded IPv4 targets', () => {
+  for (const ip of [
+    '::ffff:7f00:1', '0:0:0:0:0:ffff:7f00:1', '0000:0000:0000:0000:0000:0000:0000:0001', '::', '::127.0.0.1',
+    'fe80::1%eth0', 'febf::1', 'fec0::1', 'fd12:3456::1', 'ff02::1',
+    '64:ff9b::7f00:1', '64:ff9b::10.0.0.1', '64:ff9b:1::1', '2002:7f00:1::1', '2002:a9fe:a9fe::', '2001:0:4136:e378::1', '2001:db8::1',
+  ]) assert.equal(isPrivateIp(ip), true, `${ip} should be private`);
+  for (const ip of ['::ffff:808:808', '64:ff9b::808:808', '2002:808:808::1', '2a00:1450:4001::200e', 'fe00::1']) {
+    assert.equal(isPrivateIp(ip), false, `${ip} should be public`);
+  }
+  assert.equal(isPrivateIp('not-an-ip'), true);
+});
+
 test('rejects non-https and credentialed outbound URLs', async () => {
   await assert.rejects(
     () => assertPublicHttpUrl('http://example.com/hook', { label: 'Webhook URL' }),

@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
 const { getEnabledTeamIdsForUser } = require('../serviceActivities');
 const { ownTasksSql, ownTasksParams } = require('../taskAccess');
+const { hasPermission } = require('../permissions');
 const placeholders = values => values.map(() => '?').join(',');
 
 // Returns all events for a given month: tasks (by deadline), project deadlines, maintenance visits
@@ -21,6 +22,8 @@ router.get('/', requireAuth, async (req, res) => {
   const end = nextMonth + '-01';
 
   const isManager = req.user.role === 'manager';
+  // Each module appears only for people who may open it (revoking it removes it here too).
+  const [canTasks, canProjects, canVisits] = await Promise.all(['tasks.access', 'projects.access', 'visits.access'].map(key => hasPermission(req.user, key)));
   const canReadAllVisits = ['manager', 'planner', 'pm'].includes(req.user.role);
   const setting = await db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
   let config = {};
@@ -38,7 +41,7 @@ router.get('/', requireAuth, async (req, res) => {
     WHERE t.deadline >= ? AND t.deadline < ? AND t.status NOT IN (${placeholders(taskDone)})`;
   const taskParams = [start, end, ...taskDone];
   if (!isManager) { taskQ += ` AND ${ownTasksSql('t')}`; taskParams.push(...ownTasksParams(req.user.id)); }
-  const tasks = ['manager', 'engineer'].includes(req.user.role)
+  const tasks = canTasks && ['manager', 'engineer'].includes(req.user.role)
     ? (await db.prepare(taskQ).all(...taskParams)).map(r => ({ ...r, type: 'task' })) : [];
 
   // Project deadlines in the month
@@ -49,7 +52,7 @@ router.get('/', requireAuth, async (req, res) => {
     projQ += ' AND p.id IN (SELECT project_id FROM project_assignments WHERE user_id = ?)';
     projParams.push(req.user.id);
   }
-  const projects = req.user.role !== 'planner'
+  const projects = canProjects && req.user.role !== 'planner'
     ? (await db.prepare(projQ).all(...projParams)).map(r => ({ ...r, type: 'project' })) : [];
 
   // Maintenance visits in the month
@@ -63,7 +66,7 @@ router.get('/', requireAuth, async (req, res) => {
     mvQ += ' AND mv.id IN (SELECT visit_id FROM maintenance_visit_engineers WHERE user_id = ?)';
     mvParams.push(req.user.id);
   }
-  const rows = await db.prepare(mvQ + ' ORDER BY mv.scheduled_date, mv.id').all(...mvParams);
+  const rows = canVisits ? await db.prepare(mvQ + ' ORDER BY mv.scheduled_date, mv.id').all(...mvParams) : [];
   const names = new Map();
   if (rows.length) {
     const engineers = await db.prepare(`SELECT mve.visit_id, u.name FROM maintenance_visit_engineers mve

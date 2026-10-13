@@ -65,3 +65,35 @@ test('recurring tasks can be reported: done on time, who took them, which team',
   const row = preview.data.rows.find(r => r.schedule === 'Review firewall logs');
   assert.deepEqual([row.repeat, row.team_id, row.engineer_id, Number(row.on_time)], ['every 3 days', 'Security Team', 'Engineer Enabled', 0]);
 });
+
+test('a team task changed by someone else meanwhile is not overwritten, and its copy stays the team’s', async () => {
+  const id = (await db.prepare("INSERT INTO tasks (customer_id, title, team_id, status, created_by) VALUES (?, 'Shared check', ?, 'todo', ?)").run(ids.customer, ids.teamEnabled, ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO task_subtasks (task_id, title, position, created_by) VALUES (?, ?, 0, ?)').run(id, 'Step one', ids.manager);
+  // A copy keeps the team (so the engineer can still work on it) and the checklist.
+  const copy = await api(`/api/tasks/${id}/duplicate`, { method: 'POST', token: ids.tokenEnabled });
+  assert.equal(copy.status, 200);
+  const copied = await db.prepare('SELECT team_id, assigned_to FROM tasks WHERE id = ?').get(copy.data.id);
+  assert.deepEqual([Number(copied.team_id), copied.assigned_to], [Number(ids.teamEnabled), null]);
+  assert.equal(Number((await db.prepare('SELECT COUNT(*) AS n FROM task_subtasks WHERE task_id = ?').get(copy.data.id)).n), 1);
+  assert.equal((await api(`/api/tasks/${copy.data.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { status: 'in_progress' } })).status, 200, 'and can work on it');
+
+  // Another engineer claims the task between this engineer's read and write: the write is refused.
+  const realPrepare = db.prepare;
+  let raced = false;
+  db.prepare = function (sql) {
+    const statement = realPrepare.call(this, sql);
+    if (!raced && /^UPDATE tasks SET\s+title=COALESCE/.test(sql.trim())) {
+      raced = true;
+      return { ...statement, run: async (...params) => {
+        await realPrepare.call(db, 'UPDATE tasks SET assigned_to = ? WHERE id = ?').run(ids.manager, id);
+        return statement.run(...params);
+      } };
+    }
+    return statement;
+  };
+  try {
+    const late = await api(`/api/tasks/${id}`, { method: 'PUT', token: ids.tokenEnabled, body: { status: 'in_progress' } });
+    assert.equal(late.status, 409);
+  } finally { db.prepare = realPrepare; }
+  assert.equal(Number((await db.prepare('SELECT assigned_to FROM tasks WHERE id = ?').get(id)).assigned_to), Number(ids.manager), 'the other claim stands');
+});

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import Login from './pages/Login';
+import ConfirmEmail from './pages/ConfirmEmail';
 import { api } from './api';
 import { PAGES, canAccessPage } from './navigation';
 import { PageState } from './components/PageLayout';
@@ -172,6 +173,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+          <Route path="/confirm-email" element={<ConfirmEmail />} />
           <Route path="/"                    element={<PrivateRoute page="dashboard"><Dashboard /></PrivateRoute>} />
           <Route path="/calendar"            element={<PrivateRoute page="calendar"><CalendarPage /></PrivateRoute>} />
           <Route path="/projects"            element={<PrivateRoute page="projects"><Projects /></PrivateRoute>} />

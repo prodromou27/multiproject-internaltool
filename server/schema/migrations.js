@@ -1131,6 +1131,26 @@ async function applyMigrations(pool, transaction) {
     -- JSON; NULL means the built-in wording (customerValueReport.js WORDING_DEFAULTS).
     ALTER TABLE managed_report_templates ADD COLUMN IF NOT EXISTS wording TEXT;
   `]);
+  migrations.push(['20261101_remove_unused_report_templates', `
+    -- One company template is used for every customer report (the first one
+    -- created). The other two seeded templates are no longer used anywhere.
+    UPDATE managed_customer_configurations SET default_report_template_id = NULL
+      WHERE default_report_template_id IN (SELECT id FROM managed_report_templates WHERE name IN ('Quarterly Service Review','Support Services Report'));
+    DELETE FROM managed_report_templates
+      WHERE name IN ('Quarterly Service Review','Support Services Report')
+        AND id <> (SELECT MIN(id) FROM managed_report_templates);
+  `]);
+  migrations.push(['20261102_auth_hardening', `
+    -- A 2FA seed being set up is kept apart from the active one until it is confirmed.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_pending_secret TEXT;
+    -- Microsoft sign-in binds to the identity provider's subject, not to the editable email.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS saml_subject TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS users_saml_subject_key ON users (saml_subject);
+    -- A new email address waits here until its owner opens the confirmation link.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_email TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_email_token_hash TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_email_expires_at TEXT;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

@@ -99,3 +99,13 @@ test('a failed connection says why, and what to do about it', async () => {
   const provider = new RequestTrackerProvider({ base_url: 'https://rt.example.test', api_token: 'secret' }, { fetchImpl: async () => { throw failed('ECONNREFUSED'); }, validateUrl: async () => {} });
   await assert.rejects(() => provider.testConnection(), error => error.status === 502 && /refused/.test(error.message) && !error.message.includes('secret'));
 });
+
+test('requests go only to the checked addresses, and a failed check is tried again', async () => {
+  let checks = 0, seen = null;
+  const validateUrl = async raw => { checks += 1; if (checks === 1) throw Object.assign(new Error('RT base URL could not be resolved'), { status: 400 }); return Object.assign(new URL(raw), { validatedAddresses: ['203.0.113.7'] }); };
+  const fetchImpl = async (url, init) => { seen = init.addresses; return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ items: [], total: 0 }) }; };
+  const provider = new RequestTrackerProvider({ base_url: 'https://rt.example.test', api_token: 'secret' }, { fetchImpl, validateUrl });
+  await assert.rejects(() => provider.testConnection(), /could not be resolved/);
+  assert.deepEqual(await provider.testConnection(), { ok: true, queue_count: 0 }, 'a passing check later is not stuck on the old failure');
+  assert.deepEqual(seen, ['203.0.113.7']);
+});
