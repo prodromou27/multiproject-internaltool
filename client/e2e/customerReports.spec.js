@@ -5,7 +5,8 @@ const summary = { projects: { active: 0, delayed: 0 }, tasks: { visible: true, o
   visits: { next: null, reports_pending: 0, this_year: 0 }, managed: { visible: true, state: 'active', open_tickets: 0, closed_tickets: 0 }, is_managed: true };
 const report = body => ({
   customer: { id: 12, name: 'Northwind Logistics', team: 'Managed Services' }, period: { from: body.from, to: body.to }, generated_at: '2026-10-11T09:00:00Z',
-  sections: body.sections, summary: body.summary, coming_next: body.coming_next,
+  // Like the server: with no sections asked for, the template's default ones.
+  sections: body.sections || ['work_log', 'changes', 'tickets', 'tasks', 'recommendations', 'upcoming'], summary: body.summary, coming_next: body.coming_next,
   figures: { hours: 36.5, activities: 24, changes: 2, tickets_resolved: 12, tasks_completed: 5, recommendations: 1 },
   categories: [{ name: 'Monitoring', activities: 14, hours: 20 }, { name: 'Upgrades', activities: 4, hours: 10.5 }],
   work_log: [{ date: '2026-09-03', title: 'Reviewed firewall policies', category: 'Monitoring', hours: 1.5 }],

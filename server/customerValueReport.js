@@ -20,13 +20,80 @@ const { PRODUCT_NAME } = require('./product');
 const SECTIONS = Object.freeze(['work_log', 'changes', 'tickets', 'tasks', 'recommendations', 'upcoming', 'assets']);
 const DEFAULT_SECTIONS = Object.freeze(['work_log', 'changes', 'tickets', 'tasks', 'recommendations', 'upcoming']);
 const MAX_ROWS = 500;
+
+/* The report's wording, editable per report template (Settings → Customer report
+   templates). Text may use {customer}, {from}, {to} and {team}. */
+const WORDING_DEFAULTS = Object.freeze({
+  title: 'Service report',
+  intro: '',
+  show_overview: true,
+  closing: '',
+  footer: '{customer} · Confidential',
+  color: '#1f3a5f',
+  sections: [...DEFAULT_SECTIONS],
+  default_summary: '',
+  default_coming_next: '',
+  headings: Object.freeze({ summary: 'Summary', work: 'Work delivered', changes: 'Changes and upgrades', tickets: 'Tickets resolved', tasks: 'Tasks completed',
+    work_log: 'Work log', recommendations: 'Our recommendations', assets: 'Devices we look after', upcoming: 'Coming next' }),
+  figures: Object.freeze({ hours: 'Hours of work', activities: 'Activities', changes: 'Changes and upgrades', tickets: 'Tickets resolved', tasks: 'Tasks completed' }),
+  empty: Object.freeze({ work: 'No activities were recorded in this period.', changes: 'No changes or upgrades in this period.', tickets: 'No tickets were resolved in this period.',
+    tasks: 'No tasks were completed in this period.', work_log: 'No activities were recorded in this period.', recommendations: 'We have no open recommendations.', assets: 'No devices are recorded.' }),
+});
+const TEXT_LIMITS = { title: 120, intro: 5000, closing: 5000, footer: 200, default_summary: 5000, default_coming_next: 5000 };
+
+/** Checks wording sent from Settings (unknown keys are refused). */
+function checkWording(input) {
+  if (input == null) return null;
+  if (typeof input !== 'object' || Array.isArray(input)) fail('Report wording must be an object');
+  const out = {};
+  const text = (value, max, name) => { if (typeof value !== 'string' || value.length > max) fail(`${name} must be text of at most ${max} characters`); return value; };
+  for (const [key, value] of Object.entries(input)) {
+    if (key in TEXT_LIMITS) out[key] = text(value, TEXT_LIMITS[key], key);
+    else if (key === 'show_overview') { if (typeof value !== 'boolean') fail('show_overview must be true or false'); out[key] = value; }
+    else if (key === 'color') { if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) fail('The colour must look like #1f3a5f'); out[key] = value.toLowerCase(); }
+    else if (key === 'sections') { if (!Array.isArray(value) || value.some(k => !SECTIONS.includes(k)) || new Set(value).size !== value.length) fail('Invalid default sections'); out[key] = value; }
+    else if (['headings', 'figures', 'empty'].includes(key)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) fail(`${key} must be an object`);
+      out[key] = {};
+      for (const [name, label] of Object.entries(value)) {
+        if (!(name in WORDING_DEFAULTS[key])) fail(`Unknown ${key} entry: ${name}`);
+        out[key][name] = text(label, key === 'empty' ? 300 : 80, `${key}.${name}`);
+      }
+    } else fail(`Unknown report wording: ${key}`);
+  }
+  return out;
+}
+
+/** The wording to use: the saved wording over the built-in one (a blank label falls back). */
+function resolveWording(saved) {
+  let stored = saved;
+  if (typeof saved === 'string') { try { stored = JSON.parse(saved); } catch { stored = null; } }
+  stored = stored && typeof stored === 'object' ? stored : {};
+  const pick = group => Object.fromEntries(Object.entries(WORDING_DEFAULTS[group]).map(([k, v]) => [k, String(stored[group]?.[k] || '').trim() || v]));
+  const value = key => (typeof stored[key] === 'string' ? stored[key] : WORDING_DEFAULTS[key]);
+  return {
+    title: value('title').trim() || WORDING_DEFAULTS.title, intro: value('intro'), closing: value('closing'), footer: value('footer'),
+    show_overview: typeof stored.show_overview === 'boolean' ? stored.show_overview : true,
+    color: /^#[0-9a-f]{6}$/i.test(stored.color || '') ? stored.color : WORDING_DEFAULTS.color,
+    sections: Array.isArray(stored.sections) ? stored.sections.filter(k => SECTIONS.includes(k)) : [...DEFAULT_SECTIONS],
+    default_summary: value('default_summary'), default_coming_next: value('default_coming_next'),
+    headings: pick('headings'), figures: pick('figures'), empty: pick('empty'),
+  };
+}
+
+/** The template a customer's report uses: their default (if active), else the first active one. */
+async function templateFor(customerId, store = db) {
+  return await store.prepare(`SELECT t.id, t.name, t.wording FROM managed_customer_configurations mc JOIN managed_report_templates t ON t.id = mc.default_report_template_id
+      WHERE mc.customer_id = ? AND t.active = 1`).get(customerId)
+    || await store.prepare('SELECT id, name, wording FROM managed_report_templates WHERE active = 1 ORDER BY id LIMIT 1').get() || null;
+}
 const hours = minutes => Math.round(Number(minutes || 0) / 6) / 10;
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 
 /** Checks what the person asked for: sections to include and two optional notes. */
 function checkRequest(body) {
-  const sections = body.sections === undefined ? [...DEFAULT_SECTIONS] : body.sections;
-  if (!Array.isArray(sections) || sections.some(key => !SECTIONS.includes(key)) || new Set(sections).size !== sections.length) fail('Invalid report sections');
+  const sections = body.sections === undefined ? null : body.sections; // null: the template's default sections
+  if (sections !== null && (!Array.isArray(sections) || sections.some(key => !SECTIONS.includes(key)) || new Set(sections).size !== sections.length)) fail('Invalid report sections');
   const note = key => {
     const value = body[key];
     if (value == null || value === '') return '';
@@ -36,7 +103,7 @@ function checkRequest(body) {
   return { sections, summary: note('summary'), coming_next: note('coming_next') };
 }
 
-async function buildValueReport({ customerId, from, to, sections = DEFAULT_SECTIONS, summary = '', coming_next = '', preparedBy = '' }, store = db) {
+async function buildValueReport({ customerId, from, to, sections = null, summary = '', coming_next = '', preparedBy = '' }, store = db) {
   const config = await store.prepare(`SELECT c.name, mc.include_in_managed_services_reports, t.name AS team, u.name AS manager,
       tc.enabled AS ticketing, tc.include_in_reporting AS tickets_in_reporting
     FROM managed_customer_configurations mc JOIN customers c ON c.id = mc.customer_id
@@ -45,7 +112,9 @@ async function buildValueReport({ customerId, from, to, sections = DEFAULT_SECTI
     WHERE mc.customer_id = ? AND mc.managed_services_enabled = 1 AND c.active = 1`).get(customerId);
   if (!config) return null;
   if (!config.include_in_managed_services_reports) fail('This customer is excluded from customer reports', 409);
-  const include = new Set(sections);
+  const template = await templateFor(customerId, store);
+  const wording = resolveWording(template?.wording);
+  const include = new Set(sections || wording.sections);
   const ticketsOn = !!config.ticketing && config.tickets_in_reporting !== 0;
   const today = appTime.today();
   const dayAfter = appTime.addDays(to, 1);
@@ -96,8 +165,15 @@ async function buildValueReport({ customerId, from, to, sections = DEFAULT_SECTI
     attention: assets.filter(a => a.needs_attention).length,
     rows: assets.map(a => ({ name: a.name, type: a.type || '', version: a.version || '', support: a.support_status || '—' })),
   } : null;
+  const customerName = decrypt(config.name);
+  const fill = text => String(text || '').replace(/\{customer\}/g, customerName).replace(/\{from\}/g, words(from)).replace(/\{to\}/g, words(to)).replace(/\{team\}/g, config.team || '');
   return {
-    customer: { id: Number(customerId), name: decrypt(config.name), team: config.team || null, manager: config.manager || null },
+    template: template ? { id: template.id, name: template.name } : null,
+    // The wording with its placeholders filled in, for the preview and both documents.
+    wording: { ...wording, title: fill(wording.title), intro: fill(wording.intro), closing: fill(wording.closing), footer: fill(wording.footer) },
+    // Starting text for the two notes, offered in the form (the person may change it).
+    defaults: { summary: fill(wording.default_summary), coming_next: fill(wording.default_coming_next) },
+    customer: { id: Number(customerId), name: customerName, team: config.team || null, manager: config.manager || null },
     period: { from, to }, generated_at: new Date().toISOString(), prepared_by: preparedBy,
     sections: [...include], summary, coming_next,
     figures: {
@@ -120,10 +196,11 @@ async function buildValueReport({ customerId, from, to, sections = DEFAULT_SECTI
 const dmy = iso => { if (!iso) return ''; const [y, m, d] = String(iso).slice(0, 10).split('-'); return d ? `${d}/${m}/${y}` : String(iso); };
 const words = iso => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
 const cap = text => (text ? String(text).charAt(0).toUpperCase() + String(text).slice(1).replace(/_/g, ' ') : '');
+const wordingOf = report => report.wording || resolveWording(null);
 function figuresOf(report) {
-  const f = report.figures;
-  return [['Hours of work', String(f.hours)], ['Activities', String(f.activities)], ['Changes and upgrades', String(f.changes)],
-    ...(f.tickets_resolved == null ? [] : [['Tickets resolved', String(f.tickets_resolved)]]), ['Tasks completed', String(f.tasks_completed)]];
+  const f = report.figures, l = wordingOf(report).figures;
+  return [[l.hours, String(f.hours)], [l.activities, String(f.activities)], [l.changes, String(f.changes)],
+    ...(f.tickets_resolved == null ? [] : [[l.tickets, String(f.tickets_resolved)]]), [l.tasks, String(f.tasks_completed)]];
 }
 function overviewSentence(report) {
   const f = report.figures, parts = [`${f.activities} ${f.activities === 1 ? 'activity' : 'activities'} (${f.hours} hours)`];
@@ -133,14 +210,14 @@ function overviewSentence(report) {
   return `In this period our team carried out ${parts.join(', ').replace(/, ([^,]*)$/, ' and $1')}.`;
 }
 function tablesOf(report) {
-  const has = key => report.sections.includes(key);
+  const has = key => report.sections.includes(key), { headings: H, empty: E } = wordingOf(report);
   const t = [];
-  if (has('changes')) t.push({ title: 'Changes and upgrades', empty: 'No changes or upgrades in this period.', columns: [['Date', 1], ['Device', 2], ['From', 1.2], ['To', 1.2], ['Change', 3]], rows: report.changes.map(c => [dmy(c.date), c.device, c.from, c.to, c.what]) });
-  if (has('tickets') && report.figures.tickets_resolved != null) t.push({ title: 'Tickets resolved', empty: 'No tickets were resolved in this period.', columns: [['Ticket', 1], ['Subject', 5], ['Resolved', 1.2]], rows: report.tickets.map(x => [x.number, x.subject, dmy(x.resolved)]) });
-  if (has('tasks')) t.push({ title: 'Tasks completed', empty: 'No tasks were completed in this period.', columns: [['Task', 5], ['Completed', 1.2]], rows: report.tasks.map(x => [x.title, dmy(x.completed)]) });
-  if (has('work_log')) t.push({ title: 'Work log', empty: 'No activities were recorded in this period.', columns: [['Date', 1], ['Work', 4.5], ['Type', 1.8], ['Hours', 0.7]], rows: report.work_log.map(w => [dmy(w.date), w.title, w.category, String(w.hours)]) });
-  if (has('recommendations')) t.push({ title: 'Our recommendations', empty: 'We have no open recommendations.', columns: [['Finding', 3], ['Recommendation', 3.5], ['Risk', 0.9], ['Due', 1]], rows: report.recommendations.map(r => [r.finding, r.recommendation, cap(r.risk), dmy(r.due)]) });
-  if (has('assets') && report.assets) t.push({ title: 'Devices we look after', note: `${report.assets.total} devices${report.assets.attention ? `; ${report.assets.attention} need attention for support or warranty` : ''}.`, empty: 'No devices are recorded.', columns: [['Device', 3], ['Type', 2], ['Version', 2], ['Support', 2]], rows: report.assets.rows.map(a => [a.name, a.type, a.version, a.support]) });
+  if (has('changes')) t.push({ title: H.changes, empty: E.changes, columns: [['Date', 1], ['Device', 2], ['From', 1.2], ['To', 1.2], ['Change', 3]], rows: report.changes.map(c => [dmy(c.date), c.device, c.from, c.to, c.what]) });
+  if (has('tickets') && report.figures.tickets_resolved != null) t.push({ title: H.tickets, empty: E.tickets, columns: [['Ticket', 1], ['Subject', 5], ['Resolved', 1.2]], rows: report.tickets.map(x => [x.number, x.subject, dmy(x.resolved)]) });
+  if (has('tasks')) t.push({ title: H.tasks, empty: E.tasks, columns: [['Task', 5], ['Completed', 1.2]], rows: report.tasks.map(x => [x.title, dmy(x.completed)]) });
+  if (has('work_log')) t.push({ title: H.work_log, empty: E.work_log, columns: [['Date', 1], ['Work', 4.5], ['Type', 1.8], ['Hours', 0.7]], rows: report.work_log.map(w => [dmy(w.date), w.title, w.category, String(w.hours)]) });
+  if (has('recommendations')) t.push({ title: H.recommendations, empty: E.recommendations, columns: [['Finding', 3], ['Recommendation', 3.5], ['Risk', 0.9], ['Due', 1]], rows: report.recommendations.map(r => [r.finding, r.recommendation, cap(r.risk), dmy(r.due)]) });
+  if (has('assets') && report.assets) t.push({ title: H.assets, note: `${report.assets.total} devices${report.assets.attention ? `; ${report.assets.attention} need attention for support or warranty` : ''}.`, empty: E.assets, columns: [['Device', 3], ['Type', 2], ['Version', 2], ['Support', 2]], rows: report.assets.rows.map(a => [a.name, a.type, a.version, a.support]) });
   return t;
 }
 const fileName = (report, extension) => `${(report.customer.name.replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 80) || `customer_${report.customer.id}`)}_report_${report.period.from}_${report.period.to}.${extension}`;
@@ -148,9 +225,10 @@ const fileName = (report, extension) => `${(report.customer.name.replace(/[^a-z0
 // ── PDF ─────────────────────────────────────────────────────────────────────
 function renderPdf(report) {
   const PDFDocument = require('pdfkit');
-  const C = { primary: '#1f3a5f', accent: '#2f6fb2', text: '#1b2430', muted: '#5f6b7a', line: '#d6dce4', soft: '#eef3f8', good: '#2e7d4f' };
+  const W = wordingOf(report);
+  const C = { primary: W.color, accent: W.color, text: '#1b2430', muted: '#5f6b7a', line: '#d6dce4', soft: '#eef3f8', good: '#2e7d4f' };
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 48, bufferPages: true, info: { Title: `Service report – ${report.customer.name}`, Author: PRODUCT_NAME } });
+    const doc = new PDFDocument({ size: 'A4', margin: 48, bufferPages: true, info: { Title: `${W.title} – ${report.customer.name}`, Author: PRODUCT_NAME } });
     const chunks = []; doc.on('data', chunk => chunks.push(chunk)); doc.on('error', reject); doc.on('end', () => resolve(Buffer.concat(chunks)));
     const left = doc.page.margins.left, width = doc.page.width - left - doc.page.margins.right;
     const room = h => { if (doc.y + h > doc.page.height - doc.page.margins.bottom - 20) doc.addPage(); };
@@ -159,7 +237,7 @@ function renderPdf(report) {
 
     // Header band.
     doc.rect(0, 0, doc.page.width, 150).fill(C.primary);
-    doc.fillColor('#ffffff').font('Helvetica').fontSize(11).text('Service report', left, 44);
+    doc.fillColor('#ffffff').font('Helvetica').fontSize(11).text(W.title, left, 44);
     doc.font('Helvetica-Bold').fontSize(24).text(report.customer.name, left, 62, { width });
     doc.font('Helvetica').fontSize(11).text(`${words(report.period.from)} – ${words(report.period.to)}`, left, 98);
     doc.fontSize(9).fillColor('#c9d6e6').text(`Prepared${report.prepared_by ? ` by ${report.prepared_by}` : ''} on ${words(report.generated_at.slice(0, 10))}${report.customer.team ? ` · ${report.customer.team}` : ''}`, left, 118);
@@ -174,12 +252,13 @@ function renderPdf(report) {
       doc.fillColor(C.muted).font('Helvetica').fontSize(8.5).text(label, x + 10, top + 40, { width: tileWidth - 20 });
     });
     doc.y = top + 82; doc.x = left;
-    para(overviewSentence(report));
-    if (report.summary) { heading('Summary'); para(report.summary); }
+    if (W.intro) para(W.intro);
+    if (W.show_overview) para(overviewSentence(report));
+    if (report.summary) { heading(W.headings.summary); para(report.summary); }
 
     // Where the time went.
-    heading('Work delivered');
-    if (!report.categories.length) para('No activities were recorded in this period.', { color: C.muted });
+    heading(W.headings.work);
+    if (!report.categories.length) para(W.empty.work, { color: C.muted });
     else {
       const max = Math.max(...report.categories.map(c => c.hours), 0.1), labelWidth = 150, barWidth = width - labelWidth - 90;
       for (const c of report.categories.slice(0, 12)) {
@@ -213,15 +292,16 @@ function renderPdf(report) {
     tablesOf(report).forEach(table);
 
     if (report.sections.includes('upcoming') && (report.coming_next || report.upcoming.length)) {
-      heading('Coming next');
+      heading(W.headings.upcoming);
       if (report.coming_next) para(report.coming_next);
       for (const item of report.upcoming) { room(16); para(`•  ${item.title}${item.due ? ` (planned by ${dmy(item.due)})` : ''}`); }
     }
+    if (W.closing) { doc.moveDown(0.6); para(W.closing); }
 
     const range = doc.bufferedPageRange();
     for (let index = 0; index < range.count; index++) {
       doc.switchToPage(index); const bottom = doc.page.margins.bottom; doc.page.margins.bottom = 0;
-      doc.font('Helvetica').fontSize(8).fillColor(C.muted).text(`${report.customer.name} · Confidential · Page ${index + 1} of ${range.count}`, left, doc.page.height - 30, { width, align: 'center', lineBreak: false });
+      doc.font('Helvetica').fontSize(8).fillColor(C.muted).text(`${W.footer ? `${W.footer} · ` : ''}Page ${index + 1} of ${range.count}`, left, doc.page.height - 30, { width, align: 'center', lineBreak: false });
       doc.page.margins.bottom = bottom;
     }
     doc.end();
@@ -231,7 +311,8 @@ function renderPdf(report) {
 // ── Word ────────────────────────────────────────────────────────────────────
 async function renderWord(report) {
   const { AlignmentType, BorderStyle, Document, Footer, HeadingLevel, Packer, PageNumber, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, WidthType } = require('docx');
-  const PRIMARY = '1F3A5F', SOFT = 'EEF3F8', MUTED = '5F6B7A';
+  const W = wordingOf(report);
+  const PRIMARY = W.color.slice(1).toUpperCase(), SOFT = 'EEF3F8', MUTED = '5F6B7A';
   const p = (text, opts = {}) => new Paragraph({ spacing: { after: 120 }, children: [new TextRun({ text, size: opts.size || 21, bold: opts.bold, color: opts.color })] });
   const h = text => new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 280, after: 120 }, children: [new TextRun({ text, color: PRIMARY, bold: true, size: 28 })] });
   const cell = (text, { header = false, width } = {}) => new TableCell({ width: width ? { size: width, type: WidthType.PERCENTAGE } : undefined,
@@ -248,7 +329,7 @@ async function renderWord(report) {
   };
   const tiles = figuresOf(report);
   const children = [
-    p('Service report', { color: MUTED, size: 22 }),
+    p(W.title, { color: MUTED, size: 22 }),
     new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: report.customer.name, bold: true, size: 48, color: PRIMARY })] }),
     p(`${words(report.period.from)} – ${words(report.period.to)}`, { size: 24 }),
     p(`Prepared${report.prepared_by ? ` by ${report.prepared_by}` : ''} on ${words(report.generated_at.slice(0, 10))}${report.customer.team ? ` · ${report.customer.team}` : ''}`, { color: MUTED, size: 18 }),
@@ -258,26 +339,29 @@ async function renderWord(report) {
       new TableRow({ children: tiles.map(([label]) => new TableCell({ shading: { type: ShadingType.CLEAR, color: 'auto', fill: SOFT }, margins: { top: 0, bottom: 120, left: 120, right: 120 },
         children: [new Paragraph({ children: [new TextRun({ text: label, size: 16, color: MUTED })] })] })) }),
     ] }),
-    new Paragraph({ spacing: { before: 200, after: 120 }, children: [new TextRun({ text: overviewSentence(report), size: 21 })] }),
+    new Paragraph({ spacing: { before: 200, after: 0 }, children: [] }),
   ];
-  if (report.summary) children.push(h('Summary'), ...report.summary.split(/\n+/).map(line => p(line)));
-  children.push(h('Work delivered'));
+  if (W.intro) children.push(...W.intro.split(/\n+/).map(line => p(line)));
+  if (W.show_overview) children.push(p(overviewSentence(report)));
+  if (report.summary) children.push(h(W.headings.summary), ...report.summary.split(/\n+/).map(line => p(line)));
+  children.push(h(W.headings.work));
   if (report.categories.length) children.push(table({ columns: [['Type of work', 5], ['Activities', 1.5], ['Hours', 1.5]], rows: report.categories.map(c => [c.name, String(c.activities), String(c.hours)]) }));
-  else children.push(p('No activities were recorded in this period.', { color: MUTED }));
+  else children.push(p(W.empty.work, { color: MUTED }));
   for (const spec of tablesOf(report)) {
     children.push(h(spec.title));
     if (spec.note) children.push(p(spec.note, { color: MUTED }));
     children.push(spec.rows.length ? table(spec) : p(spec.empty, { color: MUTED }));
   }
   if (report.sections.includes('upcoming') && (report.coming_next || report.upcoming.length)) {
-    children.push(h('Coming next'));
+    children.push(h(W.headings.upcoming));
     if (report.coming_next) children.push(...report.coming_next.split(/\n+/).map(line => p(line)));
     for (const item of report.upcoming) children.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: `${item.title}${item.due ? ` (planned by ${dmy(item.due)})` : ''}`, size: 21 })] }));
   }
-  const doc = new Document({ creator: PRODUCT_NAME, title: `Service report – ${report.customer.name}`, styles: { default: { document: { run: { font: 'Calibri', size: 21 } } } },
+  if (W.closing) children.push(new Paragraph({ spacing: { before: 240 }, children: [] }), ...W.closing.split(/\n+/).map(line => p(line)));
+  const doc = new Document({ creator: PRODUCT_NAME, title: `${W.title} – ${report.customer.name}`, styles: { default: { document: { run: { font: 'Calibri', size: 21 } } } },
     sections: [{ children, footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [
-      new TextRun({ text: `${report.customer.name} · Confidential · Page `, size: 16, color: MUTED }), new TextRun({ children: [PageNumber.CURRENT], size: 16, color: MUTED })] })] }) } }] });
+      new TextRun({ text: `${W.footer ? `${W.footer} · ` : ''}Page `, size: 16, color: MUTED }), new TextRun({ children: [PageNumber.CURRENT], size: 16, color: MUTED })] })] }) } }] });
   return Packer.toBuffer(doc);
 }
 
-module.exports = { SECTIONS, DEFAULT_SECTIONS, checkRequest, buildValueReport, renderPdf, renderWord, fileName };
+module.exports = { SECTIONS, DEFAULT_SECTIONS, WORDING_DEFAULTS, checkRequest, checkWording, resolveWording, buildValueReport, renderPdf, renderWord, fileName };

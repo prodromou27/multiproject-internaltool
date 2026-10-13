@@ -53,3 +53,35 @@ test('a report made for the period owed counts as done', async () => {
   const after = (await api(`/api/managed-customers/${ids.customer}/overview?from=${owed.from}&to=${owed.to}`, { token: ids.tokenManager })).data.report_due;
   assert.deepEqual([after.status, after.overdue], ['sent', false]);
 });
+
+test('the report wording comes from the customer report template set in Settings', async () => {
+  const templates = (await api('/api/managed-report-templates', { token: ids.tokenManager })).data;
+  assert.equal(templates.wording_defaults.title, 'Service report');
+  const template = templates.rows.find(row => row.active);
+  const wording = { title: 'Monthly value report', intro: 'Dear {customer}, here is our work.', show_overview: false, closing: 'Questions? Call us.',
+    footer: 'Odyssey · {customer}', color: '#0b6e4f', sections: ['changes', 'tasks'], default_summary: 'Summary for {customer}',
+    headings: { work: 'What we did', tasks: 'Finished tasks' }, figures: { hours: 'Hours' }, empty: { changes: 'Nothing changed.' } };
+  const saved = await api(`/api/managed-report-templates/${template.id}`, { method: 'PUT', token: ids.tokenManager, body: { ...template, wording } });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.equal(saved.data.wording.title, 'Monthly value report');
+  await db.prepare('UPDATE managed_customer_configurations SET default_report_template_id = ? WHERE customer_id = ?').run(template.id, ids.customer);
+
+  const today = appTime.today();
+  const r = (await api(`${base()}/customer-report/preview`, { method: 'POST', token: ids.tokenManager, body: { from: appTime.addDays(today, -5), to: today } })).data;
+  assert.equal(r.template.id, template.id);
+  assert.deepEqual(r.sections, ['changes', 'tasks'], 'the template chooses the sections ticked by default');
+  assert.equal(r.wording.title, 'Monthly value report');
+  assert.match(r.wording.intro, /^Dear .+, here is our work\.$/);
+  assert.equal(r.wording.headings.work, 'What we did');
+  assert.equal(r.wording.headings.summary, 'Summary', 'labels left blank keep the built-in wording');
+  assert.equal(r.wording.figures.hours, 'Hours');
+  assert.equal(r.wording.show_overview, false);
+  assert.match(r.defaults.summary, /^Summary for /);
+  const pdf = await download('pdf', { from: appTime.addDays(today, -5), to: today });
+  assert.equal(pdf.status, 200);
+
+  const bad = await api(`/api/managed-report-templates/${template.id}`, { method: 'PUT', token: ids.tokenManager, body: { ...saved.data, wording: { color: 'green' } } });
+  assert.equal(bad.status, 400);
+  assert.equal((await api(`/api/managed-report-templates/${template.id}`, { method: 'PUT', token: ids.tokenManager, body: { ...saved.data, wording: { headings: { nonsense: 'x' } } } })).status, 400);
+  assert.equal((await api(`/api/managed-report-templates/${template.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { ...saved.data, wording } })).status, 403);
+});

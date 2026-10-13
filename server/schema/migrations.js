@@ -1125,6 +1125,12 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE task_subtasks ADD COLUMN IF NOT EXISTS due_date TEXT;
     CREATE INDEX IF NOT EXISTS idx_task_subtasks_owner ON task_subtasks(assigned_to) WHERE done = 0;
   `]);
+  migrations.push(['20261031_report_wording', `
+    -- The customer report's wording per report template (title, headings, labels,
+    -- messages, default text, colour), edited in Settings → Customer report templates.
+    -- JSON; NULL means the built-in wording (customerValueReport.js WORDING_DEFAULTS).
+    ALTER TABLE managed_report_templates ADD COLUMN IF NOT EXISTS wording TEXT;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

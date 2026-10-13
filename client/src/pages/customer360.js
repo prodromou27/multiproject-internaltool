@@ -36,17 +36,6 @@ export function customer360Sections(user,capabilities={},assetsGrant=false,manag
   return order.map(id => available.find(section => section.id===id)).filter(Boolean);
 }
 
-/* The tabs kept in view, and the ones under More: the record-keeping sections
-   (and Projects, for a managed customer). The open section always stays in view.
-   Fewer than two under More is not worth a menu, so then everything shows. */
-const SECONDARY_SECTIONS=['contracts','reports','timeline','service-configuration'];
-export function customer360TabGroups(sections,current,managedCustomer=false) {
-  const secondary=id => SECONDARY_SECTIONS.includes(id) || (managedCustomer===true && id==='projects');
-  const more=sections.filter(section => secondary(section.id));
-  if (more.length<2) return { shown:sections,more:[] };
-  return { shown:sections.filter(section => !secondary(section.id) || section.id===current),more:more.filter(section => section.id!==current) };
-}
-
 export function customer360Section(user,requested,capabilities={},assetsGrant=false,managedCustomer=false,hasTickets=false,noVisits=false) {
   const available=customer360Sections(user,capabilities,assetsGrant,managedCustomer,hasTickets,noVisits);
   const aliases={ 'managed-services':'service-configuration' };

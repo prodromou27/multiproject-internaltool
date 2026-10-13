@@ -13,3 +13,21 @@
 .rtc-options label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--gray-600); }
 .rtc-options select, .rtc-options input { width: auto; min-width: 120px; }
 .rtc-choice > p { margin: 8px 0 0; }
+
+/* Settings → Customer report templates: the wording editor. */
+.rtw { display: grid; gap: 4px; }
+.rtw h3 { margin-top: 14px; }
+.rtw .form-group { margin-bottom: 10px; }
+.rtw .form-group > label { display: grid; gap: 4px; }
+.rtw-hint { margin: 2px 0 0; }
+.rtw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 16px; }
+.rtw-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-bottom: 6px; }
+.rtw-color { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.rtw-color input { width: 44px; height: 30px; padding: 2px; min-height: 0; }
+.rtw-checks { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.rtw-checks label, .rtw-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.rtw-checks input, .rtw-inline input { width: auto; min-height: 0; }
+.rtw-inline { margin: 0 0 10px; }
+.rtw-more { margin-top: 6px; padding: 8px 12px; border: 1px solid var(--gray-200); border-radius: var(--radius); }
+.rtw-more > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.rtw-more[open] > summary { margin-bottom: 10px; }

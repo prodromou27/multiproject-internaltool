@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CalendarCheck, Download, FileText } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -14,8 +14,12 @@ const PARTS = [
   ['changes', 'Changes and upgrades'], ['tickets', 'Tickets resolved'], ['tasks', 'Tasks completed'],
   ['work_log', 'Work log (every activity)'], ['recommendations', 'Our recommendations'], ['upcoming', 'Coming next'], ['assets', 'Devices we look after'],
 ];
-const DEFAULT_PARTS = ['changes', 'tickets', 'tasks', 'work_log', 'recommendations', 'upcoming'];
 const SHOWN = 8;
+// The built-in wording, for a report from a server that sends none (customerValueReport.js WORDING_DEFAULTS).
+const BUILT_IN = { title: 'Service report', intro: '', closing: '', color: '#1f3a5f',
+  headings: { summary: 'Summary', work: 'Work delivered', changes: 'Changes and upgrades', tickets: 'Tickets resolved', tasks: 'Tasks completed', work_log: 'Work log', recommendations: 'Our recommendations', assets: 'Devices we look after', upcoming: 'Coming next' },
+  figures: { hours: 'Hours of work', activities: 'Activities', changes: 'Changes and upgrades', tickets: 'Tickets resolved', tasks: 'Tasks completed' },
+  empty: { work: 'No activities were recorded in this period.', changes: 'No changes or upgrades in this period.', tickets: 'No tickets were resolved in this period.', tasks: 'No tasks were completed in this period.', work_log: 'No activities were recorded in this period.', recommendations: 'We have no open recommendations.', assets: 'No devices are recorded.' } };
 
 function PreviewTable({ title, columns, rows, empty }) {
   return <section className="crp-block" aria-label={title}>
@@ -30,45 +34,58 @@ function PreviewTable({ title, columns, rows, empty }) {
 
 function Preview({ report }) {
   const f = report.figures, has = key => report.sections.includes(key);
-  const figures = [['Hours of work', f.hours], ['Activities', f.activities], ['Changes and upgrades', f.changes], ...(f.tickets_resolved == null ? [] : [['Tickets resolved', f.tickets_resolved]]), ['Tasks completed', f.tasks_completed]];
+  // The wording and colour of the customer's report template (Settings → Customer report templates).
+  const W = report.wording || BUILT_IN, H = W.headings, E = W.empty, L = W.figures;
+  const figures = [[L.hours, f.hours], [L.activities, f.activities], [L.changes, f.changes], ...(f.tickets_resolved == null ? [] : [[L.tickets, f.tickets_resolved]]), [L.tasks, f.tasks_completed]];
   const max = Math.max(...report.categories.map(c => c.hours), 0.1);
-  return <article className="crp-paper" aria-label="Report preview">
+  return <article className="crp-paper" aria-label="Report preview" style={{ '--crp-color': W.color }}>
     <header className="crp-cover">
-      <span>Service report</span>
+      <span>{W.title}</span>
       <h2>{report.customer.name}</h2>
       <p>{fmtDate(report.period.from)} – {fmtDate(report.period.to)}{report.customer.team ? ` · ${report.customer.team}` : ''}</p>
     </header>
     <div className="crp-figures">{figures.map(([label, value]) => <div key={label}><strong>{value}</strong><span>{label}</span></div>)}</div>
-    {report.summary && <section className="crp-block"><h3>Summary</h3><p className="crp-text">{report.summary}</p></section>}
-    <section className="crp-block" aria-label="Work delivered">
-      <h3>Work delivered</h3>
-      {!report.categories.length ? <p className="text-muted text-sm">No activities were recorded in this period.</p>
+    {W.intro && <section className="crp-block"><p className="crp-text">{W.intro}</p></section>}
+    {report.summary && <section className="crp-block"><h3>{H.summary}</h3><p className="crp-text">{report.summary}</p></section>}
+    <section className="crp-block" aria-label={H.work}>
+      <h3>{H.work}</h3>
+      {!report.categories.length ? <p className="text-muted text-sm">{E.work}</p>
         : <ul className="crp-bars">{report.categories.map(c => <li key={c.name}><span>{c.name}</span><span className="crp-bar"><i style={{ width: `${c.hours / max * 100}%` }} /></span><strong>{c.hours} h</strong><small>{c.activities}</small></li>)}</ul>}
     </section>
-    {has('changes') && <PreviewTable title="Changes and upgrades" columns={['Date', 'Device', 'From', 'To', 'Change']} empty="No changes or upgrades in this period."
+    {has('changes') && <PreviewTable title={H.changes} columns={['Date', 'Device', 'From', 'To', 'Change']} empty={E.changes}
       rows={report.changes.map(c => [fmtDate(c.date), c.device, c.from, c.to, c.what])} />}
-    {has('tickets') && f.tickets_resolved != null && <PreviewTable title="Tickets resolved" columns={['Ticket', 'Subject', 'Resolved']} empty="No tickets were resolved in this period."
+    {has('tickets') && f.tickets_resolved != null && <PreviewTable title={H.tickets} columns={['Ticket', 'Subject', 'Resolved']} empty={E.tickets}
       rows={report.tickets.map(t => [t.number, t.subject, fmtDate(t.resolved)])} />}
-    {has('tasks') && <PreviewTable title="Tasks completed" columns={['Task', 'Completed']} empty="No tasks were completed in this period." rows={report.tasks.map(t => [t.title, fmtDate(t.completed)])} />}
-    {has('work_log') && <PreviewTable title="Work log" columns={['Date', 'Work', 'Type', 'Hours']} empty="No activities were recorded in this period."
+    {has('tasks') && <PreviewTable title={H.tasks} columns={['Task', 'Completed']} empty={E.tasks} rows={report.tasks.map(t => [t.title, fmtDate(t.completed)])} />}
+    {has('work_log') && <PreviewTable title={H.work_log} columns={['Date', 'Work', 'Type', 'Hours']} empty={E.work_log}
       rows={report.work_log.map(w => [fmtDate(w.date), w.title, w.category, String(w.hours)])} />}
-    {has('recommendations') && <PreviewTable title="Our recommendations" columns={['Finding', 'Recommendation', 'Risk', 'Due']} empty="We have no open recommendations."
+    {has('recommendations') && <PreviewTable title={H.recommendations} columns={['Finding', 'Recommendation', 'Risk', 'Due']} empty={E.recommendations}
       rows={report.recommendations.map(r => [r.finding, r.recommendation, r.risk, fmtDate(r.due)])} />}
-    {has('assets') && report.assets && <PreviewTable title="Devices we look after" columns={['Device', 'Type', 'Version', 'Support']} empty="No devices are recorded."
+    {has('assets') && report.assets && <PreviewTable title={H.assets} columns={['Device', 'Type', 'Version', 'Support']} empty={E.assets}
       rows={report.assets.rows.map(a => [a.name, a.type, a.version, a.support])} />}
-    {has('upcoming') && (report.coming_next || report.upcoming.length > 0) && <section className="crp-block"><h3>Coming next</h3>
+    {has('upcoming') && (report.coming_next || report.upcoming.length > 0) && <section className="crp-block"><h3>{H.upcoming}</h3>
       {report.coming_next && <p className="crp-text">{report.coming_next}</p>}
       {report.upcoming.length > 0 && <ul className="crp-list">{report.upcoming.map((u, i) => <li key={i}>{u.title}{u.due ? ` (planned by ${fmtDate(u.due)})` : ''}</li>)}</ul>}
     </section>}
+    {W.closing && <section className="crp-block"><p className="crp-text">{W.closing}</p></section>}
   </article>;
 }
 
 export default function CustomerReport({ customerId, range, due, onUsePeriod }) {
   const { user } = useAuth();
   const canDownload = !!user?.permissions?.['managed_reports.generate'];
-  const [summary, setSummary] = useState(''), [comingNext, setComingNext] = useState(''), [parts, setParts] = useState(DEFAULT_PARTS);
+  const [summary, setSummary] = useState(''), [comingNext, setComingNext] = useState(''), [parts, setParts] = useState(null);
   const [report, setReport] = useState(null), [loading, setLoading] = useState(false), [busy, setBusy] = useState(null), [error, setError] = useState('');
-  const body = { from: range.from, to: range.to, sections: parts, summary, coming_next: comingNext };
+  const body = { from: range.from, to: range.to, ...(parts ? { sections: parts } : {}), summary, coming_next: comingNext };
+  // The template's default sections and starting text, taken once from the first preview.
+  const started = useRef(false);
+  useEffect(() => {
+    if (!report || started.current) return;
+    started.current = true;
+    setParts(report.sections || []);
+    if (report.defaults?.summary) setSummary(current => current || report.defaults.summary);
+    if (report.defaults?.coming_next) setComingNext(current => current || report.defaults.coming_next);
+  }, [report]);
 
   // The preview follows the period and the parts chosen; the written notes are applied when typing pauses.
   const key = JSON.stringify(body);
@@ -92,7 +109,7 @@ export default function CustomerReport({ customerId, range, due, onUsePeriod }) 
       save(blob, `${safe}_report_${range.from}_${range.to}.${format}`);
     } catch (failure) { setError(failure.message); } finally { setBusy(null); }
   }
-  const toggle = partKey => setParts(current => (current.includes(partKey) ? current.filter(k => k !== partKey) : [...current, partKey]));
+  const toggle = partKey => setParts(current => { const list = current || report?.sections || []; return list.includes(partKey) ? list.filter(k => k !== partKey) : [...list, partKey]; });
   const owedOther = due && !['sent', 'not_yet_due'].includes(due.status) && !(range.from === due.from && range.to === due.to);
 
   return <div className="crp">
@@ -115,7 +132,7 @@ export default function CustomerReport({ customerId, range, due, onUsePeriod }) 
           <textarea id="crp-next" rows={3} maxLength={5000} value={comingNext} onChange={event => setComingNext(event.target.value)} placeholder="e.g. Next month we will test the WAF failover and review the backup policy." /></div>
       </div>
       <fieldset className="crp-parts"><legend>Include</legend>
-        {PARTS.map(([partKey, label]) => <label key={partKey}><input type="checkbox" checked={parts.includes(partKey)} onChange={() => toggle(partKey)} /> {label}</label>)}
+        {PARTS.map(([partKey, label]) => <label key={partKey}><input type="checkbox" checked={(parts || report?.sections || []).includes(partKey)} onChange={() => toggle(partKey)} /> {label}</label>)}
       </fieldset>
     </section>
 

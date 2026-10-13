@@ -14,13 +14,13 @@
 .crp-parts input { width: auto; min-height: 0; }
 .crp-stale { opacity: .6; transition: opacity .15s; }
 .crp-paper { display: grid; gap: 18px; max-width: 900px; margin: 0 auto; width: 100%; padding: 0 0 22px; border: 1px solid var(--gray-200); border-radius: var(--radius-lg, 10px); background: var(--surface); overflow: hidden; }
-.crp-cover { padding: 26px 28px 22px; background: #1f3a5f; color: #fff; }
+.crp-cover { padding: 26px 28px 22px; background: var(--crp-color, #1f3a5f); color: #fff; }
 .crp-cover span { font-size: 12px; opacity: .8; }
 .crp-cover h2 { margin: 4px 0 6px; font-size: 24px; color: #fff; }
 .crp-cover p { margin: 0; font-size: 13px; opacity: .85; }
 .crp-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; padding: 0 28px; }
 .crp-figures div { display: grid; gap: 2px; padding: 12px 14px; border-radius: 8px; background: var(--gray-50); }
-.crp-figures strong { color: #1f3a5f; font-size: 24px; font-variant-numeric: tabular-nums; }
+.crp-figures strong { color: var(--crp-color, #1f3a5f); font-size: 24px; font-variant-numeric: tabular-nums; }
 :root[data-theme="dark"] .crp-figures strong { color: var(--primary); }
 .crp-figures span { color: var(--gray-500); font-size: 12px; }
 .crp-block { display: grid; gap: 8px; padding: 0 28px; }
@@ -30,6 +30,6 @@
 .crp-bars li { display: grid; grid-template-columns: minmax(120px, 28%) 1fr auto auto; align-items: center; gap: 10px; font-size: 13px; }
 .crp-bars li small { color: var(--gray-500); min-width: 24px; text-align: right; }
 .crp-bar { height: 10px; border-radius: 99px; background: var(--gray-100); overflow: hidden; }
-.crp-bar i { display: block; height: 100%; border-radius: 99px; background: #2f6fb2; }
+.crp-bar i { display: block; height: 100%; border-radius: 99px; background: var(--crp-color, #2f6fb2); }
 .crp-list { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.7; }
 @media (max-width: 600px) { .crp-cover, .crp-block, .crp-figures { padding-left: 16px; padding-right: 16px; } .crp-bars li { grid-template-columns: 1fr auto; } .crp-bars li .crp-bar { grid-column: 1 / -1; } }
