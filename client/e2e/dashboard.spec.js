@@ -9,6 +9,7 @@ test('the dashboard shows when it was updated and remembers visible widgets', as
   // The project counts repeat the attention figures, so they start hidden.
   await expect(page.locator('.dashboard-stat')).toHaveCount(0);
 
+  await page.locator('summary[aria-label="More actions"]').click();
   await page.getByRole('button', { name: 'Customize' }).click();
   const dialog = page.getByRole('dialog', { name: 'Arrange workspace' });
   const statsOption = dialog.locator('.dashboard-widget-option').filter({ hasText: 'Stats Overview' });
@@ -36,6 +37,7 @@ test('a layout saved before the simpler dashboard hides the repeated widgets onc
 test('dashboard widget order can be changed without drag and drop', async ({ page }) => {
   await mockApi(page, { role: 'manager' });
   await page.goto('/');
+  await page.locator('summary[aria-label="More actions"]').click();
   await page.getByRole('button', { name: 'Customize' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Arrange workspace' });

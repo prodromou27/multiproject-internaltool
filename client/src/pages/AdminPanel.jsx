@@ -150,9 +150,6 @@ export default function AdminPanel() {
           </h1>
           <p className="text-sm text-muted mt-4">System configuration, access control, security, and operations</p>
         </div>
-        <div className="u-f8bc0db">
-          Signed in as<br /><strong className="u-3a065eb">{user.name}</strong>
-        </div>
       </div>
 
       <div className="settings-shell">

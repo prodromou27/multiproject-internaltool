@@ -9,7 +9,8 @@ test('managers import customers from a CSV, marking managed ones and updating ex
     return { body: { imported: 2, updated: 1, managed: 2, contracts: 1, skipped: 1, errors: [{ row: 5, error: 'Team "Ops" not found' }] } };
   });
   await page.goto('/customers');
-  await page.getByRole('button', { name: /Import/ }).first().click();
+  await page.locator('summary[aria-label="More actions"]').click();
+  await page.getByRole('button', { name: 'Import customers' }).click();
   await expect(page.getByText('managed:', { exact: false })).toBeVisible();
   await expect(page.getByText('team', { exact: true }).first()).toBeVisible();
   await page.locator('input[type="file"]').setInputFiles({ name: 'customers.csv', mimeType: 'text/csv', buffer: Buffer.from('name;managed;team\nAcme;yes;Security Team\n') });

@@ -13,3 +13,12 @@
 @media(prefers-reduced-motion:reduce){.ui-table-skeleton span{animation:none}}
 
 .import-option{display:flex;align-items:flex-start;gap:8px;margin:0 0 14px;font-size:13px;cursor:pointer}.import-option input{width:auto;min-height:0;margin-top:3px}.import-option small{display:block;color:var(--gray-500);font-size:12px}
+
+/* Quieter figures: one bar, divided cells, colour only on what needs attention. */
+.ui-metric-strip{display:flex;flex-wrap:wrap;gap:0;margin-bottom:16px;background:var(--surface);border:1px solid var(--gray-200);border-radius:var(--radius-md);overflow:hidden}
+.ui-metric-strip>.ui-metric{flex:1 1 140px;padding:10px 16px;border:0;border-right:1px solid var(--gray-100);border-radius:0;background:none}
+.ui-metric-strip>.ui-metric:last-child{border-right:0}
+.ui-metric-strip>.ui-metric>strong{font-size:20px;margin-top:2px}
+.ui-metric-strip>.ui-metric.is-danger>strong{color:var(--danger)}
+.ui-metric-strip>.ui-metric.is-warning>strong{color:var(--tone-warning-text,var(--warning))}
+.ui-metric-strip>.ui-metric.is-zero>strong{color:var(--gray-400)}

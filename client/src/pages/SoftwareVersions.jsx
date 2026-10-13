@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { ExternalLink, PackageCheck, RefreshCw, Settings2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { PageHeader } from '../components/PageLayout';
+import { HeaderMenu, PageHeader } from '../components/PageLayout';
+import AdvisoryNav from '../components/AdvisoryNav';
 import { Surface, ToneBadge } from '../components/EnterpriseUI';
 import { fmtDate, fmtDateTime } from '../components/Shared';
 import { useToast } from '../components/Toast';
@@ -96,9 +97,12 @@ export default function SoftwareVersions() {
   return <div className="page sv-page">
     <PageHeader title="Software versions"
       meta={data?.last_sync?.at ? `The latest versions of the products we support, checked every morning. Last checked ${fmtDateTime(data.last_sync.at)}.` : 'The latest versions of the products we support, checked every morning.'}
-      actions={manager && <>
-        <button type="button" className="btn btn-ghost btn-sm" disabled={checking || data?.last_sync?.running} onClick={checkNow}><RefreshCw size={14} className={checking ? 'spin' : ''} /> {checking ? 'Checking…' : 'Check now'}</button>
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => setManaging(value => !value)}><Settings2 size={14} /> {managing ? 'Close settings' : 'Products and feeds'}</button>
+      actions={<>
+        <AdvisoryNav />
+        {manager && <HeaderMenu>
+          <button type="button" disabled={checking || data?.last_sync?.running} onClick={checkNow}><RefreshCw size={14} className={checking ? 'spin' : ''} aria-hidden="true" /> {checking ? 'Checking…' : 'Check now'}</button>
+          <button type="button" onClick={() => setManaging(value => !value)}><Settings2 size={14} aria-hidden="true" /> {managing ? 'Close settings' : 'Products and feeds'}</button>
+        </HeaderMenu>}
       </>} />
     {managing && <SoftwareAdmin onChanged={load} />}
     {error ? <div className="error-msg" role="alert">{error}</div> : !data ? <p className="text-muted">Loading…</p> : <div className="sv-layout">

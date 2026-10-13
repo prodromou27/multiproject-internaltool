@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Archive, ArchiveRestore, RefreshCw, Trash2, Upload } from 'lucide-react';
+import { Archive, ArchiveRestore, MessageSquare, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { api } from '../api';
 import { Modal, fmtDate } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
-import { PageHeader } from '../components/PageLayout';
+import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
 import { DataTable,MetricStrip,Pagination,Surface,ToneBadge } from '../components/EnterpriseUI';
 import { ReportDueBadge } from '../components/ReportDue';
@@ -283,9 +283,13 @@ export default function Customers() {
     <div className="page">
       <PageHeader title="Customers" actions={
         <div className="flex gap-8 flex-wrap">
-          <button className="btn btn-ghost" onClick={() => load()} disabled={loading}><RefreshCw size={14} /> Refresh</button>
-          {canCreate && <button className="btn btn-ghost inline-flex items-center gap-6" onClick={() => setShowImport(true)}><Upload size={14} /> Import</button>}
           {canCreate && <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>+ New Customer</button>}
+          {/* Customer Responses opens from here rather than the menu. */}
+          <HeaderMenu>
+            <Link to="/customer-responses"><MessageSquare size={14} aria-hidden="true" /> Customer responses</Link>
+            {canCreate && <button type="button" onClick={() => setShowImport(true)}><Upload size={14} aria-hidden="true" /> Import customers</button>}
+            <button type="button" onClick={() => load()} disabled={loading}><RefreshCw size={14} aria-hidden="true" /> Refresh</button>
+          </HeaderMenu>
         </div>
       } />
 

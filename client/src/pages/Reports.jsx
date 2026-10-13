@@ -361,8 +361,8 @@ export default function Reports() {
       <PageHeader title="Reports"
         actions={<>
           <Link className="btn btn-ghost" to="/service-operations">Service activity overview</Link>
-          {/* KPI Management, Scorecards and SLA open from here rather than the menu. */}
-          {related.length > 0 && <details className="preset-manage task-presets"><summary>Performance</summary><div className="preset-menu">
+          {/* Workload, Skill matrix, KPI Management, Scorecards and SLA open from here rather than the menu. */}
+          {related.length > 0 && <details className="preset-manage task-presets"><summary>Team and performance</summary><div className="preset-menu">
             {related.map(page => <Link key={page.id} className="preset-link" to={page.path}>{page.label}</Link>)}
           </div></details>}
         </>} />

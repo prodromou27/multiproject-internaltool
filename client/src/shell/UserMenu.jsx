@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Database, LogOut, Moon, Rows3, Sun, Ticket, UserCircle } from 'lucide-react';
+import { Database, LogOut, Moon, Rows3, StickyNote, Sun, Ticket, UserCircle } from 'lucide-react';
 import { useAuth } from '../auth';
 import { useToast } from '../components/Toast';
 
@@ -29,6 +29,7 @@ export default function UserMenu({ user, team, logout, dense, onToggleDensity })
       </summary>
       <div className="user-menu-panel">
         <Link to="/profile" onClick={close}><UserCircle size={15} aria-hidden="true" /> Profile and alerts</Link>
+        <Link to="/notes" onClick={close}><StickyNote size={15} aria-hidden="true" /> My Notes</Link>
         <button type="button" onClick={() => { onToggleDensity(); close(); }}>
           <Rows3 size={15} aria-hidden="true" /> {dense ? 'Comfortable spacing' : 'Compact spacing'}
         </button>

@@ -24,7 +24,9 @@ export function bucketLabel(key, unit) {
 
 export function Figure({ icon: Icon, label, value, note, to, tone }) {
   const body = <><span className="mi-figure-label"><Icon size={14} aria-hidden="true" /> {label}</span><strong>{value}</strong>{note && <small>{note}</small>}</>;
-  return to ? <Link to={to} className={`mi-figure${tone ? ` is-${tone}` : ''}`}>{body}</Link> : <div className={`mi-figure${tone ? ` is-${tone}` : ''}`}>{body}</div>;
+  // Zero recedes, so the figures that need someone stand out.
+  const className = `mi-figure${tone ? ` is-${tone}` : ''}${Number(value) === 0 ? ' is-zero' : ''}`;
+  return to ? <Link to={to} className={className}>{body}</Link> : <div className={className}>{body}</div>;
 }
 
 export function Chart({ title, note, children, wide }) {

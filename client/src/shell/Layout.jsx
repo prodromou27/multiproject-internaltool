@@ -11,6 +11,7 @@ import { GlobalSearch } from './GlobalSearch';
 import { Hamburger } from './Sidebar';
 import { SidebarContent } from './Sidebar';
 import UserMenu from './UserMenu';
+import TopbarLinks from './TopbarLinks';
 import { CommandPalette } from './CommandPalette';
 
 /* ── Layout ──────────────────────────────────────────────── */
@@ -120,6 +121,7 @@ export function Layout({ children }) {
         <div className="u-6bb9e7a">
           <QuickCreate user={user} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
           <GlobalSearch />
+          <TopbarLinks user={user} serviceActivityEnabled={saAccess.enabled} />
           <HelpMenu role={user.role} />
           <NotificationBell />
           <UserMenu user={user} team={currentTeams} logout={logout} dense={dense} onToggleDensity={toggleDensity} />
@@ -136,6 +138,7 @@ export function Layout({ children }) {
           <div className="u-2f5dfa5">
             <QuickCreate user={user} serviceActivityEnabled={saAccess.enabled} capabilities={saAccess.capabilities} />
             <GlobalSearch />
+            <TopbarLinks user={user} serviceActivityEnabled={saAccess.enabled} />
             <HelpMenu role={user.role} />
             <NotificationBell />
             <UserMenu user={user} team={currentTeams} logout={logout} dense={dense} onToggleDensity={toggleDensity} />

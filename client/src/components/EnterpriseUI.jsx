@@ -9,9 +9,11 @@ export function Surface({ title,description,label,actions,children,className='',
   </Tag>;
 }
 
+/* One quiet bar of figures. The note explains a figure on hover rather than as
+   another line of text; zero recedes so the figures that matter stand out. */
 export function MetricStrip({ items,className='' }) {
-  return <div className={`ui-metric-strip${className ? ` ${className}` : ''}`}>{items.map(item => <article key={item.key || item.label} className={`ui-metric${item.tone ? ` is-${item.tone}` : ''}`}>
-    <span>{item.label}</span><strong>{item.value ?? 0}</strong>{item.note && <small>{item.note}</small>}
+  return <div className={`ui-metric-strip${className ? ` ${className}` : ''}`}>{items.map(item => <article key={item.key || item.label} title={item.note || undefined} className={`ui-metric${item.tone ? ` is-${item.tone}` : ''}${Number(item.value)===0 ? ' is-zero' : ''}`}>
+    <span>{item.label}</span><strong>{item.value ?? 0}</strong>
   </article>)}</div>;
 }
 

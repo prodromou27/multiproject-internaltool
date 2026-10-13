@@ -457,6 +457,8 @@ kbd {
 
 /* ── Grids ────────────────────────────────────────────────── */
 .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+/* Grid cells may shrink, so long one-line text ellipsizes instead of widening the page. */
+.grid-2 > *, .grid-3 > *, .grid-4 > *, .grid-5 > * { min-width: 0; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
@@ -1329,3 +1331,20 @@ tr:hover td { background: var(--gray-50); transition: background .1s; }
 .calendar-agenda button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 4px; background: transparent; border: 0; color: var(--gray-800); text-align: left; cursor: pointer; }
 .calendar-agenda button:hover { background: var(--gray-50); }
 .calendar-agenda small { display: block; margin-top: 4px; color: var(--gray-600); }
+
+/* Page header "⋯" menu (PageLayout HeaderMenu). */
+.header-menu { position: relative; }
+.header-menu > summary { list-style: none; padding-left: 10px; padding-right: 10px; }
+.header-menu > summary::-webkit-details-marker { display: none; }
+.header-menu-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 210px; padding: 5px; display: grid; background: var(--surface); border: 1px solid var(--gray-200); border-radius: 8px; box-shadow: var(--shadow-md); }
+.header-menu-panel > a, .header-menu-panel > button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px; background: none; color: var(--gray-800); font: inherit; font-size: 13px; text-align: left; text-decoration: none; cursor: pointer; }
+.header-menu-panel > a:hover, .header-menu-panel > button:hover:not(:disabled) { background: var(--gray-50); color: var(--primary); text-decoration: none; }
+.header-menu-panel > button:disabled { opacity: .5; cursor: default; }
+.header-menu-panel > hr { margin: 4px 0; border: 0; border-top: 1px solid var(--gray-100); }
+.topbar-action.is-active { color: var(--primary); }
+a.topbar-action { display: inline-flex; align-items: center; justify-content: center; padding: 6px; border-radius: 8px; color: var(--gray-600); }
+/* Advisories: Vulnerabilities | Software versions (AdvisoryNav). */
+.advisory-nav { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--surface); }
+.advisory-nav a { padding: 6px 12px; border-radius: calc(var(--radius) - 2px); color: var(--gray-600); font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.advisory-nav a:hover { color: var(--gray-900); text-decoration: none; }
+.advisory-nav a.active { background: var(--primary); color: #fff; }

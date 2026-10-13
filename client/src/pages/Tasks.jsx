@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckSquare, Download, Trash2, UserCheck, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown } from 'lucide-react';
+import { CheckSquare, Download, Trash2, UserCheck, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown, RefreshCw } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { PageHeader } from '../components/PageLayout';
+import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch } from '../components/ListWorkspace';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
@@ -395,17 +395,11 @@ export default function Tasks() {
     <div className="page">
       <PageHeader title="Tasks" actions={<>
 <div className="flex gap-8 flex-wrap">
-          <button className="btn btn-ghost btn-sm inline-flex items-center gap-5" onClick={exportTasks} disabled={busy || !!loadError || search.trim() !== debouncedSearch}>
-            <Download size={13} /> Export all matching
-          </button>
-          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { references.current = null; load(); }}>Refresh</button>
-          <details className="column-picker">
-            <summary className="btn btn-ghost btn-sm"><Columns3 size={13} /> Columns</summary>
-            <div className="column-picker-menu">
-              {TASK_COLUMNS.map(([id, label]) => <label key={id}><input type="checkbox" checked={visibleColumns.has(id)} onChange={() => toggleColumn(id)} /> {label}</label>)}
-            </div>
-          </details>
           <button className="btn btn-primary" onClick={() => { setCreateCustomerId(null);setShowCreate(true); }} disabled={busy || !!loadError}>+ New Task</button>
+          <HeaderMenu>
+            <button type="button" onClick={exportTasks} disabled={busy || !!loadError || search.trim() !== debouncedSearch}><Download size={14} aria-hidden="true" /> Export all matching</button>
+            <button type="button" disabled={busy} onClick={() => { references.current = null; load(); }}><RefreshCw size={14} aria-hidden="true" /> Refresh</button>
+          </HeaderMenu>
         </div>
       </>} />
 
@@ -435,6 +429,13 @@ export default function Tasks() {
               <X size={13} />
             </button>
           )}
+          {/* Which columns the table shows: a view option, beside the filters. */}
+          <details className="column-picker">
+            <summary className="btn btn-ghost btn-sm"><Columns3 size={13} /> Columns</summary>
+            <div className="column-picker-menu">
+              {TASK_COLUMNS.map(([id, label]) => <label key={id}><input type="checkbox" checked={visibleColumns.has(id)} onChange={() => toggleColumn(id)} /> {label}</label>)}
+            </div>
+          </details>
           {/* Saved filters live in one menu rather than a row of their own. */}
           <details className="preset-manage task-presets">
             <summary>Saved filters{presets.length ? ` (${presets.length})` : ''}</summary>

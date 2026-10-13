@@ -4,6 +4,7 @@ import { ExternalLink, RefreshCw, ShieldAlert, Trash2, Eye, EyeOff, Plus } from 
 import { api } from '../api';
 import { useAuth } from '../App';
 import { PageHeader } from '../components/PageLayout';
+import AdvisoryNav from '../components/AdvisoryNav';
 import { ListSearch } from '../components/ListWorkspace';
 import { MetricStrip, Pagination, Surface, Tabs, ToneBadge } from '../components/EnterpriseUI';
 import { fmtDate, fmtDateTime, Modal } from '../components/Shared';
@@ -210,7 +211,7 @@ export default function Vulnerabilities() {
   const go = (next, extra = {}) => { const search = new URLSearchParams({ ...(next !== 'cves' ? { tab: next } : {}), ...extra }); navigate({ search: search.toString() ? `?${search}` : '' }); };
   const cve = params.get('cve');
   return <div className="page vuln-page">
-    <PageHeader title={<span className="flex-center gap-8"><ShieldAlert size={20} /> Vulnerabilities</span>} />
+    <PageHeader title={<span className="flex-center gap-8"><ShieldAlert size={20} /> Vulnerabilities</span>} actions={<AdvisoryNav />} />
     <Tabs label="Vulnerability sections" items={tabs} value={tab} onChange={next => go(next)} />
     {tab === 'cves' && <CveList initialProduct={params.get('product') || ''} onOpen={id => go('cves', { ...(params.get('product') ? { product: params.get('product') } : {}), cve: id })} />}
     {tab === 'products' && <ProductsVersions canManage={canManage} onShowProduct={product => go('cves', { product })} />}

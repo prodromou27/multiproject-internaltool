@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PAGES, canAccessPage, visiblePages, menuGroups, quickCreateActions, pageForPath, childPages } from '../src/navigation.js';
+import { PAGES, canAccessPage, visiblePages, menuGroups, quickCreateActions, pageForPath, childPages, placedPages } from '../src/navigation.js';
 
 test('navigation and create actions respect existing role and feature boundaries', () => {
   const ids = role => visiblePages(role).map(page => page.id);
@@ -41,32 +41,30 @@ test('navigation and create actions respect existing role and feature boundaries
 
 test('the menu shows every page a person can open, in a few groups', () => {
   const menu = user => menuGroups(user, true).map(group => [group.section, group.pages.map(page => page.id)]);
+  // One short list; the rest open from their page, the top bar or the account menu.
   assert.deepEqual(menu({ role: 'manager', permissions: {} }), [
-    ['Home', ['dashboard', 'calendar', 'reminders']],
-    ['Work', ['projects', 'tasks', 'visits', 'activities', 'approvals']],
-    ['Customers', ['customers', 'responses']],
-    ['Advisories', ['vulnerabilities', 'softwareVersions']],
-    ['Team & performance', ['workload', 'skills', 'reports']],
-    ['More', ['notes', 'settings']],
+    ['Home', ['dashboard', 'tasks', 'projects', 'customers', 'visits', 'activities', 'vulnerabilities', 'reports']],
+    ['More', ['settings']],
   ]);
   assert.deepEqual(menu({ role: 'engineer', permissions: {} }), [
-    ['Home', ['myWork', 'calendar', 'reminders']],
-    ['Work', ['projects', 'tasks', 'visits', 'activities']],
-    ['Customers', ['customers', 'responses']],
-    ['Advisories', ['vulnerabilities', 'softwareVersions']],
-    ['More', ['notes']],
+    ['Home', ['myWork', 'tasks', 'projects', 'customers', 'visits', 'activities', 'vulnerabilities']],
   ]);
+  assert.equal(menuGroups('manager').flatMap(group => group.pages).find(page => page.id === 'vulnerabilities').label, 'Advisories');
+  assert.deepEqual(placedPages('topbar', 'manager').map(page => page.id), ['calendar', 'reminders']);
+  assert.deepEqual(placedPages('account', 'engineer').map(page => page.id), ['notes']);
+  // A planner has no Customers page, so Customer Responses stays in the menu.
+  assert.ok(menu({ role: 'planner', permissions: {} })[0][1].includes('responses'));
   // Every reachable page is in the menu, or lights up a parent that is.
   for (const role of ['manager', 'engineer', 'planner', 'pm']) {
     const inMenu = new Set(menuGroups(role, true).flatMap(group => group.pages.map(page => page.id)));
     for (const page of visiblePages(role, true).filter(page => !page.hidden))
-      assert.ok(inMenu.has(page.id) || inMenu.has(page.parent), `${role}: ${page.id} is reachable from the menu`);
+      assert.ok(inMenu.has(page.id) || inMenu.has(page.parent) || page.place, `${role}: ${page.id} is reachable from the menu, top bar or account menu`);
   }
-  assert.deepEqual(menuGroups('engineer', false).find(group => group.section === 'Work').pages.map(page => page.id), ['projects', 'tasks', 'visits']);
+  assert.deepEqual(menuGroups('engineer', false).find(group => group.section === 'Home').pages.map(page => page.id), ['myWork', 'tasks', 'projects', 'customers', 'visits', 'vulnerabilities']);
   assert.equal(menuGroups('manager').find(group => group.section === 'Home').titled, false);
   assert.equal(pageForPath('/settings/users').parent, 'settings');
   // KPI Management, Scorecards and SLA open from Reports; without Reports they stay in the menu.
-  assert.deepEqual(childPages('reports', { role: 'manager', permissions: {} }).map(page => page.id), ['kpiManagement', 'scorecards', 'sla']);
+  assert.deepEqual(childPages('reports', { role: 'manager', permissions: {} }).map(page => page.id), ['workload', 'skills', 'kpiManagement', 'scorecards', 'sla']);
   const noReports = menuGroups({ role: 'manager', permissions: { 'reports.access': false } }).flatMap(group => group.pages.map(page => page.id));
   assert.ok(['kpiManagement', 'scorecards', 'sla'].every(id => noReports.includes(id)));
   assert.equal(pageForPath('/service-operations').parent, 'reports');

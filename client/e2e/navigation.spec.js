@@ -1,26 +1,24 @@
 import { test, expect } from '@playwright/test';
 import { mockApi } from './support/mockApi.js';
 
-test('the menu shows every page in groups, and remembers folded groups', async ({ page }) => {
+test('the menu is one short list; the other pages open from the top bar, the account menu or their page', async ({ page }) => {
   await mockApi(page, { role: 'manager' });
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Main' });
-  for (const name of ['Dashboard', 'Projects', 'Customers', 'Workload', 'Skill matrix', 'Reports'])
-    await expect(nav.getByRole('link', { name, exact: true })).toBeVisible();
+  await expect(nav.getByRole('link')).toHaveText(['Dashboard', 'Tasks', 'Projects', 'Customers', 'Maintenance Visits', 'Activity Log', 'Advisories', 'Reports']);
+  await expect(nav.getByRole('button')).toHaveCount(0); // no groups to fold
   const pinned = page.getByRole('navigation', { name: 'Notes and settings' });
   await expect(pinned.getByRole('link', { name: 'Settings' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'All modules' })).toHaveCount(0);
 
-  const team = nav.getByRole('button', { name: 'Team & performance' });
-  await team.click();
-  await expect(team).toHaveAttribute('aria-expanded', 'false');
-  await expect(nav.getByRole('link', { name: 'Workload' })).toBeHidden();
-  await page.reload();
-  await expect(nav.getByRole('link', { name: 'Workload' })).toBeHidden();
-  await team.click();
-  await expect(nav.getByRole('link', { name: 'Workload' })).toBeVisible();
+  // Calendar and Reminders sit in the top bar, My Notes in the account menu.
+  await page.locator('.desktop-topbar').getByRole('link', { name: 'Calendar' }).click();
+  await expect(page).toHaveURL(/\/calendar$/);
+  await page.locator('summary[aria-label="Account menu"]').filter({ visible: true }).click();
+  await expect(page.getByRole('link', { name: 'My Notes' })).toBeVisible();
 
-  // Pages that live inside another light up that one: Users is part of Settings.
+  // Pages that open from another light that one up: Workload is part of Reports, Users of Settings.
+  await page.goto('/workload');
+  await expect(nav.getByRole('link', { name: 'Reports' })).toHaveClass(/active/);
   await page.goto('/users');
   await expect(page).toHaveURL(/\/settings\/users$/);
   await expect(pinned.getByRole('link', { name: 'Settings' })).toHaveClass(/active/);

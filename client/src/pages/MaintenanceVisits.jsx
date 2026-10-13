@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, X, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useSavedFilter } from '../hooks/useSavedFilter';
-import { PageHeader } from '../components/PageLayout';
+import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import { useLatestRequest } from '../hooks/useLatestRequest';
@@ -531,7 +531,9 @@ export default function MaintenanceVisits() {
       <PageHeader title="Maintenance Visits" actions={<>
 {canManage && (
           <div className="flex gap-8 flex-wrap">
-            <button className="btn btn-ghost btn-sm inline-flex items-center gap-5" disabled={unavailable} onClick={async () => {
+            <button className="btn btn-primary" disabled={unavailable} onClick={() => { setEditing(null); setShowForm(true); }}>+ Schedule Visit</button>
+            <HeaderMenu>
+            <button type="button" disabled={unavailable} onClick={async () => {
               try {
                 // Use a short-lived (60 s) scoped download token — never expose
                 // the full session JWT in a URL (would be captured in server logs)
@@ -543,20 +545,21 @@ export default function MaintenanceVisits() {
                 a.download = 'maintenance-visits.xlsx'; a.click();
               } catch { toast.error('Export failed. Please try again.'); }
             }}>
-              <Download size={13} /> Export Matching Visits
+              <Download size={14} aria-hidden="true" /> Export matching visits
             </button>
-            <button className="btn btn-ghost flex-center gap-6" disabled={unavailable} onClick={() => setShowImport(true)}><Upload size={14} /> Import</button>
-            <button className="btn btn-primary" disabled={unavailable} onClick={() => { setEditing(null); setShowForm(true); }}>+ Schedule Visit</button>
+            <button type="button" disabled={unavailable} onClick={() => setShowImport(true)}><Upload size={14} aria-hidden="true" /> Import visits</button>
+            </HeaderMenu>
           </div>
         )}
       </>} />
 
-      <MetricStrip items={[
+      {/* The figures describe the list, so they show with it. */}
+      {view === 'list' && <MetricStrip items={[
         { key:'scheduled',label:'Scheduled',value:unavailable ? '…' : visits.filter(v => v.status === 'scheduled').length,note:'Upcoming planned visits' },
         { key:'completed',label:'Completed',value:unavailable ? '…' : visits.filter(v => v.status === 'completed').length,tone:'success',note:'Completed in the loaded period' },
         { key:'reports',label:'Reports pending',value:unavailable ? '…' : reportPendingCount,tone:reportPendingCount > 0 ? 'warning' : 'success',note:'Completed work awaiting evidence' },
         { key:'sent',label:'Sent to PM',value:unavailable ? '…' : visits.filter(v => v.report_sent_to_customer).length,tone:'info',note:'Approved report deliveries' },
-      ]} />
+      ]} />}
 
       {/* List, calendar, or (managers and planners) the team's availability. */}
       <div className="filter-bar" role="tablist" aria-label="Visit views" style={{ marginBottom: 12 }}>

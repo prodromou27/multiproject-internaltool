@@ -1,7 +1,7 @@
 import CustomerContracts from '../components/CustomerContracts';
 import { useEffect, useState, useRef } from 'react';
 import { useParams,useLocation,useNavigate,Link } from 'react-router-dom';
-import { Activity,ArrowLeft,BellRing,BriefcaseBusiness,Building2,CalendarDays,CheckSquare,ChevronDown,ClipboardList,Layers,Mail,MapPin,Phone,Plus,Settings2,Wrench } from 'lucide-react';
+import { Activity,ArrowLeft,BellRing,BriefcaseBusiness,Building2,CalendarDays,CheckSquare,ChevronDown,ClipboardList,Layers,Mail,MapPin,Phone,Plus,Wrench } from 'lucide-react';
 import { api } from '../api';
 import { fmtDate } from '../components/Shared';
 import { ToneBadge } from '../components/EnterpriseUI';
@@ -67,7 +67,7 @@ function HealthRing({ health }) {
   </details>;
 }
 
-function CustomerHeader({ customer,operations,user,saAccess,onRecommendation,onReminder }) {
+function CustomerHeader({ customer,operations,operationsError,user,saAccess,onRecommendation,onReminder,onSelectTab }) {
   const contact=customer.contact_name || customer.primary_contact;
   const managed=operations?.managed;
   const health=user.role==='manager' ? customerHealth(operations) : null;
@@ -81,34 +81,32 @@ function CustomerHeader({ customer,operations,user,saAccess,onRecommendation,onR
         {(customer.location || customer.address) && <span><MapPin size={13} />{customer.location || customer.address}</span>}
         {managed?.responsible_team && <span><Layers size={13} />{managed.responsible_team}</span>}
       </div>
+      <HeaderFigures data={operations} error={operationsError} onSelectTab={onSelectTab} />
     </div>
     <div className="cs-header-actions">{health && <HealthRing health={health} />}<QuickAdd customer={customer} user={user} saAccess={saAccess} managed={managedCustomerState(operations)} onRecommendation={onRecommendation} onReminder={onReminder} /></div>
   </header>;
 }
 
-function CustomerHealthStrip({ customerId,data,error,onSelectTab }) {
-  if (error) return <div className="cs-module-warning" role="status">Operational summary unavailable. Detailed sections remain available.</div>;
-  if (!data) return <div className="cs-health-strip" aria-label="Loading customer summary">{Array.from({ length:5 },(_,index) => <div className="card cs-health-card cs-health-skeleton" key={index} />)}</div>;
-  const managedLabels={ not_enabled:['Not enabled','Configure Managed Services'],setup_required:['Setup required','Choose a responsible team'],active:['Active',''],sync_attention:['Needs attention','Last ticket sync failed'],unavailable:['Unavailable','Configuration could not be loaded'] };
+/* The customer's figures as one line inside the header (each opens its section);
+   colour marks what needs attention. */
+function HeaderFigures({ data,error,onSelectTab }) {
+  if (error) return <p className="cs-header-figures-note">Operational summary unavailable. Detailed sections remain available.</p>;
+  if (!data) return <div className="cs-header-figures" aria-label="Loading customer summary" />;
+  const plural=(n,one,many=`${one}s`) => `${n} ${n===1?one:many}`;
   const ticketsKnown=['active','sync_attention'].includes(data.managed?.state) && data.managed?.open_tickets!=null;
-  const managed=managedLabels[data.managed?.state] || managedLabels.unavailable;
-  const managedValue=ticketsKnown ? `${data.managed.open_tickets} open` : managed[0];
-  const managedNote=ticketsKnown ? `${data.managed.closed_tickets} closed${data.managed.state==='sync_attention' ? ' · Last sync failed' : ''}` : managed[1];
-  const managedBar=ticketsKnown && (data.managed.open_tickets+data.managed.closed_tickets)>0
-    ? <div className="cs-health-bar" role="img" aria-label={`${data.managed.open_tickets} open, ${data.managed.closed_tickets} closed`}>
-        {data.managed.open_tickets>0 && <span className="u-15dd949" style={{ flexGrow:data.managed.open_tickets }} />}
-        {data.managed.closed_tickets>0 && <span className="u-1f8d1eb" style={{ flexGrow:data.managed.closed_tickets }} />}
-      </div>
-    : null;
-  return <div className="cs-health-strip">
-    <HealthCard icon={BriefcaseBusiness} label="Active Projects" value={data.projects.active} note={`${data.projects.delayed} delayed or overdue`} state={data.projects.delayed?'danger':'default'} onClick={() => onSelectTab('projects',data.projects.delayed?'delayed':'active')} />
-    {data.tasks.visible!==false && <HealthCard icon={CheckSquare} label="Open Tasks" value={data.tasks.open} note={`${data.tasks.overdue} overdue`} state={data.tasks.overdue?'danger':'default'} onClick={() => onSelectTab('tasks',data.tasks.overdue?'overdue':'open')} />}
-    <HealthCard icon={ClipboardList} label="Recommendations" value={data.recommendations.open} note={`${data.recommendations.high_risk} high risk`} state={data.recommendations.high_risk?'warning':'default'} onClick={() => onSelectTab('recommendations')} />
-    {!managedCustomerState(data) && <HealthCard icon={CalendarDays} label="Maintenance Visits" value={data.visits.next ? fmtDate(data.visits.next.scheduled_date) : 'None scheduled'} note={data.visits.reports_pending ? `${data.visits.reports_pending} reports pending` : `${data.visits.this_year} this year`} state={data.visits.reports_pending?'warning':'default'} onClick={() => onSelectTab('maintenance-visits',data.visits.reports_pending?'report_pending':'upcoming')} />}
-    {/* The header badge already says managed services are active; the card adds ticket counts or a problem to fix. */}
-    {data.managed?.visible && (ticketsKnown || data.managed.state!=='active') && <HealthCard icon={Settings2} label="Managed Services" value={managedValue} note={managedNote} bar={managedBar} state={data.managed.state==='sync_attention'?'danger':data.managed.state==='setup_required'?'warning':'default'} onClick={() => onSelectTab(['active','sync_attention'].includes(data.managed.state)?'tickets':'service-configuration')} />}
-    {data.assets>0 && <HealthCard icon={Layers} label="Assets" value={data.assets} onClick={() => onSelectTab('assets')} />}
-  </div>;
+  const managedProblem={ not_enabled:null,setup_required:'Managed setup incomplete',sync_attention:'Ticket sync failing',unavailable:'Managed services unavailable' }[data.managed?.state];
+  const figures=[
+    { key:'projects',text:plural(data.projects.active,'active project'),extra:data.projects.delayed ? `${data.projects.delayed} delayed` : '',tone:data.projects.delayed?'danger':'',go:() => onSelectTab('projects',data.projects.delayed?'delayed':'active') },
+    data.tasks.visible!==false && { key:'tasks',text:plural(data.tasks.open,'open task'),extra:data.tasks.overdue ? `${data.tasks.overdue} overdue` : '',tone:data.tasks.overdue?'danger':'',go:() => onSelectTab('tasks',data.tasks.overdue?'overdue':'open') },
+    { key:'recommendations',text:plural(data.recommendations.open,'recommendation'),extra:data.recommendations.high_risk ? `${data.recommendations.high_risk} high risk` : '',tone:data.recommendations.high_risk?'warning':'',go:() => onSelectTab('recommendations') },
+    !managedCustomerState(data) && { key:'visits',text:data.visits.next ? `Next visit ${fmtDate(data.visits.next.scheduled_date)}` : 'No visit scheduled',extra:data.visits.reports_pending ? `${data.visits.reports_pending} reports pending` : '',tone:data.visits.reports_pending?'warning':'',go:() => onSelectTab('maintenance-visits',data.visits.reports_pending?'report_pending':'upcoming') },
+    data.managed?.visible && ticketsKnown && { key:'tickets',text:plural(data.managed.open_tickets,'open ticket'),extra:data.managed.state==='sync_attention' ? 'sync failing' : '',tone:data.managed.state==='sync_attention'?'danger':'',go:() => onSelectTab('tickets') },
+    data.managed?.visible && !ticketsKnown && managedProblem && { key:'managed',text:managedProblem,extra:'',tone:'warning',go:() => onSelectTab('service-configuration') },
+    data.assets>0 && { key:'assets',text:plural(data.assets,'asset'),extra:'',tone:'',go:() => onSelectTab('assets') },
+  ].filter(Boolean);
+  return <div className="cs-header-figures">{figures.map(figure => <button key={figure.key} type="button" className={figure.tone ? `is-${figure.tone}` : undefined} onClick={figure.go}>
+    {figure.text}{figure.extra && <b>{figure.extra}</b>}
+  </button>)}</div>;
 }
 
 function ActivitiesSection({ id,user,engineers,categories }) {
@@ -158,10 +156,9 @@ export default function CustomerServiceProfile() {
   const tabGroups=customer360TabGroups(sections,tab,managedCustomer);
   const assetAccess=Object.prototype.hasOwnProperty.call(user.permissions || {},'assets.access') ? user.permissions['assets.access']===true : user.role==='manager';
   return <div className="page cs-page"><Link to={user.role==='manager'?'/customers':'/'} className="cs-back"><ArrowLeft size={12} /> {user.role==='manager'?'Back to Customers':'Back to Dashboard'}</Link>
-    <CustomerHeader customer={customer} operations={operations} user={user} saAccess={saAccess} onRecommendation={() => selectTab('recommendations',null,true)} onReminder={() => setAddingReminder(true)} />
-    <CustomerHealthStrip customerId={customer.id} data={operations} error={operationsError} onSelectTab={selectTab} />
-    {/* The customer's reminders (renewals and other dates the team must not miss), whatever section is open. */}
-    <CustomerReminders key={`reminders-${customer.id}`} customer={customer} adding={addingReminder} onAddingChange={setAddingReminder} />
+    <CustomerHeader customer={customer} operations={operations} operationsError={operationsError} user={user} saAccess={saAccess} onRecommendation={() => selectTab('recommendations',null,true)} onReminder={() => setAddingReminder(true)} onSelectTab={selectTab} />
+    {/* The customer's reminders (renewals and other dates the team must not miss): on the Overview, or while adding one. */}
+    {(tab==='overview' || addingReminder) && <CustomerReminders key={`reminders-${customer.id}`} customer={customer} adding={addingReminder} onAddingChange={setAddingReminder} />}
     <div className="cs-tabs"><div className="tabs" role="tablist" aria-label="Customer 360 sections">{tabGroups.shown.map((section,index) => <button key={section.id} id={`customer-tab-${section.id}`} type="button" className={`tab${tab===section.id?' active':''}`} role="tab" aria-selected={tab===section.id} aria-controls="customer-360-panel" tabIndex={tab===section.id?0:-1} onKeyDown={event => moveTab(event,index)} onClick={() => selectTab(section.id)}>{section.label}</button>)}</div>
       {tabGroups.more.length>0 && <details className="cs-tabs-more"><summary className="tab">More <ChevronDown size={13} aria-hidden="true" /></summary><div className="cs-quick-menu">
         {tabGroups.more.map(section => <button key={section.id} type="button" onClick={event => { event.currentTarget.closest('details').open=false;selectTab(section.id); }}>{section.label}</button>)}

@@ -354,7 +354,8 @@ export default function Projects() {
             ['reopened',          'Reopened'],
             ['closed',            'Closed'],
             ['cancelled',         'Cancelled'],
-          ].map(([s, l]) => (
+          // Open, All, Overdue and Closed always; the other statuses only when they have projects (or are chosen).
+          ].filter(([s]) => ['open', 'all', 'overdue', 'closed'].includes(s) || (counts[s] || 0) > 0 || activeFilter === s).map(([s, l]) => (
             <button key={s} className={'filter-pill' + (activeFilter === s ? ' active' : '')} onClick={() => setFilter(s)}>
               {l} <span className="u-a697a8f">({
                 counts[s] || 0
@@ -362,8 +363,8 @@ export default function Projects() {
             </button>
           ))}
         </FilterGroup>
-        {/* RAG health filter */}
-        <FilterGroup label="Health">
+        {/* RAG health filter: only when some project has a health rating (or one is chosen). */}
+        {(ragFilter !== 'all' || ['red', 'amber', 'green'].some(key => (counts[`rag_${key}`] || 0) > 0)) && <FilterGroup label="Health">
           {[
             { key: 'all', label: 'All' }, { key: 'red', label: 'Red' },
             { key: 'amber', label: 'Amber' }, { key: 'green', label: 'Green' },
@@ -378,7 +379,7 @@ export default function Projects() {
               </button>
             );
           })}
-        </FilterGroup>
+        </FilterGroup>}
       </Surface>
 
       {!loading && !loadError && <ResultContext shown={filtered.length} total={total} noun="projects"

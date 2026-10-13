@@ -3,7 +3,7 @@ import '../components/billingMix.css';
 import './ActivityForm.css';
 import { ClipboardList, Search, Copy, ListPlus, Pencil, Flag, SlidersHorizontal, X } from 'lucide-react';
 import { fmtDuration, MIX, mixOf, groupByDay, LedgerDay } from '../components/activityLedger';
-import { PageHeader } from '../components/PageLayout';
+import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import { useSearchParams } from 'react-router-dom';
 import { customerIdFromCreateIntent, useCreateIntent } from '../hooks/useCreateIntent';
 import { api } from '../api';
@@ -196,13 +196,15 @@ export default function ActivityLog() {
   return (
     <div className="page activity-log">
       <PageHeader title="Activity log" actions={<>
-        <button className="btn btn-ghost" disabled={loading || !!loadError || exporting || !meta} onClick={async () => {
+        <button className="btn btn-primary" onClick={() => setShowForm(true)} disabled={!meta}>Log activity</button>
+        <HeaderMenu>
+        <button type="button" disabled={loading || !!loadError || exporting || !meta} onClick={async () => {
           setExporting(true);
           try { await api.exportServiceActivities(exportFilters.current); }
           catch (error) { toast.error(error.message); }
           finally { setExporting(false); }
         }}>{exporting ? 'Exporting…' : 'Export Excel'}</button>
-        <button className="btn btn-primary" onClick={() => setShowForm(true)} disabled={!meta}>Log activity</button>
+        </HeaderMenu>
       </>} />
 
       {metaError && <div className="error-msg mb-12">{metaError}</div>}

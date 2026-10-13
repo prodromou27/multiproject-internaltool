@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCheck, Download, FileCheck2, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { PageHeader } from '../components/PageLayout';
+import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import { Modal, PriorityBadge, StatusBadge, fmtDate, fmtDateTime } from '../components/Shared';
 import { useToast } from '../components/Toast';
 import { useLiveRefresh } from '../live';
@@ -151,7 +151,7 @@ export default function Approvals() {
   const heading=view==='reports' ? 'Managed reports' : 'Project closure';
   return <div className="page">
     <PageHeader title="Approvals" meta="Oldest requests first."
-      actions={<button className="btn btn-ghost" disabled={loading} onClick={reload}><RefreshCw size={15} /> Refresh</button>} />
+      actions={<HeaderMenu><button type="button" disabled={loading} onClick={reload}><RefreshCw size={14} aria-hidden="true" /> Refresh</button></HeaderMenu>} />
     {canReviewClosures && canReviewReports && <div className="tabs" role="tablist" aria-label="Approval type">
       <button className={`tab ${view==='closures'?'active':''}`} role="tab" aria-selected={view==='closures'} onClick={() => setView('closures')}>Project closures</button>
       <button className={`tab ${view==='reports'?'active':''}`} role="tab" aria-selected={view==='reports'} onClick={() => setView('reports')}>Managed reports</button>

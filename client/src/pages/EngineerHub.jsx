@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, BellRing, Building2, CalendarDays, CheckCircle2, Clock, ClipboardList, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
-import { PageHeader } from '../components/PageLayout';
+import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import OperationalFocus from '../components/OperationalFocus';
 import { localDateISO } from '../utils/dates';
 import { useStatuses } from '../hooks/useStatuses';
@@ -13,7 +13,7 @@ import { useConfirm } from '../components/Confirm';
 import { useLiveRefresh } from '../live';
 import AddToCalendarButton from '../components/AddToCalendarButton';
 import { SubtaskProgress, SubtasksDialog } from '../components/TaskSubtasks';
-import { engineerWidget } from './dashboard/engineerWidgets';
+import { MonthVisits, PendingVisitReports } from '../components/EngineerVisits';
 
 const KANBAN = [
   ['open', 'To do'], ['in_progress', 'In progress'],
@@ -242,7 +242,7 @@ export default function EngineerHub() {
   return (
     <div className="page engineer-hub">
       <PageHeader title="My Work"
-        actions={<button className="btn btn-ghost" onClick={load}><RotateCw size={15} /> Refresh</button>} />
+        actions={<HeaderMenu><button type="button" onClick={load}><RotateCw size={14} aria-hidden="true" /> Refresh</button></HeaderMenu>} />
       {loadError && <p className="error-msg" role="alert">{loadError}</p>}
       <section className={`workflow-banner is-${workflowProfile}`} title={workflowCopy.description}><p className="operations-eyebrow">{workflowCopy.eyebrow}</p><div className="workflow-banner-actions">{managedFocus && saAccess.enabled && <Link className="btn btn-primary" to="/activity-log?create=1"><ClipboardList size={15} /> Log activity</Link>}<Link className={managedFocus && saAccess.enabled?'btn btn-ghost':'btn btn-primary'} to="/tasks"><CheckCircle2 size={15} /> Open tasks</Link><Link className="btn btn-ghost" to="/projects"><FolderOpen size={15} /> My projects</Link></div></section>
       {managedFocus && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canOpenLog={saAccess.enabled} />}
@@ -261,8 +261,8 @@ export default function EngineerHub() {
 
       {/* Visit reports to send, then this month's visits; each shows only when there is something. */}
       {(pendingReports.length > 0 || monthVisits.length > 0) && <div className="mt-16">
-        {engineerWidget('pending_reports', { pendingReports, load: () => load({ quiet: true }) })}
-        {engineerWidget('mv_this_month', { visits: monthVisits })}
+        <PendingVisitReports reports={pendingReports} onSent={() => load({ quiet: true })} />
+        <MonthVisits visits={monthVisits} />
       </div>}
 
       {subtasksFor && <SubtasksDialog task={subtasksFor} onClose={() => { setSubtasksFor(null); load({ quiet: true }); }} />}

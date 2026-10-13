@@ -59,3 +59,6 @@ a.mi-figure:hover { border-color: var(--gray-400); text-decoration: none; }
 .report-chart-head h3 { margin: 0; font-size: 14px; }
 .report-chart-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
 .report-chart-controls label { display: grid; gap: 3px; font-size: 12px; font-weight: 600; color: var(--gray-600); }
+
+.mi-figure.is-zero strong { color: var(--gray-400); font-weight: 600; }
+.mi-figure.is-zero .mi-figure-label, .mi-figure.is-zero small { color: var(--gray-400); }

@@ -44,6 +44,7 @@ test('managers follow a product entered by hand and add a news feed', async ({ p
   api.override('POST /api/software/admin/feeds', ({ body }) => { feed = body; return { status: 201, body: { id: 9, items: 3 } }; });
 
   await page.goto('/software');
+  await page.locator('summary[aria-label="More actions"]').click();
   await page.getByRole('button', { name: 'Products and feeds' }).click();
   await page.getByRole('button', { name: 'Follow a product' }).click();
   const dialog = page.getByRole('dialog');
