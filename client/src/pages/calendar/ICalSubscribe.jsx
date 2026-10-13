@@ -61,11 +61,11 @@ export default function ICalSubscribe() {
     });
   }
 
-  const btnPrimary = { display: 'inline-flex', alignItems: 'center', gap: 5, background: '#0284c7', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 600, flexShrink: 0 };
+  const btnPrimary = { display: 'inline-flex', alignItems: 'center', gap: 5, background: '#0369a1', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 600, flexShrink: 0 };
 
   return (
     <div className="u-7a5dec8">
-      <Link2 size={18} color="#0284c7" style={{ flexShrink: 0, marginTop: 2 }} />
+      <Link2 size={18} color="#0369a1" style={{ flexShrink: 0, marginTop: 2 }} />
       <div className="flex-1 min-w-0">
         <div className="u-fd60ce2">
           Subscribe to your calendar (iCal)

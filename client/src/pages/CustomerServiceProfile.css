@@ -4,7 +4,7 @@
    health strip, operational workspaces, timeline, and activity filters. */
 
 /* ── Page shell ──────────────────────────────────────────── */
-.cs-back { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--gray-400); text-decoration: none; margin-bottom: 14px; }
+.cs-back { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--gray-500); text-decoration: none; margin-bottom: 14px; }
 .cs-back:hover { color: var(--gray-600); text-decoration: none; }
 .cs-shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; align-items: start; }
 .cs-main { min-width: 0; }
@@ -31,11 +31,11 @@
 .cs-identity-contact-name { font-size: 13px; font-weight: 650; color: var(--gray-800); margin-top: 18px; }
 .cs-identity-details { list-style: none; display: flex; flex-direction: column; gap: 7px; margin-top: 8px; width: 100%; }
 .cs-identity-details li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--gray-600); }
-.cs-identity-details li svg { flex-shrink: 0; color: var(--gray-400); }
+.cs-identity-details li svg { flex-shrink: 0; color: var(--gray-500); }
 .cs-identity-details li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs-identity-facts { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray-100); width: 100%; }
 .cs-identity-facts > div { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--gray-500); }
-.cs-identity-facts svg { color: var(--gray-400); flex-shrink: 0; }
+.cs-identity-facts svg { color: var(--gray-500); flex-shrink: 0; }
 
 @media (max-width: 900px) {
   .cs-shell { grid-template-columns: 1fr; }
@@ -58,7 +58,7 @@
 .msc-banner-body ul { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.7; }
 .msc-banner .btn { flex: 0 0 auto; align-self: center; }
 .msc-banner-neutral  { background: var(--gray-50); border-color: var(--gray-200); color: var(--gray-700); }
-.msc-banner-neutral svg { color: var(--gray-400); }
+.msc-banner-neutral svg { color: var(--gray-500); }
 .msc-banner-warning   { background: #fffbeb; border-color: #fde68a; color: #92400e; }
 .msc-banner-danger    { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
 .msc-banner-success   { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
@@ -78,7 +78,7 @@
 .msc-group-body-rows { display: block; }
 .msc-group-body-rows > div:last-child { border-bottom: 0; }
 .msc-field { display: flex; flex-direction: column; gap: 6px; color: var(--gray-700); font-size: 12px; font-weight: 650; }
-.msc-field small { color: var(--gray-400); font-weight: 400; line-height: 1.4; }
+.msc-field small { color: var(--gray-500); font-weight: 400; line-height: 1.4; }
 .msc-inline { display: flex; align-items: center; gap: 8px; }
 .msc-inline input { width: 84px; }
 .msc-field-primary { padding: 12px; margin: -12px; background: var(--primary-light); border-radius: var(--radius-md); }
@@ -256,7 +256,7 @@
 .msc-optional-head:hover { background: var(--gray-50); }
 .msc-optional-head strong { display: block; font-size: 13.5px; color: var(--gray-800); }
 .msc-optional-head small { display: block; margin-top: 2px; font-size: 12px; color: var(--gray-500); }
-.msc-optional-head svg { flex: 0 0 auto; color: var(--gray-400); transition: transform .15s ease; }
+.msc-optional-head svg { flex: 0 0 auto; color: var(--gray-500); transition: transform .15s ease; }
 .msc-optional-head svg.is-open { transform: rotate(180deg); }
 .msc-optional-body { display: grid; gap: 14px; padding: 4px 22px 20px; }
 @media (max-width: 800px) { .msc-optional-head { padding: 14px 16px; } .msc-optional-body { padding: 4px 16px 16px; } }
@@ -297,7 +297,7 @@
 .cs-recurring { padding: 16px 18px; margin-bottom: 16px; }
 .cs-recurring header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .cs-recurring h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0; }
-.cs-recurring tr.is-paused td { color: var(--gray-400); }
+.cs-recurring tr.is-paused td { color: var(--gray-500); }
 .cs-tasks-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
 .cs-tasks-head h2 { margin: 0; font-size: 15px; }
 .cs-task-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 3px; color: var(--gray-500); font-size: 12px; }

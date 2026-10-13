@@ -10,7 +10,7 @@ import { DataExportTab } from './DataTabs';
 
 /* ── System Update Tab ───────────────────────────────────── */
 export const PHASE_LABELS = {
-  idle:           { label: 'Idle',                     color: 'var(--gray-400)' },
+  idle:           { label: 'Idle',                     color:'var(--gray-500)' },
   queued:         { label: 'Queued…',                  color: 'var(--primary)'  },
   install_server: { label: 'Installing server deps…',  color: 'var(--primary)'  },
   install_client: { label: 'Installing client deps…',  color: 'var(--primary)'  },
@@ -504,6 +504,9 @@ export function AuditLogTab() {
     created:  '#22c55e', updated: '#3b82f6', deleted: '#ef4444',
     completed: '#10b981', reopened: '#f59e0b', status_changed: '#8b5cf6',
   };
+  // The badge text: readable tones (the bright colours above only tint the background).
+  const ACTION_TEXT = { created: 'var(--tone-success-text)', completed: 'var(--tone-success-text)', updated: 'var(--tone-info-text)',
+    deleted: 'var(--tone-danger-text)', reopened: 'var(--tone-warning-text)', status_changed: '#5b21b6' };
 
   return (
     <div>
@@ -544,11 +547,11 @@ export function AuditLogTab() {
         </div>
         <div className="flex-col gap-3">
           <label className="u-bdcd12d">From</label>
-          <input type="date" value={filter.date_from} onChange={e => setFilter(f => ({ ...f, date_from: e.target.value }))} className="u-e6f862a" />
+          <input type="date" aria-label="From date" value={filter.date_from} onChange={e => setFilter(f => ({ ...f, date_from: e.target.value }))} className="u-e6f862a" />
         </div>
         <div className="flex-col gap-3">
           <label className="u-bdcd12d">To</label>
-          <input type="date" value={filter.date_to} onChange={e => setFilter(f => ({ ...f, date_to: e.target.value }))} className="u-e6f862a" />
+          <input type="date" aria-label="To date" value={filter.date_to} onChange={e => setFilter(f => ({ ...f, date_to: e.target.value }))} className="u-e6f862a" />
         </div>
         <button type="submit" className="btn btn-primary btn-sm">Apply</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => { const cleared = { entity_type: '', user_id: '', action: '', date_from: '', date_to: '' }; setFilter(cleared); load(0, cleared); }}>Clear</button>
@@ -592,7 +595,7 @@ export function AuditLogTab() {
                       </span>
                     </td>
                     <td>
-                      <span className="u-3a02a12" style={{ background: (ACTION_COLORS[r.action] || '#6b7280') + '18', color: ACTION_COLORS[r.action] || '#6b7280' }}>
+                      <span className="u-3a02a12" style={{ background: (ACTION_COLORS[r.action] || '#6b7280') + '18', color: ACTION_TEXT[r.action] || 'var(--gray-600)' }}>
                         {r.action}
                       </span>
                     </td>

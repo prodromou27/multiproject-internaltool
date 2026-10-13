@@ -60,7 +60,7 @@ export function TeamsAdminSection() {
         Configure workflow emphasis independently from access. Engineers keep every module allowed by RBAC; these capabilities only prioritize navigation, quick actions and My Work.
       </p>
       <form onSubmit={create} className="u-b37b9a5">
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="New team name…" />
+        <input aria-label="New team name" value={name} onChange={e => setName(e.target.value)} placeholder="New team name…" />
         <button className="btn btn-primary btn-sm" disabled={!name.trim()}><Plus size={13} /> Add Team</button>
       </form>
       <div className="table-wrap">
@@ -77,8 +77,8 @@ export function TeamsAdminSection() {
                   <label className="text-sm u-25b5288"><input type="checkbox" checked={!!t.managed_service_operations} onChange={() => toggleCapability(t,'managed_service_operations')} className="u-30e741d" /> Managed Services</label>
                   <label className="text-sm u-25b5288"><input type="checkbox" checked={!!t.project_delivery_enabled} onChange={() => toggleCapability(t,'project_delivery_enabled')} className="u-30e741d" /> Project Delivery</label>
                 </div></td>
-                <td><input type="checkbox" checked={!!t.service_activity_enabled} onChange={() => toggleEnabled(t)} className="u-30e741d" /></td>
-                <td><button className="btn btn-sm btn-ghost" onClick={() => remove(t)}><Trash2 size={12} /></button></td>
+                <td><input type="checkbox" aria-label={`Activity tracking for ${t.name}`} checked={!!t.service_activity_enabled} onChange={() => toggleEnabled(t)} className="u-30e741d" /></td>
+                <td><button type="button" className="btn btn-sm btn-ghost" aria-label={`Delete team ${t.name}`} onClick={() => remove(t)}><Trash2 size={12} /></button></td>
               </tr>
             ))}
             {teams.length === 0 && <tr><td colSpan={5} className="text-muted">No teams yet.</td></tr>}
@@ -161,7 +161,7 @@ export function ServiceActivityGeneralSettings() {
       </div>
       <div className="form-group u-55585d5">
         <label>Retention Period (days)</label>
-        <input type="number" min="1" value={settings.retention_days || ''} placeholder="No limit"
+        <input aria-label="Retention Period (days)" type="number" min="1" value={settings.retention_days || ''} placeholder="No limit"
           onChange={e => setSettings(s => ({ ...s, retention_days: e.target.value || null }))} />
       </div>
       <button className="btn btn-primary btn-sm mb-12" onClick={save} disabled={saving}>

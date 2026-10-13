@@ -180,7 +180,7 @@ export default function ManagedCustomerConfiguration({ customerId }) {
             {!hasTeam && <small className="msc-hint">Choose the team that owns this customer — that's the only required step.</small>}
           </label>
           {creatingTeam && <form className="msc-inline-form" onSubmit={createTeam}>
-            <input autoFocus value={newTeamName} onChange={event => setNewTeamName(event.target.value)} placeholder="New team name" maxLength={120} />
+            <input aria-label="New team name" autoFocus value={newTeamName} onChange={event => setNewTeamName(event.target.value)} placeholder="New team name" maxLength={120} />
             <button className="btn btn-primary btn-sm" disabled={!newTeamName.trim()}>Create &amp; use</button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCreatingTeam(false);setNewTeamName(''); }}>Cancel</button>
           </form>}

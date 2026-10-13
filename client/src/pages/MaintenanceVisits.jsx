@@ -169,29 +169,29 @@ function generatePDF(visit, onError) {
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;padding:40px;font-size:13px;line-height:1.5}
   .hdr{border-bottom:3px solid #3b82f6;padding-bottom:16px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-end}
-  .logo{font-size:22px;font-weight:800;color:#3b82f6;letter-spacing:-.5px}
-  .doc-type{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+  .logo{font-size:22px;font-weight:800;color:var(--tone-info-text);letter-spacing:-.5px}
+  .doc-type{font-size:10px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
   h1{font-size:20px;font-weight:700;margin-bottom:4px}
-  .customer{font-size:15px;color:#3b82f6;font-weight:600;margin-bottom:20px}
+  .customer{font-size:15px;color:var(--tone-info-text);font-weight:600;margin-bottom:20px}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
-  .field label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;font-weight:700;display:block;margin-bottom:3px}
+  .field label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--gray-500);font-weight:700;display:block;margin-bottom:3px}
   .field .val{font-size:13px;font-weight:600}
   .badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700}
   .b-scheduled{background:#dbeafe;color:#1d4ed8}
   .b-completed{background:#dcfce7;color:#166534}
   .b-in_progress{background:#fef9c3;color:#854d0e}
-  .b-cancelled{background:#f3f4f6;color:#6b7280}
+  .b-cancelled{background:#f3f4f6;color:var(--gray-500)}
   .sec{margin-bottom:20px}
-  .sec-title{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;font-weight:700;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px}
+  .sec-title{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--gray-500);font-weight:700;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px}
   .text-block{font-size:13px;line-height:1.65;color:#334155;white-space:pre-wrap}
   .report-box{padding:12px 16px;border-radius:8px;border:1px solid ${reportBorder};background:${reportBg};margin-bottom:20px;font-size:13px}
-  .footer{margin-top:40px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8}
+  .footer{margin-top:40px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:var(--gray-500)}
   @media print{body{padding:24px}@page{margin:1.5cm}}
 </style>
 </head><body>
   <div class="hdr">
     <div><div class="logo">${PRODUCT_NAME}</div><div class="doc-type">Maintenance Visit Report</div></div>
-    <div style="font-size:11px;color:#94a3b8;text-align:right">Generated ${new Date().toLocaleDateString([], { year:'numeric', month:'long', day:'numeric' })}</div>
+    <div style="font-size:11px;color:var(--gray-500);text-align:right">Generated ${new Date().toLocaleDateString([], { year:'numeric', month:'long', day:'numeric' })}</div>
   </div>
 
   <h1>${esc(visit.title)}</h1>

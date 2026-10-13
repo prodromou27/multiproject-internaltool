@@ -32,7 +32,7 @@ function ComplianceBar({ value }) {
       <div className="u-eda03e0">
         <div className="u-b8c11ab" style={{ width: `${value}%`, background: color }} />
       </div>
-      <span className="u-ab410bc" style={{ color }}>{value}%</span>
+      <span className="u-ab410bc" style={{ color: value >= 90 ? 'var(--tone-success-text)' : value >= 70 ? 'var(--tone-warning-text)' : 'var(--tone-danger-text)' }}>{value}%</span>
     </div>
   );
 }

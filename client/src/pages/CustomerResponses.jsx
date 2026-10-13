@@ -5,7 +5,7 @@ const TEMPLATES = [
   {
     id: 'closing',
     title: 'Closing Ticket',
-    color: '#22c55e',
+    color: 'var(--tone-success-text)',
     bg: '#f0fdf4',
     body: `As no further actions are required, we will proceed with closing this ticket.
 In case you need any further assistance, you can always reopen this ticket by replying to this email.`,
@@ -13,7 +13,7 @@ In case you need any further assistance, you can always reopen this ticket by re
   {
     id: 'chargeable',
     title: 'Chargeable Task',
-    color: '#f59e0b',
+    color: 'var(--tone-warning-text)',
     bg: '#fffbeb',
     body: `We would like to inform you that the requested service is out of the scope of our contract, thus please approve X hour in order to schedule this task.
 
@@ -40,14 +40,14 @@ Product:`,
   {
     id: 'late',
     title: 'Late Response',
-    color: '#ef4444',
+    color: 'var(--tone-danger-text)',
     bg: '#fef2f2',
     body: `I hope my email finds you well. We received no response from you since our last update. We will proceed with closing this ticket per company policy. You can always reply to this email to re-open the ticket to further assist you.`,
   },
   {
     id: 'upgrade',
     title: 'Notification of Asset Upgrade',
-    color: '#3b82f6',
+    color: 'var(--tone-info-text)',
     bg: '#eff6ff',
     body: `Subject: Notification of Asset Upgrade
 

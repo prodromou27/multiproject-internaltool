@@ -203,7 +203,7 @@ export default function Login() {
               <div className="relative">
                 <Mail size={14} style={{
                   position: 'absolute', left: 11, top: '50%',
-                  transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none',
+                  transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none',
                 }} />
                 <input
                   type="text"
@@ -223,7 +223,7 @@ export default function Login() {
               <div className="relative">
                 <Lock size={14} style={{
                   position: 'absolute', left: 11, top: '50%',
-                  transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none',
+                  transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none',
                 }} />
                 <input
                   type={showPw ? 'text' : 'password'}
@@ -338,7 +338,7 @@ export default function Login() {
             <div className="form-group">
               <label>New Password <span className="u-0358b61">(min. 12 characters)</span></label>
               <div className="relative">
-                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
+                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none' }} />
                 <input
                   type={showNewPw ? 'text' : 'password'}
                   value={newPw}
@@ -360,7 +360,7 @@ export default function Login() {
             <div className="form-group">
               <label>Confirm Password</label>
               <div className="relative">
-                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
+                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none' }} />
                 <input
                   type={showNewPw ? 'text' : 'password'}
                   value={confirmPw}
@@ -408,7 +408,7 @@ export default function Login() {
             <div className="form-group">
               <label>Email Address</label>
               <div className="relative">
-                <Mail size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
+                <Mail size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none' }} />
                 <input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
                   placeholder="you@company.com" className="u-76e0843" required autoFocus />
               </div>
@@ -448,7 +448,7 @@ export default function Login() {
             <div className="form-group">
               <label>New Password</label>
               <div className="relative">
-                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
+                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none' }} />
                 <input type={showResetPw ? 'text' : 'password'} value={resetNewPw} onChange={e => setResetNewPw(e.target.value)}
                   placeholder="••••••••••••" className="u-04adc3e" required minLength={12} autoFocus />
                 <button type="button" onClick={() => setShowResetPw(v => !v)} tabIndex={-1}
@@ -460,7 +460,7 @@ export default function Login() {
             <div className="form-group">
               <label>Confirm Password</label>
               <div className="relative">
-                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
+                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none' }} />
                 <input type={showResetPw ? 'text' : 'password'} value={resetConfirm} onChange={e => setResetConfirm(e.target.value)}
                   placeholder="••••••••••••" className={["u-76e0843", (resetConfirm && resetConfirm !== resetNewPw ? 'u-959debc' : '')].filter(Boolean).join(' ')} required />
               </div>

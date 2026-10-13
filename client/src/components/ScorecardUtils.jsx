@@ -1,22 +1,22 @@
 
 export const WEIGHTS = {
-  timeline_rating:         { label: 'Timeline Rating',          pct: 15, color: '#3b82f6' },
+  timeline_rating:         { label: 'Timeline Rating',          pct: 15, color: 'var(--tone-info-text)' },
   delivery_quality:        { label: 'Delivery Quality',         pct: 30, color: '#8b5cf6' },
-  communication_ownership: { label: 'Communication & Ownership',pct: 20, color: '#f59e0b' },
-  documentation_quality:   { label: 'Documentation Quality',    pct: 15, color: '#10b981' },
-  customer_feedback:       { label: 'Customer Feedback',        pct: 20, color: '#ef4444' },
+  communication_ownership: { label: 'Communication & Ownership',pct: 20, color: 'var(--tone-warning-text)' },
+  documentation_quality:   { label: 'Documentation Quality',    pct: 15, color: 'var(--tone-success-text)' },
+  customer_feedback:       { label: 'Customer Feedback',        pct: 20, color: 'var(--tone-danger-text)' },
 };
 
 export const DIFFICULTY_LABELS = {
-  1: { label: 'Very Simple',    mult: '×0.90', color: '#6b7280' },
-  2: { label: 'Simple',         mult: '×0.95', color: '#3b82f6' },
-  3: { label: 'Medium',         mult: '×1.00', color: '#f59e0b' },
+  1: { label: 'Very Simple',    mult: '×0.90', color: 'var(--gray-500)' },
+  2: { label: 'Simple',         mult: '×0.95', color: 'var(--tone-info-text)' },
+  3: { label: 'Medium',         mult: '×1.00', color: 'var(--tone-warning-text)' },
   4: { label: 'Complex',        mult: '×1.05', color: '#8b5cf6' },
-  5: { label: 'Highly Complex', mult: '×1.10', color: '#ef4444' },
+  5: { label: 'Highly Complex', mult: '×1.10', color: 'var(--tone-danger-text)' },
 };
 
 export function getRating(score) {
-  if (score == null) return { label: '—',                   color: '#9ca3af', bg: 'var(--gray-100)' };
+  if (score == null) return { label: '—',                   color: 'var(--gray-500)', bg: 'var(--gray-100)' };
   if (score >= 90)   return { label: 'Exceptional',         color: 'var(--tone-success-text)', bg: 'var(--success-light)' };
   if (score >= 80)   return { label: 'Strong',              color: 'var(--tone-info-text)', bg: 'var(--primary-light)' };
   if (score >= 70)   return { label: 'Acceptable',          color: 'var(--tone-warning-text)', bg: 'var(--warning-light)' };

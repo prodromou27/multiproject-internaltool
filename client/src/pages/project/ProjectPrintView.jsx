@@ -50,7 +50,7 @@ export function ProjectPrintView({ project, tasks, milestones, members }) {
         {[
           { label: 'Completion', value: `${pctDisplay}%`, color: pctDisplay >= 75 ? '#059669' : pctDisplay >= 40 ? '#2563eb' : '#374151' },
           { label: 'Total Tasks', value: taskCount },
-          { label: 'Completed', value: doneCount, color: '#059669' },
+          { label: 'Completed', value: doneCount, color: 'var(--tone-success-text)' },
           { label: 'Overdue', value: overCount, color: overCount > 0 ? '#dc2626' : '#059669' },
         ].map(s => (
           <div key={s.label} className="print-stat-box">

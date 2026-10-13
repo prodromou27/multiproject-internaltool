@@ -180,9 +180,10 @@ export default function SearchPage() {
 
       {/* Search box */}
       <div className="u-456c927">
-        <Search size={17} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
+        <Search size={17} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none' }} />
         <input
           ref={inputRef}
+          aria-label="Smart search"
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Escape' && clearAll()}
@@ -190,7 +191,7 @@ export default function SearchPage() {
           className={["u-4b75f79", (query ? 'u-11f574c' : 'u-c127c48')].filter(Boolean).join(' ')}
         />
         {query && (
-          <button onClick={clearAll} className="u-f2f961b">
+          <button type="button" onClick={clearAll} className="u-f2f961b" aria-label="Clear search">
             <X size={15} />
           </button>
         )}

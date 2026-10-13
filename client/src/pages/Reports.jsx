@@ -83,21 +83,21 @@ function TrendsTab() {
       {/* Summary pills */}
       <div className="grid-4 mb-20">
         <div className="card stat">
-          <div className="stat-value" style={{ color: CHART_COLORS.done }}>{totTasks}</div>
+          <div className="stat-value">{totTasks}</div>
           <div className="stat-label">Tasks Completed (6 mo)</div>
         </div>
         <div className="card stat">
-          <div className="stat-value" style={{ color: CHART_COLORS.on_time }}>
+          <div className="stat-value">
             {avgOnTime !== null ? avgOnTime + '%' : '—'}
           </div>
           <div className="stat-label">Avg On-Time Rate</div>
         </div>
         <div className="card stat">
-          <div className="stat-value" style={{ color: CHART_COLORS.mv_done }}>{totMV}</div>
+          <div className="stat-value">{totMV}</div>
           <div className="stat-label">MV Completed (6 mo)</div>
         </div>
         <div className="card stat">
-          <div className="stat-value" style={{ color: CHART_COLORS.hours }}>{totHours}h</div>
+          <div className="stat-value">{totHours}h</div>
           <div className="stat-label">Hours Logged (6 mo)</div>
         </div>
       </div>

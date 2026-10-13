@@ -97,17 +97,17 @@ export function StatusRow({ status, onUpdate, onDelete, onMoveUp, onMoveDown, is
 
       {/* Actions */}
       <div className="u-0ddf6fa">
-        {!isFirst && <button className="btn btn-sm btn-ghost u-717e62a" onClick={onMoveUp}><ChevronUp size={12} /></button>}
-        {!isLast  && <button className="btn btn-sm btn-ghost u-717e62a" onClick={onMoveDown}><ChevronDown size={12} /></button>}
+        {!isFirst && <button type="button" className="btn btn-sm btn-ghost u-717e62a" onClick={onMoveUp} aria-label={`Move ${status.label} up`}><ChevronUp size={12} /></button>}
+        {!isLast  && <button type="button" className="btn btn-sm btn-ghost u-717e62a" onClick={onMoveDown} aria-label={`Move ${status.label} down`}><ChevronDown size={12} /></button>}
         {editing ? (
           <>
             <button className="btn btn-sm btn-primary u-e053a92" onClick={save}>Save</button>
-            <button className="btn btn-sm btn-ghost u-159b3ac" onClick={() => { setEditing(false); setEditLabel(status.label); setEditValue(status.value); }}>✕</button>
+            <button type="button" className="btn btn-sm btn-ghost u-159b3ac" aria-label="Cancel editing" onClick={() => { setEditing(false); setEditLabel(status.label); setEditValue(status.value); }}>✕</button>
           </>
         ) : (
-          <button className="btn btn-sm btn-ghost u-717e62a" onClick={() => setEditing(true)}><Pencil size={12} /></button>
+          <button type="button" className="btn btn-sm btn-ghost u-717e62a" onClick={() => setEditing(true)} aria-label={`Edit ${status.label}`}><Pencil size={12} /></button>
         )}
-        <button className="btn btn-sm btn-danger u-717e62a" onClick={onDelete}><Trash2 size={12} /></button>
+        <button type="button" className="btn btn-sm btn-danger u-717e62a" onClick={onDelete} aria-label={`Delete ${status.label}`}><Trash2 size={12} /></button>
       </div>
     </div>
   );

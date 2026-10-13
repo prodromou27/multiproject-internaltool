@@ -6,7 +6,7 @@
 .vuln-table { width: 100%; }
 .vuln-table td { vertical-align: top; }
 .vuln-table tr.is-affected td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
-.vuln-table tr.is-hidden td { color: var(--gray-400); }
+.vuln-table tr.is-hidden td { color: var(--gray-500); }
 .vuln-id, .vuln-link { background: none; border: 0; padding: 0; color: var(--primary); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
 .vuln-id:hover, .vuln-link:hover { text-decoration: underline; }
 .vuln-summary { max-width: 52ch; color: var(--gray-600); }

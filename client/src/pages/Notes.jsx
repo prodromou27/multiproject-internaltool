@@ -178,6 +178,7 @@ export default function Notes() {
             <p className="text-muted text-sm">Loading…</p>
           ) : (
             <textarea
+              aria-label="Scratchpad"
               disabled={!noteReady}
               maxLength={50000}
               value={noteContent}
@@ -212,7 +213,7 @@ export default function Notes() {
 
           {/* Add new */}
           <form onSubmit={addTodo} className="u-6c07a8a">
-            <input
+            <input aria-label="New to-do item"
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
               placeholder="Add a to-do item…"

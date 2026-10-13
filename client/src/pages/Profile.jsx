@@ -151,11 +151,11 @@ function PersonalInfoSection({ user, onRefresh }) {
           <div className="form-row">
             <div className="form-group">
               <label>Full Name</label>
-              <input value={user.name || ''} disabled className="u-a38c980" />
+              <input aria-label="Full Name" value={user.name || ''} disabled className="u-a38c980" />
             </div>
             <div className="form-group">
               <label>Email Address</label>
-              <input value={user.email || ''} disabled className="u-a38c980" />
+              <input aria-label="Email Address" value={user.email || ''} disabled className="u-a38c980" />
             </div>
           </div>
           <p className="u-5627473">
@@ -173,7 +173,7 @@ function PersonalInfoSection({ user, onRefresh }) {
           <div className="form-row">
             <div className="form-group">
               <label>Full Name *</label>
-              <input
+              <input aria-label="Full Name"
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="Your full name"
@@ -182,7 +182,7 @@ function PersonalInfoSection({ user, onRefresh }) {
             </div>
             <div className="form-group">
               <label>Email Address</label>
-              <input
+              <input aria-label="Email Address"
                 type="email"
                 value={form.email}
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
@@ -242,7 +242,7 @@ function ChangePasswordSection() {
       <form onSubmit={submit} className="u-cb05851">
         <div className="form-group">
           <label>Current Password *</label>
-          <input
+          <input aria-label="Current Password"
             type="password"
             value={form.current_password}
             onChange={set('current_password')}
@@ -253,7 +253,7 @@ function ChangePasswordSection() {
         </div>
         <div className="form-group">
           <label>New Password *</label>
-          <input
+          <input aria-label="New Password"
             type="password"
             value={form.new_password}
             onChange={set('new_password')}
@@ -264,7 +264,7 @@ function ChangePasswordSection() {
         </div>
         <div className="form-group">
           <label>Confirm New Password *</label>
-          <input
+          <input aria-label="Confirm New Password"
             type="password"
             value={form.confirm}
             onChange={set('confirm')}
@@ -503,7 +503,7 @@ function NotificationPreferencesSection({ user, onRefresh }) {
             onChange={value => save('teams', { notify_teams_enabled: value }, value ? 'Personal Teams notifications turned on.' : 'Personal Teams notifications turned off.')}
             label="Personal Teams channel" />
           <div className="u-ca3eca1">
-            <input type="password" autoComplete="new-password" value={webhookDraft} onChange={e => setWebhookDraft(e.target.value)}
+            <input type="password" aria-label="Teams incoming webhook URL" autoComplete="new-password" value={webhookDraft} onChange={e => setWebhookDraft(e.target.value)}
               placeholder={user.notify_teams_webhook_set ? 'Webhook saved — paste a new URL to replace it' : 'Your Teams incoming webhook URL'} className="u-7b1dd1f" />
             <button type="button" className="btn btn-ghost btn-sm" disabled={saving === 'teams-url' || !webhookDraft.trim()}
               onClick={async () => { await save('teams-url', { notify_teams_webhook_url: webhookDraft.trim() }, 'Teams webhook saved.'); setWebhookDraft(''); }}>

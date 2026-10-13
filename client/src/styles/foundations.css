@@ -75,7 +75,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* ── Empty and error states ──────────────────────────────── */
 .empty { color: var(--gray-500); }
 .empty p { color: var(--gray-600); line-height: 1.6; max-width: 46ch; margin-left: auto; margin-right: auto; }
-.empty-icon { opacity: .6; color: var(--gray-400); }
+.empty-icon { opacity: .6; color: var(--gray-500); }
 .error-msg { line-height: 1.5; }
 
 /* ── Motion ──────────────────────────────────────────────── */

@@ -18,8 +18,13 @@
   --danger-light:   #fcedf0;
   --success:        #2f7d5b;
   --success-light:  #edf6f1;
-  --warning:        #b7791f;
+  --warning:        #9a6416;  /* 4.5:1+ as text on white and on --warning-light */
   --warning-light:  #fbf4e6;
+  /* Text on tinted backgrounds (badges, alerts): at least 4.5:1. */
+  --tone-danger-text:  #a50d26;
+  --tone-warning-text: #865610;
+  --tone-success-text: #24603f;
+  --tone-info-text:    #2a4670;
 
   /* Cool neutral scale (no blue cast). */
   --gray-50:  #f4f5f7;
@@ -27,8 +32,8 @@
   --gray-200: #e3e6ea;
   --gray-300: #cdd2d9;
   --gray-400: #9aa3ae;
-  --gray-500: #6b7480;
-  --gray-600: #545d69;
+  --gray-500: #5c6571;  /* secondary text: 4.5:1+ on white and on --gray-50 */
+  --gray-600: #4b535e;
   --gray-700: #3b434d;
   --gray-800: #262c33;
   --gray-900: #1a2027;
@@ -60,6 +65,10 @@
   --primary-ring:   rgba(143, 176, 224, .25);
   --danger:         #f0566c;
   --danger-light:   rgba(240, 86, 108, .14);
+  --tone-danger-text:  #f58a9b;
+  --tone-warning-text: #f0c27a;
+  --tone-success-text: #7fd1a7;
+  --tone-info-text:    #a9c3ea;
   --gray-50:  #12161b;
   --gray-100: #1f252d;
   --gray-200: #2a313a;
@@ -215,7 +224,7 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
   border: 1px solid var(--gray-200); border-radius: var(--radius-lg); background: var(--surface); color: var(--gray-600);
 }
 .focus-all-clear svg { color: var(--success); }
-.focus-work-list li > svg { color: var(--gray-400); }
+.focus-work-list li > svg { color: var(--gray-500); }
 .focus-work-list li.is-overdue > svg { color: var(--signal); }
 .focus-columns h3 svg { color: var(--gray-500); }
 
@@ -426,7 +435,7 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .ticket-owners-tools .ticketing-search { margin: 0; }
 /* The page is older than the server (appVersion.js). */
 .app-update-bar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 2000; display: flex; align-items: center; gap: 12px;
-  max-width: calc(100vw - 32px); padding: 10px 14px; background: var(--gray-900, #111827); color: #fff; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.25); font-size: 13px; }
+  max-width: calc(100vw - 32px); padding: 10px 14px; background: var(--gray-900, #111827); color: var(--surface, #fff); border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.25); font-size: 13px; }
 
 /* ── Consistency (2026-10) ─────────────────────────────────────────────── */
 /* One tab style everywhere: the grey segmented tabs look like the underline tabs. */
@@ -476,7 +485,7 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .sidebar-group.is-untitled + .sidebar-group.is-untitled,
 .nav-compact .sidebar-group + .sidebar-group { margin-top: 10px; padding-top: 0; border-top: 0; }
 .sidebar-group-toggle {
-  margin: 0 0 2px; padding: 2px 10px; color: var(--gray-400);
+  margin: 0 0 2px; padding: 2px 10px; color: var(--gray-500);
   font-size: 11.5px; font-weight: 600; letter-spacing: .02em;
 }
 .sidebar-group-toggle svg { opacity: 0; transition: opacity .12s, transform .15s ease; }
@@ -486,7 +495,7 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
   min-height: 30px; padding: 5px 10px; margin-bottom: 1px; gap: 10px; border-radius: 8px;
   color: var(--gray-600); font-size: 13.5px; font-weight: 500;
 }
-.operations-shell .sidebar nav a svg { width: 17px; height: 17px; color: var(--gray-400); transition: color .12s; }
+.operations-shell .sidebar nav a svg { width: 17px; height: 17px; color: var(--gray-500); transition: color .12s; }
 .operations-shell .sidebar nav a:hover { background: var(--gray-50); color: var(--ink); }
 .operations-shell .sidebar nav a:hover svg { color: var(--gray-600); }
 .operations-shell .sidebar nav a.active,
@@ -530,3 +539,22 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 /* Customer 360 work lists on phones are stacked cards, not tables: the
    app-wide 520px table minimum would cut off their right side. */
 @media (max-width: 760px) { .cs-page .cs-work-table { min-width: 0; } .cs-page .cs-work-table td > * { flex-wrap: wrap; } }
+
+/* ── Click and tap targets ─────────────────────────────────────
+   At least 24×24px everywhere (WCAG 2.2 target size); on phones the controls
+   people tap all day get closer to 44px. */
+button, summary, [role="button"], [role="tab"] { min-height: 24px; }
+button, .filter-pill { min-width: 24px; }
+.cal-add-btn { min-width: 24px; }
+.sidebar-group-toggle { min-height: 26px; }
+.topbar-action { min-width: 32px; min-height: 32px; justify-content: center; }
+.cs-back { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; }
+a.text-sm:not(.btn) { display: inline-block; padding: 3px 0; }
+input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; }
+@media (max-width: 600px) {
+  .hamburger { min-width: 44px; min-height: 44px; }
+  .topbar-action { min-width: 40px; min-height: 40px; }
+  .btn, summary.btn, .header-menu > summary { min-height: 40px; }
+  .tabs .tab, .list-filter-group .filter-pill, .filter-bar .filter-pill { min-height: 44px; }
+  .cs-header-figures button { min-height: 36px; }
+}

@@ -8,10 +8,11 @@ export const STATUS_BG = {
   scheduled: '#eff6ff', completed: '#ecfdf5',
 };
 
+// Text on the tinted badge backgrounds: the tone colours keep 4.5:1 (and follow dark mode).
 export const STATUS_COLOR = {
-  active: '#059669', on_hold: '#6b7280', pending_closure: '#b45309', closed: '#6b7280',
-  open: '#2563eb', in_progress: '#2563eb', done: '#059669', cancelled: '#6b7280',
-  scheduled: '#2563eb', completed: '#059669',
+  active: 'var(--tone-success-text)', on_hold: 'var(--gray-600)', pending_closure: 'var(--tone-warning-text)', closed: 'var(--gray-600)',
+  open: 'var(--tone-info-text)', in_progress: 'var(--tone-info-text)', done: 'var(--tone-success-text)', cancelled: 'var(--gray-600)',
+  scheduled: 'var(--tone-info-text)', completed: 'var(--tone-success-text)',
 };
 
 export const STATUS_LABEL = {
@@ -20,19 +21,19 @@ export const STATUS_LABEL = {
   scheduled: 'Scheduled', completed: 'Completed',
 };
 
-export const PRIORITY_COLOR = { high: '#dc2626', medium: '#d97706', low: '#16a34a' };
+export const PRIORITY_COLOR = { high: 'var(--tone-danger-text)', medium: 'var(--tone-warning-text)', low: 'var(--tone-success-text)' };
 
 export function SBadge({ s }) {
   if (!s) return null;
   return (
-    <span className="u-db8a14c" style={{ background: STATUS_BG[s] || 'var(--gray-100)', color: STATUS_COLOR[s] || '#6b7280' }}>{STATUS_LABEL[s] || s}</span>
+    <span className="u-db8a14c" style={{ background: STATUS_BG[s] || 'var(--gray-100)', color: STATUS_COLOR[s] || 'var(--gray-600)' }}>{STATUS_LABEL[s] || s}</span>
   );
 }
 
 export function PBadge({ p }) {
   if (!p) return null;
   return (
-    <span className="u-db8a14c" style={{ background: p === 'high' ? '#fef2f2' : p === 'medium' ? '#fffbeb' : '#ecfdf5', color: PRIORITY_COLOR[p] || '#6b7280' }}>
+    <span className="u-db8a14c" style={{ background: p === 'high' ? '#fef2f2' : p === 'medium' ? '#fffbeb' : '#ecfdf5', color: PRIORITY_COLOR[p] || 'var(--gray-600)' }}>
       {p === 'high' ? '↑' : p === 'medium' ? '→' : '↓'} {p}
     </span>
   );

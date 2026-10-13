@@ -258,7 +258,7 @@ export default function AdminPanel() {
         @media (max-width: 720px) { .sso-copy { grid-template-columns: 1fr auto; } .sso-copy span { grid-column: 1 / -1; } }
         .settings-nav-heading {
           padding: 0 6px 6px;
-          color: var(--gray-400);
+          color: var(--gray-500);
           font-size: 10px;
           font-weight: 800;
           letter-spacing: .04em;

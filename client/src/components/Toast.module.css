@@ -32,10 +32,10 @@
 .info    { background: #eff6ff; border: 1px solid #93c5fd; color: #1e40af; }
 
 .icon { flex-shrink: 0; margin-top: 1px; }
-.success .icon { color: #22c55e; }
-.error   .icon { color: #ef4444; }
-.warning .icon { color: #f59e0b; }
-.info    .icon { color: #3b82f6; }
+.success .icon { color: var(--tone-success-text); }
+.error   .icon { color: var(--tone-danger-text); }
+.warning .icon { color: var(--tone-warning-text); }
+.info    .icon { color: var(--tone-info-text); }
 
 .message { flex: 1; }
 

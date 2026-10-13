@@ -161,11 +161,11 @@ export function WeeklyReportTab() {
             <div className="form-row">
               <div className="form-group">
                 <label>SMTP Host</label>
-                <input value={smtp.host || ''} onChange={set('host')} placeholder="smtp.gmail.com" required />
+                <input aria-label="SMTP Host" value={smtp.host || ''} onChange={set('host')} placeholder="smtp.gmail.com" required />
               </div>
               <div className="form-group u-d579dc3">
                 <label>Port</label>
-                <input type="number" value={smtp.port || 587} onChange={set('port')} />
+                <input aria-label="Port" type="number" value={smtp.port || 587} onChange={set('port')} />
               </div>
             </div>
             <div className="form-group">
@@ -177,21 +177,21 @@ export function WeeklyReportTab() {
             <div className="form-row">
               <div className="form-group">
                 <label>Username / Email</label>
-                <input value={smtp.user || ''} onChange={set('user')} placeholder="noreply@company.com" />
+                <input aria-label="Username / Email" value={smtp.user || ''} onChange={set('user')} placeholder="noreply@company.com" />
               </div>
               <div className="form-group">
                 <label>Password</label>
-                <input type="password" value={smtp.password || ''} onChange={set('password')} placeholder="•••••••" />
+                <input aria-label="Password" type="password" value={smtp.password || ''} onChange={set('password')} placeholder="•••••••" />
               </div>
             </div>
             <div className="form-row">
               <div className="form-group">
                 <label>From Name</label>
-                <input value={smtp.from_name || ''} onChange={set('from_name')} placeholder={PRODUCT_NAME} />
+                <input aria-label="From Name" value={smtp.from_name || ''} onChange={set('from_name')} placeholder={PRODUCT_NAME} />
               </div>
               <div className="form-group">
                 <label>From Email</label>
-                <input value={smtp.from_email || ''} onChange={set('from_email')} placeholder="noreply@company.com" />
+                <input aria-label="From Email" value={smtp.from_email || ''} onChange={set('from_email')} placeholder="noreply@company.com" />
               </div>
             </div>
             <div className="u-1161952">
@@ -203,7 +203,7 @@ export function WeeklyReportTab() {
               </button>
             </div>
             <div className="u-012c803">
-              <input value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="Send test email to…" className="u-7829123" />
+              <input aria-label="Send a test email to" value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="Send test email to…" className="u-7829123" />
             </div>
           </form>
         </div>
@@ -232,13 +232,13 @@ export function WeeklyReportTab() {
             <div className="form-row">
               <div className="form-group">
                 <label>Send On</label>
-                <select value={schedule.day ?? 1} onChange={setSch('day')}>
+                <select aria-label="Send On" value={schedule.day ?? 1} onChange={setSch('day')}>
                   {DAY_OPTIONS.map(d => <option key={d.v} value={d.v}>{d.l}</option>)}
                 </select>
               </div>
               <div className="form-group">
                 <label>At (Hour)</label>
-                <select value={schedule.hour ?? 9} onChange={setSch('hour')}>
+                <select aria-label="At (Hour)" value={schedule.hour ?? 9} onChange={setSch('hour')}>
                   {Array.from({ length: 24 }, (_, i) => (
                     <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
                   ))}

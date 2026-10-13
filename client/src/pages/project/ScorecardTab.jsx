@@ -145,7 +145,7 @@ export function ScorecardTab({ projectId, members }) {
                   const dl = DIFFICULTY_LABELS[d]; const active = form.difficulty === d;
                   return (
                     <button key={d} type="button" onClick={() => setForm(f => ({ ...f, difficulty: d }))}
-                      className="u-c55ee52" style={{ border:`2px solid ${active?dl.color:'var(--gray-200)'}`, background:active?dl.color+'15':'#fff', color:active?dl.color:'#6b7280', fontWeight:active?700:400 }}>
+                      className="u-c55ee52" style={{ border:`2px solid ${active?dl.color:'var(--gray-200)'}`, background:active?dl.color+'15':'#fff', color:active?dl.color:'var(--gray-500)', fontWeight:active?700:400 }}>
                       D{d} {dl.label}<br/><span className="u-ea7eea0">{dl.mult}</span>
                     </button>
                   );

@@ -63,7 +63,7 @@ export default function EventPopover({ event, onClose, onReportSent }) {
             <div><span className="u-db12fa5">Status:</span> {event.status}</div>
             <div><span className="u-db12fa5">Priority:</span> {event.priority}</div>
             <div className="u-8a77e5a">
-              <Link to={`/projects/${event.id}`} style={{ color: '#2563eb', fontSize: 12, fontWeight: 600 }}>View Project →</Link>
+              <Link to={`/projects/${event.id}`} style={{ color: 'var(--tone-info-text)', fontSize: 12, fontWeight: 600 }}>View Project →</Link>
             </div>
           </>}
 

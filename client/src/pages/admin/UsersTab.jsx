@@ -26,20 +26,20 @@ export function UserForm({ initial, onSave, onClose }) {
   return (
     <form onSubmit={submit}>
       {err && <div className="error-msg">{err}</div>}
-      <div className="form-group"><label>Full Name *</label><input value={form.name} onChange={set('name')} required /></div>
+      <div className="form-group"><label>Full Name *</label><input aria-label="Full Name" value={form.name} onChange={set('name')} required /></div>
       <div className="form-group">
         <label>Email Address <span className="u-596026b">(optional)</span></label>
-        <input type="email" value={form.email || ''} onChange={set('email')} placeholder="user@example.com" />
+        <input aria-label="Email Address" type="email" value={form.email || ''} onChange={set('email')} placeholder="user@example.com" />
       </div>
       {!initial && (
         <div className="form-group">
           <label>Password * <span className="text-muted text-sm">(min 12 chars)</span></label>
-          <input type="password" value={form.password} onChange={set('password')} required minLength={12} />
+          <input aria-label="Password" type="password" value={form.password} onChange={set('password')} required minLength={12} />
         </div>
       )}
       <div className="form-group">
         <label>Role *</label>
-        <select value={form.role} onChange={set('role')}>
+        <select aria-label="Role" value={form.role} onChange={set('role')}>
           <option value="engineer">Engineer</option>
           <option value="planner">Planner</option>
           <option value="pm">PM (Project Monitor)</option>
@@ -88,8 +88,8 @@ export function ResetPasswordForm({ user, onClose }) {
       <p className="text-sm text-muted mb-12">
         Set a new password for <strong>{user.name}</strong> ({user.email})
       </p>
-      <div className="form-group"><label>New Password <span className="text-muted text-sm">(min 12 chars)</span></label><input type="password" value={pw} onChange={e => setPw(e.target.value)} required minLength={12} autoFocus /></div>
-      <div className="form-group"><label>Confirm Password</label><input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required /></div>
+      <div className="form-group"><label>New Password <span className="text-muted text-sm">(min 12 chars)</span></label><input aria-label="New Password" type="password" value={pw} onChange={e => setPw(e.target.value)} required minLength={12} autoFocus /></div>
+      <div className="form-group"><label>Confirm Password</label><input aria-label="Confirm Password" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required /></div>
       <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Resetting…' : 'Reset Password'}</button>
@@ -151,7 +151,7 @@ export function UsersTab({ currentUser }) {
   return (
     <div>
       <div className="u-b473718">
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email…" className="u-3ef471c" />
+        <input aria-label="Search users" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email…" className="u-3ef471c" />
         <div className="flex gap-6 flex-wrap">
           {[
             { value: 'all',      label: 'All' },

@@ -71,8 +71,8 @@ export function MVCard({ item, navigate }) {
   const od = item.scheduled_date < today && !['completed', 'cancelled'].includes(item.status);
   const reportLabel = item.report_sent_to_customer ? 'Sent to PM'
     : item.report_sent ? 'Report Complete' : 'Report Pending';
-  const reportColor = item.report_sent_to_customer ? '#059669'
-    : item.report_sent ? '#2563eb' : '#d97706';
+  const reportColor = item.report_sent_to_customer ? 'var(--tone-success-text)'
+    : item.report_sent ? 'var(--tone-info-text)' : 'var(--tone-warning-text)';
 
   return (
     <div className="result-card" onClick={() => navigate('/maintenance-visits')}>

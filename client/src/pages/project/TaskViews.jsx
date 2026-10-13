@@ -441,11 +441,11 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
 
 /* ── Kanban View ──────────────────────────────────────────── */
 export const KANBAN_COLS = [
-  { key: 'open',             label: 'Open',             color: '#3b82f6', bg: '#eff6ff' },
-  { key: 'in_progress',      label: 'In Progress',      color: '#f59e0b', bg: '#fffbeb' },
+  { key: 'open',             label: 'Open',             color: 'var(--tone-info-text)', bg: '#eff6ff' },
+  { key: 'in_progress',      label: 'In Progress',      color: 'var(--tone-warning-text)', bg: '#fffbeb' },
   { key: 'waiting_customer', label: 'Waiting Customer', color: '#f97316', bg: '#fff7ed' },
   { key: 'waiting_vendor',   label: 'Waiting Vendor',   color: '#a855f7', bg: '#faf5ff' },
-  { key: 'completed',        label: 'Completed',        color: '#10b981', bg: '#f0fdf4' },
+  { key: 'completed',        label: 'Completed',        color: 'var(--tone-success-text)', bg: '#f0fdf4' },
 ];
 
 export function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, onDuplicate }) {
