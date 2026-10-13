@@ -337,6 +337,9 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .cs-reminders li strong { display: block; font-weight: 600; color: var(--ink); font-size: 14px; }
 .cs-reminders-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--gray-600); margin-top: 2px; }
 .cs-reminders-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.cs-reminders-actions { display: inline-flex; align-items: center; gap: 12px; }
+.cs-reminders { padding: 10px 16px; gap: 4px; }
+.cs-reminders li { padding: 6px 0; }
 .reminder-form-for { display: flex; gap: 8px; flex-wrap: wrap; }
 .reminder-form-for select { flex: 1 1 180px; }
 .reminder-recipients { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }

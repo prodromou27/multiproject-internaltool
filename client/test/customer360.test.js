@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { customer360Section,customer360Sections } from '../src/pages/customer360.js';
+import { customer360Section,customer360Sections,customer360TabGroups } from '../src/pages/customer360.js';
 import { customerIdFromCreateIntent } from '../src/hooks/useCreateIntent.js';
 
 test('Customer 360 opens on the overview, for managers and engineers',() => {
@@ -102,4 +102,22 @@ test('a customer the server marks as managed has no Maintenance Visits tab, what
   const ids = customer360Sections({ role: 'engineer' }, {}, true, false, false, true).map(section => section.id);
   assert.equal(ids.includes('maintenance-visits'), false);
   assert.equal(ids.includes('tasks'), true);
+});
+
+test('Customer 360 keeps the main sections in view and puts record-keeping ones under More', () => {
+  const manager={ role:'manager',permissions:{} };
+  const ids=list => list.map(section => section.id);
+  const managed=customer360Sections(manager,{},false,true,true,true);
+  const groups=customer360TabGroups(managed,'overview',true);
+  assert.deepEqual(ids(groups.more),['projects','contracts','reports','timeline','service-configuration']);
+  assert.ok(!ids(groups.shown).includes('contracts'));
+  // The open section stays in the row, and leaves the menu.
+  const onContracts=customer360TabGroups(managed,'contracts',true);
+  assert.ok(ids(onContracts.shown).includes('contracts'));
+  assert.ok(!ids(onContracts.more).includes('contracts'));
+  // Not a managed customer: Projects stays in the row.
+  assert.ok(ids(customer360TabGroups(customer360Sections(manager),'overview',false).shown).includes('projects'));
+  // One section alone is not worth a menu.
+  const few=[{ id:'overview' },{ id:'tasks' },{ id:'contracts' }];
+  assert.deepEqual(customer360TabGroups(few,'overview').more,[]);
 });

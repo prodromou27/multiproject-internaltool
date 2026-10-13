@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { RefreshCw, AlertTriangle, Settings2 } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import OperationalFocus from '../components/OperationalFocus';
@@ -15,7 +15,13 @@ import { pmWidget } from './dashboard/pmWidgets';
 import './Dashboard.css';
 import { useLiveRefresh } from '../live';
 
+// Engineers work from My Work, which has everything their dashboard had.
 export default function Dashboard() {
+  const { user } = useAuth();
+  return user.role === 'engineer' ? <Navigate to="/my-day" replace /> : <RoleDashboard />;
+}
+
+function RoleDashboard() {
   const { user } = useAuth();
   const isManager  = user.role === 'manager';
   const isPlanner  = user.role === 'planner';

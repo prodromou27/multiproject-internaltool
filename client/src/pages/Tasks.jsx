@@ -411,21 +411,6 @@ export default function Tasks() {
 
       {/* Filters */}
       <Surface label="Task filters">
-        <div className="filter-presets">
-          <select defaultValue="" onChange={e => { const preset = presets.find(p => p.name === e.target.value); if (preset) applyPreset(preset); e.target.value = ''; }}>
-            <option value="">Apply saved preset…</option>
-            {presets.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
-          </select>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={savePreset}>Save current filters</button>
-          {presets.length > 0 && (
-            <details className="preset-manage">
-              <summary>Manage</summary>
-              <div className="preset-menu">
-                {presets.map(p => <div key={p.name}><span>{p.name}</span><button type="button" onClick={() => deletePreset(p.name)} aria-label={`Delete ${p.name}`}>×</button></div>)}
-              </div>
-            </details>
-          )}
-        </div>
         <div className="u-95535a3">
           <ListSearch value={search} onChange={setSearch} label="Search tasks" placeholder="Search tasks, projects, or assignees…" />
           {customerFilter && <span className="filter-pill active">{tasks.find(task => String(task.customer_id) === customerFilter)?.customer_name || 'One customer'} <button type="button" className="btn btn-ghost btn-sm" aria-label="Show tasks for every customer" onClick={() => navigate('/tasks')}><X size={12} /></button></span>}
@@ -450,15 +435,25 @@ export default function Tasks() {
               <X size={13} />
             </button>
           )}
+          {/* Saved filters live in one menu rather than a row of their own. */}
+          <details className="preset-manage task-presets">
+            <summary>Saved filters{presets.length ? ` (${presets.length})` : ''}</summary>
+            <div className="preset-menu">
+              {presets.map(p => <div key={p.name}><button type="button" className="preset-apply" onClick={event => { event.currentTarget.closest('details').open = false; applyPreset(p); }}>{p.name}</button><button type="button" onClick={() => deletePreset(p.name)} aria-label={`Delete ${p.name}`}>×</button></div>)}
+              {!presets.length && <p className="text-muted text-sm">None saved yet.</p>}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={savePreset}>Save current filters</button>
+            </div>
+          </details>
         </div>
         <FilterGroup label="View">
+          {/* The everyday views always; the others only when they have tasks (or are chosen). */}
           {[
             ['all', 'All'], ['open', 'Open / In Progress'],
-            ['waiting_customer', 'Waiting on Customer/Vendor'],
-            ['due_today', 'Due Today'], ['due_week', 'Due Next 7 Days'],
-            ['pending_approval', 'Pending Approval'], ['done', 'Completed'],
-            ['overdue', 'Overdue'], ['adhoc', 'Ad-hoc'],
-          ].map(([key, label]) => <button key={key} className={'filter-pill' + (activeFilter === key ? ' active' : '') + (key === 'overdue' && counts[key] > 0 ? ' overdue-pill' : '')} onClick={() => setFilter(key)}>
+            ['waiting_customer', 'Waiting on Customer/Vendor', true],
+            ['due_today', 'Due Today', true], ['due_week', 'Due Next 7 Days'],
+            ['pending_approval', 'Pending Approval', true], ['done', 'Completed'],
+            ['overdue', 'Overdue'], ['adhoc', 'Ad-hoc', true],
+          ].filter(([key, , optional]) => !optional || busy || counts[key] > 0 || activeFilter === key).map(([key, label]) => <button key={key} className={'filter-pill' + (activeFilter === key ? ' active' : '') + (key === 'overdue' && counts[key] > 0 ? ' overdue-pill' : '')} onClick={() => setFilter(key)}>
             {label} <span className="u-a697a8f">({busy ? '...' : counts[key] || 0})</span>
           </button>)}
         </FilterGroup>

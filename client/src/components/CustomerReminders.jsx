@@ -34,7 +34,7 @@ export default function CustomerReminders({ customer, adding, onAddingChange }) 
   return <section className="card cs-reminders" aria-label="Customer reminders">
     <div className="cs-reminders-head">
       <h2><BellRing size={15} aria-hidden="true" /> Reminders</h2>
-      <button type="button" className="btn btn-ghost btn-sm" onClick={() => onAddingChange(true)}><Plus size={13} /> Add reminder</button>
+      <span className="cs-reminders-actions"><Link className="text-sm" to="/reminders">All reminders</Link><button type="button" className="btn btn-ghost btn-sm" onClick={() => onAddingChange(true)}><Plus size={13} /> Add reminder</button></span>
     </div>
     {error ? <div className="error-msg" role="alert">{error}</div> : !data ? <div className="skeleton-table"><span /></div> : rows.length ? <ul>{rows.map(reminder => {
       const due = reminder.due_at <= now;
@@ -50,7 +50,6 @@ export default function CustomerReminders({ customer, adding, onAddingChange }) 
         {due && <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => complete(reminder, reminder.team)}><Check size={13} /> {reminder.team ? 'Done for team' : 'Done'}</button>}
       </li>;
     })}</ul> : <p className="text-muted text-sm">No reminders for {customer.name}. Add one for renewals and other dates the team must not miss, such as an SSL certificate or a licence.</p>}
-    <Link className="text-sm" to="/reminders">All reminders</Link>
     {adding && data && <ReminderForm customers={[{ id: customer.id, name: customer.name }]} people={[]} teams={[]} sharedTeams={data.shared_teams} sharedChannels={data.shared_channels}
       defaults={{ customer_id: customer.id, for: data.default_team_id ? 'shared' : 'me', team_id: data.default_team_id }}
       onClose={() => onAddingChange(false)} onSaved={() => { onAddingChange(false); load(); }} />}

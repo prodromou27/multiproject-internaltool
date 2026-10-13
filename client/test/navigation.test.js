@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PAGES, canAccessPage, visiblePages, menuGroups, quickCreateActions, pageForPath } from '../src/navigation.js';
+import { PAGES, canAccessPage, visiblePages, menuGroups, quickCreateActions, pageForPath, childPages } from '../src/navigation.js';
 
 test('navigation and create actions respect existing role and feature boundaries', () => {
   const ids = role => visiblePages(role).map(page => page.id);
@@ -46,11 +46,11 @@ test('the menu shows every page a person can open, in a few groups', () => {
     ['Work', ['projects', 'tasks', 'visits', 'activities', 'approvals']],
     ['Customers', ['customers', 'responses']],
     ['Advisories', ['vulnerabilities', 'softwareVersions']],
-    ['Team & performance', ['workload', 'skills', 'reports', 'kpiManagement', 'scorecards', 'sla']],
+    ['Team & performance', ['workload', 'skills', 'reports']],
     ['More', ['notes', 'settings']],
   ]);
   assert.deepEqual(menu({ role: 'engineer', permissions: {} }), [
-    ['Home', ['dashboard', 'myWork', 'calendar', 'reminders']],
+    ['Home', ['myWork', 'calendar', 'reminders']],
     ['Work', ['projects', 'tasks', 'visits', 'activities']],
     ['Customers', ['customers', 'responses']],
     ['Advisories', ['vulnerabilities', 'softwareVersions']],
@@ -65,6 +65,10 @@ test('the menu shows every page a person can open, in a few groups', () => {
   assert.deepEqual(menuGroups('engineer', false).find(group => group.section === 'Work').pages.map(page => page.id), ['projects', 'tasks', 'visits']);
   assert.equal(menuGroups('manager').find(group => group.section === 'Home').titled, false);
   assert.equal(pageForPath('/settings/users').parent, 'settings');
+  // KPI Management, Scorecards and SLA open from Reports; without Reports they stay in the menu.
+  assert.deepEqual(childPages('reports', { role: 'manager', permissions: {} }).map(page => page.id), ['kpiManagement', 'scorecards', 'sla']);
+  const noReports = menuGroups({ role: 'manager', permissions: { 'reports.access': false } }).flatMap(group => group.pages.map(page => page.id));
+  assert.ok(['kpiManagement', 'scorecards', 'sla'].every(id => noReports.includes(id)));
   assert.equal(pageForPath('/service-operations').parent, 'reports');
 });
 

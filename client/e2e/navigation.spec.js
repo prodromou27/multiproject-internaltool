@@ -54,8 +54,8 @@ test('workspace density is optional and persists per account', async ({ page }) 
 test('on a short screen the current page is scrolled into view in the menu', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 600 });
   await mockApi(page, { role: 'manager' });
-  await page.goto('/sla');
-  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'SLA' })).toBeInViewport();
+  await page.goto('/scorecards');
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Reports', exact: true })).toBeInViewport(); // Scorecards opens from Reports
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused();
 });

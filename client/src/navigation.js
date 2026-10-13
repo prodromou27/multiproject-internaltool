@@ -4,7 +4,8 @@ export const PAGES = [
   // The sidebar shows every page a person can open, in this order, grouped by
   // section. Home and More have no heading. inMenu:false pages stay reachable
   // (links, Ctrl K) and light up their parent in the menu.
-  { id: 'dashboard', path: '/', label: 'Dashboard', section: 'Home', icon: 'LayoutDashboard', roles: everyone, description: 'Operational overview and work that needs attention' },
+  // Engineers open My Work instead (Dashboard.jsx sends them there), so it is not in their menu.
+  { id: 'dashboard', path: '/', label: 'Dashboard', section: 'Home', icon: 'LayoutDashboard', roles: everyone, notInMenuFor: ['engineer'], parent: 'myWork', description: 'Operational overview and work that needs attention' },
   { id: 'myWork', path: '/my-day', label: 'My Work', section: 'Home', icon: 'Zap', roles: ['engineer'], description: 'Your assignments, upcoming work and time tracking' },
   { id: 'calendar', path: '/calendar', label: 'Calendar', section: 'Home', icon: 'CalendarDays', roles: everyone, description: 'Plan project deadlines, tasks and maintenance visits' },
   { id: 'reminders', path: '/reminders', label: 'Reminders', section: 'Home', icon: 'BellRing', roles: everyone, description: 'Your own reminders, and the automatic ones the app sends you' },
@@ -20,9 +21,9 @@ export const PAGES = [
   { id: 'workload', path: '/workload', label: 'Workload', section: 'Team & performance', icon: 'UsersIcon', roles: ['manager'], description: 'Engineer commitments and upcoming demand' },
   { id: 'skills', path: '/skills', label: 'Skill matrix', section: 'Team & performance', icon: 'GraduationCap', roles: ['manager'], permission:'skills.view', description: 'What the team knows per technology, and where knowledge rests on one person' },
   { id: 'reports', path: '/reports', label: 'Reports', section: 'Team & performance', icon: 'BarChart2', roles: ['manager'], permission:'reports.access', description: 'Operational summaries, delivery trends and reporting' },
-  { id: 'kpiManagement', path: '/kpis', label: 'KPI Management', section: 'Team & performance', icon: 'Gauge', roles: ['manager'], permission:'kpis.manage', description: 'Define, test and review management performance indicators' },
-  { id: 'scorecards', path: '/scorecards', label: 'Scorecards', section: 'Team & performance', icon: 'Award', roles: ['manager'], description: 'Project delivery evaluations and engineer performance' },
-  { id: 'sla', path: '/sla', label: 'SLA', section: 'Team & performance', icon: 'ShieldCheck', roles: ['manager'], description: 'Service commitments and exceptions requiring attention' },
+  { id: 'kpiManagement', path: '/kpis', label: 'KPI Management', section: 'Team & performance', icon: 'Gauge', roles: ['manager'], permission:'kpis.manage', parent: 'reports', underParent: true, description: 'Define, test and review management performance indicators' },
+  { id: 'scorecards', path: '/scorecards', label: 'Scorecards', section: 'Team & performance', icon: 'Award', roles: ['manager'], parent: 'reports', underParent: true, description: 'Project delivery evaluations and engineer performance' },
+  { id: 'sla', path: '/sla', label: 'SLA', section: 'Team & performance', icon: 'ShieldCheck', roles: ['manager'], parent: 'reports', underParent: true, description: 'Service commitments and exceptions requiring attention' },
   { id: 'notes', path: '/notes', label: 'My Notes', section: 'More', icon: 'StickyNote', roles: everyone, description: 'Your private scratchpad and personal to-do list' },
   { id: 'settings', path: '/settings', label: 'Settings', section: 'More', icon: 'Settings', roles: ['manager'], description: 'Business configuration, integrations and system settings' },
   { id: 'serviceOperations', path: '/service-operations', label: 'Service Activity Reports', section: 'Team & performance', icon: 'Activity', roles: ['manager'], permission:'reports.access', inMenu: false, parent: 'reports', description: 'Aggregated reporting over logged service activity — see Customer 360 for per-customer detail' },
@@ -48,9 +49,18 @@ export const UNTITLED_SECTIONS = new Set(['Home', 'More']);
 
 // The sidebar: every page this person can open, grouped by section, in PAGES order.
 export function menuGroups(userOrRole, serviceActivityEnabled = false) {
-  const pages = visiblePages(userOrRole, serviceActivityEnabled).filter(page => !page.hidden && page.inMenu !== false);
+  const role = typeof userOrRole === 'string' ? userOrRole : userOrRole?.role;
+  const visible = visiblePages(userOrRole, serviceActivityEnabled);
+  // underParent: opened from the parent page (Reports links KPI Management, Scorecards and SLA) when this person has it.
+  const pages = visible.filter(page => !page.hidden && page.inMenu !== false && !page.notInMenuFor?.includes(role)
+    && !(page.underParent && visible.some(other => other.id === page.parent)));
   return MENU_SECTIONS.map(section => ({ section, titled: !UNTITLED_SECTIONS.has(section), pages: pages.filter(page => page.section === section) }))
     .filter(group => group.pages.length);
+}
+
+// The pages opened from `parentId`'s page rather than the menu, that this person may open.
+export function childPages(parentId, userOrRole, serviceActivityEnabled = false) {
+  return visiblePages(userOrRole, serviceActivityEnabled).filter(page => page.underParent && page.parent === parentId);
 }
 
 export function pageForPath(pathname) {

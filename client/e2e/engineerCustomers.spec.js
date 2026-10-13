@@ -16,9 +16,12 @@ test('engineers open the customers they work with: overview, tasks, visits, reco
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Customers', exact: true }).click();
   await page.getByRole('link', { name: 'Northwind Logistics' }).click();
   const tabs = page.getByRole('tablist', { name: 'Customer 360 sections' });
-  for (const name of ['Overview', 'Tasks', 'Maintenance Visits', 'Recommendations', 'Assets', 'Contracts']) await expect(tabs.getByRole('tab', { name, exact: true })).toBeVisible();
+  for (const name of ['Overview', 'Tasks', 'Maintenance Visits', 'Recommendations', 'Assets']) await expect(tabs.getByRole('tab', { name, exact: true })).toBeVisible();
   await expect(tabs.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
-  await tabs.getByRole('tab', { name: 'Contracts' }).click();
+  // Contracts and Timeline are under More; the open one joins the row.
+  await page.locator('.cs-tabs-more summary').click();
+  await page.locator('.cs-tabs-more').getByRole('button', { name: 'Contracts' }).click();
+  await expect(tabs.getByRole('tab', { name: 'Contracts' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: 'Active contracts' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add contract' })).toHaveCount(0);
 });

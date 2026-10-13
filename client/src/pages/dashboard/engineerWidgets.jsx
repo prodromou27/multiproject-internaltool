@@ -53,9 +53,7 @@ export function engineerWidget(id, ctx) {
             </div>
             <Link to="/tasks?filter=due_week" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
           </div>
-          {dueThisWeek.length === 0
-            ? <p className="text-muted text-sm">No tasks due in the next 7 days ✓</p>
-            : <ul className="list-none">
+          <ul className="list-none">
                 {dueThisWeek.map(t => {
                   const isToday = t.deadline.slice(0,10) === todayStr;
                   const isTomorrow = t.deadline.slice(0,10) === localDateISO(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
@@ -71,7 +69,6 @@ export function engineerWidget(id, ctx) {
                   );
                 })}
               </ul>
-          }
         </div>
       );
     }
@@ -86,16 +83,11 @@ export function engineerWidget(id, ctx) {
               <div className={["section-title u-1169661", (pendingReports.length ? 'u-497726e' : 'u-5a45298')].filter(Boolean).join(' ')}>
                 Reports Pending — Send to Management
               </div>
-              <span className={`badge ${pendingReports.length ? 'badge-cancelled' : 'badge-done'} u-46cec89`}>
-                {pendingReports.length === 0 ? 'All sent ✓' : pendingReports.length}
-              </span>
+              <span className="badge badge-cancelled u-46cec89">{pendingReports.length}</span>
             </div>
             <Link to="/maintenance-visits?filter=report_pending" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
           </div>
-          {pendingReports.length === 0
-            ? <p className="text-muted text-sm m-0">No pending reports — great job! 🎉</p>
-            : (
-              <div className="table-wrap">
+          <div className="table-wrap">
                 <table>
                   <thead><tr><th>Customer</th><th>Visit</th><th>Date</th><th>Status</th><th>Action</th></tr></thead>
                   <tbody>
@@ -116,8 +108,6 @@ export function engineerWidget(id, ctx) {
                   </tbody>
                 </table>
               </div>
-            )
-          }
         </div>
       );
 

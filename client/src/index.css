@@ -926,6 +926,15 @@ tr:hover td { background: var(--gray-50); transition: background .1s; }
 .preset-menu div { display: flex; align-items: center; gap: 8px; padding: 5px 7px; }
 .preset-menu span { flex: 1; }
 .preset-menu button { border: 0; background: none; color: var(--danger); cursor: pointer; font-size: 16px; }
+.task-presets summary { padding: 6px 10px; border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--surface); color: var(--gray-700); font-weight: 600; list-style: none; white-space: nowrap; }
+.task-presets summary::-webkit-details-marker { display: none; }
+.task-presets .preset-menu { min-width: 220px; }
+.task-presets .preset-menu p { margin: 4px 7px 6px; }
+.preset-menu .preset-apply { flex: 1; color: var(--gray-800); font-size: 13px; text-align: left; padding: 0; }
+.preset-menu .preset-apply:hover { color: var(--primary); }
+.preset-menu .preset-link { display: block; padding: 7px 9px; border-radius: 6px; color: var(--gray-800); font-size: 13px; text-decoration: none; }
+.preset-menu .preset-link:hover { background: var(--gray-50); color: var(--primary); text-decoration: none; }
+.task-presets .preset-menu > .btn { width: 100%; justify-content: center; margin-top: 4px; color: var(--gray-700); font-size: 12px; }
 .column-picker { position: relative; }
 .column-picker summary { list-style: none; }
 .column-picker summary::-webkit-details-marker { display: none; }
@@ -1281,6 +1290,8 @@ tr:hover td { background: var(--gray-50); transition: background .1s; }
 .active-timer span { font-variant-numeric: tabular-nums; font-size: 12px; opacity: .8; }
 .my-day-row, .time-row, .reminder-row, .bookmark-row { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 7px 0; border-bottom: 1px solid var(--gray-100); }
 .my-day-row > span:nth-of-type(1), .time-row span, .bookmark-row span, .reminder-row > span { flex: 1; min-width: 0; }
+.my-day-row > span.badge { flex: 0 0 auto; }
+.my-day-row > span.my-day-title { flex: 1; min-width: 0; }
 .my-day-row small, .reminder-row small { display: block; color: var(--gray-400); font-size: 10px; }
 .timesheet-total { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
 .timesheet-total strong { font-size: 28px; color: var(--primary); }
@@ -1293,8 +1304,8 @@ tr:hover td { background: var(--gray-50); transition: background .1s; }
 .kanban-card-title { font-size: 12px; font-weight: 700; margin-bottom: 7px; }
 .kanban-card-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: var(--gray-400); font-size: 10px; }
 .kanban-actions { display: flex; align-items: center; gap: 4px; margin-top: 8px; }
-/* Card controls stay quiet until the card is pointed at or focused; touch screens always show them. */
-@media (hover: hover) { .kanban-card .kanban-actions { opacity: 0; transition: opacity .12s; } .kanban-card:hover .kanban-actions, .kanban-card:focus-within .kanban-actions { opacity: 1; } }
+/* Card controls fold away until the card is pointed at or focused (tabbing into them opens them); touch screens always show them. */
+@media (hover: hover) { .kanban-card .kanban-actions { max-height: 0; margin-top: 0; overflow: hidden; opacity: 0; transition: max-height .12s, margin-top .12s, opacity .12s; } .kanban-card:hover .kanban-actions, .kanban-card:focus-within .kanban-actions { max-height: 40px; margin-top: 8px; opacity: 1; } }
 .kanban-actions button { display: flex; padding: 4px; border: 1px solid var(--gray-200); border-radius: 5px; background: var(--surface); color: var(--gray-500); cursor: pointer; }
 .kanban-actions select { flex: 1; min-width: 0; min-height: 0; height: 24px; padding: 2px 5px; font-size: 10px; }
 .checklist-item { display: flex; align-items: center; gap: 5px; margin-top: 5px; font-size: 10px; color: var(--gray-600); }

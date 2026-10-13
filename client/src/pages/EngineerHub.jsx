@@ -13,6 +13,7 @@ import { useConfirm } from '../components/Confirm';
 import { useLiveRefresh } from '../live';
 import AddToCalendarButton from '../components/AddToCalendarButton';
 import { SubtaskProgress, SubtasksDialog } from '../components/TaskSubtasks';
+import { engineerWidget } from './dashboard/engineerWidgets';
 
 const KANBAN = [
   ['open', 'To do'], ['in_progress', 'In progress'],
@@ -69,6 +70,9 @@ export default function EngineerHub() {
   const [projects, setProjects] = useState([]);
   const [managedCustomers,setManagedCustomers]=useState([]);
   const [logs, setLogs] = useState([]);
+  // Visit reports still to send, and this month's visits (they used to be on the engineers' dashboard).
+  const [pendingReports, setPendingReports] = useState([]);
+  const [monthVisits, setMonthVisits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dragged, setDragged] = useState(null);
   const [timer, setTimer] = useState(() => {
@@ -122,10 +126,10 @@ export default function EngineerHub() {
     const request = ++loadRequest.current;
     if (loadOptions?.quiet !== true) setLoading(true);
     setLoadError('');
-    return Promise.allSettled([api.tasks(), api.calendar(month), api.projects(), api.myTimeLogs(from, to), api.operationsOverview({ as_of: today }),managedFocus?api.myManagedCustomers():Promise.resolve({ rows:[] })])
+    return Promise.allSettled([api.tasks(), api.calendar(month), api.projects(), api.myTimeLogs(from, to), api.operationsOverview({ as_of: today }),api.myManagedCustomers(),api.maintenanceVisits({ pending_report: 1 }),api.maintenanceVisits({ month, overview: 1 })])
       .then(results => {
         if (request !== loadRequest.current) return;
-        const setters = [setTasks, setCalendar, setProjects, setLogs, setOverview,value => setManagedCustomers(value?.rows || [])];
+        const setters = [setTasks, setCalendar, setProjects, setLogs, setOverview, value => setManagedCustomers(value?.rows || []), value => setPendingReports(value || []), value => setMonthVisits(value || [])];
         results.forEach((result, index) => { if (result.status === 'fulfilled') setters[index](result.value); });
         setOverviewError(results[4].status === 'rejected' ? results[4].reason?.message || 'Unable to load work overview' : '');
         const failures = results.filter(result => result.status === 'rejected').map(result => result.reason?.message || 'Request failed');
@@ -142,7 +146,8 @@ export default function EngineerHub() {
 
   const terminalTasks = new Set(['completed', 'closed', 'cancelled', ...(config?.task || []).filter(status => status.is_terminal).map(status => status.value)]);
   const openTasks = tasks.filter(t => !terminalTasks.has(t.status));
-  const todayTasks = openTasks.filter(t => t.deadline?.slice(0, 10) === today);
+  const weekAhead = iso(new Date(Date.now() + 7 * 86400000));
+  const dueSoon = openTasks.filter(t => t.deadline && t.deadline.slice(0, 10) >= today && t.deadline.slice(0, 10) <= weekAhead).sort((a, b) => a.deadline.localeCompare(b.deadline));
   const overdue = openTasks.filter(t => isOverdue(t.deadline));
   const todayVisits = (calendar.visits || []).filter(v => v.date?.slice(0, 10) === today);
   const pinned = projects.filter(p => p.is_pinned);
@@ -246,13 +251,19 @@ export default function EngineerHub() {
       {timer && <div className="active-timer"><Play size={15} /><div><strong>{timer.title}</strong><span>{formatElapsed(elapsed)}</span></div><button className="btn btn-danger btn-sm" disabled={timerSaving} onClick={stopTimer}><Pause size={12} /> {timerSaving ? 'Saving…' : 'Stop & log'}</button><button className="btn btn-ghost btn-sm" disabled={timerSaving} onClick={discardTimer}><TimerReset size={12} /> Discard</button></div>}
 
       <div className="grid-2 engineer-summary">
-        <section className="card"><div className="section-header"><h2 className="section-title">Today & overdue</h2><CalendarDays size={16} /></div>
-          {[...overdue, ...todayTasks.filter(t => !overdue.some(o => o.id === t.id))].map(task => <div className="my-day-row" key={task.id}><PriorityBadge p={task.priority} /><span>{task.title}</span><small>{fmtDate(task.deadline)}</small>{!timer && <button className="btn btn-ghost btn-sm" onClick={() => startTimer(task)}><Play size={11} /></button>}</div>)}
+        <section className="card"><div className="section-header"><h2 className="section-title">Overdue and due this week</h2><CalendarDays size={16} /></div>
+          {[...overdue, ...dueSoon.filter(t => !overdue.some(o => o.id === t.id))].map(task => <div className="my-day-row" key={task.id}><PriorityBadge p={task.priority} /><span className="my-day-title">{task.title}</span><small>{fmtDate(task.deadline)}</small>{!timer && <button className="btn btn-ghost btn-sm" aria-label={`Start timer: ${task.title}`} onClick={() => startTimer(task)}><Play size={11} /></button>}</div>)}
           {todayVisits.map(visit => <div className="my-day-row" key={`v${visit.id}`}><Wrench size={14} /><span>{visit.title}</span><small>{visit.customer_name}</small><AddToCalendarButton visitId={visit.id} title={visit.title} compact /></div>)}
-          {!overdue.length && !todayTasks.length && !todayVisits.length && <p className="text-muted">Nothing urgent today.</p>}
+          {!overdue.length && !dueSoon.length && !todayVisits.length && <p className="text-muted">Nothing due this week.</p>}
         </section>
         <section className="card"><div className="section-header"><h2 className="section-title">Timesheet</h2><Clock size={16} /></div><div className="timesheet-total"><strong>{weekTotal.toFixed(1)}h</strong><span>This week · {fmtDate(from)} – {fmtDate(to)}</span></div><p className={`timesheet-today${todayTotal < 7 ? ' is-short' : ''}`}><strong>{todayTotal.toFixed(1)}h</strong> logged today{todayTotal < 7 ? ` · ${Math.max(0, 7 - todayTotal).toFixed(1)}h still to log` : ''}</p>{logs.slice(0, 6).map(log => <div className="time-row" key={log.id}><span>{log.task_title || log.visit_title || 'Work log'}</span><strong>{Number(log.hours).toFixed(2)}h</strong></div>)}</section>
       </div>
+
+      {/* Visit reports to send, then this month's visits; each shows only when there is something. */}
+      {(pendingReports.length > 0 || monthVisits.length > 0) && <div className="mt-16">
+        {engineerWidget('pending_reports', { pendingReports, load: () => load({ quiet: true }) })}
+        {engineerWidget('mv_this_month', { visits: monthVisits })}
+      </div>}
 
       {subtasksFor && <SubtasksDialog task={subtasksFor} onClose={() => { setSubtasksFor(null); load({ quiet: true }); }} />}
       {mySubtasks.length > 0 && <section className="card mt-16 hub-subtasks" aria-label="My subtasks"><div className="section-header"><h2 className="section-title">My subtasks</h2><span className="text-muted text-sm">{mySubtasks.length} open</span></div>
@@ -265,7 +276,7 @@ export default function EngineerHub() {
       </section>}
       <section className="card mt-16"><div className="section-header"><h2 className="section-title">Personal Kanban</h2><Link to="/tasks">All tasks →</Link></div><div className="engineer-kanban">{KANBAN.map(([status, label]) => <div className="kanban-column" key={status} onDragOver={e => e.preventDefault()} onDrop={() => moveTask(dragged, status)}><h3>{label}<span>{tasks.filter(t => t.status === status).length}</span></h3>{tasks.filter(t => t.status === status).map(task => { return <article key={task.id} draggable onDragStart={() => setDragged(task)} className="kanban-card"><div className="kanban-card-title">{task.title}</div><div className="kanban-card-meta"><PriorityBadge p={task.priority} />{task.deadline && <span>{fmtDate(task.deadline)}</span>}</div>{task.subtasks_total > 0 && <div className="kanban-subtasks"><SubtaskProgress total={task.subtasks_total} done={task.subtasks_done} onClick={() => setSubtasksFor(task)} /></div>}<div className="kanban-actions"><button onClick={() => setSubtasksFor(task)} title="Subtasks" aria-label={`Subtasks of ${task.title}`}><Plus size={11} /></button>{!timer && <button onClick={() => startTimer(task)} title="Start timer"><TimerReset size={11} /></button>}<select defaultValue="" onChange={e => { if (e.target.value) quickNote(task, e.target.value); e.target.value = ''; }}><option value="">Quick update…</option>{QUICK_NOTES.map(note => <option key={note}>{note}</option>)}</select></div></article>; })}</div>)}</div></section>
 
-      {!managedFocus && saAccess?.enabled && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canLog={saAccess.enabled} />}
+      {!managedFocus && (saAccess?.enabled || managedCustomers.length > 0) && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canLog={saAccess.enabled} />}
 
       {/* Only what has something in it: reminders come from the Reminders page, bookmarks from Projects. */}
       {(reminders.length > 0 || pinned.length > 0 || recentProjects.length > 0) && <div className={`${reminders.length && (pinned.length || recentProjects.length) ? 'grid-2 ' : ''}mt-16`}>{reminders.length > 0 && <section className="card"><div className="section-header"><h2 className="section-title">Reminders</h2><Link className="btn btn-ghost btn-sm" to="/reminders"><Plus size={12} /> Add</Link></div>{reminders.slice(0, 5).map(reminder => <div className="reminder-row" key={`${reminder.team ? 't' : 'p'}${reminder.id}`}><BellRing size={13} /><span>{reminder.title}<small>{reminder.team ? `${reminder.team_name} team · due now` : new Date(reminder.due_at) <= new Date() ? 'Due now' : `Next ${fmtDate(reminder.due_at)}`}</small></span><button className="btn btn-success btn-sm" aria-label={`Done: ${reminder.title}`} onClick={() => completeReminder(reminder)}><CheckCircle2 size={11} /></button></div>)}{reminders.length > 5 && <Link to="/reminders" className="text-sm">All {reminders.length} reminders</Link>}</section>}{(pinned.length > 0 || recentProjects.length > 0) && <section className="card"><div className="section-header"><h2 className="section-title">Projects</h2><FolderOpen size={16} /></div>{pinned.length > 0 && <h3 className="hub-subheading">Bookmarked</h3>}{pinned.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}{recentProjects.length > 0 && <h3 className="hub-subheading">Recently viewed</h3>}{recentProjects.map(project => <Link className="bookmark-row" key={project.id} to={`/projects/${project.id}`}><span>{project.title}</span><StatusBadge entityType="project" s={project.status} /></Link>)}</section>}</div>}
