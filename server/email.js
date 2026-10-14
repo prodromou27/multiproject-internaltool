@@ -40,7 +40,8 @@ async function sendEmail({ to, subject, html, text, attachments }) {
     ? `"${smtp.from_name}" <${smtp.from_email || smtp.user}>`
     : (smtp.from_email || smtp.user);
 
-  await transporter.sendMail({
+  // The provider's answer (message id and response line), kept with each delivery.
+  return transporter.sendMail({
     from,
     to:   Array.isArray(to) ? to.join(', ') : to,
     subject,

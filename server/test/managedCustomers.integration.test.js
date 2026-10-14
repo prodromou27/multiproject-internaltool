@@ -436,7 +436,9 @@ test('report schedules enforce ownership, recipient eligibility, versions and re
   const { tick } = require('../customReportScheduler');
   const now = new Date('2040-01-02T10:00:00Z'),sent = [];
   const run = async () => ({ columns: [{ key: 'id',label: 'ID' }],rows: [{ id: 1 }],truncated: false });
-  const due = () => db.prepare('UPDATE custom_report_schedules SET next_run=? WHERE report_id=?').run('2000-01-01T00:00:00.000Z',report.id);
+  // Each run is its own slot (deliveries are kept per slot and recipient).
+  let slot = 0;
+  const due = () => db.prepare('UPDATE custom_report_schedules SET next_run=? WHERE report_id=?').run(`2000-01-${String(++slot).padStart(2,'0')}T00:00:00.000Z`,report.id);
   await due();
   await tick({ now,run,send: async mail => sent.push(mail) });
   assert.equal(sent.length,1);

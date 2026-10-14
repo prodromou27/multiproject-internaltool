@@ -1214,6 +1214,27 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS edit_version INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS edit_version INTEGER NOT NULL DEFAULT 1;
   `]);
+  migrations.push(['20261109_custom_report_deliveries', `
+    -- One row per scheduled slot, recipient and channel (customReportScheduler.js): what was
+    -- sent, what failed and is retried, and what is uncertain (interrupted mid-send).
+    CREATE TABLE IF NOT EXISTS custom_report_deliveries (
+      id SERIAL PRIMARY KEY,
+      report_id INTEGER NOT NULL REFERENCES saved_custom_reports(id) ON DELETE CASCADE,
+      slot TEXT NOT NULL,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      channel TEXT NOT NULL DEFAULT 'email',
+      status TEXT NOT NULL CHECK(status IN ('pending','sending','sent','failed','uncertain','skipped')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT,
+      attempted_at TEXT,
+      sent_at TEXT,
+      last_error TEXT,
+      provider_response TEXT,
+      created_at TEXT DEFAULT ${NOW},
+      UNIQUE(report_id, slot, user_id, channel)
+    );
+    CREATE INDEX IF NOT EXISTS idx_custom_report_deliveries_due ON custom_report_deliveries(status, next_attempt_at);
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

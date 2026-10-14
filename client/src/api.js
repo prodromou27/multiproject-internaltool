@@ -385,6 +385,7 @@ export const api = {
   deleteSavedReport: (id,version) => req('DELETE',`/reports/custom/saved/${id}`,{ version }),
   savedReportSchedule: (id,options) => req('GET',`/reports/custom/saved/${id}/schedule`,undefined,options),
   updateSavedReportSchedule: (id,body) => req('PUT',`/reports/custom/saved/${id}/schedule`,body),
+  retrySavedReportDeliveries: id => req('POST',`/reports/custom/saved/${id}/schedule/retry`),
   customReportExport: async (definition,format = 'xlsx',title) => {
     const job=await req('POST','/reports/custom/exports',{ definition,format,...(title ? { title } : {}) });
     let status;

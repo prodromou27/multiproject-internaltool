@@ -115,7 +115,20 @@ router.get('/saved/:reportId/schedule',async (req,res) => {
     db.prepare(`SELECT u.id,u.name FROM users u WHERE u.role='manager' AND u.active=1 AND u.must_change_password=0 AND u.email IS NOT NULL AND u.email<>''${recipientWhere} ORDER BY u.name,u.id LIMIT 501`).all(...recipientParams),
   ]);
   if (recipients.length>500) return res.status(413).json({ error: 'Recipient directory exceeds 500 managers' });
-  res.json({ schedule: schedule ? { ...schedule,enabled: !!schedule.enabled,recipient_ids: JSON.parse(schedule.recipient_ids) } : null,recipients,visibility: report.visibility });
+  // The latest deliveries, one row per recipient and slot (customReportScheduler.js).
+  const deliveries = await db.prepare(`SELECT d.id,d.slot,d.user_id,u.name AS user_name,d.status,d.attempts,d.next_attempt_at,d.sent_at,d.last_error,d.provider_response
+    FROM custom_report_deliveries d LEFT JOIN users u ON u.id=d.user_id WHERE d.report_id=? ORDER BY d.slot DESC,u.name LIMIT 60`).all(report.id);
+  res.json({ schedule: schedule ? { ...schedule,enabled: !!schedule.enabled,recipient_ids: JSON.parse(schedule.recipient_ids) } : null,recipients,visibility: report.visibility,deliveries });
+});
+// Failed and uncertain deliveries go again on the scheduler's next poll (within a minute).
+router.post('/saved/:reportId/schedule/retry',async (req,res) => {
+  const report = await visible(req,res);
+  if (!report) return;
+  if (report.owner_id!==req.user.id) return res.status(403).json({ error: 'Only the report owner can manage delivery' });
+  const retried = await require('../customReportScheduler').retryFailed(db,report.id);
+  if (!retried.length) return res.status(409).json({ error: 'There are no failed deliveries to retry.',code: 'NOTHING_TO_RETRY' });
+  await logAudit(db,req,'custom_report',report.id,report.name,'delivery_retried',`${retried.length} deliver${retried.length===1 ? 'y' : 'ies'}: user ${retried.map(row => row.user_id).join(', ')}`);
+  res.json({ retried: retried.length });
 });
 router.put('/saved/:reportId/schedule',async (req,res) => {
   const report = await visible(req,res);

@@ -70,3 +70,33 @@ test('a grouped report is charted: bars, horizontal bars, line or pie, of a chos
   await expect(chart).toContainText('count id by Status');
   await expect(page.getByRole('cell', { name: 'in_progress' })).toBeVisible();
 });
+
+test('the delivery schedule shows who the latest report reached and retries the rest', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/reports/custom/sources', () => ({ body: { sources, lookups: {}, templates: { as_of: '2026-10-07', rows: [] }, share_users: [], share_teams: [], preview_limit: 100, export_limit: 5000 } }));
+  api.override('GET /api/reports/custom/saved', () => ({ body: { rows: [{ id: 5, name: 'Weekly tasks', visibility: 'shared' }], total: 1, page: 1, page_size: 25 } }));
+  api.override('GET /api/reports/custom/saved/5', () => ({ body: { id: 5, name: 'Weekly tasks', visibility: 'shared', owner_id: 1, can_edit: true, version: 1, definition: { source: 'tasks', fields: ['id'] } } }));
+  const slot = '2026-10-12T09:00:00.000Z';
+  let deliveries = [
+    { id: 1, slot, user_name: 'Ana Recipient', status: 'sent', attempts: 1 },
+    { id: 2, slot, user_name: 'Ben Recipient', status: 'failed', attempts: 3, last_error: 'The mail server could not be reached. Gave up after 3 attempts.' },
+    { id: 3, slot, user_name: 'Cy Recipient', status: 'uncertain', attempts: 1, last_error: 'The connection dropped while the email was being handed over; it may have arrived.' },
+  ];
+  api.override('GET /api/reports/custom/saved/5/schedule', () => ({ body: { schedule: { frequency: 'weekly', day: 1, hour: 9, minute: 0, enabled: true, recipient_ids: [], version: 2, last_run: slot, last_status: 'partial' }, recipients: [], visibility: 'shared', deliveries } }));
+  let retried = 0;
+  api.override('POST /api/reports/custom/saved/5/schedule/retry', () => { retried++; deliveries = deliveries.map(row => (row.status === 'sent' ? row : { ...row, status: 'pending', attempts: 0, last_error: null })); return { body: { retried: 2 } }; });
+
+  await page.goto('/reports?view=builder');
+  await page.getByRole('button', { name: /Weekly tasks/ }).click();
+  await page.getByRole('button', { name: 'Delivery schedule' }).click();
+  const recent = page.getByRole('region', { name: 'Recent deliveries' });
+  await expect(recent.getByText('Ana Recipient: Sent')).toBeVisible();
+  await expect(recent.getByText(/Ben Recipient: Failed \(The mail server could not be reached/)).toBeVisible();
+  await expect(recent.getByText(/Cy Recipient: Uncertain: may have arrived/)).toBeVisible();
+  await expect(recent.getByText(/retrying can send it twice/)).toBeVisible();
+  await recent.getByRole('button', { name: 'Retry failed deliveries (2)' }).click();
+  await expect(recent.getByRole('status')).toHaveText('2 deliveries queued; they go out within a minute.');
+  expect(retried).toBe(1);
+  await expect(recent.getByText('Ben Recipient: Queued')).toBeVisible();
+  await expect(recent.getByRole('button', { name: /Retry failed deliveries/ })).toHaveCount(0);
+});
