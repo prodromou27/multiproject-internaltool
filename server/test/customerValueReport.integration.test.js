@@ -109,4 +109,21 @@ test('the company Word template gets the report title, and its sections follow t
   assert.doesNotMatch(xml, /OPEN-TICKETS-SECTION/, 'open tickets follow the Tickets part');
   const withTickets = await download('docx', { from: appTime.addDays(today, -5), to: today, sections: ['tickets'] });
   assert.match(new PizZip(Buffer.from(await withTickets.arrayBuffer())).file('word/document.xml').asText(), /OPEN-TICKETS-SECTION/);
+
+  // The PDF is the same filled Word document, turned into a PDF (LibreOffice in the image; stubbed here).
+  const router = require('../routes/managedCustomers');
+  let converted = null;
+  router._docxToPdf = async docx => { converted = docx; return Buffer.from('%PDF-1.7 from the Word template'); };
+  try {
+    const pdf = await download('pdf', { from: appTime.addDays(today, -5), to: today, sections: ['recommendations'], summary: 'Quiet month.' });
+    assert.equal(pdf.status, 200);
+    assert.equal(pdf.headers.get('content-type'), 'application/pdf');
+    assert.equal(Buffer.from(await pdf.arrayBuffer()).toString(), '%PDF-1.7 from the Word template');
+    assert.match(new PizZip(converted).file('word/document.xml').asText(), /RECOMMENDATIONS-SECTION/, 'the filled template was converted');
+    // Without LibreOffice the PDF says how to get one.
+    router._docxToPdf = async () => { throw Object.assign(new Error('PDFs from the Word template need LibreOffice on the server'), { status: 503 }); };
+    const missing = await download('pdf', { from: appTime.addDays(today, -5), to: today, sections: [] });
+    assert.equal(missing.status, 503);
+    assert.match((await missing.json()).error, /LibreOffice/);
+  } finally { delete router._docxToPdf; }
 });

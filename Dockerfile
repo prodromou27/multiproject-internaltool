@@ -20,6 +20,11 @@ WORKDIR /app/server
 # the same major version as the database (postgres:16 in docker-compose.yml).
 RUN apk add --no-cache postgresql16-client
 
+# LibreOffice (Writer only) turns a report made from the company's Word template
+# into a PDF, so the PDF looks like the Word file. Liberation and Carlito are
+# metric-compatible with Arial/Times New Roman and Calibri, so lines break as in Word.
+RUN apk add --no-cache libreoffice-writer font-liberation font-carlito font-dejavu
+
 # Install production deps only (better-sqlite3 is a devDependency used solely by
 # the one-off SQLite→Postgres migration script, so it is intentionally excluded).
 COPY server/package*.json ./

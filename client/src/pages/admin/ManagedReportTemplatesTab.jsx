@@ -38,8 +38,8 @@ function WordLayout({ template,onChanged }) {
   return <section className="word-layout" aria-labelledby="word-layout-title">
     <h3 id="word-layout-title" className="u-999b629">Word layout (optional)</h3>
     <p className="text-muted text-sm">{template.has_word_template
-      ? <><FileText size={13} aria-hidden="true" /> Word reports use <strong>{template.word_template_name}</strong>{template.word_template_uploaded_at ? `, uploaded ${template.word_template_uploaded_at.slice(0,10)}` : ''}. PDF reports use the wording above.</>
-      : 'Word and PDF reports use the wording above in the built-in layout. Upload your own .docx to use your own Word design.'}</p>
+      ? <><FileText size={13} aria-hidden="true" /> Word and PDF reports use <strong>{template.word_template_name}</strong>{template.word_template_uploaded_at ? `, uploaded ${template.word_template_uploaded_at.slice(0,10)}` : ''}; the PDF is the same document saved as PDF.</>
+      : 'Word and PDF reports use the wording above in the built-in layout. Upload your own .docx to use your own design for both.'}</p>
     {problem && <div className="error-msg word-layout-error" role="alert">{problem.message}{problem.details.length > 0 && <ul className="word-layout-problems">{problem.details.map(item => <li key={item}>{item}</li>)}</ul>}</div>}
     {note && <div className="alert alert-success">{note}</div>}
     <div className="flex gap-8 flex-wrap">
@@ -47,7 +47,7 @@ function WordLayout({ template,onChanged }) {
         <input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden disabled={!!busy}
           onChange={event => { const file=event.target.files?.[0];event.target.value='';if (file) upload(file); }} /></label>
       {template.has_word_template && <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => run('download',async () => saveBlob(await api.downloadManagedReportWordTemplate(template.id),template.word_template_name || 'template.docx'))}><Download size={13} aria-hidden="true" /> Download current</button>}
-      {template.has_word_template && <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => run('remove',async () => { onChanged(await api.removeManagedReportWordTemplate(template.id));setNote('Word reports use the built-in layout again.'); })}><Trash2 size={13} aria-hidden="true" /> Use built-in layout</button>}
+      {template.has_word_template && <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => run('remove',async () => { onChanged(await api.removeManagedReportWordTemplate(template.id));setNote('Reports use the built-in layout again.'); })}><Trash2 size={13} aria-hidden="true" /> Use built-in layout</button>}
       <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => run('starter',async () => saveBlob(await api.managedReportStarterTemplate(),'customer-report-template.docx'))}><Download size={13} aria-hidden="true" /> Starter template</button>
     </div>
     <details className="word-layout-reference" onToggle={event => { if (event.target.open && !reference) showReference(); }}>

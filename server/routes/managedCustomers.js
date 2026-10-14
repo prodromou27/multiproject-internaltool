@@ -218,8 +218,9 @@ router.post('/:id/customer-report.:format',requirePermission('managed_reports.ge
   const built=await valueRequest(req,res);if (!built) return;
   const { id,from,to,options,report }=built;
   try {
-    // The company's own Word layout, when one is uploaded (Settings → Customer report template).
-    const company=format==='docx' ? await valueReport.companyTemplate() : null;
+    // The company's own Word layout, when one is uploaded (Settings → Customer report template):
+    // the Word report is that document, and the PDF is the same document turned into a PDF.
+    const company=await valueReport.companyTemplate();
     const template=company?.word_template ? company : null;
     let buffer;
     if (template) {
@@ -230,6 +231,7 @@ router.post('/:id/customer-report.:format',requirePermission('managed_reports.ge
       const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives:{ executive_summary:options.summary,upcoming_activities:options.coming_next } });
       model.tasks_completed_count=report.figures.tasks_completed; // the same count as the preview and the PDF
       buffer=wordTemplates.render(Buffer.from(template.word_template,'base64'),{ ...wordTemplates.templateData(model,{ preparedBy:req.user.name }),report_title:report.wording.title });
+      if (format==='pdf') buffer=await (router._docxToPdf || require('../docxToPdf').docxToPdf)(buffer);
     } else buffer=format==='pdf' ? await valueReport.renderPdf(report) : await valueReport.renderWord(report);
     const filename=valueReport.fileName(report,format);
     const history=await reportHistory.archive({ customerId:id,templateId:template?.id || null,from,to,format,status:'draft',filename,sections:report.sections,userId:req.user.id,buffer });

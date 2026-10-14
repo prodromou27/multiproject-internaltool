@@ -182,3 +182,14 @@ jobs:
           docker build -t teamhub-ci .
           docker run --rm --entrypoint pg_dump teamhub-ci --version | tee /dev/stderr | grep -q "PostgreSQL) 16\."
           docker run --rm --entrypoint psql teamhub-ci --version | grep -q "PostgreSQL) 16\."
+
+      # Reports made from the company Word template download as PDF through LibreOffice.
+      - name: Check the image turns a Word report into a PDF
+        run: |
+          docker run --rm --entrypoint node teamhub-ci -e "
+            const { Document, Packer, Paragraph } = require('docx');
+            const { docxToPdf } = require('./docxToPdf');
+            Packer.toBuffer(new Document({ sections: [{ children: [new Paragraph('Report for Contoso')] }] }))
+              .then(docxToPdf)
+              .then(pdf => { if (pdf.subarray(0, 5).toString() !== '%PDF-') throw new Error('not a PDF'); console.log('PDF', pdf.length, 'bytes'); })
+              .catch(error => { console.error(error.message); process.exit(1); });"
