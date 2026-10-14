@@ -42,9 +42,9 @@ test('a project tab is in the address', async ({ page }) => {
   const api = await mockApi(page, { role: 'manager' });
   api.override('GET /api/projects/1', () => ({ body: { id: 1, title: 'Network refresh', status: 'in_progress', priority: 'high', members: [], updates: [], created_by: 1 } }));
   await page.goto('/projects/1?tab=members');
-  await expect(page.getByRole('button', { name: 'Members', exact: true })).toHaveClass(/active/);
-  await page.getByRole('button', { name: 'Updates', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Members', exact: true })).toHaveClass(/active/);
+  await page.getByRole('tab', { name: 'Updates', exact: true }).click();
   await expect(page).toHaveURL(/\/projects\/1\?tab=updates$/);
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Updates', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('tab', { name: 'Updates', exact: true })).toHaveClass(/active/);
 });
