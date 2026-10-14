@@ -51,8 +51,9 @@ function validateRecommendation(body, existing = {}) {
 }
 
 function validateTaskConversion(body, recommendationId) {
-  if (!positiveId(recommendationId) || !positiveId(body.version) || !positiveId(body.project_id) || !positiveId(body.assigned_to))
-    return { error: 'Valid recommendation version, project and assignee are required' };
+  // The project is optional: without one the task is the customer's own task.
+  if (!positiveId(recommendationId) || !positiveId(body.version) || !positiveId(body.assigned_to) || (body.project_id != null && body.project_id !== '' && !positiveId(body.project_id)))
+    return { error: 'Valid recommendation version and assignee are required' };
   if (typeof body.title !== 'string' || !body.title.trim() || body.title.trim().length > 500)
     return { error: 'Task title must contain 1 to 500 characters' };
   if (!TASK_PRIORITIES.has(body.priority ?? 'medium')) return { error: 'Invalid task priority' };
@@ -60,7 +61,7 @@ function validateTaskConversion(body, recommendationId) {
   return { value: {
     recommendation_id: Number(recommendationId),
     version: Number(body.version),
-    project_id: Number(body.project_id),
+    project_id: body.project_id ? Number(body.project_id) : null,
     assigned_to: Number(body.assigned_to),
     title: body.title.trim(),
     priority: body.priority ?? 'medium',

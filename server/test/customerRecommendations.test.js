@@ -129,3 +129,22 @@ test('listing supports pagination and status filtering, and rejects invalid filt
   assert.ok(Array.isArray(list.data.rows));
   assert.ok(list.data.rows.every(row => 'can_edit' in row));
 });
+
+test('a recommendation becomes the customer’s own task when no project is chosen', async () => {
+  const created = (await h.api(base(customer), { method: 'POST', token: manager.token, body: body({ finding: 'No project needed' }) })).data;
+  const result = await h.api(`${base(customer)}/${created.id}/convert-to-task`, { method: 'POST', token: manager.token, body: { title: 'Customer follow-up', assigned_to: authorizedEngineer.id, version: created.version } });
+  assert.equal(result.status, 201);
+  const task = await h.db.prepare('SELECT project_id, customer_id, assigned_to FROM tasks WHERE id = ?').get(result.data.task_id);
+  assert.deepEqual([task.project_id, Number(task.customer_id), Number(task.assigned_to)], [null, Number(customer), Number(authorizedEngineer.id)]);
+});
+
+test('management or the author can delete a recommendation; others cannot', async () => {
+  const byManager = (await h.api(base(customer), { method: 'POST', token: manager.token, body: body({ finding: 'Delete me' }) })).data;
+  assert.equal((await h.api(`${base(customer)}/${byManager.id}`, { method: 'DELETE', token: otherEngineer.token })).status, 403);
+  assert.equal((await h.api(`${base(customer)}/${byManager.id}`, { method: 'DELETE', token: authorizedEngineer.token })).status, 403, 'not the author');
+  assert.equal((await h.api(`${base(otherCustomer)}/${byManager.id}`, { method: 'DELETE', token: manager.token })).status, 404, 'only within its customer');
+  assert.equal((await h.api(`${base(customer)}/${byManager.id}`, { method: 'DELETE', token: manager.token })).status, 200);
+  assert.equal(await h.db.prepare('SELECT id FROM customer_recommendations WHERE id = ?').get(byManager.id), undefined);
+  const byEngineer = (await h.api(base(customer), { method: 'POST', token: authorizedEngineer.token, body: body({ finding: 'Mine', source_visit_id: visit }) })).data;
+  assert.equal((await h.api(`${base(customer)}/${byEngineer.id}`, { method: 'DELETE', token: authorizedEngineer.token })).status, 200, 'the author can');
+});

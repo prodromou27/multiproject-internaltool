@@ -10,7 +10,7 @@ import { mockApi } from './support/mockApi.js';
 // Current sections, then old names that now redirect.
 const SETTINGS_TABS = [
   'overview', 'users', 'teams', 'permissions', 'security', 'service_activity_tracking', 'statuses',
-  'managed_report_templates', 'weekly_report', 'notifications', 'ticketing', 'activity_bot',
+  'managed_report_templates', 'weekly_report', 'email', 'notifications', 'ticketing', 'activity_bot',
   'localization', 'audit_log', 'system_health', 'backups', 'sla', 'contract_types',
   'projects', 'maintenance', 'integrations', 'logging', 'admin_alerts', 'stats', 'activity',
   'deployment', 'export', 'system_update',

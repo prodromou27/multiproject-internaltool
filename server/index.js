@@ -202,6 +202,7 @@ app.use('/api/templates',      require('./routes/templates'));
 app.use('/api/workload',       require('./routes/workload'));
 app.use('/api/time-logs',      require('./routes/time-logs'));
 app.use('/api/notes',          require('./routes/notes'));
+app.use('/api/customer-responses', require('./routes/customerResponses'));
 app.use('/api/sla',            require('./routes/sla'));
 app.use('/api/report-settings', require('./routes/report-settings'));
 app.use('/api/statuses',       require('./routes/statuses'));

@@ -44,17 +44,17 @@ test('the menu shows every page a person can open, in a few groups', () => {
   assert.deepEqual(menu({ role: 'manager', permissions: {} }), [
     ['Home', ['dashboard', 'calendar', 'reminders']],
     ['Work', ['projects', 'tasks', 'visits', 'activities', 'approvals']],
-    ['Customers', ['customers', 'responses']],
+    ['Customers', ['customers']],
     ['Advisories', ['vulnerabilities', 'softwareVersions']],
     ['Team & performance', ['workload', 'skills', 'reports', 'kpiManagement', 'scorecards', 'sla']],
-    ['More', ['notes', 'settings']],
+    ['More', ['responses', 'notes', 'settings']],
   ]);
   assert.deepEqual(menu({ role: 'engineer', permissions: {} }), [
     ['Home', ['dashboard', 'myWork', 'calendar', 'reminders']],
     ['Work', ['projects', 'tasks', 'visits', 'activities']],
-    ['Customers', ['customers', 'responses']],
+    ['Customers', ['customers']],
     ['Advisories', ['vulnerabilities', 'softwareVersions']],
-    ['More', ['notes']],
+    ['More', ['responses', 'notes']],
   ]);
   // Every reachable page is in the menu, or lights up a parent that is.
   for (const role of ['manager', 'engineer', 'planner', 'pm']) {

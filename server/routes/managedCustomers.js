@@ -115,6 +115,8 @@ router.get('/:id/tickets',async (req,res) => {
     if (value!==undefined && (typeof value!=='string' || !value.trim() || value.length>(key==='search'?200:100))) return res.status(400).json({ error:`Invalid ${key}` });
     strings[key]=value?.trim();
   }
+  // group: every open (or closed) status at once, e.g. New, Open and Pending.
+  if (req.query.group!==undefined) { if (!['open','closed'].includes(req.query.group)) return res.status(400).json({ error:'Invalid group' });strings.group=req.query.group; }
   const from=req.query.from,to=req.query.to;
   if ((from!==undefined && !validCalendarDay(from)) || (to!==undefined && !validCalendarDay(to)) || (from && to && from>to)) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
   const result=await service.listTickets(id,{ ...strings,from,to,page,pageSize,offset:(page-1)*pageSize });

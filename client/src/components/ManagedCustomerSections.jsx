@@ -59,7 +59,7 @@ function TicketFilters({ filters,setFilters,facets }) {
   const change=(key,value) => setFilters(current => ({ ...current,[key]:value,page:1 }));
   return <div className="card filter-bar u-87c136d">
     <input value={filters.search} onChange={event => change('search',event.target.value)} placeholder="Search ticket number or subject..." aria-label="Search tickets" className="u-bec7b1d" />
-    <select value={filters.status} onChange={event => change('status',event.target.value)} aria-label="Ticket status"><option value="">All statuses</option>{facets.statuses.map(value => <option key={value}>{value}</option>)}</select>
+    <select value={filters.group==='open' && !filters.status ? '@open' : filters.status} onChange={event => { const value=event.target.value;setFilters(old => ({ ...old,status:value==='@open' ? '' : value,group:value==='@open' ? 'open' : '',page:1 })); }} aria-label="Ticket status"><option value="@open">Open tickets</option><option value="">All statuses</option>{facets.statuses.map(value => <option key={value}>{value}</option>)}</select>
     <select value={filters.priority} onChange={event => change('priority',event.target.value)} aria-label="Ticket priority"><option value="">All priorities</option>{facets.priorities.map(value => <option key={value}>{value}</option>)}</select>
     <select value={filters.owner} onChange={event => change('owner',event.target.value)} aria-label="Ticket owner"><option value="">All owners</option>{facets.owners.map(value => <option key={value}>{value}</option>)}</select>
     <label className="text-sm">Created from <input type="date" value={filters.from} onChange={event => change('from',event.target.value)} /></label>
@@ -85,7 +85,8 @@ function TicketAnalytics({ id,range,refresh }) {
 }
 
 function TicketList({ id,refresh }) {
-  const [filters,setFilters]=useState({ search:'',status:'',priority:'',owner:'',from:'',to:'',page:1 });
+  // Open tickets first: the filter starts on "Open tickets" (every open status).
+  const [filters,setFilters]=useState({ search:'',status:'',group:'open',priority:'',owner:'',from:'',to:'',page:1 });
   const [data,setData]=useState({ rows:[],total:0,page:1,page_size:25,facets:{ statuses:[],priorities:[],owners:[] } });
   const [loading,setLoading]=useState(true),[error,setError]=useState('');
   useEffect(() => {

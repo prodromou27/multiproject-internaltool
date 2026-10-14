@@ -1,4 +1,4 @@
-// Security review fixes: email changes, two-factor, avatars, log export (F06, F07, F08, F12, F13, F17).
+// Account security (review F06, F07, F08, F12, F13, F17) and manager-edited Customer Responses.
 // A field key, so seeds are stored encrypted as in production.
 process.env.CUSTOMER_FIELD_KEY = process.env.CUSTOMER_FIELD_KEY || 'b'.repeat(64);
 const speakeasy = require('speakeasy');
@@ -163,4 +163,22 @@ test('the activity log export is CSV that a spreadsheet cannot run or split', as
   assert.ok(!csv.startsWith('#'), 'no comment lines');
   assert.ok(csv.includes(`"'=1+1"`), 'a formula is neutralised');
   assert.ok(csv.includes(`"' \t@SUM(1)\n2026-01-01,forged,row,""x"""`), 'line breaks and quotes stay inside one quoted cell');
+});
+
+test('customer responses: everyone reads them; managers add, change and remove them', async () => {
+  const { ids } = require('./lib/activityFixture');
+  const first = await api('/api/customer-responses', { token: ids.tokenEnabled });
+  assert.equal(first.status, 200);
+  assert.ok(first.data.rows.some(row => row.title === 'Closing Ticket'), 'the built-in texts to start with');
+  assert.equal(first.data.can_edit, false);
+  assert.equal((await api('/api/customer-responses', { method: 'POST', token: ids.tokenEnabled, body: { title: 'x', body: 'y' } })).status, 403);
+  assert.equal((await api('/api/customer-responses', { method: 'POST', token: ids.tokenManager, body: { title: '', body: 'y' } })).status, 400);
+  assert.equal((await api('/api/customer-responses', { method: 'POST', token: ids.tokenManager, body: { title: 'x', body: 'y', tone: 'pink' } })).status, 400);
+  const added = await api('/api/customer-responses', { method: 'POST', token: ids.tokenManager, body: { title: 'Maintenance window', body: 'Dear customer,\nwe will…', tone: 'info' } });
+  assert.equal(added.status, 201);
+  const changed = await api(`/api/customer-responses/${added.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { title: 'Maintenance window notice', body: 'Dear customer', tone: 'warning' } });
+  assert.equal(changed.data.title, 'Maintenance window notice');
+  assert.equal((await api('/api/customer-responses/closing', { method: 'DELETE', token: ids.tokenManager })).status, 200, 'a built-in one can go too');
+  const titles = (await api('/api/customer-responses', { token: ids.tokenEnabled })).data.rows.map(row => row.title);
+  assert.ok(titles.includes('Maintenance window notice') && !titles.includes('Closing Ticket'));
 });

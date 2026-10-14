@@ -1,13 +1,14 @@
+// One tab order for everyone (each person sees the tabs they may open).
 export const CUSTOMER_360_SECTIONS=Object.freeze([
   { id:'overview',label:'Overview',roles:['manager','engineer'] },
   { id:'activities',label:'Service Activities',roles:['manager','engineer','planner'] },
+  { id:'tasks',label:'Tasks',roles:['manager','engineer'] },
   { id:'tickets',label:'Tickets',roles:['manager'],tickets:true },
   { id:'projects',label:'Projects',roles:['manager','engineer','planner'] },
-  { id:'tasks',label:'Tasks',roles:['manager','engineer'] },
-  { id:'maintenance-visits',label:'Maintenance Visits',roles:['manager','engineer','planner'] },
   { id:'recommendations',label:'Recommendations',roles:['manager','engineer','planner'] },
   { id:'assets',label:'Assets',roles:['manager'] },
   { id:'contracts',label:'Contracts',roles:['manager','engineer','planner'] },
+  { id:'maintenance-visits',label:'Maintenance Visits',roles:['manager','engineer','planner'] },
   { id:'reports',label:'Reports',roles:['manager'],managed:true },
   { id:'timeline',label:'Timeline',roles:['manager','engineer','planner'] },
   { id:'service-configuration',label:'Service Configuration',roles:['manager'] },
@@ -25,15 +26,8 @@ export function customer360Sections(user,capabilities={},assetsGrant=false,manag
   const ticketsAllowed=(managedCustomer===true || hasTickets===true) && permitted(user,'managed_customers.view');
   const available=CUSTOMER_360_SECTIONS.filter(section => !section.pending && (section.tickets ? ticketsAllowed && section.roles.includes(user?.role) : section.managed ? managedAllowed && section.roles.includes(user?.role) : section.id==='assets' ? assetAllowed : section.roles.includes(user?.role)));
   // Managed customers do not have maintenance visits.
-  if (managedCustomer===true || noVisits===true) available.splice(0,available.length,...available.filter(section => section.id!=='maintenance-visits'));
-  if (user?.role!=='engineer' || (capabilities.managedServiceOperations===undefined && capabilities.projectDelivery===undefined)) return available;
-  const managed=capabilities.managedServiceOperations===true;
-  const delivery=capabilities.projectDelivery===true;
-  if (!managed && !delivery) return available;
-  const order=managed
-    ? delivery ? ['overview','activities','projects','tasks','maintenance-visits','recommendations','assets','contracts','timeline'] : ['overview','tasks','assets','maintenance-visits','recommendations','contracts','activities','timeline','projects']
-    : ['overview','projects','tasks','maintenance-visits','recommendations','assets','activities','contracts','timeline'];
-  return order.map(id => available.find(section => section.id===id)).filter(Boolean);
+  if (managedCustomer===true || noVisits===true) return available.filter(section => section.id!=='maintenance-visits');
+  return available;
 }
 
 export function customer360Section(user,requested,capabilities={},assetsGrant=false,managedCustomer=false,hasTickets=false,noVisits=false) {

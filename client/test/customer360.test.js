@@ -24,10 +24,12 @@ test('Customer 360 accepts available deep links and safely rejects unavailable s
   assert.equal(customer360Section({ role:'engineer' },'not-real'),'overview');
   assert.equal(customer360Sections({ role:'engineer' }).some(section => section.id==='service-configuration'),false);
   assert.equal(customer360Sections({ role:'manager' }).some(section => section.id==='service-configuration'),true);
-  assert.deepEqual(customer360Sections({ role:'engineer' },{ managedServiceOperations:true,projectDelivery:false }).map(section => section.id),
-    ['overview','tasks','maintenance-visits','recommendations','contracts','activities','timeline','projects']);
-  assert.deepEqual(customer360Sections({ role:'engineer' },{ managedServiceOperations:false,projectDelivery:true }).map(section => section.id),
-    ['overview','projects','tasks','maintenance-visits','recommendations','activities','contracts','timeline']);
+  // One order for everyone, whatever their team does.
+  for (const capabilities of [{ managedServiceOperations:true,projectDelivery:false },{ managedServiceOperations:false,projectDelivery:true }])
+    assert.deepEqual(customer360Sections({ role:'engineer' },capabilities).map(section => section.id),
+      ['overview','activities','tasks','projects','recommendations','contracts','maintenance-visits','timeline']);
+  assert.deepEqual(customer360Sections({ role:'manager' },{},false,true).map(section => section.id),
+    ['overview','activities','tasks','tickets','projects','recommendations','assets','contracts','reports','timeline','service-configuration']);
   for (const capabilities of [{ managedServiceOperations:false,projectDelivery:true },{ managedServiceOperations:true,projectDelivery:true },{ managedServiceOperations:false,projectDelivery:false }])
     assert.equal(customer360Section({ role:'engineer' },null,capabilities),'overview');
 });
@@ -61,8 +63,7 @@ test('an engineer who works with the customer gets the Assets tab only when the 
   const ids = (grant, capabilities = {}) => customer360Sections(engineer, capabilities, grant).map(section => section.id);
   assert.equal(ids(false).includes('assets'), false);
   assert.equal(ids(true).includes('assets'), true);
-  // Also present in the managed-services ordering, next to the tasks.
-  assert.deepEqual(ids(true, { managedServiceOperations: true }).slice(0, 4), ['overview', 'tasks', 'assets', 'maintenance-visits']);
+  assert.ok(ids(true, { managedServiceOperations: true }).includes('assets'));
   assert.equal(ids(false, { managedServiceOperations: true }).includes('assets'), false);
   // A deep link to Assets falls back to a safe tab without the grant, and works with it.
   assert.equal(customer360Section(engineer, 'assets', {}, false) === 'assets', false);

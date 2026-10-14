@@ -123,25 +123,41 @@ router.post('/:recommendationId/convert-to-task',async (req,res) => {
   const body=req.body || {};
   const input=validateTaskConversion(body,req.params.recommendationId);
   if (input.error) return res.status(400).json({ error:input.error });
-  const value=input.value,customer=Number(req.params.id),id=value.recommendation_id,project=await db.prepare('SELECT id FROM projects WHERE id=? AND customer_id=?').get(value.project_id,customer);
-  if (!project) return res.status(400).json({ error:'Project must belong to this customer' });
+  const value=input.value,customer=Number(req.params.id),id=value.recommendation_id;
+  const project=value.project_id ? await db.prepare('SELECT id FROM projects WHERE id=? AND customer_id=?').get(value.project_id,customer) : null;
+  if (value.project_id && !project) return res.status(400).json({ error:'Project must belong to this customer' });
   const assignee=await db.prepare("SELECT id FROM users WHERE id=? AND active=1 AND role='engineer'").get(value.assigned_to);
   if (!assignee || (req.user.role==='engineer' && value.assigned_to!==req.user.id)) return res.status(400).json({ error:'Assignee must be an eligible active engineer' });
-  if (req.user.role==='engineer' && !await db.prepare('SELECT 1 FROM project_assignments WHERE project_id=? AND user_id=?').get(project.id,req.user.id)) return res.status(403).json({ error:'Engineers can only create tasks in assigned projects' });
+  if (project && req.user.role==='engineer' && !await db.prepare('SELECT 1 FROM project_assignments WHERE project_id=? AND user_id=?').get(project.id,req.user.id)) return res.status(403).json({ error:'Engineers can only create tasks in assigned projects' });
   const existing=await db.prepare('SELECT * FROM customer_recommendations WHERE id=? AND customer_id=?').get(id,customer);
   if (!existing) return res.status(404).json({ error:'Recommendation not found' });
   if (!canEdit(req.user,existing)) return res.status(403).json({ error:'Only management or the recommendation author can convert it' });
   const result=await db.transaction(async tx => {
     const row=(await tx.prepare('UPDATE customer_recommendations SET version=version+1 WHERE id=? AND customer_id=? AND version=? AND related_project_id IS NULL AND related_task_id IS NULL RETURNING *').all(id,customer,value.version))[0];
     if (!row) return null;
-    const task=await tx.prepare("INSERT INTO tasks (project_id,title,description,status,priority,assigned_to,deadline,is_adhoc,created_by) VALUES (?,?,?,'open',?,?,?,0,?)").run(project.id,value.title,`${row.finding}\n\nRecommendation: ${row.recommendation}`,value.priority,value.assigned_to,value.deadline || row.due_date || null,req.user.id);
+    const task=await tx.prepare("INSERT INTO tasks (project_id,customer_id,title,description,status,priority,assigned_to,deadline,is_adhoc,created_by) VALUES (?,?,?,?,'open',?,?,?,0,?)").run(project?.id ?? null,project ? null : customer,value.title,`${row.finding}\n\nRecommendation: ${row.recommendation}`,value.priority,value.assigned_to,value.deadline || row.due_date || null,req.user.id);
     const converted=(await tx.prepare("UPDATE customer_recommendations SET related_task_id=?,status='implemented',updated_at=app_now() WHERE id=? RETURNING *").all(task.lastInsertRowid,id))[0];
     await history(tx,req,converted,'converted_to_task');
-    await tx.prepare('INSERT INTO project_activity (project_id,user_id,action,detail) VALUES (?,?,?,?)').run(project.id,req.user.id,'task_created',`Task ${task.lastInsertRowid} converted from recommendation ${id}`);
+    if (project) await tx.prepare('INSERT INTO project_activity (project_id,user_id,action,detail) VALUES (?,?,?,?)').run(project.id,req.user.id,'task_created',`Task ${task.lastInsertRowid} converted from recommendation ${id}`);
     return { recommendation:converted,task_id:task.lastInsertRowid };
   });
   if (!result) return conflict(res);
   res.status(201).json(result);
+});
+
+// Management or the author can delete a recommendation. Its history goes with it;
+// a project or task made from it stays. The deletion is in the audit log.
+router.delete('/:recommendationId',async (req,res) => {
+  if (!positiveId(req.params.recommendationId)) return res.status(400).json({ error:'Invalid recommendation ID' });
+  const customer=Number(req.params.id),id=Number(req.params.recommendationId);
+  const existing=await db.prepare('SELECT * FROM customer_recommendations WHERE id=? AND customer_id=?').get(id,customer);
+  if (!existing) return res.status(404).json({ error:'Recommendation not found' });
+  if (!canEdit(req.user,existing)) return res.status(403).json({ error:'Only management or the recommendation author can delete it' });
+  await db.transaction(async tx => {
+    await tx.prepare('DELETE FROM customer_recommendations WHERE id=? AND customer_id=?').run(id,customer);
+    await logAudit(tx,req,'recommendation',id,'Customer recommendation','deleted',`customer_id=${customer}; finding=${String(existing.finding).slice(0,200)}`);
+  });
+  res.json({ ok:true });
 });
 
 router.use((error, req, res, next) => {

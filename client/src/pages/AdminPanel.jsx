@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer, FileSignature } from 'lucide-react';
+import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer, FileSignature, AtSign } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -8,6 +8,7 @@ import { UsersTab } from './admin/UsersTab';
 import { OverviewTab } from './admin/OverviewTab';
 import { IntegrationsTab } from './admin/IntegrationsTab';
 import { WeeklyReportTab } from './admin/WeeklyReportTab';
+import { EmailSettingsTab } from './admin/EmailSettingsTab';
 import { StatusManagementTab } from './admin/StatusManagementTab';
 import { LocalizationTab } from './admin/LocalizationTab';
 import { AdminAlertsTab } from './admin/AlertsLoggingTab';
@@ -38,6 +39,7 @@ const TABS = [
   { key: 'project_templates', label: 'Project templates', Icon: FolderKanban, group: 'work', desc: 'Reusable project structures with their default tasks' },
   { key: 'managed_report_templates', label: 'Customer report template', Icon: FileSpreadsheet, group: 'work', desc: 'The company template for the reports we send to customers: wording, colour, default sections and Word layout' },
   { key: 'weekly_report',  label: 'Weekly report',      Icon: ScrollText,      group: 'work',     desc: 'When the weekly report is sent, to whom, and a preview' },
+  { key: 'email',          label: 'Email (SMTP)',       Icon: AtSign,          group: 'connections', desc: 'The mail server for every email the app sends: reports, reminders, password resets' },
   { key: 'notifications',  label: 'Notifications',      Icon: Bell,            group: 'connections', desc: 'The shared Teams channel and Webex space, which events they receive, and alerts about the system' },
   { key: 'ticketing',      label: 'Ticketing',          Icon: Building2,       group: 'connections', desc: 'Request Tracker connection, customer queues, status mapping and sync health' },
   { key: 'activity_bot',   label: 'Activity bot',       Icon: Bot,             group: 'connections', desc: 'Engineers log service activities by chatting with a Webex or Teams bot' },
@@ -212,6 +214,7 @@ export default function AdminPanel() {
           {tab === 'notifications' && <><IntegrationsTab /><h3 className="settings-subheading">Alerts about the system</h3><AdminAlertsTab /></>}
           {tab === 'activity_bot'  && <ActivityBotSettings sectionStyle={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 }} />}
           {tab === 'weekly_report' && <WeeklyReportTab />}
+          {tab === 'email' && <EmailSettingsTab />}
           {tab === 'localization'  && <LocalizationTab />}
           {tab === 'audit_log'     && <AuditLogTab />}
           {tab === 'security'      && <><SsoSettings /><SecurityTab /></>}

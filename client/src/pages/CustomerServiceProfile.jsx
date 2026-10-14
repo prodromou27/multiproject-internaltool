@@ -7,6 +7,7 @@ import { fmtDate, sentenceCase } from '../components/Shared';
 import { ToneBadge } from '../components/EnterpriseUI';
 import CustomerOverview from '../components/CustomerOverview';
 import CustomerRecommendations from '../components/CustomerRecommendations';
+import { EditCustomerDialog } from './Customers';
 import CustomerAssets from '../components/CustomerAssets';
 import ManagedCustomerConfiguration from '../components/ManagedCustomerConfiguration';
 import { CustomerReports,CustomerTickets } from '../components/ManagedCustomerSections';
@@ -67,7 +68,7 @@ function HealthRing({ health }) {
   </details>;
 }
 
-function CustomerHeader({ customer,operations,operationsError,user,saAccess,onRecommendation,onReminder,onSelectTab }) {
+function CustomerHeader({ customer,operations,operationsError,user,saAccess,onRecommendation,onReminder,onSelectTab,onEdit }) {
   const contact=customer.contact_name || customer.primary_contact;
   const managed=operations?.managed;
   const health=user.role==='manager' ? customerHealth(operations) : null;
@@ -83,7 +84,7 @@ function CustomerHeader({ customer,operations,operationsError,user,saAccess,onRe
       </div>
       <HeaderFigures data={operations} error={operationsError} onSelectTab={onSelectTab} />
     </div>
-    <div className="cs-header-actions">{health && <HealthRing health={health} />}<QuickAdd customer={customer} user={user} saAccess={saAccess} managed={managedCustomerState(operations)} onRecommendation={onRecommendation} onReminder={onReminder} /></div>
+    <div className="cs-header-actions">{health && <HealthRing health={health} />}{onEdit && <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit}>Edit details</button>}<QuickAdd customer={customer} user={user} saAccess={saAccess} managed={managedCustomerState(operations)} onRecommendation={onRecommendation} onReminder={onReminder} /></div>
   </header>;
 }
 
@@ -134,6 +135,7 @@ export default function CustomerServiceProfile() {
   const { user,saAccess }=useAuth(),{ id }=useParams(),location=useLocation(),navigate=useNavigate();
   const query=new URLSearchParams(location.search),source=query.get('source_visit');
   const sourceVisitId=source && /^[1-9]\d*$/.test(source) && Number.isSafeInteger(Number(source)) ? Number(source) : null;
+  const [editingCustomer,setEditingCustomer]=useState(false);
   const [customer,setCustomer]=useState(null),[operations,setOperations]=useState(null),[operationsError,setOperationsError]=useState(''),[profileError,setProfileError]=useState(''),[retry,setRetry]=useState(0);
   const assetsGrant=operations?.assets_access==='team'; // engineer on a managed-services team serving this customer
   const managedCustomer=['active','sync_attention','setup_required'].includes(operations?.managed?.state); // adds Tickets and Reports
@@ -157,7 +159,8 @@ export default function CustomerServiceProfile() {
   const tabCounts={ tasks:operations?.tasks?.open,tickets:operations?.managed?.open_tickets,recommendations:operations?.recommendations?.open,projects:operations?.projects?.active,assets:operations?.assets };
   const assetAccess=Object.prototype.hasOwnProperty.call(user.permissions || {},'assets.access') ? user.permissions['assets.access']===true : user.role==='manager';
   return <div className="page cs-page"><Link to={user.role==='manager'?'/customers':'/'} className="cs-back"><ArrowLeft size={12} /> {user.role==='manager'?'Back to Customers':'Back to Dashboard'}</Link>
-    <CustomerHeader customer={customer} operations={operations} operationsError={operationsError} user={user} saAccess={saAccess} onRecommendation={() => selectTab('recommendations',null,true)} onReminder={() => setAddingReminder(true)} onSelectTab={selectTab} />
+    <CustomerHeader customer={customer} operations={operations} operationsError={operationsError} user={user} saAccess={saAccess} onRecommendation={() => selectTab('recommendations',null,true)} onReminder={() => setAddingReminder(true)} onSelectTab={selectTab} onEdit={['manager','planner'].includes(user.role) ? () => setEditingCustomer(true) : null} />
+    {editingCustomer && <EditCustomerDialog customer={customer} onClose={() => setEditingCustomer(false)} onSaved={() => setRetry(value => value+1)} />}
     {/* The customer's reminders (renewals and other dates the team must not miss): on the Overview, or while adding one. */}
     {(tab==='overview' || addingReminder) && <CustomerReminders key={`reminders-${customer.id}`} customer={customer} adding={addingReminder} onAddingChange={setAddingReminder} />}
     <div className="cs-tabs"><div className="tabs" role="tablist" aria-label="Customer 360 sections">{sections.map((section,index) => <button key={section.id} id={`customer-tab-${section.id}`} type="button" className={`tab${tab===section.id?' active':''}`} role="tab" aria-selected={tab===section.id} aria-controls="customer-360-panel" tabIndex={tab===section.id?0:-1} onKeyDown={event => moveTab(event,index)} onClick={() => selectTab(section.id)}>{section.label}{tabCounts[section.id] > 0 && <span className="cs-tab-count" aria-hidden="true">{tabCounts[section.id]}</span>}</button>)}</div>

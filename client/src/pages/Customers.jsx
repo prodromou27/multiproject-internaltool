@@ -13,6 +13,34 @@ import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { useLiveRefresh } from '../live';
 
+/* Customer 360 → Edit details: the same form as on Customers, for one customer. */
+export function EditCustomerDialog({ customer, onSaved, onClose }) {
+  const { user } = useAuth();
+  const toast = useToast();
+  const isManager = user?.role === 'manager';
+  const [initial, setInitial] = useState(null), [teams, setTeams] = useState([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([
+      isManager ? api.teams({ signal: controller.signal }).catch(() => []) : [],
+      isManager ? api.customerTeams(customer.id).catch(() => []) : [],
+    ]).then(([allTeams, customerTeams]) => {
+      if (controller.signal.aborted) return;
+      setTeams(allTeams);
+      setInitial({ ...customer, ...(isManager ? { team_ids: customerTeams.map(team => team.id) } : {}) });
+    });
+    return () => controller.abort();
+  }, [customer, isManager]);
+  if (!initial) return null;
+  return <Modal title="Edit Customer" onClose={onClose}>
+    <CustomerForm initial={initial} teams={isManager ? teams : null}
+      onSave={async data => { await api.updateCustomer(customer.id, data); toast.success('Customer updated'); return customer.id; }}
+      onSaveTeams={isManager ? async (id, teamIds) => { await api.setCustomerTeams(id, teamIds); } : null}
+      onCreateTeam={isManager ? async name => { const created = await api.createTeam({ name, service_activity_enabled: false }); setTeams(current => [...current, { id: created.id, name }]); return created.id; } : null}
+      onClose={() => { onSaved(); onClose(); }} />
+  </Modal>;
+}
+
 function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClose }) {
   const toast = useToast();
   const [form, setForm] = useState(() => initial ? { ...initial, is_internal: !!initial.is_internal } : {

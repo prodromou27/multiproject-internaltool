@@ -128,5 +128,11 @@ test.describe('managed customer reporting periods use the local calendar day', (
     await page.getByRole('button', { name: 'Today' }).click();
     await expect.poll(() => analytics().at(-1).get('from')).toBe('2026-10-04');
     expect(analytics().at(-1).get('to')).toBe('2026-10-04');
+    // The ticket list starts on the open tickets; "All statuses" shows the rest.
+    const lists = () => api.calls.filter(c => c.path === '/api/managed-customers/12/tickets').map(c => new URLSearchParams(c.query));
+    await expect(page.getByLabel('Ticket status')).toHaveValue('@open');
+    await expect.poll(() => lists().at(-1)?.get('group')).toBe('open');
+    await page.getByLabel('Ticket status').selectOption('');
+    await expect.poll(() => lists().at(-1)?.get('group')).toBe(null);
   });
 });
