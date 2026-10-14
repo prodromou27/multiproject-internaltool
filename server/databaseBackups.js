@@ -49,7 +49,17 @@ function connection(databaseOverride) {
     PGHOST: url.hostname, PGPORT: url.port || '5432', PGUSER: decodeURIComponent(url.username), PGPASSWORD: decodeURIComponent(url.password),
     PGDATABASE: databaseOverride || decodeURIComponent(url.pathname.slice(1)),
     ...(url.searchParams.get('sslmode') ? { PGSSLMODE: url.searchParams.get('sslmode') } : {}),
+    ...(url.searchParams.get('sslrootcert') ? { PGSSLROOTCERT: url.searchParams.get('sslrootcert') } : {}),
   };
+}
+
+/** The node-postgres TLS options for an sslmode, as libpq applies it: verify-ca checks
+ *  the certificate chain, verify-full also the host name; require/prefer encrypt only. */
+function nodeSsl({ PGSSLMODE: mode, PGSSLROOTCERT: rootCert = process.env.PGSSLROOTCERT } = {}) {
+  if (!mode || mode === 'disable') return undefined;
+  if (mode !== 'verify-ca' && mode !== 'verify-full') return { rejectUnauthorized: false };
+  const ca = rootCert && fs.existsSync(rootCert) ? fs.readFileSync(rootCert, 'utf8') : undefined;
+  return { rejectUnauthorized: true, ...(ca ? { ca } : {}), ...(mode === 'verify-ca' ? { checkServerIdentity: () => undefined } : {}) };
 }
 const tool = name => (process.env.PG_BIN_DIR ? path.join(process.env.PG_BIN_DIR, name) : name);
 
@@ -158,7 +168,7 @@ async function verify(file, store = db) {
   const temp = `teamhub_verify_${Date.now()}`;
   const admin = connection('postgres');
   const { Client } = require('pg');
-  const client = new Client({ host: admin.PGHOST, port: Number(admin.PGPORT), user: admin.PGUSER, password: admin.PGPASSWORD, database: 'postgres', ssl: admin.PGSSLMODE && admin.PGSSLMODE !== 'disable' ? { rejectUnauthorized: false } : undefined });
+  const client = new Client({ host: admin.PGHOST, port: Number(admin.PGPORT), user: admin.PGUSER, password: admin.PGPASSWORD, database: 'postgres', ssl: nodeSsl(admin) });
   await client.connect();
   const meta = readMeta(file);
   try {
@@ -216,24 +226,47 @@ async function restore(file, { userName = null, withFiles = true } = {}, store =
     const body = fs.createReadStream(source).pipe(zlib.createGunzip());
     async function* both() { for await (const chunk of prefix) yield chunk; for await (const chunk of body) yield chunk; }
     await run('psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '--single-transaction', '-f', '-'], { env, input: require('stream').Readable.from(both()) });
-    if (staging) swapUploads(staging);
-    const at = new Date().toISOString();
-    await recordSetting('last_restore', { completed_at: at, file, safety_backup: safety.file, by: userName, files_restored: !!staging }, store).catch(() => {});
-    await recordSetting('last_backup_status', { completed_at: safety.created_at, file: safety.file, size_bytes: safety.size_bytes, kind: safety.kind }, store).catch(() => {});
-    exitAfterRestore();
-    return { restored: file, safety_backup: safety.file, files_restored: !!staging, restarting: true };
   } catch (error) {
     restoring = false;
     if (staging) fs.rmSync(staging, { recursive: true, force: true });
     throw Object.assign(new Error(`The restore did not complete, and the database was left as it was. ${error.message}`), { status: 500 });
   }
+  // The database is now the backup's: from here on the app restarts whatever happens.
+  let filesError = null;
+  if (staging) {
+    try { swapUploads(staging); }
+    catch (error) { filesError = error; fs.rmSync(staging, { recursive: true, force: true }); console.error('[restore] the uploaded files were not replaced:', error.message); }
+  }
+  try {
+    const at = new Date().toISOString();
+    await recordSetting('last_restore', { completed_at: at, file, safety_backup: safety.file, by: userName, files_restored: !!staging && !filesError, ...(filesError ? { files_error: filesError.message } : {}) }, store).catch(() => {});
+    await recordSetting('last_backup_status', { completed_at: safety.created_at, file: safety.file, size_bytes: safety.size_bytes, kind: safety.kind }, store).catch(() => {});
+  } finally { exitAfterRestore(); }
+  return { restored: file, safety_backup: safety.file, files_restored: !!staging && !filesError, restarting: true,
+    ...(filesError ? { files_error: `The database was restored, but the uploaded files were left as they were: ${filesError.message}` } : {}) };
 }
 
-/** Replaces the uploaded files with the unpacked ones (same volume: each move is a rename). */
-function swapUploads(staging) {
+/** Replaces the uploaded files with the unpacked ones (same volume: each move is a
+ *  rename). The current files are moved aside first and moved back if anything
+ *  fails, so the folder is either all old or all new; then the old ones go. */
+function swapUploads(staging, { rename = fs.renameSync } = {}) {
   const root = uploadsDir();
-  for (const name of fs.readdirSync(root)) if (!skipUpload(name)) fs.rmSync(path.join(root, name), { recursive: true, force: true });
-  for (const name of fs.readdirSync(staging)) fs.renameSync(path.join(staging, name), path.join(root, name));
+  const aside = path.join(root, `.previous-${stamp()}`);
+  fs.mkdirSync(aside);
+  const movedAside = [], movedIn = [];
+  try {
+    for (const name of fs.readdirSync(root)) {
+      if (skipUpload(name) || path.join(root, name) === aside || path.join(root, name) === staging) continue;
+      rename(path.join(root, name), path.join(aside, name)); movedAside.push(name);
+    }
+    for (const name of fs.readdirSync(staging)) { rename(path.join(staging, name), path.join(root, name)); movedIn.push(name); }
+  } catch (error) {
+    for (const name of movedIn.reverse()) { try { fs.renameSync(path.join(root, name), path.join(staging, name)); } catch { /* left for the manager */ } }
+    for (const name of movedAside.reverse()) { try { fs.renameSync(path.join(aside, name), path.join(root, name)); } catch { /* left for the manager */ } }
+    fs.rmSync(aside, { recursive: true, force: true });
+    throw error;
+  }
+  fs.rmSync(aside, { recursive: true, force: true });
   fs.rmSync(staging, { recursive: true, force: true });
 }
 
@@ -294,5 +327,5 @@ function stop() { if (timer) clearInterval(timer); timer = null; }
 module.exports = {
   BACKUP_DIR, DEFAULT_SCHEDULE, filesName, uploadsDir, list, backupNow, queueOffsiteCopy, verify, restore, importUpload, remove, prune, schedule, validateSchedule, runDue, start, stop,
   status: () => ({ busy, restoring }), isRestoring: () => restoring,
-  exclusive, _setExit: fn => { exitAfterRestore = fn; }, _endRestoreForTests: () => { restoring = false; },
+  exclusive, nodeSsl, swapUploads, _setExit: fn => { exitAfterRestore = fn; }, _endRestoreForTests: () => { restoring = false; },
 };

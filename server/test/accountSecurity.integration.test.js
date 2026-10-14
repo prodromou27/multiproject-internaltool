@@ -1,4 +1,4 @@
-// Email changes, two-factor set-up and removal, and their limits (review F06, F07, F08, F13).
+// Security review fixes: email changes, two-factor, avatars, log export (F06, F07, F08, F12, F13, F17).
 // A field key, so seeds are stored encrypted as in production.
 process.env.CUSTOMER_FIELD_KEY = process.env.CUSTOMER_FIELD_KEY || 'b'.repeat(64);
 const speakeasy = require('speakeasy');
@@ -148,4 +148,19 @@ test('a rejected avatar upload keeps the current picture; a new picture gets a n
   await new Promise(resolve => setTimeout(resolve, 50));
   assert.equal(fs.existsSync(fileOf(first.data.avatar_url)), false, 'the old picture is removed once the new one is saved');
   fs.rmSync(fileOf(second.data.avatar_url), { force: true });
+});
+
+test('the activity log export is CSV that a spreadsheet cannot run or split', async () => {
+  const fixture = require('./lib/activityFixture');
+  const { ids } = fixture;
+  const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('=1+1', ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO project_activity (project_id, user_id, action, detail) VALUES (?, ?, ?, ?)')
+    .run(project, ids.manager, 'note', ' \t@SUM(1)\n2026-01-01,forged,row,"x"');
+  const res = await fetch(`${fixture.baseUrl}/api/settings/logging/download`, { headers: { Authorization: `Bearer ${ids.tokenManager}` } });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/csv/);
+  const csv = await res.text();
+  assert.ok(!csv.startsWith('#'), 'no comment lines');
+  assert.ok(csv.includes(`"'=1+1"`), 'a formula is neutralised');
+  assert.ok(csv.includes(`"' \t@SUM(1)\n2026-01-01,forged,row,""x"""`), 'line breaks and quotes stay inside one quoted cell');
 });

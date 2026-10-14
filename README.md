@@ -5,7 +5,7 @@ tasks, maintenance visits, **service activity logging**, customer records (PII
 encrypted at rest), workload and capacity planning, scorecards, SLA tracking,
 reporting and administration, behind role-based access control and optional 2FA.
 
-- **Frontend:** React 18 + Vite single-page app (`client/`).
+- **Frontend:** React 19 + Vite single-page app (`client/`).
 - **Backend:** Node 24 + Express API (`server/`), which also serves the built app.
 - **Database:** PostgreSQL 16.
 
@@ -21,7 +21,12 @@ reporting and administration, behind role-based access control and optional 2FA.
 
 ## Run it locally
 
-You need Node 24 and a PostgreSQL database.
+You need Node 24 and a PostgreSQL database. For everything the tests cover you also need
+OpenSSL on the `PATH` (the Microsoft sign-in tests make a certificate; Git for Windows
+ships one), the PostgreSQL 16 client tools `pg_dump` and `psql` (in-app backups and their
+tests; `PG_BIN_DIR` points to them if they are not on the `PATH`), and a disposable
+PostgreSQL database in `TEST_DATABASE_URL` for the tests that skip themselves on the
+in-memory database.
 
 ```bash
 # 1. Server: copy server/.env.example to server/.env and set DATABASE_URL,

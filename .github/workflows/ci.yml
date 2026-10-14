@@ -88,6 +88,11 @@ jobs:
         working-directory: server
         run: npm audit --omit=dev
 
+      # Development and test tools too: they run on developer machines and in CI.
+      - name: Audit all server dependencies
+        working-directory: server
+        run: npm audit
+
   client:
     name: Client build and audit
     runs-on: ubuntu-latest
@@ -135,6 +140,11 @@ jobs:
       - name: Audit client production dependencies
         working-directory: client
         run: npm audit --omit=dev
+
+      # Development and test tools too: they run on developer machines and in CI.
+      - name: Audit all client dependencies
+        working-directory: client
+        run: npm audit
 
   compose:
     name: Compose validation

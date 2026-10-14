@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../../db');
 const { requireManager } = require('../../middleware/auth');
 const { isPlainObject, bool, logSettingsChange } = require('./shared');
+const { csvCell } = require('../../customReports');
 
 /* ── Logging config ─────────────────────────────────────────── */
 const DEFAULT_LOGGING = {
@@ -65,24 +66,24 @@ router.get('/logging/download', requireManager, async (req, res) => {
   `).all());
 
   const mask = config.sensitive_data_masking;
+  // Every cell is CSV-encoded (quotes, commas, line breaks) and formula-safe, so
+  // logged text can neither run in a spreadsheet nor forge rows. Plain CSV: no
+  // comment lines.
   const lines = [
-    `# Application Log Export — ${new Date().toISOString()}`,
-    `# Level: ${config.log_level.toUpperCase()} | Provider: ${config.logging_provider} | Retention: ${config.log_retention_days} days`,
-    '',
-    'timestamp,user,email,action,project,detail',
+    ['timestamp', 'user', 'email', 'action', 'project', 'detail'],
     ...rows.map(r => [
       r.created_at,
       r.user_name || 'system',
       mask ? '***@***.***' : (r.email || ''),
       r.action,
       r.project_title || '',
-      (r.detail || '').replace(/,/g, ';'),
-    ].join(','))
-  ];
+      r.detail || '',
+    ]),
+  ].map(cells => cells.map(csvCell).join(','));
 
-  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="app-log-${Date.now()}.csv"`);
-  res.send(lines.join('\n'));
+  res.send(lines.join('\r\n'));
 });
 
 module.exports = router;

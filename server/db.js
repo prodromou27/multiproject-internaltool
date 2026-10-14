@@ -44,14 +44,18 @@ pool.on('error', (err) => console.error('[pg pool]', err.message));
 const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|maintenance_visit_assets|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|customer_search_documents|customer_search_tokens|managed_customer_configurations|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams|role_permission_overrides|user_permission_overrides)\b/i;
 
 // ── Placeholders: `?` -> `$1, $2, ...`, memoized per unique SQL string ───────
+// Bounded (least recently used goes first): statements built from lists and
+// filters have many spellings, and a long-running server must not keep them all.
+const CACHE_LIMIT = 2000;
 const _cache = new Map();
 
 function translate(sql) {
   const cached = _cache.get(sql);
-  if (cached) return cached;
+  if (cached) { _cache.delete(sql); _cache.set(sql, cached); return cached; }
   let n = 0;
   const converted = sql.replace(/\?/g, () => `$${++n}`);
   _cache.set(sql, converted);
+  if (_cache.size > CACHE_LIMIT) _cache.delete(_cache.keys().next().value);
   return converted;
 }
 

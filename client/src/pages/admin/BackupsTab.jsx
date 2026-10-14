@@ -81,8 +81,10 @@ export function BackupsTab() {
     run(`delete-${row.file}`, () => api.deleteBackup(row.file), 'Backup deleted');
   }
   // After a restore the app restarts; wait for it, then load the restored data.
-  async function waitForRestart() {
-    setRestarting(true);
+  // A problem with the uploaded files is shown (not reloaded away): the database was restored.
+  async function waitForRestart(filesError) {
+    setRestarting(filesError || true);
+    if (filesError) return;
     await new Promise(resolve => setTimeout(resolve, 4000));
     for (let attempt = 0; attempt < 90; attempt++) {
       try { const response = await fetch('/api/health', { cache: 'no-store' }); if (response.ok) { window.location.reload(); return; } } catch { /* still restarting */ }
@@ -91,6 +93,7 @@ export function BackupsTab() {
     window.location.reload();
   }
 
+  if (restarting && restarting !== true) return <div className="card bk-restarting" role="alert"><p>{restarting}</p><p className="text-sm">TeamHub is restarting. Reload the page in a minute.</p><button type="button" className="btn btn-primary btn-sm" onClick={() => window.location.reload()}>Reload</button></div>;
   if (restarting) return <div className="card bk-restarting" role="status"><RotateCcw size={18} className="bk-spin" /> The backup was restored. TeamHub is restarting and this page will reload when it is back.</div>;
   if (error) return <div className="error-msg" role="alert">{error} <button type="button" className="btn btn-ghost btn-sm" onClick={load}>Retry</button></div>;
   if (!data) return <p className="text-muted">Loading backups…</p>;
@@ -156,7 +159,7 @@ export function BackupsTab() {
       <p className="text-sm">{dialog.file.name}: a .sql.gz backup from TeamHub or <code>deploy/backup.sh</code>. Uploading adds it to the list; it does not restore it.</p>
     </PasswordDialog>}
     {dialog?.type === 'restore' && <PasswordDialog title="Restore backup" action="Restore" needsWord onClose={() => setDialog(null)}
-      onConfirm={async password => { await api.restoreBackup(dialog.row.file, password, dialog.withFiles !== false && !!dialog.row.files); waitForRestart(); }}>
+      onConfirm={async password => { const result = await api.restoreBackup(dialog.row.file, password, dialog.withFiles !== false && !!dialog.row.files); waitForRestart(result?.files_error); }}>
       <div className="alert alert-warning">
         <p><strong>Everything in TeamHub goes back to {when(dialog.row.created_at)}.</strong> Changes made since then are replaced.</p>
         <p className="text-sm">A backup of the current data is made first, so this can be undone. Everyone is signed out while TeamHub restarts, which takes about a minute.</p>
