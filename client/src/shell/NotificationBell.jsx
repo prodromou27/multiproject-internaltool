@@ -35,6 +35,9 @@ function timeSinceNotif(dt) {
   return Math.floor(diff / 86400) + 'd ago';
 }
 
+// The icon on the left says what it is; a leading emoji in the title would repeat it.
+const plainTitle = title => String(title || '').replace(/^(?:\p{Extended_Pictographic}|\uFE0F|\u200D|\s)+/u, '') || title;
+
 export function NotificationBell() {
   const [notifs, setNotifs]   = useState([]);
   const [unread, setUnread]   = useState(0);
@@ -174,7 +177,7 @@ export function NotificationBell() {
           </div>
 
           <div className="u-23d8d35">
-            {[['all','All'],['unread',`Unread (${unread})`],['action_required',`Action (${actionRequired})`]].map(([value,label]) => <button key={value} type="button" onClick={() => setFilter(value)} className={`btn btn-sm ${filter===value?'btn-primary':'btn-ghost'} u-97445a8`}>{label}</button>)}
+            {[['all','All'],['unread',`Unread (${unread})`],['action_required',`Action (${actionRequired})`]].map(([value,label]) => <button key={value} type="button" aria-pressed={filter===value} onClick={() => setFilter(value)} className={`notif-filter${filter===value?' is-active':''}`}>{label}</button>)}
           </div>
 
           {/* List */}
@@ -197,7 +200,7 @@ export function NotificationBell() {
                   {NOTIF_ICONS[n.type] || <Bell size={14} color="var(--gray-500)" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className={["u-1cdd083", (n.read ? 'u-02a2d33' : 'u-e3ec02a')].filter(Boolean).join(' ')}>{n.title}{['high','critical'].includes(n.priority) && <span className={["u-887bf25", (n.priority==='critical' ? 'u-2056554' : 'u-488b9b9')].filter(Boolean).join(' ')}>{n.priority}</span>}</div>
+                  <div className={["u-1cdd083", (n.read ? 'u-02a2d33' : 'u-e3ec02a')].filter(Boolean).join(' ')}>{plainTitle(n.title)}{['high','critical'].includes(n.priority) && <span className={["u-887bf25", (n.priority==='critical' ? 'u-2056554' : 'u-488b9b9')].filter(Boolean).join(' ')}>{n.priority}</span>}</div>
                   {n.body && <div className="u-2bb9ee0">{n.body}</div>}
                   <div className="u-8459551">{timeSinceNotif(n.created_at)}</div>
                   {['high','critical'].includes(n.priority) && !n.acknowledged_at && <button type="button" onClick={e => acknowledge(n,e)} className="u-0a9b857"><CheckCheck size={11} style={{ verticalAlign:'middle',marginRight:3 }} />Acknowledge</button>}

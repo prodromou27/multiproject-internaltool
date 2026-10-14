@@ -1365,3 +1365,17 @@ a.topbar-action { display: inline-flex; align-items: center; justify-content: ce
 .custom-role-group legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
 .custom-role-permission { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; min-height: 32px; cursor: pointer; }
 .custom-role-permission input { margin-top: 3px; width: 16px; height: 16px; flex: none; }
+
+/* Notifications pop-up: wide enough that the header stays on one line, and a
+   light segmented filter instead of three heavy buttons. */
+@media (min-width: 521px) {
+  .topbar-popover.notification-popover.notification-popover.notification-popover { width: 400px; max-height: min(560px, calc(100vh - var(--topbar-h) - 16px)); }
+}
+.notification-popover .u-af08a6d, .notification-popover .u-64a9ece, .notification-popover .u-059aecf, .notification-popover .u-3bcf89e { white-space: nowrap; }
+.notification-popover .u-23d8d35.u-23d8d35.u-23d8d35 { gap: 2px; padding: 8px 12px; }
+.notif-filter { flex: 1; min-height: 32px; padding: 4px 8px; border: 1px solid var(--gray-200); background: var(--surface); color: var(--gray-600); font-size: 12px; font-weight: 600; cursor: pointer; }
+.notif-filter:first-child { border-radius: 8px 0 0 8px; }
+.notif-filter:last-child { border-radius: 0 8px 8px 0; }
+.notif-filter + .notif-filter { margin-left: -1px; }
+.notif-filter.is-active { background: var(--gray-100); color: var(--gray-900); border-color: var(--gray-300); position: relative; }
+.notif-filter:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; position: relative; }
