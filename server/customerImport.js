@@ -112,51 +112,102 @@ async function linkTeam(tx, customerId, teamId) {
 }
 
 /**
- * Imports rows. Returns { imported, updated, managed, skipped, errors }. Per row,
- * not all-or-nothing: bad rows are reported and the rest go in.
+ * What importing the rows would do, without changing anything (review I07): per row
+ * 'create', 'update' (with the fields that would change), 'unchanged' or 'error'
+ * (with the reason, and the row as given so a correction file can be made).
+ * `token` binds a commit to this preview: it changes when the file or any matched
+ * customer changes.
  */
-async function importCustomers(rawRows, { user, updateExisting = false, store = db } = {}) {
+async function planCustomerImport(rawRows, { user, store = db, fileHash = '' } = {}) {
   const teams = new Map((await store.prepare('SELECT id, name FROM teams').all()).map(t => [t.name.trim().toLowerCase(), Number(t.id)]));
   const existing = new Map((await store.prepare('SELECT * FROM customers').all()).map(decryptCustomer)
     .filter(c => c.name).map(c => [c.name.trim().toLowerCase(), c]));
   const types = await require('./customerContracts').contractTypes(store);
+  const links = new Set((await store.prepare('SELECT customer_id, team_id FROM customer_teams').all()).map(l => `${l.customer_id}:${l.team_id}`));
+  const managedNow = new Set((await store.prepare('SELECT customer_id FROM managed_customer_configurations WHERE managed_services_enabled = 1').all()).map(m => Number(m.customer_id)));
+  const contractsOf = new Map();
+  for (const c of await store.prepare('SELECT customer_id, reference, service_level, start_date, end_date FROM customer_contracts').all()) {
+    const list = contractsOf.get(Number(c.customer_id)) || [];
+    list.push({ ...c, reference: decrypt(c.reference) || '' });
+    contractsOf.set(Number(c.customer_id), list);
+  }
   const seen = new Set();
-  const result = { imported: 0, updated: 0, managed: 0, contracts: 0, skipped: 0, errors: [] };
-  const skip = (row, error) => { result.errors.push({ row, error }); result.skipped++; };
-
+  const rows = [];
   for (let i = 0; i < rawRows.length; i++) {
     const row = normalizeRow(rawRows[i]), rowNum = i + 2;
-    if (!row.name) { skip(rowNum, 'Missing required field: name'); continue; }
+    const fail = (error, kind = 'invalid') => rows.push({ row: rowNum, name: row.name || '', action: 'error', kind, error, values: row });
+    if (!row.name) { fail('Missing required field: name'); continue; }
     const key = row.name.toLowerCase();
-    if (seen.has(key)) { skip(rowNum, `"${row.name}" appears more than once in the file`); continue; }
+    if (seen.has(key)) { fail(`"${row.name}" appears more than once in the file`, 'duplicate'); continue; }
     seen.add(key);
     const tooLong = Object.entries(MAX_LENGTH).find(([field, max]) => (row[field] || '').length > max);
-    if (tooLong) { skip(rowNum, `${tooLong[0]} is longer than ${tooLong[1]} characters`); continue; }
-    if (row.contact_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.contact_email)) { skip(rowNum, `"${row.contact_email}" is not an email address`); continue; }
+    if (tooLong) { fail(`${tooLong[0]} is longer than ${tooLong[1]} characters`); continue; }
+    if (row.contact_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.contact_email)) { fail(`"${row.contact_email}" is not an email address`); continue; }
     const managed = yesNo(row.managed);
-    if (managed === null) { skip(rowNum, `managed must be yes or no, not "${row.managed}"`); continue; }
-    if (managed && user.role !== 'manager') { skip(rowNum, 'Only managers can mark customers as managed'); continue; }
+    if (managed === null) { fail(`managed must be yes or no, not "${row.managed}"`); continue; }
+    if (managed && user.role !== 'manager') { fail('Only managers can mark customers as managed'); continue; }
     let teamId = null;
     if (row.team) {
       teamId = teams.get(row.team.toLowerCase());
-      if (!teamId) { skip(rowNum, `Team "${row.team}" not found`); continue; }
+      if (!teamId) { fail(`Team "${row.team}" not found`); continue; }
     }
     const contract = contractOf(row, types);
-    if (contract.error) { skip(rowNum, contract.error); continue; }
+    if (contract.error) { fail(contract.error); continue; }
     const current = existing.get(key);
+    const plan = { row: rowNum, name: row.name, values: row, managed, teamId, contract: contract.value };
+    if (!current) { rows.push({ ...plan, action: 'create' }); continue; }
+    // Only the columns filled in on the row change.
+    const changes = TEXT_FIELDS.filter(f => row[f] && row[f] !== (current[f] || '')).map(f => ({ field: f, from: current[f] || '', to: row[f] }));
+    if (teamId && !links.has(`${current.id}:${teamId}`)) changes.push({ field: 'team', from: '', to: row.team });
+    if (managed && !managedNow.has(Number(current.id))) changes.push({ field: 'managed', from: 'no', to: 'yes' });
+    if (contract.value) {
+      const had = (contractsOf.get(Number(current.id)) || []).find(c => c.reference.toLowerCase() === contract.value.reference.toLowerCase());
+      const describe = c => `${c.reference}: ${c.start_date} to ${c.end_date}${c.service_level ? ` (${c.service_level})` : ''}`;
+      if (!had || had.start_date !== contract.value.start_date || had.end_date !== contract.value.end_date || (contract.value.service_level && had.service_level !== contract.value.service_level))
+        changes.push({ field: 'contract', from: had ? describe(had) : '', to: describe({ ...contract.value, service_level: contract.value.service_level || had?.service_level }) });
+    }
+    rows.push({ ...plan, action: changes.length ? 'update' : 'unchanged', existing_id: Number(current.id), edit_version: Number(current.edit_version), current, changes });
+  }
+  const count = action => rows.filter(r => r.action === action).length;
+  const counts = { create: count('create'), update: count('update'), unchanged: count('unchanged'), errors: count('error'), duplicates: rows.filter(r => r.kind === 'duplicate').length, total: rows.length };
+  const matched = rows.filter(r => r.existing_id).map(r => `${r.existing_id}:${r.edit_version}`).join(',');
+  const token = require('node:crypto').createHash('sha256').update(`${fileHash}|${user.id}|${matched}`).digest('hex');
+  return { rows, counts, token };
+}
+
+/** The preview as sent to the browser (no internal records). */
+const previewOf = plan => ({ token: plan.token, counts: plan.counts,
+  rows: plan.rows.map(({ row, name, action, kind, error, changes, existing_id, values }) => ({ row, name, action, kind, error, changes, existing_id, values: action === 'error' ? values : undefined })) });
+
+/**
+ * Imports rows. Returns { imported, updated, unchanged, managed, skipped, errors }. Per row,
+ * not all-or-nothing: bad rows are reported and the rest go in. Existing customers
+ * are only changed when updateExisting is set; a row that would change nothing is
+ * left alone, so importing the same file again changes nothing.
+ */
+async function importCustomers(rawRows, { user, updateExisting = false, store = db, plan = null } = {}) {
+  plan ||= await planCustomerImport(rawRows, { user, store });
+  const result = { imported: 0, updated: 0, unchanged: 0, managed: 0, contracts: 0, skipped: 0, errors: [] };
+  const skip = (row, error) => { result.errors.push({ row, error }); result.skipped++; };
+
+  for (const item of plan.rows) {
+    const { row: rowNum, values: row, managed, teamId, contract, current } = item;
+    if (item.action === 'error') { skip(rowNum, item.error); continue; }
     if (current && !updateExisting) { skip(rowNum, `Customer "${row.name}" already exists — skipped`); continue; }
+    if (item.action === 'unchanged') { result.unchanged++; continue; }
     try {
       await store.transaction(async tx => {
         if (current) {
-          // Only the columns filled in on the row change.
           const merged = { ...current, ...Object.fromEntries(TEXT_FIELDS.filter(f => row[f]).map(f => [f, row[f]])) };
           const enc = encryptCustomer(merged);
-          await tx.prepare(`UPDATE customers SET customer_code = ?, contact_name = ?, contact_email = ?, contact_phone = ?, primary_contact = ?, location = ?, address = ?, notes = ? WHERE id = ?`)
-            .run(merged.customer_code || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.primary_contact, enc.location, enc.address, enc.notes, current.id);
+          // Changed since it was read (someone saved it meanwhile): left alone and reported.
+          const changed = await tx.prepare(`UPDATE customers SET customer_code = ?, contact_name = ?, contact_email = ?, contact_phone = ?, primary_contact = ?, location = ?, address = ?, notes = ?, edit_version = edit_version + 1 WHERE id = ? AND edit_version = ?`)
+            .run(merged.customer_code || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.primary_contact, enc.location, enc.address, enc.notes, current.id, current.edit_version);
+          if (!changed.changes) throw new Error(`Customer "${row.name}" was changed by someone else during the import — not updated`);
           await replaceCustomerSearchDocument(tx, { id: current.id, name: current.name, contact_name: merged.contact_name, contact_email: merged.contact_email, address: merged.address, location: merged.location, customer_code: merged.customer_code });
           await linkTeam(tx, current.id, teamId);
           if (managed) await enableManaged(tx, current.id, teamId, user.id);
-          if (contract.value) await saveContract(tx, current.id, contract.value, user.id);
+          if (contract) await saveContract(tx, current.id, contract, user.id);
         } else {
           const values = Object.fromEntries(TEXT_FIELDS.map(f => [f, row[f] || null]));
           const enc = encryptCustomer({ name: row.name, ...values });
@@ -166,13 +217,12 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
           await replaceCustomerSearchDocument(tx, { id, name: row.name, ...values });
           await linkTeam(tx, id, teamId);
           if (managed) await enableManaged(tx, id, teamId, user.id);
-          if (contract.value) await saveContract(tx, id, contract.value, user.id);
-          existing.set(key, { id, name: row.name, ...values });
+          if (contract) await saveContract(tx, id, contract, user.id);
         }
       });
       if (current) result.updated++; else result.imported++;
       if (managed) result.managed++;
-      if (contract.value) result.contracts++;
+      if (contract) result.contracts++;
     } catch (error) {
       skip(rowNum, error.message);
     }
@@ -180,4 +230,4 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
   return result;
 }
 
-module.exports = { COLUMNS, parseCsv, parseDay, yesNo, importCustomers };
+module.exports = { COLUMNS, parseCsv, parseDay, yesNo, planCustomerImport, previewOf, importCustomers };

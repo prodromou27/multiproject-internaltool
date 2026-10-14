@@ -33,7 +33,7 @@ test('a CSV marks customers as managed and links their team', async () => {
   const beta = await customerNamed('Import Beta');
   assert.equal(await managedConfig(beta.id), undefined, 'not managed');
   const audit = await db.prepare("SELECT detail FROM audit_log WHERE action = 'customers_imported' ORDER BY id DESC LIMIT 1").get();
-  assert.match(audit.detail, /imported=2; updated=0; managed=1; contracts=0; skipped=4/);
+  assert.match(audit.detail, /imported=2; updated=0; unchanged=0; managed=1; contracts=0; skipped=4/);
 });
 
 test('existing customers are skipped, or updated and marked managed when asked', async () => {
@@ -79,4 +79,74 @@ test('a row can carry a contract: added, or updated when the reference already e
   const renewed = await upload('name,contract_reference,contract_start,contract_end\nImport Theta,msp-77,2027-01-01,2027-12-31\n', 'renewal.csv', { updateExisting: true });
   assert.deepEqual([renewed.data.updated, renewed.data.contracts], [1, 1]);
   assert.deepEqual(await contracts(), [['MSP-77', '24x7', '2027-01-01', '2027-12-31']]);
+});
+
+async function preview(content, name = 'preview.csv', token = ids.tokenManager) {
+  const form = new FormData();
+  form.append('file', new Blob([content], { type: 'text/csv' }), name);
+  const res = await fetch(`${suiteFixture.baseUrl}/api/customers/import/preview`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'X-SolutionsHub-Request': '1' }, body: form });
+  return { status: res.status, data: await res.json() };
+}
+async function commit(content, previewToken, { updateExisting = false } = {}) {
+  const form = new FormData();
+  form.append('file', new Blob([content], { type: 'text/csv' }), 'preview.csv');
+  form.append('preview_token', previewToken);
+  if (updateExisting) form.append('update_existing', '1');
+  const res = await fetch(`${suiteFixture.baseUrl}/api/customers/import`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenManager}`, 'X-SolutionsHub-Request': '1' }, body: form });
+  return { status: res.status, data: await res.json() };
+}
+
+test('a preview shows what would be created, updated and refused, and changes nothing', async () => {
+  const csv = 'name,contact_name,location,contact_email\n'
+    + 'Preview New,Nia New,Paphos,\n'
+    + 'Import Beta,Bob Jones,Larnaca,\n'      // exists: location changes (contact_name is already Bob Jones)
+    + 'Import Alpha,,,\n'                     // exists: nothing to change
+    + 'Preview New,,,\n'                      // duplicate in the file
+    + 'Preview Bad,,,not-an-email\n';
+  const before = (await db.prepare('SELECT COUNT(*) AS n FROM customers').get()).n;
+  const res = await preview(csv);
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  assert.deepEqual(res.data.counts, { create: 1, update: 1, unchanged: 1, errors: 2, duplicates: 1, total: 5 });
+  const beta = res.data.rows.find(r => r.name === 'Import Beta');
+  assert.equal(beta.action, 'update');
+  assert.deepEqual(beta.changes, [{ field: 'location', from: 'Limassol', to: 'Larnaca' }]);
+  const bad = res.data.rows.find(r => r.name === 'Preview Bad');
+  assert.equal(bad.values.contact_email, 'not-an-email', 'the row as given, for the correction file');
+  assert.equal(res.data.rows.find(r => r.kind === 'duplicate').row, 5);
+  assert.equal(res.data.rows.find(r => r.action === 'create').values, undefined, 'only refused rows carry their values');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM customers').get()).n, before, 'nothing was created');
+  assert.equal((await preview(csv, 'p.csv', ids.tokenEnabled)).status, 403);
+
+  // Creates only unless updates are confirmed separately.
+  const created = await commit(csv, res.data.token);
+  assert.equal(created.status, 200, JSON.stringify(created.data));
+  assert.deepEqual([created.data.imported, created.data.updated, created.data.skipped], [1, 0, 4]);
+  assert.equal((await customerNamed('Import Beta')).location, 'Limassol');
+});
+
+test('a commit is bound to its preview: another file or a changed customer needs a new review', async () => {
+  const csv = 'name,location\nImport Beta,Famagusta\nPreview Second,Kyrenia\n';
+  const first = (await preview(csv)).data;
+  assert.equal((await commit('name,location\nImport Beta,Elsewhere\n', first.token)).data.code, 'IMPORT_CHANGED', 'a different file');
+
+  // Someone edits Import Beta after the preview.
+  const beta = await customerNamed('Import Beta');
+  const { api } = require('./lib/activityFixture');
+  assert.equal((await api(`/api/customers/${beta.id}`, { method: 'PUT', token: ids.tokenManager, body: { notes: 'Edited meanwhile' } })).status, 200);
+  const refused = await commit(csv, first.token, { updateExisting: true });
+  assert.equal(refused.status, 409);
+  assert.equal(refused.data.code, 'IMPORT_CHANGED');
+  assert.equal(refused.data.preview.counts.update, 1, 'with a fresh preview to review');
+  assert.equal(await customerNamed('Preview Second'), undefined, 'nothing applied');
+
+  const applied = await commit(csv, refused.data.preview.token, { updateExisting: true });
+  assert.deepEqual([applied.data.imported, applied.data.updated], [1, 1]);
+  assert.equal((await customerNamed('Import Beta')).notes, 'Edited meanwhile', 'empty columns leave the other edit alone');
+
+  // Applying the same file again creates no duplicates and changes nothing.
+  const again = await preview(csv);
+  assert.deepEqual([again.data.counts.create, again.data.counts.update, again.data.counts.unchanged], [0, 0, 2]);
+  const reapplied = await commit(csv, again.data.token, { updateExisting: true });
+  assert.deepEqual([reapplied.data.imported, reapplied.data.updated, reapplied.data.unchanged], [0, 0, 2]);
+  assert.equal((await db.prepare('SELECT * FROM customers').all()).map(decryptCustomer).filter(c => c.name === 'Preview Second').length, 1);
 });

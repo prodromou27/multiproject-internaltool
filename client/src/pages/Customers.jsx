@@ -389,10 +389,12 @@ export default function Customers() {
         <ImportModal
           title="Import Customers"
           templateUrl={api.customersTemplateUrl()}
-          importFn={(file, { option }) => api.importCustomers(file, { updateExisting: option })}
+          previewFn={file => api.previewCustomerImport(file)}
+          importFn={(file, { option, previewToken }) => api.importCustomers(file, { updateExisting: option, previewToken })}
           columns={CUSTOMER_COLUMNS}
           hint={<><strong>managed:</strong> yes or no (managers only). <strong>team:</strong> a team name; it is linked to the customer and, for managed customers, becomes the responsible team. <strong>contract_…:</strong> adds a contract (reference, type such as 24x7, start and end dates as YYYY-MM-DD or DD/MM/YYYY); the same reference again updates it. CSV files may use commas or semicolons.</>}
           option={{ label: 'Update customers that already exist', help: 'Matched by name. Filled-in columns replace what is there; empty ones leave it. Otherwise existing customers are skipped.' }}
+          noun={['customer', 'customers']}
           onClose={() => setShowImport(false)}
           onDone={load}
         />

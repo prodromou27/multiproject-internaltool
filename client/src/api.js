@@ -66,6 +66,8 @@ async function upload(path, field, file, extra = {}) {
     handleUnauthorized(res.status, data, true);
     const error = new Error(data.error || res.statusText);
     error.details = data.details; // e.g. the placeholders a Word template got wrong
+    error.code = data.code;
+    if (data.preview) error.preview = data.preview; // an import whose file or records changed since the review
     throw error;
   }
   return data;
@@ -297,8 +299,9 @@ export const api = {
   archiveCustomer: (id) => req('POST', `/customers/${id}/archive`, {}),
   restoreCustomer: (id) => req('POST', `/customers/${id}/restore`, {}),
   customersTemplateUrl: () => `${BASE}/customers/template/download`,
-  importCustomers: (file, { updateExisting = false } = {}) => {
-    return upload('/customers/import', 'file', file, updateExisting ? { update_existing: '1' } : {});
+  previewCustomerImport: file => upload('/customers/import/preview', 'file', file),
+  importCustomers: (file, { updateExisting = false, previewToken } = {}) => {
+    return upload('/customers/import', 'file', file, { ...(updateExisting ? { update_existing: '1' } : {}), ...(previewToken ? { preview_token: previewToken } : {}) });
   },
 
   // maintenance visits

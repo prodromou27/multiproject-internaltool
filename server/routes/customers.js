@@ -1,5 +1,5 @@
 const { contractsFor, currentContract } = require('../customerContracts');
-const { COLUMNS: IMPORT_COLUMNS, parseCsv, importCustomers } = require('../customerImport');
+const { COLUMNS: IMPORT_COLUMNS, parseCsv, importCustomers, planCustomerImport, previewOf } = require('../customerImport');
 const router  = require('express').Router();
 const multer  = require('multer');
 const ExcelJS = require('exceljs');
@@ -252,14 +252,15 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
 });
 
 // ── Import — MUST be before /:id (it's POST so no conflict, but kept here for clarity) ─
-router.post('/import', requireManagerOrPlanner, upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+// The uploaded file's rows, or a 400 already sent (null).
+async function importRows(req, res) {
+  if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return null; }
   // Excel files are zip archives (start with PK); anything else is read as CSV.
   const isCsv = /\.csv$/i.test(req.file.originalname || '') || req.file.buffer.subarray(0, 2).toString('latin1') !== 'PK';
   let rows;
   try {
     if (isCsv) {
-      if (req.file.buffer.includes(0)) return res.status(400).json({ error: 'Could not read the file. Use .xlsx or .csv' });
+      if (req.file.buffer.includes(0)) { res.status(400).json({ error: 'Could not read the file. Use .xlsx or .csv' }); return null; }
       rows = parseCsv(req.file.buffer.toString('utf8'));
     } else {
       require('../uploadUtils').assertSafeSpreadsheet(req.file.buffer);
@@ -268,14 +269,31 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
       rows = sheetToJson(workbook.worksheets[0]);
     }
   } catch (e) {
-    return res.status(400).json({ error: e.status === 400 ? e.message : 'Could not read the file. Use .xlsx or .csv' });
+    res.status(400).json({ error: e.status === 400 ? e.message : 'Could not read the file. Use .xlsx or .csv' }); return null;
   }
-  if (!rows.length) return res.status(400).json({ error: 'File is empty or has no data rows' });
-  if (rows.length > 5000) return res.status(400).json({ error: 'Maximum 5000 rows per import. Please split your file.' });
+  if (!rows.length) { res.status(400).json({ error: 'File is empty or has no data rows' }); return null; }
+  if (rows.length > 5000) { res.status(400).json({ error: 'Maximum 5000 rows per import. Please split your file.' }); return null; }
+  return rows;
+}
+const fileHash = file => require('node:crypto').createHash('sha256').update(file.buffer).digest('hex');
 
-  const result = await importCustomers(rows, { user: req.user, updateExisting: req.body?.update_existing === '1' });
+// What the import would do, row by row, before anything changes (review I07).
+router.post('/import/preview', requireManagerOrPlanner, upload.single('file'), async (req, res) => {
+  const rows = await importRows(req, res);
+  if (!rows) return;
+  res.json(previewOf(await planCustomerImport(rows, { user: req.user, fileHash: fileHash(req.file) })));
+});
+
+router.post('/import', requireManagerOrPlanner, upload.single('file'), async (req, res) => {
+  const rows = await importRows(req, res);
+  if (!rows) return;
+  // From a preview: only the same file, against the same customers, is imported.
+  const plan = await planCustomerImport(rows, { user: req.user, fileHash: fileHash(req.file) });
+  if (req.body?.preview_token && req.body.preview_token !== plan.token)
+    return res.status(409).json({ error: 'The file or the customers it matches changed since the preview. Review the import again.', code: 'IMPORT_CHANGED', preview: previewOf(plan) });
+  const result = await importCustomers(rows, { user: req.user, updateExisting: req.body?.update_existing === '1', plan });
   await logAudit(db, req, 'customer', null, 'Customer import', 'customers_imported',
-    `file=${(req.file.originalname || '').slice(0, 100)}; imported=${result.imported}; updated=${result.updated}; managed=${result.managed}; contracts=${result.contracts}; skipped=${result.skipped}`);
+    `file=${(req.file.originalname || '').slice(0, 100)}; previewed=${req.body?.preview_token ? 'yes' : 'no'}; imported=${result.imported}; updated=${result.updated}; unchanged=${result.unchanged}; managed=${result.managed}; contracts=${result.contracts}; skipped=${result.skipped}`);
   res.json(result);
 });
 
