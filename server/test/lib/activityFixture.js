@@ -115,6 +115,7 @@ if (isSuiteImport) test.before(async () => {
   app.use('/api/admin', require('../../routes/admin'));
   app.use('/api/notes', require('../../routes/notes'));
   app.use('/api/customer-responses', require('../../routes/customerResponses'));
+  app.use('/api/recurring-tasks', require('../../routes/customer-recurring-tasks').internal);
   app.use('/api/search', require('../../routes/search'));
   app.use('/api/reports', require('../../routes/reports'));
   app.use('/api/tasks', require('../../routes/tasks'));

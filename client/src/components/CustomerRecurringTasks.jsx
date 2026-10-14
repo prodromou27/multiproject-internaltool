@@ -38,7 +38,7 @@ function RecurringForm({ customerId, initial, engineers, onClose, onSaved }) {
   const set = key => event => setForm(current => ({ ...current, [key]: event.target.type === 'checkbox' ? event.target.checked : event.target.value }));
   useEffect(() => {
     // The asset list comes with the contracts view, which lists all of the customer's assets.
-    Promise.all([api.teams().catch(() => []), api.customerContracts(customerId).catch(() => ({})), api.technologies().catch(() => [])])
+    Promise.all([api.teams().catch(() => []), customerId == null ? {} : api.customerContracts(customerId).catch(() => ({})), api.technologies().catch(() => [])])
       .then(([teams, contracts, technologies]) => setOptions({ teams: teams || [], assets: (contracts.assets || []).filter(a => a.lifecycle_status === 'active' || String(a.id) === form.asset_id), technologies: technologies || [] }));
   }, [customerId]);
 
@@ -84,7 +84,7 @@ function RecurringForm({ customerId, initial, engineers, onClose, onSaved }) {
             <small className="text-muted">It shows in the tasks of everyone in the team; whoever completes it takes it.</small></>}
       </fieldset>
       <div className="form-row">
-        <div className="form-group"><label htmlFor="rt-asset">Asset</label><select id="rt-asset" value={form.asset_id} onChange={set('asset_id')}><option value="">Any / none</option>{options.assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></div>
+        {customerId != null && <div className="form-group"><label htmlFor="rt-asset">Asset</label><select id="rt-asset" value={form.asset_id} onChange={set('asset_id')}><option value="">Any / none</option>{options.assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></div>}
         <div className="form-group"><label htmlFor="rt-technology">Technology</label><select id="rt-technology" value={form.technology_id} onChange={set('technology_id')}><option value="">Any / none</option>{options.technologies.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></div>
       </div>
       <fieldset className="ct-subtasks"><legend>Checklist</legend>
@@ -103,7 +103,7 @@ function History({ history }) {
     {history.overdue > 0 && <div className="text-sm rt-overdue">{history.overdue} overdue</div>}</>;
 }
 
-export default function CustomerRecurringTasks({ customerId, canManage, engineers = [] }) {
+export default function CustomerRecurringTasks({ customerId, canManage, engineers = [], internal = false }) {
   const toast = useToast(), confirm = useConfirm(), live = useLiveVersion();
   const [rows, setRows] = useState(null), [error, setError] = useState(''), [editing, setEditing] = useState(null), [version, setVersion] = useState(0);
   useEffect(() => {
@@ -124,7 +124,7 @@ export default function CustomerRecurringTasks({ customerId, canManage, engineer
   if (!canManage && rows && !rows.length) return null;
   return <section className="card cs-recurring" aria-labelledby="cs-recurring-title">
     <header><h2 id="cs-recurring-title"><Repeat size={15} aria-hidden="true" /> Recurring tasks</h2>{canManage && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing({})}><Plus size={14} /> Add recurring task</button>}</header>
-    {error ? <div className="error-msg" role="alert">{error}</div> : !rows.length ? <p className="text-muted text-sm">Nothing repeats for this customer yet. Add a task that comes round on a schedule, such as a firewall log review every 2 weeks, for an engineer or a whole team.</p> :
+    {error ? <div className="error-msg" role="alert">{error}</div> : !rows.length ? <p className="text-muted text-sm">{internal ? 'Nothing repeats yet. Add our own work that comes round on a schedule, such as a backup review every week or an SSL renewal every year, for an engineer or a whole team.' : 'Nothing repeats for this customer yet. Add a task that comes round on a schedule, such as a firewall log review every 2 weeks, for an engineer or a whole team.'}</p> :
       <table className="cs-work-table"><thead><tr><th>Task</th><th>Repeats</th><th>Next due</th><th>For</th><th>Done so far</th><th>Status</th>{canManage && <th><span className="sr-only">Actions</span></th>}</tr></thead>
         <tbody>{rows.map(row => <tr key={row.id} className={row.active ? '' : 'is-paused'}>
           <td data-label="Task">{row.title}{row.subtasks?.length > 0 && <span className="text-muted text-sm"> · {row.subtasks.length} checklist item{row.subtasks.length === 1 ? '' : 's'}</span>}{row.priority !== 'medium' && <span className={`badge badge-${row.priority}`}> {row.priority}</span>}

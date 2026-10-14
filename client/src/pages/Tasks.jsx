@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, CheckSquare, ChevronDown, Download, Trash2, UserCheck, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown, RefreshCw } from 'lucide-react';
+import { Check, CheckSquare, ChevronDown, Download, Trash2, UserCheck, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown, RefreshCw, Repeat } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch } from '../components/ListWorkspace';
 import { useLatestRequest } from '../hooks/useLatestRequest';
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import WaitingReasonDialog from '../components/WaitingReasonDialog';
+import CustomerRecurringTasks from '../components/CustomerRecurringTasks';
 import TaskSubtasks, { DraftChecklist, LastUpdate, SubtaskProgress, SubtasksDialog, TaskTicket, TaskUpdates } from '../components/TaskSubtasks';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -184,6 +185,7 @@ export default function Tasks() {
   const toast     = useToast();
   const confirm   = useConfirm();
   const isManager = user.role === 'manager';
+  const [showRepeating, setShowRepeating] = useState(false);
   const [tasks, setTasks]       = useState([]);
   const [projects, setProjects] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
@@ -428,11 +430,18 @@ export default function Tasks() {
 <div className="flex gap-8 flex-wrap">
           <button className="btn btn-primary" onClick={() => { setCreateCustomerId(null);setShowCreate(true); }} disabled={busy || !!loadError}>+ New Task</button>
           <HeaderMenu>
+            {isManager && <button type="button" onClick={() => setShowRepeating(true)}><Repeat size={14} aria-hidden="true" /> Repeating tasks</button>}
             <button type="button" onClick={exportTasks} disabled={busy || !!loadError || search.trim() !== debouncedSearch}><Download size={14} aria-hidden="true" /> Export all matching</button>
             <button type="button" disabled={busy} onClick={() => { references.current = null; load(); }}><RefreshCw size={14} aria-hidden="true" /> Refresh</button>
           </HeaderMenu>
         </div>
       </>} />
+
+      {/* Our own work that repeats (no customer): backup reviews, SSL renewals… */}
+      {showRepeating && <Modal title="Repeating tasks" onClose={() => setShowRepeating(false)} wide>
+        <p className="text-muted text-sm">Internal work that comes round on a schedule. A customer's repeating tasks are on its Customer 360 → Tasks.</p>
+        <CustomerRecurringTasks customerId={null} internal canManage engineers={engineers} />
+      </Modal>}
 
       {/* Filters */}
       <Surface label="Task filters">

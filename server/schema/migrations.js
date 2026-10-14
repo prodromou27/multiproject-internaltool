@@ -1151,6 +1151,11 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_email_token_hash TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_email_expires_at TEXT;
   `]);
+  migrations.push(['20261103_internal_recurring_tasks', `
+    -- A repeating task without a customer: internal work such as reviewing our own
+    -- backups or renewing our own certificates (Tasks → Repeating tasks).
+    ALTER TABLE recurring_tasks ALTER COLUMN customer_id DROP NOT NULL;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

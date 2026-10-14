@@ -97,3 +97,23 @@ test('a team task changed by someone else meanwhile is not overwritten, and its 
   } finally { db.prepare = realPrepare; }
   assert.equal(Number((await db.prepare('SELECT assigned_to FROM tasks WHERE id = ?').get(id)).assigned_to), Number(ids.manager), 'the other claim stands');
 });
+
+test('internal repeating tasks: no customer, managed by managers on the Tasks page', async () => {
+  const at = '/api/recurring-tasks';
+  assert.equal((await api(at, { token: ids.tokenEnabled })).status, 403, 'managers only');
+  assert.equal((await api(at, { method: 'POST', token: ids.tokenManager, body: { title: 'x', frequency: 'weekly', start_date: '2026-01-05', asset_id: 1 } })).status, 400, 'no customer asset');
+  const today = appTime.today();
+  const made = await api(at, { method: 'POST', token: ids.tokenManager, body: { title: 'Review our backups', frequency: 'custom', interval_count: 2, interval_unit: 'week', start_date: today, team_id: ids.teamEnabled, lead_days: 0 } });
+  assert.equal(made.status, 201, JSON.stringify(made.data));
+  const task = await db.prepare('SELECT id, customer_id, project_id, team_id, deadline FROM tasks WHERE recurring_task_id = ?').get(made.data.id);
+  assert.deepEqual([task.customer_id, task.project_id, Number(task.team_id), task.deadline], [null, null, Number(ids.teamEnabled), today], 'the first one is created now');
+  assert.equal((await api(`/api/tasks/${task.id}`, { method: 'PUT', token: ids.tokenEnabled, body: { status: 'in_progress' } })).status, 200, 'the team works on it');
+  const listed = await api(at, { token: ids.tokenManager });
+  assert.deepEqual(listed.data.rows.map(row => row.title), ['Review our backups']);
+  assert.equal(listed.data.rows[0].history.created, 1);
+  assert.ok(!(await api(`/api/customers/${ids.customer}/recurring-tasks`, { token: ids.tokenManager })).data.rows.some(row => row.title === 'Review our backups'), 'not a customer\'s');
+  assert.equal((await api(`/api/customers/${ids.customer}/recurring-tasks/${made.data.id}`, { method: 'DELETE', token: ids.tokenManager })).status, 404, 'not reachable through a customer');
+  assert.equal((await api(`${at}/${made.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { active: false } })).status, 200);
+  assert.equal((await api(`${at}/${made.data.id}`, { method: 'DELETE', token: ids.tokenManager })).status, 200);
+
+});

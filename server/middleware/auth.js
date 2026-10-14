@@ -44,7 +44,7 @@ function modulePermission(req) {
   const base=req.baseUrl || '';
   // Attachments and milestones belong to projects, so the same capability applies.
   if (base.startsWith('/api/projects') || base.startsWith('/api/attachments') || base.startsWith('/api/milestones')) return 'projects.access';
-  if (base.startsWith('/api/tasks')) return 'tasks.access';
+  if (base.startsWith('/api/tasks') || base.startsWith('/api/recurring-tasks')) return 'tasks.access';
   if (base.startsWith('/api/maintenance-visits')) return 'visits.access';
   if (base.startsWith('/api/service-activities')) return 'service_activities.access';
   if (base.startsWith('/api/reports')) return 'reports.access';
