@@ -29,7 +29,9 @@ function pgMemCompatible(sql) {
   const now = new Date().toISOString();
   let out = sql
     .replace(/\bapp_now\(\)/g, `'${now.slice(0, 19).replace('T', ' ')}'`)
-    .replace(/\bapp_today\(\)/g, `'${now.slice(0, 10)}'`)
+    // app_today() is the date in the app's time zone (Asia/Nicosia unless set), as on
+    // PostgreSQL; the UTC date differs late in the UTC evening.
+    .replace(/\bapp_today\(\)/g, `'${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Nicosia' }).format(new Date())}'`)
     .replace(/to_char\(\(now\(\)\s*AT TIME ZONE 'UTC'\),\s*'YYYY-MM-DD HH24:MI:SS'\)/gi, `'${now.slice(0, 19).replace('T', ' ')}'`)
     .replace(/to_char\(\(now\(\)\s*AT TIME ZONE 'UTC'\),\s*'YYYY-MM-DD'\)/gi, `'${now.slice(0, 10)}'`);
   // pg-mem has a confirmed bug rejecting NULL against CHECK(col IN (...)) constraints

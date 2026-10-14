@@ -70,3 +70,9 @@ test('validated addresses are pinned so a later DNS answer cannot redirect the c
   assert.deepEqual(all, [{ address: '8.8.8.8', family: 4 }]);
   assert.equal(pinnedLookup(new URL('https://example.com')), undefined);
 });
+
+test('an IPv6 literal in a URL is checked as an address, not looked up', async () => {
+  for (const url of ['https://[::1]/x', 'https://[::ffff:7f00:1]/x', 'https://[fe80::1]/x']) {
+    await assert.rejects(() => assertPublicHttpUrl(url), /private\/internal/, url);
+  }
+});

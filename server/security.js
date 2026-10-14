@@ -84,7 +84,9 @@ async function assertPublicHttpUrl(rawUrl, options = {}) {
   }
   if (isLocalHostname(url.hostname)) throw new Error(`${label} must not point to a local/internal host`);
 
-  const literalIp = net.isIP(url.hostname) ? url.hostname : null;
+  // URLs keep the brackets of an IPv6 literal ("[::1]").
+  const host = url.hostname.replace(/^\[(.*)\]$/, '$1');
+  const literalIp = net.isIP(host) ? host : null;
   const addresses = literalIp
     ? [{ address: literalIp }]
     : await dns.lookup(url.hostname, { all: true, verbatim: true });
