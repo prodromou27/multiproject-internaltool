@@ -4,7 +4,7 @@ import { api } from '../api';
 import { Modal, fmtDate, fmtNumber } from '../components/Shared';
 import { Field, Surface, ToneBadge } from '../components/EnterpriseUI';
 import { useToast } from '../components/Toast';
-import { localDateISO } from '../utils/dates';
+import { businessToday } from '../utils/dates';
 
 /* KPIs → Scorecard: every enabled KPI measured now, against its target, with
    each engineer's result when a KPI is measured per engineer; and the records
@@ -53,7 +53,7 @@ export function KpiScorecard({ sources, version, onRecords }) {
 export function RecordsDialog({ definition, engineers, onClose }) {
   const toast = useToast();
   const [data, setData] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(false), [version, setVersion] = useState(0);
-  const [form, setForm] = useState({ user_id: '', record_date: localDateISO(new Date()), value: '1', note: '' });
+  const [form, setForm] = useState({ user_id: '', record_date: businessToday(), value: '1', note: '' });
   const sum = definition.calculation_config?.aggregate === 'sum', unit = definition.calculation_config?.unit || 'entries';
   useEffect(() => {
     const controller = new AbortController();

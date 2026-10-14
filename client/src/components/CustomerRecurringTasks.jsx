@@ -6,7 +6,7 @@ import { DraftChecklist } from './TaskSubtasks';
 import { useToast } from './Toast';
 import { useConfirm } from './Confirm';
 import { useLiveVersion } from '../live';
-import { localDateISO } from '../utils/dates';
+import { businessToday } from '../utils/dates';
 
 /* Customer 360 → Tasks: tasks that repeat for this customer, for one engineer or
    a whole team, optionally about one asset or technology. Each occurrence becomes
@@ -27,7 +27,7 @@ function RecurringForm({ customerId, initial, engineers, onClose, onSaved }) {
   const [form, setForm] = useState(() => ({
     title: initial?.title || '', description: initial?.description || '', priority: initial?.priority || 'medium',
     frequency: initial?.frequency || 'monthly', interval_count: initial?.interval_count ?? 3, interval_unit: initial?.interval_unit || 'day',
-    start_date: initial?.start_date || localDateISO(new Date()), lead_days: initial?.lead_days ?? 7,
+    start_date: initial?.start_date || businessToday(), lead_days: initial?.lead_days ?? 7,
     assignee: initial?.team_id ? 'team' : 'engineer',
     assigned_to: initial?.assigned_to ? String(initial.assigned_to) : '', team_id: initial?.team_id ? String(initial.team_id) : '',
     asset_id: initial?.asset_id ? String(initial.asset_id) : '', technology_id: initial?.technology_id ? String(initial.technology_id) : '',

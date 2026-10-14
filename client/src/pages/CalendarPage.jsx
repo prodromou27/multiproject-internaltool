@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../App';
 import { fmtDate } from '../components/Shared';
 import { useToast } from '../components/Toast';
-import { localDateISO } from '../utils/dates';
+import { businessToday, businessNow } from '../utils/dates';
 import { PageHeader } from '../components/PageLayout';
 import { DAYS, MONTHS, TYPE_STYLE } from './calendar/constants';
 import NewVisitModal from './calendar/NewVisitModal';
@@ -22,7 +22,7 @@ export default function CalendarPage() {
   const toast = useToast();
   const isManagerOrPlanner = user.role === 'manager' || user.role === 'planner';
 
-  const now = new Date();
+  const now = businessNow();
   const [year,    setYear]    = useState(now.getFullYear());
   const [month,   setMonth]   = useState(now.getMonth()); // 0-indexed
   const [data,    setData]    = useState({ tasks: [], projects: [], visits: [] });
@@ -95,7 +95,7 @@ export default function CalendarPage() {
     byDay[d].push(e);
   });
 
-  const todayStr = localDateISO(now);
+  const todayStr = businessToday();
 
   const upcoming = allEvents
     .filter(e => (e.date || '') >= todayStr)

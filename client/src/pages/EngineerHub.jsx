@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, BellRing, Building2, CalendarDays, CheckCircle2, Clock, ClipboardList, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
 import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import OperationalFocus from '../components/OperationalFocus';
-import { localDateISO } from '../utils/dates';
+import { localDateISO, businessNow } from '../utils/dates';
 import { useStatuses } from '../hooks/useStatuses';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -24,7 +24,7 @@ const QUICK_NOTES = ['Started work', 'Progress update', 'Blocked — needs assis
 const iso = localDateISO;
 
 function weekRange() {
-  const now = new Date();
+  const now = businessNow();
   const day = (now.getDay() + 6) % 7;
   const start = new Date(now); start.setDate(now.getDate() - day);
   const end = new Date(start); end.setDate(start.getDate() + 6);

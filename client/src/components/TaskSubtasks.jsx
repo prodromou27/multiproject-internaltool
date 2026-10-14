@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { businessToday } from '../utils/dates';
 import { CalendarDays, GripVertical, ListChecks, MessageSquare, Plus, Server, Ticket, User, X } from 'lucide-react';
 import { api } from '../api';
 import { fmtDate, fmtDateTime, MentionInput, Modal, PriorityBadge, renderMentions, StatusBadge } from './Shared';
@@ -12,7 +13,7 @@ import './TaskSubtasks.css';
    again puts it back in progress (server: routes/task-subtasks.js).
    One editor for both: a task's own checklist, and a new task's draft list. */
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => businessToday();
 
 /** Active managers and engineers ({ id, name, role }), loaded once per dialog. */
 function usePeople(enabled = true) {

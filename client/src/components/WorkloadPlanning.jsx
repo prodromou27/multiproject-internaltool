@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { useLatestRequest } from '../hooks/useLatestRequest';
-import { localDateISO } from '../utils/dates';
+import { businessToday } from '../utils/dates';
 import { fmtDate, Modal } from './Shared';
 import { useToast } from './Toast';
 
@@ -34,7 +34,7 @@ function HoursForm({ edit, onSaved, onClose }) {
 
 export default function WorkloadPlanning() {
   const toast = useToast();
-  const [asOf,setAsOf] = useState(localDateISO());
+  const [asOf,setAsOf] = useState(businessToday());
   const [data,setData] = useState(null);
   const [loadedDate,setLoadedDate] = useState(null);
   const [loading,setLoading] = useState(true);

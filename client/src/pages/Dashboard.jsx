@@ -5,7 +5,7 @@ import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import { fmtDate, fmtTime } from '../components/Shared';
 import { PAGES, canAccessPage } from '../navigation';
 import OperationalFocus from '../components/OperationalFocus';
-import { localDateISO } from '../utils/dates';
+import { businessToday } from '../utils/dates';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { useWidgetPrefs } from './dashboard/widgetPrefs';
@@ -57,10 +57,10 @@ export default function Dashboard() {
         (isPlanner) ? Promise.resolve([]) : api.projects(),
         (isPlanner || isPM) ? Promise.resolve([]) : api.tasks({}),
         isManager ? api.reportSummary() : Promise.resolve(null),
-        (isManager || isEngineer) ? api.operationsOverview({ as_of: localDateISO() }) : Promise.resolve(null),
+        (isManager || isEngineer) ? api.operationsOverview({ as_of: businessToday() }) : Promise.resolve(null),
       ]);
       const detailPromise=Promise.allSettled([
-        api.maintenanceVisits({ month: localDateISO().slice(0,7), overview:1 }),
+        api.maintenanceVisits({ month: businessToday().slice(0,7), overview:1 }),
         isManager ? api.maintenanceVisits({ review_pending:1 }) : Promise.resolve([]),
         (isManager || isPM) ? api.maintenanceVisits({ not_completed:1 }) : Promise.resolve([]),
         isEngineer ? api.maintenanceVisits({ pending_report:1 }) : Promise.resolve([]),
@@ -129,7 +129,7 @@ export default function Dashboard() {
     <div className="page dashboard-page">
       {/* Page header */}
       <PageHeader title={isManager ? 'Operations overview' : isEngineer ? 'My dashboard' : isPlanner ? 'Maintenance planning' : 'Project overview'}
-        meta={`${new Intl.DateTimeFormat('en-GB', { weekday: 'long' }).format(new Date())} ${fmtDate(localDateISO())}${lastUpdated ? ` · updated ${fmtTime(lastUpdated)}` : ''}`}
+        meta={`${new Intl.DateTimeFormat('en-GB', { weekday: 'long' }).format(new Date())} ${fmtDate(businessToday())}${lastUpdated ? ` · updated ${fmtTime(lastUpdated)}` : ''}`}
         actions={<>
           {/* Approvals has no place in the menu: it opens from here. */}
           {canAccessPage(PAGES.find(page => page.id === 'approvals'), user) && <Link to="/approvals" className="btn btn-primary">Review approvals</Link>}

@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, Plus, Star, X } from 'lucide-react';
 import { api } from '../../api';
 import { useToast } from '../../components/Toast';
 import { useLiveVersion } from '../../live';
-import { localDateISO } from '../../utils/dates';
+import { localDateISO, businessToday } from '../../utils/dates';
 import './VisitViews.css';
 
 /* Maintenance Visits → Calendar and → Team availability (the scheduling
@@ -19,7 +19,7 @@ const shiftMonth = (ym, n) => { const [y, m] = ym.split('-').map(Number); const 
 
 /** A month of visits, Monday first. Clicking a visit opens it; managers and planners can plan on a day. */
 export function VisitCalendar({ onOpen, onPlan }) {
-  const today = localDateISO(new Date());
+  const today = businessToday();
   const [month, setMonth] = useState(today.slice(0, 7)), [visits, setVisits] = useState(null), [error, setError] = useState('');
   const live = useLiveVersion();
   useEffect(() => {
@@ -58,7 +58,7 @@ export function VisitCalendar({ onOpen, onPlan }) {
 
 function TimeOffForm({ engineers, onSaved, onClose }) {
   const toast = useToast();
-  const today = localDateISO(new Date());
+  const today = businessToday();
   const [form, setForm] = useState({ user_id: '', start_date: today, end_date: today, reason: '' });
   async function save(event) {
     event.preventDefault();
@@ -78,7 +78,7 @@ function TimeOffForm({ engineers, onSaved, onClose }) {
 export function TeamAvailability({ onPlan }) {
   const [customerName, setCustomerName] = useState('');
   const toast = useToast();
-  const [from, setFrom] = useState(() => mondayOf(localDateISO(new Date())));
+  const [from, setFrom] = useState(() => mondayOf(businessToday()));
   const [teamId, setTeamId] = useState(''), [customerId, setCustomerId] = useState(''), [teams, setTeams] = useState([]);
   const [data, setData] = useState(null), [error, setError] = useState(''), [addingOff, setAddingOff] = useState(false), [version, setVersion] = useState(0);
   const live = useLiveVersion();
@@ -90,7 +90,7 @@ export function TeamAvailability({ onPlan }) {
       .then(result => { if (!controller.signal.aborted) setData(result); }).catch(failure => { if (!controller.signal.aborted) setError(failure.message); });
     return () => controller.abort();
   }, [from, to, teamId, customerId, version, live]);
-  const today = localDateISO(new Date());
+  const today = businessToday();
   const plan = (date, engineerIds) => onPlan({ scheduled_date: date, engineer_ids: engineerIds, ...(customerId ? { customer_id: Number(customerId) } : {}) });
   async function removeOff(id) {
     try { await api.removeTimeOff(id); toast.success('Time off removed'); setVersion(v => v + 1); } catch (failure) { toast.error(failure.message); }

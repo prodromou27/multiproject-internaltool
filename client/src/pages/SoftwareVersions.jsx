@@ -7,7 +7,7 @@ import { Surface, ToneBadge } from '../components/EnterpriseUI';
 import { fmtDate, fmtDateTime } from '../components/Shared';
 import { useToast } from '../components/Toast';
 import { useLiveVersion } from '../live';
-import { localDateISO } from '../utils/dates';
+import { localDateISO, businessToday } from '../utils/dates';
 import SoftwareAdmin from './SoftwareAdmin';
 import { Link } from 'react-router-dom';
 import SoftwareStatusBadge from '../components/SoftwareStatusBadge';
@@ -92,7 +92,7 @@ export default function SoftwareVersions() {
       }
     } catch (failure) { toast.error(failure.message); } finally { setChecking(false); }
   }
-  const today = localDateISO(new Date());
+  const today = businessToday();
   return <div className="page sv-page">
     <PageHeader title="Software versions"
       meta={data?.last_sync?.at ? `The latest versions of the products we support, checked every morning. Last checked ${fmtDateTime(data.last_sync.at)}.` : 'The latest versions of the products we support, checked every morning.'}

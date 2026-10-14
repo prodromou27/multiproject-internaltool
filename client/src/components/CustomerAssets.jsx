@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { businessToday } from '../utils/dates';
 import { ClipboardCheck, Paperclip, Pencil, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import { fmtDate, Modal } from './Shared';
@@ -100,7 +101,7 @@ function AssetFiles({ customerId,asset,onClose,onChanged }) {
   </Modal>;
 }
 
-const today=() => new Date().toISOString().slice(0,10);
+const today=() => businessToday();
 const daysUntil=date => Math.round((Date.parse(`${date}T00:00:00Z`)-Date.parse(`${today()}T00:00:00Z`))/86400000);
 const reviewDue=(row,days) => row.lifecycle_status==='active' && (!row.reviewed_at || daysUntil(row.reviewed_at.slice(0,10)) < -days);
 

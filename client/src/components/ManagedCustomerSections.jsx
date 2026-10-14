@@ -4,7 +4,7 @@ import { api } from '../api';
 import CustomerReport from './CustomerReport';
 import { fmtDate, fmtDateTime } from './Shared';
 import { Surface } from './EnterpriseUI';
-import { localDateISO } from '../utils/dates';
+import { localDateISO, businessNow } from '../utils/dates';
 import { useLiveRefresh } from '../live';
 
 /* Customer 360's Tickets and Reports tabs for a managed customer (formerly the
@@ -14,7 +14,7 @@ import { useLiveRefresh } from '../live';
 // dates activities, tasks and visits are recorded with (not UTC).
 const iso=date => localDateISO(date);
 export function period(preset,from,to) {
-  const now=new Date(),year=now.getFullYear(),month=now.getMonth();
+  const now=businessNow(),year=now.getFullYear(),month=now.getMonth();
   if (preset==='today') return { from:iso(now),to:iso(now) };
   if (preset==='week') { const start=new Date(year,month,now.getDate()-((now.getDay()+6)%7));return { from:iso(start),to:iso(now) }; }
   if (preset==='last_month') return { from:iso(new Date(year,month-1,1)),to:iso(new Date(year,month,0)) };

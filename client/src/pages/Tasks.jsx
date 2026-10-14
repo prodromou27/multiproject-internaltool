@@ -12,7 +12,7 @@ import TaskSubtasks, { DraftChecklist, LastUpdate, SubtaskProgress, SubtasksDial
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal, sentenceCase } from '../components/Shared';
-import { localDateISO } from '../utils/dates';
+import { businessToday } from '../utils/dates';
 import { TASK_FILTERS } from '../utils/taskFilters';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useToast } from '../components/Toast';
@@ -233,7 +233,7 @@ export default function Tasks() {
   const [counts, setCounts] = useState({});
   const [loadedQuery, setLoadedQuery] = useState(null);
   const pageSize = 25;
-  const today = localDateISO(new Date());
+  const today = businessToday();
   const activeFilter = TASK_FILTERS.includes(filter) ? filter : 'all';
   const baseParams = new URLSearchParams({ filter: activeFilter, priority: priorityFilter, as_of: today, sort: sort.key, direction: sort.direction });
   if (debouncedSearch) baseParams.set('search', debouncedSearch);

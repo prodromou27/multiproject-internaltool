@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { businessNow } from '../utils/dates';
 import { Link } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
@@ -11,7 +12,7 @@ const pad = n => String(n).padStart(2, '0');
 const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 function rangeFor(preset, customFrom, customTo) {
-  const now = new Date();
+  const now = businessNow();
   if (preset === 'last_month') {
     return { from: iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)), to: iso(new Date(now.getFullYear(), now.getMonth(), 0)) };
   }

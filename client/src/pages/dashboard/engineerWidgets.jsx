@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { CheckCircle2, Clock, Wrench, FolderOpen, ListTodo, Send, ClipboardCheck, Building2, Ticket } from 'lucide-react';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../../components/Shared';
 import { api } from '../../api';
-import { localDateISO } from '../../utils/dates';
+import { localDateISO, businessToday } from '../../utils/dates';
 import StatCard from './StatCard';
 import AddToCalendarButton from '../../components/AddToCalendarButton';
 
@@ -34,7 +34,7 @@ export function engineerWidget(id, ctx) {
     case 'due_week': {
       const now = new Date(); now.setHours(0,0,0,0);
       const weekEnd = new Date(now.getTime() + 7 * 86400000);
-      const todayStr = localDateISO(now);
+      const todayStr = businessToday();
       const dueThisWeek = myOpen
         .filter(t => {
           if (!t.deadline) return false;

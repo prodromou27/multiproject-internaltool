@@ -8,7 +8,7 @@ import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import { useLatestRequest } from '../hooks/useLatestRequest';
-import { localDateISO } from '../utils/dates';
+import { businessToday, businessNow } from '../utils/dates';
 import { api } from '../api';
 import AddToCalendarButton from '../components/AddToCalendarButton';
 import { TeamAvailability, VisitCalendar } from './maintenanceVisits/VisitViews';
@@ -200,7 +200,7 @@ function generatePDF(visit, onError) {
 </head><body>
   <div class="hdr">
     <div><div class="logo">${PRODUCT_NAME}</div><div class="doc-type">Maintenance Visit Report</div></div>
-    <div style="font-size:11px;color:var(--gray-500);text-align:right">Generated ${fmtDate(localDateISO())}</div>
+    <div style="font-size:11px;color:var(--gray-500);text-align:right">Generated ${fmtDate(businessToday())}</div>
   </div>
 
   <h1>${esc(visit.title)}</h1>
@@ -405,7 +405,7 @@ const VISIT_FILTERS = new Set(['upcoming', 'past', 'report_pending', 'awaiting_r
 /* ── Main Page ───────────────────────────────────────────── */
 // The next 6 months and the last 12, newest first, for the month filter.
 const MONTH_CHOICES = () => {
-  const now = new Date(), out = [];
+  const now = businessNow(), out = [];
   for (let offset = 6; offset >= -12; offset--) {
     const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
     out.push({ value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) });
@@ -492,7 +492,7 @@ export default function MaintenanceVisits() {
     setSelected(null); setShowForm(false); setEditing(null); setShowImport(false);
   }, [scope]);
 
-  const today = localDateISO();
+  const today = businessToday();
   const filtered = visits.filter(v => {
     // Status-tab filter
     let pass = true;

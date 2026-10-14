@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { businessNow } from '../utils/dates';
 import {
   Users, CheckSquare, Wrench, Clock, ChevronDown, ChevronUp,
   RefreshCw, AlertTriangle, CalendarDays,
@@ -317,7 +318,7 @@ export default function Workload() {
   const [loading,    setLoading]    = useState(true);
   const [fLoading,   setFLoading]   = useState(false);
   const [error,      setError]      = useState('');
-  const now = new Date();
+  const now = businessNow();
   const monthLabel = `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;
 
   const loadSnapshot = () => {

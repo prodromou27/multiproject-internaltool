@@ -1,4 +1,5 @@
 import { useContext, useRef, useState, useEffect, useId, useLayoutEffect } from 'react';
+import { businessToday } from '../utils/dates';
 import { X } from 'lucide-react';
 import { StatusContext, getStatusDef } from '../hooks/useStatuses';
 import { formatDate, formatDateTime, formatNumber, formatTime } from '../utils/locale';
@@ -100,10 +101,8 @@ export function sentenceCase(value) {
 
 export function isOverdue(d) {
   if (!d) return false;
-  // Compare date strings directly (YYYY-MM-DD) to avoid time-of-day false positives
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  return String(d).slice(0, 10) < todayStr;
+  // A date-only comparison against the organisation's today (the same for everyone).
+  return String(d).slice(0, 10) < businessToday();
 }
 
 /** Returns a human-friendly relative time string ("just now", "5m ago", "3h ago", "2 days ago"). */

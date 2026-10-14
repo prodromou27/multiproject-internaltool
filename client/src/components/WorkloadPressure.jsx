@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useLatestRequest } from '../hooks/useLatestRequest';
-import { localDateISO } from '../utils/dates';
+import { businessToday } from '../utils/dates';
 import { fmtDate, Modal } from './Shared';
 import { useLiveRefresh } from '../live';
 
@@ -57,7 +57,7 @@ function PolicyForm({ onClose,onSaved }) {
 }
 
 export default function WorkloadPressure() {
-  const [date,setDate] = useState(localDateISO());
+  const [date,setDate] = useState(businessToday());
   const [data,setData] = useState(null);
   const [loading,setLoading] = useState(true);
   const [error,setError] = useState('');
