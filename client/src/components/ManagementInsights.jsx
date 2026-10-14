@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { usePref } from '../utils/prefs';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, BarChart3, CalendarClock, CheckSquare, Clock, FileClock, GraduationCap, PackageCheck, Ticket, Wrench } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, Line, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -59,10 +60,10 @@ export function Attention({ title, icon: Icon, items, empty, render, to, limit, 
 /* compact (the dashboard): the figures and what needs attention; the charts open
    on request. Reports → Overview shows everything. */
 export default function ManagementInsights({ filterable = false, compact = false }) {
-  const [chartsOpen, setChartsOpen] = useState(() => { try { return localStorage.getItem('insights_charts') === 'open'; } catch { return false; } });
-  const toggleCharts = () => setChartsOpen(open => { try { localStorage.setItem('insights_charts', open ? 'closed' : 'open'); } catch { /* not remembered */ } return !open; });
+  const [chartsOpen, setChartsOpen] = usePref('insights.charts', value => typeof value === 'boolean', false);
+  const toggleCharts = () => setChartsOpen(open => !open);
   const showCharts = !compact || chartsOpen;
-  const [days, setDays] = useState(() => { try { return Number(localStorage.getItem('insights_days')) || 90; } catch { return 90; } });
+  const [days, setDays] = usePref('insights.days', value => [30, 90, 180, 365].includes(value), 90);
   const [data, setData] = useState(null), [error, setError] = useState('');
   const [filters, setFilters] = useState({ customer_id: '', team_id: '', engineer_id: '' }), [options, setOptions] = useState(null);
   useEffect(() => {
@@ -79,7 +80,7 @@ export default function ManagementInsights({ filterable = false, compact = false
       .catch(failure => { if (!controller.signal.aborted) { if (failure.status === 403) setData('forbidden'); else setError(failure.message); } });
     return () => controller.abort();
   }, [days, live, filters]);
-  const choose = value => { setDays(value); try { localStorage.setItem('insights_days', String(value)); } catch { /* not remembered */ } };
+  const choose = value => setDays(value);
 
   const header = <div className="mi-head">
     <div><h2><BarChart3 size={18} aria-hidden="true" /> Insights</h2>{data && <p className="text-muted text-sm">{fmtDate(data.period.from)} – {fmtDate(data.period.to)}</p>}</div>

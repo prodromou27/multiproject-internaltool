@@ -209,6 +209,8 @@ function ProjectForm({ initial, users, onSave, onClose, onCustomerCreated }) {
 }
 
 /* ── Main Page ────────────────────────────────────────────────── */
+const VALID_FILTERS = ['open','all','in_progress','not_started','on_hold','waiting_customer','waiting_vendor','delayed','pending_approval','overdue','closed','cancelled','reopened'];
+
 export default function Projects() {
   const { user } = useAuth();
   const toast    = useToast();
@@ -218,7 +220,7 @@ export default function Projects() {
   const location  = useLocation();
   const [projects,   setProjects]   = useState([]);
   const [users,      setUsers]      = useState([]);
-  const [filter,     setFilter]     = useSavedFilter('projects', 'open');
+  const [filter,     setFilter]     = useSavedFilter('projects', 'open', { param: 'status', allowed: VALID_FILTERS });
   const [search,     setSearch]     = useState('');
   const [ragFilter,  setRagFilter]  = useState('all');
   const [showCreate, setShowCreate] = useState(false);
@@ -294,7 +296,6 @@ export default function Projects() {
   }
 
   const TERMINAL = ['closed', 'cancelled'];
-  const VALID_FILTERS = ['open','all','in_progress','not_started','on_hold','waiting_customer','waiting_vendor','delayed','pending_approval','overdue','closed','cancelled','reopened'];
   // Treat unknown saved filter values as 'open' so stale localStorage doesn't blank the list
   const activeFilter = VALID_FILTERS.includes(filter) ? filter : 'open';
   const filtered = projects;

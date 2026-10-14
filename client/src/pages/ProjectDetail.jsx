@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useUrlTab } from '../hooks/useSavedFilter';
 import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { useParams } from 'react-router-dom';
 import { Building2, ChevronLeft, MessageSquare, ClipboardList, Plus, RefreshCw, Trash2, FolderOpen, GitBranch, FileText, UserPlus, UserX, Lock, CheckCircle2, X, Upload, LayoutGrid, List as ListIcon, Printer } from 'lucide-react';
@@ -35,7 +36,20 @@ export default function ProjectDetail() {
   const [milestones, setMilestones] = useState([]);
   const [allUsers,   setAllUsers]   = useState([]);
   const [activity,   setActivity]   = useState([]);
-  const [tab, setTab] = useState(isPM ? 'milestones' : 'tasks');
+  const tabs = [
+    ...(isPM ? [] : ['tasks']),
+    'gantt',
+    'milestones',
+    'updates',
+    'activity',
+    'members',
+    ...(isPM ? [] : ['attachments']),
+    ...(canManage ? ['fields'] : []),
+    ...((user.permissions?.['kpis.view'] ?? isManager) ? ['kpis'] : []),
+    ...(isManager ? ['scorecard'] : []),
+  ];
+  // The open tab is in the address, so refresh and shared links keep it.
+  const [tab, setTab] = useUrlTab(tabs, isPM ? 'milestones' : 'tasks');
   const [statusMsg, setStatusMsg] = useState('');
   const [showEdit,         setShowEdit]         = useState(false);
   const [showAddTask,      setShowAddTask]      = useState(false);
@@ -351,18 +365,7 @@ export default function ProjectDetail() {
       </div>
 
       <div className="tabs">
-        {[
-          ...(isPM ? [] : ['tasks']),
-          'gantt',
-          'milestones',
-          'updates',
-          'activity',
-          'members',
-          ...(isPM ? [] : ['attachments']),
-          ...(canManage ? ['fields'] : []),
-          ...((user.permissions?.['kpis.view'] ?? isManager) ? ['kpis'] : []),
-          ...(isManager ? ['scorecard'] : []),
-        ].map(t => (
+        {tabs.map(t => (
           <button key={t} className={'tab' + (tab === t ? ' active' : '')} onClick={() => setTab(t)}>
             {t === 'kpis' ? 'KPIs' : t === 'scorecard' ? 'Scorecard' : t === 'fields' ? 'Custom Fields' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>

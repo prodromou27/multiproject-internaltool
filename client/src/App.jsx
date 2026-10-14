@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { dropLegacyPrefs, loadServerPrefs, setPrefsUser } from './utils/prefs';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import Login from './pages/Login';
 import ConfirmEmail from './pages/ConfirmEmail';
@@ -83,6 +84,8 @@ function LegacySettingsRedirect() {
 /* ── App root ────────────────────────────────────────────── */
 export default function App() {
   const [user, setUser] = useState(null);
+  // View preferences are kept per person (utils/prefs.js).
+  setPrefsUser(user?.id);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
   const [passwordChangeUser, setPasswordChangeUser] = useState(null);
@@ -120,6 +123,13 @@ export default function App() {
     }).finally(() => { if (mounted) setAuthLoading(false); });
     return () => { mounted = false; };
   }, []);
+
+  // Someone signed in: their own view preferences, from the server where kept there.
+  useEffect(() => {
+    if (!user) return;
+    dropLegacyPrefs();
+    loadServerPrefs().catch(() => { /* this browser's copy is used */ });
+  }, [user?.id]);
 
   // Background updates from the rest of the team (see live.js).
   const live = useLiveVersion();

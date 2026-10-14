@@ -31,8 +31,10 @@ const WORK_TYPES = [
   { label: 'Upgrades', names: ['Upgrade'] },
 ];
 
+const RANGE_PRESETS = ['month', 'last_month', 'quarter', 'custom'];
+
 export default function ServiceOperations() {
-  const [preset, setPreset] = useSavedFilter('service_ops_range', 'month');
+  const [preset, setPreset] = useSavedFilter('service_ops_range', 'month', { param: 'range', allowed: RANGE_PRESETS });
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [data, setData] = useState(null);

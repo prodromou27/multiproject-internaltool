@@ -414,6 +414,8 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
 
 const MV_COLUMNS = ['customer_name*', 'title*', 'description', 'scheduled_date*', 'engineer_names', 'notes'];
 const VISIT_FILTERS = new Set(['upcoming', 'past', 'report_pending', 'awaiting_review', 'cancelled', 'all']);
+const VISIT_FILTER_LIST = [...VISIT_FILTERS];
+const VISIT_VIEWS = ['list', 'calendar', 'availability'];
 
 /* ── Main Page ───────────────────────────────────────────── */
 // The next 6 months and the last 12, newest first, for the month filter.
@@ -438,8 +440,8 @@ export default function MaintenanceVisits() {
   const location  = useLocation();
   const [visits,      setVisits]      = useState([]);
   const [engineers,   setEngineers]   = useState([]);
-  const [filter,      setFilter]      = useSavedFilter('mv_filter', 'upcoming');
-  const [savedView,   setView]        = useSavedFilter('mv_view', 'list');
+  const [filter,      setFilter]      = useSavedFilter('mv_filter', 'upcoming', { param: 'show', allowed: VISIT_FILTER_LIST });
+  const [savedView,   setView]        = useSavedFilter('mv_view', 'list', { param: 'view', allowed: VISIT_VIEWS });
   const [monthFilter, setMonthFilter] = useState('');
   const [search,      setSearch]      = useState('');
   const [selected,    setSelected]    = useState(null);

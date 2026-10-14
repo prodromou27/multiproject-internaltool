@@ -18,6 +18,8 @@ import { ActivityDetailModal } from './activityLog/ActivityDetailModal';
 import { useLiveRefresh } from '../live';
 
 /* ── Main page ────────────────────────────────────────────────────────── */
+const DATE_PRESETS = ['today', 'this_week', 'this_month', 'custom'];
+
 export default function ActivityLog() {
   const { user, saAccess } = useAuth();
   const toast = useToast();
@@ -36,7 +38,7 @@ export default function ActivityLog() {
   const [exporting, setExporting] = useState(false);
   const [metaError, setMetaError] = useState('');
 
-  const [datePreset, setDatePreset] = useSavedFilter('activity_log_date_preset', 'this_week');
+  const [datePreset, setDatePreset] = useSavedFilter('activity_log_date_preset', 'this_week', { param: 'range', allowed: DATE_PRESETS });
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [customerFilter, setCustomerFilter] = useState('');

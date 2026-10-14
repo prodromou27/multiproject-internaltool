@@ -15,6 +15,7 @@ import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal, sentenceCase } from '../components/Shared';
 import { businessToday } from '../utils/dates';
 import { TASK_FILTERS } from '../utils/taskFilters';
+import { usePref } from '../utils/prefs';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
@@ -177,6 +178,11 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
   );
 }
 
+const ALL_TASK_COLUMNS = TASK_COLUMNS.map(([id]) => id);
+// Stored task preferences are checked before use (an old browser or another version).
+const isPresetList = value => Array.isArray(value) && value.length <= 20 && value.every(p => p && typeof p.name === 'string' && (p.filter === undefined || TASK_FILTERS.includes(p.filter)));
+const isColumnList = value => Array.isArray(value) && value.every(id => ALL_TASK_COLUMNS.includes(id));
+
 export default function Tasks() {
   const { user } = useAuth();
   const location  = useLocation();
@@ -191,24 +197,15 @@ export default function Tasks() {
   const [tasks, setTasks]       = useState([]);
   const [projects, setProjects] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
-  const [filter, setFilter]     = useSavedFilter('tasks', 'all');
+  const [filter, setFilter]     = useSavedFilter('tasks', 'all', { param: 'filter', allowed: TASK_FILTERS });
   const [priorityFilter, setPriorityFilter] = useState('all');
 
-  // Apply URL ?filter= on mount (e.g. from dashboard overdue link)
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const urlFilter = params.get('filter');
-    if (TASK_FILTERS.includes(urlFilter)) setFilter(urlFilter);
-  }, [location.search, setFilter]);
   const [search, setSearch]     = useState('');
   const [myTasksOnly, setMyTasksOnly] = useState(false);
-  const [presets, setPresets] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('hub_task_filter_presets') || '[]'); } catch { return []; }
-  });
-  const [visibleColumns, setVisibleColumns] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('hub_task_columns') || JSON.stringify(TASK_COLUMNS.map(([id]) => id)))); }
-    catch { return new Set(TASK_COLUMNS.map(([id]) => id)); }
-  });
+  // Saved filters and columns follow the person between browsers (utils/prefs.js).
+  const [presets, setPresets] = usePref('tasks.presets', isPresetList, []);
+  const [columnList, setColumnList] = usePref('tasks.columns', isColumnList, ALL_TASK_COLUMNS);
+  const visibleColumns = new Set(columnList);
   const [sort, setSort] = useState({ key: 'deadline', direction: 'asc' });
   const [showCreate, setShowCreate] = useState(false);
   const [createTeams, setCreateTeams] = useState([]);
@@ -294,23 +291,15 @@ export default function Tasks() {
     const next = [...presets.filter(p => p.name.toLowerCase() !== name.toLowerCase()),
       { name, filter, priorityFilter, myTasksOnly, search }];
     setPresets(next);
-    localStorage.setItem('hub_task_filter_presets', JSON.stringify(next));
     toast.success(`Saved filter preset “${name}”`);
   }
 
   function deletePreset(name) {
-    const next = presets.filter(p => p.name !== name);
-    setPresets(next);
-    localStorage.setItem('hub_task_filter_presets', JSON.stringify(next));
+    setPresets(presets.filter(p => p.name !== name));
   }
 
   function toggleColumn(id) {
-    setVisibleColumns(current => {
-      const next = new Set(current);
-      next.has(id) ? next.delete(id) : next.add(id);
-      localStorage.setItem('hub_task_columns', JSON.stringify([...next]));
-      return next;
-    });
+    setColumnList(current => current.includes(id) ? current.filter(column => column !== id) : [...current, id]);
   }
 
   function changeSort(key) {

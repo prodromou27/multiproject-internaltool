@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useUrlTab } from '../hooks/useSavedFilter';
 import { businessNow } from '../utils/dates';
 import {
   Users, CheckSquare, Wrench, Clock, ChevronDown, ChevronUp,
@@ -312,7 +313,7 @@ function Pill({ icon, value, label, color }) {
 }
 
 export default function Workload() {
-  const [tab,        setTab]        = useState('tickets');
+  const [tab,        setTab]        = useUrlTab(['tickets', 'pressure', 'planning', 'snapshot', 'forecast'], 'tickets');
   const [engineers,  setEngineers]  = useState([]);
   const [forecast,   setForecast]   = useState([]);
   const [loading,    setLoading]    = useState(true);

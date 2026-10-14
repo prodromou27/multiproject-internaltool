@@ -1235,6 +1235,16 @@ async function applyMigrations(pool, transaction) {
     );
     CREATE INDEX IF NOT EXISTS idx_custom_report_deliveries_due ON custom_report_deliveries(status, next_attempt_at);
   `]);
+  migrations.push(['20261110_user_preferences', `
+    -- View preferences that follow a person between browsers (routes/auth.js VIEW_PREFERENCES).
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      pref_key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      updated_at TEXT DEFAULT ${NOW},
+      PRIMARY KEY (user_id, pref_key)
+    );
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

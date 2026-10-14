@@ -214,3 +214,21 @@ test('customer logo: managers upload a real image; people who can see the custom
   assert.equal((await get(ids.customer, ids.tokenManager)).status, 404);
   assert.equal((await api(`/api/customers/${ids.customer}`, { token: ids.tokenManager })).data.logo_updated_at, null);
 });
+
+test('view preferences follow a person between browsers and stay their own (I08)', async () => {
+  const { api: call, ids } = require('./lib/activityFixture');
+  const put = (key, value, token = ids.tokenEnabled) => call(`/api/auth/preferences/${key}`, { method: 'PUT', token, body: { value } });
+  const presets = [{ name: 'My overdue', filter: 'overdue', priorityFilter: 'all', myTasksOnly: true, search: '' }];
+  assert.equal((await put('tasks.presets', presets)).status, 200);
+  assert.equal((await put('tasks.columns', ['title', 'deadline'])).status, 200);
+  assert.deepEqual((await call('/api/auth/preferences', { token: ids.tokenEnabled })).data, { 'tasks.presets': presets, 'tasks.columns': ['title', 'deadline'] });
+  assert.deepEqual((await call('/api/auth/preferences', { token: ids.tokenManager })).data, {}, 'another person sees none of them');
+
+  assert.equal((await put('tasks.presets', [{ name: 'x', customer_name: 'Acme Corp' }])).status, 400, 'only known fields');
+  assert.equal((await put('tasks.presets', Array.from({ length: 21 }, (_, i) => ({ name: `p${i}` })))).status, 400);
+  assert.equal((await put('tasks.columns', ['<script>'])).status, 400);
+  assert.equal((await put('anything', 1)).status, 404, 'only known preferences');
+  assert.equal((await put('__proto__', 1)).status, 404);
+  assert.equal((await put('tasks.columns', ['title'])).status, 200, 'saving again replaces');
+  assert.deepEqual((await call('/api/auth/preferences', { token: ids.tokenEnabled })).data['tasks.columns'], ['title']);
+});

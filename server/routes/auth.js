@@ -552,6 +552,36 @@ function eventChoicesInput(value, role) {
 // name/email change does. Every field is optional in the request — send
 // only the ones you're changing — but each one present must be valid, and
 // the response always reflects the row's actual current state.
+// View preferences that follow a person between browsers (review I08): saved task
+// filters and the task columns shown. Only these names, small JSON values, and only
+// the person's own; filter values are ids and choices, never customer data.
+const VIEW_PREFERENCES = {
+  'tasks.presets': value => Array.isArray(value) && value.length <= 20 && value.every(p => p && typeof p === 'object' && !Array.isArray(p)
+    && typeof p.name === 'string' && p.name.trim() && p.name.length <= 60
+    && ['filter', 'priorityFilter'].every(k => p[k] === undefined || (typeof p[k] === 'string' && p[k].length <= 30))
+    && (p.search === undefined || (typeof p.search === 'string' && p.search.length <= 200))
+    && (p.myTasksOnly === undefined || typeof p.myTasksOnly === 'boolean')
+    && Object.keys(p).every(k => ['name', 'filter', 'priorityFilter', 'search', 'myTasksOnly'].includes(k))),
+  'tasks.columns': value => Array.isArray(value) && value.length <= 30 && value.every(c => typeof c === 'string' && /^[a-z_]{1,30}$/.test(c)),
+};
+router.get('/preferences', requireAuth, async (req, res) => {
+  const rows = await db.prepare('SELECT pref_key, value FROM user_preferences WHERE user_id = ?').all(req.user.id);
+  const prefs = {};
+  for (const row of rows) {
+    try { const value = JSON.parse(row.value); if (VIEW_PREFERENCES[row.pref_key]?.(value)) prefs[row.pref_key] = value; } catch { /* left out */ }
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(prefs);
+});
+router.put('/preferences/:key', requireAuth, async (req, res) => {
+  const valid = Object.hasOwn(VIEW_PREFERENCES, req.params.key) ? VIEW_PREFERENCES[req.params.key] : null;
+  if (!valid) return res.status(404).json({ error: 'Unknown preference' });
+  if (!valid(req.body?.value)) return res.status(400).json({ error: 'That preference value is not allowed' });
+  await db.prepare(`INSERT INTO user_preferences (user_id, pref_key, value, updated_at) VALUES (?, ?, ?, app_now())
+    ON CONFLICT (user_id, pref_key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`).run(req.user.id, req.params.key, JSON.stringify(req.body.value));
+  res.json({ ok: true });
+});
+
 router.put('/notification-preferences', requireAuth, async (req, res) => {
   const { notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url } = req.body;
   const has = (key) => Object.prototype.hasOwnProperty.call(req.body, key);
