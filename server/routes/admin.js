@@ -29,18 +29,32 @@ async function changeManagedUser(req, mutate) {
 
 router.get('/users', async (req, res) => {
   const users = (await db.prepare(`
-    SELECT u.id, u.name, u.email, u.role, u.active, u.created_at, u.last_login,
+    SELECT u.id, u.name, u.email, u.role, u.custom_role_id, cr.name AS custom_role_name, u.active, u.created_at, u.last_login,
       u.totp_enabled, u.must_change_password,
       (SELECT COUNT(*) FROM project_assignments WHERE user_id = u.id) as project_count,
       (SELECT COUNT(*) FROM tasks WHERE assigned_to = u.id AND status NOT IN ('completed','cancelled','closed')) as open_tasks,
       (SELECT COUNT(*) FROM maintenance_visit_engineers mve JOIN maintenance_visits mv ON mv.id = mve.visit_id WHERE mve.user_id = u.id AND mv.status != 'cancelled') as mv_count
-    FROM users u ORDER BY u.role DESC, u.name ASC
+    FROM users u LEFT JOIN custom_roles cr ON cr.id = u.custom_role_id ORDER BY u.role DESC, u.name ASC
   `).all());
   res.json(users);
 });
 
+/* A custom role (custom_role_id) gives the person its base role as well; a plain
+   role (without custom_role_id) clears any custom role. */
+async function roleChoice(body) {
+  if (body.custom_role_id === undefined || body.custom_role_id === null || body.custom_role_id === '') return { role: body.role, customRoleId: body.custom_role_id === undefined ? undefined : null };
+  const id = Number(body.custom_role_id);
+  if (!Number.isSafeInteger(id) || id < 1) return { error: 'Invalid custom role' };
+  const custom = await db.prepare('SELECT id, base_role FROM custom_roles WHERE id = ?').get(id);
+  if (!custom) return { error: 'Custom role not found' };
+  return { role: custom.base_role, customRoleId: id };
+}
+
 router.post('/users', async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const choice = await roleChoice(req.body || {});
+  if (choice.error) return res.status(400).json({ error: choice.error });
+  const { name, email, password } = req.body;
+  const role = choice.role;
   if (typeof name !== 'string' || typeof password !== 'string' || !role)
     return res.status(400).json({ error: 'name, password and role are required' });
   if (name.trim().length < 2 || name.trim().length > 100)
@@ -56,8 +70,8 @@ router.post('/users', async (req, res) => {
   try {
     const hash = await bcrypt.hash(password, 12);
     const result = (await db.prepare(
-      "INSERT INTO users (name, email, password, role, must_change_password, password_changed_at) VALUES (?, ?, ?, ?, 1, app_now())"
-    ).run(name.trim(), emailVal, hash, role));
+      "INSERT INTO users (name, email, password, role, custom_role_id, must_change_password, password_changed_at) VALUES (?, ?, ?, ?, ?, 1, app_now())"
+    ).run(name.trim(), emailVal, hash, role, choice.customRoleId ?? null));
     await logAudit(db, req, 'user', result.lastInsertRowid, name.trim(), 'user_created', `role=${role}; email=${emailVal || ''}`);
     res.json({ id: result.lastInsertRowid, name, email: emailVal, role });
   } catch (e) {
@@ -68,7 +82,12 @@ router.post('/users', async (req, res) => {
 });
 
 router.put('/users/:id', async (req, res) => {
-  const { name, email, role } = req.body;
+  const choice = await roleChoice(req.body || {});
+  if (choice.error) return res.status(400).json({ error: choice.error });
+  const { name, email } = req.body;
+  const role = choice.role;
+  // A plain role chosen clears the custom role; nothing chosen leaves it.
+  const customRoleId = choice.customRoleId !== undefined ? choice.customRoleId : role !== undefined ? null : undefined;
   if (name !== undefined && (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100))
     return res.status(400).json({ error: 'Name must be between 2 and 100 characters' });
   if (email != null && typeof email !== 'string') return res.status(400).json({ error: 'Email must be text' });
@@ -82,13 +101,14 @@ router.put('/users/:id', async (req, res) => {
         return { status: 400, error: 'Cannot change the role of the last active manager' };
       await tx.prepare(`UPDATE users SET
         name = COALESCE(?, name), email = ?, role = COALESCE(?, role),
+        custom_role_id = CASE WHEN ? = 1 THEN ? ELSE custom_role_id END,
         token_version = token_version + 1 WHERE id = ?`
-      ).run(name?.trim() || null, email === undefined ? user.email : (email?.trim().toLowerCase() || null), role || null, user.id);
+      ).run(name?.trim() || null, email === undefined ? user.email : (email?.trim().toLowerCase() || null), role || null, customRoleId === undefined ? 0 : 1, customRoleId ?? null, user.id);
       return { user };
     });
     if (result.error) return res.status(result.status).json({ error: result.error });
     const { user } = result;
-    await logAudit(db, req, 'user', user.id, user.name, 'user_updated', `role ${user.role}->${role || user.role}; email_changed=${email ? 'yes' : 'no'}`);
+    await logAudit(db, req, 'user', user.id, user.name, 'user_updated', `role ${user.role}->${role || user.role}; custom_role=${customRoleId === undefined ? 'unchanged' : customRoleId ?? 'none'}; email_changed=${email ? 'yes' : 'no'}`);
     res.json({ ok: true });
   } catch (e) {
     if (e.code === '23505' || /unique/i.test(e.message)) return res.status(409).json({ error: 'Email already in use' });

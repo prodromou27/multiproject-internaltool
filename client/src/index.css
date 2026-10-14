@@ -1359,3 +1359,9 @@ a.topbar-action { display: inline-flex; align-items: center; justify-content: ce
 .command-item .command-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; text-align: left; }
 .command-item .command-hint { flex: 0 1 auto; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .command-input-row input, .command-input-row input:focus, .command-input-row input:focus-visible { border: 0; box-shadow: none; outline: none; min-height: 0; } /* the dialog already shows where typing goes */
+
+/* Settings → Permissions → Custom roles: the permission checklist. */
+.custom-role-group { border: 1px solid var(--gray-200); border-radius: 8px; padding: 8px 12px 10px; margin: 0 0 12px; }
+.custom-role-group legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
+.custom-role-permission { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; min-height: 32px; cursor: pointer; }
+.custom-role-permission input { margin-top: 3px; width: 16px; height: 16px; flex: none; }

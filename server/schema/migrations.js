@@ -1156,6 +1156,27 @@ async function applyMigrations(pool, transaction) {
     -- backups or renewing our own certificates (Tasks → Repeating tasks).
     ALTER TABLE recurring_tasks ALTER COLUMN customer_id DROP NOT NULL;
   `]);
+  migrations.push(['20261104_custom_roles', `
+    -- Roles a manager makes, such as "Team lead": built on one of the four roles
+    -- (which decides the pages and screens) with its own set of permissions.
+    CREATE TABLE IF NOT EXISTS custom_roles (
+      id          SERIAL PRIMARY KEY,
+      name        TEXT NOT NULL UNIQUE,
+      base_role   TEXT NOT NULL CHECK(base_role IN ('manager','planner','pm','engineer')),
+      description TEXT,
+      version     INTEGER NOT NULL DEFAULT 1,
+      created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  TEXT DEFAULT ${NOW},
+      updated_at  TEXT DEFAULT ${NOW}
+    );
+    CREATE TABLE IF NOT EXISTS custom_role_permissions (
+      custom_role_id INTEGER NOT NULL REFERENCES custom_roles(id) ON DELETE CASCADE,
+      permission_key TEXT NOT NULL,
+      allowed        INTEGER NOT NULL,
+      PRIMARY KEY (custom_role_id, permission_key)
+    );
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_role_id INTEGER REFERENCES custom_roles(id) ON DELETE SET NULL;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

@@ -33,13 +33,19 @@ function eligibleRole(key,role) {
   return !!definition && (!definition.eligible_roles || definition.eligible_roles.includes(role));
 }
 
+/* What a person may do, most specific last: the role's defaults, the role's
+   overrides, their custom role (Settings → Permissions → Custom roles), then
+   their own exceptions. A custom role is built on one of the four roles, which
+   stays the person's role (pages, screens and eligibility follow it). */
 async function effectivePermissions(user,store=db) {
   const result={ ...DEFAULTS[user.role] };
-  const [roleRules,userRules]=await Promise.all([
+  const [roleRules,customRules,userRules]=await Promise.all([
     store.prepare('SELECT permission_key,allowed FROM role_permission_overrides WHERE role=?').all(user.role),
+    store.prepare('SELECT crp.permission_key,crp.allowed FROM custom_role_permissions crp JOIN users u ON u.custom_role_id=crp.custom_role_id WHERE u.id=?').all(user.id),
     store.prepare('SELECT permission_key,allowed FROM user_permission_overrides WHERE user_id=?').all(user.id),
   ]);
   for (const row of roleRules) if (KEYS.has(row.permission_key) && eligibleRole(row.permission_key,user.role)) result[row.permission_key]=!!row.allowed;
+  for (const row of customRules) if (KEYS.has(row.permission_key) && eligibleRole(row.permission_key,user.role)) result[row.permission_key]=!!row.allowed;
   for (const row of userRules) if (KEYS.has(row.permission_key) && eligibleRole(row.permission_key,user.role)) result[row.permission_key]=!!row.allowed;
   for (const key of KEYS) if (!eligibleRole(key,user.role)) result[key]=false;
   return result;
@@ -52,14 +58,19 @@ async function hasPermission(user,key,store=db) {
 
 async function usersWithPermission(key,store=db) {
   if (!validPermission(key)) return [];
-  const [users,roleRules,userRules]=await Promise.all([
-    store.prepare('SELECT id,role FROM users WHERE active=1').all(),
+  const [users,roleRules,customRules,userRules]=await Promise.all([
+    store.prepare('SELECT id,role,custom_role_id FROM users WHERE active=1').all(),
     store.prepare('SELECT role,allowed FROM role_permission_overrides WHERE permission_key=?').all(key),
+    store.prepare('SELECT custom_role_id,allowed FROM custom_role_permissions WHERE permission_key=?').all(key),
     store.prepare('SELECT user_id,allowed FROM user_permission_overrides WHERE permission_key=?').all(key),
   ]);
   const byRole=new Map(roleRules.map(row => [row.role,!!row.allowed]));
+  const byCustom=new Map(customRules.map(row => [Number(row.custom_role_id),!!row.allowed]));
   const byUser=new Map(userRules.map(row => [Number(row.user_id),!!row.allowed]));
-  return users.filter(user => eligibleRole(key,user.role) && (byUser.has(Number(user.id)) ? byUser.get(Number(user.id)) : byRole.has(user.role) ? byRole.get(user.role) : !!DEFAULTS[user.role]?.[key]));
+  const allowed=user => (byUser.has(Number(user.id)) ? byUser.get(Number(user.id))
+    : user.custom_role_id && byCustom.has(Number(user.custom_role_id)) ? byCustom.get(Number(user.custom_role_id))
+    : byRole.has(user.role) ? byRole.get(user.role) : !!DEFAULTS[user.role]?.[key]);
+  return users.filter(user => eligibleRole(key,user.role) && allowed(user));
 }
 
 module.exports={ DEFINITIONS,KEYS,ROLES,DEFAULTS,validPermission,validRole,eligibleRole,effectivePermissions,hasPermission,usersWithPermission };

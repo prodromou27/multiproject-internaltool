@@ -9,16 +9,22 @@ import { useLiveRefresh } from '../../live';
 
 /* ── User Form ───────────────────────────────────────────── */
 export function UserForm({ initial, onSave, onClose }) {
-  const [form, setForm] = useState(
-    initial || { name: '', email: '', password: '', role: 'engineer' }
-  );
+  const [form, setForm] = useState(() => {
+    const start = initial || { name: '', email: '', password: '', role: 'engineer' };
+    // The role picker holds a built-in role, or "custom:<id>" for a custom role.
+    return { ...start, role_choice: start.custom_role_id ? `custom:${start.custom_role_id}` : start.role };
+  });
+  const [customRoles, setCustomRoles] = useState([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+  useEffect(() => { api.permissionMatrix().then(result => setCustomRoles(result.custom_roles || [])).catch(() => setCustomRoles([])); }, []);
 
   async function submit(e) {
     e.preventDefault(); setErr(''); setSaving(true);
-    try { await onSave(form); onClose(); }
+    const { role_choice: choice, ...rest } = form;
+    const role = choice.startsWith('custom:') ? { custom_role_id: Number(choice.slice(7)) } : { role: choice, custom_role_id: null };
+    try { await onSave({ ...rest, role: undefined, ...role }); onClose(); }
     catch (ex) { setErr(ex.message); }
     finally { setSaving(false); }
   }
@@ -39,12 +45,16 @@ export function UserForm({ initial, onSave, onClose }) {
       )}
       <div className="form-group">
         <label>Role *</label>
-        <select aria-label="Role" value={form.role} onChange={set('role')}>
+        <select aria-label="Role" value={form.role_choice} onChange={set('role_choice')}>
           <option value="engineer">Engineer</option>
           <option value="planner">Planner</option>
           <option value="pm">PM (Project Monitor)</option>
           <option value="manager">Manager</option>
+          {customRoles.length > 0 && <optgroup label="Custom roles">
+            {customRoles.map(role => <option key={role.id} value={`custom:${role.id}`}>{role.name} (on {role.base_role === 'pm' ? 'PM' : sentenceCase(role.base_role)})</option>)}
+          </optgroup>}
         </select>
+        {customRoles.length === 0 && <small className="text-muted">Make your own roles in Settings → Permissions.</small>}
       </div>
       <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
@@ -186,7 +196,7 @@ export function UsersTab({ currentUser }) {
                       <div className="font-semibold">{u.name}</div>
                       <div className="u-5be3ef4">{u.email || '—'}</div>
                     </td>
-                    <td><span className={`badge badge-${u.role}`}>{sentenceCase(u.role)}</span></td>
+                    <td><span className={`badge badge-${u.role}`} title={u.custom_role_name ? `Built on ${sentenceCase(u.role)}` : undefined}>{u.custom_role_name || sentenceCase(u.role)}</span></td>
                     <td>
                       {u.active ? <span className="badge badge-done">Active</span> : <span className="badge badge-cancelled">Inactive</span>}
                       {u.must_change_password ? (

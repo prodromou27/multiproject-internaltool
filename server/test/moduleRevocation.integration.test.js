@@ -40,3 +40,53 @@ test('a revoked module is closed on its related routes too', async () => {
   assert.equal((await as(`/api/time-logs?task_id=${task}`)).status, 200);
   assert.equal((await as(`/api/attachments/${project}`)).status, 200);
 });
+
+test('custom roles: a named role on a base role with its own permissions', async () => {
+  const { bcrypt, signJwt } = suiteFixture;
+  const person = (await db.prepare("INSERT INTO users (name, email, password, role) VALUES ('Lead Person', 'lead.person@test.local', ?, 'engineer')").run(bcrypt.hashSync('x', 4))).lastInsertRowid;
+  const tokenOf = async () => signJwt({ id: person, token_version: (await db.prepare('SELECT token_version FROM users WHERE id = ?').get(person)).token_version });
+  const asManager = (path, method = 'GET', body) => api(path, { method, token: ids.tokenManager, body });
+  const effective = async () => (await api('/api/auth/permissions', { token: await tokenOf() })).data.permissions;
+
+  // Checked: a name that is not a built-in role, a base role, and only permissions the base may hold.
+  assert.equal((await asManager('/api/permissions/custom-roles', 'POST', { name: 'Engineer', base_role: 'engineer' })).status, 400);
+  assert.equal((await asManager('/api/permissions/custom-roles', 'POST', { name: 'Lead', base_role: 'boss' })).status, 400);
+  assert.equal((await asManager('/api/permissions/custom-roles', 'POST', { name: 'Lead', base_role: 'engineer', permissions: { 'reports.access': true } })).status, 400);
+  assert.equal((await api('/api/permissions/custom-roles', { method: 'POST', token: ids.tokenEnabled, body: { name: 'Lead', base_role: 'engineer' } })).status, 403, 'managers only');
+
+  const made = await asManager('/api/permissions/custom-roles', 'POST', { name: 'Field lead', base_role: 'engineer', description: 'Engineers without the activity log', permissions: { 'service_activities.access': false } });
+  assert.equal(made.status, 201, JSON.stringify(made.data));
+  assert.equal(made.data.permissions['service_activities.access'], false);
+  assert.equal(made.data.permissions['tasks.access'], true, 'the rest start from the base role');
+  assert.equal((await asManager('/api/permissions/custom-roles', 'POST', { name: 'Field lead', base_role: 'engineer' })).status, 409, 'names are unique');
+
+  // Given to a person from Settings → Users: their role is the base role.
+  assert.equal((await asManager(`/api/admin/users/${person}`, 'PUT', { custom_role_id: made.data.id })).status, 200);
+  const row = await db.prepare('SELECT role, custom_role_id FROM users WHERE id = ?').get(person);
+  assert.deepEqual([row.role, Number(row.custom_role_id)], ['engineer', Number(made.data.id)]);
+  assert.equal((await effective())['service_activities.access'], false);
+  assert.equal((await api('/api/service-activities', { token: await tokenOf() })).status, 403);
+  const listed = await db.prepare('SELECT cr.name FROM users u JOIN custom_roles cr ON cr.id = u.custom_role_id WHERE u.id = ?').get(person);
+  assert.equal(listed.name, 'Field lead');
+  assert.equal((await asManager('/api/permissions')).data.custom_roles.find(role => role.name === 'Field lead').members, 1);
+
+  // Changing the role changes it for everyone who has it; a personal exception still wins.
+  const changed = await asManager(`/api/permissions/custom-roles/${made.data.id}`, 'PUT', { name: 'Field lead', version: made.data.version, permissions: { 'service_activities.access': true, 'visits.access': false } });
+  assert.equal(changed.status, 200);
+  assert.equal((await asManager(`/api/permissions/custom-roles/${made.data.id}`, 'PUT', { name: 'Field lead', version: made.data.version })).status, 409, 'stale version');
+  assert.equal((await asManager(`/api/permissions/custom-roles/${made.data.id}`, 'PUT', { name: 'Field lead', base_role: 'manager', version: changed.data.version })).status, 400, 'the base role stays');
+  let now = await effective();
+  assert.deepEqual([now['service_activities.access'], now['visits.access']], [true, false]);
+  await db.prepare('INSERT INTO user_permission_overrides (user_id, permission_key, allowed) VALUES (?, ?, 1)').run(person, 'visits.access');
+  assert.equal((await effective())['visits.access'], true);
+  const { usersWithPermission } = require('../permissions');
+  assert.ok((await usersWithPermission('service_activities.access')).some(user => Number(user.id) === Number(person)));
+
+  // A plain role clears the custom role; deleting a role leaves its people on the base role.
+  assert.equal((await asManager(`/api/admin/users/${person}`, 'PUT', { custom_role_id: made.data.id })).status, 200);
+  assert.equal((await asManager(`/api/permissions/custom-roles/${made.data.id}`, 'DELETE')).status, 200);
+  const after = await db.prepare('SELECT role, custom_role_id FROM users WHERE id = ?').get(person);
+  assert.deepEqual([after.role, after.custom_role_id], ['engineer', null]);
+  now = await effective();
+  assert.equal(now['service_activities.access'], true, 'back to the engineer defaults');
+});
