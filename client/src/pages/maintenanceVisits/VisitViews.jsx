@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import CustomerSearchSelect from '../../components/CustomerSearchSelect';
 import { ChevronLeft, ChevronRight, Plus, Star, X } from 'lucide-react';
 import { api } from '../../api';
 import { useToast } from '../../components/Toast';
@@ -74,7 +75,8 @@ function TimeOffForm({ engineers, onSaved, onClose }) {
 }
 
 /** The scheduling assistant: who is free when, and the best slots for a customer's visit. */
-export function TeamAvailability({ customers, onPlan }) {
+export function TeamAvailability({ onPlan }) {
+  const [customerName, setCustomerName] = useState('');
   const toast = useToast();
   const [from, setFrom] = useState(() => mondayOf(localDateISO(new Date())));
   const [teamId, setTeamId] = useState(''), [customerId, setCustomerId] = useState(''), [teams, setTeams] = useState([]);
@@ -98,14 +100,15 @@ export function TeamAvailability({ customers, onPlan }) {
       <button type="button" className="btn btn-ghost btn-sm" aria-label="Previous two weeks" onClick={() => setFrom(f => addDays(f, -14))}><ChevronLeft size={16} /></button>
       <h2>{dayLabel(from)} – {dayLabel(to)}</h2>
       <button type="button" className="btn btn-ghost btn-sm" aria-label="Next two weeks" onClick={() => setFrom(f => addDays(f, 14))}><ChevronRight size={16} /></button>
-      <label className="vv-filter"><span>Customer</span><select value={customerId} onChange={e => setCustomerId(e.target.value)}><option value="">Any customer</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+      <div className="vv-filter"><span id="vv-customer-label">Customer</span><CustomerSearchSelect value={customerId} emptyLabel="Any customer" placeholder="Any customer" label="Customer"
+        onChange={(id, option) => { setCustomerId(id ? String(id) : ''); setCustomerName(option?.name || ''); }} /></div>
       {teams.length > 0 && <label className="vv-filter"><span>Team</span><select value={teamId} onChange={e => setTeamId(e.target.value)}><option value="">All engineers</option>{teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>}
       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAddingOff(v => !v)}><Plus size={13} /> Time off</button>
     </header>
     {addingOff && data && <TimeOffForm engineers={data.engineers} onClose={() => setAddingOff(false)} onSaved={() => { setAddingOff(false); setVersion(v => v + 1); }} />}
     {error ? <div className="error-msg" role="alert">{error}</div> : !data ? <p className="text-muted">Loading…</p> : <>
       <div className="vv-suggest" aria-label="Suggested slots">
-        <h3>Suggested slots{customerId ? ` for ${customers.find(c => String(c.id) === customerId)?.name || 'this customer'}` : ''}</h3>
+        <h3>Suggested slots{customerId ? ` for ${customerName || 'this customer'}` : ''}</h3>
         {!data.suggestions.length ? <p className="text-muted text-sm">No free weekday in these two weeks. Try the next two weeks.</p> :
           <div className="vv-chips">{data.suggestions.map(slot => <button type="button" key={slot.date} className="vv-chip" onClick={() => plan(slot.date, [slot.engineers[0].id])}>
             <strong>{dayLabel(slot.date)}</strong><span>{slot.engineers.map(e => `${e.serves_customer ? '★ ' : ''}${e.name}`).join(', ')}</span></button>)}</div>}

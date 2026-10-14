@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { useParams } from 'react-router-dom';
 import { Building2, ChevronLeft, MessageSquare, ClipboardList, Plus, RefreshCw, Trash2, FolderOpen, GitBranch, FileText, UserPlus, UserX, Lock, CheckCircle2, X, Upload, LayoutGrid, List as ListIcon, Printer } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -32,7 +33,6 @@ export default function ProjectDetail() {
   const [tasks,      setTasks]      = useState([]);
   const [milestones, setMilestones] = useState([]);
   const [allUsers,   setAllUsers]   = useState([]);
-  const [customers,  setCustomers]  = useState([]);
   const [activity,   setActivity]   = useState([]);
   const [tab, setTab] = useState(isPM ? 'milestones' : 'tasks');
   const [statusMsg, setStatusMsg] = useState('');
@@ -54,14 +54,14 @@ export default function ProjectDetail() {
     if (request.signal.aborted) return Promise.resolve();
     setLoadError(null);
     const options = { signal: request.signal };
+    // What the first screen needs. The activity feed loads with its tab (see below);
+    // the Edit dialog searches customers instead of loading them all.
     return Promise.all([
       api.project(id, options),
       isPM ? Promise.resolve([]) : api.tasks({ project_id: id }, options),
       isManager ? api.users(options) : Promise.resolve([]),
-      isManager ? api.customers(options) : Promise.resolve([]),
-      api.projectActivity(id, options),
       api.milestones(id, options),
-    ]).then(([p, t, u, c, act, ms]) => {
+    ]).then(([p, t, u, ms]) => {
       if (!isCurrent(request)) return;
       setProject(p);
     if (isEngineer) {
@@ -73,7 +73,8 @@ export default function ProjectDetail() {
         ].slice(0, 6)));
       } catch {}
     }
-      setTasks(t); setAllUsers(u); setCustomers(c); setActivity(act ?? []); setMilestones(ms);
+      setTasks(t); setAllUsers(u); setMilestones(ms);
+      setActivityVersion(value => value + 1);
     }).catch(error => {
       if (!isCurrent(request)) return;
       setLoadError({ message: error.message || 'Could not load project', status: error.status, projectId: id });
@@ -83,6 +84,15 @@ export default function ProjectDetail() {
     });
   }, [id, isManager, isPM, isEngineer, user.id, begin, isCurrent]);
   const loadMilestones = load;
+  // The activity feed, only while its tab is open (and again after each reload).
+  const [activityVersion, setActivityVersion] = useState(0);
+  useEffect(() => {
+    if (tab !== 'activity') return undefined;
+    const controller = new AbortController();
+    api.projectActivity(id, { signal: controller.signal }).then(rows => { if (!controller.signal.aborted) setActivity(rows ?? []); }).catch(() => {});
+    return () => controller.abort();
+  }, [tab, id, activityVersion]);
+
   useEffect(() => {
     setProject(null); setTasks([]); setMilestones([]); setActivity([]);
     setSelectedTask(null); setShowEdit(false); setShowAddTask(false); setShowRejectDialog(false); setShowImportExcel(false);
@@ -656,10 +666,7 @@ export default function ProjectDetail() {
             </div>
             <div className="form-group">
               <label>Customer</label>
-              <select value={editForm.customer_id || ''} onChange={setE('customer_id')}>
-                <option value="">— No customer —</option>
-                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <CustomerSearchSelect value={editForm.customer_id || ''} label="Customer" onChange={id => setEditForm(f => ({ ...f, customer_id: id ? String(id) : '' }))} />
             </div>
             <div className="modal-footer u-cc45258">
               <button type="button" className="btn btn-ghost" onClick={() => setShowEdit(false)}>Cancel</button>

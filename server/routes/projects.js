@@ -107,14 +107,15 @@ function normalizeOptionalId(value, label) {
 
 // List projects — engineers/planners see only assigned ones; managers and PMs see all
 router.get('/', requireAuth, async (req, res) => {
-  const taskCols = `
-    (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status != 'cancelled') as task_count,
-    (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status IN ('completed','closed')) as done_count,
-    (SELECT COUNT(*) FROM tasks WHERE project_id = p.id
-       AND status NOT IN ('completed','closed','cancelled')
-       AND deadline IS NOT NULL AND deadline < app_today()) as overdue_task_count,
-    (EXISTS (SELECT 1 FROM user_project_pins WHERE project_id = p.id AND user_id = ?)) as is_pinned
-  `;
+  // Task counts in one grouped pass (not three subqueries per project), and the pin as a join.
+  const taskJoin = `
+    LEFT JOIN (SELECT project_id,
+        SUM(CASE WHEN status != 'cancelled' THEN 1 ELSE 0 END) AS task_count,
+        SUM(CASE WHEN status IN ('completed','closed') THEN 1 ELSE 0 END) AS done_count,
+        SUM(CASE WHEN status NOT IN ('completed','closed','cancelled') AND deadline IS NOT NULL AND deadline < app_today() THEN 1 ELSE 0 END) AS overdue_task_count
+      FROM tasks WHERE project_id IS NOT NULL GROUP BY project_id) tc ON tc.project_id = p.id
+    LEFT JOIN user_project_pins pin ON pin.project_id = p.id AND pin.user_id = ?`;
+  const taskCols = 'COALESCE(tc.task_count, 0) AS task_count, COALESCE(tc.done_count, 0) AS done_count, COALESCE(tc.overdue_task_count, 0) AS overdue_task_count, (pin.user_id IS NOT NULL) AS is_pinned';
   let rows;
   if (req.user.role === 'manager' || req.user.role === 'pm') {
     rows = (await db.prepare(`
@@ -122,6 +123,7 @@ router.get('/', requireAuth, async (req, res) => {
       FROM projects p
       JOIN users u ON p.created_by = u.id
       LEFT JOIN customers cu ON p.customer_id = cu.id
+      ${taskJoin}
       ORDER BY is_pinned DESC, p.created_at DESC
     `).all(req.user.id));
   } else {
@@ -131,33 +133,40 @@ router.get('/', requireAuth, async (req, res) => {
       JOIN project_assignments pa ON pa.project_id = p.id
       JOIN users u ON p.created_by = u.id
       LEFT JOIN customers cu ON p.customer_id = cu.id
+      ${taskJoin}
       WHERE pa.user_id = ? ORDER BY is_pinned DESC, p.created_at DESC
     `).all(req.user.id, req.user.id));
   }
+  // Customer names are decrypted once per customer, and only where needed: every
+  // row for the full list or a search, otherwise only the page sent back.
+  const names = new Map();
+  const nameOf = value => { if (!names.has(value)) names.set(value, decrypt(value)); return names.get(value); };
+  const withName = row => (row.customer_name_decrypted ? row : { ...row, customer_name: nameOf(row.customer_name), customer_name_decrypted: true });
+  const clean = ({ customer_name_decrypted, ...row }) => row;
   // Attach computed RAG + live completion %.
   rows=rows.map(r => ({
     ...r,
-    customer_name: decrypt(r.customer_name),
-    rag_status:     computeRag(r),
+    task_count: Number(r.task_count), done_count: Number(r.done_count), overdue_task_count: Number(r.overdue_task_count), is_pinned: !!r.is_pinned,
+    rag_status:     computeRag({ ...r, task_count: Number(r.task_count), done_count: Number(r.done_count), overdue_task_count: Number(r.overdue_task_count) }),
     completion_pct: r.completion_pct != null
       ? r.completion_pct
-      : (r.task_count > 0 ? Math.round((r.done_count / r.task_count) * 100) : 0),
+      : (Number(r.task_count) > 0 ? Math.round((Number(r.done_count) / Number(r.task_count)) * 100) : 0),
   }));
-  if (req.query.paged === undefined) return res.json(rows);
+  if (req.query.paged === undefined) return res.json(rows.map(row => clean(withName(row))));
   if (req.query.paged!=='1' || Object.values(req.query).some(value => typeof value!=='string')) return res.status(400).json({ error:'Invalid project list parameters' });
   const page=Number(req.query.page || 1),pageSize=Number(req.query.page_size || 25),search=(req.query.search || '').trim().toLowerCase();
   const status=req.query.status || 'open',rag=req.query.rag || 'all';
   const statuses=new Set(['open','all','overdue',...VALID_PROJECT_STATUSES]);
   if (!Number.isSafeInteger(page) || page<1 || page>10_000 || !Number.isSafeInteger(pageSize) || pageSize<1 || pageSize>100 || search.length>200 || !statuses.has(status) || !['all','red','amber','green'].includes(rag)) return res.status(400).json({ error:'Invalid project filters or pagination' });
   const terminal=new Set(['closed','cancelled']);
-  const searched=search ? rows.filter(row => [row.title,row.customer_name,row.created_by_name].some(value => String(value || '').toLowerCase().includes(search))) : rows;
+  const searched=search ? rows.map(withName).filter(row => [row.title,row.customer_name,row.created_by_name].some(value => String(value || '').toLowerCase().includes(search))) : rows;
   const counts={ all:searched.length,open:searched.filter(row => !terminal.has(row.status)).length,overdue:searched.filter(row => !terminal.has(row.status) && row.status!=='pending_approval' && row.deadline && row.deadline<require('../appTime').today()).length };
   for (const value of VALID_PROJECT_STATUSES) counts[value]=searched.filter(row => row.status===value).length;
   let filtered=status==='all' ? searched : status==='open' ? searched.filter(row => !terminal.has(row.status)) : status==='overdue' ? searched.filter(row => !terminal.has(row.status) && row.status!=='pending_approval' && row.deadline && row.deadline<require('../appTime').today()) : searched.filter(row => row.status===status);
   counts.rag_all=filtered.length;for (const value of ['red','amber','green']) counts[`rag_${value}`]=filtered.filter(row => row.rag_status===value).length;
   if (rag!=='all') filtered=filtered.filter(row => row.rag_status===rag);
   const offset=(page-1)*pageSize;
-  res.json({ rows:filtered.slice(offset,offset+pageSize),total:filtered.length,page,page_size:pageSize,counts });
+  res.json({ rows:filtered.slice(offset,offset+pageSize).map(row => clean(withName(row))),total:filtered.length,page,page_size:pageSize,counts });
 });
 
 /* ── Pin / unpin a project ─────────────────────────────────── */

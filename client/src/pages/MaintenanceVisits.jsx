@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { Upload, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useSavedFilter } from '../hooks/useSavedFilter';
@@ -65,7 +66,7 @@ function EngineerPicker({ engineers, selected, onChange }) {
 }
 
 /* ── Visit Form ──────────────────────────────────────────── */
-function VisitForm({ initial, defaults, customers, engineers, onSave, onClose }) {
+function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
   const [form, setForm] = useState(initial || {
     customer_id: '', title: '', description: '', scheduled_date: '',
     engineer_ids: [], asset_ids: [], notes: '', status: 'scheduled',...(defaults || {}),
@@ -96,10 +97,8 @@ function VisitForm({ initial, defaults, customers, engineers, onSave, onClose })
     <form onSubmit={submit}>
       <div className="form-group">
         <label htmlFor="visit-customer">Customer *</label>
-        <select id="visit-customer" value={form.customer_id} onChange={event => setForm(old => ({ ...old,customer_id:event.target.value,asset_ids:String(event.target.value)===String(initial?.customer_id || '') ? initial?.asset_ids || [] : [] }))} required>
-          <option value="">Select customer…</option>
-          {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <CustomerSearchSelect id="visit-customer" value={form.customer_id} allowEmpty={false} required placeholder="Search customers…"
+          onChange={customerId => setForm(old => ({ ...old,customer_id:customerId ? String(customerId) : '',asset_ids:String(customerId || '')===String(initial?.customer_id || '') ? initial?.asset_ids || [] : [] }))} />
       </div>
       <div className="form-group">
         <label htmlFor="visit-title">Visit Title *</label>
@@ -415,7 +414,6 @@ export default function MaintenanceVisits() {
   const canManage  = isManager || isPlanner;
   const location  = useLocation();
   const [visits,      setVisits]      = useState([]);
-  const [customers,   setCustomers]   = useState([]);
   const [engineers,   setEngineers]   = useState([]);
   const [filter,      setFilter]      = useSavedFilter('mv_filter', 'upcoming');
   const [savedView,   setView]        = useSavedFilter('mv_view', 'list');
@@ -465,14 +463,13 @@ export default function MaintenanceVisits() {
     const options = { signal: request.signal };
     const params = {};
     if (monthFilter) params.month = monthFilter;
+    // Customers are picked by searching (CustomerSearchSelect), not loaded here.
     return Promise.all([
       api.maintenanceVisits(params, options),
-      canManage ? api.customers(options) : Promise.resolve([]),
       canManage ? api.users(options)     : Promise.resolve([]),
-    ]).then(([v, c, u]) => {
+    ]).then(([v, u]) => {
       if (!isCurrent(request)) return;
       setVisits(v);
-      setCustomers(c);
       setEngineers((u || []).filter(x => x.role === 'engineer'));
       setLoadedScope(scope);
     }).catch(error => {
@@ -578,7 +575,7 @@ export default function MaintenanceVisits() {
         ))}
       </div>
       {view === 'calendar' && <VisitCalendar onOpen={visit => setSelected(visit)} onPlan={canManage ? planVisit : null} />}
-      {view === 'availability' && canManage && <TeamAvailability customers={customers} onPlan={planVisit} />}
+      {view === 'availability' && canManage && <TeamAvailability onPlan={planVisit} />}
       {view === 'list' && <>
       {/* Search + Filters */}
       <Surface label="Visit filters">
@@ -717,7 +714,6 @@ export default function MaintenanceVisits() {
           <VisitForm
             initial={editing}
             defaults={createDefaults}
-            customers={customers}
             engineers={engineers}
             onSave={async data => {
               if (editing) {

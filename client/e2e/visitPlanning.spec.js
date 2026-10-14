@@ -7,7 +7,10 @@ test('managers see visits on a calendar and plan from team availability', async 
   const api = await mockApi(page, { role: 'manager' });
   const today = new Date(), visitDay = iso(today);
   api.override('GET /api/maintenance-visits', () => ({ body: [{ id: 5, title: 'Quarterly firewall check', customer_id: 1, customer_name: 'Northwind Logistics', scheduled_date: visitDay, status: 'scheduled', engineer_names: 'Maria Security', engineer_ids: [7], report_sent: 0, report_sent_to_customer: 0 }] }));
-  api.override('GET /api/customers', () => ({ body: [{ id: 1, name: 'Northwind Logistics' }] }));
+  // The picker searches (paged=1&search=…); the plain list is no longer loaded.
+  api.override('GET /api/customers', ({ request }) => ({ body: new URL(request.url()).searchParams.get('paged')
+    ? { rows: [{ id: 1, name: 'Northwind Logistics', active: 1 }], total: 1, page: 1, page_size: 10 }
+    : [{ id: 1, name: 'Northwind Logistics' }] }));
   api.override('GET /api/users', () => ({ body: [{ id: 7, name: 'Maria Security', role: 'engineer' }] }));
   api.override('GET /api/teams', () => ({ body: [] }));
   api.override('GET /api/visit-planning/availability', ({ request }) => {
@@ -26,7 +29,8 @@ test('managers see visits on a calendar and plan from team availability', async 
   await page.keyboard.press('Escape');
 
   await page.getByRole('tab', { name: 'Team availability' }).click();
-  await page.getByLabel('Customer').selectOption({ label: 'Northwind Logistics' });
+  await page.getByRole('combobox', { name: 'Customer' }).fill('north');
+  await page.getByRole('option', { name: 'Northwind Logistics' }).click();
   const slot = page.locator('.vv-chip').first();
   await expect(slot).toContainText('★ Maria Security');
   await slot.click();

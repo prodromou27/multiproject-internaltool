@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { Check, CheckSquare, ChevronDown, Download, Trash2, UserCheck, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown, RefreshCw, Repeat } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { HeaderMenu, PageHeader } from '../components/PageLayout';
@@ -214,8 +215,6 @@ export default function Tasks() {
     if (!showCreate) return;
     (isManager ? api.teams() : api.teamsMine().then(result => result.teams || [])).then(setCreateTeams).catch(() => setCreateTeams([]));
   }, [showCreate, isManager]);
-  const [createCustomerId,setCreateCustomerId]=useState(null);
-  const [customers,setCustomers]=useState([]);
   const [form, setForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
   const [loading, setLoading]   = useState(true);
   const [editTask, setEditTask] = useState(null);
@@ -249,17 +248,7 @@ export default function Tasks() {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => clearTimeout(timer);
   }, [search]);
-  useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !busy && !loadError, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateCustomerId(customerId);if(customerId) setForm(current => ({ ...current,customer_id:String(customerId),project_id:'' }));setShowCreate(true); } });
-
-  // Customers the person can add tasks for, loaded when the form opens.
-  useEffect(() => {
-    if (!showCreate) return undefined;
-    const controller = new AbortController();
-    api.customers({ signal: controller.signal })
-      .then(data => { if (!controller.signal.aborted) setCustomers((Array.isArray(data) ? data : data?.rows || []).map(c => ({ id: Number(c.id), name: c.name })).sort((a, b) => String(a.name).localeCompare(String(b.name)))); })
-      .catch(() => {});
-    return () => controller.abort();
-  }, [showCreate]);
+  useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !busy && !loadError, onCreate: params => { const customerId=customerIdFromCreateIntent(params);if(customerId) setForm(current => ({ ...current,customer_id:String(customerId),project_id:'' }));setShowCreate(true); } });
 
   const { begin, isCurrent } = useLatestRequest(`${user.id}:${user.role}:${query}`);
   const load = useCallback((loadOptions) => {
@@ -336,7 +325,7 @@ export default function Tasks() {
       await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, customer_id: !form.project_id && form.customer_id ? Number(form.customer_id) : null,
         assigned_to: !team && form.assigned_to ? Number(form.assigned_to) : null, team_id: team, subtasks: form.subtasks || [], ticket_reference: form.ticket_reference?.trim() || null });
       setShowCreate(false);
-      setCreateCustomerId(null);
+      
       setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
       load();
     } catch (err) { setCreateErr(err.message || 'Failed to create task'); }
@@ -428,7 +417,7 @@ export default function Tasks() {
     <div className="page">
       <PageHeader title="Tasks" actions={<>
 <div className="flex gap-8 flex-wrap">
-          <button className="btn btn-primary" onClick={() => { setCreateCustomerId(null);setShowCreate(true); }} disabled={busy || !!loadError}>+ New Task</button>
+          <button className="btn btn-primary" onClick={() => { setShowCreate(true); }} disabled={busy || !!loadError}>+ New Task</button>
           <HeaderMenu>
             {isManager && <button type="button" onClick={() => setShowRepeating(true)}><Repeat size={14} aria-hidden="true" /> Repeating tasks</button>}
             <button type="button" onClick={exportTasks} disabled={busy || !!loadError || search.trim() !== debouncedSearch}><Download size={14} aria-hidden="true" /> Export all matching</button>
@@ -659,7 +648,7 @@ export default function Tasks() {
       )}
 
       {showCreate && (
-        <Modal title="New Task" onClose={() => { setShowCreate(false);setCreateCustomerId(null);setCreateErr(''); }}>
+        <Modal title="New Task" onClose={() => { setShowCreate(false);setCreateErr(''); }}>
           <form onSubmit={createTask}>
             {createErr && <div className="error-msg u-761d3ad">{createErr}</div>}
             <div className="form-group"><label>Title *</label><input value={form.title} onChange={set('title')} required /></div>
@@ -674,11 +663,9 @@ export default function Tasks() {
             </div>
             <div className="form-row">
               <div className="form-group"><label htmlFor="task-customer">Customer{isManager ? ' (optional)' : ''}</label>
-                <select id="task-customer" value={form.customer_id} onChange={e => setForm(f => ({ ...f, customer_id: e.target.value, project_id: f.project_id && projects.find(p => String(p.id) === f.project_id)?.customer_id === Number(e.target.value) ? f.project_id : '' }))}>
-                  <option value="">{isManager ? 'No customer' : 'Select a customer'}</option>
-                  {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  {createCustomerId && !customers.some(c => c.id === createCustomerId) && <option value={createCustomerId}>This customer</option>}
-                </select>
+                {/* Searches the customers this person may add tasks for. */}
+                <CustomerSearchSelect id="task-customer" value={form.customer_id} emptyLabel={isManager ? 'No customer' : 'Select a customer'}
+                  onChange={customerId => setForm(f => ({ ...f, customer_id: customerId ? String(customerId) : '', project_id: f.project_id && projects.find(p => String(p.id) === f.project_id)?.customer_id === Number(customerId) ? f.project_id : '' }))} />
               </div>
               <div className="form-group"><label htmlFor="task-project">Project (optional)</label>
                 <select id="task-project" value={form.project_id} onChange={e => { const chosen = projects.find(p => String(p.id) === e.target.value); setForm(f => ({ ...f, project_id: e.target.value, customer_id: chosen?.customer_id ? String(chosen.customer_id) : f.customer_id })); }}>
@@ -707,7 +694,7 @@ export default function Tasks() {
               </label>
             </div>
             <div className="modal-footer u-cc45258">
-              <button type="button" className="btn btn-ghost" onClick={() => { setShowCreate(false);setCreateCustomerId(null); }}>Cancel</button>
+              <button type="button" className="btn btn-ghost" onClick={() => { setShowCreate(false); }}>Cancel</button>
               <button type="submit" className="btn btn-primary">Create</button>
             </div>
           </form>

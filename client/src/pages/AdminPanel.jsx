@@ -1,28 +1,32 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer, FileSignature, AtSign } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { UsersTab } from './admin/UsersTab';
-import { OverviewTab } from './admin/OverviewTab';
-import { IntegrationsTab } from './admin/IntegrationsTab';
-import { WeeklyReportTab } from './admin/WeeklyReportTab';
-import { EmailSettingsTab } from './admin/EmailSettingsTab';
-import { StatusManagementTab } from './admin/StatusManagementTab';
-import { LocalizationTab } from './admin/LocalizationTab';
-import { AdminAlertsTab } from './admin/AlertsLoggingTab';
-import { SystemHealthTab, AuditLogTab, SecurityTab } from './admin/SystemTabs';
-import { ServiceActivityAdminTab, TeamsAdminSection } from './admin/ServiceActivityAdmin';
-import { ActivityBotSettings } from './admin/ActivityBotSettings';
-import { SsoSettings } from './admin/SsoSettings';
-import { ManagedReportTemplatesTab } from './admin/ManagedReportTemplatesTab';
-import { PermissionsTab } from './admin/PermissionsTab';
-import TicketingSettings from './admin/TicketingSettings';
-import { BackupsTab } from './admin/BackupsTab';
-import { SlaSettingsTab } from './admin/SlaSettingsTab';
-import { ContractTypesTab } from './admin/ContractTypesTab';
-import Templates from './Templates';
+// Each section loads when it is opened, so Settings does not download every one up front.
+const UsersTab = lazy(() => import('./admin/UsersTab').then(module => ({ default: module.UsersTab })));
+const OverviewTab = lazy(() => import('./admin/OverviewTab').then(module => ({ default: module.OverviewTab })));
+const IntegrationsTab = lazy(() => import('./admin/IntegrationsTab').then(module => ({ default: module.IntegrationsTab })));
+const WeeklyReportTab = lazy(() => import('./admin/WeeklyReportTab').then(module => ({ default: module.WeeklyReportTab })));
+const EmailSettingsTab = lazy(() => import('./admin/EmailSettingsTab').then(module => ({ default: module.EmailSettingsTab })));
+const StatusManagementTab = lazy(() => import('./admin/StatusManagementTab').then(module => ({ default: module.StatusManagementTab })));
+const LocalizationTab = lazy(() => import('./admin/LocalizationTab').then(module => ({ default: module.LocalizationTab })));
+const AdminAlertsTab = lazy(() => import('./admin/AlertsLoggingTab').then(module => ({ default: module.AdminAlertsTab })));
+const SystemHealthTab = lazy(() => import('./admin/SystemTabs').then(module => ({ default: module.SystemHealthTab })));
+const AuditLogTab = lazy(() => import('./admin/SystemTabs').then(module => ({ default: module.AuditLogTab })));
+const SecurityTab = lazy(() => import('./admin/SystemTabs').then(module => ({ default: module.SecurityTab })));
+const ServiceActivityAdminTab = lazy(() => import('./admin/ServiceActivityAdmin').then(module => ({ default: module.ServiceActivityAdminTab })));
+const TeamsAdminSection = lazy(() => import('./admin/ServiceActivityAdmin').then(module => ({ default: module.TeamsAdminSection })));
+const ActivityBotSettings = lazy(() => import('./admin/ActivityBotSettings').then(module => ({ default: module.ActivityBotSettings })));
+const SsoSettings = lazy(() => import('./admin/SsoSettings').then(module => ({ default: module.SsoSettings })));
+const ManagedReportTemplatesTab = lazy(() => import('./admin/ManagedReportTemplatesTab').then(module => ({ default: module.ManagedReportTemplatesTab })));
+const PermissionsTab = lazy(() => import('./admin/PermissionsTab').then(module => ({ default: module.PermissionsTab })));
+const TicketingSettings = lazy(() => import('./admin/TicketingSettings'));
+const BackupsTab = lazy(() => import('./admin/BackupsTab').then(module => ({ default: module.BackupsTab })));
+const SlaSettingsTab = lazy(() => import('./admin/SlaSettingsTab').then(module => ({ default: module.SlaSettingsTab })));
+const ContractTypesTab = lazy(() => import('./admin/ContractTypesTab').then(module => ({ default: module.ContractTypesTab })));
+const Templates = lazy(() => import('./Templates'));
 
 /* ── MAIN PAGE ───────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
@@ -198,6 +202,7 @@ export default function AdminPanel() {
             <SettingsStatusPill status={sectionStatus[activeTab.key]} />
           </div>
 
+          <Suspense fallback={<p className="text-muted" role="status">Loading…</p>}>
           {tab === 'overview'     && <OverviewTab />}
           {tab === 'users'        && <UsersTab currentUser={user} />}
           {tab === 'teams'        && <TeamsAdminSection />}
@@ -218,6 +223,7 @@ export default function AdminPanel() {
           {tab === 'localization'  && <LocalizationTab />}
           {tab === 'audit_log'     && <AuditLogTab />}
           {tab === 'security'      && <><SsoSettings /><SecurityTab /></>}
+          </Suspense>
         </section>
       </div>
 

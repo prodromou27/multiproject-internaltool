@@ -1379,3 +1379,13 @@ a.topbar-action { display: inline-flex; align-items: center; justify-content: ce
 .notif-filter + .notif-filter { margin-left: -1px; }
 .notif-filter.is-active { background: var(--gray-100); color: var(--gray-900); border-color: var(--gray-300); position: relative; }
 .notif-filter:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; position: relative; }
+
+/* Customer picker that searches (components/CustomerSearchSelect.jsx). */
+.customer-search-select { position: relative; }
+.customer-search-select input { width: 100%; }
+.customer-search-list { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--gray-200); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); max-height: 280px; overflow-y: auto; }
+.customer-search-list li { padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 14px; min-height: 36px; display: flex; align-items: center; }
+.customer-search-list li.is-active { background: var(--gray-100); }
+.customer-search-list li[aria-selected="true"] { font-weight: 600; }
+.customer-search-list li.is-empty { color: var(--gray-500); }
+.customer-search-list .customer-search-none { color: var(--gray-500); cursor: default; font-size: 13px; }

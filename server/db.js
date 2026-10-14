@@ -41,7 +41,7 @@ const pool = new Pool({
 pool.on('error', (err) => console.error('[pg pool]', err.message));
 
 // Tables with no `id` column — never append RETURNING id to inserts into these.
-const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|maintenance_visit_assets|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|customer_search_documents|customer_search_tokens|managed_customer_configurations|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams|role_permission_overrides|user_permission_overrides|custom_role_permissions|customer_logos)\b/i;
+const NO_ID_TABLE_RE = /\binto\s+(?:settings|maintenance_visit_engineers|maintenance_visit_assets|task_dependencies|task_custom_values|user_project_pins|team_members|customer_teams|customer_engineers|customer_search_documents|customer_search_tokens|managed_customer_configurations|service_activity_technologies|service_activity_assets|saved_custom_report_users|saved_custom_report_teams|role_permission_overrides|user_permission_overrides|custom_role_permissions|customer_logos|asset_search_documents|asset_search_tokens)\b/i;
 
 // ── Placeholders: `?` -> `$1, $2, ...`, memoized per unique SQL string ───────
 // Bounded (least recently used goes first): statements built from lists and
@@ -127,6 +127,7 @@ async function init() {
   await applyMigrations(pool, transaction);
   await require('./totpSeeds').encryptStoredSeeds(poolApi);
   await require('./customerSearchIndex').ensureCustomerSearchIndex({ ...poolApi,transaction });
+  await require('./assetSearchIndex').ensureAssetSearchIndex({ ...poolApi,transaction });
   await createIndexes(pool);
   await runSeeds(pool);
 }

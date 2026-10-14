@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { Link, useLocation } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Building2, X, Bell, Pin } from 'lucide-react';
@@ -85,7 +86,7 @@ function InlinePrioritySelect({ project, onUpdate }) {
 }
 
 /* ── Customer selector with "create new" ──────────────────────── */
-function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
+function CustomerPicker({ value, onChange, onCustomerCreated }) {
   const toast = useToast();
   const [creating,  setCreating]  = useState(false);
   const [newName,   setNewName]   = useState('');
@@ -111,10 +112,7 @@ function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
     <div>
       {!creating ? (
         <div className="flex-center gap-8">
-          <select value={value || ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)} className="flex-1">
-            <option value="">— No customer —</option>
-            {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <div className="flex-1"><CustomerSearchSelect value={value || ''} onChange={id => onChange(id ? Number(id) : null)} label="Customer" /></div>
           <button type="button" className="btn btn-ghost btn-sm u-86abdab" onClick={() => setCreating(true)}>
             + New
           </button>
@@ -140,7 +138,7 @@ function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
 }
 
 /* ── Project Form ─────────────────────────────────────────────── */
-function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCreated }) {
+function ProjectForm({ initial, users, onSave, onClose, onCustomerCreated }) {
   const toast = useToast();
   const [form, setForm] = useState(() => ({ title: '', description: '', priority: 'medium', deadline: '', customer_id: null,...(initial || {}),member_ids:initial?.member_ids || [] }));
   const [saving,      setSaving]      = useState(false);
@@ -179,7 +177,6 @@ function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCre
       <div className="form-group">
         <label>Customer</label>
         <CustomerPicker
-          customers={customers}
           value={form.customer_id}
           onChange={id => setForm(f => ({ ...f, customer_id: id }))}
           onCustomerCreated={onCustomerCreated}
@@ -218,7 +215,6 @@ export default function Projects() {
   const location  = useLocation();
   const [projects,   setProjects]   = useState([]);
   const [users,      setUsers]      = useState([]);
-  const [customers,  setCustomers]  = useState([]);
   const [filter,     setFilter]     = useSavedFilter('projects', 'open');
   const [search,     setSearch]     = useState('');
   const [ragFilter,  setRagFilter]  = useState('all');
@@ -230,7 +226,7 @@ export default function Projects() {
   const [total,setTotal]=useState(0);
   const [counts,setCounts]=useState({});
 
-  const loadCustomers = () => api.customers().then(setCustomers);
+  const loadCustomers = () => Promise.resolve(); // the picker searches; nothing to reload
   const [loadError, setLoadError] = useState('');
   useCreateIntent({ allowed: isManager, ready: !loading && !loadError, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateInitial(customerId?{ customer_id:customerId }:null);setShowCreate(true); } });
 
@@ -252,7 +248,7 @@ export default function Projects() {
   useEffect(() => {
     if (!canManage) return;
     const controller=new AbortController(),options={ signal:controller.signal };
-    Promise.all([api.users(options),api.customers(options)]).then(([u,c]) => { setUsers(u);setCustomers(c); }).catch(() => {});
+    api.users(options).then(setUsers).catch(() => {});
     return () => controller.abort();
   },[canManage]);
 
@@ -416,7 +412,6 @@ export default function Projects() {
           <ProjectForm
             initial={createInitial}
             users={users}
-            customers={customers}
             onSave={async form => { await api.createProject(form); toast.success('Project created'); await load(); }}
             onClose={() => { setShowCreate(false);setCreateInitial(null); }}
             onCustomerCreated={loadCustomers}

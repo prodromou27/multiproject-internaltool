@@ -1,4 +1,5 @@
 const router = require('express').Router({ mergeParams: true });
+const { replaceAssetSearchDocument }=require('../assetSearchIndex');
 const appTime = require('../appTime');
 const crypto = require('crypto');
 const net = require('net');
@@ -89,6 +90,7 @@ async function insertRecord(tx,req,customer,input) {
   const value=stored(input);
   const created=(await tx.prepare(`INSERT INTO customer_assets (customer_id,technology_id,name,asset_tag,asset_tag_hash,asset_type,vendor,model,serial_number,hostname,ip_address,mac_address,software_version,location,environment,criticality,lifecycle_status,coverage_type,support_provider,support_reference,support_start_date,support_end_date,warranty_expiry_date,management_url,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`).all(customer,value.technology_id,value.name,value.asset_tag,value.asset_tag_hash,value.asset_type,value.vendor,value.model,value.serial_number,value.hostname,value.ip_address,value.mac_address,value.software_version,value.location,value.environment,value.criticality,value.lifecycle_status,value.coverage_type,value.support_provider,value.support_reference,value.support_start_date,value.support_end_date,value.warranty_expiry_date,value.management_url,value.notes,req.user.id))[0];
   await history(req,{ ...created,name:input.name },'created',tx);
+  await replaceAssetSearchDocument(tx,{ ...input,id:created.id });
   return created;
 }
 
@@ -333,6 +335,7 @@ router.put('/:assetId',async (req,res) => {
       const updated=(await tx.prepare(`UPDATE customer_assets SET technology_id=?,name=?,asset_tag=?,asset_tag_hash=?,asset_type=?,vendor=?,model=?,serial_number=?,hostname=?,ip_address=?,mac_address=?,software_version=?,location=?,environment=?,criticality=?,lifecycle_status=?,coverage_type=?,support_provider=?,support_reference=?,support_start_date=?,support_end_date=?,warranty_expiry_date=?,management_url=?,notes=?,updated_by=?,updated_at=app_now(),version=version+1 WHERE id=? AND customer_id=? AND version=? RETURNING *`).all(value.technology_id,value.name,value.asset_tag,value.asset_tag_hash,value.asset_type,value.vendor,value.model,value.serial_number,value.hostname,value.ip_address,value.mac_address,value.software_version,value.location,value.environment,value.criticality,value.lifecycle_status,value.coverage_type,value.support_provider,value.support_reference,value.support_start_date,value.support_end_date,value.warranty_expiry_date,value.management_url,value.notes,req.user.id,id,customer,Number(req.body.version)))[0];
       if (updated) {
         await history(req,{ ...updated,name:input.value.name },'updated',tx);
+        await replaceAssetSearchDocument(tx,{ ...input.value,id:updated.id });
         const before=decrypt(existing.software_version) || null;
         if (before!==input.value.software_version) await logVersion(tx,{ asset:updated,kind:'changed',from:before,to:input.value.software_version,userId:req.user.id });
       }

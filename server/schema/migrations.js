@@ -1187,6 +1187,21 @@ async function applyMigrations(pool, transaction) {
       updated_at   TEXT NOT NULL
     );
   `]);
+  migrations.push(['20261106_asset_search_index', `
+    -- Keyed hashes of 3-letter pieces of each asset's encrypted search fields
+    -- (assetSearchIndex.js), so a search decrypts only likely matches.
+    CREATE TABLE IF NOT EXISTS asset_search_documents (
+      asset_id        INTEGER PRIMARY KEY REFERENCES customer_assets(id) ON DELETE CASCADE,
+      key_fingerprint TEXT NOT NULL,
+      updated_at      TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS asset_search_tokens (
+      asset_id   INTEGER NOT NULL REFERENCES customer_assets(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL,
+      PRIMARY KEY (asset_id, token_hash)
+    );
+    CREATE INDEX IF NOT EXISTS idx_asset_search_tokens_hash ON asset_search_tokens(token_hash, asset_id);
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

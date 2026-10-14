@@ -7,22 +7,33 @@ const { decrypt } = require('../fieldCipher');
 const { ownTasksSql, ownTasksParams } = require('../taskAccess');
 const { accessibleCustomerIds } = require('../customerAccess');
 const { hasPermission } = require('../permissions');
+const { candidateAssetIds } = require('../assetSearchIndex');
+const { candidateCustomerIds } = require('../customerSearchIndex');
 
-/* Assets: name, hostname, serial, tag, IP, MAC and model are encrypted at rest, so
-   they are decrypted and matched here. Managers (assets.access) search every
-   customer's assets; engineers those of the customers they work with — the same
-   rule as Customer 360 → Assets. Each hit says which field matched. */
+/* Assets: name, hostname, serial, tag, IP, MAC and model are encrypted at rest.
+   The blind index (assetSearchIndex.js) picks the assets that hold every 3-letter
+   piece of the term; SQL limits them to the customers this person may see; only
+   those are decrypted and checked. Without the index (a 2-letter term, or no field
+   key) at most SCAN_LIMIT of the newest assets are checked. Managers (assets.access)
+   search every customer's assets; engineers those of the customers they work with —
+   the same rule as Customer 360 → Assets. Each hit says which field matched. */
+const SCAN_LIMIT = 1000;
 const ASSET_FIELDS = [['name', 'Name'], ['hostname', 'Hostname'], ['serial_number', 'Serial'], ['asset_tag', 'Asset tag'], ['ip_address', 'IP'], ['mac_address', 'MAC'], ['model', 'Model']];
 async function searchAssets(user, term, limit) {
   const needle = term.toLowerCase();
   const all = await hasPermission(user, 'assets.access');
   const allowed = all ? null : user.role === 'engineer' ? await accessibleCustomerIds(user) : new Set();
   if (allowed && !allowed.size) return [];
+  const candidates = await candidateAssetIds(db, term);
+  if (candidates && !candidates.size) return [];
+  const where = ['c.active = 1'], params = [];
+  const inList = (column, ids) => { where.push(`${column} IN (${ids.map(() => '?').join(',')})`); params.push(...ids); };
+  if (allowed) inList('a.customer_id', [...allowed]);
+  if (candidates) inList('a.id', [...candidates]);
   const rows = await db.prepare(`SELECT a.id, a.customer_id, a.asset_type, a.lifecycle_status, ${ASSET_FIELDS.map(([f]) => `a.${f}`).join(', ')}, c.name AS customer_name
-    FROM customer_assets a JOIN customers c ON c.id = a.customer_id WHERE c.active = 1 ORDER BY a.id DESC`).all();
+    FROM customer_assets a JOIN customers c ON c.id = a.customer_id WHERE ${where.join(' AND ')} ORDER BY a.id DESC LIMIT ?`).all(...params, SCAN_LIMIT);
   const out = [];
   for (const row of rows) {
-    if (allowed && !allowed.has(Number(row.customer_id))) continue;
     for (const [field, label] of ASSET_FIELDS) {
       const value = decrypt(row[field]);
       if (value && String(value).toLowerCase().includes(needle)) {
@@ -44,18 +55,25 @@ async function searchAssets(user, term, limit) {
 async function searchCustomers(req, term, limit, offset = 0) {
   const needle = (term || '').trim().toLowerCase();
 
+  // The customer blind index (customerSearchIndex.js) narrows the rows to likely
+  // matches before anything is decrypted; without it (a 2-letter term, no field
+  // key) every customer this person may see is checked.
+  const candidates = needle ? await candidateCustomerIds(db, needle) : null;
+  if (candidates && !candidates.size) return [];
+  const only = candidates ? ` AND id IN (${[...candidates].map(() => '?').join(',')})` : '';
+  const onlyParams = candidates ? [...candidates] : [];
   // Names are encrypted, so rows are sorted by the decrypted name below.
   let rows;
   if (req.user.role === 'engineer') {
     // The customers an engineer works with (customerAccess.js), as on Customers and Customer 360.
     const allowed = await accessibleCustomerIds(req.user);
-    rows = (await db.prepare('SELECT id, name, contact_name, contact_email, contact_phone FROM customers').all()).filter(row => allowed.has(Number(row.id)));
+    rows = (await db.prepare(`SELECT id, name, contact_name, contact_email, contact_phone FROM customers WHERE 1=1${only}`).all(...onlyParams)).filter(row => allowed.has(Number(row.id)));
   } else if (req.user.role === 'manager' || req.user.role === 'planner') {
-    rows = await db.prepare('SELECT id, name, contact_name, contact_email, contact_phone FROM customers').all();
+    rows = await db.prepare(`SELECT id, name, contact_name, contact_email, contact_phone FROM customers WHERE 1=1${only}`).all(...onlyParams);
   } else {
     rows = await db.prepare(`SELECT id, name, contact_name, contact_email, contact_phone FROM customers
-      WHERE id IN (SELECT p.customer_id FROM projects p JOIN project_assignments pa ON pa.project_id = p.id WHERE pa.user_id = ?)
-         OR id IN (SELECT mv.customer_id FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id WHERE mve.user_id = ?)`).all(req.user.id, req.user.id);
+      WHERE (id IN (SELECT p.customer_id FROM projects p JOIN project_assignments pa ON pa.project_id = p.id WHERE pa.user_id = ?)
+         OR id IN (SELECT mv.customer_id FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id WHERE mve.user_id = ?))${only}`).all(req.user.id, req.user.id, ...onlyParams);
   }
   rows = rows.map(row => ({ ...row, sortName: String(decrypt(row.name) || '').toLowerCase() })).sort((a, b) => a.sortName.localeCompare(b.sortName));
 
@@ -87,7 +105,12 @@ async function searchCustomers(req, term, limit, offset = 0) {
 async function matchingCustomerIds(term) {
   const needle = (term || '').trim().toLowerCase();
   if (!needle) return [];
-  const rows = await db.prepare('SELECT id, name FROM customers').all();
+  // The blind index narrows the names to decrypt (all of them for a 2-letter term).
+  const candidates = await candidateCustomerIds(db, needle);
+  if (candidates && !candidates.size) return [];
+  const rows = candidates
+    ? await db.prepare(`SELECT id, name FROM customers WHERE id IN (${[...candidates].map(() => '?').join(',')})`).all(...candidates)
+    : await db.prepare('SELECT id, name FROM customers').all();
   return rows.filter(r => decrypt(r.name)?.toLowerCase().includes(needle)).map(r => r.id);
 }
 

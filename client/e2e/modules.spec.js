@@ -50,3 +50,18 @@ test('a project page opens without a missing reference', async ({ page }) => {
   await page.waitForLoadState('networkidle');
   expect(problems).toEqual([]);
 });
+
+test('a project page loads its activity feed and the customer list only when they are needed', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/projects/1', () => ({ body: { id: 1, title: 'Network refresh, Rotterdam', status: 'in_progress', priority: 'high', members: [], updates: [], created_by: 1 } }));
+  api.override('GET /api/projects/1/activity', () => ({ body: [{ id: 5, action: 'created', detail: 'Project created', user_name: 'Alex Mercer', created_at: '2026-10-01 09:00:00' }] }));
+  await page.goto('/projects/1');
+  await expect(page.getByRole('heading', { name: 'Network refresh, Rotterdam' }).first()).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  const asked = path => api.calls.some(call => call.method === 'GET' && call.path === path);
+  expect(asked('/api/projects/1/activity')).toBe(false);
+  expect(asked('/api/customers')).toBe(false);
+  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  await expect(page.getByText('Project created')).toBeVisible();
+  expect(asked('/api/customers')).toBe(false);
+});

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import CustomerSearchSelect from '../../components/CustomerSearchSelect';
 import { Wrench } from 'lucide-react';
 import { api } from '../../api';
 import { Modal } from '../../components/Shared';
@@ -10,7 +11,6 @@ export default function NewVisitModal({ prefillDate, onClose, onCreated }) {
     customer_id: '', title: '', description: '',
     scheduled_date: prefillDate || '', engineer_ids: [], notes: '',
   });
-  const [customers,  setCustomers]  = useState([]);
   const [engineers,  setEngineers]  = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
@@ -18,9 +18,8 @@ export default function NewVisitModal({ prefillDate, onClose, onCreated }) {
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   useEffect(() => {
-    Promise.all([api.customers(), api.users()])
-      .then(([custs, users]) => {
-        setCustomers(custs);
+    api.users()
+      .then(users => {
         setEngineers(users.filter(u => u.role === 'engineer' && u.active !== 0));
       })
       .catch(() => setErr('Failed to load form data'))
@@ -56,10 +55,7 @@ export default function NewVisitModal({ prefillDate, onClose, onCreated }) {
           <div className="u-9c34d8c">
             <div className="form-group u-4ddcfbe">
               <label>Customer *</label>
-              <select value={form.customer_id} onChange={set('customer_id')} required>
-                <option value="">Select customer…</option>
-                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <CustomerSearchSelect value={form.customer_id} allowEmpty={false} required label="Customer" onChange={id => setForm(f => ({ ...f, customer_id: id ? String(id) : '' }))} />
             </div>
 
             <div className="form-group u-4ddcfbe">
