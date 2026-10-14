@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { LoadError } from '../../components/LoadError';
 import { AlertTriangle, Zap, ScrollText, Bell, Save, Loader2, RefreshCw, Download, ShieldAlert } from 'lucide-react';
 import { api } from '../../api';
 import { useToast } from '../../components/Toast';
@@ -28,7 +29,9 @@ export function AdminAlertsTab() {
   const [lastCheck, setLastCheck] = useState(null);
   const [recentAlerts, setRecentAlerts] = useState([]);
 
-  useEffect(() => {
+  const [loadError, setLoadError] = useState('');
+  const load = () => {
+    setLoading(true); setLoadError('');
     Promise.all([api.getAdminNotifications(), api.notifications()])
       .then(([p, notes]) => {
         setPrefs(p); setSaved(p);
@@ -36,8 +39,9 @@ export function AdminAlertsTab() {
         setRecentAlerts(list.filter(n => n.type === 'system_alert').slice(0, 20));
         setLoading(false);
       })
-      .catch(() => setLoading(false));
-  }, []);
+      .catch(failure => { setLoadError(failure.message); setLoading(false); });
+  };
+  useEffect(load, []);
 
   const setToggle = (key, field, val) => setPrefs(p => ({ ...p, [key]: { ...p[key], [field]: val } }));
   const dirty = JSON.stringify(prefs) !== JSON.stringify(saved);
@@ -65,6 +69,7 @@ export function AdminAlertsTab() {
 
   const LEVEL_COLORS = { warning: { bg: '#fef3c7', text: '#92400e', dot: '#f59e0b' }, error: { bg: '#fee2e2', text: '#991b1b', dot: '#ef4444' }, ok: { bg: '#dcfce7', text: '#166534', dot: '#22c55e' } };
 
+  if (loadError) return <LoadError what="The system alert settings" error={loadError} onRetry={load} />;
   return (
     <div className="u-3f7efa5">
       {/* Live check card */}
@@ -189,8 +194,13 @@ export function LoggingTab() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const [loadError, setLoadError] = useState('');
+  function loadLogging() {
+    setLoading(true); setLoadError('');
+    api.getLogging().then(d => { if (d) { setCfg(d); setSaved(d); } setLoading(false); }).catch(failure => { setLoadError(failure.message); setLoading(false); });
+  }
   useEffect(() => {
-    api.getLogging().then(d => { if (d) { setCfg(d); setSaved(d); } setLoading(false); }).catch(() => setLoading(false));
+    loadLogging();
   }, []);
 
   const set = (k, v) => setCfg(c => ({ ...c, [k]: v }));
@@ -205,6 +215,7 @@ export function LoggingTab() {
 
   if (loading) return <p className="text-muted">Loading…</p>;
 
+  if (loadError) return <LoadError what="The logging settings" error={loadError} onRetry={loadLogging} />;
   return (
     <div className="u-b12974c">
       {/* Log Configuration */}

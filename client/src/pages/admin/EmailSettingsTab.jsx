@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { LoadError } from '../../components/LoadError';
 import { CheckCircle2, AlertTriangle, Bell, Save, Loader2, AtSign } from 'lucide-react';
 import { api } from '../../api';
 import { PRODUCT_NAME } from '../../product';
@@ -12,12 +13,17 @@ export function EmailSettingsTab() {
   const [smtpMsg,     setSmtpMsg]     = useState(null);
   const [testTo,      setTestTo]      = useState('');
   const set = k => e => setSmtp(s => ({ ...s, [k]: e.target.value }));
-
-  useEffect(() => {
+  // The form appears only once the stored settings are in: a failed load must not
+  // look like an empty server that Save would then overwrite.
+  const [loadState, setLoadState] = useState({ status: 'loading', error: '' });
+  const load = () => {
+    setLoadState({ status: 'loading', error: '' });
     api.getSmtp().then(s => {
       if (s && Object.keys(s).length > 0) setSmtp(prev => ({ ...prev, ...s, password: s.password_set ? '••••••••' : '' }));
-    }).catch(() => {});
-  }, []);
+      setLoadState({ status: 'ready', error: '' });
+    }).catch(failure => setLoadState({ status: 'error', error: failure.message }));
+  };
+  useEffect(load, []);
 
   async function saveSmtp(e) {
     e.preventDefault();
@@ -38,6 +44,8 @@ export function EmailSettingsTab() {
     finally { setSmtpTesting(false); }
   }
 
+  if (loadState.status === 'error') return <LoadError what="The email settings" error={loadState.error} onRetry={load} />;
+  if (loadState.status === 'loading') return <p className="text-muted" role="status">Loading…</p>;
   return (
         <div className="card u-969a912">
       <h3 className="u-1fb1cdf">

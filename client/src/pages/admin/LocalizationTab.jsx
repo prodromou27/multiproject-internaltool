@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { LoadError } from '../../components/LoadError';
 import { Save, Loader2, Globe, Clock } from 'lucide-react';
 import { api } from '../../api';
 import { useToast } from '../../components/Toast';
@@ -77,7 +78,9 @@ export function LocalizationTab() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { api.getLocalization().then(d => { if (d) { setCfg(d); setSaved(d); } setLoading(false); }).catch(() => setLoading(false)); }, []);
+  const [loadError, setLoadError] = useState('');
+  const load = () => { setLoading(true); setLoadError(''); api.getLocalization().then(d => { if (d) { setCfg(d); setSaved(d); } setLoading(false); }).catch(failure => { setLoadError(failure.message); setLoading(false); }); };
+  useEffect(load, []);
 
   const set = (k, v) => setCfg(c => ({ ...c, [k]: v }));
   const toggleLang = code => set('supported_languages',
@@ -102,6 +105,8 @@ export function LocalizationTab() {
 
   if (loading) return <p className="text-muted">Loading…</p>;
 
+  // A failed load shows Retry, not the defaults (which Save would write over the real settings).
+  if (loadError) return <><LoadError what="The time and region settings" error={loadError} onRetry={load} /><BusinessCalendarSettings /></>;
   return (
     <div className="u-b12974c">
       {/* Language */}

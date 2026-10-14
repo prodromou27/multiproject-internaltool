@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LoadError } from '../components/LoadError';
 import { Link } from 'react-router-dom';
 import { ArrowRight, BellRing, Building2, CalendarDays, CheckCircle2, Clock, ClipboardList, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
 import { HeaderMenu, PageHeader } from '../components/PageLayout';
@@ -87,7 +88,9 @@ export default function EngineerHub() {
   const [subtasksFor, setSubtasksFor] = useState(null);
   // Subtasks given to this person, on their tasks or colleagues' (routes/tasks.js /my-subtasks).
   const [mySubtasks, setMySubtasks] = useState([]);
-  const loadMySubtasks = useCallback(() => api.mySubtasks().then(setMySubtasks).catch(() => {}), []);
+  // A failed load is shown as such (with Retry), never as "nothing to do".
+  const [subtasksError, setSubtasksError] = useState(''), [remindersError, setRemindersError] = useState('');
+  const loadMySubtasks = useCallback(() => api.mySubtasks().then(rows => { setMySubtasks(rows); setSubtasksError(''); }).catch(failure => setSubtasksError(failure.message)), []);
   useEffect(() => { loadMySubtasks(); }, [loadMySubtasks]);
   async function tickSubtask(item) {
     try { await api.updateTaskSubtask(item.task_id, item.id, { done: true }); toast.success(`Done: ${item.title}`); loadMySubtasks(); load({ quiet: true }); }
@@ -101,7 +104,8 @@ export default function EngineerHub() {
     const now = new Date().toISOString();
     const team = (result.team_reminders?.active || []).filter(item => item.due_at <= now).map(item => ({ ...item, team: true }));
     setReminders([...team, ...(result.active || [])]);
-  }).catch(() => {}), []);
+    setRemindersError('');
+  }).catch(failure => setRemindersError(failure.message)), []);
   useEffect(() => { loadReminders(); }, [loadReminders]);
   useLiveRefresh(() => { loadReminders(); load({ quiet: true }); });
   const [recentProjects] = useState(() => {
@@ -266,6 +270,7 @@ export default function EngineerHub() {
       </div>}
 
       {subtasksFor && <SubtasksDialog task={subtasksFor} onClose={() => { setSubtasksFor(null); load({ quiet: true }); }} />}
+      {(subtasksError || remindersError) && <div className="mt-16">{subtasksError && <LoadError compact what="Your subtasks" error={subtasksError} onRetry={loadMySubtasks} />}{remindersError && <LoadError compact what="Your reminders" error={remindersError} onRetry={loadReminders} />}</div>}
       {mySubtasks.length > 0 && <section className="card mt-16 hub-subtasks" aria-label="My subtasks"><div className="section-header"><h2 className="section-title">My subtasks</h2><span className="text-muted text-sm">{mySubtasks.length} open</span></div>
         <ul>{mySubtasks.map(item => <li key={item.id}>
           <input type="checkbox" aria-label={`Done: ${item.title}`} onChange={() => tickSubtask(item)} />

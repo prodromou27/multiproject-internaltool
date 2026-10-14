@@ -1415,3 +1415,9 @@ a.topbar-action { display: inline-flex; align-items: center; justify-content: ce
 .cal-time { font-variant-numeric: tabular-nums; font-weight: 600; margin-right: 4px; }
 .business-calendar .bc-add input[type="date"] { width: auto; flex: none; }
 .business-calendar .bc-buffer { margin-top: 4px; }
+
+/* A section that could not be loaded (components/LoadError.jsx). */
+.load-error { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--tone-warning-text, #b45309); border-radius: 8px; background: var(--warning-light, #fffbeb); font-size: 14px; margin-bottom: 12px; }
+.load-error > svg { flex: none; color: var(--tone-warning-text, #b45309); }
+.load-error > span { flex: 1; min-width: 200px; }
+.load-error.is-compact { padding: 8px 10px; font-size: 13px; }

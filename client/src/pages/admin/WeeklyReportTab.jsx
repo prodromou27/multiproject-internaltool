@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { LoadError } from '../../components/LoadError';
 import { CheckCircle2, AlertTriangle, Send, ScrollText, Save, Loader2, Settings, ExternalLink } from 'lucide-react';
 import { api } from '../../api';
 import { Modal, fmtDateTime } from '../../components/Shared';
@@ -31,9 +32,17 @@ export function WeeklyReportTab() {
   const [sendMsg,     setSendMsg]     = useState(null);
   const [showPreview, setShowPreview] = useState(false);
 
+  // Until the stored schedule is in, it cannot be saved (the defaults would replace it).
+  const [scheduleState, setScheduleState] = useState({ status: 'loading', error: '' });
+  const [managersError, setManagersError] = useState('');
+  function loadSchedule() {
+    setScheduleState({ status: 'loading', error: '' });
+    api.getReportSchedule().then(value => { setSchedule(value); setScheduleState({ status: 'ready', error: '' }); })
+      .catch(failure => setScheduleState({ status: 'error', error: failure.message }));
+  }
   useEffect(() => {
-    api.getReportSchedule().then(setSchedule).catch(() => {});
-    api.reportManagers().then(setManagers).catch(() => {});
+    loadSchedule();
+    api.reportManagers().then(setManagers).catch(failure => setManagersError(failure.message));
   }, []);
 
   async function saveSchedule(e) {
@@ -127,7 +136,7 @@ export function WeeklyReportTab() {
               {schedMsg.ok ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />} {schedMsg.text}
             </div>
           )}
-          <form onSubmit={saveSchedule}>
+          {scheduleState.status === 'error' ? <LoadError compact what="The report schedule" error={scheduleState.error} onRetry={loadSchedule} /> : <form onSubmit={saveSchedule}>
             <div className="form-group">
               <label className="u-c92fd94">
                 <input type="checkbox" checked={!!schedule.enabled} onChange={e => setSchedule(s => ({ ...s, enabled: e.target.checked }))} className="u-30e741d" />
@@ -157,7 +166,7 @@ export function WeeklyReportTab() {
 
             <div className="form-group">
               <label>Recipients — Managers</label>
-              {managers.length === 0
+              {managersError ? <LoadError compact what="The list of managers" error={managersError} onRetry={() => { setManagersError(''); api.reportManagers().then(setManagers).catch(failure => setManagersError(failure.message)); }} /> : managers.length === 0
                 ? <p className="u-dd8016b">No active managers found.</p>
                 : <div className="u-4c3ce0d">
                     {managers.map(m => (
@@ -173,10 +182,10 @@ export function WeeklyReportTab() {
               }
             </div>
 
-            <button type="submit" className="btn btn-primary btn-sm inline-flex items-center gap-6" disabled={schedSaving}>
+            <button type="submit" className="btn btn-primary btn-sm inline-flex items-center gap-6" disabled={schedSaving || scheduleState.status !== 'ready'}>
               {schedSaving ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={13} />} Save Schedule
             </button>
-          </form>
+          </form>}
         </div>
       </div>
 

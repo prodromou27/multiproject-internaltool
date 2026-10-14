@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { LoadError } from '../../components/LoadError';
 import { Shield, CheckCircle2, Lock, AlertTriangle, Zap, HardDrive, Save, Loader2, Activity, RefreshCw, Download, ShieldAlert } from 'lucide-react';
 import { api } from '../../api';
 import { fmtDate, fmtDateTime, sentenceCase } from '../../components/Shared';
@@ -633,11 +634,14 @@ export function SecurityTab() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const [loadError, setLoadError] = useState('');
+  const load = () => {
+    setLoading(true); setLoadError('');
     api.getSecuritySettings()
       .then(d => { if (d) { setCfg(d); setSaved(d); } setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+      .catch(failure => { setLoadError(failure.message); setLoading(false); });
+  };
+  useEffect(load, []);
 
   const dirty = JSON.stringify(cfg) !== JSON.stringify(saved);
 
@@ -650,6 +654,7 @@ export function SecurityTab() {
 
   if (loading) return <p className="text-muted">Loading…</p>;
 
+  if (loadError) return <LoadError what="The password settings" error={loadError} onRetry={load} />;
   return (
     <div className="u-cd90f7a">
       <div className="card mb-16">
