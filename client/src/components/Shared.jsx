@@ -124,11 +124,35 @@ export function fmtRelative(dt) {
 }
 
 const modalStack = [];
+// Searching or filtering inside a dialog is not a change to save.
+const ignoredInput = node => !!node?.closest?.('.modal-discard, [data-no-dirty]') || node?.type === 'search';
 let originalBodyOverflow;
 const focusableSelector = 'button, input, select, textarea, a[href], [tabindex]';
 
-export function Modal({ title, onClose, children, footer, wide, width }) {
+/* Escape and the close button never silently lose what was typed: once a field in
+   the dialog has been changed, they ask first ("Discard changes?"), and closing or
+   reloading the tab warns too. Cancel and a successful save close it as before.
+   `dirty` overrides the detection (false: never ask); `busy` blocks closing while a
+   request that cannot be undone is running. */
+export function Modal({ title, onClose, children, footer, wide, width, dirty, busy = false }) {
   const dialogRef = useRef(null);
+  const [edited, setEdited] = useState(false), [confirming, setConfirming] = useState(false);
+  const unsaved = dirty ?? edited;
+  const stateRef = useRef({ unsaved, busy });
+  stateRef.current = { unsaved, busy };
+  const requestClose = () => {
+    if (stateRef.current.busy) return;
+    if (stateRef.current.unsaved) { setConfirming(true); return; }
+    onCloseRef.current();
+  };
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
+  useEffect(() => {
+    if (!unsaved) return undefined;
+    const warn = event => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [unsaved]);
   // Capture the trigger before child autoFocus runs during the DOM commit.
   const previousFocusRef = useRef(typeof document==='undefined' ? null : document.activeElement);
   const onCloseRef = useRef(onClose);
@@ -149,7 +173,7 @@ export function Modal({ title, onClose, children, footer, wide, width }) {
     if (!dialog.contains(document.activeElement)) focusFirst();
     const handler = e => {
       if (!isTop()) return;
-      if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); onCloseRef.current(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); requestCloseRef.current(); }
       if (e.key === 'Tab') {
         const elements = focusable();
         const first = elements[0], last = elements.at(-1);
@@ -175,13 +199,19 @@ export function Modal({ title, onClose, children, footer, wide, width }) {
   return (
     // Only Cancel, the close button or Escape close it: a click outside must not lose what was typed.
     <div className="modal-overlay">
-      <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} style={width ? { maxWidth: width } : wide ? { maxWidth: 700 } : {}}>
+      <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} style={width ? { maxWidth: width } : wide ? { maxWidth: 700 } : {}}
+        onInput={event => { if (!ignoredInput(event.target)) setEdited(true); }} onChange={event => { if (!ignoredInput(event.target)) setEdited(true); }}>
         <div className="modal-header">
           <span id={titleId} className="modal-title">{title}</span>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
+          <button type="button" className="modal-close" onClick={requestClose} aria-label="Close" disabled={busy}>
             <X size={14} />
           </button>
         </div>
+        {confirming && <div className="modal-discard" role="alertdialog" aria-label="Discard changes?">
+          <span>You have changes that are not saved. Discard them?</span>
+          <button type="button" className="btn btn-ghost btn-sm" autoFocus onClick={() => setConfirming(false)}>Keep editing</button>
+          <button type="button" className="btn btn-danger btn-sm" onClick={() => { setConfirming(false); onCloseRef.current(); }}>Discard</button>
+        </div>}
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>

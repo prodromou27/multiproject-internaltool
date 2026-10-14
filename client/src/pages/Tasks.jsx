@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { Check, CheckSquare, ChevronDown, Download, Trash2, UserCheck, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown, RefreshCw, Repeat } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -316,6 +317,7 @@ export default function Tasks() {
     setSort(current => ({ key, direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc' }));
   }
 
+  const taskDraft = useFormDraft({ name: 'task:new', value: form });
   async function createTask(e) {
     e.preventDefault(); setCreateErr('');
     if (!isManager && !form.project_id && !form.customer_id) { setCreateErr('Choose the customer or project this task is for'); return; }
@@ -325,7 +327,7 @@ export default function Tasks() {
       await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, customer_id: !form.project_id && form.customer_id ? Number(form.customer_id) : null,
         assigned_to: !team && form.assigned_to ? Number(form.assigned_to) : null, team_id: team, subtasks: form.subtasks || [], ticket_reference: form.ticket_reference?.trim() || null });
       setShowCreate(false);
-      
+      taskDraft.clear();
       setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
       load();
     } catch (err) { setCreateErr(err.message || 'Failed to create task'); }
@@ -650,6 +652,7 @@ export default function Tasks() {
       {showCreate && (
         <Modal title="New Task" onClose={() => { setShowCreate(false);setCreateErr(''); }}>
           <form onSubmit={createTask}>
+            <DraftBanner draft={taskDraft} onRestore={data => data && setForm(data)} />
             {createErr && <div className="error-msg u-761d3ad">{createErr}</div>}
             <div className="form-group"><label>Title *</label><input value={form.title} onChange={set('title')} required /></div>
             <div className="form-group"><label>Description</label><textarea value={form.description} onChange={set('description')} /></div>

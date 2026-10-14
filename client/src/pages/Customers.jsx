@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import { Link, useLocation } from 'react-router-dom';
 import { Archive, ArchiveRestore, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { api } from '../api';
@@ -59,16 +60,19 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const setBool = k => e => setForm(f => ({ ...f, [k]: e.target.checked }));
 
+  const draft = useFormDraft({ name: `customer:${initial?.id || 'new'}`, value: form, base: initial?.updated_at ?? null });
   async function submit(e) {
     e.preventDefault(); setSaving(true);
     try {
       const id = await onSave(form);
       if (onSaveTeams) await onSaveTeams(initial?.id || id, selectedTeams);
+      draft.clear();
       onClose();
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   }
   return (
     <form onSubmit={submit}>
+      <DraftBanner draft={draft} onRestore={data => data && setForm(data)} />
       <div className="form-group"><label>Customer Name *</label><input value={form.name} onChange={set('name')} required /></div>
       <div className="form-row">
         <div className="form-group"><label>Customer Code</label><input value={form.customer_code} onChange={set('customer_code')} placeholder="Internal reference" /></div>

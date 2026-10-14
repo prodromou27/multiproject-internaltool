@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import { Link } from 'react-router-dom';
 import { Plus, RefreshCw, Pencil, Trash2 } from 'lucide-react';
 import { api } from '../api';
@@ -47,6 +48,7 @@ function ContractForm({ data, contract, renewing, onSaved, onClose }) {
   const [level, setLevel] = useState(initialLevel);
   const [assetIds, setAssetIds] = useState(() => new Set((contract?.assets || []).map(a => a.id)));
   const [saving, setSaving] = useState(false), [error, setError] = useState('');
+  const draft = useFormDraft({ name: `contract:${data.customerId}:${renewing ? 'renew:' : ''}${contract?.id || 'new'}`, value: form, base: contract?.updated_at ?? null });
   const set = key => event => setForm(current => ({ ...current, [key]: event.target.value }));
   const toggle = id => setAssetIds(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const choosable = (data.assets || []).filter(a => a.lifecycle_status === 'active' || assetIds.has(a.id));
@@ -61,16 +63,18 @@ function ContractForm({ data, contract, renewing, onSaved, onClose }) {
       else if (contract) await api.updateCustomerContract(data.customerId, contract.id, body);
       else await api.createCustomerContract(data.customerId, body);
       toast.success(renewing ? 'Contract renewed' : contract ? 'Contract saved' : 'Contract added');
+      draft.clear();
       onSaved();
     } catch (failure) { setError(failure.message); } finally { setSaving(false); }
   }
 
-  return <Modal title={renewing ? `Renew ${contract.reference || 'contract'}` : contract ? 'Edit contract' : 'Add contract'} onClose={onClose} wide
+  return <Modal title={renewing ? `Renew ${contract.reference || 'contract'}` : contract ? 'Edit contract' : 'Add contract'} onClose={onClose} wide busy={saving}
     footer={<><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
       <button type="submit" form="contract-form" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : renewing ? 'Renew contract' : 'Save contract'}</button></>}>
     <form id="contract-form" className="cc-form" onSubmit={submit}>
       {renewing && <p className="cc-hint">The renewal starts a new period with the same details and assets. The current period stays in the history as renewed.</p>}
       {error && <div className="error-msg" role="alert">{error}</div>}
+      <DraftBanner draft={draft} onRestore={restored => restored && setForm(restored)} />
       <div className="form-group"><label htmlFor="cc-reference">Contract reference *</label>
         <input id="cc-reference" value={form.reference} onChange={set('reference')} maxLength={100} required placeholder="e.g. MSP-2026-014" /></div>
       <div className="form-group"><label htmlFor="cc-description">Description</label>

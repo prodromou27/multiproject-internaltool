@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import { api } from '../api';
 import { Modal } from './Shared';
 import { DraftChecklist } from './TaskSubtasks';
@@ -16,6 +17,7 @@ export default function CustomerTaskForm({ customerId, isManager, engineers = []
   const [form, setForm] = useState({ title: initial.title || '', description: initial.description || '', priority: initial.priority || 'medium', deadline: '', assignee: isManager ? 'engineer' : 'me', assigned_to: '', team_id: '', ticket_reference: '' });
   const [teams, setTeams] = useState([]), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const [subtasks, setSubtasks] = useState(() => initial.subtasks || []);
+  const draft = useFormDraft({ name: `customer-task:${customerId}`, value: form, enabled: !initial.title });
   const set = key => event => setForm(current => ({ ...current, [key]: event.target.value }));
   useEffect(() => {
     const load = isManager ? api.teams() : api.teamsMine().then(result => result.teams || []);
@@ -28,11 +30,12 @@ export default function CustomerTaskForm({ customerId, isManager, engineers = []
     const body = { title: form.title, description: form.description || null, priority: form.priority, deadline: form.deadline || null, customer_id: Number(customerId), ...(initial.asset_id ? { asset_id: initial.asset_id } : {}), ...(subtasks.length ? { subtasks } : {}), ...(form.ticket_reference.trim() ? { ticket_reference: form.ticket_reference.trim() } : {}) };
     if (form.assignee === 'team') body.team_id = Number(form.team_id);
     else if (form.assignee === 'engineer' && form.assigned_to) body.assigned_to = Number(form.assigned_to);
-    try { await api.createTask(body); onSaved(); } catch (failure) { setError(failure.message); } finally { setSaving(false); }
+    try { await api.createTask(body); draft.clear(); onSaved(); } catch (failure) { setError(failure.message); } finally { setSaving(false); }
   }
 
   return <Modal title="Add task" onClose={onClose}>
     <form onSubmit={submit} className="rt-form">
+      <DraftBanner draft={draft} onRestore={restored => restored && setForm(restored)} />
       {error && <div className="error-msg" role="alert">{error}</div>}
       {initial.asset_name && <p className="text-sm text-muted">About asset <strong>{initial.asset_name}</strong></p>}
       <div className="form-group"><label htmlFor="ct-title">Task *</label><input id="ct-title" value={form.title} onChange={set('title')} maxLength={500} required placeholder="For example, Replace the failed disk on NAS-01" /></div>

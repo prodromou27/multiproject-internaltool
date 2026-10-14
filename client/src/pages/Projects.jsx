@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { Link, useLocation } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
@@ -143,6 +144,7 @@ function ProjectForm({ initial, users, onSave, onClose, onCustomerCreated }) {
   const [form, setForm] = useState(() => ({ title: '', description: '', priority: 'medium', deadline: '', customer_id: null,...(initial || {}),member_ids:initial?.member_ids || [] }));
   const [saving,      setSaving]      = useState(false);
   const [memberError, setMemberError] = useState('');
+  const draft = useFormDraft({ name: `project:${initial?.id || 'new'}`, value: form, base: initial?.updated_at ?? null });
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const toggleMember = id => setForm(f => ({
@@ -154,7 +156,7 @@ function ProjectForm({ initial, users, onSave, onClose, onCustomerCreated }) {
     e.preventDefault();
     if (form.member_ids.length === 0) { setMemberError('Assign at least one engineer before saving.'); return; }
     setMemberError(''); setSaving(true);
-    try { await onSave(form); onClose(); }
+    try { await onSave(form); draft.clear(); onClose(); }
     catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
   }
@@ -163,6 +165,7 @@ function ProjectForm({ initial, users, onSave, onClose, onCustomerCreated }) {
 
   return (
     <form onSubmit={submit}>
+      <DraftBanner draft={draft} onRestore={data => data && setForm(data)} />
       <div className="form-group"><label>Title *</label><input value={form.title} onChange={set('title')} required /></div>
       <div className="form-group"><label>Description</label><textarea value={form.description || ''} onChange={set('description')} /></div>
       <div className="form-row">

@@ -1421,3 +1421,12 @@ a.topbar-action { display: inline-flex; align-items: center; justify-content: ce
 .load-error > svg { flex: none; color: var(--tone-warning-text, #b45309); }
 .load-error > span { flex: 1; min-width: 200px; }
 .load-error.is-compact { padding: 8px 10px; font-size: 13px; }
+
+/* Modal: "Discard changes?" before Escape or × closes a form with unsaved input. */
+.modal-discard { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 20px; padding: 10px 12px; border: 1px solid var(--tone-warning-text, #b45309); border-radius: 8px; background: var(--warning-light, #fffbeb); font-size: 13px; }
+.modal-discard span { flex: 1; min-width: 180px; }
+
+/* A kept draft of a form (hooks/useFormDraft.jsx). */
+.draft-banner { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; margin-bottom: 12px; border: 1px solid var(--gray-200); border-radius: 8px; background: var(--gray-50); font-size: 13px; }
+.draft-banner span { flex: 1; min-width: 200px; }
+.draft-banner.is-restored { border-color: var(--primary); }

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import { VisitTimeFields, VisitWarnings, allDayOf, timesOf, useVisitCheck, visitTime } from '../components/VisitSchedule';
 import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { Upload, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle } from 'lucide-react';
@@ -74,6 +75,7 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
     return { ...start, all_day: allDayOf(start) };
   });
   const check = useVisitCheck(initial);
+  const draft = useFormDraft({ name: `visit:${initial?.id || 'new'}`, value: form, base: initial?.updated_at ?? null });
   const [saving,   setSaving]   = useState(false);
   const [formErr,  setFormErr]  = useState('');
   const [assets,setAssets]=useState([]);
@@ -94,7 +96,7 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
     e.preventDefault(); setSaving(true); setFormErr('');
     const { all_day: _allDay, ...rest } = form;
     const payload = { ...rest, ...timesOf(form), id: initial?.id };
-    try { if (await check.run(payload, onSave)) onClose(); }
+    try { if (await check.run(payload, onSave)) { draft.clear(); onClose(); } }
     catch (err) { setFormErr(err.message || 'Failed to save. Please try again.'); }
     finally { setSaving(false); }
   }
@@ -103,6 +105,7 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
 
   return (
     <form onSubmit={submit}>
+      <DraftBanner draft={draft} onRestore={data => data && setForm(data)} />
       <div className="form-group">
         <label htmlFor="visit-customer">Customer *</label>
         <CustomerSearchSelect id="visit-customer" value={form.customer_id} allowEmpty={false} required placeholder="Search customers…"
