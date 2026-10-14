@@ -3,6 +3,7 @@ const { notifyShared, notifyUser } = require('../notifications');
 const multer  = require('multer');
 const ExcelJS = require('exceljs');
 const db = require('../db');
+const { sentVersion, conflict } = require('../editVersion');
 const { requireAuth, requireManager, requireManagerOrPlanner, requireDownloadManagerOrPlanner } = require('../middleware/auth');
 const { notify } = require('../notifications');
 const { decrypt } = require('../fieldCipher');
@@ -392,6 +393,9 @@ router.put('/:id', requireAuth, async (req, res) => {
   // Managers and planners can do full edits
   if (req.user.role !== 'manager' && req.user.role !== 'planner')
     return res.status(403).json({ error: 'Forbidden' });
+  const version = sentVersion(req.body);
+  if (version.error) return res.status(400).json({ error: version.error });
+  if (version.value !== undefined && version.value !== Number(mv.edit_version)) return conflict(res, 'This visit', mv);
 
   const { customer_id, title, description, scheduled_date, engineer_ids, asset_ids, status, notes } = req.body;
   const VALID_STATUSES = ['scheduled', 'in_progress', 'completed', 'cancelled'];
@@ -420,20 +424,23 @@ router.put('/:id', requireAuth, async (req, res) => {
   if (schedule.error) return res.status(400).json({ error: schedule.error });
   if (rescheduled && status !== 'cancelled' && needsConfirmation(schedule.warnings, req.body))
     return res.status(409).json({ error: 'This visit needs a second look before it is saved', code: 'VISIT_CHECK', warnings: schedule.warnings });
-  await db.transaction(async tx => {
+  const saved = await db.transaction(async tx => {
     await tx.prepare('SELECT id FROM maintenance_visits WHERE id = ? FOR UPDATE').get(mv.id);
-    await tx.prepare(`UPDATE maintenance_visits SET
+    const result = await tx.prepare(`UPDATE maintenance_visits SET
       customer_id=COALESCE(?,customer_id), title=COALESCE(?,title),
       description=COALESCE(?,description), scheduled_date=COALESCE(?,scheduled_date),
       start_time=?, duration_minutes=?,
-      status=COALESCE(?,status), notes=COALESCE(?,notes), updated_at=app_now() WHERE id=?`)
-      .run(customerCheck.id, title?.trim() || null, description, scheduled_date, schedule.times.start_time, schedule.times.duration_minutes, status, notes, mv.id);
+      status=COALESCE(?,status), notes=COALESCE(?,notes), edit_version=edit_version+1, updated_at=app_now() WHERE id=? AND edit_version=?`)
+      .run(customerCheck.id, title?.trim() || null, description, scheduled_date, schedule.times.start_time, schedule.times.duration_minutes, status, notes, mv.id, mv.edit_version);
+    if (!result.changes) return false;
     if (engineerCheck.ids !== undefined) {
       oldIds = (await tx.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(mv.id)).map(r => r.user_id);
       await replaceEngineers(mv.id, engineerCheck.ids, tx);
     }
     if (assetCheck.ids!==undefined) await replaceAssets(mv.id,effectiveCustomer,assetCheck.ids,tx);
+    return true;
   });
+  if (saved === false) return conflict(res, 'This visit', await db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(mv.id));
   if (engineerCheck.ids !== undefined) {
     // Notify newly added engineers
     const newIds = engineerCheck.ids.filter(id => !oldIds.includes(id));

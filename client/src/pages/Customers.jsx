@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
+import { EditConflict, useEditVersion, yesNo } from '../hooks/useEditVersion';
 import { Link, useLocation } from 'react-router-dom';
 import { Archive, ArchiveRestore, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { api } from '../api';
@@ -42,6 +43,14 @@ export function EditCustomerDialog({ customer, onSaved, onClose }) {
   </Modal>;
 }
 
+const CUSTOMER_FIELDS = [
+  ['name', 'Name'], ['customer_code', 'Customer code'], ['active', 'Active', yesNo], ['is_internal', 'Internal', yesNo],
+  ['contact_name', 'Contact'], ['contact_email', 'Email'], ['contact_phone', 'Phone'], ['primary_contact', 'Primary contact'],
+  ['address', 'Address'], ['location', 'Location'], ['notes', 'Notes'], ['contract_type', 'Contract type'],
+  ['contract_start_date', 'Contract start'], ['contract_end_date', 'Contract end'], ['reporting_frequency', 'Reporting'],
+  ['service_notes', 'Service notes'],
+];
+
 function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClose }) {
   const toast = useToast();
   const [form, setForm] = useState(() => initial ? { ...initial, is_internal: !!initial.is_internal } : {
@@ -61,18 +70,22 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
   const setBool = k => e => setForm(f => ({ ...f, [k]: e.target.checked }));
 
   const draft = useFormDraft({ name: `customer:${initial?.id || 'new'}`, value: form, base: initial?.updated_at ?? null });
+  const edit = useEditVersion(initial);
   async function submit(e) {
-    e.preventDefault(); setSaving(true);
+    e?.preventDefault(); setSaving(true);
     try {
-      const id = await onSave(form);
+      const id = await onSave(edit.version === undefined ? form : { ...form, version: edit.version });
       if (onSaveTeams) await onSaveTeams(initial?.id || id, selectedTeams);
       draft.clear();
       onClose();
-    } catch (err) { toast.error(err.message); } finally { setSaving(false); }
+    } catch (err) { if (!edit.caught(err)) toast.error(err.message); } finally { setSaving(false); }
   }
   return (
     <form onSubmit={submit}>
       <DraftBanner draft={draft} onRestore={data => data && setForm(data)} />
+      <EditConflict edit={edit} what="customer" fields={CUSTOMER_FIELDS} mine={form}
+        onKeepMine={() => { edit.keepMine(); submit(); }}
+        onUseTheirs={() => { const theirs = edit.takeTheirs(); setForm(f => ({ ...f, ...theirs, is_internal: !!theirs.is_internal })); }} />
       <div className="form-group"><label htmlFor="customer-name">Customer Name *</label><input id="customer-name" value={form.name} onChange={set('name')} required /></div>
       <div className="form-row">
         <div className="form-group"><label>Customer Code</label><input value={form.customer_code} onChange={set('customer_code')} placeholder="Internal reference" /></div>

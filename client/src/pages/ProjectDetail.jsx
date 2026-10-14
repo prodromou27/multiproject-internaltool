@@ -8,6 +8,7 @@ import { useLatestRequest } from '../hooks/useLatestRequest';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, RagBadge, fmtDate, fmtRelative, isOverdue, Modal, MentionInput, renderMentions, sentenceCase } from '../components/Shared';
+import { EditConflict, useEditVersion } from '../hooks/useEditVersion';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { AttachmentsSection, KpiSection } from './project/AttachmentsKpi';
@@ -46,6 +47,7 @@ export default function ProjectDetail() {
   const [taskSearch,   setTaskSearch]   = useState('');
   const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', is_adhoc: false });
   const [editForm, setEditForm] = useState({});
+  const projectEdit = useEditVersion(null);
 
   const { begin, isCurrent } = useLatestRequest(`${id}:${user.role}`);
   const [loadError, setLoadError] = useState(null);
@@ -154,13 +156,15 @@ export default function ProjectDetail() {
   }
 
   async function saveEdit(e) {
-    e.preventDefault();
+    e?.preventDefault();
     try {
-      await api.updateProject(id, editForm);
+      await api.updateProject(id, { ...editForm, version: projectEdit.version });
       toast.success('Project updated');
       setShowEdit(false); load();
-    } catch (err) { toast.error(err.message); }
+    } catch (err) { if (!projectEdit.caught(err)) toast.error(err.message); }
   }
+  // The edit form's values from a project record.
+  const editValues = p => ({ title: p.title, description: p.description, priority: p.priority, deadline: p.deadline?.slice(0, 10) || '', status: p.status, customer_id: p.customer_id || '', pending_from_customer: p.pending_from_customer || '', completion_pct: p.completion_pct ?? '', rag_override: p.rag_override || '' });
 
   async function addTask(e) {
     e.preventDefault();
@@ -242,7 +246,8 @@ export default function ProjectDetail() {
           {/* Edit — managers (the server allows no one else); a closed project stays editable */}
           {isManager && project.status !== 'cancelled' && (
             <button className="btn btn-ghost btn-sm" onClick={() => {
-              setEditForm({ title: project.title, description: project.description, priority: project.priority, deadline: project.deadline?.slice(0, 10) || '', status: project.status, customer_id: project.customer_id || '', pending_from_customer: project.pending_from_customer || '', completion_pct: project.completion_pct ?? '', rag_override: project.rag_override || '' });
+              setEditForm(editValues(project));
+              projectEdit.start(project);
               setShowEdit(true);
             }}>Edit</button>
           )}
@@ -598,6 +603,10 @@ export default function ProjectDetail() {
       {showEdit && (
         <Modal title="Edit Project" onClose={() => setShowEdit(false)}>
           <form onSubmit={saveEdit}>
+            <EditConflict edit={projectEdit} what="project" mine={editForm}
+              fields={[['title', 'Title'], ['description', 'Description'], ['priority', 'Priority'], ['status', 'Status'], ['deadline', 'Deadline', d => d?.slice(0, 10) || '—'], ['customer_id', 'Customer'], ['pending_from_customer', 'Waiting for'], ['completion_pct', 'Completion %'], ['rag_override', 'RAG override']]}
+              onKeepMine={() => { projectEdit.keepMine(); saveEdit(); }}
+              onUseTheirs={() => setEditForm(editValues(projectEdit.takeTheirs()))} />
             <div className="form-group"><label>Title</label><input value={editForm.title} onChange={setE('title')} required /></div>
             <div className="form-group"><label>Description</label><textarea value={editForm.description || ''} onChange={setE('description')} /></div>
             <div className="form-row">

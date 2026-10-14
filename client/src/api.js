@@ -45,6 +45,7 @@ async function req(method, path, body, { redirectOnUnauthorized = true, signal }
     error.status = res.status;
     error.code = data.code;
     if (data.warnings) error.warnings = data.warnings; // a visit that needs a second look
+    if (data.current) error.current = data.current; // EDIT_CONFLICT: the record as it is now
     throw error;
   }
   return data;

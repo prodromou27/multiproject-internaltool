@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { notifyShared, notifyUser } = require('../notifications');
 const db = require('../db');
+const { sentVersion, conflict } = require('../editVersion');
 const { requireAuth, requireManager } = require('../middleware/auth');
 const { notify } = require('../notifications');
 const { decrypt } = require('../fieldCipher');
@@ -309,6 +310,9 @@ router.post('/', requireManager, async (req, res) => {
 router.put('/:id', requireManager, async (req, res) => {
   const p = (await db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id));
   if (!p) return res.status(404).json({ error: 'Not found' });
+  const version = sentVersion(req.body);
+  if (version.error) return res.status(400).json({ error: version.error });
+  if (version.value !== undefined && version.value !== Number(p.edit_version)) return conflict(res, 'This project', { ...p, customer_name: undefined });
 
   const { title, description, priority, deadline, customer_id, status, pending_from_customer, completion_pct, rag_override } = req.body;
   if (pending_from_customer != null && (typeof pending_from_customer !== 'string' || pending_from_customer.length > 10000))
@@ -356,11 +360,15 @@ router.put('/:id', requireManager, async (req, res) => {
   const changed = await db.prepare(`UPDATE projects SET title=COALESCE(?,title), description=COALESCE(?,description),
     priority=COALESCE(?,priority), deadline=?, customer_id=?,
     status=COALESCE(?,status), pending_from_customer=?,
-    completion_pct=COALESCE(?,completion_pct), rag_override=?,
-    updated_at=app_now() WHERE id=? AND status=? AND closure_request_version=?`)
+    completion_pct=COALESCE(?,completion_pct), rag_override=?, edit_version=edit_version+1,
+    updated_at=app_now() WHERE id=? AND status=? AND closure_request_version=? AND edit_version=?`)
     .run(title?.trim() || null, description, priority, deadline === undefined ? p.deadline : (deadline || null), normalizedCustomer.value !== undefined ? normalizedCustomer.value : p.customer_id, status, newPfc,
-         completion_pct !== undefined ? completion_pct : null, newRagOverride, p.id, p.status, p.closure_request_version);
-  if (!changed.changes) return res.status(409).json({ error: 'Project changed. Reload before saving.', code: 'PROJECT_CONFLICT' });
+         completion_pct !== undefined ? completion_pct : null, newRagOverride, p.id, p.status, p.closure_request_version, p.edit_version);
+  if (!changed.changes) {
+    const now = await db.prepare('SELECT * FROM projects WHERE id = ?').get(p.id);
+    if (version.value !== undefined) return conflict(res, 'This project', now);
+    return res.status(409).json({ error: 'Project changed. Reload before saving.', code: 'PROJECT_CONFLICT' });
+  }
   if (status && status !== p.status) {
     logActivity(p.id, req.user.id, 'status_changed', `${p.status} → ${status}`);
     if (status === 'closed' || status === 'completed') {

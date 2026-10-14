@@ -8,6 +8,7 @@ const { logAudit } = require('../auditLog');
 const { requireAuth, requireManager, requireManagerOrPlanner, requirePermission } = require('../middleware/auth');
 const { encryptCustomer, decryptCustomer } = require('../fieldCipher');
 const { canAccessCustomer,positiveId }=require('../customerAccess');
+const { sentVersion, conflict }=require('../editVersion');
 const { parseCustomerListQuery,customerListPage }=require('../customerDirectory');
 const { candidateCustomerIds,candidateCustomerNameIds,replaceCustomerSearchDocument }=require('../customerSearchIndex');
 
@@ -283,6 +284,9 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
   const existing = (await db.prepare('SELECT * FROM customers WHERE id = ?').get(id));
   if (!existing) return res.status(404).json({ error: 'Not found' });
+  const version = sentVersion(req.body);
+  if (version.error) return res.status(400).json({ error: version.error });
+  if (version.value !== undefined && version.value !== Number(existing.edit_version)) return conflict(res, 'This customer', decryptCustomer(existing));
   const inputError = validateCustomerInput(req.body, existing);
   if (inputError) return res.status(400).json({ error: inputError });
   const {
@@ -321,8 +325,8 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
     location:        location        !== undefined ? (location        || null) : dec.location,
     service_notes:   service_notes   !== undefined ? (service_notes   || null) : dec.service_notes,
   });
-  await db.transaction(async tx => {
-    await tx.prepare(`UPDATE customers SET
+  const saved = await db.transaction(async tx => {
+    const result = await tx.prepare(`UPDATE customers SET
       name=COALESCE(?,name), contact_name=?, contact_email=?, contact_phone=?, address=?, notes=?,
       customer_code=?, active=COALESCE(?,active),
       service_activity_enabled=COALESCE(?,service_activity_enabled),
@@ -334,8 +338,8 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
       require_duration=COALESCE(?,require_duration), require_ticket_reference=COALESCE(?,require_ticket_reference),
       require_technology=COALESCE(?,require_technology), require_category=COALESCE(?,require_category),
       require_notes=COALESCE(?,require_notes), require_billable_classification=COALESCE(?,require_billable_classification),
-      is_internal=COALESCE(?,is_internal)
-    WHERE id=?`)
+      is_internal=COALESCE(?,is_internal), edit_version=edit_version+1
+    WHERE id=? AND edit_version=?`)
     .run(enc.name || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes,
       customer_code !== undefined ? (customer_code || null) : existing.customer_code,
       active != null ? (active ? 1 : 0) : null,
@@ -354,7 +358,9 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
       require_category != null ? (require_category ? 1 : 0) : null,
       require_notes != null ? (require_notes ? 1 : 0) : null,
       require_billable_classification != null ? (require_billable_classification ? 1 : 0) : null,
-      is_internal != null ? (is_internal ? 1 : 0) : null, id);
+      is_internal != null ? (is_internal ? 1 : 0) : null, id, existing.edit_version);
+    // Saved by someone else between the read above and this write.
+    if (!result.changes) return false;
     await replaceCustomerSearchDocument(tx,{ id,
       name:name!==undefined ? name.trim() : dec.name,
       contact_name:contact_name!==undefined ? contact_name : dec.contact_name,
@@ -364,6 +370,7 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
       customer_code:customer_code!==undefined ? customer_code : existing.customer_code,
     });
   });
+  if (saved === false) return conflict(res, 'This customer', decryptCustomer(await db.prepare('SELECT * FROM customers WHERE id = ?').get(id)));
   res.json({ ok: true });
 });
 

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
+import { EditConflict, useEditVersion } from '../hooks/useEditVersion';
 import { VisitTimeFields, VisitWarnings, allDayOf, timesOf, useVisitCheck, visitTime } from '../components/VisitSchedule';
 import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { Upload, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle } from 'lucide-react';
@@ -68,6 +69,11 @@ function EngineerPicker({ engineers, selected, onChange }) {
 }
 
 /* ── Visit Form ──────────────────────────────────────────── */
+const VISIT_FIELDS = [
+  ['title', 'Title'], ['description', 'Description'], ['scheduled_date', 'Date', d => d?.slice(0, 10) || '—'],
+  ['start_time', 'Start'], ['duration_minutes', 'Minutes'], ['status', 'Status'], ['notes', 'Notes'], ['customer_id', 'Customer'],
+];
+
 function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
   const [form, setForm] = useState(() => {
     const start = initial || { customer_id: '', title: '', description: '', scheduled_date: '',
@@ -75,6 +81,7 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
     return { ...start, all_day: allDayOf(start) };
   });
   const check = useVisitCheck(initial);
+  const edit = useEditVersion(initial);
   const draft = useFormDraft({ name: `visit:${initial?.id || 'new'}`, value: form, base: initial?.updated_at ?? null });
   const [saving,   setSaving]   = useState(false);
   const [formErr,  setFormErr]  = useState('');
@@ -93,11 +100,11 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
 
   // The day, time and engineers are checked before saving (holidays, time off, overlaps…).
   async function submit(e) {
-    e.preventDefault(); setSaving(true); setFormErr('');
+    e?.preventDefault(); setSaving(true); setFormErr('');
     const { all_day: _allDay, ...rest } = form;
-    const payload = { ...rest, ...timesOf(form), id: initial?.id };
+    const payload = { ...rest, ...timesOf(form), id: initial?.id, version: edit.version };
     try { if (await check.run(payload, onSave)) { draft.clear(); onClose(); } }
-    catch (err) { setFormErr(err.message || 'Failed to save. Please try again.'); }
+    catch (err) { if (!edit.caught(err)) setFormErr(err.message || 'Failed to save. Please try again.'); }
     finally { setSaving(false); }
   }
   // A change to what was checked clears the warnings.
@@ -106,6 +113,9 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
   return (
     <form onSubmit={submit}>
       <DraftBanner draft={draft} onRestore={data => data && setForm(data)} />
+      <EditConflict edit={edit} what="visit" fields={VISIT_FIELDS} mine={{ ...form, ...timesOf(form) }}
+        onKeepMine={() => { edit.keepMine(); submit(); }}
+        onUseTheirs={() => { const theirs = edit.takeTheirs(); setForm(f => { const next = { ...f, ...theirs, customer_id: String(theirs.customer_id), scheduled_date: theirs.scheduled_date?.slice(0, 10) || '' }; return { ...next, all_day: allDayOf(next) }; }); }} />
       <div className="form-group">
         <label htmlFor="visit-customer">Customer *</label>
         <CustomerSearchSelect id="visit-customer" value={form.customer_id} allowEmpty={false} required placeholder="Search customers…"

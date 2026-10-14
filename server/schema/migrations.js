@@ -1208,6 +1208,12 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS start_time TEXT;
     ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS duration_minutes INTEGER;
   `]);
+  migrations.push(['20261108_edit_versions', `
+    -- Raised by every save, so an editor can tell that someone else saved meanwhile (editVersion.js).
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS edit_version INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS edit_version INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS edit_version INTEGER NOT NULL DEFAULT 1;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;
