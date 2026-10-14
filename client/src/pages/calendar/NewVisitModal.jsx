@@ -4,13 +4,17 @@ import { Wrench } from 'lucide-react';
 import { api } from '../../api';
 import { Modal } from '../../components/Shared';
 import EngineerPicker from './EngineerPicker';
+import { VisitTimeFields, VisitWarnings, timesOf, useVisitCheck } from '../../components/VisitSchedule';
 
 /* ── Quick-create Maintenance Visit modal ────────────────── */
 export default function NewVisitModal({ prefillDate, onClose, onCreated }) {
   const [form, setForm] = useState({
     customer_id: '', title: '', description: '',
-    scheduled_date: prefillDate || '', engineer_ids: [], notes: '',
+    scheduled_date: prefillDate || '', engineer_ids: [], notes: '', all_day: true,
   });
+  const check = useVisitCheck();
+  // A change to what was checked clears the warnings.
+  const setChecked = updater => { setForm(updater); check.reset(); };
   const [engineers,  setEngineers]  = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
@@ -30,11 +34,10 @@ export default function NewVisitModal({ prefillDate, onClose, onCreated }) {
     e.preventDefault();
     setErr(''); setSaving(true);
     try {
-      await api.createVisit({
-        ...form,
-        customer_id:  Number(form.customer_id),
-        status:       'scheduled',
-      });
+      const { all_day: _allDay, ...rest } = form;
+      // The day, time and engineers are checked first (holidays, time off, overlaps…).
+      const saved = await check.run({ ...rest, ...timesOf(form), customer_id: Number(form.customer_id), status: 'scheduled' }, api.createVisit);
+      if (!saved) return;
       onCreated();
       onClose();
     } catch (ex) {
@@ -65,7 +68,8 @@ export default function NewVisitModal({ prefillDate, onClose, onCreated }) {
 
             <div className="form-group">
               <label>Scheduled Date *</label>
-              <input type="date" value={form.scheduled_date} onChange={set('scheduled_date')} required />
+              <input type="date" value={form.scheduled_date} onChange={event => setChecked(f => ({ ...f, scheduled_date: event.target.value }))} required />
+              <VisitTimeFields form={form} setForm={setChecked} idPrefix="new-visit" />
             </div>
 
             <div className="form-group">
@@ -79,7 +83,7 @@ export default function NewVisitModal({ prefillDate, onClose, onCreated }) {
             <EngineerPicker
               engineers={engineers}
               selected={form.engineer_ids}
-              onChange={ids => setForm(f => ({ ...f, engineer_ids: ids }))}
+              onChange={ids => setChecked(f => ({ ...f, engineer_ids: ids }))}
             />
           </div>
 
@@ -89,12 +93,13 @@ export default function NewVisitModal({ prefillDate, onClose, onCreated }) {
               placeholder="Any additional notes…" className="u-9d0af0f" />
           </div>
 
+          <VisitWarnings warnings={check.warnings} />
           <div className="modal-footer u-cc45258">
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary inline-flex items-center gap-6"
              
               disabled={saving}>
-              {saving ? '⏳ Saving…' : <><Wrench size={14} /> Create Visit</>}
+              {saving ? 'Saving…' : <><Wrench size={14} /> {check.pending ? 'Create anyway' : 'Create Visit'}</>}
             </button>
           </div>
         </form>

@@ -1202,6 +1202,12 @@ async function applyMigrations(pool, transaction) {
     );
     CREATE INDEX IF NOT EXISTS idx_asset_search_tokens_hash ON asset_search_tokens(token_hash, asset_id);
   `]);
+  migrations.push(['20261107_visit_times', `
+    -- A visit may have a start time and a duration; without them it is all day
+    -- (every existing visit, as before).
+    ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS start_time TEXT;
+    ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS duration_minutes INTEGER;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

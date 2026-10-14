@@ -16,7 +16,7 @@ test('managers rename, add and remove contract types in Settings', async ({ page
   await page.getByLabel('New contract type').fill('24x5');
   await page.getByRole('button', { name: 'Add type' }).click();
   await page.getByRole('button', { name: 'Save contract types' }).click();
-  await expect.poll(() => sent).toEqual({ types: ['24x7', '8x5 NBD', '24x5'], renames: { '8x5': '8x5 NBD' } });
+  await expect.poll(() => sent).toEqual({ types: ['24x7', '8x5 NBD', '24x5'], renames: { '8x5': '8x5 NBD' }, calendars: { '24x7': 'all_days', '8x5 NBD': 'business', '24x5': 'business' } });
   await expect(page.getByRole('button', { name: 'Save contract types' })).toBeDisabled();
 });
 

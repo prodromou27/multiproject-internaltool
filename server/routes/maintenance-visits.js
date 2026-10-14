@@ -228,6 +228,32 @@ router.get('/:id/calendar.ics', requireAuth, async (req, res) => {
 });
 
 // ── Create ───────────────────────────────────────────────────────────────────
+/* Before saving: what is wrong with this date, time and engineers (visitScheduling.js).
+   The form shows these; saving rechecks, and hard ones need confirm_warnings. */
+const { validateTimes, checkVisit } = require('../visitScheduling');
+async function scheduleProblems(body, existing = null) {
+  const times = validateTimes(body, existing || {});
+  if (times.error) return { error: times.error };
+  const engineerIds = body.engineer_ids !== undefined ? body.engineer_ids
+    : existing ? (await db.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(existing.id)).map(row => row.user_id) : [];
+  const assetIds = body.asset_ids !== undefined ? body.asset_ids
+    : existing ? (await db.prepare('SELECT asset_id FROM maintenance_visit_assets WHERE visit_id = ?').all(existing.id)).map(row => row.asset_id) : [];
+  const warnings = await checkVisit({ id: existing?.id, customer_id: body.customer_id || existing?.customer_id, scheduled_date: body.scheduled_date || existing?.scheduled_date,
+    ...times.value, engineer_ids: Array.isArray(engineerIds) ? engineerIds : [], asset_ids: Array.isArray(assetIds) ? assetIds : [] });
+  return { times: times.value, warnings };
+}
+const needsConfirmation = (warnings, body) => warnings.some(w => w.severity === 'hard') && body.confirm_warnings !== true;
+
+router.post('/check', requireManagerOrPlanner, async (req, res) => {
+  if (!req.body || !isIsoDate(req.body.scheduled_date)) return res.status(400).json({ error: 'scheduled_date must be YYYY-MM-DD' });
+  if (req.body.engineer_ids !== undefined && (!Array.isArray(req.body.engineer_ids) || req.body.engineer_ids.some(id => !Number.isSafeInteger(Number(id)))))
+    return res.status(400).json({ error: 'engineer_ids must be a list of ids' });
+  const existing = req.body.id ? await db.prepare('SELECT * FROM maintenance_visits WHERE id = ?').get(Number(req.body.id)) : null;
+  const result = await scheduleProblems(req.body, existing);
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ warnings: result.warnings });
+});
+
 router.post('/', requireManagerOrPlanner, async (req, res) => {
   const inputError = validateVisitText(req.body);
   if (inputError) return res.status(400).json({ error: inputError });
@@ -243,11 +269,15 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
   if (engineerCheck.error) return res.status(400).json({ error: engineerCheck.error });
   const assetCheck=await validateAssetIds(asset_ids,customerCheck.id);
   if (assetCheck.error) return res.status(400).json({ error:assetCheck.error });
+  const schedule = await scheduleProblems({ ...req.body, customer_id: customerCheck.id, engineer_ids: engineerCheck.ids || [], asset_ids: assetCheck.ids || [] });
+  if (schedule.error) return res.status(400).json({ error: schedule.error });
+  if (needsConfirmation(schedule.warnings, req.body))
+    return res.status(409).json({ error: 'This visit needs a second look before it is saved', code: 'VISIT_CHECK', warnings: schedule.warnings });
 
   const visitId = await db.transaction(async tx => {
     const result = await tx.prepare(
-      'INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, notes, created_by) VALUES (?,?,?,?,?,?)'
-    ).run(customerCheck.id, title.trim(), description || null, scheduled_date, notes || null, req.user.id);
+      'INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, start_time, duration_minutes, notes, created_by) VALUES (?,?,?,?,?,?,?,?)'
+    ).run(customerCheck.id, title.trim(), description || null, scheduled_date, schedule.times.start_time, schedule.times.duration_minutes, notes || null, req.user.id);
 
     await replaceEngineers(result.lastInsertRowid, engineerCheck.ids || [], tx);
     await replaceAssets(result.lastInsertRowid,customerCheck.id,assetCheck.ids || [],tx);
@@ -384,13 +414,20 @@ router.put('/:id', requireAuth, async (req, res) => {
   const retainedAssets=asset_ids===undefined && customer_id!==undefined ? (await db.prepare('SELECT asset_id FROM maintenance_visit_assets WHERE visit_id=?').all(mv.id)).map(row => row.asset_id) : asset_ids;
   const assetCheck=await validateAssetIds(retainedAssets,effectiveCustomer);
   if (assetCheck.error) return res.status(400).json({ error:assetCheck.error });
+  // A change of day, time or engineers is checked again; a hard problem needs confirm_warnings.
+  const rescheduled = ['scheduled_date', 'start_time', 'duration_minutes', 'engineer_ids'].some(key => req.body[key] !== undefined);
+  const schedule = await scheduleProblems({ ...req.body, customer_id: effectiveCustomer, engineer_ids: engineerCheck.ids, asset_ids: assetCheck.ids }, mv);
+  if (schedule.error) return res.status(400).json({ error: schedule.error });
+  if (rescheduled && status !== 'cancelled' && needsConfirmation(schedule.warnings, req.body))
+    return res.status(409).json({ error: 'This visit needs a second look before it is saved', code: 'VISIT_CHECK', warnings: schedule.warnings });
   await db.transaction(async tx => {
     await tx.prepare('SELECT id FROM maintenance_visits WHERE id = ? FOR UPDATE').get(mv.id);
     await tx.prepare(`UPDATE maintenance_visits SET
       customer_id=COALESCE(?,customer_id), title=COALESCE(?,title),
       description=COALESCE(?,description), scheduled_date=COALESCE(?,scheduled_date),
+      start_time=?, duration_minutes=?,
       status=COALESCE(?,status), notes=COALESCE(?,notes), updated_at=app_now() WHERE id=?`)
-      .run(customerCheck.id, title?.trim() || null, description, scheduled_date, status, notes, mv.id);
+      .run(customerCheck.id, title?.trim() || null, description, scheduled_date, schedule.times.start_time, schedule.times.duration_minutes, status, notes, mv.id);
     if (engineerCheck.ids !== undefined) {
       oldIds = (await tx.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(mv.id)).map(r => r.user_id);
       await replaceEngineers(mv.id, engineerCheck.ids, tx);

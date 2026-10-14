@@ -16,6 +16,19 @@ const DEFAULT_LOCALIZATION = {
   ntp_check_enabled: true,
 };
 
+/* The business calendar: working weekdays, holidays and the travel buffer between
+   timed visits (businessCalendar.js). Everyone reads it (planning, calendars);
+   managers change it. */
+const businessCalendar = require('../../businessCalendar');
+router.get('/business-calendar', requireAuth, async (req, res) => res.json(await businessCalendar.load()));
+router.put('/business-calendar', requireManager, async (req, res) => {
+  const checked = businessCalendar.validate(req.body);
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  await businessCalendar.save(checked.value);
+  await logSettingsChange(req, 'business_calendar_updated', `working_days=${checked.value.working_days.join(',')}; holidays=${checked.value.holidays.length}; buffer=${checked.value.travel_buffer_minutes}min`);
+  res.json(await businessCalendar.load());
+});
+
 // Every authenticated role reads this — it drives date/time/number formatting
 // across the whole app, not just admin screens. Only managers may change it (below).
 router.get('/localization', requireAuth, async (req, res) => {

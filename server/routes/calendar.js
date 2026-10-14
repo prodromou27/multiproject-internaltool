@@ -56,7 +56,7 @@ router.get('/', requireAuth, async (req, res) => {
     ? (await db.prepare(projQ).all(...projParams)).map(r => ({ ...r, type: 'project' })) : [];
 
   // Maintenance visits in the month
-  let mvQ = `SELECT mv.id, mv.title, mv.scheduled_date as date, mv.status, mv.report_sent,
+  let mvQ = `SELECT mv.id, mv.title, mv.scheduled_date as date, mv.start_time, mv.duration_minutes, mv.status, mv.report_sent,
     c.name as customer_name
     FROM maintenance_visits mv
     JOIN customers c ON mv.customer_id = c.id

@@ -266,13 +266,15 @@ const MEASURES = {
     return { value: rows.length, records: rows.length };
   },
   async visit_reports_on_time(db, c) {
-    const { workingDaysBetween } = require('./workingDays');
+    const calendar = require('./businessCalendar');
+    const [cal, { modeFor }] = await Promise.all([calendar.load(db), calendar.customerModes(db, c.today)]);
+    const workingDaysBetween = (from, to, customerId) => calendar.workingDaysBetween(from, to, cal, { allDays: modeFor(customerId) === 'all_days' });
     const limit = (await require('./slaPolicy').getPolicy(db)).visit_report.limit;
     const rows = (await visits(db, c, "v.status<>'cancelled'")).filter(row => row.scheduled_date <= c.today);
     // Counted once the report is in, or once it is late without one.
     const judged = rows.map(row => {
       const sentDay = row.report_sent && row.report_sent_at ? String(row.report_sent_at).slice(0, 10) : null;
-      const days = workingDaysBetween(row.scheduled_date, sentDay || c.today);
+      const days = workingDaysBetween(row.scheduled_date, sentDay || c.today, row.customer_id);
       return sentDay ? days <= limit : days > limit ? false : null;
     }).filter(result => result !== null);
     return { value: percent(judged.filter(Boolean).length, judged.length), records: judged.length };
@@ -315,7 +317,7 @@ const taskFilter = c => join(people('t.assigned_to', c.users), clause('COALESCE(
 const taskFrom = c => (c.customer ? 'tasks t LEFT JOIN projects p ON p.id=t.project_id' : 'tasks t');
 async function visits(db, c, condition) {
   const f = clause('v.customer_id=?', c.customer);
-  const rows = await db.prepare(`SELECT v.id, v.scheduled_date, v.report_sent, v.report_sent_at FROM maintenance_visits v WHERE ${condition} AND v.scheduled_date>=? AND v.scheduled_date<=?${f.sql}`).all(c.from, c.to, ...f.params);
+  const rows = await db.prepare(`SELECT v.id, v.customer_id, v.scheduled_date, v.report_sent, v.report_sent_at FROM maintenance_visits v WHERE ${condition} AND v.scheduled_date>=? AND v.scheduled_date<=?${f.sql}`).all(c.from, c.to, ...f.params);
   if (!c.users) return rows;
   if (!c.users.length || !rows.length) return [];
   const assigned = await db.prepare(`SELECT DISTINCT visit_id FROM maintenance_visit_engineers WHERE user_id IN (${c.users.map(() => '?').join(',')})`).all(...c.users);

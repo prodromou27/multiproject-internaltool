@@ -3,6 +3,7 @@ import { Save, Loader2, Globe, Clock } from 'lucide-react';
 import { api } from '../../api';
 import { useToast } from '../../components/Toast';
 import { setLocaleConfig } from '../../utils/locale';
+import { BusinessCalendarSettings } from './BusinessCalendarSettings';
 
 /* ── Localization Tab ────────────────────────────────────── */
 export const LANGUAGES = [
@@ -172,6 +173,8 @@ export function LocalizationTab() {
       </div>
 
       <ServerClock cfg={cfg} set={set} saved={saved} />
+
+      <BusinessCalendarSettings />
 
       <div className="flex gap-10">
         <button className="btn btn-primary inline-flex items-center gap-6" disabled={!dirty || saving} onClick={save}

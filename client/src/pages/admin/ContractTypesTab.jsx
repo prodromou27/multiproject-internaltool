@@ -6,7 +6,10 @@ import { useToast } from '../../components/Toast';
 /* Settings → Contract types: the types managers pick for a managed customer's
    contract (server: routes/settings/contracts.js). Renaming a type renames it
    on its contracts; removing one leaves its contracts as they are. */
-const rowsOf = result => result.types.map(type => ({ name: type.name, original: type.name, contracts: type.contracts }));
+// The server's default: a 24x7 type counts every day; the others pause outside working days.
+const defaultCalendar = name => (/24\s*[x×]\s*7/i.test(String(name)) ? 'all_days' : 'business');
+const rowsOf = result => result.types.map(type => ({ name: type.name, original: type.name, contracts: type.contracts, sla_calendar: type.sla_calendar || defaultCalendar(type.name) }));
+const shape = list => JSON.stringify(list.map(r => [r.name, r.sla_calendar]));
 
 export function ContractTypesTab() {
   const toast = useToast();
@@ -16,29 +19,32 @@ export function ContractTypesTab() {
   }, []);
   if (error) return <div className="error-msg" role="alert">{error}</div>;
   if (!rows) return <p className="text-muted">Loading…</p>;
-  const changed = JSON.stringify(rows.map(r => r.name)) !== JSON.stringify(data.types.map(t => t.name));
+  const changed = shape(rows) !== shape(rowsOf(data));
   const rename = (index, name) => setRows(current => current.map((row, i) => i === index ? { ...row, name } : row));
   function add(event) {
     event.preventDefault();
     const name = adding.trim();
     if (!name) return;
     if (rows.some(row => row.name.trim().toLowerCase() === name.toLowerCase())) { toast.error(`"${name}" is already in the list`); return; }
-    setRows(current => [...current, { name, original: null, contracts: 0 }]); setAdding('');
+    setRows(current => [...current, { name, original: null, contracts: 0, sla_calendar: defaultCalendar(name) }]); setAdding('');
   }
   async function save() {
     setBusy(true);
     try {
       const renames = Object.fromEntries(rows.filter(row => row.original && row.name.trim() !== row.original).map(row => [row.original, row.name.trim()]));
-      const result = await api.saveContractTypes({ types: rows.map(row => row.name), renames });
+      const calendars = Object.fromEntries(rows.map(row => [row.name.trim(), row.sla_calendar]));
+      const result = await api.saveContractTypes({ types: rows.map(row => row.name), renames, calendars });
       setData(result); setRows(rowsOf(result)); toast.success('Contract types saved');
     } catch (failure) { toast.error(failure.message); } finally { setBusy(false); }
   }
   return <section className="card contract-types">
-    <p className="text-muted text-sm">The contract types offered when adding a contract for a managed customer, and in customer imports. Renaming a type renames it on the contracts that use it. Removing a type leaves those contracts as they are.</p>
+    <p className="text-muted text-sm">The contract types offered when adding a contract for a managed customer, and in customer imports. For each, whether SLAs counted in working days pause on weekends and holidays (Time & region) or count every day. Renaming a type renames it on the contracts that use it. Removing a type leaves those contracts as they are.</p>
     {rows.length ? <div className="table-wrap"><table>
-      <thead><tr><th scope="col">Contract type</th><th scope="col">Contracts</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+      <thead><tr><th scope="col">Contract type</th><th scope="col">SLA working days</th><th scope="col">Contracts</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
       <tbody>{rows.map((row, index) => <tr key={row.original || `new-${index}`}>
         <td><input aria-label={`Contract type ${index + 1}`} value={row.name} maxLength={30} onChange={event => rename(index, event.target.value)} /></td>
+        <td><select aria-label={`SLA days for ${row.name}`} value={row.sla_calendar} onChange={event => setRows(current => current.map((r, i) => i === index ? { ...r, sla_calendar: event.target.value } : r))}>
+          <option value="business">Pause outside working days</option><option value="all_days">Every day counts (24x7)</option></select></td>
         <td className="text-sm">{row.contracts || <span className="text-muted">None</span>}</td>
         <td><button type="button" className="btn btn-sm btn-ghost btn-icon-danger" aria-label={`Remove ${row.name}`} title="Remove"
           onClick={() => setRows(current => current.filter((_, i) => i !== index))}><Trash2 size={14} /></button></td>

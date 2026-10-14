@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { VisitTimeFields, VisitWarnings, allDayOf, timesOf, useVisitCheck, visitTime } from '../components/VisitSchedule';
 import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { Upload, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
@@ -67,10 +68,12 @@ function EngineerPicker({ engineers, selected, onChange }) {
 
 /* ── Visit Form ──────────────────────────────────────────── */
 function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
-  const [form, setForm] = useState(initial || {
-    customer_id: '', title: '', description: '', scheduled_date: '',
-    engineer_ids: [], asset_ids: [], notes: '', status: 'scheduled',...(defaults || {}),
+  const [form, setForm] = useState(() => {
+    const start = initial || { customer_id: '', title: '', description: '', scheduled_date: '',
+      engineer_ids: [], asset_ids: [], notes: '', status: 'scheduled',...(defaults || {}) };
+    return { ...start, all_day: allDayOf(start) };
   });
+  const check = useVisitCheck(initial);
   const [saving,   setSaving]   = useState(false);
   const [formErr,  setFormErr]  = useState('');
   const [assets,setAssets]=useState([]);
@@ -86,12 +89,17 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
     return () => controller.abort();
   },[form.customer_id]);
 
+  // The day, time and engineers are checked before saving (holidays, time off, overlaps…).
   async function submit(e) {
     e.preventDefault(); setSaving(true); setFormErr('');
-    try { await onSave(form); onClose(); }
+    const { all_day: _allDay, ...rest } = form;
+    const payload = { ...rest, ...timesOf(form), id: initial?.id };
+    try { if (await check.run(payload, onSave)) onClose(); }
     catch (err) { setFormErr(err.message || 'Failed to save. Please try again.'); }
     finally { setSaving(false); }
   }
+  // A change to what was checked clears the warnings.
+  const setChecked = updater => { setForm(updater); check.reset(); };
 
   return (
     <form onSubmit={submit}>
@@ -111,7 +119,8 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
       <div className="form-row">
         <div className="form-group">
           <label htmlFor="visit-date">Scheduled Date *</label>
-          <input id="visit-date" type="date" value={form.scheduled_date} onChange={set('scheduled_date')} required />
+          <input id="visit-date" type="date" value={form.scheduled_date} onChange={event => setChecked(f => ({ ...f, scheduled_date: event.target.value }))} required />
+          <VisitTimeFields form={form} setForm={setChecked} />
         </div>
         {initial && (
           <div className="form-group">
@@ -130,7 +139,7 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
         <EngineerPicker
           engineers={engineers}
           selected={form.engineer_ids}
-          onChange={ids => setForm(f => ({ ...f, engineer_ids: ids }))}
+          onChange={ids => setChecked(f => ({ ...f, engineer_ids: ids }))}
         />
       </div>
       <div className="form-group"><span id="visit-assets-label" className="form-label-text">Assets in scope</span>{assetsLoading ? <span className="text-muted text-sm" role="status">Loading assets…</span> : <CheckList key={form.customer_id || 'none'} id="visit-assets" label="assets in scope" searchPlaceholder="Search assets…" emptyText={form.customer_id ? 'No active assets recorded for this customer.' : 'Choose the customer first.'} options={assets.map(asset => ({ id: asset.id, label: asset.name, detail: [asset.asset_type, asset.hostname].filter(Boolean).join(' · ') }))} selected={form.asset_ids || []} onChange={assetIds => setForm(old => ({ ...old,asset_ids:assetIds }))} />}</div>
@@ -139,9 +148,10 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
         <textarea id="visit-form-notes" value={form.notes || ''} onChange={set('notes')} placeholder="Any additional notes…" />
       </div>
       {formErr && <div className="error-msg mb-8">{formErr}</div>}
+      <VisitWarnings warnings={check.warnings} />
       <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : check.pending ? 'Save anyway' : 'Save'}</button>
       </div>
     </form>
   );
@@ -197,7 +207,7 @@ function generatePDF(visit, onError) {
   <div class="customer">${esc(visit.customer_name)}</div>
 
   <div class="grid">
-    <div class="field"><label>Scheduled Date</label><div class="val">${fmtD(visit.scheduled_date)}</div></div>
+    <div class="field"><label>Scheduled Date</label><div class="val">${fmtD(visit.scheduled_date)}${visitTime(visit) ? ` · ${visitTime(visit)}` : ''}</div></div>
     <div class="field"><label>Status</label><div class="val"><span class="badge b-${visit.status}">${statusLabel}</span></div></div>
     <div class="field"><label>Engineer${(visit.engineer_names || '').includes(',') ? 's' : ''}</label><div class="val">${esc(visit.engineer_names) || 'Unassigned'}</div></div>
     <div class="field"><label>Contact</label><div class="val">${esc(visit.contact_name) || '—'}${visit.contact_email ? ' &middot; ' + esc(visit.contact_email) : ''}</div></div>
@@ -300,7 +310,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
         <div className="grid-2">
           <div>
             <div className="text-sm text-muted u-fce9611">Scheduled Date</div>
-            <div className={isOverdue(visit.scheduled_date) && visit.status === 'scheduled' ? 'overdue font-bold' : 'font-bold'}>{fmtDate(visit.scheduled_date)}</div>
+            <div className={isOverdue(visit.scheduled_date) && visit.status === 'scheduled' ? 'overdue font-bold' : 'font-bold'}>{fmtDate(visit.scheduled_date)}{visitTime(visit) && <span className="text-muted"> · {visitTime(visit)}</span>}</div>
           </div>
           <div>
             <div className="text-sm text-muted u-fce9611">Status</div>
@@ -648,7 +658,7 @@ export default function MaintenanceVisits() {
                   <tr key={v.id} style={rowStyle} onClick={() => { if (!actionBusy) setSelected(v); }}>
                     <td className="font-semibold">{v.customer_name}</td>
                     <td><button className="btn btn-ghost btn-sm" disabled={actionBusy} onClick={event => { event.stopPropagation(); setSelected(v); }} aria-label={`View visit: ${v.title}`}>{v.title}</button></td>
-                    <td className={isOverdue(v.scheduled_date) && v.status === 'scheduled' ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
+                    <td className={isOverdue(v.scheduled_date) && v.status === 'scheduled' ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}{visitTime(v) && <div className="text-muted text-sm">{visitTime(v)}</div>}</td>
                     <td>
                       {v.engineer_names
                         ? <span className="text-sm">{v.engineer_names}</span>

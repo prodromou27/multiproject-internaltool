@@ -44,6 +44,7 @@ async function req(method, path, body, { redirectOnUnauthorized = true, signal }
     const error = new Error(outdated ? 'TeamHub has been updated. Reload the page (Ctrl+F5) to use the new version.' : data.error || res.statusText);
     error.status = res.status;
     error.code = data.code;
+    if (data.warnings) error.warnings = data.warnings; // a visit that needs a second look
     throw error;
   }
   return data;
@@ -591,6 +592,9 @@ export const api = {
   slaPolicy: options => req('GET', '/sla/policy', undefined, options),
   saveSlaPolicy: body => req('PUT', '/sla/policy', body),
   contractTypes: options => req('GET', '/settings/contract-types', undefined, options),
+  businessCalendar: (options) => req('GET', '/settings/business-calendar', undefined, options),
+  saveBusinessCalendar: (data) => req('PUT', '/settings/business-calendar', data),
+  checkVisit: (data) => req('POST', '/maintenance-visits/check', data),
   saveContractTypes: body => req('PUT', '/settings/contract-types', body),
 
   // activity categories / subcategories

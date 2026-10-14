@@ -47,6 +47,8 @@ export async function mockApi(page, { role = 'engineer', signedIn = true, teams 
 
   const routes = {
     'GET /api/auth/me': () => signedIn ? { body: user } : { status: 401, body: { error: 'Not signed in' } },
+    'GET /api/settings/business-calendar': () => ({ body: { working_days: [1, 2, 3, 4, 5], holidays: [], travel_buffer_minutes: 30 } }),
+    'POST /api/maintenance-visits/check': () => ({ body: { warnings: [] } }),
     'POST /api/auth/login': () => ({ body: { user } }),
     'POST /api/auth/logout': () => ({ body: {} }),
     'GET /api/notifications': () => ({ body: { notifications: [], unread: 0 } }),

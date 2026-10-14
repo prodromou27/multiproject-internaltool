@@ -310,7 +310,7 @@ export default function CalendarPage() {
                         <div className="u-a49b816" style={{ background: s.color }} />
                         <div className="flex-1 min-w-0">
                           <div className="u-7cf7897">
-                            <s.Icon size={12} color={s.color} /> {e.title || e.customer_name}
+                            <s.Icon size={12} color={s.color} /> {e.start_time && <span className="cal-time">{e.start_time}</span>}{e.title || e.customer_name}
                           </div>
                           <div className="u-ed87168">
                             {fmtDate(e.date)} · <span style={{ color: s.color }}>{s.label}</span>

@@ -1389,3 +1389,29 @@ a.topbar-action { display: inline-flex; align-items: center; justify-content: ce
 .customer-search-list li[aria-selected="true"] { font-weight: 600; }
 .customer-search-list li.is-empty { color: var(--gray-500); }
 .customer-search-list .customer-search-none { color: var(--gray-500); cursor: default; font-size: 13px; }
+
+/* Settings → Time & region → Business calendar. */
+.business-calendar .bc-days { display: flex; flex-wrap: wrap; gap: 6px 14px; border: 0; padding: 0; margin: 0 0 12px; }
+.business-calendar .bc-days legend { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.business-calendar .bc-day { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; cursor: pointer; }
+.business-calendar .bc-buffer input { max-width: 120px; }
+.business-calendar .bc-title { font-size: 14px; margin: 14px 0 8px; }
+.business-calendar .bc-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.business-calendar .bc-add input[aria-label="Holiday name"] { flex: 1; min-width: 160px; }
+
+/* Visit time and the warnings before saving (components/VisitSchedule.jsx). */
+.visit-time { margin-top: 8px; }
+.visit-all-day { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; cursor: pointer; font-size: 13px; }
+.visit-warnings { display: grid; gap: 8px; margin: 4px 0 12px; }
+.visit-warnings-group { border: 1px solid var(--gray-200); border-radius: 8px; padding: 10px 12px; background: var(--gray-50); font-size: 13px; }
+.visit-warnings-group.is-hard { border-color: var(--tone-warning-text, #b45309); background: var(--warning-light, #fffbeb); }
+.visit-warnings-group strong { display: inline-flex; align-items: center; gap: 6px; }
+.visit-warnings-group ul { margin: 6px 0 0 18px; padding: 0; }
+
+/* Planning: holiday names under the day, and why a slot is suggested. */
+.vv-holiday { display: block; font-weight: 500; font-size: 11px; color: var(--tone-danger-text, #b91c1c); white-space: normal; }
+.vv-chip .vv-why { display: block; font-size: 11px; color: var(--gray-500); margin-top: 2px; }
+
+.cal-time { font-variant-numeric: tabular-nums; font-weight: 600; margin-right: 4px; }
+.business-calendar .bc-add input[type="date"] { width: auto; flex: none; }
+.business-calendar .bc-buffer { margin-top: 4px; }

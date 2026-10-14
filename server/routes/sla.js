@@ -2,7 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
 const { decrypt } = require('../fieldCipher');
-const { workingDaysBetween } = require('../workingDays');
+const calendar = require('../businessCalendar');
 const { getPolicy, validatePolicy, catalogue } = require('../slaPolicy');
 const { logAudit } = require('../auditLog');
 
@@ -20,13 +20,18 @@ router.put('/policy', requireManager, async (req, res) => {
 router.get('/overview', requireManager, async (req, res) => {
   const today = (await db.prepare('SELECT app_today() AS d').get()).d;
   const policy = await getPolicy();
+  // Working days follow the business calendar (Settings → Time & region): weekends
+  // and holidays do not count. A customer whose contract type counts every day
+  // (24x7, Settings → Contract types) never pauses.
+  const [cal, { modeFor }] = await Promise.all([calendar.load(), calendar.customerModes(db, today)]);
+  const workingDaysBetween = (from, to, customerId = null) => calendar.workingDaysBetween(from, to, cal, { allDays: customerId != null && modeFor(customerId) === 'all_days' });
   // A switched-off SLA is reported as such, with nothing in it.
   const on = key => policy[key].enabled;
 
   // ── 1. MV Report Complete SLA (working days from scheduled_date) ─────
   const MV_SLA = policy.visit_report.limit;
   const allMVs = !on('visit_report') ? [] : (await db.prepare(`
-    SELECT mv.id, mv.title, mv.scheduled_date, mv.report_sent, mv.report_sent_at,
+    SELECT mv.id, mv.customer_id, mv.title, mv.scheduled_date, mv.report_sent, mv.report_sent_at,
            mv.report_sent_to_customer, mv.status,
            c.name AS customer_name,
            (SELECT string_agg(u.name, ', ')
@@ -40,7 +45,7 @@ router.get('/overview', requireManager, async (req, res) => {
   const mvItems = allMVs.map(mv => {
     // If report already complete, measure days to completion; otherwise days elapsed so far
     const refDate = (mv.report_sent && mv.report_sent_at) ? mv.report_sent_at.slice(0, 10) : today;
-    const wd = workingDaysBetween(mv.scheduled_date, refDate);
+    const wd = workingDaysBetween(mv.scheduled_date, refDate, mv.customer_id);
     return {
       id: mv.id,
       title: mv.title,
@@ -88,7 +93,7 @@ router.get('/overview', requireManager, async (req, res) => {
   // ── 3. High-priority task first response (N working days) ────────────
   const TASK_SLA = policy.task_response.limit;
   const highPriTasks = !on('task_response') ? [] : (await db.prepare(`
-    SELECT t.id, t.title, t.created_at, t.status,
+    SELECT t.id, t.title, t.created_at, t.status, COALESCE(t.customer_id, p.customer_id) AS customer_id,
            p.title AS project_title,
            u.name  AS assigned_to_name
     FROM tasks t
@@ -98,7 +103,7 @@ router.get('/overview', requireManager, async (req, res) => {
   `).all());
 
   const taskItems = highPriTasks.map(t => {
-    const wd = workingDaysBetween(t.created_at.slice(0, 10), today);
+    const wd = workingDaysBetween(t.created_at.slice(0, 10), today, t.customer_id);
     return {
       id: t.id,
       title: t.title,

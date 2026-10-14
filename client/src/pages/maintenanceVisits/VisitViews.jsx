@@ -109,18 +109,22 @@ export function TeamAvailability({ onPlan }) {
     {error ? <div className="error-msg" role="alert">{error}</div> : !data ? <p className="text-muted">Loading…</p> : <>
       <div className="vv-suggest" aria-label="Suggested slots">
         <h3>Suggested slots{customerId ? ` for ${customerName || 'this customer'}` : ''}</h3>
-        {!data.suggestions.length ? <p className="text-muted text-sm">No free weekday in these two weeks. Try the next two weeks.</p> :
-          <div className="vv-chips">{data.suggestions.map(slot => <button type="button" key={slot.date} className="vv-chip" onClick={() => plan(slot.date, [slot.engineers[0].id])}>
-            <strong>{dayLabel(slot.date)}</strong><span>{slot.engineers.map(e => `${e.serves_customer ? '★ ' : ''}${e.name}`).join(', ')}</span></button>)}</div>}
-        {customerId && <p className="text-muted text-sm">★ serves this customer (its team, or assigned directly). Choosing a slot opens a new visit with that day and engineer filled in.</p>}
+        {!data.suggestions.length ? <p className="text-muted text-sm">No free working day in these two weeks. Try the next two weeks.</p> :
+          <div className="vv-chips">{data.suggestions.map(slot => <button type="button" key={slot.date} className="vv-chip" onClick={() => plan(slot.date, [slot.engineers[0].id])}
+            title={(slot.engineers[0].reasons || []).join(' · ')}>
+            <strong>{dayLabel(slot.date)}</strong><span>{slot.engineers.map(e => `${e.serves_customer ? '★ ' : ''}${e.name}`).join(', ')}</span>
+            {slot.engineers[0].reasons?.length > 0 && <small className="vv-why">{slot.engineers[0].reasons.slice(0, 2).join(' · ')}</small>}</button>)}</div>}
+        <p className="text-muted text-sm">{customerId ? '★ serves this customer (its team, or assigned directly). ' : ''}Public holidays and non-working days (Settings → Time & region) are never suggested. Choosing a slot opens a new visit with that day and engineer filled in.</p>
       </div>
       {!data.engineers.length ? <p className="text-muted">No engineers in this team.</p> : <div className="table-wrap"><table className="vv-table">
-        <thead><tr><th scope="col">Engineer</th>{data.days.map(day => <th scope="col" key={day.date} className={day.weekend ? 'is-weekend' : ''}>{dayLabel(day.date)}</th>)}</tr></thead>
+        <thead><tr><th scope="col">Engineer</th>{data.days.map(day => <th scope="col" key={day.date} className={day.working === false || day.weekend ? 'is-weekend' : ''} title={day.holiday || undefined}>{dayLabel(day.date)}{day.holiday && <small className="vv-holiday">{day.holiday}</small>}</th>)}</tr></thead>
         <tbody>{data.engineers.map(engineer => <tr key={engineer.id}>
           <th scope="row">{engineer.serves_customer && <Star size={12} aria-label="Serves this customer" />} {engineer.name}<small>{engineer.visit_count} visit{engineer.visit_count === 1 ? '' : 's'}</small></th>
           {engineer.cells.map(cell => {
-            const weekend = data.days.find(d => d.date === cell.date)?.weekend;
-            return <td key={cell.date} className={`${weekend ? 'is-weekend ' : ''}${cell.free ? 'is-free' : 'is-busy'}`}>
+            const info = data.days.find(d => d.date === cell.date), closed = info?.working === false || info?.weekend;
+            // Why the engineer is not free (holiday, time off, a visit…), for the pointer and screen readers.
+            return <td key={cell.date} className={`${closed ? 'is-weekend ' : ''}${cell.free ? 'is-free' : 'is-busy'}`} title={cell.blocked_reason || undefined}>
+              {cell.blocked_reason && !cell.visits.length && !cell.time_off && !cell.no_hours && info?.holiday && <span className="sr-only">{cell.blocked_reason}</span>}
               {cell.visits.map(v => <div key={v.id} className="vv-busy" title={v.customer}>{v.title}</div>)}
               {cell.time_off && <div className="vv-off">{cell.time_off.reason}<button type="button" aria-label={`Remove time off for ${engineer.name}`} onClick={() => removeOff(cell.time_off.id)}><X size={11} /></button></div>}
               {cell.no_hours && !cell.time_off && <div className="vv-off">0 h this week</div>}

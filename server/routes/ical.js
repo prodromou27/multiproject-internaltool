@@ -64,7 +64,7 @@ router.get('/', async (req, res) => {
 
   // ── Maintenance visits ──────────────────────────────────────
   const visitQuery = user.role === 'engineer'
-    ? `SELECT mv.id, mv.title, mv.scheduled_date, mv.description, c.name as customer_name
+    ? `SELECT mv.id, mv.title, mv.scheduled_date, mv.start_time, mv.duration_minutes, mv.description, c.name as customer_name
        FROM maintenance_visits mv
        JOIN customers c ON mv.customer_id = c.id
        JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
@@ -82,7 +82,7 @@ router.get('/', async (req, res) => {
              AND pa.project_id IN (SELECT project_id FROM project_assignments WHERE user_id = ?)
          )
        ORDER BY mv.scheduled_date`
-    : `SELECT mv.id, mv.title, mv.scheduled_date, mv.description, c.name as customer_name
+    : `SELECT mv.id, mv.title, mv.scheduled_date, mv.start_time, mv.duration_minutes, mv.description, c.name as customer_name
        FROM maintenance_visits mv
        JOIN customers c ON mv.customer_id = c.id
        WHERE mv.status NOT IN ('cancelled','completed')
@@ -108,8 +108,16 @@ router.get('/', async (req, res) => {
     lines.push('BEGIN:VEVENT');
     lines.push(fold(`UID:visit-${v.id}@solutionshub`));
     lines.push(fold(`SUMMARY:🔧 ${icalEsc(v.title)} – ${icalEsc(decrypt(v.customer_name))}`));
-    lines.push(fold(`DTSTART;VALUE=DATE:${dtstart}`));
-    lines.push(fold(`DTEND;VALUE=DATE:${dtend}`));
+    if (v.start_time && v.duration_minutes) {
+      // A timed visit: its local start (the organisation's time zone) as a UTC instant.
+      const [year, month, day] = v.scheduled_date.slice(0, 10).split('-').map(Number), [hour, minute] = v.start_time.split(':').map(Number);
+      const startsAt = require('../appTime').fromLocal({ year, month, day, hour, minute });
+      lines.push(`DTSTART:${icalDateTime(startsAt)}`);
+      lines.push(`DTEND:${icalDateTime(new Date(startsAt.getTime() + Number(v.duration_minutes) * 60000))}`);
+    } else {
+      lines.push(fold(`DTSTART;VALUE=DATE:${dtstart}`));
+      lines.push(fold(`DTEND;VALUE=DATE:${dtend}`));
+    }
     if (v.description) lines.push(fold(`DESCRIPTION:${icalEsc(v.description)}`));
     lines.push(`DTSTAMP:${icalDateTime(new Date())}`);
     lines.push('END:VEVENT');
