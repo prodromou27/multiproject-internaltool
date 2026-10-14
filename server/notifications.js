@@ -77,40 +77,78 @@ function isLegacyTeamsUrl(url) {
   try { return /(^|\.)webhook\.office(365)?\.com$/i.test(new URL(url).hostname); } catch { return false; }
 }
 
+/* ── One message design for Teams and Webex ─────────────────────────────────
+   A short card: the title in a colour that says what it is (red: failed or
+   overdue; amber: due soon or waiting; green: done; blue: news), one or two
+   lines of text, up to five facts, and an "Open in TeamHub" button to the page
+   it is about. Webex gets the same card, with markdown for clients without cards. */
+const MAX_FACTS = 5;
+const EVENT_LINKS = {
+  backup_failed: '/settings/backups', ticket_sync_failed: '/settings/ticketing', visit_report_approved: '/maintenance-visits',
+  managed_report_submitted: '/approvals', managed_report_decided: '/customers', customer_report_sent: '/customers', customer_report_due: '/customers',
+  project_closure_requested: '/approvals', project_closure_decided: '/projects', activity_logged: '/activity-log',
+  task_assigned: '/tasks', task_due: '/tasks', project_assigned: '/projects', visit_assigned: '/maintenance-visits', visit_reminder: '/maintenance-visits',
+  report_submitted: '/maintenance-visits', contract_ending: '/customers', asset_expiring: '/customers', recommendation_created: '/customers',
+};
+// The card colour says what the title is; the leading emoji is dropped.
+const plainTitle = title => String(title || '').replace(/^(?:\p{Extended_Pictographic}|️|‍|\s)+/u, '').trim() || String(title || '');
+function toneOf(msg) {
+  if (msg.tone) return msg.tone;
+  const title = String(msg.title || '');
+  if (/⚠️|❌|failed|overdue|expired|critical|breach/i.test(title)) return 'attention';
+  if (/✅|approved|closed|completed|resolved|\bsent\b/i.test(title)) return 'good';
+  if (/🔔|due|expiring|ending|soon|requested|reminder|waiting|tomorrow/i.test(title)) return 'warning';
+  return 'accent';
+}
+const CARD_COLOURS = { attention: 'Attention', warning: 'Warning', good: 'Good', accent: 'Accent' };
+/** The address of a page in the app, when APP_URL is set. */
+function appLink(link) {
+  const base = String(process.env.APP_URL || '').replace(/\/+$/, '');
+  if (!link || !base) return null;
+  if (/^https?:\/\//i.test(link)) return link;
+  return `${base}${link.startsWith('/') ? '' : '/'}${link}`;
+}
+function messageFacts(msg) {
+  return (msg.facts || []).filter(f => f && f.value != null && String(f.value).trim() !== '').slice(0, MAX_FACTS)
+    .map(f => ({ title: String(f.name), value: String(f.value) }));
+}
+function messageCard(msg) {
+  const facts = messageFacts(msg), url = appLink(msg.link);
+  return {
+    $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+    type: 'AdaptiveCard',
+    version: '1.3',
+    body: [
+      { type: 'TextBlock', text: plainTitle(msg.title), weight: 'Bolder', size: 'Medium', color: CARD_COLOURS[toneOf(msg)] || 'Accent', wrap: true },
+      ...(msg.subtitle ? [{ type: 'TextBlock', text: msg.subtitle, isSubtle: true, spacing: 'None', size: 'Small', wrap: true }] : []),
+      ...(msg.body ? [{ type: 'TextBlock', text: msg.body, wrap: true, spacing: 'Small' }] : []),
+      ...(facts.length ? [{ type: 'FactSet', facts, spacing: 'Medium' }] : []),
+    ],
+    ...(url ? { actions: [{ type: 'Action.OpenUrl', title: `Open in ${PRODUCT_NAME}`, url }] } : {}),
+  };
+}
+
 function teamsPayload(url, msg) {
-  const facts = (msg.facts || []).map(f => ({ name: String(f.name), value: String(f.value ?? '') }));
   if (isLegacyTeamsUrl(url)) {
+    const link = appLink(msg.link);
     return {
       '@type':    'MessageCard',
       '@context': 'http://schema.org/extensions',
-      themeColor: '0078D4',
-      summary:    msg.title,
+      themeColor: { attention: 'C4314B', warning: 'C19C00', good: '237B4B', accent: '0078D4' }[toneOf(msg)] || '0078D4',
+      summary:    plainTitle(msg.title),
       sections: [{
-        activityTitle:    msg.title,
+        activityTitle:    plainTitle(msg.title),
         activitySubtitle: msg.subtitle || '',
         activityText:     msg.body,
-        facts,
+        facts: messageFacts(msg).map(f => ({ name: f.title, value: f.value })),
         markdown: true,
       }],
+      ...(link ? { potentialAction: [{ '@type': 'OpenUri', name: `Open in ${PRODUCT_NAME}`, targets: [{ os: 'default', uri: link }] }] } : {}),
     };
   }
   return {
     type: 'message',
-    attachments: [{
-      contentType: 'application/vnd.microsoft.card.adaptive',
-      contentUrl:  null,
-      content: {
-        $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
-        type:    'AdaptiveCard',
-        version: '1.4',
-        body: [
-          { type: 'TextBlock', text: msg.title, weight: 'Bolder', size: 'Medium', wrap: true },
-          ...(msg.subtitle ? [{ type: 'TextBlock', text: msg.subtitle, isSubtle: true, spacing: 'None', wrap: true }] : []),
-          { type: 'TextBlock', text: msg.body, wrap: true },
-          ...(facts.length ? [{ type: 'FactSet', facts: facts.map(f => ({ title: f.name, value: f.value })) }] : []),
-        ],
-      },
-    }],
+    attachments: [{ contentType: 'application/vnd.microsoft.card.adaptive', contentUrl: null, content: messageCard(msg) }],
   };
 }
 
@@ -121,10 +159,13 @@ async function sendTeams(cfg, msg) {
 
 // ── Webex Bot API ────────────────────────────────────────────────────────────
 function webexMarkdown(msg) {
-  return `## ${msg.title}\n${msg.body}${msg.facts?.length
-    ? '\n\n' + msg.facts.map(f => `**${f.name}:** ${f.value}`).join('  \n')
-    : ''}`;
+  const facts = messageFacts(msg), url = appLink(msg.link);
+  return `**${plainTitle(msg.title)}**${msg.body ? `  \n${msg.body}` : ''}`
+    + (facts.length ? `\n\n${facts.map(f => `${f.title}: **${f.value}**`).join('  \n')}` : '')
+    + (url ? `\n\n[Open in ${PRODUCT_NAME}](${url})` : '');
 }
+// Webex shows the card; markdown is for clients that cannot.
+const webexMessage = (target, msg) => ({ ...target, markdown: webexMarkdown(msg), attachments: [{ contentType: 'application/vnd.microsoft.card.adaptive', content: messageCard(msg) }] });
 
 // ── Personal email alerts ────────────────────────────────────────────────────
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -142,18 +183,17 @@ async function sendWebex(cfg, msg, engineerEmail) {
   if (!cfg?.enabled || !cfg?.bot_token) return;
 
   const headers = { Authorization: `Bearer ${cfg.bot_token}` };
-  const markdown = webexMarkdown(msg);
   const url = 'https://webexapis.com/v1/messages';
   const sends = [];
 
   // Direct message to engineer
   if ((cfg.mode === 'direct' || cfg.mode === 'both') && engineerEmail) {
-    sends.push(postJSON(url, { toPersonEmail: engineerEmail, markdown }, headers));
+    sends.push(postJSON(url, webexMessage({ toPersonEmail: engineerEmail }, msg), headers));
   }
 
   // Team Space / Room
   if ((cfg.mode === 'space' || cfg.mode === 'both') && cfg.space_id) {
-    sends.push(postJSON(url, { roomId: cfg.space_id, markdown }, headers));
+    sends.push(postJSON(url, webexMessage({ roomId: cfg.space_id }, msg), headers));
   }
 
   const results = await Promise.allSettled(sends);
@@ -302,6 +342,7 @@ function notify(event, data) {
     try {
       const msg = buildMessage(event, data);
       if (!msg) return;
+      msg.link = event === 'project.assigned' && data.project_id ? `/projects/${data.project_id}` : EVENT_LINKS[event.replace('.', '_')];
 
       // ── Persist in-app notifications to DB ────────────────────────────────
       if (event === 'task.assigned' && data.engineer_id) {
@@ -413,6 +454,7 @@ function notify(event, data) {
  */
 // `bell: false` when the bell entry was already written (e.g. inside a transaction).
 async function notifyUser(userId, eventKey, msg, inApp, { channels = true, bell = true } = {}) {
+  msg = { ...msg, link: msg.link || inApp?.link || EVENT_LINKS[eventKey] };
   if (bell) await persistNotification(userId, eventKey, inApp.title, inApp.body, inApp.link);
   if (!channels) return;
   const person = await db.prepare(`SELECT id, email, active, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled, notify_events
@@ -468,7 +510,7 @@ async function notifyShared(eventKey, msg, { dedupeKey } = {}) {
       const first = await db.prepare('INSERT INTO shared_event_deliveries (key) VALUES (?) ON CONFLICT DO NOTHING').run(`${eventKey}:${dedupeKey}`.slice(0, 300));
       if (first.changes !== 1) return false;
     }
-    return (await postToSharedChannels(msg)).length > 0;
+    return (await postToSharedChannels({ ...msg, link: msg.link || EVENT_LINKS[eventKey] })).length > 0;
   } catch (error) {
     console.error(`[shared ${eventKey}]`, error.message);
     return false;
@@ -525,4 +567,4 @@ async function sendPersonalTest(channel, { email, webhook_url }) {
   } else throw new Error('Unknown channel');
 }
 
-module.exports = { notifyShared, notifyUser, sharedChannelsAvailable, postToSharedChannels, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, _setTransport };
+module.exports = { notifyShared, notifyUser, sharedChannelsAvailable, postToSharedChannels, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, messageCard, webexMessage, emailHtml, postJSON, _setTransport };

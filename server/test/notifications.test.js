@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const notifications = require('../notifications');
 const { safeSettings, mergeSettings } = require('../integrationSettings');
 
-const { teamsPayload, isLegacyTeamsUrl, webexMarkdown, emailHtml, postJSON, sendTest, _setTransport } = notifications;
+const { teamsPayload, isLegacyTeamsUrl, webexMarkdown, messageCard, webexMessage, emailHtml, postJSON, sendTest, _setTransport } = notifications;
 const msg = { title: 'T', subtitle: 'S', body: 'B', facts: [{ name: 'Task', value: 'X' }, { name: 'Empty', value: null }] };
 
 test.afterEach(() => _setTransport());
@@ -17,13 +17,37 @@ test('Teams payload matches the webhook flavour', () => {
   assert.equal(card.type, 'message');
   assert.equal(card.attachments[0].contentType, 'application/vnd.microsoft.card.adaptive');
   const facts = card.attachments[0].content.body.find(b => b.type === 'FactSet').facts;
-  assert.deepEqual(facts[1], { title: 'Empty', value: '' });
+  assert.deepEqual(facts, [{ title: 'Task', value: 'X' }], 'empty facts are left out');
+});
+
+test('one card design for Teams and Webex: coloured title, facts, and a button to the page', () => {
+  const saved = process.env.APP_URL;
+  process.env.APP_URL = 'https://teamhub.example.com/';
+  try {
+    const card = messageCard({ title: '⚠️ Contract expired', body: 'Not renewed.', facts: [1, 2, 3, 4, 5, 6].map(n => ({ name: `F${n}`, value: n })), link: '/customers/4' });
+    assert.equal(card.body[0].text, 'Contract expired', 'the emoji gives way to the colour');
+    assert.equal(card.body[0].color, 'Attention');
+    assert.equal(card.body.find(b => b.type === 'FactSet').facts.length, 5, 'at most five facts');
+    assert.deepEqual(card.actions, [{ type: 'Action.OpenUrl', title: 'Open in TeamHub', url: 'https://teamhub.example.com/customers/4' }]);
+    assert.equal(messageCard({ title: '✅ Project closed' }).body[0].color, 'Good');
+    assert.equal(messageCard({ title: '📑 Contract ending soon' }).body[0].color, 'Warning');
+    assert.equal(messageCard({ title: '📋 New Task Assigned' }).body[0].color, 'Accent');
+    const legacy = teamsPayload('https://contoso.webhook.office.com/x', { title: 'T', link: '/tasks' });
+    assert.equal(legacy.potentialAction[0].targets[0].uri, 'https://teamhub.example.com/tasks');
+    const webex = webexMessage({ roomId: 'r1' }, { title: '🔔 Visit tomorrow', body: 'B', facts: [{ name: 'Visit', value: 'V' }], link: '/maintenance-visits' });
+    assert.equal(webex.roomId, 'r1');
+    assert.equal(webex.attachments[0].content.type, 'AdaptiveCard');
+    assert.match(webex.markdown, /^\*\*Visit tomorrow\*\* {2}\nB/);
+    assert.match(webex.markdown, /Visit: \*\*V\*\*/);
+    assert.match(webex.markdown, /\[Open in TeamHub\]\(https:\/\/teamhub\.example\.com\/maintenance-visits\)/);
+  } finally { if (saved === undefined) delete process.env.APP_URL; else process.env.APP_URL = saved; }
+  assert.equal(messageCard({ title: 'T', link: '/x' }).actions, undefined, 'no button without APP_URL');
 });
 
 test('Webex markdown lists every fact', () => {
   const text = webexMarkdown(msg);
-  assert.match(text, /^## T\nB/);
-  assert.match(text, /\*\*Task:\*\* X/);
+  assert.match(text, /^\*\*T\*\* {2}\nB/);
+  assert.match(text, /Task: \*\*X\*\*/);
 });
 
 test('personal email HTML escapes stored content and omits empty facts', () => {
