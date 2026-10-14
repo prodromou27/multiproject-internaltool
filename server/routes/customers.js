@@ -111,7 +111,60 @@ router.get('/:id', requireAuth, async (req, res) => {
   if (!c) return res.status(404).json({ error: 'Not found' });
   // Engineers may only view customers from their own assigned visits/projects
   if (!await canAccessCustomer(req.user,c.id)) return res.status(403).json({ error:'Forbidden' });
-  res.json(decryptCustomer(c));
+  const logo = await db.prepare('SELECT updated_at FROM customer_logos WHERE customer_id = ?').get(c.id);
+  res.json({ ...decryptCustomer(c), logo_updated_at: logo?.updated_at || null });
+});
+
+/* ── Customer logo ───────────────────────────────────────────
+   Managers upload a PNG, JPEG or WebP (at most 512 KB; no SVG, which can carry
+   script). The bytes must be the image type they claim. Anyone who can open the
+   customer sees it. */
+const LOGO_TYPES = { 'image/png': [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 'image/jpeg': [0xff, 0xd8, 0xff], 'image/webp': null };
+const LOGO_MAX_BYTES = 512 * 1024;
+const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: LOGO_MAX_BYTES, files: 1 } });
+function logoTypeOf(buffer, claimed) {
+  if (!Object.prototype.hasOwnProperty.call(LOGO_TYPES, claimed)) return null;
+  if (claimed === 'image/webp') return buffer.length >= 12 && buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP' ? claimed : null;
+  return LOGO_TYPES[claimed].every((byte, i) => buffer[i] === byte) ? claimed : null;
+}
+
+router.get('/:id/logo', requireAuth, async (req, res) => {
+  if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid ID' });
+  const id = Number(req.params.id);
+  if (!await canAccessCustomer(req.user, id)) return res.status(403).json({ error: 'Forbidden' });
+  const logo = await db.prepare('SELECT content_type, data, updated_at FROM customer_logos WHERE customer_id = ?').get(id);
+  if (!logo) return res.status(404).json({ error: 'No logo' });
+  res.setHeader('Content-Type', logo.content_type);
+  // The address carries ?v=<updated_at>, so a new logo is a new address.
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  res.setHeader('Content-Disposition', 'inline');
+  res.send(Buffer.from(logo.data, 'base64'));
+});
+
+router.post('/:id/logo', requireManager, (req, res, next) => logoUpload.single('logo')(req, res, error => {
+  if (error) return res.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'The logo must be at most 512 KB' : 'Upload one image as "logo"' });
+  next();
+}), async (req, res) => {
+  if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid ID' });
+  const id = Number(req.params.id);
+  const customer = await db.prepare('SELECT id, name FROM customers WHERE id = ?').get(id);
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  if (!req.file) return res.status(400).json({ error: 'Choose an image' });
+  const type = logoTypeOf(req.file.buffer, req.file.mimetype);
+  if (!type) return res.status(400).json({ error: 'Use a PNG, JPEG or WebP image' });
+  const updated = new Date().toISOString();
+  await db.prepare(`INSERT INTO customer_logos (customer_id, content_type, data, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT (customer_id) DO UPDATE SET content_type = EXCLUDED.content_type, data = EXCLUDED.data, updated_at = EXCLUDED.updated_at`)
+    .run(id, type, req.file.buffer.toString('base64'), updated);
+  await logAudit(db, req, 'customer', id, null, 'customer_logo_updated', `${type}; ${req.file.size} bytes`);
+  res.json({ logo_updated_at: updated });
+});
+
+router.delete('/:id/logo', requireManager, async (req, res) => {
+  if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid ID' });
+  await db.prepare('DELETE FROM customer_logos WHERE customer_id = ?').run(Number(req.params.id));
+  await logAudit(db, req, 'customer', Number(req.params.id), null, 'customer_logo_removed', null);
+  res.json({ logo_updated_at: null });
 });
 
 const VALID_CONTRACT_HOUR_PERIODS = new Set(['monthly', 'annual']);

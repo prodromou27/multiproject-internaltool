@@ -121,6 +121,8 @@ export const api = {
     return upload('/auth/avatar', 'avatar', file);
   },
   removeAvatar: () => req('DELETE', '/auth/avatar'),
+  uploadCustomerLogo: (id, file) => upload(`/customers/${id}/logo`, 'logo', file),
+  removeCustomerLogo: (id) => req('DELETE', `/customers/${id}/logo`),
 
   // projects
   projects: (options) => req('GET', '/projects', undefined, options),

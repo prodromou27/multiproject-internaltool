@@ -182,3 +182,34 @@ test('customer responses: everyone reads them; managers add, change and remove t
   const titles = (await api('/api/customer-responses', { token: ids.tokenEnabled })).data.rows.map(row => row.title);
   assert.ok(titles.includes('Maintenance window notice') && !titles.includes('Closing Ticket'));
 });
+
+test('customer logo: managers upload a real image; people who can see the customer see it', async () => {
+  const fixture = require('./lib/activityFixture');
+  const { ids } = fixture;
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]);
+  const put = (bytes, type, token = ids.tokenManager) => {
+    const form = new FormData();
+    form.append('logo', new Blob([bytes], { type }), 'logo');
+    return fetch(`${fixture.baseUrl}/api/customers/${ids.customer}/logo`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'X-SolutionsHub-Request': '1' }, body: form });
+  };
+  const get = (customer, token) => fetch(`${fixture.baseUrl}/api/customers/${customer}/logo`, { headers: { Authorization: `Bearer ${token}` } });
+  assert.equal((await put(png, 'image/png', ids.tokenEnabled)).status, 403, 'managers only');
+  assert.equal((await put(Buffer.from('<svg onload="alert(1)"/>'), 'image/svg+xml')).status, 400, 'no SVG');
+  assert.equal((await put(Buffer.from('<html>not a png</html>'), 'image/png')).status, 400, 'the bytes must match');
+  assert.equal((await put(Buffer.alloc(600 * 1024, 1), 'image/png')).status, 400, 'at most 512 KB');
+  const saved = await put(png, 'image/png');
+  assert.equal(saved.status, 200);
+  const { logo_updated_at: version } = await saved.json();
+  assert.ok(version);
+  assert.equal((await api(`/api/customers/${ids.customer}`, { token: ids.tokenManager })).data.logo_updated_at, version);
+
+  const seen = await get(ids.customer, ids.tokenEnabled); // the engineer works with this customer
+  assert.equal(seen.status, 200);
+  assert.equal(seen.headers.get('content-type'), 'image/png');
+  assert.ok(Buffer.from(await seen.arrayBuffer()).equals(png));
+  assert.equal((await get(ids.customerUnassigned, ids.tokenEnabled)).status, 403, 'not for customers they cannot see');
+
+  assert.equal((await api(`/api/customers/${ids.customer}/logo`, { method: 'DELETE', token: ids.tokenManager })).status, 200);
+  assert.equal((await get(ids.customer, ids.tokenManager)).status, 404);
+  assert.equal((await api(`/api/customers/${ids.customer}`, { token: ids.tokenManager })).data.logo_updated_at, null);
+});

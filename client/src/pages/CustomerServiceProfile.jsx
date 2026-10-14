@@ -1,9 +1,10 @@
 import CustomerContracts from '../components/CustomerContracts';
 import { useEffect, useState, useRef } from 'react';
 import { useParams,useLocation,useNavigate,Link } from 'react-router-dom';
-import { Activity,ArrowLeft,BellRing,BriefcaseBusiness,Building2,CalendarDays,CheckSquare,ChevronDown,ClipboardList,Layers,Mail,MapPin,Phone,Plus,Wrench } from 'lucide-react';
+import { Activity,ArrowLeft,Camera,BellRing,BriefcaseBusiness,Building2,CalendarDays,CheckSquare,ChevronDown,ClipboardList,Layers,Mail,MapPin,Phone,Plus,Wrench } from 'lucide-react';
 import { api } from '../api';
-import { fmtDate, sentenceCase } from '../components/Shared';
+import { fmtDate, sentenceCase, Modal } from '../components/Shared';
+import { useToast } from '../components/Toast';
 import { ToneBadge } from '../components/EnterpriseUI';
 import CustomerOverview from '../components/CustomerOverview';
 import CustomerRecommendations from '../components/CustomerRecommendations';
@@ -68,12 +69,38 @@ function HealthRing({ health }) {
   </details>;
 }
 
-function CustomerHeader({ customer,operations,operationsError,user,saAccess,onRecommendation,onReminder,onSelectTab,onEdit }) {
+/* The customer's logo, or its initials. Managers click it to upload, replace or remove the logo. */
+function CustomerLogo({ customer,canChange,onChanged }) {
+  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const toast=useToast();
+  const src=customer.logo_updated_at ? `/api/customers/${customer.id}/logo?v=${encodeURIComponent(customer.logo_updated_at)}` : null;
+  const face=src ? <img src={src} alt="" className="cs-logo-image" /> : initialsOf(customer.name);
+  async function run(work,message) {
+    setBusy(true);setError('');
+    try { const result=await work();onChanged(result.logo_updated_at);toast.success(message);setOpen(false); } catch(failure) { setError(failure.message); } finally { setBusy(false); }
+  }
+  if (!canChange) return <div className={`cs-identity-avatar${src ? ' has-logo' : ''}`} aria-hidden="true">{face}</div>;
+  return <>
+    <button type="button" className={`cs-identity-avatar cs-logo-button${src ? ' has-logo' : ''}`} onClick={() => setOpen(true)} aria-label={src ? 'Change the customer logo' : 'Add a customer logo'} title={src ? 'Change logo' : 'Add logo'}>{face}<span className="cs-logo-edit" aria-hidden="true"><Camera size={12} /></span></button>
+    {open && <Modal title="Customer logo" onClose={busy ? () => {} : () => setOpen(false)}>
+      {error && <div className="error-msg" role="alert">{error}</div>}
+      <div className="cs-logo-dialog"><div className={`cs-identity-avatar${src ? ' has-logo' : ''}`} style={{ '--cs-hue':customerHue(customer.name) }} aria-hidden="true">{face}</div>
+        <p className="text-muted text-sm">A PNG, JPEG or WebP image, at most 512 KB. A square logo looks best.</p></div>
+      <div className="modal-footer">
+        {src && <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => run(() => api.removeCustomerLogo(customer.id),'Logo removed')}>Remove logo</button>}
+        <label className={`btn btn-primary${busy ? ' disabled' : ''}`}>{busy ? 'Uploading…' : src ? 'Replace logo' : 'Upload logo'}
+          <input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={busy} onChange={event => { const file=event.target.files?.[0];event.target.value='';if (file) run(() => api.uploadCustomerLogo(customer.id,file),'Logo saved'); }} /></label>
+      </div>
+    </Modal>}
+  </>;
+}
+
+function CustomerHeader({ customer,operations,operationsError,user,saAccess,onRecommendation,onReminder,onSelectTab,onEdit,onLogoChanged }) {
   const contact=customer.contact_name || customer.primary_contact;
   const managed=operations?.managed;
   const health=user.role==='manager' ? customerHealth(operations) : null;
   return <header className="card cs-customer-header" style={{ '--cs-hue':customerHue(customer.name) }}>
-    <div className="cs-identity-avatar" aria-hidden="true">{initialsOf(customer.name)}</div>
+    <CustomerLogo customer={customer} canChange={user.role==='manager'} onChanged={onLogoChanged} />
     <div className="cs-customer-heading"><div className="cs-customer-title"><h1>{customer.name}</h1><span className={`badge badge-${customer.active===0?'cancelled':'active'}`}>{sentenceCase(customer.active===0?'Inactive':'Active')}</span>{!!customer.is_internal && <ToneBadge tone="info">In-house infrastructure</ToneBadge>}{managed?.visible && managed.state!=='unavailable' && <span className={`badge badge-managed-${managed.state}`}>{{ not_enabled:'Managed services off',setup_required:'Managed setup incomplete',sync_attention:'Managed sync attention',active:'Managed services active' }[managed.state]}</span>}</div>
       <div className="cs-customer-meta">
         {contact && <span><Building2 size={13} />{contact}</span>}
@@ -159,7 +186,7 @@ export default function CustomerServiceProfile() {
   const tabCounts={ tasks:operations?.tasks?.open,tickets:operations?.managed?.open_tickets,recommendations:operations?.recommendations?.open,projects:operations?.projects?.active,assets:operations?.assets };
   const assetAccess=Object.prototype.hasOwnProperty.call(user.permissions || {},'assets.access') ? user.permissions['assets.access']===true : user.role==='manager';
   return <div className="page cs-page"><Link to={user.role==='manager'?'/customers':'/'} className="cs-back"><ArrowLeft size={12} /> {user.role==='manager'?'Back to Customers':'Back to Dashboard'}</Link>
-    <CustomerHeader customer={customer} operations={operations} operationsError={operationsError} user={user} saAccess={saAccess} onRecommendation={() => selectTab('recommendations',null,true)} onReminder={() => setAddingReminder(true)} onSelectTab={selectTab} onEdit={['manager','planner'].includes(user.role) ? () => setEditingCustomer(true) : null} />
+    <CustomerHeader customer={customer} operations={operations} operationsError={operationsError} user={user} saAccess={saAccess} onRecommendation={() => selectTab('recommendations',null,true)} onReminder={() => setAddingReminder(true)} onSelectTab={selectTab} onLogoChanged={version => setCustomer(current => ({ ...current,logo_updated_at:version }))} onEdit={['manager','planner'].includes(user.role) ? () => setEditingCustomer(true) : null} />
     {editingCustomer && <EditCustomerDialog customer={customer} onClose={() => setEditingCustomer(false)} onSaved={() => setRetry(value => value+1)} />}
     {/* The customer's reminders (renewals and other dates the team must not miss): on the Overview, or while adding one. */}
     {(tab==='overview' || addingReminder) && <CustomerReminders key={`reminders-${customer.id}`} customer={customer} adding={addingReminder} onAddingChange={setAddingReminder} />}

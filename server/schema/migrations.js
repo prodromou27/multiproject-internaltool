@@ -1177,6 +1177,16 @@ async function applyMigrations(pool, transaction) {
     );
     ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_role_id INTEGER REFERENCES custom_roles(id) ON DELETE SET NULL;
   `]);
+  migrations.push(['20261105_customer_logos', `
+    -- A customer's logo, shown on its Customer 360. Kept apart from customers so
+    -- customer lists never carry image data; included in database backups.
+    CREATE TABLE IF NOT EXISTS customer_logos (
+      customer_id  INTEGER PRIMARY KEY REFERENCES customers(id) ON DELETE CASCADE,
+      content_type TEXT NOT NULL,
+      data         TEXT NOT NULL,
+      updated_at   TEXT NOT NULL
+    );
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

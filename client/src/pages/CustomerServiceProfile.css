@@ -347,3 +347,16 @@
 /* Tab counts: what is open in each section. */
 .cs-tab-count { display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;margin-left:6px;padding:0 5px;border-radius:999px;background:var(--gray-100);color:var(--gray-700);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums; }
 .tab.active .cs-tab-count { background:var(--primary-light);color:var(--primary); }
+
+/* Customer logo: the image fills the circle on white; managers see a small camera to change it. */
+.cs-identity-avatar.has-logo { background: #fff; border: 1px solid var(--gray-200); overflow: hidden; padding: 0; }
+.cs-logo-image { width: 100%; height: 100%; object-fit: contain; display: block; padding: 10%; box-sizing: border-box; }
+.cs-logo-button { position: relative; border: 0; cursor: pointer; font-family: inherit; overflow: visible; }
+.cs-logo-button.has-logo { border: 1px solid var(--gray-200); }
+.cs-logo-button.has-logo .cs-logo-image { border-radius: 50%; }
+.cs-logo-button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.cs-logo-edit { position: absolute; right: -2px; bottom: -2px; width: 22px; height: 22px; border-radius: 50%; background: var(--surface); color: var(--gray-600); border: 1px solid var(--gray-200); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .15s; }
+.cs-logo-button:hover .cs-logo-edit, .cs-logo-button:focus-visible .cs-logo-edit { opacity: 1; }
+@media (hover: none) { .cs-logo-edit { opacity: 1; } }
+.cs-logo-dialog { display: flex; gap: 16px; align-items: center; margin-bottom: 8px; }
+.cs-logo-dialog .cs-identity-avatar { margin: 0; width: 72px; height: 72px; font-size: 20px; }
