@@ -1,5 +1,11 @@
 const { test, assert, api, db, ids, bcrypt, signJwt } = require('./lib/activityFixture');
 
+// Waits until a stream shows what is expected (events cross the network, so they
+// arrive a moment after the request that caused them).
+async function until(check, label) {
+  for (let i = 0; i < 300; i++) { if (check()) return; await new Promise(resolve => setTimeout(resolve, 10)); }
+  assert.fail(`Timed out waiting: ${label}`);
+}
 test('notify() delivers to each recipient\'s own personal Teams webhook, honoring per-person opt-in', async () => {
   const notifications = require('../notifications');
   const hash = bcrypt.hashSync('pw', 4);
@@ -13,7 +19,7 @@ test('notify() delivers to each recipient\'s own personal Teams webhook, honorin
   const posted = [];
   notifications._setTransport(async (u) => { posted.push(u.pathname); return { status: 200, body: '', headers: {} }; });
   try {
-    const settle = () => new Promise(resolve => setTimeout(resolve, 300)); // notify() is fire-and-forget via setImmediate
+    const settle = () => require('../notifications').settled(); // every delivery that has started is done
     notifications.notify('report.submitted', { visit_title: 'V', customer_name: 'C', engineer_name: 'E' });
     await settle();
     // Every opted-in manager is reached; managers who haven't opted in aren't.
@@ -38,7 +44,7 @@ test('personal alerts still go out when no organisation Teams/Webex integration 
   notifications._setTransport(async (u) => { posted.push(u.pathname); return { status: 200, body: '', headers: {} }; });
   try {
     notifications.notify('task.assigned', { engineer_id: user, engineer_name: 'Fresh Install Engineer', task_title: 'T' });
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await require('../notifications').settled();
     assert.deepEqual(posted, ['/fresh-install']);
   } finally {
     notifications._setTransport();
@@ -590,7 +596,7 @@ test('each person chooses which events reach which of their own channels; the ad
     .run(JSON.stringify({ teams: { enabled: true, webhook_url: 'https://93.184.216.34/org-channel' }, webex: { enabled: false }, notify_on: { visit_assigned: false } }));
   const posted = [];
   notifications._setTransport(async (u) => { posted.push(u.pathname); return { status: 200, body: '', headers: {} }; });
-  const settle = () => new Promise(resolve => setTimeout(resolve, 300));
+  const settle = () => require('../notifications').settled(); // every delivery that has started is done
   try {
     notifications.notify('task.assigned', { engineer_id: user, engineer_name: 'Choosy Engineer', task_title: 'T' });
     await settle();
@@ -827,7 +833,7 @@ test('open browsers hear about changes made by others, but not their own', async
     });
     req.on('error', reject);
   });
-  const settle = () => new Promise(resolve => setTimeout(resolve, 300));
+  const settle = () => require('../notifications').settled(); // every delivery that has started is done
 
   assert.equal((await new Promise(resolve => http.get(`${suite.baseUrl}/api/live`, res => { res.resume(); resolve(res.statusCode); }))), 401, 'signed-in users only');
   const watcher = await open(ids.tokenManager, 'watcher-tab-1');
@@ -839,17 +845,19 @@ test('open browsers hear about changes made by others, but not their own', async
     const made = await fetch(`${suite.baseUrl}/api/reminders`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ids.tokenEnabled}`, 'X-Client-Id': 'author-tab-1' },
       body: JSON.stringify({ title: 'Secret reminder title', due_at: '2099-01-01T09:00:00Z', time_zone: 'UTC', repeat: 'none' }) });
     assert.equal(made.status, 201);
-    await settle();
-    assert.match(watcher.text(), /event: change\ndata: \{"topic":"reminders"\}/);
+    await until(() => /event: change\ndata: \{"topic":"reminders"\}/.test(watcher.text()), 'the watcher hears the change');
     assert.doesNotMatch(watcher.text(), /Secret reminder title/);
     // The tab that made the change does not hear its own change.
     assert.doesNotMatch(author.text(), /event: change/);
     // Reads and failed changes announce nothing.
-    const before = watcher.text().length;
+    const changes = () => (watcher.text().match(/event: change/g) || []).length;
+    const before = changes();
     await api('/api/reminders', { token: ids.tokenEnabled });
     await api('/api/reminders', { method: 'POST', token: ids.tokenEnabled, body: { title: '' } });
-    await settle();
-    assert.equal(watcher.text().length, before);
+    // A change that is announced, sent last: once it arrives, anything before it would have too.
+    require('../liveUpdates').emitChange('projects');
+    await until(() => /"topic":"projects"/.test(watcher.text()), 'the marker change arrives');
+    assert.equal(changes(), before + 1, 'only the marker: reads and failed changes announce nothing');
     await api(`/api/reminders/${(await made.json()).id}`, { method: 'DELETE', token: ids.tokenEnabled });
   } finally { watcher.close(); author.close(); }
 });
@@ -955,17 +963,16 @@ test('notifications reach only their recipient\'s stream, and reading them annou
     });
     req.on('error', reject);
   });
-  const settle = () => new Promise(resolve => setTimeout(resolve, 300));
+  const settle = () => require('../notifications').settled(); // every delivery that has started is done
   const engineer = await open(ids.tokenEnabled), manager = await open(ids.tokenManager);
   try {
     live.emitChange('notifications', { userId: ids.engineerEnabled });
-    await settle();
-    assert.match(engineer.text(), /"topic":"notifications"/);
-    assert.doesNotMatch(manager.text(), /"topic":"notifications"/);
-    const before = manager.text().length;
+    await until(() => /"topic":"notifications"/.test(engineer.text()), 'the engineer hears it');
     await api('/api/notifications/read-all', { method: 'POST', token: ids.tokenEnabled });
     await api('/api/notifications/read-all', { method: 'PUT', token: ids.tokenEnabled });
-    await settle();
-    assert.equal(manager.text().length, before, 'marking notifications read does not refresh other people');
+    // A change everyone hears, sent last: once the manager has it, anything before it would have arrived.
+    live.emitChange('projects');
+    await until(() => /"topic":"projects"/.test(manager.text()), 'the marker change arrives');
+    assert.doesNotMatch(manager.text(), /"topic":"notifications"/, 'not the engineer\'s notifications, and reading them announces nothing');
   } finally { engineer.close(); manager.close(); }
 });

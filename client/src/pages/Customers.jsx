@@ -73,7 +73,7 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
   return (
     <form onSubmit={submit}>
       <DraftBanner draft={draft} onRestore={data => data && setForm(data)} />
-      <div className="form-group"><label>Customer Name *</label><input value={form.name} onChange={set('name')} required /></div>
+      <div className="form-group"><label htmlFor="customer-name">Customer Name *</label><input id="customer-name" value={form.name} onChange={set('name')} required /></div>
       <div className="form-row">
         <div className="form-group"><label>Customer Code</label><input value={form.customer_code} onChange={set('customer_code')} placeholder="Internal reference" /></div>
         <div className="form-group">

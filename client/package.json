@@ -11,7 +11,8 @@
     "audit:prod": "npm audit --omit=dev",
     "build:e2e": "vite build --outDir .e2e-dist --emptyOutDir",
     "preview:e2e": "vite preview --outDir .e2e-dist --port 4173 --strictPort",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:realstack": "playwright test -c playwright.realstack.config.js"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans": "^5.3.0",

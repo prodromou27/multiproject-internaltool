@@ -46,7 +46,7 @@ test('with email set up, a new address only takes effect from the link sent to i
   assert.equal(asked.status, 200);
   assert.equal(asked.data.pending_email, 'confirmed.new@test.local');
   assert.equal(asked.data.user.email, 'email.confirm@test.local', 'unchanged until confirmed');
-  await new Promise(resolve => setTimeout(resolve, 50)); // the notice to the old address is sent in the background
+  await require('../notifications').settled(); // the notice to the old address is sent in the background
   const link = sent.find(m => m.to === 'confirmed.new@test.local');
   assert.ok(link, 'a confirmation link goes to the new address');
   assert.ok(sent.some(m => m.to === 'email.confirm@test.local'), 'the current address is told');
@@ -145,7 +145,8 @@ test('a rejected avatar upload keeps the current picture; a new picture gets a n
   const second = await upload(png, first.data.token);
   assert.equal(second.status, 200);
   assert.notEqual(second.data.avatar_url, first.data.avatar_url, 'a new address, so no stale cached picture');
-  await new Promise(resolve => setTimeout(resolve, 50));
+  await new Promise(resolve => setImmediate(resolve)); // the old file is removed after the response
+  for (let i = 0; i < 50 && fs.existsSync(fileOf(first.data.avatar_url)); i++) await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(fs.existsSync(fileOf(first.data.avatar_url)), false, 'the old picture is removed once the new one is saved');
   fs.rmSync(fileOf(second.data.avatar_url), { force: true });
 });

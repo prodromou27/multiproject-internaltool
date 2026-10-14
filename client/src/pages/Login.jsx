@@ -199,13 +199,14 @@ export default function Login() {
         {step === 'login' && (
           <form onSubmit={handleLogin}>
             <div className="form-group">
-              <label>Username or Email</label>
+              <label htmlFor="login-email">Username or Email</label>
               <div className="relative">
                 <Mail size={14} style={{
                   position: 'absolute', left: 11, top: '50%',
                   transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none',
                 }} />
                 <input
+                  id="login-email"
                   type="text"
                   value={form.email}
                   onChange={set('email')}
@@ -219,13 +220,14 @@ export default function Login() {
             </div>
 
             <div className="form-group">
-              <label>Password</label>
+              <label htmlFor="login-password">Password</label>
               <div className="relative">
                 <Lock size={14} style={{
                   position: 'absolute', left: 11, top: '50%',
                   transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none',
                 }} />
                 <input
+                  id="login-password"
                   type={showPw ? 'text' : 'password'}
                   value={form.password}
                   onChange={set('password')}

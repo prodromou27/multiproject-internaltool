@@ -172,7 +172,8 @@ export default function App() {
       <StatusProvider enabled={!!user}>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+          {/* Signed in: engineers start on My Work, everyone else on the Dashboard (as Login does). */}
+          <Route path="/login" element={user ? <Navigate to={user.role === 'engineer' ? '/my-day' : '/'} replace /> : <Login />} />
           <Route path="/confirm-email" element={<ConfirmEmail />} />
           <Route path="/"                    element={<PrivateRoute page="dashboard"><Dashboard /></PrivateRoute>} />
           <Route path="/calendar"            element={<PrivateRoute page="calendar"><CalendarPage /></PrivateRoute>} />

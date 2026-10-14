@@ -654,7 +654,7 @@ export default function Tasks() {
           <form onSubmit={createTask}>
             <DraftBanner draft={taskDraft} onRestore={data => data && setForm(data)} />
             {createErr && <div className="error-msg u-761d3ad">{createErr}</div>}
-            <div className="form-group"><label>Title *</label><input value={form.title} onChange={set('title')} required /></div>
+            <div className="form-group"><label htmlFor="task-title">Title *</label><input id="task-title" value={form.title} onChange={set('title')} required /></div>
             <div className="form-group"><label>Description</label><textarea value={form.description} onChange={set('description')} /></div>
             <div className="form-row">
               <div className="form-group"><label>Priority</label>

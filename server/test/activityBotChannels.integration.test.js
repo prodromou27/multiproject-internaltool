@@ -55,7 +55,7 @@ test('Webex: signed deliveries from a direct chat get a drafted activity, and "y
     assert.match(sent[2].markdown, /couldn't match your chat account/);
     // The bot's own messages are never answered.
     assert.equal((await deliver('m9', { personEmail: 'teamhub@webex.bot' })).status, 200);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await require('../notifications').settled();
     assert.equal(sent.length, 3);
   } finally { http._setTransport(); }
 });
@@ -120,7 +120,7 @@ test('Teams: only Microsoft-signed messages for our app are answered, and replie
     assert.match(sent[1].text, /✅ Saved/);
     // Group chats and channels are not answered.
     await post(activity('a4', '1h support for Acme', { conversation: { id: 'conv-2', conversationType: 'channel' } }), token());
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await require('../notifications').settled();
     assert.equal(sent.length, 2);
   } finally { http._setTransport(); channels._resetCaches(); await botSettings.save({ teams: { enabled: false } }); }
 });

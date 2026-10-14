@@ -336,9 +336,21 @@ function buildMessage(event, data) {
  *   data:  { engineer_name, engineer_email, ... }
  * Non-blocking — errors are caught and logged.
  */
+/* Deliveries run in the background (route handlers never wait for Teams, Webex
+   or email). Each one is tracked, so settled() resolves once all that have
+   started are done: tests wait on that instead of sleeping, and nothing still
+   sending can run into the next test. */
+const pending = new Set();
+function track(work) {
+  const done = Promise.resolve(work).catch(() => {}).finally(() => pending.delete(done));
+  pending.add(done);
+  return work;
+}
+async function settled() { while (pending.size) await Promise.all([...pending]); }
+
 function notify(event, data) {
   // Always fire-and-forget — never await in route handlers
-  setImmediate(async () => {
+  track(new Promise(resolve => setImmediate(resolve)).then(async () => {
     try {
       const msg = buildMessage(event, data);
       if (!msg) return;
@@ -443,7 +455,7 @@ function notify(event, data) {
     } catch (e) {
       console.error('[notify]', e.message);
     }
-  });
+  }));
 }
 
 /**
@@ -453,7 +465,8 @@ function notify(event, data) {
  * channel is logged and never stops the others.
  */
 // `bell: false` when the bell entry was already written (e.g. inside a transaction).
-async function notifyUser(userId, eventKey, msg, inApp, { channels = true, bell = true } = {}) {
+function notifyUser(...args) { return track(deliverToUser(...args)); }
+async function deliverToUser(userId, eventKey, msg, inApp, { channels = true, bell = true } = {}) {
   msg = { ...msg, link: msg.link || inApp?.link || EVENT_LINKS[eventKey] };
   if (bell) await persistNotification(userId, eventKey, inApp.title, inApp.body, inApp.link);
   if (!channels) return;
@@ -502,7 +515,8 @@ async function postToSharedChannels(msg) {
  * switched on (Settings → Notifications). `dedupeKey` posts it once only, for
  * events raised by scheduled checks. Never throws: a failed post is logged.
  */
-async function notifyShared(eventKey, msg, { dedupeKey } = {}) {
+function notifyShared(...args) { return track(deliverShared(...args)); }
+async function deliverShared(eventKey, msg, { dedupeKey } = {}) {
   try {
     const settings = (await getSettings()) || {};
     if (!sharedEventEnabled(settings.notify_on, eventKey)) return false;
@@ -567,4 +581,4 @@ async function sendPersonalTest(channel, { email, webhook_url }) {
   } else throw new Error('Unknown channel');
 }
 
-module.exports = { notifyShared, notifyUser, sharedChannelsAvailable, postToSharedChannels, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, messageCard, webexMessage, emailHtml, postJSON, _setTransport };
+module.exports = { settled, track, notifyShared, notifyUser, sharedChannelsAvailable, postToSharedChannels, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, messageCard, webexMessage, emailHtml, postJSON, _setTransport };

@@ -9,7 +9,7 @@ async function shareTo(notifyOn = {}) {
 // Shared posts are fire-and-forget; give them a moment to land.
 async function settle(count) {
   for (let i = 0; i < 50 && posts.length < count; i++) await new Promise(resolve => setTimeout(resolve, 20));
-  await new Promise(resolve => setTimeout(resolve, 30));
+  await require('../notifications').settled(); // and nothing more is on its way
 }
 
 test.beforeEach(() => {
@@ -99,7 +99,7 @@ test('people can choose the new alerts for their own channels', async () => {
   const before = (await db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND type='recommendation_assigned'").get(ids.engineerEnabled)).n;
   assert.equal((await api(`/api/customers/${ids.customer}/recommendations`, { method: 'POST', token: ids.tokenManager,
     body: { finding: 'Expired certificate', recommendation: 'Renew it', owner_id: ids.engineerEnabled, risk_level: 'high', due_date: '2026-11-01' } })).status, 201);
-  await new Promise(resolve => setTimeout(resolve, 100));
+  await require('../notifications').settled();
   const after = (await db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND type='recommendation_assigned'").get(ids.engineerEnabled)).n;
   assert.equal(Number(after), Number(before) + 1);
 });

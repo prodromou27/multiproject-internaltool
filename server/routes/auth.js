@@ -630,11 +630,11 @@ router.get('/permissions',requireAuth,async (req,res) => {
    is set up. Never blocks or fails the change itself. */
 function notifyAccountChange(user, message, to = user?.email) {
   if (!to) return;
-  getSmtpSettings().then(smtp => smtp?.host && sendEmail({
+  require('../notifications').track(getSmtpSettings().then(smtp => smtp?.host && sendEmail({
     to,
     subject: `[${PRODUCT_NAME}] Your account was changed`,
     html: `<div style="font-family:sans-serif;max-width:480px;padding:24px"><p>Hi ${escHtml(user.name || '')},</p><p>${escHtml(message)}</p><p style="color:#64748b;font-size:13px">If this was not you, tell your administrator straight away.</p></div>`,
-  })).catch(error => console.error('[account] change notice failed:', error.message));
+  })).catch(error => console.error('[account] change notice failed:', error.message)));
 }
 
 const EMAIL_CONFIRM_HOURS = 24;
