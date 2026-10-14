@@ -22,7 +22,7 @@ test('Reports → Tasks: figures, charts, people and what needs a look, filtered
   api.override('GET /api/teams', () => ({ body: [{ id: 1, name: 'Security Team' }] }));
   api.override('GET /api/auth/users', () => ({ body: [{ id: 7, name: 'Maria Ioannou', role: 'engineer', active: 1 }] }));
   await page.goto('/reports');
-  await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+  await page.getByRole('tab', { name: 'Tasks', exact: true }).click();
   const board = page.getByRole('region', { name: 'Tasks dashboard' });
   await expect(board).toContainText('Overdue');
   await expect(board).toContainText('75%');

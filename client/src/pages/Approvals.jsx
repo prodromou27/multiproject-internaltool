@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
+import { Tabs } from '../components/EnterpriseUI';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCheck, Download, FileCheck2, RefreshCw } from 'lucide-react';
 import { api } from '../api';
@@ -152,10 +153,7 @@ export default function Approvals() {
   return <div className="page">
     <PageHeader title="Approvals" meta="Oldest requests first."
       actions={<HeaderMenu><button type="button" disabled={loading} onClick={reload}><RefreshCw size={14} aria-hidden="true" /> Refresh</button></HeaderMenu>} />
-    {canReviewClosures && canReviewReports && <div className="tabs" role="tablist" aria-label="Approval type">
-      <button className={`tab ${view==='closures'?'active':''}`} role="tab" aria-selected={view==='closures'} onClick={() => setView('closures')}>Project closures</button>
-      <button className={`tab ${view==='reports'?'active':''}`} role="tab" aria-selected={view==='reports'} onClick={() => setView('reports')}>Managed reports</button>
-    </div>}
+    {canReviewClosures && canReviewReports && <Tabs variant="line" label="Approval type" value={view} onChange={setView} items={[{ key: 'closures', label: 'Project closures' }, { key: 'reports', label: 'Managed reports' }]} />}
     {view==='reports' && <div className="approval-filters" aria-label="Report review filters">
       <label htmlFor="report-review-status">Status</label><select id="report-review-status" value={reportStatus} onChange={event => { setReportStatus(event.target.value);setPage(1); }}><option value="all">All active reviews</option><option value="in_review">Awaiting decision</option><option value="approved">Ready to finalize</option></select>
     </div>}

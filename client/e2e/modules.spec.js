@@ -61,7 +61,7 @@ test('a project page loads its activity feed and the customer list only when the
   const asked = path => api.calls.some(call => call.method === 'GET' && call.path === path);
   expect(asked('/api/projects/1/activity')).toBe(false);
   expect(asked('/api/customers')).toBe(false);
-  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await expect(page.getByText('Project created')).toBeVisible();
   expect(asked('/api/customers')).toBe(false);
 });

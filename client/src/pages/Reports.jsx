@@ -1,6 +1,7 @@
 import TaskDashboard from '../components/TaskDashboard';
 import ManagementInsights from '../components/ManagementInsights';
 import { useEffect, useState } from 'react';
+import { TabPanel, Tabs } from '../components/EnterpriseUI';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -359,12 +360,10 @@ export default function Reports() {
       <PageHeader title="Reports"
         actions={<Link className="btn btn-ghost" to="/service-operations">Service activity overview</Link>} />
 
-      <div className="tabs" aria-label="Report sections">
-        {[['overview','Overview'],['tasks','Tasks'],['builder','Report Builder'],['projects','Projects'],...(canViewKpis ? [['kpis','KPIs']] : []),['trends','Trends'],['service_activity','Service Activity']].map(([k, l]) => (
-          <button key={k} className={'tab' + (tab === k ? ' active' : '')} onClick={() => setTab(k)}>{l}</button>
-        ))}
-      </div>
+      <Tabs variant="line" label="Report sections" value={tab} onChange={setTab}
+        items={[['overview','Overview'],['tasks','Tasks'],['builder','Report Builder'],['projects','Projects'],...(canViewKpis ? [['kpis','KPIs']] : []),['trends','Trends'],['service_activity','Service Activity']].map(([key, label]) => ({ key, label }))} />
 
+      <TabPanel label="Report sections" value={tab}>
       {tab === 'tasks' && <TaskDashboard />}
 
       {tab === 'overview' && (
@@ -439,6 +438,7 @@ export default function Reports() {
       {tab === 'trends' && <TrendsTab />}
       {tab === 'builder' && <ReportBuilder />}
       {tab === 'service_activity' && <ServiceActivityReportTab />}
+      </TabPanel>
     </div>
   );
 }

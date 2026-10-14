@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { TabPanel, Tabs } from '../components/EnterpriseUI';
 import { useUrlTab } from '../hooks/useSavedFilter';
 import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { useParams } from 'react-router-dom';
@@ -364,14 +365,10 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      <div className="tabs">
-        {tabs.map(t => (
-          <button key={t} className={'tab' + (tab === t ? ' active' : '')} onClick={() => setTab(t)}>
-            {t === 'kpis' ? 'KPIs' : t === 'scorecard' ? 'Scorecard' : t === 'fields' ? 'Custom Fields' : t.charAt(0).toUpperCase() + t.slice(1)}
-          </button>
-        ))}
-      </div>
+      <Tabs variant="line" label="Project sections" value={tab} onChange={setTab}
+        items={tabs.map(t => ({ key: t, label: t === 'kpis' ? 'KPIs' : t === 'scorecard' ? 'Scorecard' : t === 'fields' ? 'Custom Fields' : t.charAt(0).toUpperCase() + t.slice(1) }))} />
 
+      <TabPanel label="Project sections" value={tab}>
       {tab === 'tasks' && !isPM && (
         <div className="card">
           <div className="u-1427d29">
@@ -602,6 +599,7 @@ export default function ProjectDetail() {
       {tab === 'scorecard' && isManager && (
         <div className="card"><ScorecardTab projectId={id} members={project.members} /></div>
       )}
+      </TabPanel>
 
       {showEdit && (
         <Modal title="Edit Project" onClose={() => setShowEdit(false)}>

@@ -20,7 +20,7 @@ import ImportModal from '../components/ImportModal';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { PRODUCT_NAME } from '../product';
-import { MetricStrip,Surface } from '../components/EnterpriseUI';
+import { MetricStrip,Surface,Tabs } from '../components/EnterpriseUI';
 import { useLiveRefresh } from '../live';
 import CheckList from '../components/CheckList';
 
@@ -594,11 +594,8 @@ export default function MaintenanceVisits() {
       ]} />}
 
       {/* List, calendar, or (managers and planners) the team's availability. */}
-      <div className="filter-bar" role="tablist" aria-label="Visit views" style={{ marginBottom: 12 }}>
-        {[['list', 'List'], ['calendar', 'Calendar'], ...(canManage ? [['availability', 'Team availability']] : [])].map(([key, label]) => (
-          <button key={key} type="button" role="tab" aria-selected={view === key} className={'filter-pill' + (view === key ? ' active' : '')} onClick={() => setView(key)}>{label}</button>
-        ))}
-      </div>
+      <Tabs variant="pill" className="mb-12" label="Visit views" value={view} onChange={setView}
+        items={[['list', 'List'], ['calendar', 'Calendar'], ...(canManage ? [['availability', 'Team availability']] : [])].map(([key, label]) => ({ key, label }))} />
       {view === 'calendar' && <VisitCalendar onOpen={visit => setSelected(visit)} onPlan={canManage ? planVisit : null} />}
       {view === 'availability' && canManage && <TeamAvailability onPlan={planVisit} />}
       {view === 'list' && <>

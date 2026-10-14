@@ -5,12 +5,12 @@ test('report sections are deep-linkable and overview metrics use the shared ledg
   await mockApi(page, { role: 'manager' });
   await page.goto('/reports?view=projects');
 
-  await expect(page.getByRole('button', { name: 'Projects' })).toHaveClass(/active/);
+  await expect(page.getByRole('tab', { name: 'Projects' })).toHaveClass(/active/);
   await expect(page.locator('.operations-metric-strip .operations-metric')).toHaveCount(4);
-  await page.getByRole('button', { name: 'Overview' }).click();
+  await page.getByRole('tab', { name: 'Overview' }).click();
   await expect(page).toHaveURL(/\/reports$/);
 
-  await page.getByRole('button', { name: 'Report Builder' }).click();
+  await page.getByRole('tab', { name: 'Report Builder' }).click();
   await expect(page).toHaveURL(/view=builder/);
 });
 
@@ -19,8 +19,8 @@ test('denied KPI permissions keep KPI data and deep links out of report state',a
   api.override('GET /api/reports/summary',() => ({ body:{ total:0,overdue:0,byStatus:[],engineerLoad:[],pendingClosure:[],taskStats:{} } }));
   await page.goto('/reports?view=kpis');
 
-  await expect(page.getByRole('button',{ name:'KPIs' })).toHaveCount(0);
-  await expect(page.getByRole('button',{ name:'Overview' })).toHaveClass(/active/);
+  await expect(page.getByRole('tab',{ name:'KPIs' })).toHaveCount(0);
+  await expect(page.getByRole('tab',{ name:'Overview' })).toHaveClass(/active/);
   await expect(page.getByText('No KPIs defined yet')).toHaveCount(0);
 });
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { TabPanel, Tabs } from '../../components/EnterpriseUI';
 import { LoadError } from '../../components/LoadError';
 import { Shield, CheckCircle2, Lock, AlertTriangle, Zap, HardDrive, Save, Loader2, Activity, RefreshCw, Download, ShieldAlert } from 'lucide-react';
 import { api } from '../../api';
@@ -60,19 +61,13 @@ export function SystemHealthTab({ initial }) {
   const [section, setSection] = useState(SYSTEM_HEALTH_SECTIONS.some(s => s.key === initial) ? initial : 'stats');
   return (
     <div>
-      <div className="u-cb21afb" role="tablist" aria-label="System health section">
-        {SYSTEM_HEALTH_SECTIONS.map(s => (
-          <button key={s.key} type="button" role="tab" aria-selected={section === s.key}
-            className={'btn btn-sm ' + (section === s.key ? 'btn-primary' : 'btn-ghost')}
-            onClick={() => setSection(s.key)}>
-            {s.label}
-          </button>
-        ))}
-      </div>
-      {section === 'stats' && <StatsTab />}
-      {section === 'deployment' && <DeploymentHealthTab />}
-      {section === 'logging' && <LoggingTab />}
-      {section === 'updates' && <SystemUpdateTab />}
+      <Tabs variant="button" className="u-cb21afb" label="System health section" value={section} onChange={setSection} items={SYSTEM_HEALTH_SECTIONS} />
+      <TabPanel label="System health section" value={section}>
+        {section === 'stats' && <StatsTab />}
+        {section === 'deployment' && <DeploymentHealthTab />}
+        {section === 'logging' && <LoggingTab />}
+        {section === 'updates' && <SystemUpdateTab />}
+      </TabPanel>
       {section === 'export' && <DataExportTab />}
     </div>
   );

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { TabPanel, Tabs } from '../components/EnterpriseUI';
 import { useUrlTab } from '../hooks/useSavedFilter';
 import { businessNow } from '../utils/dates';
 import {
@@ -391,18 +392,15 @@ export default function Workload() {
       )}
 
       {/* Tabs */}
-      <div className="tabs mb-16">
-        <button className={'tab' + (tab === 'tickets' ? ' active' : '')} onClick={() => setTab('tickets')}>By engineer</button>
-        <button className={'tab' + (tab === 'pressure' ? ' active' : '')} onClick={() => setTab('pressure')}>Operational pressure</button>
-        <button className={'tab' + (tab === 'planning' ? ' active' : '')} onClick={() => setTab('planning')}>Effort and availability</button>
-        <button className={'tab' + (tab === 'snapshot' ? ' active' : '')} onClick={() => setTab('snapshot')}>
-          <Users size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />Current Snapshot
-        </button>
-        <button className={'tab' + (tab === 'forecast' ? ' active' : '')} onClick={() => setTab('forecast')}>
-          <CalendarDays size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />4-Week Forecast
-        </button>
-      </div>
+      <Tabs variant="line" className="mb-16" label="Workload views" value={tab} onChange={setTab} items={[
+        { key: 'tickets', label: 'By engineer' },
+        { key: 'pressure', label: 'Operational pressure' },
+        { key: 'planning', label: 'Effort and availability' },
+        { key: 'snapshot', label: 'Current Snapshot', icon: <Users size={13} aria-hidden="true" style={{ verticalAlign: 'middle', marginRight: 4 }} /> },
+        { key: 'forecast', label: '4-Week Forecast', icon: <CalendarDays size={13} aria-hidden="true" style={{ verticalAlign: 'middle', marginRight: 4 }} /> },
+      ]} />
 
+      <TabPanel label="Workload views" value={tab}>
       {/* Snapshot tab */}
       {tab === 'planning' && <WorkloadPlanning />}
       {tab === 'pressure' && <WorkloadPressure />}
@@ -425,6 +423,7 @@ export default function Workload() {
       )}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      </TabPanel>
     </div>
   );
 }

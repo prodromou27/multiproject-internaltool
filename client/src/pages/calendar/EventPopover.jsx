@@ -40,7 +40,7 @@ export default function EventPopover({ event, onClose, onReportSent }) {
               <div className="u-0907ca8" style={{ color: s.color }}>{s.label}</div>
             </div>
           </div>
-          <button onClick={onClose} className="u-6792cf4"><X size={16} /></button>
+          <button type="button" onClick={onClose} className="u-6792cf4" aria-label="Close"><X size={16} aria-hidden="true" /></button>
         </div>
 
         <div className="u-368a317">

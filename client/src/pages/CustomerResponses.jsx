@@ -7,11 +7,12 @@ import { useConfirm } from '../components/Confirm';
 
 /* Each response's colour: the left edge, the dot and the text background. */
 const TONES = {
-  success: { color: 'var(--tone-success-text)', bg: '#f0fdf4', label: 'Green' },
-  warning: { color: 'var(--tone-warning-text)', bg: '#fffbeb', label: 'Amber' },
-  indigo: { color: '#6366f1', bg: '#eef2ff', label: 'Indigo' },
-  danger: { color: 'var(--tone-danger-text)', bg: '#fef2f2', label: 'Red' },
-  info: { color: 'var(--tone-info-text)', bg: '#eff6ff', label: 'Blue' },
+  // Theme tokens, so the cards stay readable in dark mode.
+  success: { color: 'var(--tone-success-text)', bg: 'var(--success-light)', label: 'Green' },
+  warning: { color: 'var(--tone-warning-text)', bg: 'var(--warning-light)', label: 'Amber' },
+  indigo: { color: 'var(--primary)', bg: 'var(--primary-light)', label: 'Indigo' },
+  danger: { color: 'var(--tone-danger-text)', bg: 'var(--danger-light)', label: 'Red' },
+  info: { color: 'var(--tone-info-text)', bg: 'var(--primary-light)', label: 'Blue' },
   neutral: { color: 'var(--gray-500)', bg: 'var(--gray-50)', label: 'Grey' },
 };
 const toneOf = row => TONES[row.tone] || TONES.neutral;
@@ -53,7 +54,7 @@ function TemplateCard({ tpl, onEdit, onDelete }) {
         <button
           onClick={copy}
           className="btn btn-sm u-145410d"
-          style={{ background: copied ? '#f0fdf4' : 'var(--gray-50)', color: copied ? '#16a34a' : 'var(--gray-600)', border: `1px solid ${copied ? '#bbf7d0' : 'var(--gray-200)'}` }}
+          style={{ background: copied ? 'var(--success-light)' : 'var(--gray-50)', color: copied ? 'var(--tone-success-text)' : 'var(--gray-600)', border: `1px solid ${copied ? 'var(--tone-success-text)' : 'var(--gray-200)'}` }}
         >
           {copied ? <><Check size={13} /> Copied!</> : <><Copy size={13} /> Copy</>}
         </button>

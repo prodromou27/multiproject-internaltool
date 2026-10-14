@@ -1,3 +1,4 @@
+import { cloneElement, isValidElement, useId } from 'react';
 import { sentenceCase } from './Shared';
 import './EnterpriseUI.css';
 
@@ -31,8 +32,40 @@ export function DataTable({ columns,rows,rowKey='id',loading=false,error='',empt
   })}</tr>)}</tbody></table></div>;
 }
 
-export function Tabs({ items,value,onChange,label='Sections' }) {
-  return <div className="ui-tabs" role="tablist" aria-label={label}>{items.map(item => <button key={item.key} type="button" role="tab" aria-selected={value===item.key} className={value===item.key?'is-active':''} onClick={() => onChange(item.key)}>{item.label}{item.count!==undefined && <span>{item.count}</span>}</button>)}</div>;
+// One tab pattern for every tab bar (review I09; W3C APG tabs): the open tab is the
+// only one in the Tab order, the arrow keys (and Home/End) move between tabs and open
+// them, and each tab names the panel it controls. `variant` keeps a page's look:
+// 'ui' (segmented), 'line' (.tabs underline), 'pill' (filter pills), 'button'.
+const TAB_LOOK = {
+  ui: { list: 'ui-tabs', tab: () => '', active: 'is-active' },
+  line: { list: 'tabs', tab: () => 'tab', active: 'active' },
+  pill: { list: 'filter-bar', tab: () => 'filter-pill', active: 'active' },
+  button: { list: 'tab-buttons', tab: active => `btn btn-sm ${active ? 'btn-primary' : 'btn-ghost'}`, active: '' },
+};
+const tabsId = label => `tabs-${String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+
+export function Tabs({ items,value,onChange,label='Sections',id,variant='ui',className='' }) {
+  const base = id || tabsId(label), look = TAB_LOOK[variant] || TAB_LOOK.ui;
+  function onKeyDown(event,index) {
+    if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key==='Home' ? 0 : event.key==='End' ? items.length-1 : (index+(event.key==='ArrowRight' ? 1 : -1)+items.length)%items.length;
+    onChange(items[next].key);
+    document.getElementById(`${base}-tab-${items[next].key}`)?.focus();
+  }
+  return <div className={`${look.list}${className ? ` ${className}` : ''}`} role="tablist" aria-label={label}>{items.map((item,index) => {
+    const active = value===item.key;
+    return <button key={item.key} id={`${base}-tab-${item.key}`} type="button" role="tab" aria-selected={active} aria-controls={`${base}-panel`} tabIndex={active ? 0 : -1}
+      className={[look.tab(active), active && look.active].filter(Boolean).join(' ')} onKeyDown={event => onKeyDown(event,index)} onClick={() => onChange(item.key)}>
+      {item.icon}{item.label}{item.count!==undefined && <span>{item.count}</span>}
+    </button>;
+  })}</div>;
+}
+
+/** The panel of a Tabs bar: give it the same `label` (or `id`) and the open tab. */
+export function TabPanel({ label='Sections',id,value,children,className }) {
+  const base = id || tabsId(label);
+  return <div id={`${base}-panel`} role="tabpanel" aria-labelledby={`${base}-tab-${value}`} className={className}>{children}</div>;
 }
 
 export function Pagination({ page,total,pageSize,onPageChange,loading=false,label='Result pages',summary }) {
@@ -41,6 +74,10 @@ export function Pagination({ page,total,pageSize,onPageChange,loading=false,labe
   return <nav className="ui-pagination" aria-label={label}><span>{summary || `${total} total · Page ${page} of ${pages}`}</span><div><button className="btn btn-ghost btn-sm" disabled={loading || page<=1} onClick={() => onPageChange(page-1)}>Previous</button><button className="btn btn-ghost btn-sm" disabled={loading || page>=pages} onClick={() => onPageChange(page+1)}>Next</button></div></nav>;
 }
 
+// The input is told about its help or error (aria-describedby, aria-invalid), so a
+// screen reader reads the error with the field, not only when it appears.
 export function Field({ label,help,error,required,children,className='' }) {
-  return <label className={`ui-field${error?' has-error':''}${className?` ${className}`:''}`}><span>{label}{required && <b aria-hidden="true"> *</b>}</span>{children}{help && !error && <small>{help}</small>}{error && <small role="alert">{error}</small>}</label>;
+  const id = useId(), noteId = `${id}-note`, note = error || help;
+  const control = isValidElement(children) ? cloneElement(children, { 'aria-invalid': error ? true : children.props['aria-invalid'], 'aria-describedby': note ? [children.props['aria-describedby'], noteId].filter(Boolean).join(' ') : children.props['aria-describedby'], 'aria-required': required || children.props['aria-required'] }) : children;
+  return <label className={`ui-field${error?' has-error':''}${className?` ${className}`:''}`}><span>{label}{required && <b aria-hidden="true"> *</b>}</span>{control}{help && !error && <small id={noteId}>{help}</small>}{error && <small id={noteId} role="alert">{error}</small>}</label>;
 }

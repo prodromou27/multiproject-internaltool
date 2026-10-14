@@ -39,8 +39,8 @@ function TemplateTaskRow({ task, tplId, onDelete, onUpdate }) {
       <CheckSquare size={13} color="var(--gray-400)" className="flex-shrink-0" />
       <span className="u-c3c1363">{task.title}</span>
       <PriorityBadge p={task.priority} />
-      <button className="btn btn-ghost btn-sm u-fe9a050" onClick={() => setEditing(true)}><Pencil size={12} /></button>
-      <button className="btn btn-ghost btn-sm u-544f487" onClick={() => onDelete(task.id)}><Trash2 size={12} /></button>
+      <button type="button" className="btn btn-ghost btn-sm u-fe9a050" onClick={() => setEditing(true)} aria-label={`Edit ${task.title}`}><Pencil size={12} aria-hidden="true" /></button>
+      <button type="button" className="btn btn-ghost btn-sm u-544f487" onClick={() => onDelete(task.id)} aria-label={`Delete ${task.title}`}><Trash2 size={12} aria-hidden="true" /></button>
     </div>
   );
 }

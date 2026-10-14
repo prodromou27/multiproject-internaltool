@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { TabPanel, Tabs } from '../components/EnterpriseUI';
 import { Link } from 'react-router-dom';
 import { BarChart2, CheckCircle2, XCircle, AlertTriangle, Clock, TrendingUp } from 'lucide-react';
 import {
@@ -354,13 +355,13 @@ export default function Scorecards() {
       )}
 
       {/* Tabs */}
-      <div className="tabs">
-        {isManager && <button className={'tab' + (tab==='overview'  ? ' active' : '')} onClick={() => setTab('overview')}>Team Overview</button>}
-        {isManager && <button className={'tab' + (tab==='all'       ? ' active' : '')} onClick={() => setTab('all')}>All Scorecards</button>}
-        {isManager && <button className={'tab' + (tab==='trends'    ? ' active' : '')} onClick={() => setTab('trends')}><TrendingUp size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />Performance Trends</button>}
-        {!isManager && <button className={'tab' + (tab==='mine'     ? ' active' : '')} onClick={() => setTab('mine')}>My Scorecards</button>}
-      </div>
+      <Tabs variant="line" label="Scorecard views" value={tab} onChange={setTab} items={isManager ? [
+        { key: 'overview', label: 'Team Overview' },
+        { key: 'all', label: 'All Scorecards' },
+        { key: 'trends', label: 'Performance Trends', icon: <TrendingUp size={14} aria-hidden="true" style={{ verticalAlign: 'middle', marginRight: 4 }} /> },
+      ] : [{ key: 'mine', label: 'My Scorecards' }]} />
 
+      <TabPanel label="Scorecard views" value={tab}>
       {loading && <p className="text-muted">Loading…</p>}
 
       {/* ── Engineer's own view ── */}
@@ -570,6 +571,7 @@ export default function Scorecards() {
           />
         </Modal>
       )}
+      </TabPanel>
     </div>
   );
 }
