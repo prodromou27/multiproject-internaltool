@@ -33,18 +33,18 @@ function downloadCorrections(preview, fileName) {
   URL.revokeObjectURL(a.href);
 }
 
-const ACTION_LABEL = { create: 'New', update: 'Update', unchanged: 'No change', error: 'Not imported' };
+const ACTION_LABEL = { create: 'New', update: 'Update', unchanged: 'Already there', error: 'Not imported' };
 
 // What the import would do, before anything changes.
-function ImportPreview({ preview, fileName, noun, updates, onUpdates }) {
+function ImportPreview({ preview, fileName, noun, updates, onUpdates, unchangedLabel = 'already up to date', listUnchanged = false }) {
   const { counts } = preview;
   const [one, many] = noun;
   const plural = n => `${n} ${n === 1 ? one : many}`;
-  const listed = preview.rows.filter(r => r.action !== 'unchanged').slice(0, 200);
+  const listed = preview.rows.filter(r => listUnchanged || r.action !== 'unchanged').slice(0, 200);
   return (
     <div className="mb-16" aria-label="Import preview" role="region">
       <p className="text-sm" style={{ margin: '0 0 8px' }}>
-        {[counts.create && `${plural(counts.create)} to add`, counts.update && `${plural(counts.update)} to update`, counts.unchanged && `${counts.unchanged} already up to date`, counts.errors && `${counts.errors} row${counts.errors === 1 ? '' : 's'} with problems${counts.duplicates ? ` (${counts.duplicates} duplicate${counts.duplicates === 1 ? '' : 's'})` : ''}`].filter(Boolean).join(' · ') || 'Nothing to import.'}
+        {[counts.create && `${plural(counts.create)} to add`, counts.update && `${plural(counts.update)} to update`, counts.unchanged && `${counts.unchanged} ${unchangedLabel}`, counts.errors && `${counts.errors} row${counts.errors === 1 ? '' : 's'} with problems${counts.duplicates ? ` (${counts.duplicates} duplicate${counts.duplicates === 1 ? '' : 's'})` : ''}`].filter(Boolean).join(' · ') || 'Nothing to import.'}
       </p>
       {listed.length > 0 && (
         <div className="u-5524431">
@@ -55,7 +55,7 @@ function ImportPreview({ preview, fileName, noun, updates, onUpdates }) {
                 <td className="u-e3294d8">{r.row}</td>
                 <td className="u-f92cc01">{r.name || '—'}</td>
                 <td className="u-f92cc01">{ACTION_LABEL[r.action]}</td>
-                <td className="u-f92cc01">{r.action === 'error' ? r.error : r.action === 'update' ? r.changes.map(c => `${c.field}: ${c.from || '—'} → ${c.to}`).join('; ') : ''}</td>
+                <td className="u-f92cc01">{r.action === 'error' || r.action === 'unchanged' ? r.error || '' : r.action === 'update' ? r.changes.map(c => `${c.field}: ${c.from || '—'} → ${c.to}`).join('; ') : r.error || ''}</td>
               </tr>
             ))}</tbody>
           </table>
@@ -93,7 +93,7 @@ function ImportPreview({ preview, fileName, noun, updates, onUpdates }) {
  *                   (importFn(file, { option, previewToken })).
  *  - noun           [singular, plural] for the preview ('customer', 'customers')
  */
-export default function ImportModal({ title, templateUrl, importFn, previewFn, noun = ['record', 'records'], onClose, onDone, columns = [], hint, option }) {
+export default function ImportModal({ title, templateUrl, importFn, previewFn, noun = ['record', 'records'], unchangedLabel, listUnchanged, onClose, onDone, columns = [], hint, option }) {
   const [file,         setFile]         = useState(null);
   const [dragging,     setDragging]     = useState(false);
   const [loading,      setLoading]      = useState(false);
@@ -239,7 +239,7 @@ export default function ImportModal({ title, templateUrl, importFn, previewFn, n
           </div>
         </div>
 
-        {preview && !result && <ImportPreview preview={preview} fileName={file?.name || 'import'} noun={noun} updates={optionOn} onUpdates={setOptionOn} />}
+        {preview && !result && <ImportPreview preview={preview} fileName={file?.name || 'import'} noun={noun} unchangedLabel={unchangedLabel} listUnchanged={listUnchanged} updates={optionOn} onUpdates={setOptionOn} />}
 
         {option && !result && !previewFn && (
           <label className="import-option">

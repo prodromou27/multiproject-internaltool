@@ -51,7 +51,7 @@ function requireAssetAccessMiddleware(req,res,next) {
 router.use(requireAssetAccessMiddleware);
 router.use(async (req,res,next) => {
   const isFileUpload=req.method==='POST' && /^\/\d+\/attachments$/.test(req.path) && req.is('multipart/form-data');
-  if (req.path!=='/import' && !isFileUpload && ['POST','PUT','DELETE'].includes(req.method) && (!req.body || typeof req.body!=='object' || Array.isArray(req.body))) return res.status(400).json({ error: 'A JSON object is required' });
+  if (!['/import','/import/preview'].includes(req.path) && !isFileUpload && ['POST','PUT','DELETE'].includes(req.method) && (!req.body || typeof req.body!=='object' || Array.isArray(req.body))) return res.status(400).json({ error: 'A JSON object is required' });
   if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid customer ID' });
   if (!await db.prepare('SELECT id FROM customers WHERE id=?').get(Number(req.params.id))) return res.status(404).json({ error: 'Customer not found' });
   next();
@@ -154,29 +154,83 @@ router.get('/export',async (req,res) => {
   res.setHeader('Content-Disposition',`attachment; filename="customer_${filter.customer}_assets.xlsx"`);res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');res.send(await workbook.xlsx.writeBuffer());
 });
 
-router.post('/import',importUpload.single('file'),async (req,res) => {
-  if (!req.file) return res.status(400).json({ error:'Select an .xlsx file' });
-  const workbook=new ExcelJS.Workbook();try { require('../uploadUtils').assertSafeSpreadsheet(req.file.buffer);await workbook.xlsx.load(req.file.buffer); } catch(error) { return res.status(400).json({ error:error.status===400 ? error.message : 'Could not parse the workbook; use .xlsx format' }); }
-  const sheet=workbook.worksheets[0];if (!sheet || sheet.rowCount<2) return res.status(400).json({ error:'The workbook contains no asset rows' });
-  if (sheet.rowCount-1>500) return res.status(413).json({ error:'Import supports at most 500 asset rows' });
+// The workbook's rows, checked one by one: { rows } or { error } (a problem with the file itself).
+async function readAssetWorkbook(file) {
+  if (!file) return { error:'Select an .xlsx file' };
+  const workbook=new ExcelJS.Workbook();try { require('../uploadUtils').assertSafeSpreadsheet(file.buffer);await workbook.xlsx.load(file.buffer); } catch(error) { return { error:error.status===400 ? error.message : 'Could not parse the workbook; use .xlsx format' }; }
+  const sheet=workbook.worksheets[0];if (!sheet || sheet.rowCount<2) return { error:'The workbook contains no asset rows' };
+  if (sheet.rowCount-1>500) return { error:'Import supports at most 500 asset rows',status:413 };
   const headers=new Map();sheet.getRow(1).eachCell((cell,column) => headers.set(excelText(cell.value).trim().replace(/\*$/,''),column));
-  if (!headers.has('name') || !headers.has('asset_type')) return res.status(400).json({ error:'The workbook requires name* and asset_type* columns' });
+  if (!headers.has('name') || !headers.has('asset_type')) return { error:'The workbook requires name* and asset_type* columns' };
   const technologies=await db.prepare('SELECT id,name FROM technologies WHERE active=1 ORDER BY id').all(),byName=new Map(technologies.map(row => [row.name.toLowerCase(),row.id]));
   const fields=['name','asset_type','asset_tag','vendor','model','serial_number','hostname','ip_address','mac_address','software_version','location','environment','criticality','lifecycle_status','coverage_type','support_provider','support_reference','support_start_date','support_end_date','warranty_expiry_date','management_url','notes'];
-  const records=[];
+  const rows=[];
   for(let number=2;number<=sheet.rowCount;number++) {
     const row=sheet.getRow(number),body=Object.fromEntries(fields.map(field => [field,headers.has(field) ? excelText(row.getCell(headers.get(field)).value).trim() : '']));
-    if (!Object.values(body).some(Boolean) && !(headers.has('technology') && excelText(row.getCell(headers.get('technology')).value).trim())) continue;
     const technology=headers.has('technology') ? excelText(row.getCell(headers.get('technology')).value).trim() : '';
-    if (technology && !byName.has(technology.toLowerCase())) return res.status(400).json({ error:`Row ${number}: technology is not an active configured value` });
+    if (!Object.values(body).some(Boolean) && !technology) continue;
+    const given={ ...body,technology };
+    if (technology && !byName.has(technology.toLowerCase())) { rows.push({ number,given,error:'technology is not an active configured value' });continue; }
     body.technology_id=technology ? byName.get(technology.toLowerCase()) : null;
     body.environment ||= 'production';body.criticality ||= 'medium';body.lifecycle_status ||= 'active';body.coverage_type ||= 'neither';
-    const input=validate(body);if(input.error) return res.status(400).json({ error:`Row ${number}: ${input.error}` });records.push({ number,value:input.value });
+    const input=validate(body);
+    rows.push(input.error ? { number,given,error:input.error } : { number,given,value:input.value });
   }
-  if (!records.length) return res.status(400).json({ error:'The workbook contains no asset rows' });
-  try { await db.transaction(async tx => { for(const record of records) await insertRecord(tx,req,Number(req.params.id),record.value); }); }
+  if (!rows.length) return { error:'The workbook contains no asset rows' };
+  return { rows,hash:crypto.createHash('sha256').update(file.buffer).digest('hex') };
+}
+
+// What importing would do (review I07 for assets): each row new, already there (same
+// asset tag, hostname or serial number at this customer, or repeated in the file), or
+// not imported, with the reason. The token binds a commit to this file and to the
+// customer's assets as they were.
+async function planAssetImport(customerId,read,userId) {
+  const existing=(await db.prepare('SELECT id,name,asset_tag_hash,hostname,serial_number FROM customer_assets WHERE customer_id=?').all(customerId))
+    .map(row => ({ id:Number(row.id),name:decrypt(row.name) || '',tag:row.asset_tag_hash,hostname:(decrypt(row.hostname) || '').toLowerCase(),serial:(decrypt(row.serial_number) || '').toLowerCase() }));
+  const seenTags=new Set(),seenHosts=new Set(),seenSerials=new Set();
+  const rows=read.rows.map(row => {
+    const name=row.given.name || '';
+    if (row.error) return { row:row.number,name,action:'error',error:row.error,values:row.given };
+    const v=row.value,tag=hashTag(v.asset_tag),host=(v.hostname || '').toLowerCase(),serial=(v.serial_number || '').toLowerCase();
+    const match=existing.find(a => (tag && a.tag===tag) || (host && a.hostname===host) || (serial && a.serial===serial));
+    if (match) return { row:row.number,name,action:'exists',error:`Already there: ${match.name}`,existing_id:match.id,values:row.given };
+    if ((tag && seenTags.has(tag)) || (host && seenHosts.has(host)) || (serial && seenSerials.has(serial))) return { row:row.number,name,action:'error',kind:'duplicate',error:'Repeats an asset tag, hostname or serial number from an earlier row',values:row.given };
+    if (tag) seenTags.add(tag);if (host) seenHosts.add(host);if (serial) seenSerials.add(serial);
+    return { row:row.number,name,action:'create',value:v };
+  });
+  const count=action => rows.filter(r => r.action===action).length;
+  const token=crypto.createHash('sha256').update(`${read.hash}|${customerId}|${userId}|${existing.map(a => a.id).join(',')}`).digest('hex');
+  return { rows,token,counts:{ create:count('create'),exists:count('exists'),errors:count('error'),duplicates:rows.filter(r => r.kind==='duplicate').length,total:rows.length } };
+}
+const assetPreviewOf=plan => ({ token:plan.token,counts:{ ...plan.counts,update:0,unchanged:plan.counts.exists },
+  rows:plan.rows.map(({ row,name,action,kind,error,existing_id,values }) => ({ row,name,action:action==='exists' ? 'unchanged' : action,kind,error,existing_id,values:action==='create' ? undefined : values })) });
+
+router.post('/import/preview',importUpload.single('file'),async (req,res) => {
+  const read=await readAssetWorkbook(req.file);
+  if (read.error) return res.status(read.status || 400).json({ error:read.error });
+  res.json(assetPreviewOf(await planAssetImport(Number(req.params.id),read,req.user.id)));
+});
+
+router.post('/import',importUpload.single('file'),async (req,res) => {
+  const read=await readAssetWorkbook(req.file);
+  if (read.error) return res.status(read.status || 400).json({ error:read.error });
+  const customer=Number(req.params.id);
+  // Reviewed: the same file against the same assets; the new rows go in, the others are reported.
+  if (req.body?.preview_token) {
+    const plan=await planAssetImport(customer,read,req.user.id);
+    if (req.body.preview_token!==plan.token) return res.status(409).json({ error:'The file or this customer\'s assets changed since the review. Review the import again.',code:'IMPORT_CHANGED',preview:assetPreviewOf(plan) });
+    const creates=plan.rows.filter(r => r.action==='create');
+    try { await db.transaction(async tx => { for (const row of creates) await insertRecord(tx,req,customer,row.value); }); }
+    catch(error) { if(error.code==='23505') return res.status(409).json({ error:'An asset tag was taken while importing. Review the import again.' });throw error; }
+    const errors=plan.rows.filter(r => r.action!=='create').map(r => ({ row:r.row,error:r.error }));
+    return res.status(201).json({ imported:creates.length,skipped:errors.length,errors });
+  }
+  // Without a review (scripts): all or nothing, as before.
+  const bad=read.rows.find(r => r.error);
+  if (bad) return res.status(400).json({ error:`Row ${bad.number}: ${bad.error}` });
+  try { await db.transaction(async tx => { for(const record of read.rows) await insertRecord(tx,req,customer,record.value); }); }
   catch(error) { if(error.code==='23505') return res.status(409).json({ error:'The import contains an asset tag already used for this customer, or repeats a tag' });throw error; }
-  res.status(201).json({ imported:records.length });
+  res.status(201).json({ imported:read.rows.length });
 });
 
 // Active assets for pickers (e.g. one subtask per server to upgrade): id, name, type and version.

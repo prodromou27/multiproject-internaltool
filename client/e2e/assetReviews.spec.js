@@ -77,3 +77,32 @@ test('an outdated asset becomes an upgrade task from its review; engineers on th
   await page.getByRole('dialog').getByRole('button', { name: 'Confirm review' }).click();
   await expect.poll(() => reviews[0]).toEqual({ version: 3, software_version: '7.4.3', note: null });
 });
+
+test('an asset import is reviewed first: new rows, ones already there, and ones that cannot go in', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager', permissions: { 'assets.access': true, 'customers.access': true } });
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary() }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/assets', () => ({ body: { rows: [], total: 0, page: 1, page_size: 25, technologies: [], expiry_summary: { expired: 0, due_30: 0, review_due: 0, active: 0, review_days: 90 } } }));
+  api.override('POST /api/customers/12/assets/import/preview', () => ({ body: { token: 'asset-review-1', counts: { create: 1, exists: 1, unchanged: 1, update: 0, errors: 1, duplicates: 0, total: 3 }, rows: [
+    { row: 2, name: 'New switch', action: 'create' },
+    { row: 3, name: 'FW-HQ-01', action: 'unchanged', error: 'Already there: FW-HQ-01', existing_id: 1 },
+    { row: 4, name: 'No type', action: 'error', error: 'Asset type must contain 1 to 100 characters', values: { name: 'No type', asset_type: '' } },
+  ] } }));
+  let upload = null;
+  api.override('POST /api/customers/12/assets/import', ({ request }) => { upload = request.postDataBuffer().toString('latin1'); return { status: 201, body: { imported: 1, skipped: 2, errors: [{ row: 3, error: 'Already there: FW-HQ-01' }, { row: 4, error: 'Asset type must contain 1 to 100 characters' }] } }; });
+
+  await page.goto('/customers/12/service-profile?section=assets');
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await page.locator('input[type="file"]').setInputFiles({ name: 'assets.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('PK fake') });
+  await dialog.getByRole('button', { name: 'Review import' }).click();
+  const review = dialog.getByRole('region', { name: 'Import preview' });
+  await expect(review.getByText('1 asset to add · 1 already there (skipped) · 1 row with problems')).toBeVisible();
+  await expect(review.getByRole('row', { name: /FW-HQ-01 Already there Already there: FW-HQ-01/ })).toBeVisible();
+  await expect(review.getByRole('row', { name: /No type Not imported Asset type must contain/ })).toBeVisible();
+  await expect(review.getByRole('button', { name: 'Download rows to correct (.csv)' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Import 1 new' }).click();
+  await expect.poll(() => upload).toContain('asset-review-1');
+  await expect(dialog.getByText('Partly imported:')).toBeVisible();
+});

@@ -296,7 +296,8 @@ export const api = {
   },
   deleteCustomerAssetAttachment: (id,assetId,attachmentId) => req('DELETE',`/customers/${id}/assets/${assetId}/attachments/${attachmentId}`,{}),
   customerAssetTemplateUrl: id => `${BASE}/customers/${id}/assets/template`,
-  importCustomerAssets: (id,file) => upload(`/customers/${id}/assets/import`,'file',file),
+  previewCustomerAssetImport: (id,file) => upload(`/customers/${id}/assets/import/preview`,'file',file),
+  importCustomerAssets: (id,file,{ previewToken }={}) => upload(`/customers/${id}/assets/import`,'file',file,previewToken ? { preview_token:previewToken } : {}),
   exportCustomerAssets: async (id,params = {}) => {
     const response=await fetch(`${BASE}/customers/${id}/assets/export?${new URLSearchParams(params)}`,{ credentials:'same-origin' });
     if (!response.ok) { const data=await response.json().catch(() => ({}));handleUnauthorized(response.status,data,true);throw new Error(data.error || 'Asset export failed'); }
@@ -330,9 +331,8 @@ export const api = {
   completeVisit: (id) => req('POST', `/maintenance-visits/${id}/complete`, {}),
   deleteVisit: (id) => req('DELETE', `/maintenance-visits/${id}`),
   maintenanceVisitsTemplateUrl: () => `${BASE}/maintenance-visits/template/download`,
-  importVisits: (file) => {
-    return upload('/maintenance-visits/import', 'file', file);
-  },
+  previewVisitImport: file => upload('/maintenance-visits/import/preview', 'file', file),
+  importVisits: (file, { previewToken } = {}) => upload('/maintenance-visits/import', 'file', file, previewToken ? { preview_token: previewToken } : {}),
 
   // milestones
   milestones:        (project_id, options) => req('GET', `/milestones?project_id=${project_id}`, undefined, options),

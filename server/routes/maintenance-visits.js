@@ -324,76 +324,88 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
 });
 
 // ── Import ───────────────────────────────────────────────────────────────────
-router.post('/import', requireManagerOrPlanner, upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-
+// The workbook's rows: { rows, hash } or { error }.
+async function readVisitWorkbook(file) {
+  if (!file) return { error: 'No file uploaded' };
   const workbook = new ExcelJS.Workbook();
-  try { require('../uploadUtils').assertSafeSpreadsheet(req.file.buffer); await workbook.xlsx.load(req.file.buffer); }
-  catch (e) { return res.status(400).json({ error: e.status === 400 ? e.message : 'Could not parse file. Use .xlsx format' }); }
+  try { require('../uploadUtils').assertSafeSpreadsheet(file.buffer); await workbook.xlsx.load(file.buffer); }
+  catch (e) { return { error: e.status === 400 ? e.message : 'Could not parse file. Use .xlsx format' }; }
+  const rows = sheetToJson(workbook.worksheets[0]);
+  if (!rows.length) return { error: 'File is empty or has no data rows' };
+  if (rows.length > 5000) return { error: 'Maximum 5000 rows per import. Please split your file.' };
+  const normalize = obj => Object.fromEntries(Object.entries(obj).map(([k, v]) => [k.replace(/\*/g, '').trim().toLowerCase().replace(/\s+/g, '_'),
+    v instanceof Date ? v.toISOString().slice(0, 10) : typeof v === 'string' ? v.trim() : String(v ?? '').trim()]));
+  return { rows: rows.map(normalize), hash: require('crypto').createHash('sha256').update(file.buffer).digest('hex') };
+}
 
-  const sheet = workbook.worksheets[0];
-  const rows  = sheetToJson(sheet);
-  if (!rows.length) return res.status(400).json({ error: 'File is empty or has no data rows' });
-  if (rows.length > 5000) return res.status(400).json({ error: 'Maximum 5000 rows per import. Please split your file.' });
-
-  const normalize = (obj) => {
-    const out = {};
-    for (const [k, v] of Object.entries(obj)) {
-      out[k.replace(/\*/g, '').trim().toLowerCase().replace(/\s+/g, '_')] =
-        typeof v === 'string' ? v.trim() : String(v ?? '').trim();
+// What importing would do: each row new, already there (same customer, title and day),
+// or not imported with the reason; a visit on a day off is flagged but still planned.
+async function planVisitImport(read, userId) {
+  const { parseDay } = require('../customerImport');
+  const calendar = require('../businessCalendar');
+  const cal = await calendar.load();
+  const customers = (await db.prepare('SELECT id, name FROM customers').all()).map(c => ({ id: Number(c.id), name: decrypt(c.name) || '' }));
+  const users = await db.prepare("SELECT id, name, email FROM users WHERE role='engineer' AND active=1").all();
+  const findCustomer = name => customers.find(c => c.name.toLowerCase() === name.toLowerCase()) || null;
+  const findEngineer = q => users.find(u => u.name.toLowerCase() === q.toLowerCase() || (u.email || '').toLowerCase() === q.toLowerCase()) || null;
+  const existing = new Set((await db.prepare('SELECT customer_id, title, scheduled_date FROM maintenance_visits').all())
+    .map(v => `${v.customer_id}|${String(v.title).trim().toLowerCase()}|${String(v.scheduled_date).slice(0, 10)}`));
+  const seen = new Set();
+  const rows = read.rows.map((row, i) => {
+    const rowNum = i + 2, base = { row: rowNum, name: row.title || '', values: row };
+    const fail = (error, kind) => ({ ...base, action: 'error', error, kind });
+    for (const field of ['customer_name', 'title', 'scheduled_date']) if (!row[field]) return fail(`Missing: ${field}`);
+    const customer = findCustomer(row.customer_name);
+    if (!customer) return fail(`Customer not found: "${row.customer_name}"`);
+    const day = parseDay(row.scheduled_date);
+    if (!day) return fail(`scheduled_date must be a date (YYYY-MM-DD or DD/MM/YYYY), not "${row.scheduled_date}"`);
+    const engineers = [];
+    for (const name of (row.engineer_names || row.engineer_name || '').split(',').map(x => x.trim()).filter(Boolean)) {
+      const engineer = findEngineer(name);
+      if (!engineer) return fail(`Engineer not found: "${name}"`);
+      engineers.push(Number(engineer.id));
     }
-    return out;
-  };
+    const key = `${customer.id}|${row.title.trim().toLowerCase()}|${day}`;
+    if (existing.has(key)) return { ...base, action: 'unchanged', error: `Already there: ${customer.name}, ${day}` };
+    if (seen.has(key)) return fail('The same customer, title and day appear earlier in the file', 'duplicate');
+    seen.add(key);
+    const off = calendar.dayOff(day, cal);
+    return { ...base, action: 'create', warning: off ? (off.kind === 'holiday' ? `Public holiday: ${off.name}` : 'Not a working day') : null,
+      value: { customer_id: customer.id, title: row.title, description: row.description || null, scheduled_date: day, notes: row.notes || null, engineers } };
+  });
+  const count = action => rows.filter(r => r.action === action).length;
+  const { last } = await db.prepare('SELECT MAX(id) AS last FROM maintenance_visits').get();
+  const token = require('crypto').createHash('sha256').update(`${read.hash}|${userId}|${last || 0}`).digest('hex');
+  return { rows, token, counts: { create: count('create'), update: 0, unchanged: count('unchanged'), errors: count('error'), duplicates: rows.filter(r => r.kind === 'duplicate').length, total: rows.length } };
+}
+const visitPreviewOf = plan => ({ token: plan.token, counts: plan.counts,
+  rows: plan.rows.map(({ row, name, action, kind, error, warning, values }) => ({ row, name, action, kind, error: error || warning || undefined, values: action === 'create' ? undefined : values })) });
 
-  const customers = (await db.prepare('SELECT id, name FROM customers').all())
-    .map(c => ({ ...c, name: decrypt(c.name) }));
-  const users     = (await db.prepare("SELECT id, name, email FROM users WHERE role='engineer'").all());
-  const findCustomer = (name) => customers.find(c => c.name.toLowerCase() === name.toLowerCase())?.id || null;
-  const findEngineer = (q) => {
-    if (!q) return null;
-    const lq = q.toLowerCase();
-    return users.find(u => u.name.toLowerCase() === lq || u.email.toLowerCase() === lq)?.id || null;
-  };
+router.post('/import/preview', requireManagerOrPlanner, upload.single('file'), async (req, res) => {
+  const read = await readVisitWorkbook(req.file);
+  if (read.error) return res.status(400).json({ error: read.error });
+  res.json(visitPreviewOf(await planVisitImport(read, req.user.id)));
+});
 
-  const insertStmt = db.prepare(
-    'INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, notes, created_by) VALUES (?,?,?,?,?,?)'
-  );
-  const insEng = db.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING');
-
+router.post('/import', requireManagerOrPlanner, upload.single('file'), async (req, res) => {
+  const read = await readVisitWorkbook(req.file);
+  if (read.error) return res.status(400).json({ error: read.error });
+  const plan = await planVisitImport(read, req.user.id);
+  if (req.body?.preview_token && req.body.preview_token !== plan.token)
+    return res.status(409).json({ error: 'The file or the visits changed since the review. Review the import again.', code: 'IMPORT_CHANGED', preview: visitPreviewOf(plan) });
   let imported = 0;
-  const errors = [];
-
-  // Per-row autocommit — partial-success import (invalid rows skipped/reported).
-  for (let i = 0; i < rows.length; i++) {
-    const row = normalize(rows[i]);
-    const rowNum = i + 2;
-    if (!row.customer_name) { errors.push({ row: rowNum, error: 'Missing: customer_name' }); continue; }
-    if (!row.title)          { errors.push({ row: rowNum, error: 'Missing: title' });         continue; }
-    if (!row.scheduled_date) { errors.push({ row: rowNum, error: 'Missing: scheduled_date' }); continue; }
-
-    const customerId = findCustomer(row.customer_name);
-    if (!customerId) { errors.push({ row: rowNum, error: `Customer not found: "${row.customer_name}"` }); continue; }
-
-    // engineer_names can be comma-separated
-    const engNames = (row.engineer_names || row.engineer_name || '').split(',').map(s => s.trim()).filter(Boolean);
-    const engIds = [];
-    let missingEng = false;
-    for (const name of engNames) {
-      const id = findEngineer(name);
-      if (!id) { errors.push({ row: rowNum, error: `Engineer not found: "${name}"` }); missingEng = true; break; }
-      engIds.push(id);
-    }
-    if (missingEng) continue;
-
+  const errors = plan.rows.filter(r => r.action !== 'create').map(r => ({ row: r.row, error: r.error }));
+  // Each new visit on its own: one that fails is reported, the others go in.
+  for (const row of plan.rows.filter(r => r.action === 'create')) {
     try {
-      const r = await insertStmt.run(customerId, row.title, row.description || null, row.scheduled_date, row.notes || null, req.user.id);
-      for (const uid of engIds) await insEng.run(r.lastInsertRowid, uid);
+      await db.transaction(async tx => {
+        const created = await tx.prepare('INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, notes, created_by) VALUES (?,?,?,?,?,?)')
+          .run(row.value.customer_id, row.value.title, row.value.description, row.value.scheduled_date, row.value.notes, req.user.id);
+        for (const uid of row.value.engineers) await tx.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING').run(created.lastInsertRowid, uid);
+      });
       imported++;
-    } catch (e) {
-      errors.push({ row: rowNum, error: e.message });
-    }
+    } catch (e) { errors.push({ row: row.row, error: e.message }); }
   }
-
   res.json({ imported, skipped: errors.length, errors });
 });
 

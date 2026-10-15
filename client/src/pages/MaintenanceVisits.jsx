@@ -760,7 +760,11 @@ export default function MaintenanceVisits() {
         <ImportModal
           title="Import Maintenance Visits"
           templateUrl={api.maintenanceVisitsTemplateUrl()}
-          importFn={api.importVisits}
+          previewFn={api.previewVisitImport}
+          importFn={(file, { previewToken }) => api.importVisits(file, { previewToken })}
+          noun={['visit', 'visits']}
+          unchangedLabel="already planned (skipped)"
+          listUnchanged
           columns={MV_COLUMNS}
           onClose={() => setShowImport(false)}
           onDone={load}
