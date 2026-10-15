@@ -33,6 +33,7 @@ const PUBLIC = new Set([
   'auth GET /saml/login',           // starts a Microsoft sign-in
   'auth POST /saml/acs',            // authorised by Entra's signed SAML assertion
   'ical GET /',                     // authorised by a scoped, hashed feed token in ?token=
+  'ical GET /:token.ics',           // the same feed, the token in the path (Outlook prefers an address ending in .ics)
   'bots POST /webex/events',        // authorised by the webhook's HMAC signature (Webex)
   'bots POST /teams/messages',      // authorised by a Microsoft-signed token for our app id
 ]);
