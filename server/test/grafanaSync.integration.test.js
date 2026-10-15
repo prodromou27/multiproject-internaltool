@@ -100,3 +100,32 @@ test('turned on, a sync applies the differences itself; a Grafana failure is rep
   assert.equal((await grafana.settings()).last_result.ok, false);
   assert.ok(metro);
 });
+
+test('with a dashboard UID, each sync reads the takes from the dashboard; your own entries still win', async () => {
+  const s = await grafana.settings();
+  await grafana.saveSettings({ ...s, auto_apply: false, take_map: { 998000035: 127 }, dashboard_uid: 'd7c568e4-18e5-498d-8006-05ccdc1ca7df' });
+  const v2 = { apiVersion: 'dashboard.grafana.app/v2', ...dashboard };
+  v2.spec.elements['panel-16'].spec.vizConfig.spec.fieldConfig.defaults.mappings[0].options[996000055] = { text: 'Take 130' };
+  const asked = [];
+  const withDashboard = async (url, options) => {
+    asked.push(url);
+    if (url.includes('/api/dashboards/uid/')) return { ok: false, status: 404 }; // newer Grafana: v2 API only
+    if (url.includes('/apis/dashboard.grafana.app/v2/namespaces/default/dashboards/d7c568e4-18e5-498d-8006-05ccdc1ca7df')) return { ok: true, status: 200, json: async () => v2 };
+    return fetchImpl(url, options);
+  };
+  const result = await grafana.sync({ fetchImpl: withDashboard, validateUrl });
+  assert.deepEqual(result.dashboard, { builds: 4, conflicts: 1 });
+  const saved = await grafana.settings();
+  assert.equal(saved.dashboard_take_map['996000055'], 130, 'a mapping added in Grafana arrives without importing');
+  assert.deepEqual(saved.dashboard_conflicts, { 998000035: [127, 126] });
+  assert.equal(grafana.takesOf(saved)['998000035'], 127, 'the manager settled the conflict');
+  const rows = Object.fromEntries((await api('/api/grafana/devices', { token: ids.tokenManager })).data.rows.map(r => [r.host_name, r]));
+  assert.equal(rows['UNKNOWN-FW'].take, 130);
+
+  // The dashboard unreachable: the sync goes on with the last mappings read.
+  const down = await grafana.sync({ fetchImpl: async (url, options) => (url.includes('dashboard') ? { ok: false, status: 500 } : fetchImpl(url, options)), validateUrl });
+  assert.equal(down.ok, true);
+  assert.match(down.dashboard.error, /could not be read/);
+  assert.equal((await grafana.settings()).dashboard_take_map['996000055'], 130);
+  assert.equal((await api('/api/grafana/settings', { method: 'PUT', token: ids.tokenManager, body: { dashboard_uid: 'no spaces allowed' } })).status, 400);
+});

@@ -46,6 +46,10 @@ router.put('/settings', async (req, res) => {
     next.take_map = body.take_map;
   }
   if (body.auto_apply !== undefined) next.auto_apply = body.auto_apply === true;
+  if (body.dashboard_uid !== undefined) {
+    if (typeof body.dashboard_uid !== 'string' || !/^[\w-]{0,80}$/.test(body.dashboard_uid)) return bad(res, 'The dashboard is its UID (letters, digits, - and _)');
+    next.dashboard_uid = body.dashboard_uid;
+  }
   await grafana.saveSettings(next);
   await logAudit(db, req, 'grafana_sync', null, 'Grafana device sync', 'settings_updated', Object.keys(body).filter(k => k !== 'token').join(', ') + (body.token ? ', token' : ''));
   res.json(grafana.publicSettings(next));

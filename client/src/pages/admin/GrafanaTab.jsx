@@ -12,7 +12,7 @@ const linesToMap = (text, valueOf) => Object.fromEntries(text.split('\n').map(li
 
 function Connection({ settings, onSaved }) {
   const toast = useToast();
-  const [form, setForm] = useState({ base_url: settings.base_url, token: '', datasource_uid: settings.datasource_uid, version_query: settings.version_query, model_query: settings.model_query,
+  const [form, setForm] = useState({ base_url: settings.base_url, token: '', datasource_uid: settings.datasource_uid, dashboard_uid: settings.dashboard_uid || '', version_query: settings.version_query, model_query: settings.model_query,
     version_map: Object.entries(settings.version_map).map(([k, v]) => `${k} = ${v}`).join('\n'), auto_apply: settings.auto_apply });
   const [saving, setSaving] = useState(false);
   const set = key => event => setForm(f => ({ ...f, [key]: event.target.type === 'checkbox' ? event.target.checked : event.target.value }));
@@ -29,6 +29,7 @@ function Connection({ settings, onSaved }) {
       <div className="form-group"><label htmlFor="grafana-url">Grafana address</label><input id="grafana-url" placeholder="https://grafana.internal:3000" value={form.base_url} onChange={set('base_url')} /></div>
       <div className="form-group"><label htmlFor="grafana-uid">Prometheus data source UID</label><input id="grafana-uid" placeholder="fe8guxq67er5sf" value={form.datasource_uid} onChange={set('datasource_uid')} /></div>
     </div>
+    <div className="form-group"><label htmlFor="grafana-dashboard-uid">Dashboard UID (its "Take N" value mappings are read at each sync)</label><input id="grafana-dashboard-uid" placeholder="d7c568e4-18e5-498d-8006-05ccdc1ca7df" value={form.dashboard_uid} onChange={set('dashboard_uid')} /></div>
     <div className="form-group"><label htmlFor="grafana-token">Service-account token (Viewer)</label><input id="grafana-token" type="password" autoComplete="off" placeholder={settings.token_set ? 'Saved — type a new one to replace it' : 'glsa_…'} value={form.token} onChange={set('token')} /></div>
     <details><summary className="text-sm">Queries and version names</summary>
       <div className="form-group"><label htmlFor="grafana-version-query">Version query (value = hotfix build, label <code>name</code> = version line)</label><input id="grafana-version-query" value={form.version_query} onChange={set('version_query')} /></div>
@@ -60,8 +61,12 @@ function Takes({ settings, onSaved }) {
   }
   return <section className="card" style={{ padding: 14, marginBottom: 14 }} aria-label="Hotfix builds">
     <h3 className="section-title">Hotfix build → take</h3>
-    <p className="text-sm text-muted">Grafana reports the Jumbo Hotfix as a build number (e.g. 996000077). Each build here becomes its take (Take 170); builds not listed are shown, not guessed.</p>
-    <div className="form-group"><label htmlFor="grafana-takes">One per line: build = take</label><textarea id="grafana-takes" rows={6} value={text} onChange={e => setText(e.target.value)} /></div>
+    <p className="text-sm text-muted">Grafana reports the Jumbo Hotfix as a build number (e.g. 996000077) and shows it as a take through the dashboard's value mappings. Those mappings are read from the dashboard at each sync; builds with no mapping are shown, not guessed.</p>
+    {settings.dashboard_uid
+      ? <p className="text-sm" role="status">From the dashboard: {Object.keys(settings.dashboard_take_map).length} builds{settings.dashboard_read_at ? `, read ${fmtDateTime(settings.dashboard_read_at)}` : ' (read at the next sync)'}.</p>
+      : <p className="text-sm text-muted">Add the dashboard UID above to read its mappings automatically, or keep the list below by hand.</p>}
+    {Object.keys(settings.dashboard_conflicts || {}).length > 0 && <p className="alert alert-warning" role="note">Mapped differently in the dashboard; add the right take below: {Object.entries(settings.dashboard_conflicts).map(([build, takes]) => `${build} (Take ${takes.join(' or ')})`).join(', ')}.</p>}
+    <div className="form-group"><label htmlFor="grafana-takes">Your own entries, one per line: build = take (they take precedence over the dashboard)</label><textarea id="grafana-takes" rows={6} value={text} onChange={e => setText(e.target.value)} /></div>
     <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={save}>Save take list</button>
     <div className="form-group" style={{ marginTop: 10 }}><label htmlFor="grafana-dashboard">Or paste a dashboard's JSON to take its value mappings</label><textarea id="grafana-dashboard" rows={3} value={paste} onChange={e => setPaste(e.target.value)} placeholder='{"apiVersion": "dashboard.grafana.app/v2", …}' /></div>
     <button type="button" className="btn btn-ghost btn-sm" disabled={busy || !paste.trim()} onClick={importDashboard}>Import from dashboard</button>

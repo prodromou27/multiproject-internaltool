@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mockApi } from './support/mockApi.js';
 
-const settings = { base_url: 'http://grafana.internal:3000', datasource_uid: 'fe8guxq67er5sf', version_query: 'system_gaia_module_version{module="Firewall-1"}', model_query: 'hardware_model',
+const settings = { base_url: 'http://grafana.internal:3000', datasource_uid: 'fe8guxq67er5sf', dashboard_uid: 'd7c568e4', dashboard_take_map: { 996000077: 170, 997000046: 99 }, dashboard_conflicts: { 998000035: [127, 126] }, dashboard_read_at: '2026-10-15T08:00:00Z', version_query: 'system_gaia_module_version{module="Firewall-1"}', model_query: 'hardware_model',
   take_map: { 996000077: 170 }, version_map: { jess_main: 'R82.10' }, auto_apply: false, token_set: true, last_sync_at: '2026-10-15T08:00:00Z', last_result: { ok: true, devices: 3, differs: 1, unmatched: 1, unknown_takes: 1, applied: 0 } };
 const devices = [
   { host_name: 'EXTFW01', model: 'Check Point 6600', version_label: 'R81_20_jumbo_hf_main', build: '996000077', take: 170, proposed_version: 'R81.20 Take 170', status: 'differs',
@@ -38,6 +38,16 @@ test('managers review Grafana devices, apply the differences, and link the unmat
 
   await page.getByLabel("Or paste a dashboard's JSON to take its value mappings").fill('{"spec":{}}');
   await page.getByRole('button', { name: 'Import from dashboard' }).click();
-  await expect(page.getByText('998000035 (Take 127 or 126)')).toBeVisible();
+  await expect(page.getByText('so not imported; add the right take above: 998000035 (Take 127 or 126)', { exact: false })).toBeVisible();
   expect(imported).toEqual({ dashboard: '{"spec":{}}' });
+});
+
+test('the takes read from the dashboard and its conflicts are shown', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/grafana/settings', () => ({ body: settings }));
+  api.override('GET /api/grafana/devices', () => ({ body: { rows: [] } }));
+  await page.goto('/settings/grafana');
+  await expect(page.getByLabel(/Dashboard UID/)).toHaveValue('d7c568e4');
+  await expect(page.getByText(/^From the dashboard: 2 builds, read/)).toBeVisible();
+  await expect(page.getByText('Mapped differently in the dashboard; add the right take below: 998000035 (Take 127 or 126).')).toBeVisible();
 });

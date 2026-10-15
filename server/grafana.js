@@ -28,7 +28,12 @@ const DEFAULTS = {
   version_query: 'system_gaia_module_version{module="Firewall-1", service_namespace="vs_id_0"}',
   model_query: 'hardware_model',
   take_map: {}, version_map: {}, auto_apply: false,
+  // The dashboard whose value mappings say which build is which take (read at each sync).
+  dashboard_uid: '', dashboard_take_map: {}, dashboard_conflicts: {}, dashboard_read_at: null,
 };
+
+/** Build → take: the dashboard's mappings, with a manager's own entries taking precedence. */
+const takesOf = s => ({ ...(s.dashboard_take_map || {}), ...(s.take_map || {}) });
 
 async function settings(store = db) {
   const row = await store.prepare('SELECT value FROM settings WHERE key = ?').get(KEY);
@@ -40,12 +45,38 @@ const saveSettings = (value, store = db) => store.prepare('INSERT INTO settings 
 
 /** The settings as shown to managers: never the token itself. */
 const publicSettings = s => ({ base_url: s.base_url, datasource_uid: s.datasource_uid, version_query: s.version_query, model_query: s.model_query,
-  take_map: s.take_map, version_map: s.version_map, auto_apply: !!s.auto_apply, token_set: !!s.token, last_sync_at: s.last_sync_at || null, last_result: s.last_result || null });
+  take_map: s.take_map, version_map: s.version_map, auto_apply: !!s.auto_apply, token_set: !!s.token, last_sync_at: s.last_sync_at || null, last_result: s.last_result || null,
+  dashboard_uid: s.dashboard_uid || '', dashboard_take_map: s.dashboard_take_map || {}, dashboard_conflicts: s.dashboard_conflicts || {}, dashboard_read_at: s.dashboard_read_at || null });
 
 /* ── Reading the data ────────────────────────────────────────────── */
+const checkedBase = (s, validateUrl) => validateUrl(s.base_url, { label: 'Grafana address', allowHttp: true, allowPrivate: process.env.ALLOW_PRIVATE_GRAFANA_URLS !== 'false' });
+
+/**
+ * The dashboard's build → take mappings, read through Grafana's API. Grafana keeps
+ * these as display mappings ("996000077" shown as "Take 170"); the data API returns
+ * the raw build, so the mappings are read from the dashboard itself. Newer Grafana
+ * (dashboard schema v2) and the classic API are both tried.
+ */
+async function dashboardTakes(s, { fetchImpl = pinnedFetch, validateUrl = assertPublicHttpUrl } = {}) {
+  const base = await checkedBase(s, validateUrl);
+  const uid = encodeURIComponent(s.dashboard_uid);
+  const paths = [`/api/dashboards/uid/${uid}`, `/apis/dashboard.grafana.app/v2/namespaces/default/dashboards/${uid}`, `/apis/dashboard.grafana.app/v2beta1/namespaces/default/dashboards/${uid}`];
+  let last = 'not found';
+  for (const path of paths) {
+    const response = await fetchImpl(new URL(path, base).toString(), { method: 'GET', addresses: base.validatedAddresses,
+      headers: { Authorization: `Bearer ${decrypt(s.token)}`, Accept: 'application/json' } });
+    if (response.status === 401 || response.status === 403) throw new Error('Grafana refused the token for the dashboard (it needs Viewer rights on it)');
+    if (!response.ok) { last = `HTTP ${response.status}`; continue; }
+    const result = takeMapFromDashboard(await response.json());
+    if (Object.keys(result.map).length || Object.keys(result.conflicts).length) return result;
+    last = 'no "Take N" value mappings in it';
+  }
+  throw new Error(`The dashboard could not be read (${last})`);
+}
+
 async function query(s, { fetchImpl = pinnedFetch, validateUrl = assertPublicHttpUrl } = {}) {
   if (!s.base_url || !s.token || !s.datasource_uid) throw new Error('Grafana is not set up: enter its address, a token and the data source');
-  const base = await validateUrl(s.base_url, { label: 'Grafana address', allowHttp: true, allowPrivate: process.env.ALLOW_PRIVATE_GRAFANA_URLS !== 'false' });
+  const base = await checkedBase(s, validateUrl);
   const url = new URL('/api/ds/query', base);
   const body = JSON.stringify({ from: 'now-15m', to: 'now', queries: [
     { refId: 'A', datasource: { uid: s.datasource_uid, type: 'prometheus' }, expr: s.version_query, instant: true, range: false, format: 'table' },
@@ -99,7 +130,8 @@ function devicesFrom({ versions, models }, s) {
     const host = String(row.labels?.host_name || '').trim();
     if (!host) continue;
     const build = row.value == null ? null : String(Math.round(Number(row.value)));
-    const take = build && Object.hasOwn(s.take_map, build) ? Number(s.take_map[build]) : null;
+    const takes = takesOf(s);
+    const take = build && Object.hasOwn(takes, build) ? Number(takes[build]) : null;
     byHost.set(host, { host_name: host, version_label: row.labels.name || null, version: versionOf(row.labels.name, s.version_map), build, take, model: null });
   }
   for (const row of models) {
@@ -157,7 +189,8 @@ async function review(store = db) {
     assetsIndex(store),
   ]);
   // Take and version line from the current lists, so a mapping added later applies at once.
-  const devices = stored.map(d => ({ ...d, take: d.build && Object.hasOwn(s.take_map, d.build) ? Number(s.take_map[d.build]) : null, version: versionOf(d.version_label, s.version_map) || d.version }));
+  const takes = takesOf(s);
+  const devices = stored.map(d => ({ ...d, take: d.build && Object.hasOwn(takes, d.build) ? Number(takes[d.build]) : null, version: versionOf(d.version_label, s.version_map) || d.version }));
   const linkOf = new Map(links.map(link => [norm(link.host_name), link]));
   const byId = new Map(assets.map(a => [a.id, a]));
   return devices.map(device => {
@@ -216,9 +249,17 @@ async function apply(hostNames, { userId = null, store = db } = {}) {
 
 /** Reads Grafana, keeps what each device runs, and (when switched on) applies the differences. */
 async function sync({ store = db, fetchImpl, validateUrl, userId = null } = {}) {
-  const s = await settings(store);
-  let result;
+  let s = await settings(store);
+  let result, dashboard = null;
   try {
+    // The dashboard's current mappings first; if it cannot be read, the last ones read are kept.
+    if (s.dashboard_uid && s.base_url && s.token) {
+      try {
+        const read = await dashboardTakes(s, { fetchImpl, validateUrl });
+        s = { ...s, dashboard_take_map: read.map, dashboard_conflicts: read.conflicts, dashboard_read_at: new Date().toISOString() };
+        dashboard = { builds: Object.keys(read.map).length, conflicts: Object.keys(read.conflicts).length };
+      } catch (error) { dashboard = { error: error.message }; }
+    }
     const devices = devicesFrom(await query(s, { fetchImpl, validateUrl }), s);
     await store.transaction(async tx => {
       for (const d of devices) {
@@ -232,7 +273,7 @@ async function sync({ store = db, fetchImpl, validateUrl, userId = null } = {}) 
     let applied = [];
     if (s.auto_apply) applied = await apply(rows.filter(row => row.status === 'differs').map(row => row.host_name), { userId, store });
     result = { ok: true, devices: devices.length, differs: count('differs') - applied.length, unmatched: count('unmatched') + count('ambiguous'),
-      unknown_takes: devices.filter(d => d.build && !d.take).length, applied: applied.length };
+      unknown_takes: devices.filter(d => d.build && !d.take).length, applied: applied.length, ...(dashboard ? { dashboard } : {}) };
   } catch (error) {
     result = { ok: false, error: error.message };
   }
@@ -240,4 +281,4 @@ async function sync({ store = db, fetchImpl, validateUrl, userId = null } = {}) 
   return result;
 }
 
-module.exports = { KEY, DEFAULTS, settings, saveSettings, publicSettings, query, rowsOf, versionOf, devicesFrom, softwareVersionOf, takeMapFromDashboard, review, apply, sync };
+module.exports = { KEY, DEFAULTS, settings, saveSettings, publicSettings, takesOf, dashboardTakes, query, rowsOf, versionOf, devicesFrom, softwareVersionOf, takeMapFromDashboard, review, apply, sync };
