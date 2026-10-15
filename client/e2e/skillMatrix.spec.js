@@ -60,3 +60,53 @@ test('the skill matrix is not offered to engineers', async ({ page }) => {
   await page.goto('/skills');
   await expect(page.getByRole('heading', { name: 'Skill matrix' })).toHaveCount(0);
 });
+
+test('a coverage gap becomes a learning plan with a suggested mentor; finishing it leaves the rating alone', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/skills', () => ({ body: matrix([{ user_id: 8, technology_id: 2, level: 4 }]) }));
+  let plans = [];
+  let created = null, closed = null;
+  api.override('GET /api/skills/plans', () => ({ body: { plans, mentors: [{ technology_id: 2, id: 8, name: 'Nikos Georgiou', level: 4 }] } }));
+  api.override('POST /api/skills/plans', ({ body }) => {
+    created = body;
+    plans = [{ id: 31, user_id: 7, technology_id: 2, engineer_name: 'Maria Ioannou', technology_name: 'Check Point', mentor_name: 'Nikos Georgiou', current_level: null, target_level: 3, target_date: body.target_date, status: 'active', overdue: false,
+      steps: [{ id: 1, title: 'Shadow two upgrades', done_at: null }], reviews: [] }];
+    return { status: 201, body: plans[0] };
+  });
+  api.override('PUT /api/skills/plans/31', ({ body }) => { closed = body; plans = plans.map(p => ({ ...p, status: body.status })); return { body: plans[0] }; });
+
+  await page.goto('/skills');
+  await page.getByRole('tab', { name: /Coverage/ }).click();
+  await page.getByRole('button', { name: 'Start a learning plan for Check Point' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Learning plan: Check Point' });
+  await expect(dialog.getByLabel('Mentor')).toHaveValue('8');
+  await expect(dialog.getByLabel('Mentor').locator('option', { hasText: 'Nikos Georgiou (Expert, suggested)' })).toHaveCount(1);
+  await dialog.getByLabel('Engineer *').selectOption({ label: 'Maria Ioannou' });
+  await dialog.getByLabel('Target date *').fill('2027-03-31');
+  await dialog.getByLabel('Evidence steps, one per line').fill('Shadow two upgrades\n\nLead one upgrade');
+  await dialog.getByRole('button', { name: 'Start plan' }).click();
+  expect(created).toEqual({ user_id: 7, technology_id: 2, target_level: 3, target_date: '2027-03-31', mentor_id: 8, steps: ['Shadow two upgrades', 'Lead one upgrade'] });
+
+  await expect(page.getByRole('tab', { name: /Learning plans/ })).toHaveAttribute('aria-selected', 'true');
+  const row = page.getByRole('row', { name: /Maria Ioannou Check Point/ });
+  await expect(row.getByText('0 of 1 done')).toBeVisible();
+  await row.getByRole('button', { name: 'Complete' }).click();
+  await expect(page.getByText('Plan completed. Update the rating in the matrix if they reached the level.')).toBeVisible();
+  expect(closed).toEqual({ status: 'completed' });
+  expect(api.calls.some(call => call.method === 'PUT' && call.path.startsWith('/api/skills/ratings'))).toBe(false);
+});
+
+test('engineers see their learning plan in My Work and tick off its steps', async ({ page }) => {
+  const api = await mockApi(page, { role: 'engineer' });
+  const plan = { id: 31, user_id: 1, technology_id: 2, engineer_name: 'Alex Mercer', technology_name: 'Check Point', mentor_name: 'Nikos Georgiou', target_level: 3, target_date: '2027-03-31', status: 'active', overdue: false,
+    steps: [{ id: 1, title: 'Shadow two upgrades', done_at: null }], reviews: [] };
+  let ticked = null;
+  api.override('GET /api/skills/plans/mine', () => ({ body: { plans: [plan] } }));
+  api.override('PUT /api/skills/plans/31/steps/1', ({ body }) => { ticked = body; return { body: { ...plan, steps: [{ ...plan.steps[0], done_at: '2026-10-15T10:00:00Z' }] } }; });
+  await page.goto('/my-day');
+  const card = page.getByRole('region', { name: 'Learning plans' });
+  await expect(card.getByText(/mentor Nikos Georgiou/)).toBeVisible();
+  await card.getByLabel('Shadow two upgrades').click();
+  await expect(card.getByLabel('Shadow two upgrades')).toBeChecked();
+  expect(ticked).toEqual({ done: true });
+});

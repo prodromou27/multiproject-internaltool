@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { MyLearningPlans } from './skills/LearningPlans';
 import { LoadError } from '../components/LoadError';
 import { Link } from 'react-router-dom';
 import { ArrowRight, BellRing, Building2, CalendarDays, CheckCircle2, Clock, ClipboardList, FolderOpen, Pause, Play, Plus, RotateCw, TimerReset, Wrench } from 'lucide-react';
@@ -279,6 +280,7 @@ export default function EngineerHub() {
           {item.customer_id && <Link className="btn btn-ghost btn-sm" to={`/customers/${item.customer_id}/service-profile?section=tasks&task=${item.task_id}`}>Open task</Link>}
         </li>)}</ul>
       </section>}
+      <MyLearningPlans userId={user.id} />
       <section className="card mt-16"><div className="section-header"><h2 className="section-title">Personal Kanban</h2><Link to="/tasks">All tasks →</Link></div><div className="engineer-kanban">{KANBAN.map(([status, label]) => <div className="kanban-column" key={status} onDragOver={e => e.preventDefault()} onDrop={() => moveTask(dragged, status)}><h3>{label}<span>{tasks.filter(t => t.status === status).length}</span></h3>{tasks.filter(t => t.status === status).map(task => { return <article key={task.id} draggable onDragStart={() => setDragged(task)} className="kanban-card"><div className="kanban-card-title">{task.title}</div><div className="kanban-card-meta"><PriorityBadge p={task.priority} />{task.deadline && <span>{fmtDate(task.deadline)}</span>}</div>{task.subtasks_total > 0 && <div className="kanban-subtasks"><SubtaskProgress total={task.subtasks_total} done={task.subtasks_done} onClick={() => setSubtasksFor(task)} /></div>}<div className="kanban-actions"><button onClick={() => setSubtasksFor(task)} title="Subtasks" aria-label={`Subtasks of ${task.title}`}><Plus size={11} /></button>{!timer && <button onClick={() => startTimer(task)} title="Start timer"><TimerReset size={11} /></button>}<select defaultValue="" onChange={e => { if (e.target.value) quickNote(task, e.target.value); e.target.value = ''; }}><option value="">Quick update…</option>{QUICK_NOTES.map(note => <option key={note}>{note}</option>)}</select></div></article>; })}</div>)}</div></section>
 
       {!managedFocus && (saAccess?.enabled || managedCustomers.length > 0) && <ServiceActivityCard stats={overview?.service} customers={managedCustomers} canLog={saAccess.enabled} />}

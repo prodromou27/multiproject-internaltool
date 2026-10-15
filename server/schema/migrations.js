@@ -1260,6 +1260,39 @@ async function applyMigrations(pool, transaction) {
     -- Who a closure request was handed to (approvalAging.js); empty means any manager.
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL;
   `]);
+  migrations.push(['20261113_learning_plans', `
+    -- Learning plans (routes/skills.js): a skill gap turned into a mentor, a target
+    -- level and date, and evidence steps; reviewed by managers. Training only: a plan
+    -- never changes a skill rating by itself.
+    CREATE TABLE IF NOT EXISTS learning_plans (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      technology_id INTEGER NOT NULL REFERENCES technologies(id) ON DELETE CASCADE,
+      target_level INTEGER NOT NULL CHECK (target_level BETWEEN 1 AND 4),
+      target_date TEXT NOT NULL,
+      mentor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','completed','cancelled')),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT ${NOW},
+      closed_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_learning_plans_active ON learning_plans(user_id, technology_id) WHERE status = 'active';
+    CREATE TABLE IF NOT EXISTS learning_plan_steps (
+      id SERIAL PRIMARY KEY,
+      plan_id INTEGER NOT NULL REFERENCES learning_plans(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      done_at TEXT,
+      done_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      position INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS learning_plan_reviews (
+      id SERIAL PRIMARY KEY,
+      plan_id INTEGER NOT NULL REFERENCES learning_plans(id) ON DELETE CASCADE,
+      note TEXT NOT NULL,
+      reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      reviewed_at TEXT DEFAULT ${NOW}
+    );
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

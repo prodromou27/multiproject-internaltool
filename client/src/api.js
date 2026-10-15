@@ -632,6 +632,12 @@ export const api = {
   taskInsights: (days, filters = {}, options) => req('GET', `/insights/tasks?${new URLSearchParams({ days, ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value != null)) })}`, undefined, options),
   rateSkill: (userId, technologyId, data) => req('PUT', `/skills/ratings/${userId}/${technologyId}`, data),
   setSkillTarget: (technologyId, data) => req('PUT', `/skills/technologies/${technologyId}/target`, data),
+  learningPlans: (options) => req('GET', '/skills/plans', undefined, options),
+  myLearningPlans: (options) => req('GET', '/skills/plans/mine', undefined, options),
+  createLearningPlan: body => req('POST', '/skills/plans', body),
+  updateLearningPlan: (id, body) => req('PUT', `/skills/plans/${id}`, body),
+  setLearningPlanStep: (id, stepId, done) => req('PUT', `/skills/plans/${id}/steps/${stepId}`, { done }),
+  reviewLearningPlan: (id, body) => req('POST', `/skills/plans/${id}/reviews`, body),
 
   // service activities (Activity Log / MSP Operations Log)
   exportServiceActivities: async (params = {}) => {

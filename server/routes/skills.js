@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const db = require('../db');
-const { requirePermission } = require('../middleware/auth');
+const { requireAuth, requirePermission } = require('../middleware/auth');
 const { hasPermission } = require('../permissions');
 const { logAudit } = require('../auditLog');
 const appTime = require('../appTime');
@@ -82,6 +82,133 @@ router.put('/technologies/:id/target', requirePermission('skills.manage'), async
   await db.prepare('UPDATE technologies SET skill_target = ? WHERE id = ?').run(target, id);
   await logAudit(db, req, 'technology', id, technology.name, 'updated', `Skilled engineers needed: ${target}`);
   res.json({ ok: true });
+});
+
+/* ── Learning plans (E08): a gap becomes a mentor, a target and evidence steps ── */
+const realDay = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+const stepTitles = value => Array.isArray(value) && value.length <= 20 && value.every(t => typeof t === 'string' && t.trim() && t.trim().length <= 200) ? value.map(t => t.trim()) : null;
+
+async function plansWhere(where, params) {
+  const plans = await db.prepare(`SELECT p.*, u.name AS engineer_name, t.name AS technology_name, m.name AS mentor_name, s.level AS current_level
+    FROM learning_plans p JOIN users u ON u.id = p.user_id JOIN technologies t ON t.id = p.technology_id
+    LEFT JOIN users m ON m.id = p.mentor_id LEFT JOIN engineer_skills s ON s.user_id = p.user_id AND s.technology_id = p.technology_id
+    WHERE ${where} ORDER BY CASE p.status WHEN 'active' THEN 0 ELSE 1 END, p.target_date, p.id`).all(...params);
+  if (!plans.length) return [];
+  const ids = plans.map(p => p.id), marks = ids.map(() => '?').join(',');
+  const [steps, reviews] = await Promise.all([
+    db.prepare(`SELECT id, plan_id, title, done_at FROM learning_plan_steps WHERE plan_id IN (${marks}) ORDER BY position, id`).all(...ids),
+    db.prepare(`SELECT r.id, r.plan_id, r.note, r.reviewed_at, u.name AS reviewed_by_name FROM learning_plan_reviews r LEFT JOIN users u ON u.id = r.reviewed_by WHERE r.plan_id IN (${marks}) ORDER BY r.reviewed_at DESC, r.id DESC`).all(...ids),
+  ]);
+  const today = appTime.today();
+  return plans.map(p => ({ ...p, current_level: p.current_level == null ? null : Number(p.current_level), overdue: p.status === 'active' && p.target_date < today,
+    steps: steps.filter(s => s.plan_id === p.id), reviews: reviews.filter(r => r.plan_id === p.id) }));
+}
+
+// Everyone's plans (skill viewers), and who could mentor each technology (Senior or better).
+router.get('/plans', requirePermission('skills.view'), async (req, res) => {
+  const mentors = await db.prepare(`SELECT s.technology_id, u.id, u.name, s.level FROM engineer_skills s JOIN users u ON u.id = s.user_id
+    WHERE u.active = 1 AND u.role = 'engineer' AND s.level >= 3 ORDER BY s.level DESC, u.name`).all();
+  res.json({ plans: await plansWhere('1=1', []), mentors: mentors.map(m => ({ ...m, level: Number(m.level) })) });
+});
+// An engineer's own plans (and those they mentor), for My Work.
+router.get('/plans/mine', requireAuth, async (req, res) => {
+  res.json({ plans: await plansWhere("(p.user_id = ? OR p.mentor_id = ?) AND p.status = 'active'", [req.user.id, req.user.id]) });
+});
+
+async function planInput(body, { creating }) {
+  const out = {};
+  if (creating) {
+    out.user_id = positiveId(body?.user_id); out.technology_id = positiveId(body?.technology_id);
+    if (!out.user_id || !out.technology_id) return { error: 'Choose the engineer and the technology' };
+    if (!await db.prepare("SELECT 1 FROM users WHERE id = ? AND active = 1 AND role = 'engineer'").get(out.user_id)) return { error: 'Engineer not found' };
+    if (!await db.prepare('SELECT 1 FROM technologies WHERE id = ? AND active = 1').get(out.technology_id)) return { error: 'Technology not found' };
+  }
+  if (creating || body?.target_level !== undefined) {
+    if (!LEVELS.some(l => l.value === body?.target_level)) return { error: 'Target level must be Junior, Intermediate, Senior or Expert' };
+    out.target_level = body.target_level;
+  }
+  if (creating || body?.target_date !== undefined) {
+    if (!realDay(body?.target_date)) return { error: 'Target date must be a date (YYYY-MM-DD)' };
+    out.target_date = body.target_date;
+  }
+  if (body?.mentor_id !== undefined) {
+    out.mentor_id = body.mentor_id === null ? null : positiveId(body.mentor_id);
+    if (body.mentor_id !== null && !out.mentor_id) return { error: 'Invalid mentor' };
+    if (out.mentor_id && !await db.prepare("SELECT 1 FROM users WHERE id = ? AND active = 1 AND role IN ('engineer','manager')").get(out.mentor_id)) return { error: 'The mentor must be an active engineer or manager' };
+  }
+  return { value: out };
+}
+
+router.post('/plans', requirePermission('skills.manage'), async (req, res) => {
+  const checked = await planInput(req.body, { creating: true });
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  const p = checked.value;
+  if (p.mentor_id === p.user_id) return res.status(400).json({ error: 'Someone cannot mentor themselves' });
+  const steps = req.body.steps === undefined ? [] : stepTitles(req.body.steps);
+  if (!steps) return res.status(400).json({ error: 'Up to 20 steps of up to 200 characters' });
+  if (await db.prepare("SELECT 1 FROM learning_plans WHERE user_id = ? AND technology_id = ? AND status = 'active'").get(p.user_id, p.technology_id))
+    return res.status(409).json({ error: 'This engineer already has an active plan for this technology' });
+  const id = await db.transaction(async tx => {
+    const created = await tx.prepare('INSERT INTO learning_plans (user_id, technology_id, target_level, target_date, mentor_id, created_by) VALUES (?, ?, ?, ?, ?, ?) RETURNING id')
+      .get(p.user_id, p.technology_id, p.target_level, p.target_date, p.mentor_id ?? null, req.user.id);
+    for (const [index, title] of steps.entries()) await tx.prepare('INSERT INTO learning_plan_steps (plan_id, title, position) VALUES (?, ?, ?)').run(created.id, title, index);
+    return created.id;
+  });
+  const [plan] = await plansWhere('p.id = ?', [id]);
+  await logAudit(db, req, 'learning_plan', id, `${plan.engineer_name} — ${plan.technology_name}`, 'created', `Target ${LEVELS.find(l => l.value === p.target_level).label} by ${p.target_date}`);
+  const { notifyUser } = require('../notifications');
+  for (const [userId, title] of [[p.user_id, `A learning plan for ${plan.technology_name} was set up with you`], [p.mentor_id, `You are mentoring ${plan.engineer_name} on ${plan.technology_name}`]])
+    if (userId && userId !== req.user.id) notifyUser(userId, 'learning_plan', { title, body: `Target: ${LEVELS.find(l => l.value === p.target_level).label} by ${p.target_date}.` }, { title, body: 'See My Work', link: '/my-day' }, { channels: false });
+  res.status(201).json(plan);
+});
+
+async function loadPlan(req, res) {
+  const id = positiveId(req.params.id);
+  const plan = id && await db.prepare('SELECT * FROM learning_plans WHERE id = ?').get(id);
+  if (!plan) { res.status(404).json({ error: 'Learning plan not found' }); return null; }
+  return plan;
+}
+
+router.put('/plans/:id', requirePermission('skills.manage'), async (req, res) => {
+  const plan = await loadPlan(req, res);
+  if (!plan) return;
+  const checked = await planInput(req.body, { creating: false });
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  const changes = { ...checked.value };
+  if (changes.mentor_id && changes.mentor_id === plan.user_id) return res.status(400).json({ error: 'Someone cannot mentor themselves' });
+  if (req.body.status !== undefined) {
+    if (!['active', 'completed', 'cancelled'].includes(req.body.status)) return res.status(400).json({ error: 'Status must be active, completed or cancelled' });
+    changes.status = req.body.status;
+    changes.closed_at = req.body.status === 'active' ? null : new Date().toISOString();
+  }
+  const keys = Object.keys(changes);
+  if (!keys.length) return res.status(400).json({ error: 'Nothing to change' });
+  await db.prepare(`UPDATE learning_plans SET ${keys.map(k => `${k} = ?`).join(', ')} WHERE id = ?`).run(...keys.map(k => changes[k]), plan.id);
+  await logAudit(db, req, 'learning_plan', plan.id, null, changes.status && changes.status !== plan.status ? `plan_${changes.status}` : 'updated', keys.join(', '));
+  res.json((await plansWhere('p.id = ?', [plan.id]))[0]);
+});
+
+// The engineer (or anyone who manages skills) ticks a step off.
+router.put('/plans/:id/steps/:stepId', requireAuth, async (req, res) => {
+  const plan = await loadPlan(req, res);
+  if (!plan) return;
+  const own = Number(plan.user_id) === Number(req.user.id);
+  if (!own && !await hasPermission(req.user, 'skills.manage')) return res.status(403).json({ error: 'Only the engineer or a skills manager can change the steps' });
+  if (typeof req.body?.done !== 'boolean') return res.status(400).json({ error: 'done must be true or false' });
+  const changed = await db.prepare('UPDATE learning_plan_steps SET done_at = ?, done_by = ? WHERE id = ? AND plan_id = ?')
+    .run(req.body.done ? new Date().toISOString() : null, req.body.done ? req.user.id : null, positiveId(req.params.stepId), plan.id);
+  if (!changed.changes) return res.status(404).json({ error: 'Step not found' });
+  res.json((await plansWhere('p.id = ?', [plan.id]))[0]);
+});
+
+router.post('/plans/:id/reviews', requirePermission('skills.manage'), async (req, res) => {
+  const plan = await loadPlan(req, res);
+  if (!plan) return;
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+  if (!note || note.length > 1000) return res.status(400).json({ error: 'A review note of up to 1000 characters' });
+  await db.prepare('INSERT INTO learning_plan_reviews (plan_id, note, reviewed_by) VALUES (?, ?, ?)').run(plan.id, note, req.user.id);
+  await logAudit(db, req, 'learning_plan', plan.id, null, 'reviewed', null);
+  res.status(201).json((await plansWhere('p.id = ?', [plan.id]))[0]);
 });
 
 module.exports = router;

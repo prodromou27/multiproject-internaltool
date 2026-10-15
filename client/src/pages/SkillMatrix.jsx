@@ -7,6 +7,7 @@ import { MetricStrip, Surface, Tabs, ToneBadge } from '../components/EnterpriseU
 import { fmtDate } from '../components/Shared';
 import { useToast } from '../components/Toast';
 import { useLiveVersion } from '../live';
+import { LearningPlans, PlanDialog } from './skills/LearningPlans';
 import './SkillMatrix.css';
 
 /* Skill matrix: each engineer rated per technology (Junior to Expert), with the
@@ -72,7 +73,7 @@ function Matrix({ data, technologies, engineers, rating, evidence, coverageOf, o
   </div>;
 }
 
-function Coverage({ data, technologies, engineersById, rating, coverageOf, onTarget }) {
+function Coverage({ data, technologies, engineersById, rating, coverageOf, onTarget, onPlan }) {
   const rows = [...technologies].sort((a, b) => RISK_ORDER[coverageOf(a.id).status] - RISK_ORDER[coverageOf(b.id).status] || b.devices - a.devices || a.name.localeCompare(b.name));
   const level = value => data.levels.find(l => l.value === value)?.label;
   return <div className="table-wrap">
@@ -89,7 +90,8 @@ function Coverage({ data, technologies, engineersById, rating, coverageOf, onTar
         const skilled = people(true), learning = people(false);
         return <tr key={tech.id}>
           <th scope="row">{tech.name}</th>
-          <td><ToneBadge tone={status.tone}>{status.text}</ToneBadge>{cov.single_point && <small className="sm-evidence">Only one person</small>}</td>
+          <td><ToneBadge tone={status.tone}>{status.text}</ToneBadge>{cov.single_point && <small className="sm-evidence">Only one person</small>}
+            {data.can_manage && cov.status !== 'covered' && <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => onPlan(tech)} aria-label={`Start a learning plan for ${tech.name}`}>Start a learning plan</button></div>}</td>
           <td>{skilled.length ? skilled.join(', ') : <span className="text-muted">Nobody</span>}</td>
           <td>{data.can_manage
             ? <input type="number" min="1" max="20" className="sm-target" aria-label={`Skilled engineers needed for ${tech.name}`} defaultValue={cov.target}
@@ -109,8 +111,12 @@ export default function SkillMatrix() {
   const live = useLiveVersion();
   const [data, setData] = useState(null), [error, setError] = useState('');
   const [view, setView] = useState('matrix'), [team, setTeam] = useState(''), [search, setSearch] = useState('');
+  const [plans, setPlans] = useState({ plans: [], mentors: [] }), [planFor, setPlanFor] = useState(null);
   const load = useCallback(async () => {
-    try { setData(await api.skillMatrix()); setError(''); } catch (failure) { setError(failure.message); }
+    try {
+      const [matrix, learning] = await Promise.all([api.skillMatrix(), api.learningPlans().catch(() => ({ plans: [], mentors: [] }))]);
+      setData(matrix); setPlans({ plans: Array.isArray(learning?.plans) ? learning.plans : [], mentors: Array.isArray(learning?.mentors) ? learning.mentors : [] }); setError('');
+    } catch (failure) { setError(failure.message); }
   }, []);
   useEffect(() => { load(); }, [load, live]);
 
@@ -151,7 +157,7 @@ export default function SkillMatrix() {
       ]} />
       <Surface>
         <div className="sm-toolbar">
-          <Tabs label="Skill matrix views" value={view} onChange={setView} items={[{ key: 'matrix', label: 'Matrix' }, { key: 'coverage', label: 'Coverage', count: (counts.gap || 0) + (counts.at_risk || 0) }]} />
+          <Tabs label="Skill matrix views" value={view} onChange={setView} items={[{ key: 'matrix', label: 'Matrix' }, { key: 'coverage', label: 'Coverage', count: (counts.gap || 0) + (counts.at_risk || 0) }, { key: 'plans', label: 'Learning plans', count: plans.plans.filter(p => p.status === 'active').length }]} />
           <div className="sm-filters">
             <label>Team<select value={team} onChange={e => setTeam(e.target.value)}><option value="">All teams</option>{data.teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
             <label>Technology<input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search" /></label>
@@ -162,7 +168,10 @@ export default function SkillMatrix() {
           : !technologies.length ? <p className="text-muted">No technology matches “{search}”.</p>
           : view === 'matrix'
             ? <Matrix data={data} technologies={technologies} engineers={engineers} {...lookups} onRate={rate} />
-            : <Coverage data={data} technologies={technologies} {...lookups} onTarget={setTarget} />}
+            : view === 'plans'
+              ? <LearningPlans data={data} plans={plans.plans.filter(p => technologies.some(t => t.id === p.technology_id))} canManage={data.can_manage} onChanged={load} />
+              : <Coverage data={data} technologies={technologies} {...lookups} onTarget={setTarget} onPlan={setPlanFor} />}
+        {planFor && <PlanDialog data={data} technology={planFor} mentors={plans.mentors} onClose={() => setPlanFor(null)} onSaved={() => { setPlanFor(null); setView('plans'); load(); }} />}
         {view === 'matrix' && data.activity.length > 0 && <p className="sm-footnote">Activity counts are service activities logged on the technology since {fmtDate(data.activity_since)}.</p>}
       </Surface>
     </>}
