@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ReplyWithResponse } from '../../components/ResponseComposer';
 import { MessageSquare, Trash2, Lock, X, Link as LinkIcon, Unlink, Clock, Copy, SlidersHorizontal, GripVertical } from 'lucide-react';
 import { api } from '../../api';
 import { useAuth } from '../../App';
@@ -353,6 +354,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
           <button type="submit" className="btn btn-primary btn-sm" disabled={submitting || !commentText.trim()}>Post</button>
         </form>
       </div>
+      {user.role !== 'pm' && <div style={{ marginTop: 12 }}><ReplyWithResponse inline context={{ type: 'task', id: task.id }} /></div>}
     </Modal>
   );
 }

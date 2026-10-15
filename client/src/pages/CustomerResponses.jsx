@@ -71,6 +71,9 @@ function ResponseForm({ initial, onSaved, onClose }) {
   const [form, setForm] = useState(initial || { title: '', body: '', tone: 'neutral' });
   const [saving, setSaving] = useState(false), [error, setError] = useState('');
   const set = key => event => setForm(current => ({ ...current, [key]: event.target.value }));
+  // The {{names}} a text may use; they are filled in when replying from a customer, task or visit.
+  const [placeholders, setPlaceholders] = useState(null);
+  useEffect(() => { api.responsePlaceholders().then(setPlaceholders).catch(() => setPlaceholders(null)); }, []);
   async function submit(event) {
     event.preventDefault(); setSaving(true); setError('');
     try {
@@ -86,7 +89,8 @@ function ResponseForm({ initial, onSaved, onClose }) {
         <div className="form-group"><label htmlFor="response-title">Title</label><input id="response-title" required maxLength={120} value={form.title} onChange={set('title')} autoFocus /></div>
         <div className="form-group"><label htmlFor="response-tone">Colour</label><select id="response-tone" value={form.tone} onChange={set('tone')}>{Object.entries(TONES).map(([value, tone]) => <option key={value} value={value}>{tone.label}</option>)}</select></div>
       </div>
-      <div className="form-group"><label htmlFor="response-body">Text</label><textarea id="response-body" required rows={10} maxLength={10000} value={form.body} onChange={set('body')} /></div>
+      <div className="form-group"><label htmlFor="response-body">Text</label><textarea id="response-body" required rows={10} maxLength={10000} value={form.body} onChange={set('body')} aria-describedby={placeholders ? 'response-placeholders' : undefined} />
+        {placeholders && <small id="response-placeholders" className="text-muted text-sm">Filled in when replying from a customer, task or visit: {Object.entries(placeholders).map(([name, label]) => `{{${name}}} (${label.toLowerCase()})`).join(', ')}.</small>}</div>
       <div className="modal-footer"><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button></div>
     </form>
   </Modal>;

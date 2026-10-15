@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ReplyWithResponse } from '../components/ResponseComposer';
 import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import { EditConflict, useEditVersion } from '../hooks/useEditVersion';
 import { VisitTimeFields, VisitWarnings, allDayOf, timesOf, useVisitCheck, visitTime } from '../components/VisitSchedule';
@@ -399,6 +400,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
           <button className="btn btn-ghost btn-sm" onClick={markUnsent} disabled={saving} title="Undo — move back to report pending">↩ Undo Submission</button>
         )}
         {visit.status !== 'cancelled' && <AddToCalendarButton visitId={visit.id} title={visit.title} />}
+        {!isPM && <ReplyWithResponse inline context={{ type: 'visit', id: visit.id }} />}
         <button
           className="btn btn-ghost btn-sm u-e4d240f"
           onClick={() => generatePDF(visit, msg => toast.warning(msg))}
