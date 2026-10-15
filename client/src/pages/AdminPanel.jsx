@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer, FileSignature, AtSign, ListChecks } from 'lucide-react';
+import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer, FileSignature, AtSign, ListChecks, Gauge } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -26,6 +26,7 @@ const TicketingSettings = lazy(() => import('./admin/TicketingSettings'));
 const BackupsTab = lazy(() => import('./admin/BackupsTab').then(module => ({ default: module.BackupsTab })));
 const SlaSettingsTab = lazy(() => import('./admin/SlaSettingsTab').then(module => ({ default: module.SlaSettingsTab })));
 const ContractTypesTab = lazy(() => import('./admin/ContractTypesTab').then(module => ({ default: module.ContractTypesTab })));
+const GrafanaTab = lazy(() => import('./admin/GrafanaTab').then(module => ({ default: module.GrafanaTab })));
 const VisitChecklistsTab = lazy(() => import('./admin/VisitChecklistsTab').then(module => ({ default: module.VisitChecklistsTab })));
 const Templates = lazy(() => import('./Templates'));
 
@@ -48,6 +49,7 @@ const TABS = [
   { key: 'email',          label: 'Email (SMTP)',       Icon: AtSign,          group: 'connections', desc: 'The mail server for every email the app sends: reports, reminders, password resets' },
   { key: 'notifications',  label: 'Notifications',      Icon: Bell,            group: 'connections', desc: 'The shared Teams channel and Webex space, which events they receive, and alerts about the system' },
   { key: 'ticketing',      label: 'Ticketing',          Icon: Building2,       group: 'connections', desc: 'Request Tracker connection, customer queues, status mapping and sync health' },
+  { key: 'grafana',        label: 'Grafana devices',    Icon: Gauge,           group: 'connections', desc: 'Device versions and models from Grafana, matched to customer assets' },
   { key: 'activity_bot',   label: 'Activity bot',       Icon: Bot,             group: 'connections', desc: 'Engineers log service activities by chatting with a Webex or Teams bot' },
   { key: 'localization',   label: 'Time & region',      Icon: Globe,           group: 'system',   desc: 'Time zone, server clock, language and date formats' },
   { key: 'backups',        label: 'Backups',            Icon: DatabaseBackup,  group: 'system',   desc: 'Automatic database backups, checks, download and restore' },
@@ -218,6 +220,7 @@ export default function AdminPanel() {
           {tab === 'sla' && <SlaSettingsTab />}
           {tab === 'contract_types' && <ContractTypesTab />}
           {tab === 'visit_checklists' && <VisitChecklistsTab />}
+          {tab === 'grafana' && <GrafanaTab />}
           {tab === 'project_templates' && <Templates embedded />}
           {tab === 'notifications' && <><IntegrationsTab /><h3 className="settings-subheading">Alerts about the system</h3><AdminAlertsTab /></>}
           {tab === 'activity_bot'  && <ActivityBotSettings sectionStyle={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 }} />}

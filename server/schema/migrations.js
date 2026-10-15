@@ -1329,6 +1329,26 @@ async function applyMigrations(pool, transaction) {
     UPDATE time_logs SET work_date = substr(logged_at, 1, 10) WHERE work_date IS NULL;
     CREATE INDEX IF NOT EXISTS idx_time_logs_user_day ON time_logs(user_id, work_date);
   `]);
+  migrations.push(['20261117_grafana_devices', `
+    -- Devices as Grafana last reported them (grafana.js), and links a manager made
+    -- between a Grafana hostname and an asset (or "ignore this device").
+    CREATE TABLE IF NOT EXISTS grafana_devices (
+      host_name TEXT PRIMARY KEY,
+      version_label TEXT,
+      version TEXT,
+      build TEXT,
+      take INTEGER,
+      model TEXT,
+      seen_at TEXT DEFAULT ${NOW}
+    );
+    CREATE TABLE IF NOT EXISTS grafana_host_links (
+      host_name TEXT PRIMARY KEY,
+      asset_id INTEGER REFERENCES customer_assets(id) ON DELETE CASCADE,
+      ignored INTEGER NOT NULL DEFAULT 0,
+      linked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      linked_at TEXT DEFAULT ${NOW}
+    );
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

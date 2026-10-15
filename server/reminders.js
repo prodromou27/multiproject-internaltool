@@ -278,6 +278,10 @@ function startReminderSchedules() {
     sendAutomaticReminders()
       .then(counts => console.log('[reminders] automatic:', JSON.stringify(counts)))
       .catch(error => console.error('[reminders] automatic:', error.message)),
+    // What each device runs, from Grafana, when it is set up (grafana.js).
+    require('./grafana').settings().then(s => (s.base_url && s.token ? require('./grafana').sync() : null))
+      .then(result => { if (result) console.log('[grafana] sync:', JSON.stringify(result)); })
+      .catch(error => console.error('[grafana] sync:', error.message)),
     // Review requests past their target remind their reviewer (approvalAging.js).
     require('./approvalAging').remindOverdue()
       .then(sent => console.log('[approvals] overdue reminders:', sent))
