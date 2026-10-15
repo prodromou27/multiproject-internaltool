@@ -73,3 +73,35 @@ test('on a phone the Reports tab fits the screen', async ({ page }) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });
+
+test('previous reports: download a kept file, or generate again one whose file was removed', async ({ page }) => {
+  const { downloads } = await reportsTab(page);
+  let fetched = null;
+  await page.route('**/api/managed-customers/12/reports', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ rows: [
+    { id: 41, period_start: '2026-09-01', period_end: '2026-09-30', output_format: 'pdf', original_name: 'northwind_sep.pdf', generated_at: '2026-10-02 09:00:00', generated_by_name: 'Alex Mercer', file_removed_at: null, request: null },
+    { id: 12, period_start: '2026-05-01', period_end: '2026-05-31', output_format: 'docx', original_name: 'northwind_may.docx', generated_at: '2026-06-02 09:00:00', generated_by_name: 'Alex Mercer',
+      file_removed_at: '2026-09-01 08:00:00', request: { from: '2026-05-01', to: '2026-05-31', sections: ['changes'], summary: 'A quiet May', coming_next: '' } },
+  ] }) }));
+  await page.route('**/api/managed-customers/12/reports/41/download', route => { fetched = 41; return route.fulfill({ contentType: 'application/pdf', body: '%PDF' }); });
+  await page.goto('/customers/12/service-profile?section=reports');
+  const history = page.getByRole('region', { name: 'Previous reports' });
+  await expect(history.getByRole('row', { name: /PDF/ })).toBeVisible();
+  await expect(history.getByText(/File removed/)).toBeVisible();
+
+  await history.getByRole('button', { name: /^Download the report for/ }).click();
+  await expect.poll(() => fetched).toBe(41);
+  await history.getByRole('button', { name: /^Generate again the report for/ }).click();
+  await expect.poll(() => downloads.at(-1)).toEqual(['docx', { from: '2026-05-01', to: '2026-05-31', sections: ['changes'], summary: 'A quiet May', coming_next: '' }]);
+});
+
+test('Settings → Backups & health → Storage: how long report files are kept', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  let saved = null;
+  api.override('GET /api/settings/report-retention', () => ({ body: { days: 90, usage: { report_files: 120, report_bytes: 52428800, reports_removed: 30, attachments: 400, attachment_bytes: 1073741824 } } }));
+  api.override('PUT /api/settings/report-retention', ({ body }) => { saved = body; return { body: { days: body.days, usage: { report_files: 120, report_bytes: 52428800, reports_removed: 30, attachments: 400, attachment_bytes: 1073741824 } } }; });
+  await page.goto('/settings/storage');
+  await expect(page.getByText('Report files: 120 (50.0 MB), 30 removed after the limit · Attachments: 400 (1.0 GB)')).toBeVisible();
+  await page.getByLabel('Keep customer report files for (days)').fill('180');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect.poll(() => saved).toEqual({ days: 180 });
+});

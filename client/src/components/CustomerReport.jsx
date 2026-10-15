@@ -71,11 +71,47 @@ function Preview({ report }) {
   </article>;
 }
 
+/* The reports made before: download one, or, once its file has been removed after the
+   retention period (Settings → Backups & health → Storage), generate it again from
+   what it was made from (with the data as it is now). */
+function PreviousReports({ customerId, canDownload, refresh, save }) {
+  const [rows, setRows] = useState(null), [busy, setBusy] = useState(null), [error, setError] = useState('');
+  const load = () => api.managedCustomerReportHistory(customerId).then(data => setRows(Array.isArray(data?.rows) ? data.rows : [])).catch(() => setRows([]));
+  useEffect(() => { load(); }, [customerId, refresh]);
+  if (!rows?.length) return null;
+  async function get(row) {
+    setBusy(row.id); setError('');
+    try {
+      if (row.file_removed_at) {
+        const blob = await api.customerReportDownload(customerId, row.output_format, row.request || { from: row.period_start, to: row.period_end });
+        save(blob, row.original_name); load();
+      } else save(await api.managedCustomerArchivedReport(customerId, row.id), row.original_name);
+    } catch (failure) { setError(failure.message); } finally { setBusy(null); }
+  }
+  return <section className="card" aria-label="Previous reports" style={{ marginTop: 16 }}>
+    <h3 className="section-title" style={{ fontSize: 15 }}>Previous reports</h3>
+    {error && <p className="error-msg" role="alert">{error}</p>}
+    <div className="table-wrap"><table>
+      <thead><tr><th scope="col">Period</th><th scope="col">Made</th><th scope="col">File</th><th scope="col"><span className="sr-only">Download</span></th></tr></thead>
+      <tbody>{rows.slice(0, 24).map(row => <tr key={row.id}>
+        <td>{fmtDate(row.period_start)} – {fmtDate(row.period_end)}</td>
+        <td className="text-sm">{fmtDate(row.generated_at)}{row.generated_by_name ? ` · ${row.generated_by_name}` : ''}{row.sent_at ? <div className="text-muted">Sent {fmtDate(row.sent_at)}</div> : null}</td>
+        <td className="text-sm">{row.output_format.toUpperCase()}{row.file_removed_at && <div className="text-muted">File removed {fmtDate(row.file_removed_at)}</div>}</td>
+        <td>{canDownload && <button type="button" className="btn btn-ghost btn-sm" disabled={busy === row.id} onClick={() => get(row)}
+          aria-label={`${row.file_removed_at ? 'Generate again' : 'Download'} the report for ${fmtDate(row.period_start)} – ${fmtDate(row.period_end)}`}>
+          {busy === row.id ? 'Preparing…' : row.file_removed_at ? 'Generate again' : 'Download'}</button>}</td>
+      </tr>)}</tbody>
+    </table></div>
+    {rows.some(row => row.file_removed_at) && <p className="text-sm text-muted">Generating again uses the data as it is now, with the same period, parts and notes.</p>}
+  </section>;
+}
+
 export default function CustomerReport({ customerId, range, due, onUsePeriod }) {
   const { user } = useAuth();
   const canDownload = !!user?.permissions?.['managed_reports.generate'];
   const [summary, setSummary] = useState(''), [comingNext, setComingNext] = useState(''), [parts, setParts] = useState(null);
   const [report, setReport] = useState(null), [loading, setLoading] = useState(false), [busy, setBusy] = useState(null), [error, setError] = useState('');
+  const [made, setMade] = useState(0);
   const body = { from: range.from, to: range.to, ...(parts ? { sections: parts } : {}), summary, coming_next: comingNext };
   // The template's default sections and starting text, taken once from the first preview.
   const started = useRef(false);
@@ -107,6 +143,7 @@ export default function CustomerReport({ customerId, range, due, onUsePeriod }) 
       const blob = await api.customerReportDownload(customerId, format, body);
       const safe = (report?.customer.name || 'customer').replace(/[^a-z0-9_-]+/gi, '_');
       save(blob, `${safe}_report_${range.from}_${range.to}.${format}`);
+      setMade(n => n + 1);
     } catch (failure) { setError(failure.message); } finally { setBusy(null); }
   }
   const toggle = partKey => setParts(current => { const list = current || report?.sections || []; return list.includes(partKey) ? list.filter(k => k !== partKey) : [...list, partKey]; });
@@ -139,6 +176,7 @@ export default function CustomerReport({ customerId, range, due, onUsePeriod }) 
     {!range.from || !range.to ? <p className="card text-muted">Choose both dates of the period.</p>
       : !report ? <p className="card text-muted" role="status">{loading ? 'Preparing the preview…' : ''}</p>
         : <div className={loading ? 'crp-stale' : ''}><Preview report={report} /></div>}
+    <PreviousReports customerId={customerId} canDownload={canDownload} refresh={made} save={save} />
 
   </div>;
 }

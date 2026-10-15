@@ -28,6 +28,7 @@ const BackupsTab = lazy(() => import('./admin/BackupsTab').then(module => ({ def
 const SlaSettingsTab = lazy(() => import('./admin/SlaSettingsTab').then(module => ({ default: module.SlaSettingsTab })));
 const ContractTypesTab = lazy(() => import('./admin/ContractTypesTab').then(module => ({ default: module.ContractTypesTab })));
 const GrafanaTab = lazy(() => import('./admin/GrafanaTab').then(module => ({ default: module.GrafanaTab })));
+const StorageTab = lazy(() => import('./admin/StorageTab').then(module => ({ default: module.StorageTab })));
 const VisitChecklistsTab = lazy(() => import('./admin/VisitChecklistsTab').then(module => ({ default: module.VisitChecklistsTab })));
 const Templates = lazy(() => import('./Templates'));
 
@@ -55,6 +56,7 @@ const SECTIONS = {
   activity_bot: { label: 'Activity bot', desc: 'Engineers log service activities by chatting with a Webex or Teams bot' },
   localization: { label: 'Time & region', desc: 'Time zone, server clock, language and date formats' },
   backups: { label: 'Backups', desc: 'Automatic database backups, checks, download and restore' },
+  storage: { label: 'Storage', desc: 'How long customer report files are kept, and what is stored' },
   system_health: { label: 'System health', desc: 'Status, deployment, logging, updates and data export' },
   audit_log: { label: 'Audit log', desc: 'Who changed what, and when' },
 };
@@ -70,7 +72,7 @@ const TABS = [
   { key: 'messages', label: 'Email & notifications', Icon: AtSign, group: 'connections', desc: 'The mail server, the shared Teams and Webex channels, and alerts about the system', sections: ['email', 'notifications'] },
   { key: 'integrations', label: 'Integrations', Icon: Building2, group: 'connections', desc: 'Request Tracker, Grafana devices and the activity bot', sections: ['ticketing', 'grafana', 'activity_bot'] },
   { key: 'localization', label: 'Time & region', Icon: Globe, group: 'system', desc: SECTIONS.localization.desc, sections: ['localization'] },
-  { key: 'system', label: 'Backups & health', Icon: HardDrive, group: 'system', desc: 'Backups, system health and the audit log', sections: ['backups', 'system_health', 'audit_log'] },
+  { key: 'system', label: 'Backups & health', Icon: HardDrive, group: 'system', desc: 'Backups, storage, system health and the audit log', sections: ['backups', 'storage', 'system_health', 'audit_log'] },
 ];
 // The page each section is on.
 const PAGE_OF = Object.fromEntries(TABS.flatMap(page => page.sections.map(key => [key, page.key])));
@@ -184,6 +186,7 @@ export default function AdminPanel() {
       case 'activity_bot': return <ActivityBotSettings sectionStyle={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 }} />;
       case 'localization': return <LocalizationTab />;
       case 'backups': return <BackupsTab />;
+      case 'storage': return <StorageTab />;
       case 'system_health': return <SystemHealthTab key={part || 'stats'} initial={part} />;
       case 'audit_log': return <AuditLogTab />;
       default: return null;

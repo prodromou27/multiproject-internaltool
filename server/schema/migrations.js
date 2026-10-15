@@ -1355,6 +1355,12 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS category TEXT;
     ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL;
   `]);
+  migrations.push(['20261119_report_retention', `
+    -- Report files are removed after a while (reportRetention.js); the history entry
+    -- stays, with what the report was made from (encrypted) so it can be made again.
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS file_removed_at TEXT;
+    ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS request TEXT;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

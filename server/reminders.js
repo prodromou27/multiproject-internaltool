@@ -282,6 +282,10 @@ function startReminderSchedules() {
     require('./grafana').settings().then(s => (s.base_url && s.token ? require('./grafana').sync() : null))
       .then(result => { if (result) console.log('[grafana] sync:', JSON.stringify(result)); })
       .catch(error => console.error('[grafana] sync:', error.message)),
+    // Old report files go; their history stays, to be generated again (reportRetention.js).
+    require('./reportRetention').purge()
+      .then(result => { if (result.removed) console.log('[reports] files removed after retention:', JSON.stringify(result)); })
+      .catch(error => console.error('[reports] retention:', error.message)),
     // Review requests past their target remind their reviewer (approvalAging.js).
     require('./approvalAging').remindOverdue()
       .then(sent => console.log('[approvals] overdue reminders:', sent))

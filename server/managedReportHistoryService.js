@@ -20,7 +20,7 @@ async function validateTemplate(templateId) {
   return id;
 }
 
-async function archive({ customerId,templateId,from,to,format,status,filename,sections,userId,buffer }) {
+async function archive({ customerId,templateId,from,to,format,status,filename,sections,userId,buffer,request=null }) {
   if (!FORMATS[format]) throw new Error('Unsupported report format');
   const storedName=`managed-report-${crypto.randomUUID()}`;
   const filePath=path.join(uploadDir,storedName);
@@ -33,8 +33,10 @@ async function archive({ customerId,templateId,from,to,format,status,filename,se
         VALUES (?,?,?,?,1) ON CONFLICT (customer_id,period_start,period_end,output_format)
         DO UPDATE SET last_version=managed_report_version_counters.last_version+1 RETURNING last_version`).get(customerId,from,to,format);
       const inserted=await tx.prepare(`INSERT INTO managed_report_history
-        (customer_id,template_id,period_start,period_end,output_format,report_version,status,workflow_status,original_name,stored_name,mime_type,size,sections,generated_by,enc_iv,enc_tag)
-        VALUES (?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?) RETURNING id,report_version,workflow_version,generated_at`).get(customerId,templateId,from,to,format,counter.last_version,status,safeDownloadName(filename),storedName,FORMATS[format],buffer.length,JSON.stringify(sections),userId,encIv,encTag);
+        (customer_id,template_id,period_start,period_end,output_format,report_version,status,workflow_status,original_name,stored_name,mime_type,size,sections,generated_by,enc_iv,enc_tag,request)
+        VALUES (?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?) RETURNING id,report_version,workflow_version,generated_at`).get(customerId,templateId,from,to,format,counter.last_version,status,safeDownloadName(filename),storedName,FORMATS[format],buffer.length,JSON.stringify(sections),userId,encIv,encTag,
+          // What it was made from (period, parts, the written notes), so it can be made again once the file is removed.
+          request ? require('./fieldCipher').encrypt(JSON.stringify(request)) : null);
       await tx.prepare(`INSERT INTO managed_report_workflow_history
         (report_id,from_status,to_status,action,actor_id,workflow_version) VALUES (?,NULL,'draft','generated',?,?)`).run(inserted.id,userId,inserted.workflow_version);
       return inserted;
@@ -49,10 +51,15 @@ async function list(customerId) {
   return db.prepare(`SELECT h.id,h.template_id,t.name AS template_name,h.period_start,h.period_end,h.output_format,h.report_version,
     h.workflow_status AS status,h.workflow_version,h.original_name,h.mime_type,h.size,h.generated_by,u.name AS generated_by_name,h.generated_at,
     h.submitted_at,su.name AS submitted_by_name,h.reviewed_at,ru.name AS reviewed_by_name,h.finalized_at,fu.name AS finalized_by_name,h.decision_comment,
-    h.sent_at,h.sent_to,h.sent_note,h.sent_recorded_at,sn.name AS sent_by_name
+    h.sent_at,h.sent_to,h.sent_note,h.sent_recorded_at,sn.name AS sent_by_name,h.file_removed_at,h.request
     FROM managed_report_history h LEFT JOIN users u ON u.id=h.generated_by LEFT JOIN users su ON su.id=h.submitted_by
     LEFT JOIN users ru ON ru.id=h.reviewed_by LEFT JOIN users fu ON fu.id=h.finalized_by LEFT JOIN managed_report_templates t ON t.id=h.template_id LEFT JOIN users sn ON sn.id=h.sent_by
-    WHERE h.customer_id=? ORDER BY h.generated_at DESC,h.id DESC LIMIT 100`).all(customerId);
+    WHERE h.customer_id=? ORDER BY h.generated_at DESC,h.id DESC LIMIT 100`).all(customerId)
+    .then(rows => rows.map(row => {
+      let request=null;
+      try { request=row.request ? JSON.parse(require('./fieldCipher').decrypt(row.request)) : null; } catch { request=null; }
+      return { ...row,request };
+    }));
 }
 
 async function get(customerId,id) {
@@ -60,6 +67,7 @@ async function get(customerId,id) {
 }
 
 async function read(report) {
+  if (report.file_removed_at) throw Object.assign(new Error('The file was removed after the retention period; generate it again'),{ status:410,code:'FILE_REMOVED' });
   const storedName=safeStoredName(report.stored_name);
   if (!storedName) throw Object.assign(new Error('Invalid report file reference'),{ status:500 });
   const data=await fs.promises.readFile(path.join(uploadDir,storedName));

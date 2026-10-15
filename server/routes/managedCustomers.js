@@ -234,7 +234,7 @@ router.post('/:id/customer-report.:format',requirePermission('managed_reports.ge
       if (format==='pdf') buffer=await (router._docxToPdf || require('../docxToPdf').docxToPdf)(buffer);
     } else buffer=format==='pdf' ? await valueReport.renderPdf(report) : await valueReport.renderWord(report);
     const filename=valueReport.fileName(report,format);
-    const history=await reportHistory.archive({ customerId:id,templateId:template?.id || null,from,to,format,status:'draft',filename,sections:report.sections,userId:req.user.id,buffer });
+    const history=await reportHistory.archive({ customerId:id,templateId:template?.id || null,from,to,format,status:'draft',filename,sections:report.sections,userId:req.user.id,buffer,request:{ from,to,sections:options.sections,summary:options.summary,coming_next:options.coming_next } });
     await logAudit(db,req,'managed_report',history.id,filename,'customer_report_generated',`customer_id=${id}; period=${from}:${to}; format=${format}; sections=${report.sections.join(',')}`);
     require('../liveUpdates').emitChange('managed-customers');
     res.setHeader('Content-Type',format==='pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
@@ -297,7 +297,10 @@ router.get('/:id/reports/:reportId/download',async (req,res) => {
     res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Content-Type',report.mime_type);res.setHeader('Content-Disposition',`attachment; filename="${report.original_name}"`);res.setHeader('Content-Length',String(buffer.length));
     res.send(buffer);
-  } catch(error) { console.error('[managed-reports] download failed:',error.message);res.status(error.status || 500).json({ error:'Could not download the archived report' }); }
+  } catch(error) {
+    if (error.code==='FILE_REMOVED') return res.status(410).json({ error:error.message,code:'FILE_REMOVED' });
+    console.error('[managed-reports] download failed:',error.message);res.status(error.status || 500).json({ error:'Could not download the archived report' });
+  }
 });
 
 module.exports=router;

@@ -15,5 +15,6 @@ router.use(require('./settings/security'));
 router.use(require('./settings/activityBot'));
 router.use(require('./settings/sso'));
 router.use(require('./settings/contracts'));
+router.use(require('./settings/reportRetention'));
 
 module.exports = router;
