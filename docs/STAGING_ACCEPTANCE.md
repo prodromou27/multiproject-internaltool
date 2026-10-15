@@ -23,6 +23,10 @@ API, PostgreSQL data, storage, SMTP and configured integrations.
 - Confirm the deployment uses the reviewed commit and `/api/health` returns healthy.
 - Confirm startup migrations complete once and a restart adds no duplicate migration.
 - Confirm database and encrypted-file backups exist and a restore owner is identified.
+- Restore drill (Settings → Backups & health → Backups): take a backup, "Check" it, then
+  restore it on staging and confirm a record made after the backup is gone and an
+  attachment still opens. For a lost server, restore a downloaded backup on a fresh
+  install with the same `.env` keys (deploy/README.md, section 5); record how long it took.
 - Keep the existing JWT, field-encryption and attachment-encryption keys available to
   the deployment. Verify an existing encrypted customer and attachment can be read.
 - Confirm production does not expose in-app system updates unless explicitly enabled.
@@ -64,6 +68,37 @@ explicit permission override.
   the recorded outcome. Exercise a managed report through review and publication.
 - Confirm notification read/acknowledge behavior and one configured outbound channel in
   a test destination. Do not use production customer recipients during acceptance.
+
+- Log hours on a task and a meeting in My time; check the day totals and the export used
+  for the company timesheet. Import assets and visits from Excel and confirm the review
+  step shows the changes before anything is saved.
+- In Settings → Backups & health → Storage, check the retention days; on a customer's
+  Reports, download a previous report and generate one again whose file was removed.
+
+## Connections
+
+Use test destinations only: a test mailbox, a test Teams channel and Webex space, and a
+Request Tracker test queue. Record the result of each in the release record.
+
+- **Microsoft 365 sign-in** (Settings → Access & sign-in): sign in with a work account
+  that has a TeamHub user, and one that has none (it must be refused). Sign out and in
+  again; check the password sign-in rules still apply to local accounts.
+- **Email** (Settings → Email & notifications): "Test Connection", then "Send test email"
+  to the test mailbox. Then trigger a real one (a password reset for a test user) and
+  check it arrives, is not marked as spam, and its links point to the staging address.
+- **Teams and Webex** (same page): send a test to each channel; then create one event
+  that is set to notify (e.g. a task assigned) and check it arrives once.
+- **Activity bot** (Settings → Integrations): log one activity by chatting with the bot
+  and check it appears in the Activity Log for the right engineer.
+- **Request Tracker** (Settings → Integrations): "Test Connection", "Sync now", then
+  check a test ticket shows on its customer with the mapped status and owner; change
+  it in RT and confirm the next sync updates it.
+- **Grafana** (Settings → Integrations → Grafana devices): "Sync now"; review the
+  suggested matches and apply a few; check each asset's version and hotfix take. Confirm
+  no asset is created by the sync.
+- **Calendar subscription**: from the Calendar, copy the .ics address into classic
+  Outlook (and new Outlook if the app is reachable from the internet over https); check
+  events appear, and that a regenerated address stops the old one working.
 
 ## Responsive, theme and accessibility
 
