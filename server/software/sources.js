@@ -107,18 +107,34 @@ function checkpointTakes(html) {
 }
 
 /**
- * Check Point's newer Jumbo documentation (from October 2026; R81.20 and later): an
- * index listing one page per take ("Take_173.html"), each saying when it was
- * released. It no longer says which take is Recommended, so that is left as it was.
+ * Check Point's newer Jumbo documentation (R81.20 and later): Oxygen WebHelp, one
+ * page per take ("Take_173.html"). Since its October 2026 rebuild the start page no
+ * longer lists the takes in its HTML (a script builds the contents), so the takes
+ * are read from the publication's search index, which lists every page with its
+ * opening text: "Take 173 Released on 12 October 2026 [and declared as Recommended
+ * on …]". The start page's links are still tried when that index is missing.
  */
 async function checkpointWebHelp(version, { fetchImpl }) {
   const index = `${CHECKPOINT_JUMBO}/${version}/`;
-  const takes = [...(await text(index, { fetchImpl, label: 'Check Point documentation' })).matchAll(/Take_(\d{1,4})\.html/g)].map(match => Number(match[1]));
+  let listing = '';
+  try { listing = await text(`${index}oxygen-webhelp/app/search/index/htmlFileInfoList.js`, { fetchImpl, label: 'Check Point documentation' }); }
+  catch (error) { if (!/HTTP 404/.test(error.message)) throw error; }
+  let takes = [...listing.matchAll(/Take_(\d{1,4})\.html/g)].map(match => Number(match[1]));
+  if (!takes.length) {
+    listing = await text(index, { fetchImpl, label: 'Check Point documentation' });
+    takes = [...listing.matchAll(/Take_(\d{1,4})\.html/g)].map(match => Number(match[1]));
+  }
   if (!takes.length) throw new Error(`No Jumbo Hotfix takes were found for ${version}; Check Point may have changed its documentation`);
   const latest = Math.max(...takes);
-  const page = await text(`${index}Take_${latest}.html`, { fetchImpl, label: 'Check Point documentation' });
-  const released = checkpointTakes(page).find(take => take.take === latest)?.released || null;
-  return { branch: version, latest_version: `Take ${latest}`, latest_date: released, recommended_version: undefined, recommended_date: undefined, maintained: 1, link: `${index}Take_${latest}.html` };
+  const dated = checkpointTakes(listing);
+  let released = dated.find(take => take.take === latest)?.released || null;
+  // The index text is cut short; the take's own page says when it was released.
+  if (!released) released = checkpointTakes(await text(`${index}Take_${latest}.html`, { fetchImpl, label: 'Check Point documentation' })).find(take => take.take === latest)?.released || null;
+  const recommended = dated.filter(take => take.recommended).reduce((best, take) => (!best || take.take > best.take ? take : best), null);
+  return { branch: version, latest_version: `Take ${latest}`, latest_date: released,
+    // Not said in the index: left as it was rather than cleared.
+    recommended_version: recommended ? `Take ${recommended.take}` : undefined, recommended_date: recommended ? recommended.recommended : undefined,
+    maintained: 1, link: `${index}Take_${latest}.html` };
 }
 
 async function checkpoint(config, { fetchImpl } = {}) {

@@ -48,6 +48,25 @@ test('Check Point: the latest and the recommended Jumbo take, from the Jumbo doc
   await assert.rejects(sources.checkpoint({ versions: ['R99'] }, { fetchImpl }), /HTTP 404/);
 });
 
+test('Check Point (newer WebHelp layout): takes from the search index, with the recommended one', async () => {
+  // As published since October 2026: the start page lists no takes; the search index lists every page.
+  const listing = 'var htmlFileInfoList = ["All_Resolved_Issues.html@@@List@@@Take 173 Released on 12 October 2026 ID...",'
+    + '"Take_173.html@@@R81.20 Jumbo Hotfix Take 173@@@This Take contains all fixes. Take 173 Released on 12 October 2026 ID Product...",'
+    + '"Take_146.html@@@R81.20 Jumbo Hotfix Take 146@@@Take 146 Released on 15 June 2026 and declared as Recommended on 21 June 2026 ID...",'
+    + '"Take_99.html@@@R81.20 Jumbo Hotfix Take 99@@@Take 99 Released on 3 Feb 2025 and declared as Recommended on 1 Mar 2025 ID..."];';
+  const base = 'https://sc1.checkpoint.com/documents/Jumbo_HFA/R81.20/';
+  const fetchImpl = fakeFetch({ [`${base}oxygen-webhelp/app/search/index/htmlFileInfoList.js`]: { body: listing } });
+  const [row] = await sources.checkpoint({ versions: ['R81.20'] }, { fetchImpl });
+  assert.deepEqual([row.latest_version, row.latest_date, row.recommended_version, row.recommended_date, row.link],
+    ['Take 173', '2026-10-12', 'Take 146', '2026-06-21', `${base}Take_173.html`]);
+
+  // Without the index, the start page's links (the earlier layout) still work.
+  const older = fakeFetch({ [base]: { body: '<a href="Take_170.html">Take 170</a><a href="Take_166.html">Take 166</a>' }, [`${base}Take_170.html`]: { body: '<p>Take 170 Released on 22 September 2026</p>' } });
+  const [fallback] = await sources.checkpoint({ versions: ['R81.20'] }, { fetchImpl: older });
+  assert.deepEqual([fallback.latest_version, fallback.latest_date, fallback.recommended_version], ['Take 170', '2026-09-22', undefined], 'recommended left as it was');
+  await assert.rejects(sources.checkpoint({ versions: ['R81.20'] }, { fetchImpl: fakeFetch({ [base]: { body: '<p>Nothing here</p>' } }) }), /No Jumbo Hotfix takes were found for R81.20/);
+});
+
 test('endoflife.date: branches with their latest patch and dates; old ones only for a year', async () => {
   const fetchImpl = fakeFetch({ 'https://endoflife.date/api/v1/products/panos': { body: JSON.stringify({ result: { releases: [
     { name: '12.1', releaseDate: '2025-08-28', isMaintained: true, eolFrom: '2028-08-28', latest: { name: '12.1.10', date: '2026-09-06', link: 'https://docs.example/12.1.10' } },
