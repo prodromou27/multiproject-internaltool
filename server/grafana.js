@@ -30,6 +30,8 @@ const DEFAULTS = {
   take_map: {}, version_map: {}, auto_apply: false,
   // The dashboard whose value mappings say which build is which take (read at each sync).
   dashboard_uid: '', dashboard_take_map: {}, dashboard_conflicts: {}, dashboard_read_at: null,
+  // Hostnames shown together in one dashboard panel (usually one customer's devices).
+  dashboard_host_groups: [],
 };
 
 /** Build → take: the dashboard's mappings, with a manager's own entries taking precedence. */
@@ -67,8 +69,9 @@ async function dashboardTakes(s, { fetchImpl = pinnedFetch, validateUrl = assert
       headers: { Authorization: `Bearer ${decrypt(s.token)}`, Accept: 'application/json' } });
     if (response.status === 401 || response.status === 403) throw new Error('Grafana refused the token for the dashboard (it needs Viewer rights on it)');
     if (!response.ok) { last = `HTTP ${response.status}`; continue; }
-    const result = takeMapFromDashboard(await response.json());
-    if (Object.keys(result.map).length || Object.keys(result.conflicts).length) return result;
+    const json = await response.json();
+    const result = takeMapFromDashboard(json);
+    if (Object.keys(result.map).length || Object.keys(result.conflicts).length) return { ...result, groups: hostGroupsFromDashboard(json) };
     last = 'no "Take N" value mappings in it';
   }
   throw new Error(`The dashboard could not be read (${last})`);
@@ -170,14 +173,37 @@ function takeMapFromDashboard(json) {
   return { map: Object.fromEntries([...found].sort()), conflicts: Object.fromEntries(conflicts) };
 }
 
+/** Hostnames listed together in a panel query (host_name=~"a|b|c"), as groups; overlapping groups are merged. */
+function hostGroupsFromDashboard(json) {
+  const groups = [];
+  const visit = node => {
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.expr === 'string') {
+      const list = node.expr.match(/host_name\s*=~\s*"([^"]+)"/)?.[1];
+      if (list) groups.push(new Set(list.split('|').map(host => host.trim()).filter(host => /^[\w.-]{1,200}$/.test(host))));
+    }
+    Object.values(node).forEach(visit);
+  };
+  visit(json);
+  const merged = [];
+  for (const group of groups) {
+    const overlapping = merged.filter(other => [...group].some(host => other.has(host)));
+    const union = new Set([...group, ...overlapping.flatMap(other => [...other])]);
+    for (const other of overlapping) merged.splice(merged.indexOf(other), 1);
+    if (union.size) merged.push(union);
+  }
+  return merged.map(group => [...group].sort());
+}
+
 /* ── Matching and review ─────────────────────────────────────────── */
 const norm = value => String(value || '').trim().toLowerCase();
 
 async function assetsIndex(store = db) {
-  const rows = await store.prepare(`SELECT a.id, a.customer_id, a.name, a.hostname, a.model, a.software_version, a.version, c.name AS customer_name
+  const rows = await store.prepare(`SELECT a.id, a.customer_id, a.name, a.hostname, a.vendor, a.model, a.software_version, a.version, c.name AS customer_name
     FROM customer_assets a JOIN customers c ON c.id = a.customer_id WHERE a.lifecycle_status IN ('active','spare')`).all();
   return rows.map(row => ({ id: Number(row.id), customer_id: Number(row.customer_id), customer_name: decrypt(row.customer_name), name: decrypt(row.name) || '',
-    hostname: decrypt(row.hostname) || '', model: decrypt(row.model) || '', software_version: decrypt(row.software_version) || '', version: Number(row.version) }));
+    hostname: decrypt(row.hostname) || '', vendor: decrypt(row.vendor) || '', model: decrypt(row.model) || '', software_version: decrypt(row.software_version) || '', version: Number(row.version) }));
 }
 
 /** Every device last seen, with its asset and what would change. */
@@ -193,7 +219,7 @@ async function review(store = db) {
   const devices = stored.map(d => ({ ...d, take: d.build && Object.hasOwn(takes, d.build) ? Number(takes[d.build]) : null, version: versionOf(d.version_label, s.version_map) || d.version }));
   const linkOf = new Map(links.map(link => [norm(link.host_name), link]));
   const byId = new Map(assets.map(a => [a.id, a]));
-  return devices.map(device => {
+  const rows = devices.map(device => {
     const link = linkOf.get(norm(device.host_name));
     let candidates;
     if (link?.ignored) return { ...device, status: 'ignored', asset: null, changes: [] };
@@ -211,9 +237,44 @@ async function review(store = db) {
     const differs = device.take ? norm(proposed) !== norm(asset.software_version) : lineOf(proposed) !== lineOf(asset.software_version);
     if (proposed && differs) changes.push({ field: 'software_version', from: asset.software_version || null, to: proposed });
     if (device.model && norm(device.model) !== norm(asset.model)) changes.push({ field: 'model', from: asset.model || null, to: device.model });
+    // Details the asset is missing are completed; anything already filled in is left as it is.
+    if (!asset.hostname) changes.push({ field: 'hostname', from: null, to: device.host_name });
+    if (!asset.vendor) changes.push({ field: 'vendor', from: null, to: 'Check Point' });
     return { ...device, proposed_version: proposed, linked: !!link?.asset_id, status: changes.length ? 'differs' : 'matches',
       asset: { id: asset.id, name: asset.name, customer_id: asset.customer_id, customer_name: asset.customer_name, software_version: asset.software_version || null, model: asset.model || null }, changes };
   });
+
+  // For devices with no asset yet: the existing assets most likely to be them.
+  const taken = new Set(rows.filter(row => row.asset).map(row => row.asset.id));
+  const customerOfHost = new Map(rows.filter(row => row.asset).map(row => [norm(row.host_name), row.asset.customer_id]));
+  const groups = (s.dashboard_host_groups || []).map(group => group.map(norm));
+  for (const row of rows) {
+    if (row.status !== 'unmatched' && row.status !== 'ambiguous') continue;
+    const pool = row.status === 'ambiguous' ? assets.filter(a => row.candidates.some(c => c.id === a.id)) : assets.filter(a => !taken.has(a.id));
+    const peers = groups.find(group => group.includes(norm(row.host_name))) || [];
+    const peerCustomers = new Set(peers.map(host => customerOfHost.get(host)).filter(Boolean));
+    row.suggestions = suggest(row, pool, peerCustomers).slice(0, 5);
+    if (peerCustomers.size === 1) row.suggested_customer_id = [...peerCustomers][0];
+  }
+  return rows;
+}
+
+const squash = text => norm(text).replace(/[^a-z0-9]/g, '');
+/** Ranks assets for a device: the panel's customer, the same model, Check Point or no vendor, a similar name, no hostname yet. */
+function suggest(device, pool, peerCustomers) {
+  const host = squash(device.host_name);
+  return pool.map(asset => {
+    const reasons = [];
+    let score = 0;
+    if (peerCustomers.has(asset.customer_id)) { score += 4; reasons.push('same customer as the other devices in its panel'); }
+    if (device.model && asset.model && (squash(asset.model).includes(squash(device.model)) || squash(device.model).includes(squash(asset.model)))) { score += 2; reasons.push('same model'); }
+    if (!asset.vendor || /check\s*point/i.test(asset.vendor)) score += 1;
+    const name = squash(asset.name);
+    if (host && name && (name.includes(host) || host.includes(name))) { score += 3; reasons.push('similar name'); }
+    if (!asset.hostname) { score += 1; reasons.push('no hostname yet'); }
+    else if (squash(asset.hostname) !== host) score -= 3; // has a different hostname: probably another device
+    return { id: asset.id, name: asset.name, customer_id: asset.customer_id, customer_name: asset.customer_name, model: asset.model || null, score, reasons };
+  }).filter(candidate => candidate.score >= 3).sort((a, b) => b.score - a.score || a.customer_name.localeCompare(b.customer_name) || a.name.localeCompare(b.name));
 }
 
 /** Applies Grafana's values to the matched assets of `hostNames` (differences, and a review for matches). */
@@ -229,14 +290,17 @@ async function apply(hostNames, { userId = null, store = db } = {}) {
       const before = decrypt(current.software_version) || null;
       const after = next.software_version ?? before;
       const model = next.model ?? (decrypt(current.model) || null);
-      const updated = (await tx.prepare(`UPDATE customer_assets SET software_version = ?, model = ?, reviewed_at = app_now(), reviewed_by = ?, updated_by = COALESCE(?, updated_by), updated_at = app_now(), version = version + 1
-        WHERE id = ? AND version = ? RETURNING *`).all(encrypt(after), encrypt(model), userId, userId, current.id, current.version))[0];
+      // Only blanks are filled (the review lists these only when the asset has none).
+      const hostname = decrypt(current.hostname) || next.hostname || null;
+      const vendor = decrypt(current.vendor) || next.vendor || null;
+      const updated = (await tx.prepare(`UPDATE customer_assets SET software_version = ?, model = ?, hostname = ?, vendor = ?, reviewed_at = app_now(), reviewed_by = ?, updated_by = COALESCE(?, updated_by), updated_at = app_now(), version = version + 1
+        WHERE id = ? AND version = ? RETURNING *`).all(encrypt(after), encrypt(model), encrypt(hostname), encrypt(vendor), userId, userId, current.id, current.version))[0];
       if (!updated) return false;
       await tx.prepare('INSERT INTO customer_asset_versions (asset_id, customer_id, kind, from_version, to_version, note, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .run(updated.id, updated.customer_id, 'reviewed', encrypt(before), encrypt(after), encrypt(`From Grafana (${row.host_name})`), userId);
       await tx.prepare('INSERT INTO customer_asset_history (asset_id, customer_id, user_id, action, lifecycle_status, coverage_type, version) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .run(updated.id, updated.customer_id, userId, 'updated', updated.lifecycle_status, updated.coverage_type, updated.version);
-      if (next.model !== undefined) {
+      if (next.model !== undefined || next.hostname !== undefined) {
         const plain = ['name', 'hostname', 'serial_number', 'asset_tag', 'ip_address', 'mac_address', 'model'].reduce((out, key) => ({ ...out, [key]: decrypt(updated[key]) || null }), { id: updated.id });
         await require('./assetSearchIndex').replaceAssetSearchDocument(tx, plain);
       }
@@ -256,7 +320,7 @@ async function sync({ store = db, fetchImpl, validateUrl, userId = null } = {}) 
     if (s.dashboard_uid && s.base_url && s.token) {
       try {
         const read = await dashboardTakes(s, { fetchImpl, validateUrl });
-        s = { ...s, dashboard_take_map: read.map, dashboard_conflicts: read.conflicts, dashboard_read_at: new Date().toISOString() };
+        s = { ...s, dashboard_take_map: read.map, dashboard_conflicts: read.conflicts, dashboard_host_groups: read.groups || [], dashboard_read_at: new Date().toISOString() };
         dashboard = { builds: Object.keys(read.map).length, conflicts: Object.keys(read.conflicts).length };
       } catch (error) { dashboard = { error: error.message }; }
     }
@@ -281,4 +345,4 @@ async function sync({ store = db, fetchImpl, validateUrl, userId = null } = {}) 
   return result;
 }
 
-module.exports = { KEY, DEFAULTS, settings, saveSettings, publicSettings, takesOf, dashboardTakes, query, rowsOf, versionOf, devicesFrom, softwareVersionOf, takeMapFromDashboard, review, apply, sync };
+module.exports = { KEY, DEFAULTS, settings, saveSettings, publicSettings, takesOf, dashboardTakes, hostGroupsFromDashboard, suggest, query, rowsOf, versionOf, devicesFrom, softwareVersionOf, takeMapFromDashboard, review, apply, sync };

@@ -51,3 +51,18 @@ test('the takes read from the dashboard and its conflicts are shown', async ({ p
   await expect(page.getByText(/^From the dashboard: 2 builds, read/)).toBeVisible();
   await expect(page.getByText('Mapped differently in the dashboard; add the right take below: 998000035 (Take 127 or 126).')).toBeVisible();
 });
+
+test('an unmatched device offers the likely existing assets, and linking one is a click', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  let linked = null;
+  api.override('GET /api/grafana/settings', () => ({ body: settings }));
+  api.override('GET /api/grafana/devices', () => ({ body: { rows: [{ host_name: 'dmzfw_02_01', model: 'Check Point 6600', proposed_version: 'R81.20 Take 170', status: 'unmatched', asset: null, changes: [],
+    suggestions: [{ id: 31, name: 'DMZ firewall 2', customer_id: 4, customer_name: 'Acme Corp', reasons: ['same customer as the other devices in its panel', 'same model', 'no hostname yet'] }] }] } }));
+  api.override('POST /api/grafana/link', ({ body }) => { linked = body; return { body: { ok: true } }; });
+  await page.goto('/settings/grafana');
+  const review = page.getByRole('region', { name: 'Devices from Grafana' });
+  await review.getByRole('button', { name: /Not matched/ }).click();
+  await expect(review.getByText('(same customer as the other devices in its panel, same model, no hostname yet)')).toBeVisible();
+  await review.getByRole('button', { name: 'Link dmzfw_02_01 to Acme Corp: DMZ firewall 2' }).click();
+  await expect.poll(() => linked).toEqual({ host_name: 'dmzfw_02_01', asset_id: 31 });
+});

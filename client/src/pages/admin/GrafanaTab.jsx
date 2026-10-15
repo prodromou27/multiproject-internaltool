@@ -7,6 +7,7 @@ import { useToast } from '../../components/Toast';
 /* Settings → Grafana devices: the Check Point devices our Grafana (Prometheus)
    dashboards show, matched to customer assets. Sync, review what differs, then apply;
    nothing changes an asset until it is applied (or "apply automatically" is on). */
+const FIELD = { software_version: 'Version', model: 'Model', hostname: 'Hostname (empty)', vendor: 'Vendor (empty)' };
 const STATUS = { differs: 'Differs', matches: 'Up to date', unmatched: 'No asset found', ambiguous: 'Several assets match', ignored: 'Ignored' };
 const linesToMap = (text, valueOf) => Object.fromEntries(text.split('\n').map(line => line.split('=').map(part => part.trim())).filter(([key, value]) => key && value).map(([key, value]) => [key, valueOf(value)]));
 
@@ -132,8 +133,14 @@ function Review({ onSynced }) {
           {show === 'review' && <td><input type="checkbox" aria-label={`Apply ${row.host_name}`} checked={chosen.has(row.host_name)} onChange={() => toggle(row.host_name)} /></td>}
           <td>{row.host_name}</td>
           <td className="text-sm">{row.model || '—'}<div>{row.proposed_version || row.version_label || '—'}{row.build && !row.take && <span className="text-muted"> · build {row.build} (take not listed)</span>}</div></td>
-          <td className="text-sm">{row.asset ? <>{row.asset.customer_name}: {row.asset.name}{row.linked && <span className="text-muted"> (linked)</span>}</> : row.status === 'ignored' ? '—' : <LinkDevice row={row} onDone={load} />}</td>
-          <td className="text-sm"><strong>{STATUS[row.status]}</strong>{row.changes?.map(c => <div key={c.field}>{c.field === 'model' ? 'Model' : 'Version'}: {c.from || '—'} → {c.to}</div>)}</td>
+          <td className="text-sm">{row.asset ? <>{row.asset.customer_name}: {row.asset.name}{row.linked && <span className="text-muted"> (linked)</span>}</> : row.status === 'ignored' ? '—' : <>
+            {row.suggestions?.length > 0 && <ul style={{ listStyle: 'none', margin: '0 0 6px', padding: 0 }}>{row.suggestions.slice(0, 3).map(sug => <li key={sug.id}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => api.linkGrafanaDevice({ host_name: row.host_name, asset_id: sug.id }).then(load)} aria-label={`Link ${row.host_name} to ${sug.customer_name}: ${sug.name}`}>Link: {sug.customer_name}: {sug.name}</button>
+              {sug.reasons.length > 0 && <span className="text-muted"> ({sug.reasons.join(', ')})</span>}
+            </li>)}</ul>}
+            <LinkDevice row={row} onDone={load} />
+          </>}</td>
+          <td className="text-sm"><strong>{STATUS[row.status]}</strong>{row.changes?.map(c => <div key={c.field}>{FIELD[c.field] || c.field}: {c.from || '—'} → {c.to}</div>)}</td>
         </tr>)}</tbody>
       </table></div>}
   </section>;

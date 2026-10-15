@@ -45,7 +45,7 @@ test('a sync reads Grafana and lists each device against its asset, for review',
   oc = await asset('OC-FW-A', null, 'R82 Take 118', 'Check Point 7000'); // matched by asset name
   metro = await asset('Metro management', 'metromgmt', 'R82.10 Take 44', 'Smart-1 600-S'); // already right
   const result = await grafana.sync({ fetchImpl, validateUrl });
-  assert.deepEqual(result, { ok: true, devices: 4, differs: 1, unmatched: 1, unknown_takes: 2, applied: 0 }, 'nothing applied at first: review first');
+  assert.deepEqual(result, { ok: true, devices: 4, differs: 2, unmatched: 1, unknown_takes: 2, applied: 0 }, 'nothing applied at first: review first');
   assert.equal(request.url, 'http://grafana.internal:3000/api/ds/query');
   assert.equal(request.headers.Authorization, 'Bearer glsa_secret');
   assert.deepEqual(request.addresses, ['10.0.0.5'], 'pinned to the checked address');
@@ -54,7 +54,7 @@ test('a sync reads Grafana and lists each device against its asset, for review',
   const rows = Object.fromEntries((await api('/api/grafana/devices', { token: ids.tokenManager })).data.rows.map(r => [r.host_name, r]));
   assert.equal(rows.EXTFW01.status, 'differs');
   assert.deepEqual(rows.EXTFW01.changes, [{ field: 'software_version', from: 'R81.20 Take 99', to: 'R81.20 Take 170' }]);
-  assert.equal(rows['oc-fw-a'].status, 'matches', 'the build has no settled take, so only the version line is compared');
+  assert.deepEqual(rows['oc-fw-a'].changes, [{ field: 'hostname', from: null, to: 'oc-fw-a' }], 'the build has no settled take, so only the version line is compared; the blank hostname is filled');
   assert.equal(rows['oc-fw-a'].proposed_version, 'R82');
   assert.equal(rows.MetroMGMT.status, 'matches', 'jess_main named R82.10 by the managers');
   assert.equal(rows['UNKNOWN-FW'].status, 'unmatched');
@@ -86,7 +86,7 @@ test('applying updates the asset and records a review; unmatched devices are lin
   const settings = (await api('/api/grafana/settings', { token: ids.tokenManager })).data;
   await api('/api/grafana/settings', { method: 'PUT', token: ids.tokenManager, body: { take_map: { ...settings.take_map, 998000035: 127 } } });
   rows = Object.fromEntries((await api('/api/grafana/devices', { token: ids.tokenManager })).data.rows.map(r => [r.host_name, r]));
-  assert.deepEqual(rows['oc-fw-a'].changes, [{ field: 'software_version', from: 'R82 Take 118', to: 'R82 Take 127' }]);
+  assert.deepEqual(rows['oc-fw-a'].changes, [{ field: 'software_version', from: 'R82 Take 118', to: 'R82 Take 127' }, { field: 'hostname', from: null, to: 'oc-fw-a' }]);
 });
 
 test('turned on, a sync applies the differences itself; a Grafana failure is reported', async () => {
@@ -128,4 +128,35 @@ test('with a dashboard UID, each sync reads the takes from the dashboard; your o
   assert.match(down.dashboard.error, /could not be read/);
   assert.equal((await grafana.settings()).dashboard_take_map['996000055'], 130);
   assert.equal((await api('/api/grafana/settings', { method: 'PUT', token: ids.tokenManager, body: { dashboard_uid: 'no spaces allowed' } })).status, 400);
+});
+
+test('existing assets are suggested for an unmatched device, and only blank details are filled', async () => {
+  // Two panels of the dashboard: one customer's devices each.
+  assert.deepEqual(grafana.hostGroupsFromDashboard({ a: { expr: 'm{host_name=~"FW-1|FW-2"}' }, b: [{ expr: 'n{host_name=~"FW-2|FW-3"}' }, { expr: 'x{host_name=~"MGMT"}' }] }), [['FW-1', 'FW-2', 'FW-3'], ['MGMT']]);
+  const other = (await db.prepare("INSERT INTO customers (name, active) VALUES ('Other Bank', 1) RETURNING id").get()).id;
+  const add = (customer, name, hostname, vendor, model) => db.prepare("INSERT INTO customer_assets (customer_id, name, asset_type, vendor, hostname, model, created_by) VALUES (?, ?, 'firewall', ?, ?, ?, ?) RETURNING id")
+    .get(customer, name, vendor === null ? null : encrypt(vendor), hostname === null ? null : encrypt(hostname), model === null ? null : encrypt(model), ids.manager).then(row => row.id);
+  const acmeSecond = await add(ids.customer, 'DMZ firewall 2', null, null, 'Check Point 6600');
+  const otherSame = await add(other, 'Branch firewall', null, 'Check Point', 'Check Point 6600');
+  await add(ids.customer, 'Core switch', 'core-sw-1', 'Cisco', 'C9300'); // another device: not offered
+
+  const s = await grafana.settings();
+  await grafana.saveSettings({ ...s, dashboard_host_groups: [['EXTFW01', 'dmzfw_02_01']] });
+  await db.prepare("INSERT INTO grafana_devices (host_name, version_label, build, model) VALUES ('dmzfw_02_01', 'R81_20_jumbo_hf_main', '996000077', 'Check Point 6600') ON CONFLICT (host_name) DO NOTHING").run();
+  let rows = Object.fromEntries((await api('/api/grafana/devices', { token: ids.tokenManager })).data.rows.map(r => [r.host_name, r]));
+  const device = rows.dmzfw_02_01;
+  assert.equal(device.status, 'unmatched');
+  assert.equal(device.suggested_customer_id, ids.customer, "EXTFW01, in the same panel, is Acme's");
+  assert.deepEqual(device.suggestions.slice(0, 2).map(x => x.id), [acmeSecond, otherSame], "the panel's customer first");
+  assert.ok(device.suggestions[0].reasons.includes('same customer as the other devices in its panel'));
+  assert.ok(!device.suggestions.some(x => x.name === 'Core switch'));
+
+  assert.equal((await api('/api/grafana/link', { method: 'POST', token: ids.tokenManager, body: { host_name: 'dmzfw_02_01', asset_id: acmeSecond } })).status, 200);
+  rows = Object.fromEntries((await api('/api/grafana/devices', { token: ids.tokenManager })).data.rows.map(r => [r.host_name, r]));
+  assert.deepEqual(rows.dmzfw_02_01.changes.map(c => [c.field, c.to]), [['software_version', 'R81.20 Take 170'], ['hostname', 'dmzfw_02_01'], ['vendor', 'Check Point']]);
+  await api('/api/grafana/apply', { method: 'POST', token: ids.tokenManager, body: { host_names: ['dmzfw_02_01'] } });
+  const done = await db.prepare('SELECT hostname, vendor, model, software_version FROM customer_assets WHERE id = ?').get(acmeSecond);
+  assert.deepEqual([decrypt(done.hostname), decrypt(done.vendor), decrypt(done.model), decrypt(done.software_version)], ['dmzfw_02_01', 'Check Point', 'Check Point 6600', 'R81.20 Take 170']);
+  rows = Object.fromEntries((await api('/api/grafana/devices', { token: ids.tokenManager })).data.rows.map(r => [r.host_name, r]));
+  assert.equal(rows.dmzfw_02_01.status, 'matches', 'complete now');
 });
