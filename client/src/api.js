@@ -420,6 +420,7 @@ export const api = {
 
   // time logs
   timeLogs: (params) => req('GET', '/time-logs?' + new URLSearchParams(params).toString()),
+  timeCategories: () => req('GET', '/time-logs/categories'),
   myTimeLogs: (from, to) => req('GET', `/time-logs/mine?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   logTime: (data) => req('POST', '/time-logs', data),
   deleteTimeLog: (id) => req('DELETE', `/time-logs/${id}`),

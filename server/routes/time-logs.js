@@ -7,10 +7,12 @@ const appTime = require('../appTime');
 const { decrypt } = require('../fieldCipher');
 
 // A log belongs to a task (tasks.access) or a visit (visits.access); revoking the
-// module also closes its time logs.
-const moduleOf = target => (target.task_id ? 'tasks.access' : 'visits.access');
+// module also closes its time logs. General time (neither) needs no module.
+const moduleOf = target => (target.task_id ? 'tasks.access' : target.visit_id ? 'visits.access' : null);
+const CATEGORIES = { meeting: 'Meeting', admin: 'Admin', internal: 'Internal work', training: 'Training', other: 'Other' };
 async function moduleDenied(req, res, target) {
-  if (await hasPermission(req.user, moduleOf(target))) return false;
+  const module = moduleOf(target);
+  if (!module || await hasPermission(req.user, module)) return false;
   res.status(403).json({ error: 'You do not have permission to access this module' });
   return true;
 }
@@ -80,9 +82,23 @@ router.post('/', requireAuth, async (req, res) => {
   const workDate = req.body.work_date === undefined || req.body.work_date === null ? today : req.body.work_date;
   if (!validDate(workDate) || workDate > today || workDate < appTime.addDays(today, -366))
     return res.status(400).json({ error: 'The work date must be a date within the last year, not in the future' });
-  const error = targetError(task_id, visit_id);
-  if (!error && await moduleDenied(req, res, { task_id, visit_id })) return;
-  if (error) return res.status(400).json({ error });
+  // General time: no task or visit, a category, and optionally a customer you work with.
+  const general = !task_id && !visit_id;
+  let category = null, customerId = null;
+  if (general) {
+    if (!['manager', 'engineer'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+    if (!Object.hasOwn(CATEGORIES, req.body.category)) return res.status(400).json({ error: `Choose what the time was: ${Object.values(CATEGORIES).join(', ')}` });
+    category = req.body.category;
+    if (req.body.customer_id != null) {
+      if (!validId(req.body.customer_id)) return res.status(400).json({ error: 'Invalid customer' });
+      if (!await require('../customerAccess').canAccessCustomer(req.user, Number(req.body.customer_id))) return res.status(404).json({ error: 'Customer not found' });
+      customerId = Number(req.body.customer_id);
+    }
+  } else {
+    const error = targetError(task_id, visit_id);
+    if (!error && await moduleDenied(req, res, { task_id, visit_id })) return;
+    if (error) return res.status(400).json({ error });
+  }
   if (task_id && req.user.role !== 'manager' && req.user.role !== 'engineer')
     return res.status(403).json({ error: 'Forbidden' });
   if (!['number', 'string'].includes(typeof hours) || !Number.isFinite(Number(hours)))
@@ -115,8 +131,8 @@ router.post('/', requireAuth, async (req, res) => {
   }
 
   const result = (await db.prepare(
-    'INSERT INTO time_logs (user_id, task_id, visit_id, hours, description, work_date) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(req.user.id, task_id || null, visit_id || null, Number(hours), description?.trim() || null, workDate));
+    'INSERT INTO time_logs (user_id, task_id, visit_id, hours, description, work_date, category, customer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(req.user.id, task_id || null, visit_id || null, Number(hours), description?.trim() || null, workDate, category, customerId));
 
   res.json({ id: result.lastInsertRowid });
 });
@@ -134,12 +150,18 @@ router.get('/mine', requireAuth, async (req, res) => {
     LEFT JOIN tasks t ON tl.task_id = t.id
     LEFT JOIN projects p ON p.id = t.project_id
     LEFT JOIN maintenance_visits mv ON tl.visit_id = mv.id
-    LEFT JOIN customers c ON c.id = COALESCE(t.customer_id, p.customer_id, mv.customer_id)
+    LEFT JOIN customers c ON c.id = COALESCE(t.customer_id, p.customer_id, mv.customer_id, tl.customer_id)
     WHERE tl.user_id = ? AND COALESCE(tl.work_date, substr(tl.logged_at, 1, 10)) BETWEEN ? AND ?
     ORDER BY COALESCE(tl.work_date, substr(tl.logged_at, 1, 10)) DESC, tl.logged_at DESC
   `).all(req.user.id, from, to);
   const [tasks, visits] = await Promise.all([hasPermission(req.user, 'tasks.access'), hasPermission(req.user, 'visits.access')]);
-  res.json(rows.filter(row => (row.task_id ? tasks : visits)).map(row => ({ ...row, customer_name: decrypt(row.customer_name) || null })));
+  res.json(rows.filter(row => (row.task_id ? tasks : row.visit_id ? visits : true))
+    .map(row => ({ ...row, customer_name: decrypt(row.customer_name) || null, category_label: row.category ? CATEGORIES[row.category] || row.category : null })));
+});
+
+// The kinds of general time (for the form).
+router.get('/categories', requireAuth, (req, res) => {
+  res.json(Object.entries(CATEGORIES).map(([value, label]) => ({ value, label })));
 });
 
 // DELETE /api/time-logs/:id

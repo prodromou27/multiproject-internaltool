@@ -56,3 +56,32 @@ test('an engineer logs hours on a task for an earlier day, then sees them by day
   await page.getByRole('button', { name: 'Export CSV' }).click();
   expect((await download).suggestedFilename()).toMatch(/^my-time-\d{4}-\d{2}-\d{2}-to-\d{4}-\d{2}-\d{2}\.csv$/);
 });
+
+test('meetings and other work go into My time too, and an entry can be removed', async ({ page }) => {
+  const api = await mockApi(page, { role: 'engineer' });
+  let logged = null, removed = null;
+  let rows = [];
+  api.override('GET /api/time-logs/categories', () => ({ body: [{ value: 'meeting', label: 'Meeting' }, { value: 'admin', label: 'Admin' }] }));
+  api.override('GET /api/time-logs/mine', () => ({ body: rows }));
+  api.override('POST /api/time-logs', ({ body }) => {
+    logged = body;
+    rows = [{ id: 20, hours: 1.5, work_date: body.work_date, category: 'meeting', category_label: 'Meeting', customer_name: null, description: body.description }];
+    return { body: { id: 20 } };
+  });
+  api.override('DELETE /api/time-logs/20', () => { removed = true; rows = []; return { body: { ok: true } }; });
+  await page.goto('/my-time');
+  await page.getByRole('button', { name: 'Log other time' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Log other time' });
+  await dialog.getByLabel('Hours').fill('1.5');
+  await dialog.getByLabel('What was it?').selectOption({ label: 'Meeting' });
+  await dialog.getByLabel('Note (optional)').fill('Weekly team meeting');
+  await dialog.getByRole('button', { name: 'Log time' }).click();
+  expect(logged).toMatchObject({ hours: 1.5, category: 'meeting', description: 'Weekly team meeting' });
+  expect(logged.work_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  await expect(page.getByRole('row', { name: /1.5h Internal Meeting General .*Weekly team meeting/ })).toBeVisible();
+
+  await page.getByRole('button', { name: /^Remove 1.5h Meeting on/ }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Remove' }).or(page.getByRole('dialog').getByRole('button', { name: 'Remove' })).click();
+  await expect.poll(() => removed).toBe(true);
+  await expect(page.getByText(/No hours logged in these days/)).toBeVisible();
+});

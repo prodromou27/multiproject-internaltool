@@ -1349,6 +1349,12 @@ async function applyMigrations(pool, transaction) {
       linked_at TEXT DEFAULT ${NOW}
     );
   `]);
+  migrations.push(['20261118_general_time', `
+    -- Hours not tied to a task or visit (meetings, admin, internal work…), with an
+    -- optional customer, so My time covers the whole day (routes/time-logs.js).
+    ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS category TEXT;
+    ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

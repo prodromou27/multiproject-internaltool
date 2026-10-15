@@ -46,3 +46,22 @@ test('hours are kept by the day the work was done, and listed per day with the c
   const onlyYesterday = await api(`/api/time-logs/mine?from=${yesterday}&to=${yesterday}`, { token: ids.tokenEnabled });
   assert.deepEqual(onlyYesterday.data.filter(r => r.task_id === task).map(r => Number(r.hours)), [2], 'by work day, not by when it was typed');
 });
+
+test('general time: hours with no task or visit, a category and optionally a customer, listed in My time', async () => {
+  const log = (body, token = ids.tokenEnabled) => api('/api/time-logs', { method: 'POST', token, body });
+  const day = appTime.addDays(appTime.today(), -2);
+  assert.equal((await log({ hours: 1, work_date: day })).status, 400, 'a category is needed');
+  assert.equal((await log({ hours: 1, category: 'holiday', work_date: day })).status, 400);
+  assert.equal((await log({ hours: 1, category: 'meeting', customer_id: 999999, work_date: day })).status, 404);
+  assert.equal((await log({ hours: 1, category: 'meeting' }, ids.tokenPlanner)).status, 403, 'engineers and managers only');
+  assert.equal((await log({ hours: 1.5, category: 'meeting', description: 'Weekly team meeting', work_date: day })).status, 200);
+  assert.equal((await log({ hours: 0.5, category: 'admin', customer_id: ids.customer, description: 'Contract paperwork', work_date: day })).status, 200);
+
+  const mine = (await api(`/api/time-logs/mine?from=${day}&to=${day}`, { token: ids.tokenEnabled })).data.filter(r => !r.task_id && !r.visit_id);
+  assert.deepEqual(mine.map(r => [r.category_label, Number(r.hours), r.customer_name, r.description]).sort(),
+    [['Admin', 0.5, 'Acme Corp', 'Contract paperwork'], ['Meeting', 1.5, null, 'Weekly team meeting']]);
+  assert.deepEqual((await api('/api/time-logs/categories', { token: ids.tokenEnabled })).data.map(c => c.label), ['Meeting', 'Admin', 'Internal work', 'Training', 'Other']);
+
+  // Removing your own entry works for general time too.
+  assert.equal((await api(`/api/time-logs/${mine[0].id}`, { method: 'DELETE', token: ids.tokenEnabled })).status, 200);
+});
