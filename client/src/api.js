@@ -143,6 +143,7 @@ export const api = {
   approveClosure: (id, review = {}) => req('POST', `/projects/${id}/approve-closure`, review),
   rejectClosure: (id, review) => req('POST', `/projects/${id}/reject-closure`, review),
   closureApprovals: (params = {}, options) => req('GET', '/projects/approvals?' + new URLSearchParams(params), undefined, options),
+  delegateClosure: (id, userId) => req('POST', `/projects/${id}/closure-delegate`, { user_id: userId }),
   addStatusUpdate: (id, message) => req('POST', `/projects/${id}/status-update`, { message }),
   addMembers: (id, user_ids) => req('POST', `/projects/${id}/members`, { user_ids }),
   removeMember: (pid, uid) => req('DELETE', `/projects/${pid}/members/${uid}`),

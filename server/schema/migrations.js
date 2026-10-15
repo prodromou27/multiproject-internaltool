@@ -1256,6 +1256,10 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (customer_id, rule)
     );
   `]);
+  migrations.push(['20261112_approval_delegation', `
+    -- Who a closure request was handed to (approvalAging.js); empty means any manager.
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS closure_assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

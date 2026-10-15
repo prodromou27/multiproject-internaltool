@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { notifyShared, notifyUser } = require('../notifications');
 const db = require('../db');
+const approvals = require('../approvalAging');
 const { sentVersion, conflict } = require('../editVersion');
 const { requireAuth, requireManager } = require('../middleware/auth');
 const { notify } = require('../notifications');
@@ -196,12 +197,22 @@ router.get('/approvals', requireManager, async (req, res) => {
   const pageSize = positive(req.query.page_size, 25, 100);
   if (!page || !pageSize || !Number.isSafeInteger((page - 1) * pageSize)) return res.status(400).json({ error: 'Invalid pagination' });
   const rows = await db.prepare(`SELECT p.id, p.title, p.priority, p.deadline, p.customer_id,
-      p.closure_requested_at, p.closure_request_version, requester.name AS requested_by_name, c.name AS customer_name
+      p.closure_requested_at, p.closure_request_version, p.closure_requested_by, requester.name AS requested_by_name, c.name AS customer_name,
+      p.closure_assigned_to AS assigned_to, assignee.name AS assigned_to_name,
+      COALESCE(ot.n, 0) AS open_tasks, COALESCE(om.n, 0) AS open_milestones
     FROM projects p LEFT JOIN users requester ON requester.id=p.closure_requested_by
+    LEFT JOIN users assignee ON assignee.id=p.closure_assigned_to
+    LEFT JOIN (SELECT project_id, COUNT(*) AS n FROM tasks WHERE status NOT IN ('completed','closed','cancelled') GROUP BY project_id) ot ON ot.project_id=p.id
+    LEFT JOIN (SELECT project_id, COUNT(*) AS n FROM project_milestones WHERE completed_at IS NULL GROUP BY project_id) om ON om.project_id=p.id
     LEFT JOIN customers c ON c.id=p.customer_id WHERE p.status='pending_approval'
     ORDER BY p.closure_requested_at ASC NULLS LAST, p.id ASC LIMIT ? OFFSET ?`).all(pageSize, (page - 1) * pageSize);
   const { total } = await db.prepare("SELECT COUNT(*) AS total FROM projects WHERE status='pending_approval'").get();
-  res.json({ rows: rows.map(row => ({ ...row, customer_name: decrypt(row.customer_name) })), total: Number(total), page, page_size: pageSize });
+  // How long each has waited against its target, and who could take it (approvalAging.js).
+  const cal = await require('../businessCalendar').load();
+  const [eligible, counts] = await Promise.all([approvals.reviewers('closure'), approvals.assignedCounts('closure')]);
+  res.json({ rows: rows.map(row => ({ ...row, customer_name: decrypt(row.customer_name), open_tasks: Number(row.open_tasks), open_milestones: Number(row.open_milestones),
+    ...approvals.aging(row.closure_requested_at, 'closure', cal), suggested_delegate: approvals.suggestDelegate(eligible, counts, row.closure_requested_by) })),
+    reviewers: eligible.map(r => ({ ...r, assigned: counts.get(r.id) || 0 })), total: Number(total), page, page_size: pageSize });
 });
 
 function requireProjectId(req, res, next) {
@@ -463,6 +474,16 @@ async function reviewClosure(req, res, decision) {
   if (approved) await notifyPendingScores(id, project.title);
   res.json({ ok: true });
 }
+
+// Hand a closure request to one reviewer (or back to all with user_id null); E04.
+router.post('/:id/closure-delegate', requireManager, requireProjectId, async (req, res) => {
+  const userId = req.body?.user_id === null ? null : Number(req.body?.user_id);
+  if (userId !== null && (!Number.isSafeInteger(userId) || userId < 1)) return res.status(400).json({ error: 'user_id must be a reviewer or null' });
+  const result = await approvals.delegate('closure', Number(req.params.id), userId, { by: req.user });
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  await logAudit(db, req, 'project', result.item.id, result.item.title, 'closure_delegated', result.delegate ? `to ${result.delegate.name}` : 'to any reviewer');
+  res.json({ ok: true, assigned_to: result.delegate?.id ?? null });
+});
 
 router.post('/:id/approve-closure', requireManager, (req, res) => reviewClosure(req, res, 'approved'));
 router.post('/:id/reject-closure', requireManager, (req, res) => reviewClosure(req, res, 'rejected'));

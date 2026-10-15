@@ -278,6 +278,10 @@ function startReminderSchedules() {
     sendAutomaticReminders()
       .then(counts => console.log('[reminders] automatic:', JSON.stringify(counts)))
       .catch(error => console.error('[reminders] automatic:', error.message)),
+    // Review requests past their target remind their reviewer (approvalAging.js).
+    require('./approvalAging').remindOverdue()
+      .then(sent => console.log('[approvals] overdue reminders:', sent))
+      .catch(error => console.error('[approvals] overdue reminders:', error.message)),
     // Recurring customer tasks due soon become real tasks (recurringTasks.js).
     require('./recurringTasks').createDueTasks()
       .then(counts => console.log('[recurring tasks]', JSON.stringify(counts)))
