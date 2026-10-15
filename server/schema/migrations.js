@@ -1293,6 +1293,10 @@ async function applyMigrations(pool, transaction) {
       reviewed_at TEXT DEFAULT ${NOW}
     );
   `]);
+  migrations.push(['20261114_visit_checklists', `
+    -- The checklist a visit was run with, and what was found (JSON; routes/maintenance-visits.js).
+    ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS checklist TEXT;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

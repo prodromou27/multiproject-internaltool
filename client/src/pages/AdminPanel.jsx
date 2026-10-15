@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer, FileSignature, AtSign } from 'lucide-react';
+import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer, FileSignature, AtSign, ListChecks } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import { api } from '../api';
 import { useAuth } from '../App';
@@ -26,6 +26,7 @@ const TicketingSettings = lazy(() => import('./admin/TicketingSettings'));
 const BackupsTab = lazy(() => import('./admin/BackupsTab').then(module => ({ default: module.BackupsTab })));
 const SlaSettingsTab = lazy(() => import('./admin/SlaSettingsTab').then(module => ({ default: module.SlaSettingsTab })));
 const ContractTypesTab = lazy(() => import('./admin/ContractTypesTab').then(module => ({ default: module.ContractTypesTab })));
+const VisitChecklistsTab = lazy(() => import('./admin/VisitChecklistsTab').then(module => ({ default: module.VisitChecklistsTab })));
 const Templates = lazy(() => import('./Templates'));
 
 /* ── MAIN PAGE ───────────────────────────────────────────── */
@@ -39,6 +40,7 @@ const TABS = [
   { key: 'service_activity_tracking', label: 'Activity categories', Icon: ClipboardList, group: 'work', desc: 'Categories, subcategories and technologies engineers choose when logging activities' },
   { key: 'statuses',       label: 'Project statuses',   Icon: Tag,             group: 'work',     desc: 'Project status names, colours and workflow rules' },
   { key: 'contract_types', label: 'Contract types',     Icon: FileSignature,   group: 'work',     desc: 'The contract types offered for managed customers, such as 24x7 or 8x5' },
+  { key: 'visit_checklists', label: 'Visit checklists', Icon: ListChecks, group: 'work', desc: 'What engineers check on a maintenance visit, step by step' },
   { key: 'sla',            label: 'SLAs',               Icon: Timer,           group: 'work',     desc: 'Which SLAs apply and their time limits' },
   { key: 'project_templates', label: 'Project templates', Icon: FolderKanban, group: 'work', desc: 'Reusable project structures with their default tasks' },
   { key: 'managed_report_templates', label: 'Customer report template', Icon: FileSpreadsheet, group: 'work', desc: 'The company template for the reports we send to customers: wording, colour, default sections and Word layout' },
@@ -215,6 +217,7 @@ export default function AdminPanel() {
           {tab === 'backups' && <BackupsTab />}
           {tab === 'sla' && <SlaSettingsTab />}
           {tab === 'contract_types' && <ContractTypesTab />}
+          {tab === 'visit_checklists' && <VisitChecklistsTab />}
           {tab === 'project_templates' && <Templates embedded />}
           {tab === 'notifications' && <><IntegrationsTab /><h3 className="settings-subheading">Alerts about the system</h3><AdminAlertsTab /></>}
           {tab === 'activity_bot'  && <ActivityBotSettings sectionStyle={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 }} />}

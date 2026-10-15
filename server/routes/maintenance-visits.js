@@ -36,7 +36,28 @@ function parseEngIds(row) {
     contact_phone: decrypt(row.contact_phone),
     engineer_ids: [],engineer_names: '',
     asset_ids: [],
+    checklist: parseChecklist(row.checklist),
   };
+}
+function parseChecklist(text) {
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+// A visit's checklist as sent by the form, checked: { value } or { error }.
+function checklistInput(body) {
+  const c = body?.checklist;
+  if (c === null) return { value: null };
+  if (!c || typeof c !== 'object' || typeof c.name !== 'string' || !c.name.trim() || c.name.length > 120 || !Array.isArray(c.items) || !c.items.length || c.items.length > 50)
+    return { error: 'A checklist needs a name and 1 to 50 checks' };
+  const items = [];
+  for (const item of c.items) {
+    if (!item || typeof item.text !== 'string' || !item.text.trim() || item.text.length > 200) return { error: 'Each check needs text of up to 200 characters' };
+    if (item.note != null && (typeof item.note !== 'string' || item.note.length > 1000)) return { error: 'Notes may have up to 1000 characters' };
+    if (!['open', 'ok', 'issue', 'na'].includes(item.result ?? 'open')) return { error: 'A check is ok, an issue, not applicable or still open' };
+    items.push({ text: item.text.trim(), result: item.result ?? 'open', note: item.note?.trim() || null });
+  }
+  return { value: { name: c.name.trim(), items } };
 }
 
 // Replace the full engineer set for a visit (within an existing transaction or standalone).
@@ -538,6 +559,22 @@ router.post('/:id/report-customer-unsent', requireManagerOrPlanner, async (req, 
 });
 
 // ── Mark as completed (PM, manager, or planner) ─────────────────────────────
+// The engineers on the visit (and managers and planners) record the checklist (E03).
+router.put('/:id/checklist', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid visit ID' });
+  const mv = await db.prepare('SELECT id, status, title FROM maintenance_visits WHERE id = ?').get(id);
+  if (!mv) return res.status(404).json({ error: 'Not found' });
+  const allowed = ['manager', 'planner'].includes(req.user.role) || (req.user.role === 'engineer' && await isAssignedEngineer(id, req.user.id));
+  if (!allowed) return res.status(403).json({ error: 'Only the engineers on this visit can fill in its checklist' });
+  if (mv.status === 'cancelled') return res.status(400).json({ error: 'This visit was cancelled' });
+  const checked = checklistInput(req.body);
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  const value = checked.value && { ...checked.value, updated_at: new Date().toISOString(), updated_by: req.user.name };
+  await db.prepare('UPDATE maintenance_visits SET checklist = ?, updated_at = app_now() WHERE id = ?').run(value ? JSON.stringify(value) : null, id);
+  res.json({ checklist: value });
+});
+
 router.post('/:id/complete', requireAuth, async (req, res) => {
   const { role } = req.user;
   if (!['manager', 'planner', 'pm'].includes(role))

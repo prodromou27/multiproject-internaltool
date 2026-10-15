@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import VisitRun from '../components/VisitRun';
 import { ReplyWithResponse } from '../components/ResponseComposer';
 import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import { EditConflict, useEditVersion } from '../hooks/useEditVersion';
@@ -371,6 +372,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
             {saving ? 'Saving…' : 'Save Notes'}
           </button>
         )}
+        {!isPM && <VisitRun visit={visit} onSaved={onUpdate} />}
       </div>
       <div className="modal-footer u-1bdcdd1">
         {isManager && !saving && <Link className="btn btn-ghost btn-sm" to={`/customers/${visit.customer_id}/service-profile?section=recommendations&source_visit=${visit.id}`}>Record finding</Link>}
