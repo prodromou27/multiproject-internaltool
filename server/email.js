@@ -3,12 +3,16 @@
  */
 const nodemailer = require('nodemailer');
 const db = require('./db');
+const { currentProductName } = require('./product');
 
 // ── Read SMTP settings from DB ───────────────────────────────────────────────
-function getSmtpSettings() {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'email_smtp'").get();
+async function getSmtpSettings() {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'email_smtp'").get();
   if (!row) return null;
-  try { return JSON.parse(row.value); } catch { return null; }
+  try {
+    const smtp = JSON.parse(row.value);
+    return { ...smtp,from_name:currentProductName(smtp.from_name) };
+  } catch { return null; }
 }
 
 // ── Build a nodemailer transporter from smtp config ──────────────────────────
@@ -18,14 +22,17 @@ function createTransport(smtp) {
     host:   smtp.host,
     port:   Number(smtp.port)  || 587,
     secure: smtp.secure === true || smtp.secure === 'true',
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 30_000,
     auth:   smtp.user ? { user: smtp.user, pass: smtp.password } : undefined,
     tls:    { rejectUnauthorized: smtp.allow_self_signed !== true },  // only skip TLS validation when explicitly configured
   });
 }
 
 // ── Send an email ─────────────────────────────────────────────────────────────
-async function sendEmail({ to, subject, html, text }) {
-  const smtp = getSmtpSettings();
+async function sendEmail({ to, subject, html, text, attachments }) {
+  const smtp = await getSmtpSettings();
   if (!smtp?.host) throw new Error('Email SMTP is not configured. Please set it up in Admin → Weekly Report.');
 
   const transporter = createTransport(smtp);
@@ -33,12 +40,14 @@ async function sendEmail({ to, subject, html, text }) {
     ? `"${smtp.from_name}" <${smtp.from_email || smtp.user}>`
     : (smtp.from_email || smtp.user);
 
-  await transporter.sendMail({
+  // The provider's answer (message id and response line), kept with each delivery.
+  return transporter.sendMail({
     from,
     to:   Array.isArray(to) ? to.join(', ') : to,
     subject,
     html,
     text: text || undefined,
+    attachments,
   });
 }
 

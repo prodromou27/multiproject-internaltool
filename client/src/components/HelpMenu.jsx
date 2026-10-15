@@ -1,0 +1,64 @@
+import { useState } from 'react';
+import { HelpCircle } from 'lucide-react';
+import { Modal } from './Shared';
+
+/**
+ * A glossary for the customer/service screens that share overlapping names
+ * (Customers, Customer 360, Activity Log, Service Activity Reports,
+ * Service Activity Tracking, Ticket Sync Status) plus a short setup checklist
+ * for managers. Answers "what does this screen do?" without needing a
+ * separate hosted docs site.
+ */
+const GLOSSARY = [
+  { term: 'Customers', desc: 'Every customer. The Managed view shows managed-service customers with their report status, service health and tickets.' },
+  { term: 'Customer 360', desc: 'Everything about one customer. Managed customers also have Tickets and Reports tabs.' },
+  { term: 'Activity Log', desc: 'Where engineers log service work as it happens.' },
+  { term: 'Service Activity Reports', desc: 'Aggregated reporting over all logged service activity, across every customer.' },
+  { term: 'Service Activity Tracking (Settings)', desc: 'Admin configuration for the Activity Log module — categories, technologies, and per-team setup.' },
+  { term: 'Ticket Sync Status (Settings)', desc: 'Request Tracker sync health — mapped customers, ticket counts, and recent sync runs.' },
+];
+
+const MANAGER_STEPS = [
+  'Create teams and add members (Settings → Users & teams)',
+  'Enable Service Activity Tracking for a team, if it does customer service work (Settings → Users & teams → Teams → Tracking Enabled)',
+  'Add customers and assign them to a team (Customers)',
+  'Set SLA response/resolution targets per team (Settings → Users & teams → Teams → Targets)',
+  'Configure Teams/Webex notifications and Request Tracker, if used (Settings → Email & notifications, and Settings → Integrations → Ticketing)',
+];
+
+export default function HelpMenu({ role }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className="topbar-action" onClick={() => setOpen(true)} aria-label="Help">
+        <HelpCircle size={18} />
+      </button>
+      {open && (
+        <Modal title="Help" onClose={() => setOpen(false)} wide>
+          {role === 'manager' && (
+            <div className="mb-20">
+              <h3 className="u-e9f6309">First-time setup</h3>
+              <ol className="u-2db2016">
+                {MANAGER_STEPS.map(step => <li key={step}>{step}</li>)}
+              </ol>
+            </div>
+          )}
+          <div>
+            <h3 className="u-e9f6309">What's the difference between…</h3>
+            <div className="u-a56c85e">
+              {GLOSSARY.map(({ term, desc }) => (
+                <div key={term}>
+                  <div className="u-eb673ec">{term}</div>
+                  <div className="u-1a57d8f">{desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="u-e77c7b6">
+            Press <kbd>Ctrl</kbd> <kbd>K</kbd> anywhere to jump to a page by name.
+          </p>
+        </Modal>
+      )}
+    </>
+  );
+}

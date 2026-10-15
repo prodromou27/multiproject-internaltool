@@ -1,11 +1,26 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, ArrowRight, Loader2, ShieldCheck, Eye, EyeOff, KeyRound, CheckCircle2, RotateCcw } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
+import { PRODUCT_WORDMARK } from '../product';
+
+// Why a Microsoft sign-in came back to this page (server: routes/auth.js /saml/acs).
+const SSO_ERRORS = {
+  not_configured: 'Microsoft sign-in is not set up yet. Sign in with your password, or ask an administrator.',
+  invalid: 'Microsoft sign-in could not be verified. Please try again.',
+  expired: 'That sign-in took too long, or was finished in a different browser. Please try again.',
+  no_email: 'Your Microsoft account did not send an email address. Ask an administrator to check the Entra set-up.',
+  no_account: 'There is no account here for your Microsoft email address. Ask an administrator to add you.',
+  inactive: 'Your account is deactivated. Contact your administrator.',
+};
+
+function MicrosoftLogo() {
+  return <svg width="16" height="16" viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022" /><rect x="11" y="1" width="9" height="9" fill="#7fba00" /><rect x="1" y="11" width="9" height="9" fill="#00a4ef" /><rect x="11" y="11" width="9" height="9" fill="#ffb900" /></svg>;
+}
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, passwordChangeUser } = useAuth();
   const navigate  = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -15,6 +30,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const [showPw, setShowPw] = useState(false);
+  const [sso, setSso] = useState(null); // { enabled, label } when Microsoft sign-in is set up
 
   // Steps: 'login' | '2fa' | 'set_password' | 'forgot_email' | 'forgot_sent' | 'reset_password'
   const [step,         setStep]         = useState('login');
@@ -24,7 +40,6 @@ export default function Login() {
 
   // Forced password change (first-time or expired)
   const [pendingUser,     setPendingUser]     = useState(null);
-  const [pendingToken,    setPendingToken]    = useState('');
   const [isExpired,       setIsExpired]       = useState(false); // true = expired, false = first-time
   const [newPw,           setNewPw]           = useState('');
   const [confirmPw,       setConfirmPw]       = useState('');
@@ -41,22 +56,27 @@ export default function Login() {
   useEffect(() => {
     const token = searchParams.get('reset_token');
     if (token) { setResetToken(token); setStep('reset_password'); }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const ssoError = searchParams.get('sso_error');
+    if (ssoError) setError(SSO_ERRORS[ssoError] || SSO_ERRORS.invalid);
+    api.samlStatus().then(setSso).catch(() => setSso(null));
+  }, []);  
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  function finishLogin(user, token, must_change_password, password_expired) {
+  function finishLogin(user, must_change_password, password_expired) {
     if (must_change_password) {
       setPendingUser(user);
-      setPendingToken(token);
       setIsExpired(!!password_expired);
-      localStorage.setItem('token', token);
       setStep('set_password');
     } else {
-      login(user, token);
-      navigate('/');
+      login(user);
+      navigate(user.role === 'engineer' ? '/my-day' : '/'); // engineers start on My Work
     }
   }
+
+  useEffect(() => {
+    if (passwordChangeUser) finishLogin(passwordChangeUser, true, false);
+  }, [passwordChangeUser]);  
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -68,7 +88,7 @@ export default function Login() {
         setStep('2fa');
         setTimeout(() => codeRef.current?.focus(), 100);
       } else {
-        finishLogin(res.user, res.token, res.must_change_password, res.password_expired);
+        finishLogin(res.user, res.must_change_password, res.password_expired);
       }
     } catch (err) {
       setError(err.message || 'Invalid email or password');
@@ -83,7 +103,7 @@ export default function Login() {
     setError(''); setLoading(true);
     try {
       const res = await api.verify2fa(partialToken, code.replace(/\s/g, ''));
-      finishLogin(res.user, res.token, res.must_change_password, res.password_expired);
+      finishLogin(res.user, res.must_change_password, res.password_expired);
     } catch (err) {
       setError(err.message || 'Invalid authentication code');
       setCode('');
@@ -100,9 +120,8 @@ export default function Login() {
     setError(''); setLoading(true);
     try {
       await api.firstTimeChangePassword(newPw);
-      localStorage.removeItem('token');
-      login(pendingUser, pendingToken);
-      navigate('/');
+      login({ ...pendingUser, must_change_password: 0 });
+      navigate(pendingUser?.role === 'engineer' ? '/my-day' : '/');
     } catch (err) {
       setError(err.message || 'Failed to set password');
     } finally {
@@ -156,7 +175,7 @@ export default function Login() {
         </div>
 
         {/* Brand title */}
-        <h1 className="login-app-title">Solutions<span>Hub</span></h1>
+        <h1 className="login-app-title">{PRODUCT_WORDMARK.prefix}<span>{PRODUCT_WORDMARK.suffix}</span></h1>
         <p className="login-app-sub">Project &amp; Operations Management Platform</p>
 
         {/* Red rule */}
@@ -164,57 +183,62 @@ export default function Login() {
 
         {/* Error */}
         {error && (
-          <div className="error-msg" style={{ marginBottom: 16 }}>
-            <AlertCircle size={14} style={{ flexShrink: 0 }} />
+          <div className="error-msg mb-16">
+            <AlertCircle size={14} className="flex-shrink-0" />
             {error}
           </div>
         )}
 
         {/* ── Step 1: Email + Password ── */}
+        {step === 'login' && sso?.enabled && (
+          <div className="login-sso">
+            <a className="login-sso-btn" href="/api/auth/saml/login?next=%2F"><MicrosoftLogo /> {sso.label}</a>
+            <div className="login-sso-or"><span>or use your password</span></div>
+          </div>
+        )}
         {step === 'login' && (
           <form onSubmit={handleLogin}>
             <div className="form-group">
-              <label>Email Address</label>
-              <div style={{ position: 'relative' }}>
+              <label htmlFor="login-email">Username or Email</label>
+              <div className="relative">
                 <Mail size={14} style={{
                   position: 'absolute', left: 11, top: '50%',
-                  transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none',
+                  transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none',
                 }} />
                 <input
-                  type="email"
+                  id="login-email"
+                  type="text"
                   value={form.email}
                   onChange={set('email')}
-                  placeholder="you@odysseycs.com"
-                  style={{ paddingLeft: 32 }}
+                  placeholder="admin or you@odysseycs.com"
+                  className="u-76e0843"
                   required
                   autoFocus
+                  autoComplete="username"
                 />
               </div>
             </div>
 
             <div className="form-group">
-              <label>Password</label>
-              <div style={{ position: 'relative' }}>
+              <label htmlFor="login-password">Password</label>
+              <div className="relative">
                 <Lock size={14} style={{
                   position: 'absolute', left: 11, top: '50%',
-                  transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none',
+                  transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none',
                 }} />
                 <input
+                  id="login-password"
                   type={showPw ? 'text' : 'password'}
                   value={form.password}
                   onChange={set('password')}
                   placeholder="••••••••"
-                  style={{ paddingLeft: 32, paddingRight: 36 }}
+                  className="u-04adc3e"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPw(v => !v)}
-                  style={{
-                    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)',
-                    padding: 2, display: 'flex', alignItems: 'center',
-                  }}
+                  className="u-2efe4e6"
                   tabIndex={-1}
                   aria-label={showPw ? 'Hide password' : 'Show password'}
                 >
@@ -234,11 +258,11 @@ export default function Login() {
               }
             </button>
 
-            <div style={{ textAlign: 'center', marginTop: 12 }}>
+            <div className="u-1294536">
               <button
                 type="button"
                 onClick={() => { setStep('forgot_email'); setForgotEmail(form.email); setError(''); }}
-                style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                className="u-b30d644"
               >
                 Forgot your password?
               </button>
@@ -249,13 +273,12 @@ export default function Login() {
         {/* ── Step 2: TOTP code ── */}
         {step === '2fa' && (
           <form onSubmit={handle2FA}>
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eff6ff', border: '2px solid #3b82f6',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+            <div className="text-center mb-20">
+              <div className="u-72bb59b">
                 <ShieldCheck size={26} color="#3b82f6" />
               </div>
-              <div style={{ fontWeight: 700, fontSize: 16, color: '#1e3a5f', marginBottom: 4 }}>Two-Factor Authentication</div>
-              <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>
+              <div className="u-920cce6">Two-Factor Authentication</div>
+              <div className="u-af50806">
                 Enter the 6-digit code from your authenticator app.
               </div>
             </div>
@@ -269,7 +292,7 @@ export default function Login() {
                 value={code}
                 onChange={e => setCode(e.target.value.replace(/[^0-9 ]/g, '').slice(0, 7))}
                 placeholder="000 000"
-                style={{ textAlign: 'center', fontSize: 22, letterSpacing: '0.25em', fontWeight: 700 }}
+                className="u-492bfb6"
                 maxLength={7}
                 autoComplete="one-time-code"
                 required
@@ -289,7 +312,7 @@ export default function Login() {
 
             <button
               type="button"
-              style={{ width: '100%', marginTop: 8, background: 'none', border: 'none', color: 'var(--gray-400)', fontSize: 12, cursor: 'pointer' }}
+              className="u-3394ab7"
               onClick={() => { setStep('login'); setCode(''); setError(''); }}
             >
               ← Back to login
@@ -300,15 +323,14 @@ export default function Login() {
         {/* ── Step 3: Set password on first login ── */}
         {step === 'set_password' && (
           <form onSubmit={handleSetPassword}>
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#f0fdf4', border: '2px solid #22c55e',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+            <div className="text-center mb-20">
+              <div className="u-1ed59c2">
                 <KeyRound size={26} color="#22c55e" />
               </div>
-              <div style={{ fontWeight: 700, fontSize: 16, color: '#1e3a5f', marginBottom: 4 }}>
+              <div className="u-920cce6">
                 {isExpired ? 'Password Expired' : 'Set Your Password'}
               </div>
-              <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>
+              <div className="u-af50806">
                 {isExpired
                   ? `Your password has expired, ${pendingUser?.name}. Please set a new one to continue.`
                   : `Welcome, ${pendingUser?.name}! Choose a personal password to continue.`}
@@ -316,21 +338,21 @@ export default function Login() {
             </div>
 
             <div className="form-group">
-              <label>New Password <span style={{ color: '#6b7280', fontWeight: 400, fontSize: 11 }}>(min. 12 characters)</span></label>
-              <div style={{ position: 'relative' }}>
-                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
+              <label>New Password <span className="u-0358b61">(min. 12 characters)</span></label>
+              <div className="relative">
+                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none' }} />
                 <input
                   type={showNewPw ? 'text' : 'password'}
                   value={newPw}
                   onChange={e => setNewPw(e.target.value)}
                   placeholder="••••••••••••"
-                  style={{ paddingLeft: 32, paddingRight: 36 }}
+                  className="u-04adc3e"
                   required
                   autoFocus
                   minLength={12}
                 />
                 <button type="button" onClick={() => setShowNewPw(v => !v)}
-                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', padding: 2, display: 'flex', alignItems: 'center' }}
+                  className="u-2efe4e6"
                   tabIndex={-1}>
                   {showNewPw ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
@@ -339,22 +361,22 @@ export default function Login() {
 
             <div className="form-group">
               <label>Confirm Password</label>
-              <div style={{ position: 'relative' }}>
-                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
+              <div className="relative">
+                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none' }} />
                 <input
                   type={showNewPw ? 'text' : 'password'}
                   value={confirmPw}
                   onChange={e => setConfirmPw(e.target.value)}
                   placeholder="••••••••••••"
-                  style={{ paddingLeft: 32, borderColor: confirmPw && confirmPw !== newPw ? '#ef4444' : undefined }}
+                  className={["u-76e0843", (confirmPw && confirmPw !== newPw ? 'u-959debc' : '')].filter(Boolean).join(' ')}
                   required
                 />
               </div>
               {confirmPw && confirmPw !== newPw && (
-                <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>Passwords do not match</div>
+                <div className="u-db3e48a">Passwords do not match</div>
               )}
               {confirmPw && confirmPw === newPw && newPw.length >= 12 && (
-                <div style={{ fontSize: 11, color: '#22c55e', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div className="u-a57e843">
                   <CheckCircle2 size={11} /> Passwords match
                 </div>
               )}
@@ -376,38 +398,37 @@ export default function Login() {
         {/* ── Forgot password: enter email ── */}
         {step === 'forgot_email' && (
           <form onSubmit={handleForgotPassword}>
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eff6ff', border: '2px solid #3b82f6',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+            <div className="text-center mb-20">
+              <div className="u-72bb59b">
                 <RotateCcw size={24} color="#3b82f6" />
               </div>
-              <div style={{ fontWeight: 700, fontSize: 16, color: '#1e3a5f', marginBottom: 4 }}>Reset Password</div>
-              <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>
+              <div className="u-920cce6">Reset Password</div>
+              <div className="u-af50806">
                 Enter your email and we'll send you a reset link.
               </div>
             </div>
             <div className="form-group">
               <label>Email Address</label>
-              <div style={{ position: 'relative' }}>
-                <Mail size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
+              <div className="relative">
+                <Mail size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none' }} />
                 <input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
-                  placeholder="you@company.com" style={{ paddingLeft: 32 }} required autoFocus />
+                  placeholder="you@company.com" className="u-76e0843" required autoFocus />
               </div>
             </div>
             <button type="submit" disabled={loading || !forgotEmail.trim()} className="login-submit-btn">
               {loading ? <><Loader2 size={14} className="login-spin" /> Sending…</> : <><ArrowRight size={14} /> Send Reset Link</>}
             </button>
-            <button type="button" style={{ width: '100%', marginTop: 8, background: 'none', border: 'none', color: 'var(--gray-400)', fontSize: 12, cursor: 'pointer' }}
+            <button type="button" className="u-3394ab7"
               onClick={() => { setStep('login'); setError(''); }}>← Back to login</button>
           </form>
         )}
 
         {/* ── Forgot password: confirmation ── */}
         {step === 'forgot_sent' && (
-          <div style={{ textAlign: 'center', padding: '8px 0' }}>
+          <div className="u-6100dcb">
             <CheckCircle2 size={48} color="#22c55e" strokeWidth={1.5} style={{ margin: '0 auto 12px', display: 'block' }} />
-            <div style={{ fontWeight: 700, fontSize: 16, color: '#1e3a5f', marginBottom: 8 }}>Check your email</div>
-            <div style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 20 }}>
+            <div className="u-99da4d7">Check your email</div>
+            <div className="u-6ae70ea">
               If an account exists for <strong>{forgotEmail}</strong>, you'll receive a reset link within a few minutes. The link expires in 1 hour.
             </div>
             <button className="login-submit-btn" onClick={() => { setStep('login'); setForgotEmail(''); }}>
@@ -419,38 +440,37 @@ export default function Login() {
         {/* ── Reset password: from email link ── */}
         {step === 'reset_password' && (
           <form onSubmit={handleResetPassword}>
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#f0fdf4', border: '2px solid #22c55e',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+            <div className="text-center mb-20">
+              <div className="u-1ed59c2">
                 <KeyRound size={26} color="#22c55e" />
               </div>
-              <div style={{ fontWeight: 700, fontSize: 16, color: '#1e3a5f', marginBottom: 4 }}>Set New Password</div>
-              <div style={{ fontSize: 13, color: 'var(--gray-500)' }}>Choose a strong password (min. 12 characters).</div>
+              <div className="u-920cce6">Set New Password</div>
+              <div className="u-af50806">Choose a strong password (min. 12 characters).</div>
             </div>
             <div className="form-group">
               <label>New Password</label>
-              <div style={{ position: 'relative' }}>
-                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
+              <div className="relative">
+                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none' }} />
                 <input type={showResetPw ? 'text' : 'password'} value={resetNewPw} onChange={e => setResetNewPw(e.target.value)}
-                  placeholder="••••••••••••" style={{ paddingLeft: 32, paddingRight: 36 }} required minLength={12} autoFocus />
+                  placeholder="••••••••••••" className="u-04adc3e" required minLength={12} autoFocus />
                 <button type="button" onClick={() => setShowResetPw(v => !v)} tabIndex={-1}
-                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', padding: 2, display: 'flex', alignItems: 'center' }}>
+                  className="u-2efe4e6">
                   {showResetPw ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
             </div>
             <div className="form-group">
               <label>Confirm Password</label>
-              <div style={{ position: 'relative' }}>
-                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
+              <div className="relative">
+                <Lock size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color:'var(--gray-500)', pointerEvents: 'none' }} />
                 <input type={showResetPw ? 'text' : 'password'} value={resetConfirm} onChange={e => setResetConfirm(e.target.value)}
-                  placeholder="••••••••••••" style={{ paddingLeft: 32, borderColor: resetConfirm && resetConfirm !== resetNewPw ? '#ef4444' : undefined }} required />
+                  placeholder="••••••••••••" className={["u-76e0843", (resetConfirm && resetConfirm !== resetNewPw ? 'u-959debc' : '')].filter(Boolean).join(' ')} required />
               </div>
               {resetConfirm && resetConfirm !== resetNewPw && (
-                <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>Passwords do not match</div>
+                <div className="u-db3e48a">Passwords do not match</div>
               )}
               {resetConfirm && resetConfirm === resetNewPw && resetNewPw.length >= 12 && (
-                <div style={{ fontSize: 11, color: '#22c55e', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div className="u-a57e843">
                   <CheckCircle2 size={11} /> Passwords match
                 </div>
               )}

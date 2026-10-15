@@ -1,13 +1,30 @@
-import React, { useEffect, useState } from 'react';
-import { Upload, X, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle, Search } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import VisitRun from '../components/VisitRun';
+import { ReplyWithResponse } from '../components/ResponseComposer';
+import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
+import { EditConflict, useEditVersion } from '../hooks/useEditVersion';
+import { VisitTimeFields, VisitWarnings, allDayOf, timesOf, useVisitCheck, visitTime } from '../components/VisitSchedule';
+import CustomerSearchSelect from '../components/CustomerSearchSelect';
+import { Upload, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import { useSavedFilter } from '../hooks/useSavedFilter';
+import { HeaderMenu, PageHeader } from '../components/PageLayout';
+import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
+import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
+import { useLatestRequest } from '../hooks/useLatestRequest';
+import { businessToday, businessNow } from '../utils/dates';
 import { api } from '../api';
+import AddToCalendarButton from '../components/AddToCalendarButton';
+import { TeamAvailability, VisitCalendar } from './maintenanceVisits/VisitViews';
 import { useAuth } from '../App';
-import { fmtDate, isOverdue, Modal } from '../components/Shared';
+import { fmtDate, isOverdue, Modal, sentenceCase } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
+import { PRODUCT_NAME } from '../product';
+import { MetricStrip,Surface,TabPanel,Tabs } from '../components/EnterpriseUI';
+import { useLiveRefresh } from '../live';
+import CheckList from '../components/CheckList';
 
 /* ── Report-pending urgency helper ──────────────────────────
    Returns null | 'orange' | 'red'
@@ -33,21 +50,16 @@ const STATUS_COLORS = {
 /* ── Multi-engineer picker ───────────────────────────────── */
 function EngineerPicker({ engineers, selected, onChange }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+    <div className="flex flex-wrap gap-6 mt-4">
       {engineers.map(e => {
         const active = selected.includes(e.id);
         return (
-          <label key={e.id} style={{
-            display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
-            padding: '4px 10px', borderRadius: 6, fontSize: 12, userSelect: 'none',
-            background: active ? '#dbeafe' : 'var(--gray-100)',
-            border: active ? '1px solid #93c5fd' : '1px solid transparent',
-          }}>
+          <label key={e.id} className={["u-7ed4f50", (active ? 'u-4c55566' : 'u-d994785'), (active ? 'u-8b7de93' : 'u-52e7996')].filter(Boolean).join(' ')}>
             <input
               type="checkbox"
               checked={active}
               onChange={() => onChange(active ? selected.filter(x => x !== e.id) : [...selected, e.id])}
-              style={{ width: 'auto' }}
+              className="u-30e741d"
             />
             {e.name}
           </label>
@@ -59,48 +71,76 @@ function EngineerPicker({ engineers, selected, onChange }) {
 }
 
 /* ── Visit Form ──────────────────────────────────────────── */
-function VisitForm({ initial, customers, engineers, onSave, onClose }) {
-  const [form, setForm] = useState(initial || {
-    customer_id: '', title: '', description: '', scheduled_date: '',
-    engineer_ids: [], notes: '', status: 'scheduled',
+const VISIT_FIELDS = [
+  ['title', 'Title'], ['description', 'Description'], ['scheduled_date', 'Date', d => d?.slice(0, 10) || '—'],
+  ['start_time', 'Start'], ['duration_minutes', 'Minutes'], ['status', 'Status'], ['notes', 'Notes'], ['customer_id', 'Customer'],
+];
+
+function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
+  const [form, setForm] = useState(() => {
+    const start = initial || { customer_id: '', title: '', description: '', scheduled_date: '',
+      engineer_ids: [], asset_ids: [], notes: '', status: 'scheduled',...(defaults || {}) };
+    return { ...start, all_day: allDayOf(start) };
   });
+  const check = useVisitCheck(initial);
+  const edit = useEditVersion(initial);
+  const draft = useFormDraft({ name: `visit:${initial?.id || 'new'}`, value: form, base: initial?.updated_at ?? null });
   const [saving,   setSaving]   = useState(false);
   const [formErr,  setFormErr]  = useState('');
+  const [assets,setAssets]=useState([]);
+  const [assetsLoading,setAssetsLoading]=useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
+  useEffect(() => {
+    if (!form.customer_id) { setAssets([]);return; }
+    const controller=new AbortController();setAssetsLoading(true);
+    api.maintenanceVisitAssets(form.customer_id,{ signal:controller.signal }).then(rows => { if (!controller.signal.aborted) setAssets(rows); })
+      .catch(error => { if (!controller.signal.aborted) setFormErr(error.message || 'Could not load customer assets'); })
+      .finally(() => { if (!controller.signal.aborted) setAssetsLoading(false); });
+    return () => controller.abort();
+  },[form.customer_id]);
+
+  // The day, time and engineers are checked before saving (holidays, time off, overlaps…).
   async function submit(e) {
-    e.preventDefault(); setSaving(true); setFormErr('');
-    try { await onSave(form); onClose(); }
-    catch (err) { setFormErr(err.message || 'Failed to save. Please try again.'); }
+    e?.preventDefault(); setSaving(true); setFormErr('');
+    const { all_day: _allDay, ...rest } = form;
+    const payload = { ...rest, ...timesOf(form), id: initial?.id, version: edit.version };
+    try { if (await check.run(payload, onSave)) { draft.clear(); onClose(); } }
+    catch (err) { if (!edit.caught(err)) setFormErr(err.message || 'Failed to save. Please try again.'); }
     finally { setSaving(false); }
   }
+  // A change to what was checked clears the warnings.
+  const setChecked = updater => { setForm(updater); check.reset(); };
 
   return (
     <form onSubmit={submit}>
+      <DraftBanner draft={draft} onRestore={data => data && setForm(data)} />
+      <EditConflict edit={edit} what="visit" fields={VISIT_FIELDS} mine={{ ...form, ...timesOf(form) }}
+        onKeepMine={() => { edit.keepMine(); submit(); }}
+        onUseTheirs={() => { const theirs = edit.takeTheirs(); setForm(f => { const next = { ...f, ...theirs, customer_id: String(theirs.customer_id), scheduled_date: theirs.scheduled_date?.slice(0, 10) || '' }; return { ...next, all_day: allDayOf(next) }; }); }} />
       <div className="form-group">
-        <label>Customer *</label>
-        <select value={form.customer_id} onChange={set('customer_id')} required>
-          <option value="">Select customer…</option>
-          {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <label htmlFor="visit-customer">Customer *</label>
+        <CustomerSearchSelect id="visit-customer" value={form.customer_id} allowEmpty={false} required placeholder="Search customers…"
+          onChange={customerId => setForm(old => ({ ...old,customer_id:customerId ? String(customerId) : '',asset_ids:String(customerId || '')===String(initial?.customer_id || '') ? initial?.asset_ids || [] : [] }))} />
       </div>
       <div className="form-group">
-        <label>Visit Title *</label>
-        <input value={form.title} onChange={set('title')} required placeholder="e.g. Q2 Health Check" />
+        <label htmlFor="visit-title">Visit Title *</label>
+        <input id="visit-title" value={form.title} onChange={set('title')} required placeholder="e.g. Q2 Health Check" />
       </div>
       <div className="form-group">
-        <label>Description</label>
-        <textarea value={form.description || ''} onChange={set('description')} placeholder="Scope, objectives…" />
+        <label htmlFor="visit-description">Description</label>
+        <textarea id="visit-description" value={form.description || ''} onChange={set('description')} placeholder="Scope, objectives…" />
       </div>
       <div className="form-row">
         <div className="form-group">
-          <label>Scheduled Date *</label>
-          <input type="date" value={form.scheduled_date} onChange={set('scheduled_date')} required />
+          <label htmlFor="visit-date">Scheduled Date *</label>
+          <input id="visit-date" type="date" value={form.scheduled_date} onChange={event => setChecked(f => ({ ...f, scheduled_date: event.target.value }))} required />
+          <VisitTimeFields form={form} setForm={setChecked} />
         </div>
         {initial && (
           <div className="form-group">
-            <label>Status</label>
-            <select value={form.status} onChange={set('status')}>
+            <label htmlFor="visit-status">Status</label>
+            <select id="visit-status" value={form.status} onChange={set('status')}>
               <option value="scheduled">Scheduled</option>
               <option value="in_progress">In Progress</option>
               <option value="completed">Completed</option>
@@ -114,17 +154,19 @@ function VisitForm({ initial, customers, engineers, onSave, onClose }) {
         <EngineerPicker
           engineers={engineers}
           selected={form.engineer_ids}
-          onChange={ids => setForm(f => ({ ...f, engineer_ids: ids }))}
+          onChange={ids => setChecked(f => ({ ...f, engineer_ids: ids }))}
         />
       </div>
+      <div className="form-group"><span id="visit-assets-label" className="form-label-text">Assets in scope</span>{assetsLoading ? <span className="text-muted text-sm" role="status">Loading assets…</span> : <CheckList key={form.customer_id || 'none'} id="visit-assets" label="assets in scope" searchPlaceholder="Search assets…" emptyText={form.customer_id ? 'No active assets recorded for this customer.' : 'Choose the customer first.'} options={assets.map(asset => ({ id: asset.id, label: asset.name, detail: [asset.asset_type, asset.hostname].filter(Boolean).join(' · ') }))} selected={form.asset_ids || []} onChange={assetIds => setForm(old => ({ ...old,asset_ids:assetIds }))} />}</div>
       <div className="form-group">
-        <label>Notes</label>
-        <textarea value={form.notes || ''} onChange={set('notes')} placeholder="Any additional notes…" />
+        <label htmlFor="visit-form-notes">Notes</label>
+        <textarea id="visit-form-notes" value={form.notes || ''} onChange={set('notes')} placeholder="Any additional notes…" />
       </div>
-      {formErr && <div className="error-msg" style={{ marginBottom: 8 }}>{formErr}</div>}
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+      {formErr && <div className="error-msg mb-8">{formErr}</div>}
+      <VisitWarnings warnings={check.warnings} />
+      <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : check.pending ? 'Save anyway' : 'Save'}</button>
       </div>
     </form>
   );
@@ -133,7 +175,7 @@ function VisitForm({ initial, customers, engineers, onSave, onClose }) {
 /* ── PDF / Print helper ──────────────────────────────────── */
 function generatePDF(visit, onError) {
   const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const fmtD = s => s ? new Date(s + (s.length === 10 ? 'T12:00:00' : '')).toLocaleDateString([], { year:'numeric', month:'long', day:'numeric' }) : '—';
+  const fmtD = s => s ? fmtDate(s) : '—';
   const statusLabel = (visit.status || '').replace('_',' ');
   const reportLine = visit.report_sent_to_customer
     ? `&#10003; Sent to Project Management${visit.report_sent_to_customer_at ? ' on ' + fmtD(visit.report_sent_to_customer_at) : ''}`
@@ -151,36 +193,36 @@ function generatePDF(visit, onError) {
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;padding:40px;font-size:13px;line-height:1.5}
   .hdr{border-bottom:3px solid #3b82f6;padding-bottom:16px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-end}
-  .logo{font-size:22px;font-weight:800;color:#3b82f6;letter-spacing:-.5px}
-  .doc-type{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+  .logo{font-size:22px;font-weight:800;color:var(--tone-info-text);letter-spacing:-.5px}
+  .doc-type{font-size:10px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
   h1{font-size:20px;font-weight:700;margin-bottom:4px}
-  .customer{font-size:15px;color:#3b82f6;font-weight:600;margin-bottom:20px}
+  .customer{font-size:15px;color:var(--tone-info-text);font-weight:600;margin-bottom:20px}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
-  .field label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;font-weight:700;display:block;margin-bottom:3px}
+  .field label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--gray-500);font-weight:700;display:block;margin-bottom:3px}
   .field .val{font-size:13px;font-weight:600}
   .badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700}
   .b-scheduled{background:#dbeafe;color:#1d4ed8}
   .b-completed{background:#dcfce7;color:#166534}
   .b-in_progress{background:#fef9c3;color:#854d0e}
-  .b-cancelled{background:#f3f4f6;color:#6b7280}
+  .b-cancelled{background:#f3f4f6;color:var(--gray-500)}
   .sec{margin-bottom:20px}
-  .sec-title{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;font-weight:700;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px}
+  .sec-title{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--gray-500);font-weight:700;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px}
   .text-block{font-size:13px;line-height:1.65;color:#334155;white-space:pre-wrap}
   .report-box{padding:12px 16px;border-radius:8px;border:1px solid ${reportBorder};background:${reportBg};margin-bottom:20px;font-size:13px}
-  .footer{margin-top:40px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8}
+  .footer{margin-top:40px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:var(--gray-500)}
   @media print{body{padding:24px}@page{margin:1.5cm}}
 </style>
 </head><body>
   <div class="hdr">
-    <div><div class="logo">Solutions Hub</div><div class="doc-type">Maintenance Visit Report</div></div>
-    <div style="font-size:11px;color:#94a3b8;text-align:right">Generated ${new Date().toLocaleDateString([], { year:'numeric', month:'long', day:'numeric' })}</div>
+    <div><div class="logo">${PRODUCT_NAME}</div><div class="doc-type">Maintenance Visit Report</div></div>
+    <div style="font-size:11px;color:var(--gray-500);text-align:right">Generated ${fmtDate(businessToday())}</div>
   </div>
 
   <h1>${esc(visit.title)}</h1>
   <div class="customer">${esc(visit.customer_name)}</div>
 
   <div class="grid">
-    <div class="field"><label>Scheduled Date</label><div class="val">${fmtD(visit.scheduled_date)}</div></div>
+    <div class="field"><label>Scheduled Date</label><div class="val">${fmtD(visit.scheduled_date)}${visitTime(visit) ? ` · ${visitTime(visit)}` : ''}</div></div>
     <div class="field"><label>Status</label><div class="val"><span class="badge b-${visit.status}">${statusLabel}</span></div></div>
     <div class="field"><label>Engineer${(visit.engineer_names || '').includes(',') ? 's' : ''}</label><div class="val">${esc(visit.engineer_names) || 'Unassigned'}</div></div>
     <div class="field"><label>Contact</label><div class="val">${esc(visit.contact_name) || '—'}${visit.contact_email ? ' &middot; ' + esc(visit.contact_email) : ''}</div></div>
@@ -192,7 +234,7 @@ function generatePDF(visit, onError) {
   <div class="report-box"><strong>Report Status:</strong> ${reportLine}</div>
 
   <div class="footer">
-    <span>Solutions Hub &mdash; Internal Project Management</span>
+    <span>${PRODUCT_NAME} &mdash; Internal Project Management</span>
     <span>${esc(visit.customer_name)} &middot; ${esc(visit.title)}</span>
   </div>
 </body></html>`;
@@ -210,12 +252,23 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
   const [notes, setNotes] = useState(visit.notes || '');
   const [saving, setSaving] = useState(false);
 
-  async function saveNotes()         { setSaving(true); try { await api.updateVisit(visit.id, { notes }); toast.success('Notes saved'); onUpdate(); } catch(e){toast.error(e.message);} finally{setSaving(false);} }
-  async function markSent()          { try { await api.markReportSent(visit.id);     toast.success('Report marked as submitted'); onUpdate(); onClose(); } catch(e){toast.error(e.message);} }
-  async function markUnsent()        { try { await api.markReportUnsent(visit.id);   toast.success('Report submission undone');  onUpdate(); onClose(); } catch(e){toast.error(e.message);} }
-  async function markCustomerSent()  { try { await api.markCustomerSent(visit.id);   toast.success('Report approved & sent to PM'); onUpdate(); onClose(); } catch(e){toast.error(e.message);} }
-  async function markCustomerUnsent(){ try { await api.markCustomerUnsent(visit.id); toast.success('Approval undone'); onUpdate(); onClose(); } catch(e){toast.error(e.message);} }
-  async function markComplete()      { try { await api.completeVisit(visit.id);      toast.success('Visit marked as complete'); onUpdate(); onClose(); } catch(e){toast.error(e.message);} }
+  const submitting = useRef(false);
+  async function save(action, message, close = true) {
+    if (submitting.current) return;
+    submitting.current = true; setSaving(true);
+    try {
+      await action();
+      toast.success(message); onUpdate();
+      if (close) onClose();
+    } catch (error) { toast.error(error.message); }
+    finally { submitting.current = false; setSaving(false); }
+  }
+  const saveNotes = () => save(() => api.updateVisit(visit.id, { notes }), 'Notes saved', false);
+  const markSent = () => save(() => api.markReportSent(visit.id), 'Report marked as submitted');
+  const markUnsent = () => save(() => api.markReportUnsent(visit.id), 'Report submission undone');
+  const markCustomerSent = () => save(() => api.markCustomerSent(visit.id), 'Report approved & sent to PM');
+  const markCustomerUnsent = () => save(() => api.markCustomerUnsent(visit.id), 'Approval undone');
+  const markComplete = () => save(() => api.completeVisit(visit.id), 'Visit marked as complete');
 
   // 3-state: pending / report_complete / sent_to_pm
   const reportState = visit.report_sent_to_customer ? 'sent_to_pm'
@@ -223,16 +276,16 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
 
   const reportBadge = {
     pending:          <span className="badge badge-open">Pending</span>,
-    report_complete:  <span className="badge badge-active" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Check size={10} /> Report Complete</span>,
-    sent_to_pm:       <span className="badge badge-done"   style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Send size={10} /> Sent to PM</span>,
+    report_complete:  <span className="badge badge-active u-4d9efe7"><Check size={10} /> Report Complete</span>,
+    sent_to_pm:       <span className="badge badge-done u-4d9efe7"><Send size={10} /> Sent to PM</span>,
   }[reportState];
 
   return (
-    <Modal title="Maintenance Visit Details" onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <Modal title="Maintenance Visit Details" onClose={saving ? () => {} : onClose}>
+      <div className="flex-col gap-12">
         <div>
-          <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>Customer</div>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>{visit.customer_name}</div>
+          <div className="text-sm text-muted u-fce9611">Customer</div>
+          <div className="u-0c7a14e">{visit.customer_name}</div>
           {visit.contact_name && <div className="text-sm text-muted">{visit.contact_name}{visit.contact_email ? ` · ${visit.contact_email}` : ''}</div>}
         </div>
         <div className="divider" />
@@ -248,27 +301,19 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
             { label: 'Approved & Sent',   done: step3, active: step2 && !step3 },
           ];
           return (
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, marginBottom: 4 }}>
+            <div className="u-8e74c5a">
               {steps.map((s, i) => (
                 <React.Fragment key={i}>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <div style={{
-                      width: 30, height: 30, borderRadius: '50%',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: s.done ? 'var(--success)' : s.active ? 'var(--primary)' : 'var(--gray-100)',
-                      color: s.done || s.active ? '#fff' : 'var(--gray-400)',
-                      fontWeight: 700, fontSize: 12, flexShrink: 0,
-                      boxShadow: s.active ? '0 0 0 3px rgba(37,99,235,.2)' : 'none',
-                      transition: 'all .2s',
-                    }}>
+                  <div className="u-5ff150e">
+                    <div className={["u-10e2a54", (s.done ? 'u-1f8d1eb' : (s.active ? 'u-1eab90a' : 'u-d994785')), (s.done || s.active ? 'u-729d2fa' : 'u-1e2ea2c'), (s.active ? 'u-7652d48' : 'u-ce3f2c6')].filter(Boolean).join(' ')}>
                       {s.done ? <Check size={13} /> : i + 1}
                     </div>
-                    <span style={{ fontSize: 10, fontWeight: s.done || s.active ? 600 : 400, color: s.done ? 'var(--success)' : s.active ? 'var(--primary)' : 'var(--gray-400)', textAlign: 'center', lineHeight: 1.3 }}>
+                    <span className={["u-d37de03", (s.done || s.active ? 'u-eed0f8f' : 'u-7e3a944'), (s.done ? 'u-5a45298' : (s.active ? 'u-dc2e428' : 'u-1e2ea2c'))].filter(Boolean).join(' ')}>
                       {s.label}
                     </span>
                   </div>
                   {i < steps.length - 1 && (
-                    <div style={{ flex: 0.4, height: 2, marginTop: 14, background: steps[i + 1].done || s.done ? 'var(--success)' : 'var(--gray-200)', transition: 'background .2s' }} />
+                    <div className={["u-5ac0919", (steps[i + 1].done || s.done ? 'u-1f8d1eb' : 'u-a955ec7')].filter(Boolean).join(' ')} />
                   )}
                 </React.Fragment>
               ))}
@@ -279,24 +324,25 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
         <div className="divider" />
         <div className="grid-2">
           <div>
-            <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>Scheduled Date</div>
-            <div className={isOverdue(visit.scheduled_date) && visit.status === 'scheduled' ? 'overdue font-bold' : 'font-bold'}>{fmtDate(visit.scheduled_date)}</div>
+            <div className="text-sm text-muted u-fce9611">Scheduled Date</div>
+            <div className={isOverdue(visit.scheduled_date) && visit.status === 'scheduled' ? 'overdue font-bold' : 'font-bold'}>{fmtDate(visit.scheduled_date)}{visitTime(visit) && <span className="text-muted"> · {visitTime(visit)}</span>}</div>
           </div>
           <div>
-            <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>Status</div>
-            <span className={`badge ${STATUS_COLORS[visit.status]}`}>{visit.status.replace('_', ' ')}</span>
+            <div className="text-sm text-muted u-fce9611">Status</div>
+            <span className={`badge ${STATUS_COLORS[visit.status]}`}>{sentenceCase(visit.status.replace('_', ' '))}</span>
           </div>
           <div>
-            <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>
+            <div className="text-sm text-muted u-fce9611">
               Engineer{visit.engineer_ids?.length !== 1 ? 's' : ''}
             </div>
             <div>{visit.engineer_names || <span className="text-muted">Unassigned</span>}</div>
           </div>
+          <div><div className="text-sm text-muted u-fce9611">Assets in scope</div><div>{visit.asset_ids?.length ? `${visit.asset_ids.length} linked customer ${visit.asset_ids.length===1 ? 'asset' : 'assets'}` : <span className="text-muted">None selected</span>}</div></div>
           <div>
-            <div className="text-sm text-muted" style={{ textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 2 }}>Report Status</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div className="text-sm text-muted u-fce9611">Report Status</div>
+            <div className="flex-col gap-4">
               {reportBadge}
-              {visit.report_sent && (
+              {!!visit.report_sent && (
                 <div className="text-sm text-muted">
                   Submitted by {visit.report_sent_by_name} · {fmtDate(visit.report_sent_at)}
                 </div>
@@ -312,64 +358,80 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
         {visit.description && <>
           <div className="divider" />
           <div>
-            <div className="text-sm text-muted" style={{ fontWeight: 700, marginBottom: 4 }}>DESCRIPTION</div>
-            <p style={{ fontSize: 13 }}>{visit.description}</p>
+            <div className="text-sm text-muted u-a848666">DESCRIPTION</div>
+            <p className="u-5e0faad">{visit.description}</p>
           </div>
         </>}
         <div className="divider" />
-        <div className="form-group" style={{ margin: 0 }}>
-          <label>Notes</label>
-          <textarea value={notes} onChange={e => !isPM && setNotes(e.target.value)} rows={3} readOnly={isPM} style={isPM ? { background: 'var(--gray-50)', color: 'var(--gray-500)' } : {}} />
+        <div className="form-group m-0">
+          <label htmlFor={`visit-notes-${visit.id}`}>Notes</label>
+          <textarea id={`visit-notes-${visit.id}`} disabled={saving} value={notes} onChange={e => !isPM && setNotes(e.target.value)} rows={3} readOnly={isPM} style={isPM ? { background: 'var(--gray-50)', color: 'var(--gray-500)' } : {}} />
         </div>
         {!isPM && (
-          <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-end' }} onClick={saveNotes} disabled={saving}>
+          <button className="btn btn-ghost btn-sm u-ffd20f1" onClick={saveNotes} disabled={saving}>
             {saving ? 'Saving…' : 'Save Notes'}
           </button>
         )}
+        {!isPM && <VisitRun visit={visit} onSaved={onUpdate} />}
       </div>
-      <div className="modal-footer" style={{ flexWrap: 'wrap', gap: 8 }}>
+      <div className="modal-footer u-1bdcdd1">
+        {isManager && !saving && <Link className="btn btn-ghost btn-sm" to={`/customers/${visit.customer_id}/service-profile?section=recommendations&source_visit=${visit.id}`}>Record finding</Link>}
         {/* PM: mark complete */}
         {isPM && visit.status !== 'completed' && visit.status !== 'cancelled' && (
-          <button className="btn btn-success" onClick={markComplete} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn btn-success inline-flex items-center gap-6" onClick={markComplete} disabled={saving}>
             <Check size={14} /> Mark as Completed
           </button>
         )}
         {/* Step 1 → 2 : engineer submits report */}
         {!isPM && reportState === 'pending' && visit.status !== 'cancelled' && (
-          <button className="btn btn-success" onClick={markSent} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn btn-success inline-flex items-center gap-6" onClick={markSent} disabled={saving}>
             <Check size={14} /> Submit Report
           </button>
         )}
         {/* Step 2 → 3 : manager/planner approves and sends to PM */}
         {reportState === 'report_complete' && canManage && (
-          <button className="btn btn-primary" onClick={markCustomerSent} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn btn-primary inline-flex items-center gap-6" onClick={markCustomerSent} disabled={saving}>
             <Send size={14} /> Approve &amp; Send to PM
           </button>
         )}
         {/* Undo actions (escape hatches) */}
         {reportState === 'sent_to_pm' && canManage && (
-          <button className="btn btn-ghost btn-sm" onClick={markCustomerUnsent} title="Undo — move back to awaiting approval">↩ Undo PM Sent</button>
+          <button className="btn btn-ghost btn-sm" onClick={markCustomerUnsent} disabled={saving} title="Undo — move back to awaiting approval">↩ Undo PM Sent</button>
         )}
-        {reportState === 'report_complete' && canManage && (
-          <button className="btn btn-ghost btn-sm" onClick={markUnsent} title="Undo — move back to report pending">↩ Undo Submission</button>
+        {reportState === 'report_complete' && isManager && (
+          <button className="btn btn-ghost btn-sm" onClick={markUnsent} disabled={saving} title="Undo — move back to report pending">↩ Undo Submission</button>
         )}
+        {visit.status !== 'cancelled' && <AddToCalendarButton visitId={visit.id} title={visit.title} />}
+        {!isPM && <ReplyWithResponse inline context={{ type: 'visit', id: visit.id }} />}
         <button
-          className="btn btn-ghost btn-sm"
+          className="btn btn-ghost btn-sm u-e4d240f"
           onClick={() => generatePDF(visit, msg => toast.warning(msg))}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}
           title="Open print-friendly report"
         >
           <Printer size={13} /> Print Report
         </button>
-        <button className="btn btn-ghost" onClick={onClose}>Close</button>
+        <button className="btn btn-ghost" disabled={saving} onClick={onClose}>Close</button>
       </div>
     </Modal>
   );
 }
 
 const MV_COLUMNS = ['customer_name*', 'title*', 'description', 'scheduled_date*', 'engineer_names', 'notes'];
+const VISIT_FILTERS = new Set(['upcoming', 'past', 'report_pending', 'awaiting_review', 'cancelled', 'all']);
+const VISIT_FILTER_LIST = [...VISIT_FILTERS];
+const VISIT_VIEWS = ['list', 'calendar', 'availability'];
 
 /* ── Main Page ───────────────────────────────────────────── */
+// The next 6 months and the last 12, newest first, for the month filter.
+const MONTH_CHOICES = () => {
+  const now = businessNow(), out = [];
+  for (let offset = 6; offset >= -12; offset--) {
+    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    out.push({ value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) });
+  }
+  return out;
+};
+
 export default function MaintenanceVisits() {
   const { user }   = useAuth();
   const toast      = useToast();
@@ -381,41 +443,75 @@ export default function MaintenanceVisits() {
   const canManage  = isManager || isPlanner;
   const location  = useLocation();
   const [visits,      setVisits]      = useState([]);
-  const [customers,   setCustomers]   = useState([]);
   const [engineers,   setEngineers]   = useState([]);
-  const [filter,      setFilter]      = useSavedFilter('mv_filter', 'upcoming');
+  const [filter,      setFilter]      = useSavedFilter('mv_filter', 'upcoming', { param: 'show', allowed: VISIT_FILTER_LIST });
+  const [savedView,   setView]        = useSavedFilter('mv_view', 'list', { param: 'view', allowed: VISIT_VIEWS });
   const [monthFilter, setMonthFilter] = useState('');
   const [search,      setSearch]      = useState('');
   const [selected,    setSelected]    = useState(null);
   const [showForm,    setShowForm]    = useState(false);
+  const [createDefaults,setCreateDefaults]=useState(null);
   const [showImport,  setShowImport]  = useState(false);
   const [editing,     setEditing]     = useState(null);
   const [loading,     setLoading]     = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [loadedScope, setLoadedScope] = useState(null);
+  const scope = `${user.id}:${user.role}:${monthFilter}`;
+  const busy = loading || loadedScope !== scope;
+  const unavailable = busy || !!loadError;
+  const { begin, isCurrent } = useLatestRequest(scope);
 
-  // Apply URL ?filter= param on mount (e.g. from dashboard stat card clicks)
+  // Dashboard links can change filters without unmounting this page.
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const urlFilter = params.get('filter');
-    if (urlFilter) setFilter(urlFilter);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (urlFilter) setFilter(VISIT_FILTERS.has(urlFilter) ? urlFilter : 'upcoming');
+  }, [location.search, setFilter]);
+  useEffect(() => {
+    if (!VISIT_FILTERS.has(filter)) setFilter('upcoming');
+  }, [filter, setFilter]);
+  // Opened from a link to one visit (e.g. the calendar invitation): show it once the list has it.
+  const linkedVisit = new URLSearchParams(location.search).get('visit');
+  const openedLink = useRef(null);
+  useEffect(() => {
+    if (!linkedVisit || openedLink.current === linkedVisit || !visits.length) return;
+    const found = visits.find(v => String(v.id) === linkedVisit);
+    if (found) { openedLink.current = linkedVisit; setSelected(found); }
+  }, [linkedVisit, visits]);
 
-  const load = () => {
+  // A remembered view this person may not use (or no longer exists) falls back to the list.
+  const view = savedView === 'calendar' || (savedView === 'availability' && canManage) ? savedView : 'list';
+  const planVisit = defaults => { setCreateDefaults(defaults); setEditing(null); setShowForm(true); };
+  useCreateIntent({ allowed: canManage, ready: !unavailable, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateDefaults(customerId?{ customer_id:customerId }:null);setEditing(null);setShowForm(true); } });
+
+  const load = useCallback((loadOptions) => {
+    const request = begin();
+    if (request.signal.aborted) return Promise.resolve();
+    if (loadOptions?.quiet !== true) setLoading(true);
+    setLoadError('');
+    const options = { signal: request.signal };
     const params = {};
     if (monthFilter) params.month = monthFilter;
+    // Customers are picked by searching (CustomerSearchSelect), not loaded here.
     return Promise.all([
-      api.maintenanceVisits(params),
-      canManage ? api.customers() : Promise.resolve([]),
-      canManage ? api.users()     : Promise.resolve([]),
-    ]).then(([v, c, u]) => {
+      api.maintenanceVisits(params, options),
+      canManage ? api.users(options)     : Promise.resolve([]),
+    ]).then(([v, u]) => {
+      if (!isCurrent(request)) return;
       setVisits(v);
-      setCustomers(c);
       setEngineers((u || []).filter(x => x.role === 'engineer'));
-      setLoading(false);
-    });
-  };
-  useEffect(() => { load(); }, [monthFilter]);
+      setLoadedScope(scope);
+    }).catch(error => {
+      if (isCurrent(request)) setLoadError(error.message || 'Could not load maintenance visits');
+    }).finally(() => { if (isCurrent(request)) setLoading(false); });
+  }, [monthFilter, canManage, scope, begin, isCurrent]);
+  useEffect(() => { load(); }, [load]);
+  useLiveRefresh(() => load({ quiet: true }));
+  useEffect(() => {
+    setSelected(null); setShowForm(false); setEditing(null); setShowImport(false);
+  }, [scope]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessToday();
   const filtered = visits.filter(v => {
     // Status-tab filter
     let pass = true;
@@ -427,7 +523,7 @@ export default function MaintenanceVisits() {
     if (!pass) return false;
     // Text search
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const q = search.trim().toLowerCase();
       return (v.customer_name || '').toLowerCase().includes(q) ||
              (v.title || '').toLowerCase().includes(q) ||
              (v.engineer_names || '').toLowerCase().includes(q);
@@ -438,6 +534,16 @@ export default function MaintenanceVisits() {
   // Only count visits that have actually occurred (exclude future scheduled)
   const reportPendingCount  = visits.filter(v => v.status !== 'cancelled' && v.status !== 'scheduled' && !v.report_sent).length;
   const awaitingReviewCount = visits.filter(v => v.report_sent && !v.report_sent_to_customer).length;
+
+  const actionInFlight = useRef(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  async function runVisitAction(action, message) {
+    if (actionInFlight.current) return;
+    actionInFlight.current = true; setActionBusy(true);
+    try { await action(); toast.success(message); load(); }
+    catch (error) { toast.error(error.message); }
+    finally { actionInFlight.current = false; setActionBusy(false); }
+  }
 
   async function handleDelete(id) {
     const ok = await confirm('Delete this maintenance visit?', { title: 'Delete Visit' });
@@ -458,91 +564,86 @@ export default function MaintenanceVisits() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Maintenance Visits</h1>
-        {canManage && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn btn-ghost btn-sm" onClick={async () => {
+      <PageHeader title="Maintenance Visits" actions={<>
+{canManage && (
+          <div className="flex gap-8 flex-wrap">
+            <button className="btn btn-primary" disabled={unavailable} onClick={() => { setEditing(null); setShowForm(true); }}>+ Schedule Visit</button>
+            <HeaderMenu>
+            <button type="button" disabled={unavailable} onClick={async () => {
               try {
                 // Use a short-lived (60 s) scoped download token — never expose
                 // the full session JWT in a URL (would be captured in server logs)
                 const { token } = await api.downloadToken();
                 const a = document.createElement('a');
-                a.href = '/api/maintenance-visits/export?token=' + token;
+                const params = new URLSearchParams({ token, filter, search: search.trim(), as_of: today });
+                if (monthFilter) params.set('month', monthFilter);
+                a.href = '/api/maintenance-visits/export?' + params.toString();
                 a.download = 'maintenance-visits.xlsx'; a.click();
               } catch { toast.error('Export failed. Please try again.'); }
-            }} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <Download size={13} /> Export
+            }}>
+              <Download size={14} aria-hidden="true" /> Export matching visits
             </button>
-            <button className="btn btn-ghost" onClick={() => setShowImport(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Upload size={14} /> Import</button>
-            <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>+ Schedule Visit</button>
+            <button type="button" disabled={unavailable} onClick={() => setShowImport(true)}><Upload size={14} aria-hidden="true" /> Import visits</button>
+            </HeaderMenu>
           </div>
         )}
-      </div>
+      </>} />
 
-      {/* Quick stats */}
-      <div className="grid-4" style={{ marginBottom: 20 }}>
-        <div className="card stat">
-          <div className="stat-value">{visits.filter(v => v.status === 'scheduled').length}</div>
-          <div className="stat-label">Scheduled</div>
-        </div>
-        <div className="card stat">
-          <div className="stat-value" style={{ color: 'var(--success)' }}>{visits.filter(v => v.status === 'completed').length}</div>
-          <div className="stat-label">Completed</div>
-        </div>
-        <div className="card stat">
-          <div className="stat-value" style={{ color: reportPendingCount > 0 ? 'var(--warning)' : 'var(--success)' }}>{reportPendingCount}</div>
-          <div className="stat-label">Reports Pending</div>
-        </div>
-        <div className="card stat">
-          <div className="stat-value" style={{ color: 'var(--primary)' }}>{visits.filter(v => v.report_sent_to_customer).length}</div>
-          <div className="stat-label">Sent to PM</div>
-        </div>
-      </div>
+      {/* The figures describe the list, so they show with it. */}
+      {view === 'list' && <MetricStrip items={[
+        { key:'scheduled',label:'Scheduled',value:unavailable ? '…' : visits.filter(v => v.status === 'scheduled').length,note:'Upcoming planned visits' },
+        { key:'completed',label:'Completed',value:unavailable ? '…' : visits.filter(v => v.status === 'completed').length,tone:'success',note:'Completed in the loaded period' },
+        { key:'reports',label:'Reports pending',value:unavailable ? '…' : reportPendingCount,tone:reportPendingCount > 0 ? 'warning' : 'success',note:'Completed work awaiting evidence' },
+        { key:'sent',label:'Sent to PM',value:unavailable ? '…' : visits.filter(v => v.report_sent_to_customer).length,tone:'info',note:'Approved report deliveries' },
+      ]} />}
 
+      {/* List, calendar, or (managers and planners) the team's availability. */}
+      <Tabs variant="pill" className="mb-12" label="Visit views" value={view} onChange={setView}
+        items={[['list', 'List'], ['calendar', 'Calendar'], ...(canManage ? [['availability', 'Team availability']] : [])].map(([key, label]) => ({ key, label }))} />
+      <TabPanel label="Visit views" value={view}>
+      {view === 'calendar' && <VisitCalendar onOpen={visit => setSelected(visit)} onPlan={canManage ? planVisit : null} />}
+      {view === 'availability' && canManage && <TeamAvailability onPlan={planVisit} />}
+      {view === 'list' && <>
       {/* Search + Filters */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        {/* Search bar */}
-        <div style={{ position: 'relative', marginBottom: 10 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by customer, visit title, or engineer…"
-            style={{ paddingLeft: 32, width: '100%', maxWidth: 420 }}
-          />
-          {search && (
-            <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', display: 'flex', padding: 2 }}>
-              <X size={13} />
-            </button>
-          )}
-        </div>
+      <Surface label="Visit filters">
+        <ListSearch value={search} onChange={setSearch} label="Search maintenance visits" maxLength={500}
+          placeholder="Search customers, visit titles, or engineers…" />
         {/* Status tabs + month picker */}
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div className="filter-bar" style={{ flex: 1 }}>
+        <div className="u-009cb13">
+          <FilterGroup label="View" className="list-filter-grow">
             {[
               ['upcoming',        'Upcoming'],
               ['past',            'Past / Completed'],
-              ['report_pending',  `Report Pending${reportPendingCount ? ` (${reportPendingCount})` : ''}`],
-              ['awaiting_review', `Awaiting Approval${awaitingReviewCount ? ` (${awaitingReviewCount})` : ''}`],
+              ['report_pending',  `Report Pending${!unavailable && reportPendingCount ? ` (${reportPendingCount})` : ''}`],
+              ['awaiting_review', `Awaiting Approval${!unavailable && awaitingReviewCount ? ` (${awaitingReviewCount})` : ''}`],
               ['all',             'All'],
               ['cancelled',       'Cancelled'],
             ].map(([k, l]) => (
               <button key={k} className={'filter-pill' + (filter === k ? ' active' : '')} onClick={() => setFilter(k)}>{l}</button>
             ))}
-          </div>
-          <input type="month" value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={{ width: 'auto', padding: '5px 10px' }} title="Filter by month" />
-          {monthFilter && <button className="btn btn-sm btn-ghost" onClick={() => setMonthFilter('')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><X size={12} /> Clear month</button>}
+          </FilterGroup>
+          {/* A list of months, not the browser's month field (which shows "--------- ----" when empty). */}
+          <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="visit-month" aria-label="Month">
+            <option value="">Any month</option>
+            {monthFilter && !MONTH_CHOICES().some(m => m.value === monthFilter) && <option value={monthFilter}>{monthFilter}</option>}
+            {MONTH_CHOICES().map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
         </div>
-      </div>
+      </Surface>
 
-      {loading ? <p className="text-muted">Loading…</p> : filtered.length === 0
+      {!unavailable && <ResultContext shown={filtered.length} total={visits.length} noun="visits"
+        activeFilters={(search.trim() ? 1 : 0) + (filter !== 'all' ? 1 : 0) + (monthFilter ? 1 : 0)}
+        onClear={() => { setSearch(''); setMonthFilter(''); setFilter('all'); }} />}
+
+      {loadError ? <div className="error-msg" role="alert">
+        <p>{loadError}</p><button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
+      </div> : busy ? <p className="text-muted">Loading…</p> : filtered.length === 0
         ? (
           <div className="empty">
             <div className="empty-icon"><Wrench size={40} strokeWidth={1.2} /></div>
             <p>{search.trim() ? `No visits matching "${search}"` : 'No maintenance visits in this view'}</p>
             {(search.trim() || monthFilter) && (
-              <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }}
+              <button className="btn btn-ghost btn-sm mt-12"
                 onClick={() => { setSearch(''); setMonthFilter(''); setFilter('all'); }}>
                 Clear filters
               </button>
@@ -567,31 +668,31 @@ export default function MaintenanceVisits() {
                   const urgency  = isEngineer ? reportUrgency(v) : null;
                   const rowStyle = {
                     cursor: 'pointer',
-                    ...(urgency === 'red'    && { background: '#fef2f2', borderLeft: '3px solid #ef4444' }),
-                    ...(urgency === 'orange' && { background: '#fff7ed', borderLeft: '3px solid #f97316' }),
+                    ...(urgency === 'red'    && { background: 'var(--danger-light)', borderLeft: '3px solid #ef4444' }),
+                    ...(urgency === 'orange' && { background: 'var(--warning-light)', borderLeft: '3px solid #f97316' }),
                   };
                   return (
-                  <tr key={v.id} style={rowStyle} onClick={() => setSelected(v)}>
-                    <td style={{ fontWeight: 600 }}>{v.customer_name}</td>
-                    <td>{v.title}</td>
-                    <td className={isOverdue(v.scheduled_date) && v.status === 'scheduled' ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
+                  <tr key={v.id} style={rowStyle} onClick={() => { if (!actionBusy) setSelected(v); }}>
+                    <td className="font-semibold">{v.customer_name}</td>
+                    <td><button className="btn btn-ghost btn-sm" disabled={actionBusy} onClick={event => { event.stopPropagation(); setSelected(v); }} aria-label={`View visit: ${v.title}`}>{v.title}</button></td>
+                    <td className={isOverdue(v.scheduled_date) && v.status === 'scheduled' ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}{visitTime(v) && <div className="text-muted text-sm">{visitTime(v)}</div>}</td>
                     <td>
                       {v.engineer_names
-                        ? <span style={{ fontSize: 12 }}>{v.engineer_names}</span>
+                        ? <span className="text-sm">{v.engineer_names}</span>
                         : <span className="text-muted">Unassigned</span>}
                     </td>
-                    <td><span className={`badge ${STATUS_COLORS[v.status]}`}>{v.status.replace('_', ' ')}</span></td>
+                    <td><span className={`badge ${STATUS_COLORS[v.status]}`}>{sentenceCase(v.status.replace('_', ' '))}</span></td>
                     <td>
                       {v.report_sent_to_customer
-                        ? <span className="badge badge-done" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Send size={10} /> Sent to PM</span>
+                        ? <span className="badge badge-done u-4d9efe7"><Send size={10} /> Sent to PM</span>
                         : v.report_sent
-                          ? <span className="badge badge-active" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Check size={10} /> Report Complete</span>
+                          ? <span className="badge badge-active u-4d9efe7"><Check size={10} /> Report Complete</span>
                           : urgency === 'red'
-                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#dc2626', fontWeight: 700, fontSize: 12 }}>
+                            ? <span className="u-e765e21">
                                 <AlertCircle size={13} /> Overdue 7d+
                               </span>
                             : urgency === 'orange'
-                              ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#ea580c', fontWeight: 600, fontSize: 12 }}>
+                              ? <span className="u-5dea795">
                                   <AlertTriangle size={13} /> Pending
                                 </span>
                               : <span className="badge badge-open">Pending</span>}
@@ -600,17 +701,18 @@ export default function MaintenanceVisits() {
                       <div className="flex gap-8">
                         {/* PM: mark complete */}
                         {isPM && v.status !== 'completed' && v.status !== 'cancelled' && (
-                          <button className="btn btn-sm btn-success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={async () => { await api.completeVisit(v.id); load(); }}><Check size={12} /> Mark Complete</button>
+                          <button className="btn btn-sm btn-success inline-flex items-center gap-4" disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.completeVisit(v.id), 'Visit marked as complete'); }}><Check size={12} /> Mark Complete</button>
                         )}
                         {/* Engineer: submit report */}
                         {!isPM && !v.report_sent && v.status !== 'cancelled' && (
-                          <button className="btn btn-sm btn-success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={async () => { await api.markReportSent(v.id); load(); }}><Check size={12} /> Submit Report</button>
+                          <button className="btn btn-sm btn-success inline-flex items-center gap-4" disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.markReportSent(v.id), 'Report marked as submitted'); }}><Check size={12} /> Submit Report</button>
                         )}
-                        {v.report_sent && !v.report_sent_to_customer && canManage && (
-                          <button className="btn btn-sm btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={async () => { await api.markCustomerSent(v.id); load(); }}><Send size={12} /> Approve &amp; Send to PM</button>
+                        {!!v.report_sent && !v.report_sent_to_customer && canManage && (
+                          <button className="btn btn-sm btn-primary inline-flex items-center gap-4" disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.markCustomerSent(v.id), 'Report approved & sent to PM'); }}><Send size={12} /> Approve &amp; Send to PM</button>
                         )}
-                        {canManage && <button className="btn btn-sm btn-ghost" onClick={() => openEdit(v)}>Edit</button>}
-                        {canManage && <button className="btn btn-sm btn-danger" onClick={() => handleDelete(v.id)}>Del</button>}
+                        {v.status !== 'cancelled' && <AddToCalendarButton visitId={v.id} title={v.title} compact />}
+                        {canManage && <button className="btn btn-sm btn-ghost" disabled={actionBusy} onClick={() => openEdit(v)}>Edit</button>}
+                        {canManage && <button className="btn btn-sm btn-danger" disabled={actionBusy} onClick={() => handleDelete(v.id)}>Del</button>}
                       </div>
                     </td>
                   </tr>
@@ -621,6 +723,8 @@ export default function MaintenanceVisits() {
           </div>
         )
       }
+      </>}
+      </TabPanel>
 
       {selected && (
         <VisitDetailModal
@@ -629,15 +733,15 @@ export default function MaintenanceVisits() {
           canManage={canManage}
           isPM={isPM}
           onClose={() => setSelected(null)}
-          onUpdate={() => { load(); setSelected(null); }}
+          onUpdate={load}
         />
       )}
 
       {showForm && canManage && (
-        <Modal title={editing ? 'Edit Visit' : 'Schedule Maintenance Visit'} onClose={() => { setShowForm(false); setEditing(null); }}>
+        <Modal title={editing ? 'Edit Visit' : 'Schedule Maintenance Visit'} onClose={() => { setShowForm(false);setEditing(null);setCreateDefaults(null); }}>
           <VisitForm
             initial={editing}
-            customers={customers}
+            defaults={createDefaults}
             engineers={engineers}
             onSave={async data => {
               if (editing) {
@@ -649,7 +753,7 @@ export default function MaintenanceVisits() {
               }
               load();
             }}
-            onClose={() => { setShowForm(false); setEditing(null); }}
+            onClose={() => { setShowForm(false);setEditing(null);setCreateDefaults(null); }}
           />
         </Modal>
       )}
@@ -658,7 +762,11 @@ export default function MaintenanceVisits() {
         <ImportModal
           title="Import Maintenance Visits"
           templateUrl={api.maintenanceVisitsTemplateUrl()}
-          importFn={api.importVisits}
+          previewFn={api.previewVisitImport}
+          importFn={(file, { previewToken }) => api.importVisits(file, { previewToken })}
+          noun={['visit', 'visits']}
+          unchangedLabel="already planned (skipped)"
+          listUnchanged
           columns={MV_COLUMNS}
           onClose={() => setShowImport(false)}
           onDone={load}

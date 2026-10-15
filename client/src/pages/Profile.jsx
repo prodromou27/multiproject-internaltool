@@ -1,21 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Camera, KeyRound, User, Save, Trash2, CheckCircle, AlertCircle, Lock, ShieldCheck, ShieldOff, QrCode, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Camera, KeyRound, User, Save, Trash2, CheckCircle, AlertCircle, ShieldCheck, ShieldOff, Loader2, Bell } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { useConfirm } from '../components/Confirm';
+import { Toggle } from './admin/shared';
 
 /* ── Inline alert helper ─────────────────────────────────── */
 function Alert({ type, msg }) {
   if (!msg) return null;
   const ok = type === 'success';
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 8,
-      padding: '9px 13px', borderRadius: 8, marginBottom: 14, fontSize: 13,
-      background: ok ? '#f0fdf4' : '#fef2f2',
-      border: `1px solid ${ok ? '#bbf7d0' : '#fecaca'}`,
-      color: ok ? '#166534' : '#991b1b',
-    }}>
+    <div className="u-2b95d35" style={{ background: ok ? '#f0fdf4' : '#fef2f2', border: `1px solid ${ok ? '#bbf7d0' : '#fecaca'}`, color: ok ? '#166534' : '#991b1b' }}>
       {ok ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
       {msg}
     </div>
@@ -41,7 +36,7 @@ function AvatarSection({ user, onRefresh }) {
     try {
       const data = await api.uploadAvatar(file);
       if (data.error) throw new Error(data.error);
-      // Update auth context + localStorage with new user + token
+      // Refresh the current user after the server renews the session cookie.
       login({ ...user, avatar_url: data.avatar_url }, data.token);
       setMsg({ type: 'success', text: 'Profile picture updated!' });
       onRefresh(data.user);
@@ -68,34 +63,22 @@ function AvatarSection({ user, onRefresh }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 20 }}>
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="card mb-20">
+      <div className="u-a32a8d3">
         <Camera size={15} color="var(--primary)" /> Profile Picture
       </div>
       <Alert type={msg.type} msg={msg.text} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+      <div className="u-277c3be">
         {/* Avatar preview */}
         <div
           onClick={() => fileRef.current?.click()}
-          style={{
-            width: 80, height: 80, borderRadius: '50%', flexShrink: 0,
-            background: user.avatar_url ? 'transparent' : 'linear-gradient(135deg,#3b82f6,#6366f1)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 26, fontWeight: 800, color: '#fff',
-            cursor: 'pointer', overflow: 'hidden',
-            border: '3px solid var(--gray-100)',
-            position: 'relative',
-          }}
+          className={["u-d6a4d8c", (user.avatar_url ? 'u-a8869db' : 'u-6bde7b7')].filter(Boolean).join(' ')}
           title="Click to change photo"
         >
           {user.avatar_url
-            ? <img src={user.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ? <img src={user.avatar_url} alt="avatar" className="u-618aa59" />
             : initials}
-          <div style={{
-            position: 'absolute', inset: 0, background: 'rgba(0,0,0,.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            opacity: 0, transition: 'opacity .15s',
-          }}
+          <div className="u-884fc59"
             onMouseEnter={e => e.currentTarget.style.opacity = 1}
             onMouseLeave={e => e.currentTarget.style.opacity = 0}
           >
@@ -103,25 +86,24 @@ function AvatarSection({ user, onRefresh }) {
           </div>
         </div>
 
-        <div style={{ flex: 1, minWidth: 160 }}>
-          <p className="text-sm text-muted" style={{ marginBottom: 10 }}>
+        <div className="u-eb62184">
+          <p className="text-sm text-muted u-761d3ad">
             JPG, PNG or WebP · Max 2 MB · Click the photo to upload
           </p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="flex gap-8 flex-wrap">
             <button
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm inline-flex items-center gap-5"
               onClick={() => fileRef.current?.click()}
               disabled={uploading}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+             
             >
               <Camera size={13} /> {uploading ? 'Uploading…' : 'Upload Photo'}
             </button>
             {user.avatar_url && (
               <button
-                className="btn btn-ghost btn-sm"
+                className="btn btn-ghost btn-sm u-26822bb"
                 onClick={handleRemove}
                 disabled={removing}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--danger)' }}
               >
                 <Trash2 size={13} /> {removing ? 'Removing…' : 'Remove'}
               </button>
@@ -129,7 +111,7 @@ function AvatarSection({ user, onRefresh }) {
           </div>
         </div>
       </div>
-      <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
+      <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="u-6b99de8" />
     </div>
   );
 }
@@ -138,7 +120,10 @@ function AvatarSection({ user, onRefresh }) {
 function PersonalInfoSection({ user, onRefresh }) {
   const { login } = useAuth();
   const isEngineer = user.role === 'engineer';
-  const [form, setForm]   = useState({ name: user.name || '', email: user.email || '' });
+  const [form, setForm]   = useState({ name: user.name || '', email: user.email || '', current_password: '' });
+  const [pendingEmail, setPendingEmail] = useState(user.pending_email || '');
+  // A new email is how this account signs in and is recovered, so it needs the password.
+  const changingEmail = form.email.trim().toLowerCase() !== String(user.email || '').toLowerCase() && !!form.email.trim();
   const [saving, setSaving] = useState(false);
   const [msg, setMsg]       = useState({ type: '', text: '' });
 
@@ -147,9 +132,11 @@ function PersonalInfoSection({ user, onRefresh }) {
     if (!form.name.trim()) { setMsg({ type: 'error', text: 'Name cannot be empty' }); return; }
     setSaving(true); setMsg({ type: '', text: '' });
     try {
-      const data = await api.updateProfile({ name: form.name.trim(), email: form.email.trim() });
+      const data = await api.updateProfile({ name: form.name.trim(), email: form.email.trim(), ...(changingEmail ? { current_password: form.current_password } : {}) });
       login({ ...user, name: data.user.name, email: data.user.email, avatar_url: data.user.avatar_url }, data.token);
-      setMsg({ type: 'success', text: 'Profile updated successfully!' });
+      setPendingEmail(data.pending_email || '');
+      setForm(f => ({ ...f, email: data.user.email || '', current_password: '' }));
+      setMsg({ type: 'success', text: data.pending_email ? `Saved. Open the link sent to ${data.pending_email} to start using it.` : 'Profile updated.' });
       onRefresh(data.user);
     } catch (err) {
       setMsg({ type: 'error', text: err.message });
@@ -157,8 +144,8 @@ function PersonalInfoSection({ user, onRefresh }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 20 }}>
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="card mb-20">
+      <div className="u-a32a8d3">
         <User size={15} color="var(--primary)" /> Personal Info
       </div>
       <Alert type={msg.type} msg={msg.text} />
@@ -169,19 +156,19 @@ function PersonalInfoSection({ user, onRefresh }) {
           <div className="form-row">
             <div className="form-group">
               <label>Full Name</label>
-              <input value={user.name || ''} disabled style={{ background: 'var(--gray-50)', cursor: 'not-allowed' }} />
+              <input aria-label="Full Name" value={user.name || ''} disabled className="u-a38c980" />
             </div>
             <div className="form-group">
               <label>Email Address</label>
-              <input value={user.email || ''} disabled style={{ background: 'var(--gray-50)', cursor: 'not-allowed' }} />
+              <input aria-label="Email Address" value={user.email || ''} disabled className="u-a38c980" />
             </div>
           </div>
-          <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '4px 0 0 0', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <p className="u-5627473">
             <AlertCircle size={12} />
             Name and email can only be changed by an administrator.
           </p>
-          <div style={{ marginTop: 12, fontSize: 11, color: 'var(--gray-400)' }}>
-            Role: <strong style={{ textTransform: 'capitalize' }}>{user.role}</strong>
+          <div className="u-4ac3eb4">
+            Role: <strong className="u-6fedee3">{user.role}</strong>
             {user.created_at && ` · Joined ${new Date(user.created_at).toLocaleDateString([], { month: 'short', year: 'numeric' })}`}
           </div>
         </div>
@@ -191,7 +178,7 @@ function PersonalInfoSection({ user, onRefresh }) {
           <div className="form-row">
             <div className="form-group">
               <label>Full Name *</label>
-              <input
+              <input aria-label="Full Name"
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="Your full name"
@@ -200,25 +187,32 @@ function PersonalInfoSection({ user, onRefresh }) {
             </div>
             <div className="form-group">
               <label>Email Address</label>
-              <input
+              <input aria-label="Email Address"
                 type="email"
                 value={form.email}
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 placeholder="your@email.com"
               />
+              {pendingEmail && !changingEmail && <small className="text-muted">Waiting for {pendingEmail} to be confirmed from the email sent to it.</small>}
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {changingEmail && <div className="form-group">
+            <label htmlFor="profile-current-password">Current password</label>
+            <input id="profile-current-password" type="password" value={form.current_password} required autoComplete="current-password"
+              onChange={e => setForm(f => ({ ...f, current_password: e.target.value }))} />
+            <small className="text-muted">Needed to change the email you sign in with.</small>
+          </div>}
+          <div className="flex-center gap-12">
             <button
               type="submit"
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm inline-flex items-center gap-5"
               disabled={saving}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+             
             >
               <Save size={13} /> {saving ? 'Saving…' : 'Save Changes'}
             </button>
-            <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>
-              Role: <strong style={{ textTransform: 'capitalize' }}>{user.role}</strong>
+            <span className="u-5be3ef4">
+              Role: <strong className="u-6fedee3">{user.role}</strong>
               {user.created_at && ` · Joined ${new Date(user.created_at).toLocaleDateString([], { month: 'short', year: 'numeric' })}`}
             </span>
           </div>
@@ -230,6 +224,7 @@ function PersonalInfoSection({ user, onRefresh }) {
 
 /* ── Change password section ─────────────────────────────── */
 function ChangePasswordSection() {
+  const { user, login } = useAuth();
   const [form, setForm]   = useState({ current_password: '', new_password: '', confirm: '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg]       = useState({ type: '', text: '' });
@@ -237,11 +232,12 @@ function ChangePasswordSection() {
 
   async function submit(e) {
     e.preventDefault();
-    if (form.new_password.length < 6) { setMsg({ type: 'error', text: 'New password must be at least 6 characters' }); return; }
+    if (form.new_password.length < 12) { setMsg({ type: 'error', text: 'New password must be at least 12 characters' }); return; }
     if (form.new_password !== form.confirm) { setMsg({ type: 'error', text: 'New passwords do not match' }); return; }
     setSaving(true); setMsg({ type: '', text: '' });
     try {
-      await api.changePassword({ current_password: form.current_password, new_password: form.new_password });
+      const data = await api.changePassword({ current_password: form.current_password, new_password: form.new_password });
+      if (data?.token) login(user, data.token);
       setMsg({ type: 'success', text: 'Password changed successfully!' });
       setForm({ current_password: '', new_password: '', confirm: '' });
     } catch (err) {
@@ -251,14 +247,14 @@ function ChangePasswordSection() {
 
   return (
     <div className="card">
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="u-a32a8d3">
         <KeyRound size={15} color="var(--primary)" /> Change Password
       </div>
       <Alert type={msg.type} msg={msg.text} />
-      <form onSubmit={submit} style={{ maxWidth: 400 }}>
+      <form onSubmit={submit} className="u-cb05851">
         <div className="form-group">
           <label>Current Password *</label>
-          <input
+          <input aria-label="Current Password"
             type="password"
             value={form.current_password}
             onChange={set('current_password')}
@@ -269,18 +265,18 @@ function ChangePasswordSection() {
         </div>
         <div className="form-group">
           <label>New Password *</label>
-          <input
+          <input aria-label="New Password"
             type="password"
             value={form.new_password}
             onChange={set('new_password')}
-            placeholder="At least 6 characters"
+            placeholder="At least 12 characters"
             required
             autoComplete="new-password"
           />
         </div>
         <div className="form-group">
           <label>Confirm New Password *</label>
-          <input
+          <input aria-label="Confirm New Password"
             type="password"
             value={form.confirm}
             onChange={set('confirm')}
@@ -289,14 +285,14 @@ function ChangePasswordSection() {
             autoComplete="new-password"
           />
           {form.confirm && form.new_password && form.confirm !== form.new_password && (
-            <p style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4 }}>Passwords don't match</p>
+            <p className="u-5433fdf">Passwords don't match</p>
           )}
         </div>
         <button
           type="submit"
-          className="btn btn-primary btn-sm"
+          className="btn btn-primary btn-sm inline-flex items-center gap-5"
           disabled={saving || !form.current_password || !form.new_password || form.new_password !== form.confirm}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+         
         >
           <KeyRound size={13} /> {saving ? 'Saving…' : 'Update Password'}
         </button>
@@ -359,41 +355,33 @@ function TwoFactorSection({ user, onRefresh }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 20 }}>
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="card mb-20">
+      <div className="u-a32a8d3">
         <ShieldCheck size={15} color="var(--primary)" /> Two-Factor Authentication
       </div>
       <Alert type={msg.type} msg={msg.text} />
 
       {/* Status indicator */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          padding: '6px 12px', borderRadius: 8,
-          background: enabled ? '#f0fdf4' : '#fef9c3',
-          border: `1px solid ${enabled ? '#86efac' : '#fde68a'}`,
-          fontSize: 13, fontWeight: 600,
-          color: enabled ? '#166534' : '#92400e',
-        }}>
+      <div className="u-b21814f">
+        <div className="u-bf58c8b" style={{ background: enabled ? '#f0fdf4' : '#fef9c3', border: `1px solid ${enabled ? '#86efac' : '#fde68a'}`, color: enabled ? '#166534' : '#92400e' }}>
           {enabled ? <ShieldCheck size={14} /> : <ShieldOff size={14} />}
           {enabled ? '2FA is enabled' : '2FA is not enabled'}
         </div>
         {enabled ? (
           <button
-            className="btn btn-ghost btn-sm"
+            className="btn btn-ghost btn-sm u-26822bb"
             onClick={disable}
             disabled={working}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--danger)' }}
           >
             <ShieldOff size={13} /> {working ? 'Disabling…' : 'Disable 2FA'}
           </button>
         ) : (
           step === 'idle' && (
             <button
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm inline-flex items-center gap-5"
               onClick={startSetup}
               disabled={working}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+             
             >
               {working ? <><Loader2 size={13} style={{ animation: 'spin .9s linear infinite' }} /> Loading…</> : <><ShieldCheck size={13} /> Enable 2FA</>}
             </button>
@@ -403,42 +391,41 @@ function TwoFactorSection({ user, onRefresh }) {
 
       {/* Setup: show QR code */}
       {!enabled && step === 'setup' && (
-        <div style={{ maxWidth: 420 }}>
-          <div style={{ fontSize: 13, color: '#374151', marginBottom: 12 }}>
+        <div className="u-0fd8744">
+          <div className="u-2c403dd">
             <strong>Step 1:</strong> Scan this QR code with your authenticator app (e.g. Google Authenticator, Authy).
           </div>
           {qrUrl && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
-              <img src={qrUrl} alt="2FA QR Code" style={{ width: 180, height: 180, border: '3px solid var(--gray-100)', borderRadius: 8 }} />
+            <div className="flex justify-center mb-12">
+              <img src={qrUrl} alt="2FA QR Code" className="u-fa1c1a9" />
             </div>
           )}
           {secret && (
-            <div style={{ background: 'var(--gray-50)', borderRadius: 6, padding: '8px 12px', marginBottom: 12, fontFamily: 'monospace', fontSize: 13, letterSpacing: '.08em', wordBreak: 'break-all', textAlign: 'center', color: '#374151' }}>
-              <div style={{ fontSize: 10, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Manual entry key</div>
+            <div className="u-c210a3e">
+              <div className="u-c1f9602">Manual entry key</div>
               {secret}
             </div>
           )}
-          <div style={{ fontSize: 13, color: '#374151', marginBottom: 10 }}>
+          <div className="u-6c1c8de">
             <strong>Step 2:</strong> Enter the 6-digit code from your app to confirm setup.
           </div>
-          <form onSubmit={verifyEnable} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            <div className="form-group" style={{ flex: 1, minWidth: 140, margin: 0 }}>
+          <form onSubmit={verifyEnable} className="u-9da20e4">
+            <div className="form-group u-3b7e73f">
               <input
                 type="text"
                 inputMode="numeric"
                 value={code}
                 onChange={e => setCode(e.target.value.replace(/[^0-9 ]/g, '').slice(0, 7))}
                 placeholder="000 000"
-                style={{ textAlign: 'center', fontSize: 20, letterSpacing: '0.2em', fontWeight: 700 }}
+                className="u-e6afffc"
                 maxLength={7}
                 autoFocus
               />
             </div>
             <button
               type="submit"
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm inline-flex items-center gap-5"
               disabled={working || code.replace(/\s/g,'').length < 6}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
             >
               {working ? <><Loader2 size={13} style={{ animation: 'spin .9s linear infinite' }} /> Verifying…</> : <><ShieldCheck size={13} /> Activate</>}
             </button>
@@ -448,11 +435,140 @@ function TwoFactorSection({ user, onRefresh }) {
       )}
 
       {!enabled && step === 'idle' && (
-        <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: 0 }}>
+        <p className="u-bf50fe4">
           Two-factor authentication adds an extra layer of security to your account by requiring a one-time code when logging in.
         </p>
       )}
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+function NotificationPreferencesSection({ user, onRefresh }) {
+  const [saving, setSaving] = useState('');
+  const [msg, setMsg] = useState({ type: '', text: '' });
+  // The saved webhook URL is a secret and never comes back from the server —
+  // this only ever holds what the user is typing right now.
+  const [webhookDraft, setWebhookDraft] = useState('');
+
+  const webexOn = user.notify_external_enabled !== false; // treat unset (older sessions) as the default: on
+  const teamsOn = !!user.notify_teams_enabled;
+  const emailOn = !!user.notify_email_enabled;
+  // Channels that can actually reach this person right now, for the per-event grid.
+  const channels = [
+    teamsOn && ['teams', 'Teams'],
+    emailOn && user.email_delivery_available && ['email', 'Email'],
+    webexOn && user.webex_direct_available && ['webex', 'Webex'],
+  ].filter(Boolean);
+  const events = user.notify_event_options || [];
+
+  async function sendTest(channel) {
+    setSaving(`test-${channel}`); setMsg({ type: '', text: '' });
+    try {
+      const result = await api.testNotificationChannel(channel);
+      setMsg({ type: 'success', text: result.message });
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message });
+    } finally { setSaving(''); }
+  }
+
+  async function save(channel, changes, successText) {
+    setSaving(channel); setMsg({ type: '', text: '' });
+    try {
+      const result = await api.updateNotificationPreferences(changes);
+      onRefresh(result);
+      setMsg({ type: 'success', text: successText });
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message });
+    } finally { setSaving(''); }
+  }
+
+  return (
+    <div className="card mb-20">
+      <div className="u-3c461cc">
+        <Bell size={15} color="var(--primary)" /> Notifications
+      </div>
+      <p className="u-265c667">
+        Choose where you personally hear about things assigned to you, on top of the notifications you already see in this app (the bell icon).
+      </p>
+      <Alert type={msg.type} msg={msg.text} />
+
+      <div className="u-eecfdda">
+        <div>
+          <Toggle checked={webexOn} disabled={!!saving}
+            onChange={value => save('webex', { notify_external_enabled: value }, value ? 'Webex direct messages turned on.' : 'Webex direct messages turned off.')}
+            label="Webex direct messages" />
+          <p className="u-ab00b55">
+            {user.webex_direct_available
+              ? "Messages come from your organization's Webex bot to your account email; there's no separate account to connect."
+              : "Your organization hasn't set up Webex direct messages, so nothing is sent here yet."}
+          </p>
+          {webexOn && user.webex_direct_available && (
+            <div className="u-304c842">
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!!saving} onClick={() => sendTest('webex')}>{saving === 'test-webex' ? 'Sending…' : 'Send test message'}</button>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <Toggle checked={teamsOn} disabled={!!saving || !user.notify_teams_webhook_set}
+            onChange={value => save('teams', { notify_teams_enabled: value }, value ? 'Personal Teams notifications turned on.' : 'Personal Teams notifications turned off.')}
+            label="Personal Teams channel" />
+          <div className="u-ca3eca1">
+            <input type="password" aria-label="Teams incoming webhook URL" autoComplete="new-password" value={webhookDraft} onChange={e => setWebhookDraft(e.target.value)}
+              placeholder={user.notify_teams_webhook_set ? 'Webhook saved — paste a new URL to replace it' : 'Your Teams incoming webhook URL'} className="u-7b1dd1f" />
+            <button type="button" className="btn btn-ghost btn-sm" disabled={saving === 'teams-url' || !webhookDraft.trim()}
+              onClick={async () => { await save('teams-url', { notify_teams_webhook_url: webhookDraft.trim() }, 'Teams webhook saved.'); setWebhookDraft(''); }}>
+              {saving === 'teams-url' ? 'Saving…' : 'Save'}
+            </button>
+            {user.notify_teams_webhook_set && <>
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!!saving} onClick={() => sendTest('teams')}>{saving === 'test-teams' ? 'Sending…' : 'Send test'}</button>
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!!saving} onClick={() => save('teams-url', { notify_teams_webhook_url: '' }, 'Teams webhook removed.')}>Remove</button>
+            </>}
+          </div>
+          <p className="u-ab00b55">
+            Teams has no per-person inbox the way Webex does — paste a webhook URL for a channel only you (or your team) can see, from that channel's ··· menu → Workflows.
+          </p>
+        </div>
+
+        <div>
+          <Toggle checked={emailOn} disabled={!!saving}
+            onChange={value => save('email', { notify_email_enabled: value }, value ? 'Email alerts turned on.' : 'Email alerts turned off.')}
+            label={`Email alerts${user.email ? ` (${user.email})` : ''}`} />
+          <p className="u-ab00b55">
+            Sent to your account email above.
+          </p>
+          {!user.email_delivery_available && (
+            <p className="u-e8acc98">
+              Email delivery isn't set up for this organization yet, so alerts can't be sent. Ask an administrator to configure SMTP.
+            </p>
+          )}
+          {emailOn && user.email_delivery_available && (
+            <div className="u-304c842">
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!!saving} onClick={() => sendTest('email')}>{saving === 'test-email' ? 'Sending…' : 'Send test email'}</button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="alert-choices">
+        <h3>Which alerts go where</h3>
+        {!channels.length
+          ? <p className="text-muted text-sm">Turn on a channel above to choose which alerts it receives.</p>
+          : <table>
+              <caption className="sr-only">Alerts by channel</caption>
+              <thead><tr><th scope="col">When</th>{channels.map(([key, label]) => <th key={key} scope="col">{label}</th>)}</tr></thead>
+              <tbody>{events.map(event => <tr key={event.key}>
+                <th scope="row">{event.label}</th>
+                {channels.map(([key, label]) => {
+                  const on = user.notify_events?.[event.key]?.[key] !== false;
+                  return <td key={key}><input type="checkbox" checked={on} disabled={!!saving} aria-label={`${event.label}: ${label}`}
+                    onChange={() => save(`event-${event.key}-${key}`, { notify_events: { [event.key]: { [key]: !on } } }, `${label}: ${on ? 'off' : 'on'} for "${event.label.toLowerCase()}".`)} /></td>;
+                })}
+              </tr>)}</tbody>
+            </table>}
+        <p className="text-muted text-sm">You always see these in the app (the bell icon), whatever you choose here.</p>
+      </div>
     </div>
   );
 }
@@ -466,14 +582,12 @@ export default function Profile() {
   useEffect(() => {
     api.me().then(fresh => {
       setUser(u => ({ ...u, ...fresh }));
-      // Sync avatar_url into localStorage/context without re-issuing token
+      // Sync refreshed profile data into the auth context.
       if (fresh.avatar_url !== ctxUser.avatar_url) {
-        const stored = JSON.parse(localStorage.getItem('user') || '{}');
-        stored.avatar_url = fresh.avatar_url;
-        localStorage.setItem('user', JSON.stringify(stored));
+        login({ ...ctxUser, ...fresh });
       }
     }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, []);
 
   function refresh(updated) {
@@ -484,18 +598,19 @@ export default function Profile() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <User size={20} /> My Profile
+          <h1 className="page-title flex-center gap-8">
+            My Profile
           </h1>
           <div className="page-subtitle">Manage your account details and password</div>
         </div>
       </div>
 
-      <div style={{ maxWidth: 680 }}>
+      <div className="u-48a0d2f">
         <AvatarSection       user={user} onRefresh={refresh} />
         <PersonalInfoSection user={user} onRefresh={refresh} />
         <ChangePasswordSection />
         <TwoFactorSection    user={user} onRefresh={refresh} />
+        <NotificationPreferencesSection user={user} onRefresh={refresh} />
       </div>
     </div>
   );

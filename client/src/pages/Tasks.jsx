@@ -1,12 +1,27 @@
-import React, { useEffect, useState } from 'react';
-import { CheckSquare, Download, Trash2, UserCheck, Clock, Search, X, Pencil } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
+import CustomerSearchSelect from '../components/CustomerSearchSelect';
+import { Check, CheckSquare, ChevronDown, Download, Trash2, UserCheck, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown, RefreshCw, Repeat } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { HeaderMenu, PageHeader } from '../components/PageLayout';
+import { FilterGroup, ListSearch } from '../components/ListWorkspace';
+import { useLatestRequest } from '../hooks/useLatestRequest';
+import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
+import WaitingReasonDialog from '../components/WaitingReasonDialog';
+import CustomerRecurringTasks from '../components/CustomerRecurringTasks';
+import TaskSubtasks, { DraftChecklist, LastUpdate, SubtaskProgress, SubtasksDialog, TaskTicket, TaskUpdates } from '../components/TaskSubtasks';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
+import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal, sentenceCase } from '../components/Shared';
+import { businessToday } from '../utils/dates';
+import { TASK_FILTERS } from '../utils/taskFilters';
+import { usePref } from '../utils/prefs';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
+import { Pagination,Surface } from '../components/EnterpriseUI';
+import LogHours from '../components/LogHours';
+import { useLiveRefresh } from '../live';
 
 const STATUS_LABELS = {
   open: 'Open', in_progress: 'In Progress', completed: 'Completed',
@@ -17,6 +32,41 @@ const STATUS_LABELS = {
 
 const MANAGER_STATUSES  = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed', 'pending_approval', 'closed', 'cancelled'];
 const ENGINEER_STATUSES = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed'];
+const FINISHED = ['completed', 'closed', 'cancelled', 'pending_approval'];
+
+/* A task's status in the list: the badge opens a short menu to change it, and
+   the tick beside it marks the task done in one click. */
+function TaskStatusControl({ task, statuses, onChange }) {
+  const menu = useRef(null);
+  const pick = (event, status) => { menu.current.open = false; if (status !== task.status) onChange(task, status); };
+  // The table scrolls inside its box, so the menu is placed on the screen (not inside the box)
+  // and closes on a click elsewhere or when the page scrolls.
+  const place = () => {
+    const details = menu.current; if (!details?.open) return;
+    const at = details.querySelector('summary').getBoundingClientRect(), list = details.querySelector('.task-status-options');
+    const below = window.innerHeight - at.bottom > list.offsetHeight + 12;
+    Object.assign(list.style, { position: 'fixed', left: `${Math.min(at.left, window.innerWidth - list.offsetWidth - 8)}px`, top: `${below ? at.bottom + 4 : at.top - list.offsetHeight - 4}px` });
+  };
+  useEffect(() => {
+    const close = event => { if (menu.current?.open && !menu.current.contains(event.target)) menu.current.open = false; };
+    const closeOnScroll = () => { if (menu.current?.open) menu.current.open = false; };
+    document.addEventListener('pointerdown', close); window.addEventListener('scroll', closeOnScroll, true);
+    return () => { document.removeEventListener('pointerdown', close); window.removeEventListener('scroll', closeOnScroll, true); };
+  }, []);
+  return <div className="task-status">
+    <details className="task-status-menu" ref={menu} onToggle={place}>
+      <summary aria-label={`Status of ${task.title}: ${STATUS_LABELS[task.status] || task.status}. Change status`}><StatusBadge entityType="task" s={task.status} /><ChevronDown size={12} aria-hidden="true" /></summary>
+      <div className="task-status-options" role="menu">
+        {statuses.map(status => <button key={status} type="button" role="menuitemradio" aria-checked={status === task.status} onClick={event => pick(event, status)}>{sentenceCase(STATUS_LABELS[status])}</button>)}
+      </div>
+    </details>
+    {!FINISHED.includes(task.status) && statuses.includes('completed') && <button type="button" className="task-done" aria-label={`Mark ${task.title} as done`} title="Mark as done" onClick={() => onChange(task, 'completed')}><Check size={14} aria-hidden="true" /></button>}
+  </div>;
+}
+const TASK_COLUMNS = [
+  ['project', 'Project or customer'], ['status', 'Status'], ['priority', 'Priority'],
+  ['assignee', 'Assigned to'], ['deadline', 'Deadline'],
+];
 
 /* ── Edit Task Modal ──────────────────────────────────────── */
 function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
@@ -28,6 +78,7 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
     assigned_to: task.assigned_to || '',
     status:      task.status || 'open',
     pending_from_customer: task.pending_from_customer || '',
+    ticket_reference: task.ticket_reference || '',
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
@@ -45,6 +96,7 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
         priority:    form.priority,
         deadline:    form.deadline || null,
         status:      form.status,
+        ticket_reference: form.ticket_reference.trim() || null,
         ...(isWaiting ? { pending_from_customer: form.pending_from_customer } : {}),
         ...(isManager  ? { assigned_to: form.assigned_to ? Number(form.assigned_to) : null } : {}),
       };
@@ -83,7 +135,7 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
         </div>
         {isManager && (
           <div className="form-group">
-            <label>Assigned To</label>
+            <label>Assigned to</label>
             <select value={form.assigned_to} onChange={set('assigned_to')}>
               <option value="">Unassigned</option>
               {engineers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -102,7 +154,7 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
           <div className="form-group">
             <label>
               {form.status === 'waiting_vendor' ? 'Waiting on Vendor' : 'Waiting on Customer'}{' '}
-              <span style={{ color: 'var(--danger)' }}>*</span>
+              <span className="u-497726e">*</span>
             </label>
             <textarea
               value={form.pending_from_customer}
@@ -113,7 +165,10 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
             />
           </div>
         )}
-        <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+<div className="form-group"><label htmlFor="edit-task-ticket">Ticket (optional)</label><input id="edit-task-ticket" value={form.ticket_reference} onChange={set('ticket_reference')} maxLength={50} placeholder="e.g. RT#12345" /></div>
+        <div className="task-edit-subtasks"><TaskSubtasks taskId={task.id} customerId={task.customer_id} /></div>
+        <div className="task-edit-subtasks"><TaskUpdates task={task} /></div>
+        <div className="modal-footer u-cc45258">
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={saving}>
             {saving ? 'Saving…' : 'Save Changes'}
@@ -124,88 +179,169 @@ function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
   );
 }
 
-/* ── "Waiting for Customer" reason dialog ─────────────────── */
-function WaitingDialog({ onConfirm, onCancel, initial = '', title = 'Waiting for Customer' }) {
-  const [reason, setReason] = useState(initial);
-  return (
-    <Modal title={title} onClose={onCancel}>
-      <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 14 }}>
-        Describe what is needed from the customer before work can continue.
-      </p>
-      <div className="form-group">
-        <label>Pending From Customer <span style={{ color: 'var(--danger)' }}>*</span></label>
-        <textarea
-          value={reason}
-          onChange={e => setReason(e.target.value)}
-          placeholder="e.g. Awaiting signed approval document, credentials for system access…"
-          rows={3}
-          autoFocus
-        />
-      </div>
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
-        <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={!reason.trim()}
-          onClick={() => onConfirm(reason.trim())}
-        >
-          Set Status
-        </button>
-      </div>
-    </Modal>
-  );
-}
+const ALL_TASK_COLUMNS = TASK_COLUMNS.map(([id]) => id);
+// Stored task preferences are checked before use (an old browser or another version).
+const isPresetList = value => Array.isArray(value) && value.length <= 20 && value.every(p => p && typeof p.name === 'string' && (p.filter === undefined || TASK_FILTERS.includes(p.filter)));
+const isColumnList = value => Array.isArray(value) && value.every(id => ALL_TASK_COLUMNS.includes(id));
 
 export default function Tasks() {
   const { user } = useAuth();
   const location  = useLocation();
+  const navigate  = useNavigate();
+  // Opened from a customer (Customer 360): only that customer's tasks.
+  const urlCustomer = new URLSearchParams(location.search).get('create') ? null : new URLSearchParams(location.search).get('customer_id');
+  const customerFilter = urlCustomer && /^[1-9]\d*$/.test(urlCustomer) ? urlCustomer : '';
   const toast     = useToast();
   const confirm   = useConfirm();
   const isManager = user.role === 'manager';
+  const [showRepeating, setShowRepeating] = useState(false);
   const [tasks, setTasks]       = useState([]);
   const [projects, setProjects] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
-  const [filter, setFilter]     = useSavedFilter('tasks', 'all');
+  const [filter, setFilter]     = useSavedFilter('tasks', 'open', { param: 'filter', allowed: TASK_FILTERS });
   const [priorityFilter, setPriorityFilter] = useState('all');
 
-  // Apply URL ?filter= on mount (e.g. from dashboard overdue link)
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const urlFilter = params.get('filter');
-    if (urlFilter) setFilter(urlFilter);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [search, setSearch]     = useState('');
   const [myTasksOnly, setMyTasksOnly] = useState(false);
+  // Saved filters and columns follow the person between browsers (utils/prefs.js).
+  const [presets, setPresets] = usePref('tasks.presets', isPresetList, []);
+  const [columnList, setColumnList] = usePref('tasks.columns', isColumnList, ALL_TASK_COLUMNS);
+  const visibleColumns = new Set(columnList);
+  const [sort, setSort] = useState({ key: 'deadline', direction: 'asc' });
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', is_adhoc: false });
+  const [createTeams, setCreateTeams] = useState([]);
+  useEffect(() => {
+    if (!showCreate) return;
+    (isManager ? api.teams() : api.teamsMine().then(result => result.teams || [])).then(setCreateTeams).catch(() => setCreateTeams([]));
+  }, [showCreate, isManager]);
+  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
   const [loading, setLoading]   = useState(true);
   const [editTask, setEditTask] = useState(null);
+  const [subtasksFor, setSubtasksFor] = useState(null);
   const [createErr, setCreateErr] = useState('');
   const [bulkErr,   setBulkErr]   = useState('');
 
   /* ── Bulk selection ───────────────────────────────────── */
   const [selected, setSelected]   = useState(new Set());
-  const [bulkStatus, setBulkStatus] = useState('');
   const [bulkBusy, setBulkBusy]   = useState(false);
 
-  const load = () => Promise.all([
-    api.tasks({}),
-    api.projects(),
-    isManager ? api.users() : Promise.resolve([])
-  ]).then(([t, p, u]) => { setTasks(t); setProjects(p); setAllUsers(u); setLoading(false); setSelected(new Set()); });
+  const [loadError, setLoadError] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [paging, setPaging] = useState({ key: '', page: 1 });
+  const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState({});
+  const [loadedQuery, setLoadedQuery] = useState(null);
+  const pageSize = 25;
+  const today = businessToday();
+  const activeFilter = TASK_FILTERS.includes(filter) ? filter : 'open';
+  // More filters, kept in the address so a filtered view can be shared or bookmarked.
+  const more = new URLSearchParams(location.search);
+  const moreFilters = { engineer: more.get('engineer') || '', team: more.get('team') || '', project: more.get('project') || '', status: more.get('status') || '', due_from: more.get('due_from') || '', due_to: more.get('due_to') || '' };
+  const setMore = (key, value) => {
+    const next = new URLSearchParams(location.search);
+    if (value) next.set(key, value); else next.delete(key);
+    navigate({ search: next.toString() ? `?${next}` : '' }, { replace: true });
+  };
+  const clearMore = () => {
+    const next = new URLSearchParams(location.search);
+    for (const key of Object.keys(moreFilters)) next.delete(key);
+    navigate({ search: next.toString() ? `?${next}` : '' }, { replace: true });
+  };
+  const moreCount = Object.values(moreFilters).filter(Boolean).length;
+  const [loggingFor, setLoggingFor] = useState(null);
+  const [filterTeams, setFilterTeams] = useState([]);
+  useEffect(() => { (isManager ? api.teams() : api.teamsMine().then(result => result.teams || [])).then(rows => setFilterTeams(Array.isArray(rows) ? rows : [])).catch(() => setFilterTeams([])); }, [isManager]);
+  const baseParams = new URLSearchParams({ filter: activeFilter, priority: priorityFilter, as_of: today, sort: sort.key, direction: sort.direction });
+  if (debouncedSearch) baseParams.set('search', debouncedSearch);
+  if (myTasksOnly) baseParams.set('assigned_to', String(user.id));
+  if (moreFilters.engineer && /^[1-9]\d*$/.test(moreFilters.engineer)) baseParams.set('assigned_to', moreFilters.engineer);
+  if (/^[1-9]\d*$/.test(moreFilters.team)) baseParams.set('team_id', moreFilters.team);
+  if (/^[1-9]\d*$/.test(moreFilters.project)) baseParams.set('project_id', moreFilters.project);
+  if (MANAGER_STATUSES.includes(moreFilters.status)) baseParams.set('status', moreFilters.status);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(moreFilters.due_from)) baseParams.set('due_from', moreFilters.due_from);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(moreFilters.due_to)) baseParams.set('due_to', moreFilters.due_to);
+  if (customerFilter) baseParams.set('customer_id', customerFilter);
+  const queryKey = baseParams.toString();
+  const page = paging.key === queryKey ? paging.page : 1;
+  const query = `${queryKey}&page=${page}&page_size=${pageSize}`;
+  const busy = loading || loadedQuery !== query;
+  const references = useRef(null);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+  useCreateIntent({ allowed: ['manager', 'engineer'].includes(user.role), ready: !busy && !loadError, onCreate: params => { const customerId=customerIdFromCreateIntent(params);if(customerId) setForm(current => ({ ...current,customer_id:String(customerId),project_id:'' }));setShowCreate(true); } });
 
-  useEffect(() => { load(); }, [isManager]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { begin, isCurrent } = useLatestRequest(`${user.id}:${user.role}:${query}`);
+  const load = useCallback((loadOptions) => {
+    const quiet = loadOptions?.quiet === true;
+    const request = begin();
+    if (request.signal.aborted) return Promise.resolve();
+    if (!quiet) { setLoading(true); setSelected(new Set()); }
+    setLoadError('');
+    const options = { signal: request.signal };
+    const referenceKey = `${user.id}:${user.role}`;
+    const referenceData = references.current?.key === referenceKey
+      ? Promise.resolve(references.current.data)
+      : Promise.all([api.projects(options), isManager ? api.users(options) : Promise.resolve([])]);
+    return Promise.all([api.tasks(Object.fromEntries(new URLSearchParams(query)), options), referenceData])
+      .then(([result, data]) => {
+        if (!isCurrent(request)) return;
+        references.current = { key: referenceKey, data };
+        setTasks(result.rows); setTotal(result.total); setCounts(result.counts); setLoadedQuery(query);
+        setProjects(data[0]); setAllUsers(data[1]);
+        const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+        if (page > lastPage) setPaging({ key: queryKey, page: lastPage });
+      }).catch(error => {
+        if (isCurrent(request)) setLoadError(error.message || 'Could not load this page');
+      }).finally(() => { if (isCurrent(request)) setLoading(false); });
+  }, [query, queryKey, page, isManager, user.id, user.role, begin, isCurrent]);
+  useEffect(() => { load(); }, [load]);
+  useLiveRefresh(() => load({ quiet: true }));
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const engineers = allUsers.filter(u => u.role === 'engineer');
 
+  function applyPreset(preset) {
+    setFilter(preset.filter || 'all');
+    setPriorityFilter(preset.priorityFilter || 'all');
+    setMyTasksOnly(!!preset.myTasksOnly);
+    setSearch(preset.search || '');
+  }
+
+  function savePreset() {
+    const name = window.prompt('Preset name')?.trim();
+    if (!name) return;
+    const next = [...presets.filter(p => p.name.toLowerCase() !== name.toLowerCase()),
+      { name, filter, priorityFilter, myTasksOnly, search }];
+    setPresets(next);
+    toast.success(`Saved filter preset “${name}”`);
+  }
+
+  function deletePreset(name) {
+    setPresets(presets.filter(p => p.name !== name));
+  }
+
+  function toggleColumn(id) {
+    setColumnList(current => current.includes(id) ? current.filter(column => column !== id) : [...current, id]);
+  }
+
+  function changeSort(key) {
+    setSort(current => ({ key, direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc' }));
+  }
+
+  const taskDraft = useFormDraft({ name: 'task:new', value: form });
   async function createTask(e) {
     e.preventDefault(); setCreateErr('');
+    if (!isManager && !form.project_id && !form.customer_id) { setCreateErr('Choose the customer or project this task is for'); return; }
     try {
-      await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, assigned_to: form.assigned_to ? Number(form.assigned_to) : null });
+      // A project's task takes the project's customer; otherwise it belongs to the chosen customer.
+      const team = String(form.assigned_to).startsWith('t:') ? Number(form.assigned_to.slice(2)) : null;
+      await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, customer_id: !form.project_id && form.customer_id ? Number(form.customer_id) : null,
+        assigned_to: !team && form.assigned_to ? Number(form.assigned_to) : null, team_id: team, subtasks: form.subtasks || [], ticket_reference: form.ticket_reference?.trim() || null });
       setShowCreate(false);
-      setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', is_adhoc: false });
+      taskDraft.clear();
+      setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
       load();
     } catch (err) { setCreateErr(err.message || 'Failed to create task'); }
   }
@@ -214,11 +350,17 @@ export default function Tasks() {
   const [waitingDialog, setWaitingDialog] = useState(null);
   const [bulkWaitingDialog, setBulkWaitingDialog] = useState(null); // { newStatus }
 
-  function handleStatusChange(task, newStatus) {
+  async function handleStatusChange(task, newStatus) {
     if (newStatus === 'waiting_customer' || newStatus === 'waiting_vendor') {
       setWaitingDialog({ id: task.id, newStatus, current: task.pending_from_customer || '' });
     } else {
-      api.updateTask(task.id, { status: newStatus }).then(load);
+      try {
+        await api.updateTask(task.id, { status: newStatus });
+        toast.success('Task status updated');
+        load();
+      } catch (error) {
+        toast.error(error.message || 'Could not update task');
+      }
     }
   }
 
@@ -234,7 +376,7 @@ export default function Tasks() {
     if (!selected.size) return;
     // waiting statuses require a reason — show dialog first
     if (action === 'waiting_customer' || action === 'waiting_vendor') {
-      setBulkWaitingDialog({ newStatus: action });
+      setBulkWaitingDialog({ newStatus: action, ids: [...selected] });
       return;
     }
     if (action === 'delete') {
@@ -256,63 +398,31 @@ export default function Tasks() {
   }
 
   async function applyBulkWaiting(reason) {
-    const status = bulkWaitingDialog?.newStatus || 'waiting_customer';
-    setBulkWaitingDialog(null); setBulkErr('');
     setBulkBusy(true);
     try {
-      await Promise.all([...selected].map(id =>
-        api.updateTask(id, { status, pending_from_customer: reason })
-      ));
+      const response = await api.bulkUpdateTasks({ ids: bulkWaitingDialog.ids, action: 'status', status: bulkWaitingDialog.newStatus, pending_from_customer: reason });
+      toast.success(`${response.affected} task(s) updated`);
       load();
-    } catch (e) { setBulkErr(e.message || 'Bulk action failed'); }
-    finally { setBulkBusy(false); }
+    } finally { setBulkBusy(false); }
   }
 
   /* ── Export ───────────────────────────────────────────── */
   async function exportTasks() {
     try {
+      const qs = new URLSearchParams({ filter: activeFilter, priority: priorityFilter, as_of: today, sort: sort.key, direction: sort.direction });
+      if (debouncedSearch) qs.set('search', debouncedSearch);
+      if (myTasksOnly) qs.set('assigned_to', String(user.id));
       const { token } = await api.downloadToken();
-      const qs = filter !== 'all' ? `?filter=${filter}&token=${token}` : `?token=${token}`;
+      qs.set('token', token);
       const a = document.createElement('a');
-      a.href = '/api/tasks/export' + qs;
+      a.href = '/api/tasks/export?' + qs;
       a.download = 'tasks.xlsx';
       a.click();
     } catch (e) { toast.error('Export failed: ' + e.message); }
   }
 
-  const OPEN_STATUSES = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor'];
-  const DONE_STATUSES = ['completed', 'closed'];
-
-  const _dueWeekNow = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
-  const _dueWeekEnd = new Date(_dueWeekNow.getTime() + 7 * 86400000);
-
-  const filtered = tasks.filter(t => {
-    // Status tab filter
-    if (filter === 'open')             { if (!OPEN_STATUSES.includes(t.status)) return false; }
-    else if (filter === 'done')        { if (!DONE_STATUSES.includes(t.status)) return false; }
-    else if (filter === 'adhoc')       { if (!t.is_adhoc) return false; }
-    else if (filter === 'waiting_customer') { if (t.status !== 'waiting_customer' && t.status !== 'waiting_vendor') return false; }
-    else if (filter === 'overdue')     { if (!isOverdue(t.deadline) || ['completed','closed','cancelled'].includes(t.status)) return false; }
-    else if (filter === 'due_week')    {
-      if (!t.deadline) return false;
-      if (['completed','closed','cancelled'].includes(t.status)) return false;
-      const dl = new Date(t.deadline + 'T00:00:00');
-      if (dl < _dueWeekNow || dl > _dueWeekEnd) return false;
-    }
-    // Priority filter
-    if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
-    // My tasks filter
-    if (myTasksOnly && t.assigned_to !== user.id) return false;
-    // Text search
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      const projectTitle = projects.find(p => p.id === t.project_id)?.title || '';
-      if (!(t.title || '').toLowerCase().includes(q) &&
-          !(t.assigned_to_name || '').toLowerCase().includes(q) &&
-          !projectTitle.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
+  const filtered = tasks;
+  const sortedFiltered = tasks;
 
   const managerStatuses  = MANAGER_STATUSES;
   const engineerStatuses = ENGINEER_STATUSES;
@@ -320,41 +430,36 @@ export default function Tasks() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Tasks</h1>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn btn-ghost btn-sm" onClick={exportTasks} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <Download size={13} /> Export
-          </button>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Task</button>
+      <PageHeader title="Tasks" actions={<>
+<div className="flex gap-8 flex-wrap">
+          <button className="btn btn-primary" onClick={() => { setShowCreate(true); }} disabled={busy || !!loadError}>+ New Task</button>
+          <HeaderMenu>
+            {isManager && <button type="button" onClick={() => setShowRepeating(true)}><Repeat size={14} aria-hidden="true" /> Repeating tasks</button>}
+            <button type="button" onClick={exportTasks} disabled={busy || !!loadError || search.trim() !== debouncedSearch}><Download size={14} aria-hidden="true" /> Export all matching</button>
+            <button type="button" disabled={busy} onClick={() => { references.current = null; load(); }}><RefreshCw size={14} aria-hidden="true" /> Refresh</button>
+          </HeaderMenu>
         </div>
-      </div>
+      </>} />
+
+      {/* Our own work that repeats (no customer): backup reviews, SSL renewals… */}
+      {showRepeating && <Modal title="Repeating tasks" onClose={() => setShowRepeating(false)} wide>
+        <p className="text-muted text-sm">Internal work that comes round on a schedule. A customer's repeating tasks are on its Customer 360 → Tasks.</p>
+        <CustomerRecurringTasks customerId={null} internal canManage engineers={engineers} />
+      </Modal>}
 
       {/* Filters */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 340 }}>
-            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search tasks…"
-              style={{ paddingLeft: 32, paddingRight: search ? 28 : undefined }}
-            />
-            {search && (
-              <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', display: 'flex', alignItems: 'center', padding: 0 }}>
-                <X size={13} />
-              </button>
-            )}
-          </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: myTasksOnly ? 'var(--primary)' : 'var(--gray-600)', fontWeight: myTasksOnly ? 600 : 400, userSelect: 'none' }}>
-            <input type="checkbox" checked={myTasksOnly} onChange={e => setMyTasksOnly(e.target.checked)} style={{ width: 'auto' }} />
+      <Surface label="Task filters">
+        <div className="u-95535a3">
+          <ListSearch value={search} onChange={setSearch} label="Search tasks" placeholder="Search tasks, projects, or assignees…" />
+          {customerFilter && <span className="filter-pill active">{tasks.find(task => String(task.customer_id) === customerFilter)?.customer_name || 'One customer'} <button type="button" className="btn btn-ghost btn-sm" aria-label="Show tasks for every customer" onClick={() => navigate('/tasks')}><X size={12} /></button></span>}
+          <label className={["u-eb3a034", (myTasksOnly ? 'u-dc2e428' : 'u-31d6430'), (myTasksOnly ? 'u-eed0f8f' : 'u-7e3a944')].filter(Boolean).join(' ')}>
+            <input type="checkbox" checked={myTasksOnly} onChange={e => setMyTasksOnly(e.target.checked)} className="u-30e741d" />
             My Tasks
           </label>
           <select
             value={priorityFilter}
             onChange={e => setPriorityFilter(e.target.value)}
-            style={{ width: 'auto', fontSize: 12, padding: '4px 8px' }}
+            className="u-aedcdf0"
             title="Filter by priority"
           >
             <option value="all">All Priorities</option>
@@ -364,52 +469,73 @@ export default function Tasks() {
             <option value="low">↓ Low</option>
           </select>
           {priorityFilter !== 'all' && (
-            <button onClick={() => setPriorityFilter('all')} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray-400)', display:'flex', alignItems:'center', padding:2 }} title="Clear priority filter">
+            <button onClick={() => setPriorityFilter('all')} className="u-0c38224" title="Clear priority filter">
               <X size={13} />
             </button>
           )}
+          <details className="column-picker task-more-filters" open={moreCount > 0 || undefined}>
+            <summary className="btn btn-ghost btn-sm">More filters{moreCount ? ` (${moreCount})` : ''}</summary>
+            <div className="column-picker-menu" style={{ minWidth: 260 }}>
+              {(isManager || user.role === 'planner') && <label>Engineer<select aria-label="Engineer" value={moreFilters.engineer} onChange={e => setMore('engineer', e.target.value)}><option value="">Anyone</option>{engineers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>}
+              {filterTeams.length > 0 && <label>Team<select aria-label="Team" value={moreFilters.team} onChange={e => setMore('team', e.target.value)}><option value="">Any team</option>{filterTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>}
+              <label>Project<select aria-label="Project" value={moreFilters.project} onChange={e => setMore('project', e.target.value)}><option value="">Any project</option>{projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
+              <label>Status<select aria-label="Task status" value={moreFilters.status} onChange={e => setMore('status', e.target.value)}><option value="">Any status</option>{MANAGER_STATUSES.map(s => <option key={s} value={s}>{sentenceCase(s.replaceAll('_', ' '))}</option>)}</select></label>
+              <label>Due from<input aria-label="Due from" type="date" value={moreFilters.due_from} onChange={e => setMore('due_from', e.target.value)} /></label>
+              <label>Due to<input aria-label="Due to" type="date" value={moreFilters.due_to} onChange={e => setMore('due_to', e.target.value)} /></label>
+              {moreCount > 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={clearMore}>Clear these filters</button>}
+            </div>
+          </details>
+          {/* Which columns the table shows: a view option, beside the filters. */}
+          <details className="column-picker">
+            <summary className="btn btn-ghost btn-sm"><Columns3 size={13} /> Columns</summary>
+            <div className="column-picker-menu">
+              {TASK_COLUMNS.map(([id, label]) => <label key={id}><input type="checkbox" checked={visibleColumns.has(id)} onChange={() => toggleColumn(id)} /> {label}</label>)}
+            </div>
+          </details>
+          {/* Saved filters live in one menu rather than a row of their own. */}
+          <details className="preset-manage task-presets">
+            <summary>Saved filters{presets.length ? ` (${presets.length})` : ''}</summary>
+            <div className="preset-menu">
+              {presets.map(p => <div key={p.name}><button type="button" className="preset-apply" onClick={event => { event.currentTarget.closest('details').open = false; applyPreset(p); }}>{p.name}</button><button type="button" onClick={() => deletePreset(p.name)} aria-label={`Delete ${p.name}`}>×</button></div>)}
+              {!presets.length && <p className="text-muted text-sm">None saved yet.</p>}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={savePreset}>Save current filters</button>
+            </div>
+          </details>
         </div>
-        <div className="filter-bar">
+        <FilterGroup label="View">
+          {/* The everyday views always; the others only when they have tasks (or are chosen). */}
           {[
-            ['all',             'All',                         tasks.length],
-            ['open',            'Open / In Progress',          tasks.filter(t => OPEN_STATUSES.includes(t.status)).length],
-            ['waiting_customer','Waiting on Customer/Vendor',  tasks.filter(t => t.status === 'waiting_customer' || t.status === 'waiting_vendor').length],
-            ['due_week',        'Due This Week',               tasks.filter(t => { const dl = t.deadline ? new Date(t.deadline+'T00:00:00') : null; return dl && dl >= _dueWeekNow && dl <= _dueWeekEnd && !['completed','closed','cancelled'].includes(t.status); }).length],
-            ['done',            'Completed',                   tasks.filter(t => DONE_STATUSES.includes(t.status)).length],
-            ['overdue',         'Overdue',                     tasks.filter(t => isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status)).length],
-            ['adhoc',           'Ad-hoc',                      tasks.filter(t => t.is_adhoc).length],
-          ].map(([k, l, count]) => (
-            <button key={k} className={'filter-pill' + (filter === k ? ' active' : '') + (k === 'overdue' && count > 0 ? ' overdue-pill' : '')} onClick={() => setFilter(k)}>
-              {l} <span style={{ opacity: .65 }}>({count})</span>
-            </button>
-          ))}
-        </div>
-      </div>
+            ['all', 'All'], ['open', 'Open / In Progress'],
+            ['waiting_customer', 'Waiting on Customer/Vendor', true],
+            ['due_today', 'Due Today', true], ['due_week', 'Due Next 7 Days'],
+            ['pending_approval', 'Pending Approval', true], ['done', 'Completed'],
+            ['overdue', 'Overdue'], ['adhoc', 'Ad-hoc', true],
+          ].filter(([key, , optional]) => !optional || busy || counts[key] > 0 || activeFilter === key).map(([key, label]) => <button key={key} className={'filter-pill' + (activeFilter === key ? ' active' : '') + (key === 'overdue' && counts[key] > 0 ? ' overdue-pill' : '')} onClick={() => setFilter(key)}>
+            {label} <span className="u-a697a8f">({busy ? '...' : counts[key] || 0})</span>
+          </button>)}
+        </FilterGroup>
+      </Surface>
 
       {/* Bulk action bar */}
-      {selected.size > 0 && (
+      {selected.size > 0 && !busy && !loadError && (
         <>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-          padding: '10px 16px', background: '#eff6ff', border: '1px solid #bfdbfe',
-          borderRadius: 8, marginBottom: 12, fontSize: 13,
-        }}>
-          <span style={{ fontWeight: 600, color: '#1d4ed8' }}>{selected.size} selected</span>
-          <span style={{ color: '#93c5fd' }}>·</span>
+        <div className="bulk-action-bar">
+          <strong>{selected.size} selected</strong>
+          <span className="bulk-action-separator">·</span>
           {isManager && (
             <>
               {['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','closed','cancelled'].map(s => (
-                <button key={s} className="btn btn-sm btn-ghost" disabled={bulkBusy}
+                <button key={s} className="btn btn-sm btn-ghost inline-flex items-center gap-4" disabled={bulkBusy}
                   onClick={() => applyBulk(s)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                 
                 >
                   {(s === 'waiting_customer' || s === 'waiting_vendor') ? <Clock size={12} /> : <UserCheck size={12} />}
                   → {STATUS_LABELS[s]}
                 </button>
               ))}
-              <button className="btn btn-sm btn-danger" disabled={bulkBusy}
+              <button className="btn btn-sm btn-danger inline-flex items-center gap-4" disabled={bulkBusy}
                 onClick={() => applyBulk('delete')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+               
               >
                 <Trash2 size={12} /> Delete
               </button>
@@ -417,84 +543,88 @@ export default function Tasks() {
           )}
           {!isManager && (
             ['open','in_progress','waiting_customer','waiting_vendor','completed'].map(s => (
-              <button key={s} className="btn btn-sm btn-ghost" disabled={bulkBusy}
+              <button key={s} className="btn btn-sm btn-ghost inline-flex items-center gap-4" disabled={bulkBusy}
                 onClick={() => applyBulk(s)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+               
               >
                 {(s === 'waiting_customer' || s === 'waiting_vendor') ? <Clock size={12} /> : null}
                 → {STATUS_LABELS[s]}
               </button>
             ))
           )}
-          <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }}
+          <button className="btn btn-sm btn-ghost u-6d00061"
             onClick={() => { setSelected(new Set()); setBulkErr(''); }}>Deselect all</button>
         </div>
-        {bulkErr && <div className="error-msg" style={{ marginTop: 8 }}>{bulkErr}</div>}
+        {bulkErr && <div className="error-msg u-8a77e5a">{bulkErr}</div>}
         </>
       )}
 
-      {loading ? <p className="text-muted">Loading…</p> : filtered.length === 0 ? (
+      {loadError && <div className="error-msg mb-16" role="alert">
+        {loadError} <button className="btn btn-ghost btn-sm" onClick={load}>Retry</button>
+      </div>}
+      {loadError && !loading ? <p role="status">This view is unavailable until it reloads successfully.</p> : busy ? <div className="skeleton-table" aria-label="Loading tasks"><span /><span /><span /><span /><span /></div> : filtered.length === 0 ? (
         <div className="empty">
           <div className="empty-icon"><CheckSquare size={40} strokeWidth={1.2} /></div>
           <p>{search.trim() ? `No tasks matching "${search}"` : myTasksOnly ? 'No tasks assigned to you in this view' : 'No tasks found'}</p>
           {(search.trim() || myTasksOnly) && (
-            <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => { setSearch(''); setMyTasksOnly(false); setFilter('all'); }}>
+            <button className="btn btn-ghost btn-sm mt-12" onClick={() => { setSearch(''); setMyTasksOnly(false); setFilter('all'); }}>
               Clear filters
             </button>
           )}
         </div>
       ) : (
         <div className="card table-wrap">
-          <table>
+          <table aria-busy={busy}>
+            <caption className="sr-only">Tasks on the current page. Bulk selection applies to this page.</caption>
             <thead>
               <tr>
-                <th style={{ width: 32 }}>
-                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
-                    style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                <th className="u-82b9d86">
+                  <input type="checkbox" aria-label="Select all tasks on this page" checked={allSelected} onChange={toggleAll}
+                    className="u-2cfdba3" />
                 </th>
-                <th>Task</th><th>Project</th><th>Status</th><th>Priority</th>
-                <th>Assigned To</th><th>Deadline</th><th>Update Status</th><th></th>
+                <th><button className="table-sort" onClick={() => changeSort('task')}>Task <ArrowUpDown size={11} /></button></th>
+                {visibleColumns.has('project') && <th><button className="table-sort" onClick={() => changeSort('project')}>Project <ArrowUpDown size={11} /></button></th>}
+                {visibleColumns.has('status') && <th><button className="table-sort" onClick={() => changeSort('status')}>Status <ArrowUpDown size={11} /></button></th>}
+                {visibleColumns.has('priority') && <th><button className="table-sort" onClick={() => changeSort('priority')}>Priority <ArrowUpDown size={11} /></button></th>}
+                {visibleColumns.has('assignee') && <th><button className="table-sort" onClick={() => changeSort('assignee')}>Assigned to <ArrowUpDown size={11} /></button></th>}
+                {visibleColumns.has('deadline') && <th><button className="table-sort" onClick={() => changeSort('deadline')}>Deadline <ArrowUpDown size={11} /></button></th>}
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(t => (
+              {sortedFiltered.map(t => (
                 <tr key={t.id} style={{ background: selected.has(t.id) ? 'var(--primary-light)' : '' }}>
                   <td>
-                    <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggleSelect(t.id)}
-                      style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                    <input type="checkbox" aria-label={`Select ${t.title}`} checked={selected.has(t.id)} onChange={() => toggleSelect(t.id)}
+                      className="u-2cfdba3" />
                   </td>
                   <td>
-                    <span style={{ fontWeight: 500 }}>{t.title}</span>
-                    {t.is_adhoc ? <span className="badge badge-adhoc" style={{ marginLeft: 6 }}>adhoc</span> : null}
+                    <button type="button" className="task-title-open" onClick={() => setSubtasksFor(t)} title="Open the task: status, subtasks and updates">{t.title}</button>
+                    {t.ticket_reference && <> <TaskTicket task={t} /></>}
+                    {t.subtasks_total > 0 && <> <SubtaskProgress total={t.subtasks_total} done={t.subtasks_done} onClick={() => setSubtasksFor(t)} /></>}
+                    {t.last_update && <div><LastUpdate update={t.last_update} /></div>}
+                    {t.is_adhoc ? <span className="badge badge-adhoc u-391ef12">adhoc</span> : null}
+                    {t.is_blocked ? (
+                      <span className="badge badge-blocked u-391ef12" title={`Blocked by ${t.dep_count || 1} unfinished task(s)`}>
+                        <LockKeyhole size={10} /> Blocked
+                      </span>
+                    ) : null}
                   </td>
-                  <td>{projects.find(p => p.id === t.project_id)?.title || <span className="text-muted">—</span>}</td>
-                  <td><StatusBadge s={t.status} /></td>
-                  <td><PriorityBadge p={t.priority} /></td>
-                  <td>{t.assigned_to_name || '—'}</td>
-                  <td className={isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status) ? 'overdue' : ''}>{fmtDate(t.deadline)}</td>
-                  <td>
-                    <select
-                      value={t.status}
-                      onChange={e => handleStatusChange(t, e.target.value)}
-                      style={{ width: 'auto', padding: '3px 6px', fontSize: 12,
-                        borderColor: t.status === 'waiting_customer' ? '#f97316' : undefined }}
-                      disabled={!isManager && t.assigned_to !== user.id}
-                    >
-                      {(isManager ? managerStatuses : engineerStatuses).map(s => (
-                        <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                      ))}
-                    </select>
-                    {(t.status === 'waiting_customer' || t.status === 'waiting_vendor') && t.pending_from_customer && (
-                      <div style={{ fontSize: 11, color: t.status === 'waiting_vendor' ? '#6b21a8' : '#9a3412', marginTop: 3, maxWidth: 180, lineHeight: 1.3 }}>
-                        ⏳ {t.pending_from_customer}
-                      </div>
+                  {visibleColumns.has('project') && <td>{t.project_title || projects.find(p => p.id === t.project_id)?.title || (t.customer_name ? <>{t.customer_name} <span className="text-muted text-sm">(customer)</span></> : <span className="text-muted">—</span>)}</td>}
+                  {visibleColumns.has('status') && <td>{isManager || t.assigned_to === user.id || t.assigned_to == null
+                    ? <TaskStatusControl task={t} statuses={isManager ? managerStatuses : engineerStatuses} onChange={handleStatusChange} />
+                    : <StatusBadge entityType="task" s={t.status} />}</td>}
+                  {visibleColumns.has('priority') && <td><PriorityBadge p={t.priority} /></td>}
+                  {visibleColumns.has('assignee') && <td>{t.assigned_to_name || (t.team_name ? <>{t.team_name} <span className="text-muted text-sm">(team)</span></> : '—')}</td>}
+                  {visibleColumns.has('deadline') && <td className={isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status) ? 'overdue' : ''}>{fmtDate(t.deadline)}</td>}
+
+                  <td className="text-center" style={{ whiteSpace: 'nowrap' }}>
+                    {(isManager || t.assigned_to === user.id || (t.team_id && !t.assigned_to)) && user.role !== 'planner' && (
+                      <button className="btn btn-ghost btn-sm" title="Log hours" aria-label={`Log hours on ${t.title}`} onClick={() => setLoggingFor(t)}><Clock size={13} /></button>
                     )}
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
                     {(isManager || t.assigned_to === user.id) && (
                       <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ padding: '4px 6px', color: 'var(--gray-500)' }}
+                        className="btn btn-ghost btn-sm u-51719e9"
                         title="Edit task"
                         onClick={() => setEditTask(t)}
                       >
@@ -509,14 +639,18 @@ export default function Tasks() {
         </div>
       )}
 
+      {!loadError && <Pagination page={page} total={total} pageSize={pageSize} loading={busy || bulkBusy}
+        onPageChange={nextPage => setPaging({ key:queryKey,page:nextPage })} label="Task pages"
+        summary={busy ? 'Loading tasks…' : total ? `${(page-1)*pageSize+1}-${Math.min(page*pageSize,total)} of ${total} matching tasks · Bulk selection applies to this page.` : '0 matching tasks'} />}
       {/* Waiting for Customer dialog (single task) */}
       {waitingDialog && (
-        <WaitingDialog
+        <WaitingReasonDialog
           title={waitingDialog.newStatus === 'waiting_vendor' ? 'Waiting for Vendor' : 'Waiting for Customer'}
           initial={waitingDialog.current}
-          onConfirm={reason => {
-            api.updateTask(waitingDialog.id, { status: waitingDialog.newStatus, pending_from_customer: reason }).then(load);
-            setWaitingDialog(null);
+          onConfirm={async reason => {
+            await api.updateTask(waitingDialog.id, { status: waitingDialog.newStatus, pending_from_customer: reason });
+            toast.success('Task status updated');
+            load();
           }}
           onCancel={() => setWaitingDialog(null)}
         />
@@ -524,13 +658,16 @@ export default function Tasks() {
 
       {/* Waiting for Customer dialog (bulk) */}
       {bulkWaitingDialog && (
-        <WaitingDialog
+        <WaitingReasonDialog
           title={bulkWaitingDialog.newStatus === 'waiting_vendor' ? 'Waiting for Vendor (bulk)' : 'Waiting for Customer (bulk)'}
           onConfirm={applyBulkWaiting}
           onCancel={() => setBulkWaitingDialog(null)}
         />
       )}
 
+      {subtasksFor && <SubtasksDialog task={subtasksFor} onClose={() => { setSubtasksFor(null); load(); }} />}
+
+      {loggingFor && <LogHours target={{ task_id: loggingFor.id }} title={loggingFor.title} onClose={() => setLoggingFor(null)} />}
       {editTask && (
         <EditTaskModal
           task={editTask}
@@ -542,10 +679,11 @@ export default function Tasks() {
       )}
 
       {showCreate && (
-        <Modal title="New Task" onClose={() => { setShowCreate(false); setCreateErr(''); }}>
+        <Modal title="New Task" onClose={() => { setShowCreate(false);setCreateErr(''); }}>
           <form onSubmit={createTask}>
-            {createErr && <div className="error-msg" style={{ marginBottom: 10 }}>{createErr}</div>}
-            <div className="form-group"><label>Title *</label><input value={form.title} onChange={set('title')} required /></div>
+            <DraftBanner draft={taskDraft} onRestore={data => data && setForm(data)} />
+            {createErr && <div className="error-msg u-761d3ad">{createErr}</div>}
+            <div className="form-group"><label htmlFor="task-title">Title *</label><input id="task-title" value={form.title} onChange={set('title')} required /></div>
             <div className="form-group"><label>Description</label><textarea value={form.description} onChange={set('description')} /></div>
             <div className="form-row">
               <div className="form-group"><label>Priority</label>
@@ -555,26 +693,40 @@ export default function Tasks() {
               </div>
               <div className="form-group"><label>Deadline</label><input type="date" value={form.deadline} onChange={set('deadline')} /></div>
             </div>
-            <div className="form-group"><label>Project (optional)</label>
-              <select value={form.project_id} onChange={set('project_id')}>
-                <option value="">No project (standalone)</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+            <div className="form-row">
+              <div className="form-group"><label htmlFor="task-customer">Customer{isManager ? ' (optional)' : ''}</label>
+                {/* Searches the customers this person may add tasks for. */}
+                <CustomerSearchSelect id="task-customer" value={form.customer_id} emptyLabel={isManager ? 'No customer' : 'Select a customer'}
+                  onChange={customerId => setForm(f => ({ ...f, customer_id: customerId ? String(customerId) : '', project_id: f.project_id && projects.find(p => String(p.id) === f.project_id)?.customer_id === Number(customerId) ? f.project_id : '' }))} />
+              </div>
+              <div className="form-group"><label htmlFor="task-project">Project (optional)</label>
+                <select id="task-project" value={form.project_id} onChange={e => { const chosen = projects.find(p => String(p.id) === e.target.value); setForm(f => ({ ...f, project_id: e.target.value, customer_id: chosen?.customer_id ? String(chosen.customer_id) : f.customer_id })); }}>
+                  <option value="">No project</option>
+                  {projects.filter(project => !form.customer_id || project.customer_id === Number(form.customer_id)).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-group"><label htmlFor="task-assignee">Who does it</label>
+              {/* An engineer or a team ("t:<id>"): a team task is taken by whoever in the team starts or completes it. */}
+              <select id="task-assignee" value={form.assigned_to} onChange={set('assigned_to')}>
+                <option value="">{isManager ? 'Unassigned' : 'Me'}</option>
+                {isManager && <optgroup label="Engineers">{engineers.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</optgroup>}
+                {createTeams.length > 0 && <optgroup label={isManager ? 'Teams' : 'My teams'}>{createTeams.map(t => <option key={t.id} value={`t:${t.id}`}>{t.name} (team)</option>)}</optgroup>}
               </select>
             </div>
-            {isManager && <div className="form-group"><label>Assign To</label>
-              <select value={form.assigned_to} onChange={set('assigned_to')}>
-                <option value="">Unassigned</option>
-                {engineers.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
-            </div>}
+<div className="form-group"><label htmlFor="task-ticket">Ticket (optional)</label><input id="task-ticket" value={form.ticket_reference || ''} onChange={set('ticket_reference')} maxLength={50} placeholder="e.g. RT#12345" /></div>
+            <fieldset className="ct-subtasks"><legend>Subtasks</legend>
+              <small className="text-muted">Optional. The task is completed when all its subtasks are done.</small>
+              <DraftChecklist value={form.subtasks || []} onChange={list => setForm(current => ({ ...current, subtasks: list }))} customerId={!form.project_id && form.customer_id ? Number(form.customer_id) : null} />
+            </fieldset>
             <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0 }}>
-                <input type="checkbox" checked={form.is_adhoc} onChange={e => setForm(f => ({ ...f, is_adhoc: e.target.checked }))} style={{ width: 'auto' }} />
+              <label className="u-ea06b0c">
+                <input type="checkbox" checked={form.is_adhoc} onChange={e => setForm(f => ({ ...f, is_adhoc: e.target.checked }))} className="u-30e741d" />
                 Mark as Ad-hoc Task
               </label>
             </div>
-            <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
-              <button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>Cancel</button>
+            <div className="modal-footer u-cc45258">
+              <button type="button" className="btn btn-ghost" onClick={() => { setShowCreate(false); }}>Cancel</button>
               <button type="submit" className="btn btn-primary">Create</button>
             </div>
           </form>

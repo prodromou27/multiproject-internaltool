@@ -7,25 +7,27 @@
  *
  * If ATTACHMENT_KEY is not set, isConfigured() returns false and uploads
  * are stored as plain files (backward-compatible).
+ *
+ * Rotation: ATTACHMENT_KEYS_PREVIOUS may list retired keys (comma-separated).
+ * They are only used to decrypt; new files are always encrypted with
+ * ATTACHMENT_KEY. See keyring.js and docs/KEY_ROTATION.md.
  */
 const crypto = require('crypto');
+const { keyRing, fingerprint } = require('./keyring');
 
 const ALGO   = 'aes-256-gcm';
 const IV_LEN = 12; // 96-bit IV, recommended for GCM
 
-function getKey() {
-  const hex = process.env.ATTACHMENT_KEY;
-  if (!hex) return null;
-  if (hex.length !== 64) {
-    console.warn('[cipher] ATTACHMENT_KEY must be exactly 64 hex characters (32 bytes). Encryption disabled.');
-    return null;
-  }
-  return Buffer.from(hex, 'hex');
-}
+const ring = () => keyRing('ATTACHMENT_KEY');
+function getKey() { return ring().current; }
 
 /** Returns true when a valid key is configured. */
 function isConfigured() {
   return !!getKey();
+}
+
+function keyStatus() {
+  return { configured: isConfigured(), fingerprint: fingerprint(getKey()), previous_keys: Math.max(0, ring().keys.length - (getKey() ? 1 : 0)), key_env: 'ATTACHMENT_KEY' };
 }
 
 /**
@@ -47,6 +49,26 @@ function encrypt(buffer) {
 }
 
 /**
+ * Decrypt and report which key worked: { plaintext, onCurrentKey }.
+ * Tries the current key first, then previous keys; throws if none can.
+ */
+function decryptDetailed(buffer, ivHex, tagHex) {
+  const { current, keys } = ring();
+  if (!keys.length) throw new Error('ATTACHMENT_KEY is not configured — cannot decrypt');
+  const iv  = Buffer.from(ivHex,  'hex');
+  const tag = Buffer.from(tagHex, 'hex');
+  let lastError;
+  for (const key of keys) {
+    try {
+      const decipher = crypto.createDecipheriv(ALGO, key, iv);
+      decipher.setAuthTag(tag);
+      return { plaintext: Buffer.concat([decipher.update(buffer), decipher.final()]), onCurrentKey: !!current && key.equals(current) };
+    } catch (error) { lastError = error; } // GCM authentication failed: not this key
+  }
+  throw lastError;
+}
+
+/**
  * Decrypt a Buffer.
  * @param {Buffer} buffer   Encrypted ciphertext
  * @param {string} ivHex    IV as hex string
@@ -54,13 +76,7 @@ function encrypt(buffer) {
  * @returns {Buffer}
  */
 function decrypt(buffer, ivHex, tagHex) {
-  const key = getKey();
-  if (!key) throw new Error('ATTACHMENT_KEY is not configured — cannot decrypt');
-  const iv       = Buffer.from(ivHex,  'hex');
-  const tag      = Buffer.from(tagHex, 'hex');
-  const decipher = crypto.createDecipheriv(ALGO, key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(buffer), decipher.final()]);
+  return decryptDetailed(buffer, ivHex, tagHex).plaintext;
 }
 
-module.exports = { isConfigured, encrypt, decrypt };
+module.exports = { isConfigured, keyStatus, encrypt, decrypt, decryptDetailed };

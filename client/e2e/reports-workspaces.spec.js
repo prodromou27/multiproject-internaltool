@@ -1,0 +1,45 @@
+import { test, expect } from '@playwright/test';
+import { mockApi } from './support/mockApi.js';
+
+test('report sections are deep-linkable and overview metrics use the shared ledger', async ({ page }) => {
+  await mockApi(page, { role: 'manager' });
+  await page.goto('/reports?view=projects');
+
+  await expect(page.getByRole('tab', { name: 'Projects' })).toHaveClass(/active/);
+  await expect(page.locator('.operations-metric-strip .operations-metric')).toHaveCount(4);
+  await page.getByRole('tab', { name: 'Overview' }).click();
+  await expect(page).toHaveURL(/\/reports$/);
+
+  await page.getByRole('tab', { name: 'Report Builder' }).click();
+  await expect(page).toHaveURL(/view=builder/);
+});
+
+test('denied KPI permissions keep KPI data and deep links out of report state',async ({ page }) => {
+  const api=await mockApi(page,{ role:'manager',permissions:{ 'kpis.view':false,'kpis.manage':false } });
+  api.override('GET /api/reports/summary',() => ({ body:{ total:0,overdue:0,byStatus:[],engineerLoad:[],pendingClosure:[],taskStats:{} } }));
+  await page.goto('/reports?view=kpis');
+
+  await expect(page.getByRole('tab',{ name:'KPIs' })).toHaveCount(0);
+  await expect(page.getByRole('tab',{ name:'Overview' })).toHaveClass(/active/);
+  await expect(page.getByText('No KPIs defined yet')).toHaveCount(0);
+});
+
+test('service operations preserves the last report when refresh fails', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  let calls = 0;
+  api.override('GET /api/reports/service-activity/overview', () => {
+    calls += 1;
+    if (calls > 1) return { status: 503, body: { error: 'Service report temporarily unavailable' } };
+    return { body: {
+      total_activities: 5, total_hours: 12, customers_supported: 2,
+      byBillable: [], byCustomer: [], byEngineer: [{ name: 'Alex Mercer', hours: 12 }],
+      byCategory: [], byTeam: [], byTechnology: [],
+    } };
+  });
+  await page.goto('/service-operations');
+
+  await expect(page.getByText(/5 activities · 12h/)).toBeVisible();
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.getByRole('alert')).toContainText('Showing the last loaded report');
+  await expect(page.getByText(/5 activities · 12h/)).toBeVisible();
+});

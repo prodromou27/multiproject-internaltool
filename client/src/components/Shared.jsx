@@ -1,6 +1,8 @@
-import React, { useContext, useRef, useState, useEffect } from 'react';
-import { X, AtSign } from 'lucide-react';
+import { useContext, useRef, useState, useEffect, useId, useLayoutEffect } from 'react';
+import { businessToday } from '../utils/dates';
+import { X } from 'lucide-react';
 import { StatusContext, getStatusDef } from '../hooks/useStatuses';
+import { formatDate, formatDateTime, formatNumber, formatTime } from '../utils/locale';
 
 // Fallback labels for when config isn't loaded yet
 const STATUS_LABELS = {
@@ -10,16 +12,17 @@ const STATUS_LABELS = {
   waiting_customer: 'Waiting for Customer', waiting_vendor: 'Waiting for Vendor',
   not_started: 'Not Started', delayed: 'Delayed', completed_engineer: 'Completed by Engineer',
   pending_approval: 'Pending Approval', reopened: 'Reopened',
+  draft: 'Draft', in_review: 'In Review', approved: 'Approved', final: 'Final',
 };
 
-export function StatusBadge({ s }) {
+export function StatusBadge({ s, entityType }) {
   const ctx = useContext(StatusContext);
   const config = ctx?.config;
 
   // Try each entity type in turn
   let def = null;
   if (config) {
-    for (const et of ['project', 'task', 'visit']) {
+    for (const et of entityType ? [entityType] : ['project', 'task', 'visit', 'service_activity']) {
       def = getStatusDef(config, et, s);
       if (def) break;
     }
@@ -27,13 +30,9 @@ export function StatusBadge({ s }) {
 
   if (def) {
     return (
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600,
-        background: def.bg, color: def.text, whiteSpace: 'nowrap',
-      }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: def.dot, flexShrink: 0 }} />
-        {def.label}
+      <span className="u-d2215a4" style={{ background: def.bg, color: def.text }}>
+        <span className="u-19c4840" style={{ background: def.dot }} />
+        {sentenceCase(def.label)}
       </span>
     );
   }
@@ -42,7 +41,7 @@ export function StatusBadge({ s }) {
   return (
     <span className={`badge badge-${s}`}>
       <span className="badge-dot" />
-      {STATUS_LABELS[s] || s}
+      {sentenceCase(STATUS_LABELS[s] || s)}
     </span>
   );
 }
@@ -58,12 +57,8 @@ export function RagBadge({ rag }) {
   const c = RAG_CONFIG[rag];
   if (!c) return null;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700,
-      background: c.bg, color: c.text, whiteSpace: 'nowrap',
-    }}>
-      <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.dot, flexShrink: 0 }} />
+    <span className="u-e590460" style={{ background: c.bg, color: c.text }}>
+      <span className="u-68bde25" style={{ background: c.dot }} />
       {c.label}
     </span>
   );
@@ -73,34 +68,41 @@ export function PriorityBadge({ p }) {
   const icons = { critical: '‼', high: '↑', medium: '→', low: '↓' };
   return (
     <span className={`badge badge-${p}`}>
-      {icons[p] || ''} {p}
+      {icons[p] || ''} {sentenceCase(p)}
     </span>
   );
 }
 
-export function fmtDate(d) {
-  if (!d) return null;
-  // Parse YYYY-MM-DD as local date to avoid UTC-to-local offset shifting the day
-  const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return '—';
-  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  if (isNaN(date)) return '—';
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+// Delegates to the admin-configured date format and timezone (client/src/utils/locale.js).
+// Calendar dates (deadlines, scheduled dates, …) are never timezone-shifted — a stored
+// 2026-09-22 reads as the 22nd for every viewer, same as before localization existed.
+export function fmtDate(d) { return formatDate(d); }
 
-export function fmtDateTime(d) {
-  if (!d) return '—';
-  const date = new Date(d);
-  if (isNaN(date)) return '—';
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+// Actual timestamps (created_at, sent_at, …) are converted into the configured timezone.
+export function fmtDateTime(d) { return formatDateTime(d); }
+
+// The time of day of a timestamp ("14:05" or "2:05 PM", per the settings).
+export function fmtTime(d) { return formatTime(d); }
+
+// Formats a number using the admin-configured group/decimal separators.
+export function fmtNumber(n, opts) { return formatNumber(n, undefined, opts); }
+
+/* Badge text in sentence case: the first letter a capital, the other words in
+   lower case ("in_progress" → "In progress", "High Risk" → "High risk"), while
+   acronyms stay as they are ("Sent to PM"). */
+export function sentenceCase(value) {
+  const text = String(value ?? '').replace(/_/g, ' ').trim();
+  if (!text) return text;
+  return text.split(/(\s+)/).map((word, index) => {
+    if (index === 0) return word.charAt(0).toUpperCase() + word.slice(1);
+    return /^[A-Z][a-z]+$/.test(word) ? word.toLowerCase() : word;
+  }).join('');
 }
 
 export function isOverdue(d) {
   if (!d) return false;
-  // Compare date strings directly (YYYY-MM-DD) to avoid time-of-day false positives
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  return String(d).slice(0, 10) < todayStr;
+  // A date-only comparison against the organisation's today (the same for everyone).
+  return String(d).slice(0, 10) < businessToday();
 }
 
 /** Returns a human-friendly relative time string ("just now", "5m ago", "3h ago", "2 days ago"). */
@@ -121,23 +123,95 @@ export function fmtRelative(dt) {
   return `${Math.floor(mo / 12)} year${Math.floor(mo / 12) !== 1 ? 's' : ''} ago`;
 }
 
-export function Modal({ title, onClose, children, footer, wide, width }) {
-  // Close on Escape key
+const modalStack = [];
+// Searching or filtering inside a dialog is not a change to save.
+const ignoredInput = node => !!node?.closest?.('.modal-discard, [data-no-dirty]') || node?.type === 'search';
+let originalBodyOverflow;
+const focusableSelector = 'button, input, select, textarea, a[href], [tabindex]';
+
+/* Escape and the close button never silently lose what was typed: once a field in
+   the dialog has been changed, they ask first ("Discard changes?"), and closing or
+   reloading the tab warns too. Cancel and a successful save close it as before.
+   `dirty` overrides the detection (false: never ask); `busy` blocks closing while a
+   request that cannot be undone is running. */
+export function Modal({ title, onClose, children, footer, wide, width, dirty, busy = false }) {
+  const dialogRef = useRef(null);
+  const [edited, setEdited] = useState(false), [confirming, setConfirming] = useState(false);
+  const unsaved = dirty ?? edited;
+  const stateRef = useRef({ unsaved, busy });
+  stateRef.current = { unsaved, busy };
+  const requestClose = () => {
+    if (stateRef.current.busy) return;
+    if (stateRef.current.unsaved) { setConfirming(true); return; }
+    onCloseRef.current();
+  };
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    if (!unsaved) return undefined;
+    const warn = event => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [unsaved]);
+  // Capture the trigger before child autoFocus runs during the DOM commit.
+  const previousFocusRef = useRef(typeof document==='undefined' ? null : document.activeElement);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const titleId = useId();
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    const previousFocus = previousFocusRef.current;
+    if (!modalStack.length) {
+      originalBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+    }
+    modalStack.push(dialog);
+    const isTop = () => modalStack.at(-1) === dialog;
+    const focusable = () => [...dialog.querySelectorAll(focusableSelector)]
+      .filter(node => node.tabIndex >= 0 && !node.disabled && !node.closest('[hidden], [inert]') && node.getClientRects().length);
+    const focusFirst = () => (focusable()[0] || dialog).focus();
+    if (!dialog.contains(document.activeElement)) focusFirst();
+    const handler = e => {
+      if (!isTop()) return;
+      if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); requestCloseRef.current(); }
+      if (e.key === 'Tab') {
+        const elements = focusable();
+        const first = elements[0], last = elements.at(-1);
+        if (!first) { e.preventDefault(); dialog.focus(); }
+        else if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+          e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    const containFocus = e => { if (isTop() && !dialog.contains(e.target)) focusFirst(); };
     document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+    document.addEventListener('focusin', containFocus);
+    return () => {
+      const wasTop = isTop();
+      modalStack.splice(modalStack.indexOf(dialog), 1);
+      document.removeEventListener('keydown', handler);
+      document.removeEventListener('focusin', containFocus);
+      if (!modalStack.length) document.body.style.overflow = originalBodyOverflow;
+      if (wasTop && previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, []);
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={width ? { maxWidth: width } : wide ? { maxWidth: 700 } : {}}>
+    // Only Cancel, the close button or Escape close it: a click outside must not lose what was typed.
+    <div className="modal-overlay">
+      <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} style={width ? { maxWidth: width } : wide ? { maxWidth: 700 } : {}}
+        onInput={event => { if (!ignoredInput(event.target)) setEdited(true); }} onChange={event => { if (!ignoredInput(event.target)) setEdited(true); }}>
         <div className="modal-header">
-          <span className="modal-title">{title}</span>
-          <button className="modal-close" onClick={onClose} aria-label="Close">
+          <span id={titleId} className="modal-title">{title}</span>
+          <button type="button" className="modal-close" onClick={requestClose} aria-label="Close" disabled={busy}>
             <X size={14} />
           </button>
         </div>
+        {confirming && <div className="modal-discard" role="alertdialog" aria-label="Discard changes?">
+          <span>You have changes that are not saved. Discard them?</span>
+          <button type="button" className="btn btn-ghost btn-sm" autoFocus onClick={() => setConfirming(false)}>Keep editing</button>
+          <button type="button" className="btn btn-danger btn-sm" onClick={() => { setConfirming(false); onCloseRef.current(); }}>Discard</button>
+        </div>}
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>
@@ -149,11 +223,11 @@ export function ProgressBar({ value, max, showLabel }) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   const color = pct >= 100 ? 'var(--success)' : pct >= 70 ? 'var(--primary)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div className="progress-bar" style={{ flex: 1 }}>
+    <div className="flex-center gap-8">
+      <div className="progress-bar flex-1">
         <div className="progress-bar-fill" style={{ width: pct + '%', background: color }} />
       </div>
-      {showLabel && <span style={{ fontSize: 11, color: 'var(--gray-500)', width: 34, textAlign: 'right', flexShrink: 0 }}>{Math.round(pct)}%</span>}
+      {showLabel && <span className="u-158e2b6">{Math.round(pct)}%</span>}
     </div>
   );
 }
@@ -177,13 +251,13 @@ export function useConfirm() {
   };
 
   const ConfirmDialogNode = state ? (
-    <div className="modal-overlay" style={{ zIndex: 10000 }}>
-      <div className="modal" style={{ maxWidth: 420 }}>
+    <div className="modal-overlay u-1d34ca9">
+      <div className="modal u-0fd8744">
         <div className="modal-header">
           <span className="modal-title">{state.title}</span>
         </div>
         <div className="modal-body">
-          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6 }}>{state.message}</p>
+          <p className="u-5a8cd12">{state.message}</p>
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={() => handleChoice(false)} autoFocus>Cancel</button>
@@ -202,17 +276,27 @@ export function renderMentions(text) {
   const parts = text.split(/(@\w[\w\s]*?\w(?=\s|$|[^a-zA-Z]))/g);
   return parts.map((p, i) =>
     p.startsWith('@')
-      ? <span key={i} style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: 4, padding: '0 3px', fontWeight: 600, fontSize: '0.92em' }}>{p}</span>
+      ? <span key={i} className="u-fb345ca">{p}</span>
       : p
   );
 }
 
 /* ── @Mention autocomplete input ─────────────────────────── */
-export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled, style, users = [], rows }) {
+export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled, style, users = [], rows, ariaLabel, maxLength }) {
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionOpen,  setMentionOpen]  = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
   const inputRef = useRef(null);
+  // Where the caret goes once the text with the chosen name is on screen. Set
+  // before the browser handles the next key, so fast typing after picking a
+  // name lands after it (a delayed timer let those keys end up before it).
+  const pendingCaret = useRef(null);
+  useLayoutEffect(() => {
+    if (pendingCaret.current == null || !inputRef.current) return;
+    const pos = pendingCaret.current;
+    pendingCaret.current = null;
+    inputRef.current.setSelectionRange(pos, pos);
+  }, [value]);
 
   // Detect @-trigger on change
   function handleChange(e) {
@@ -242,15 +326,10 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
     const textBefore = value.slice(0, cursor);
     const textAfter  = value.slice(cursor);
     const replaced   = textBefore.replace(/@(\w*)$/, `@${name} `);
+    pendingCaret.current = replaced.length;
+    inputRef.current?.focus();
     onChange(replaced + textAfter);
     setMentionOpen(false);
-    setTimeout(() => {
-      if (inputRef.current) {
-        inputRef.current.focus();
-        const pos = replaced.length;
-        inputRef.current.setSelectionRange(pos, pos);
-      }
-    }, 0);
   }
 
   function handleKeyDown(e) {
@@ -258,7 +337,8 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
       if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIndex(i => Math.min(i + 1, filtered.length - 1)); return; }
       if (e.key === 'ArrowUp')   { e.preventDefault(); setMentionIndex(i => Math.max(i - 1, 0)); return; }
       if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insertMention(filtered[mentionIndex].name); return; }
-      if (e.key === 'Escape')    { setMentionOpen(false); return; }
+      // Escape closes the suggestions only, not the dialog around the input.
+      if (e.key === 'Escape')    { e.preventDefault(); e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); setMentionOpen(false); return; }
     }
     if (onKeyDown) onKeyDown(e);
   }
@@ -275,7 +355,7 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
   const Tag = rows ? 'textarea' : 'input';
 
   return (
-    <div style={{ position: 'relative', flex: style?.flex ?? 1 }}>
+    <div className="u-d461c96" style={{ flex: style?.flex ?? 1 }}>
       <Tag
         ref={inputRef}
         value={value}
@@ -284,32 +364,24 @@ export function MentionInput({ value, onChange, onKeyDown, placeholder, disabled
         placeholder={placeholder || 'Add a comment… (type @name to mention someone)'}
         disabled={disabled}
         rows={rows}
+        aria-label={ariaLabel}
+        maxLength={maxLength}
         style={{ width: '100%', fontSize: 13, boxSizing: 'border-box', ...style }}
       />
       {mentionOpen && filtered.length > 0 && (
-        <div style={{
-          position: 'absolute', bottom: '100%', left: 0, zIndex: 100,
-          background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 8,
-          boxShadow: '0 4px 16px rgba(0,0,0,.12)', minWidth: 200, marginBottom: 2,
-          overflow: 'hidden',
-        }}>
+        <div className="u-33c5e02">
           {filtered.map((u, i) => (
             <div
               key={u.id}
               onMouseDown={e => { e.preventDefault(); insertMention(u.name); }}
-              style={{
-                padding: '7px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-                background: i === mentionIndex ? '#eff6ff' : '#fff',
-                borderBottom: i < filtered.length - 1 ? '1px solid var(--gray-100)' : 'none',
-              }}
+              className={["u-5f16e65", (i === mentionIndex ? 'u-89f9bf0' : 'u-a5acbfa'), (i < filtered.length - 1 ? 'u-02c1276' : 'u-71a91da')].filter(Boolean).join(' ')}
             >
-              <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--primary)', color: '#fff',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+              <div className="u-6c6e327">
                 {u.name.charAt(0).toUpperCase()}
               </div>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600 }}>{u.name}</div>
-                <div style={{ fontSize: 10, color: 'var(--gray-400)' }}>{u.role}</div>
+                <div className="u-eb5cb58">{u.name}</div>
+                <div className="u-19dc6a2">{u.role}</div>
               </div>
             </div>
           ))}
@@ -323,9 +395,9 @@ export function EmptyState({ icon, title, description, action }) {
   return (
     <div className="empty">
       {icon && <div className="empty-icon">{icon}</div>}
-      <p style={{ fontWeight: 600, color: 'var(--gray-600)', marginBottom: 4 }}>{title}</p>
-      {description && <p style={{ fontSize: 13 }}>{description}</p>}
-      {action && <div style={{ marginTop: 16 }}>{action}</div>}
+      <p className="u-c6a4692">{title}</p>
+      {description && <p className="u-5e0faad">{description}</p>}
+      {action && <div className="mt-16">{action}</div>}
     </div>
   );
 }

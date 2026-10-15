@@ -1,0 +1,33 @@
+/* Customer contracts */
+.cc-page { display: grid; gap: 16px; }
+.cc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.cc-card { display: grid; align-content: start; gap: 10px; padding: 14px 16px; border: 1px solid var(--gray-200); border-radius: var(--radius-lg, 8px); background: var(--surface); }
+.cc-card.is-ending_soon { border-color: var(--warning); }
+.cc-card.is-expired { border-color: var(--danger); }
+.cc-card.is-renewed { background: var(--gray-50); }
+.cc-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.cc-card h3 { margin: 0; font-size: 15px; }
+.cc-card header p { margin: 2px 0 0; font-size: 13px; color: var(--gray-600); }
+.cc-card dl { display: grid; gap: 8px; margin: 0; }
+.cc-card dl > div { display: grid; grid-template-columns: 120px 1fr; gap: 8px; font-size: 13px; }
+.cc-card dt { color: var(--gray-500); font-weight: 600; }
+.cc-card dd { margin: 0; color: var(--gray-800); }
+.cc-card dd small { display: block; font-size: 12px; color: var(--gray-500); }
+.cc-asset-names { margin: 0; padding-left: 16px; }
+.cc-notes { white-space: pre-wrap; }
+.cc-card footer { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 4px; border-top: 1px solid var(--gray-100); }
+.cc-uncovered { margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--warning); border-radius: var(--radius); background: var(--warning-light); color: var(--gray-800); font-size: 13px; }
+.cc-form { display: grid; gap: 4px; }
+.cc-hint { margin: 0 0 8px; font-size: 13px; color: var(--gray-600); }
+.cc-form select + input { margin-top: 6px; }
+.cc-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cc-assets { margin: 4px 0 12px; padding: 10px 12px; border: 1px solid var(--gray-200); border-radius: var(--radius); }
+.cc-assets legend { padding: 0 4px; font-size: 13px; font-weight: 600; }
+.cc-assets legend span { margin-left: 6px; font-weight: 500; color: var(--gray-500); }
+.cc-asset-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; max-height: 240px; overflow-y: auto; }
+.cc-asset { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer; }
+.cc-asset input { flex: none; width: auto; min-height: 0; margin: 3px 0 0; }
+.cc-asset span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cc-asset small { display: block; font-size: 12px; color: var(--gray-500); }
+.cc-asset-actions { display: flex; gap: 6px; margin-top: 8px; }
+@media (max-width: 640px) { .cc-dates { grid-template-columns: 1fr; } .cc-card dl > div { grid-template-columns: 1fr; gap: 2px; } }

@@ -1,0 +1,251 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - DEV-2
+      - DEV-3
+      - dev
+      - main
+  pull_request:
+
+jobs:
+  server:
+    name: Server tests and audit
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: solutionshub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d solutionshub_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      # pg_dump/psql 16 for the database backup tests (same major version as the service).
+      - name: Install PostgreSQL client tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-16
+          echo "PG_BIN_DIR=/usr/lib/postgresql/16/bin" >> "$GITHUB_ENV"
+
+      - name: Run server tests
+        working-directory: server
+        run: npm test
+
+      - name: Run route integration tests on PostgreSQL
+        working-directory: server
+        env:
+          TEST_DATABASE_URL: postgres://app:test_password@localhost:5432/solutionshub_test
+        # Each suite seeds the same fixed cast (users, teams, customers), so it
+        # gets a freshly created database rather than sharing one.
+        run: |
+          for suite in activityCore activityValidation authNotificationsTasks trackingAndReports managedCustomers recommendationsAndCalendar operationsAndCustomer360 customReportSources ticketOwners databaseBackups kpiSources softwareVersions skillMatrix customerContracts recurringTeamTasks customerImport insights customerArchive customerTasksAndAlerts assetReviews taskSubtasks customerValueReport moduleRevocation accountSecurity assetSearch businessCalendar editVersions reportDeliveries dataQuality approvalAging responseComposer learningPlans visitChecklists remediationCampaigns capacityScenario taskFiltersAndHours grafanaSync assetImport visitImport reportRetention; do
+            PGPASSWORD=test_password psql -h localhost -U app -d postgres -v ON_ERROR_STOP=1               -c 'DROP DATABASE IF EXISTS solutionshub_test WITH (FORCE)' -c 'CREATE DATABASE solutionshub_test'
+            node --test "test/$suite.integration.test.js"
+          done
+
+      # Several route tests skip themselves on pg-mem (correlated subqueries,
+      # join lookups, an internal pg-mem crash) and are meant to run here.
+      # They share one database, so run them one file at a time.
+      - name: Run PostgreSQL-only route tests
+        working-directory: server
+        env:
+          TEST_DATABASE_URL: postgres://app:test_password@localhost:5432/solutionshub_test
+        # A fresh database, so leftovers from the suites above (old activities
+        # and the like) cannot change what these tests count.
+        run: |
+          PGPASSWORD=test_password psql -h localhost -U app -d postgres -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS solutionshub_test WITH (FORCE)' -c 'CREATE DATABASE solutionshub_test'
+          node --test --test-concurrency=1 test/templates.test.js test/notificationsSearch.integration.test.js test/scorecardsSla.test.js test/settingsAndFeeds.test.js test/keyRotation.test.js test/slaPolicy.test.js
+
+      - name: Check schema and every SQL statement against PostgreSQL
+        working-directory: server
+        env:
+          TEST_DATABASE_URL: postgres://app:test_password@localhost:5432/solutionshub_test
+        run: node --test test/postgres.schema.test.js
+
+      - name: Audit server production dependencies
+        working-directory: server
+        run: npm audit --omit=dev
+
+      # Development and test tools too: they run on developer machines and in CI.
+      - name: Audit all server dependencies
+        working-directory: server
+        run: npm audit
+
+  client:
+    name: Client build and audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      # Correctness rules only (undefined variables, hook rules): errors fail the
+      # build, unused-import warnings don't. See client/eslint.config.js.
+      - name: Lint client
+        working-directory: client
+        run: npm run lint
+
+      - name: Run client tests
+        working-directory: client
+        run: npm test
+
+      - name: Build client
+        working-directory: client
+        run: npm run build
+
+      - name: Run browser tests
+        working-directory: client
+        run: npm run test:e2e
+
+      - name: Keep browser test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            client/playwright-report
+            client/test-results
+          retention-days: 7
+
+      - name: Audit client production dependencies
+        working-directory: client
+        run: npm audit --omit=dev
+
+      # Development and test tools too: they run on developer machines and in CI.
+      - name: Audit all client dependencies
+        working-directory: client
+        run: npm audit
+
+  realstack:
+    name: Real-stack acceptance
+    runs-on: ubuntu-latest
+    # The built app on the real server (production mode, every middleware) against
+    # a fresh PostgreSQL: sign-in cookies, CSRF, customers, tasks, time, visit
+    # reports, project closure, attachments and permissions (client/e2e-real).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: teamhub_realstack
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d teamhub_realstack"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            client/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          (cd server && npm ci --omit=dev)
+          (cd client && npm ci)
+
+      - name: Build client
+        working-directory: client
+        run: npm run build
+
+      - name: Run real-stack journeys
+        working-directory: client
+        env:
+          REALSTACK_DATABASE_URL: postgres://app:test_password@localhost:5432/teamhub_realstack
+        run: npm run test:realstack
+
+      - name: Keep the real-stack report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-realstack
+          path: |
+            client/playwright-report-realstack
+            client/test-results
+          retention-days: 7
+
+  compose:
+    name: Compose validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate compose config
+        run: |
+          POSTGRES_PASSWORD=dummy_password \
+          JWT_SECRET=dummy_jwt_secret_value_at_least_32_chars \
+          CUSTOMER_FIELD_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+          ATTACHMENT_KEY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+          APP_URL=http://localhost:8080 \
+          docker compose config
+
+      # Production must not publish PostgreSQL on the host.
+      - name: Production config publishes no database port
+        run: |
+          POSTGRES_PASSWORD=dummy_password JWT_SECRET=dummy_jwt_secret_value_at_least_32_chars           CUSTOMER_FIELD_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa           ATTACHMENT_KEY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb           APP_URL=http://localhost:8080           docker compose -f docker-compose.yml -f docker-compose.prod.yml config --format json > /tmp/prod.json
+          node -e "const ports = require('/tmp/prod.json').services.db.ports || []; if (ports.length) { console.error('db ports published in production:', JSON.stringify(ports)); process.exit(1); }"
+
+      # The network-share example (deploy/README.md) must merge cleanly with the main file.
+      - name: Validate the backup share example
+        run: |
+          POSTGRES_PASSWORD=dummy_password JWT_SECRET=dummy_jwt_secret_value_at_least_32_chars \
+          CUSTOMER_FIELD_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+          ATTACHMENT_KEY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+          APP_URL=http://localhost:8080 BACKUP_SHARE_PASSWORD=dummy \
+          docker compose -f docker-compose.yml -f deploy/backup-share.compose.example.yml config -q
+
+      # The image must carry pg_dump/psql 16 for in-app backups.
+      - name: Build the app image and check its backup tools
+        run: |
+          docker build -t teamhub-ci .
+          docker run --rm --entrypoint pg_dump teamhub-ci --version | tee /dev/stderr | grep -q "PostgreSQL) 16\."
+          docker run --rm --entrypoint psql teamhub-ci --version | grep -q "PostgreSQL) 16\."
+
+      # Reports made from the company Word template download as PDF through LibreOffice.
+      - name: Check the image turns a Word report into a PDF
+        run: |
+          docker run --rm --entrypoint node teamhub-ci -e "
+            const { Document, Packer, Paragraph } = require('docx');
+            const { docxToPdf } = require('./docxToPdf');
+            Packer.toBuffer(new Document({ sections: [{ children: [new Paragraph('Report for Contoso')] }] }))
+              .then(docxToPdf)
+              .then(pdf => { if (pdf.subarray(0, 5).toString() !== '%PDF-') throw new Error('not a PDF'); console.log('PDF', pdf.length, 'bytes'); })
+              .catch(error => { console.error(error.message); process.exit(1); });"

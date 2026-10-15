@@ -1,0 +1,67 @@
+import { test, expect } from '@playwright/test';
+import { mockApi } from './support/mockApi.js';
+
+// The Settings and Project pages are large modules split into several files. A name
+// that goes missing in a split only fails when that section renders ("X is not
+// defined"), and the build cannot see it. These tests open every section and fail on
+// any such error. Sections may show an error message for the sparse mock data; what
+// they must never do is reference something that does not exist.
+
+// Current sections, then old names that now redirect.
+const SETTINGS_TABS = [
+  'overview', 'users', 'teams', 'permissions', 'security', 'service_activity_tracking', 'statuses',
+  'managed_report_templates', 'weekly_report', 'email', 'notifications', 'ticketing', 'activity_bot',
+  'localization', 'audit_log', 'system_health', 'backups', 'sla', 'contract_types',
+  'projects', 'maintenance', 'integrations', 'logging', 'admin_alerts', 'stats', 'activity',
+  'deployment', 'export', 'system_update',
+];
+
+function collectReferenceErrors(page) {
+  const problems = [];
+  const check = text => { if (/is not defined|is not a function|Cannot access .* before initialization/.test(text)) problems.push(text); };
+  page.on('pageerror', error => check(String(error.message)));
+  page.on('console', message => { if (message.type() === 'error') check(message.text()); });
+  return problems;
+}
+
+for (const tab of SETTINGS_TABS) {
+  test(`settings section "${tab}" opens without a missing reference`, async ({ page }) => {
+    const problems = collectReferenceErrors(page);
+    await mockApi(page, { role: 'manager' });
+    await page.goto(`/settings/${tab}`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(500);
+    expect(problems).toEqual([]);
+    // Ticketing must survive a reply missing its lists (other pages rely on the real server's shapes).
+    if (tab === 'ticketing') await expect(page.getByText('Something went wrong on this page')).toHaveCount(0);
+  });
+}
+
+test('a project page opens without a missing reference', async ({ page }) => {
+  const problems = collectReferenceErrors(page);
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/projects/1', () => ({ body: {
+    id: 1, title: 'Network refresh, Rotterdam', status: 'in_progress', priority: 'high', deadline: '2026-10-30',
+    customer_name: 'Northwind Logistics', description: 'Replace the core switches.', members: [], tasks: [], milestones: [],
+    completion_pct: 40, rag_status: 'amber',
+  } }));
+  await page.goto('/projects/1');
+  await expect(page.getByRole('heading', { name: 'Network refresh, Rotterdam' }).first()).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  expect(problems).toEqual([]);
+});
+
+test('a project page loads its activity feed and the customer list only when they are needed', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/projects/1', () => ({ body: { id: 1, title: 'Network refresh, Rotterdam', status: 'in_progress', priority: 'high', members: [], updates: [], created_by: 1 } }));
+  api.override('GET /api/projects/1/activity', () => ({ body: [{ id: 5, action: 'created', detail: 'Project created', user_name: 'Alex Mercer', created_at: '2026-10-01 09:00:00' }] }));
+  await page.goto('/projects/1');
+  await expect(page.getByRole('heading', { name: 'Network refresh, Rotterdam' }).first()).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  const asked = path => api.calls.some(call => call.method === 'GET' && call.path === path);
+  expect(asked('/api/projects/1/activity')).toBe(false);
+  expect(asked('/api/customers')).toBe(false);
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  await expect(page.getByText('Project created')).toBeVisible();
+  expect(asked('/api/customers')).toBe(false);
+});

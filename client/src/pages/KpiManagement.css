@@ -1,0 +1,57 @@
+.kpi-management-page { display:grid; gap:18px; }
+.kpi-toolbar { display:grid; grid-template-columns:minmax(220px,1fr) repeat(3,minmax(140px,auto)); gap:10px; margin-bottom:14px; }
+.kpi-name-cell { display:grid; gap:3px; min-width:180px; }
+.kpi-name-cell span,.kpi-cell-note { display:block; color:var(--gray-500); font-size:11px; margin-top:3px; }
+.kpi-row-actions { display:flex; align-items:center; flex-wrap:wrap; gap:4px; min-width:340px; }
+.kpi-definition-form { display:grid; gap:18px; }
+.kpi-definition-form section { display:grid; gap:10px; padding-bottom:16px; border-bottom:1px solid var(--gray-100); }
+.kpi-definition-form section h3 { margin:0; font-size:13px; color:var(--gray-700); }
+.kpi-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.kpi-form-grid.is-four { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.kpi-form-grid .is-wide,.kpi-source-help.is-wide { grid-column:1 / -1; }
+.kpi-source-help { margin:0; color:var(--gray-500); font-size:12px; }
+.kpi-enabled-control { display:flex; align-items:center; gap:9px; min-height:42px; padding-top:18px; }
+.kpi-enabled-control input { width:auto; }
+.kpi-enabled-control span { display:grid; gap:2px; font-size:12px; }
+.kpi-enabled-control small { color:var(--gray-500); }
+.kpi-preview,.kpi-run-result { display:flex; align-items:center; gap:14px; border:1px solid var(--gray-200); border-left:4px solid var(--gray-400); border-radius:8px; background:var(--surface,#fff); padding:12px 14px; }
+.kpi-preview.is-healthy,.kpi-run-result.is-healthy { border-left-color:var(--success); }
+.kpi-preview.is-warning,.kpi-run-result.is-warning { border-left-color:var(--warning); }
+.kpi-preview.is-critical,.kpi-run-result.is-critical { border-left-color:var(--danger); }
+.kpi-preview > div,.kpi-run-result > div { display:grid; gap:2px; flex:1; }
+.kpi-preview span,.kpi-run-result span { color:var(--gray-500); font-size:12px; }
+.kpi-preview strong { font-size:24px; }
+.kpi-run-result > button { border:0; background:none; color:var(--gray-500); font-size:22px; cursor:pointer; }
+.kpi-trend { display:flex; align-items:end; gap:12px; margin-bottom:16px; padding:12px; border:1px solid var(--gray-200); border-radius:8px; }
+.kpi-trend svg { width:100%; height:100px; overflow:visible; }
+.kpi-trend polyline { fill:none; stroke:var(--primary); stroke-width:2; vector-effect:non-scaling-stroke; }
+.kpi-trend span { color:var(--gray-500); font-size:12px; white-space:nowrap; }
+@media (max-width:900px) {
+  .kpi-toolbar { grid-template-columns:1fr 1fr; }
+  .kpi-form-grid.is-four { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:600px) {
+  .kpi-toolbar,.kpi-form-grid,.kpi-form-grid.is-four { grid-template-columns:1fr; }
+  .kpi-row-actions { min-width:0; }
+  .kpi-enabled-control { padding-top:0; }
+}
+
+/* Scorecard (KpiScorecard.jsx) */
+.kpi-scorecard { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.kpi-card { border: 1px solid var(--gray-200); border-left: 4px solid var(--gray-300); border-radius: 10px; padding: 12px 14px; display: grid; gap: 6px; background: var(--surface, #fff); }
+.kpi-card.is-healthy { border-left-color: #16a34a; }
+.kpi-card.is-warning { border-left-color: #d97706; }
+.kpi-card.is-critical { border-left-color: #dc2626; }
+.kpi-card header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.kpi-card h3 { font-size: 14px; margin: 0; }
+.kpi-card header p, .kpi-card-target { margin: 0; font-size: 12px; color: var(--gray-500); }
+.kpi-card-value { display: flex; align-items: baseline; gap: 6px; }
+.kpi-card-value strong { font-size: 26px; font-variant-numeric: tabular-nums; }
+.kpi-card-value span { font-size: 12px; color: var(--gray-500); }
+.kpi-card-breakdown summary { cursor: pointer; font-size: 12px; font-weight: 600; }
+.kpi-card-breakdown table, .kpi-breakdown { width: 100%; font-size: 12px; margin-top: 4px; }
+.kpi-card-breakdown th, .kpi-breakdown th { font-weight: 500; text-align: left; }
+.kpi-card-breakdown .num, .kpi-breakdown .num { text-align: right; font-variant-numeric: tabular-nums; }
+.kpi-breakdown { margin: 12px 0; }
+.kpi-record-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; margin-bottom: 14px; }
+.kpi-record-form .is-wide { grid-column: 1 / -1; }

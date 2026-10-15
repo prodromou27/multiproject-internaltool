@@ -1,0 +1,587 @@
+/* TeamHub refinement: calm and focused.
+   Ink for text and primary actions, a quiet slate for links and focus, and the
+   Odyssey red used for one job only: marking what needs attention (overdue
+   counts, attention markers, the current page). Loaded after index.css and
+   foundations.css; the generated inline.css still wins for element-level rules. */
+
+:root {
+  --ink:            #1a2027;
+  --signal:         #c8102e;
+  --signal-soft:    #fcedf0;
+
+  --primary:        #30507f;
+  --primary-dark:   #233c61;
+  --primary-light:  #eef2f8;
+  --primary-ring:   rgba(48, 80, 127, .18);
+  --on-primary:     #fff;     /* text on a --primary background */
+  --on-status:      #fff;     /* text on --danger and --warning */
+
+  --danger:         #c8102e;
+  --danger-light:   #fcedf0;
+  --success:        #2f7d5b;
+  --success-light:  #edf6f1;
+  --warning:        #9a6416;  /* 4.5:1+ as text on white and on --warning-light */
+  --warning-light:  #fbf4e6;
+  /* Text on tinted backgrounds (badges, alerts): at least 4.5:1. */
+  --tone-danger-text:  #a50d26;
+  --tone-warning-text: #865610;
+  --tone-success-text: #24603f;
+  --tone-info-text:    #2a4670;
+
+  /* Cool neutral scale (no blue cast). */
+  --gray-50:  #f4f5f7;
+  --gray-100: #eceef1;
+  --gray-200: #e3e6ea;
+  --gray-300: #cdd2d9;
+  --gray-400: #9aa3ae;
+  --gray-500: #5c6571;  /* secondary text: 4.5:1+ on white and on --gray-50 */
+  --gray-600: #4b535e;
+  --gray-700: #3b434d;
+  --gray-800: #262c33;
+  --gray-900: #1a2027;
+
+  --surface:          #ffffff;
+  --highlight:        #f1f4f9;
+  --highlight-strong: #e4eaf3;
+
+  /* Radius hierarchy: controls 6, panels 10, overlays 12. */
+  --radius:    6px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+
+  /* Lines do the separating; shadows only lift overlays. */
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow:    0 1px 2px rgba(26, 32, 39, .06);
+  --shadow-md: 0 8px 24px rgba(26, 32, 39, .10);
+  --shadow-lg: 0 16px 40px rgba(26, 32, 39, .14);
+}
+
+[data-theme="dark"] {
+  --ink:            #e8ebef;
+  --signal:         #f0566c;
+  --signal-soft:    rgba(240, 86, 108, .14);
+  --primary:        #8fb0e0;
+  --primary-dark:   #b3cbee;
+  --primary-light:  rgba(143, 176, 224, .14);
+  --primary-ring:   rgba(143, 176, 224, .25);
+  --on-primary:     #12161b;  /* dark primary, danger and warning are light: dark text */
+  --on-status:      #12161b;
+  --warning:        #e0a94f;  /* 4.5:1+ as text on the dark surface */
+  --warning-light:  rgba(224, 169, 79, .14);
+  --success-light:  rgba(127, 209, 167, .12);
+  --danger:         #f0566c;
+  --danger-light:   rgba(240, 86, 108, .14);
+  --tone-danger-text:  #f58a9b;
+  --tone-warning-text: #f0c27a;
+  --tone-success-text: #7fd1a7;
+  --tone-info-text:    #a9c3ea;
+  --gray-50:  #12161b;
+  --gray-100: #1f252d;
+  --gray-200: #2a313a;
+  --gray-300: #3a424d;
+  --gray-400: #5f6874;
+  --gray-500: #8d96a2;
+  --gray-600: #a9b1bb;
+  --gray-700: #c3c9d1;
+  --gray-800: #dde1e6;
+  --gray-900: #eef0f3;
+  --surface:          #1a1f26;
+  --highlight:        rgba(143, 176, 224, .08);
+  --highlight-strong: rgba(143, 176, 224, .16);
+}
+[data-theme="dark"] body,
+[data-theme="dark"] .card,
+[data-theme="dark"] .modal,
+[data-theme="dark"] .desktop-topbar { background: var(--surface); }
+[data-theme="dark"] body { background: var(--gray-50); }
+/* White text on the primary colour (today, the open view) turns dark with the light dark-theme primary. */
+[data-theme="dark"] .u-1eab90a.u-1eab90a.u-729d2fa { color: var(--on-primary); }
+
+/* ── Type ─────────────────────────────────────────────────── */
+body {
+  font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  background: var(--gray-50);
+  color: var(--ink);
+  font-feature-settings: 'tnum' 1; /* counts and dates line up */
+}
+h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
+
+/* ── Buttons: ink for the one primary action, quiet otherwise ── */
+.btn-primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #000; border-color: #000; }
+[data-theme="dark"] .btn-primary { color: #12161b; }
+[data-theme="dark"] .btn-primary:hover:not(:disabled) { background: #fff; border-color: #fff; }
+.btn-ghost { box-shadow: none; }
+
+/* ── Panels: hairline, no shadow ─────────────────────────── */
+.card { border: 1px solid var(--gray-200); border-radius: var(--radius-lg); box-shadow: none; }
+
+/* ── Sidebar: light and quiet ─────────────────────────────── */
+.operations-shell .sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--gray-200);
+  color: var(--gray-700);
+}
+.operations-shell .sidebar-logo { height: 56px; border-bottom: 0; }
+.sidebar-logo .sidebar-brand-name { color: var(--ink); font-weight: 600; letter-spacing: -.01em; }
+.sidebar-logo .sidebar-brand-name strong { color: var(--signal); }
+.sidebar-logo-mark { border: 1px solid var(--gray-200); }
+.operations-shell .sidebar-primary-nav { padding: 6px 10px; }
+.operations-shell .sidebar nav a {
+  min-height: 36px; margin-bottom: 1px; border-radius: var(--radius);
+  color: var(--gray-600); font-weight: 500; font-size: 13.5px;
+}
+.operations-shell .sidebar nav a svg { color: var(--gray-500); }
+.operations-shell .sidebar nav a:hover { background: var(--gray-100); color: var(--ink); text-decoration: none; }
+.operations-shell .sidebar nav a.active {
+  background: var(--gray-100); color: var(--ink); font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--signal);
+}
+.operations-shell .sidebar nav a.active svg { color: var(--ink); }
+.operations-shell .sidebar { overflow: hidden; }
+.operations-shell .sidebar-primary-nav { min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--gray-300) transparent; }
+.operations-shell .sidebar nav a { min-height: 30px; padding: 5px 10px; margin-bottom: 1px; }
+.sidebar-group + .sidebar-group { margin-top: 5px; padding-top: 4px; border-top: 1px solid var(--gray-200); }
+.sidebar-group.is-untitled + .sidebar-group.is-untitled { padding-top: 6px; border-top: 1px solid var(--gray-200); }
+.operations-shell .sidebar-more-nav { flex: none; margin-bottom: 4px; padding: 0 0 4px; border-bottom: 1px solid var(--gray-200); }
+.sidebar-group-toggle {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  margin: 0 0 1px; padding: 4px 10px; border: 0; border-radius: var(--radius); background: transparent;
+  color: var(--gray-800); font: inherit; font-size: 12.5px; font-weight: 700; letter-spacing: .01em; cursor: pointer; text-align: left;
+}
+.sidebar-group-toggle svg { color: var(--gray-500); }
+.sidebar-group-toggle:hover:not(:disabled) { background: var(--gray-100); color: var(--ink); }
+.sidebar-group-toggle:disabled { cursor: default; }
+.sidebar-group-toggle svg { transition: transform .15s ease; }
+.sidebar-group-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.nav-compact .sidebar-group + .sidebar-group { padding-top: 6px; border-top: 1px solid var(--gray-200); }
+@media (prefers-reduced-motion: reduce) { .sidebar-group-toggle svg { transition: none; } }
+.sidebar-overdue-count { background: var(--signal) !important; color: #fff !important; }
+.operations-shell .sidebar-footer { border-top: 1px solid var(--gray-200); padding: 8px 10px; background: transparent; }
+.operations-shell .sidebar-footer button {
+  width: 100%; display: flex; align-items: center; gap: 9px; padding: 8px 10px;
+  border: 0; border-radius: var(--radius); background: transparent;
+  color: var(--gray-500); font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.operations-shell .sidebar-footer button:hover { background: var(--gray-100); color: var(--ink); }
+.drawer-close { color: var(--ink); border-color: var(--gray-300); }
+
+/* ── Top bar: search, create, alerts, you ────────────────── */
+.operations-shell .desktop-topbar {
+  min-height: 60px; background: var(--surface); border-bottom: 1px solid var(--gray-200); gap: 12px;
+}
+.workspace-command {
+  margin-right: auto; min-width: 280px; justify-content: flex-start;
+  border: 1px solid var(--gray-200); background: var(--gray-50); color: var(--gray-500);
+  border-radius: var(--radius); box-shadow: none;
+}
+.workspace-command:hover { border-color: var(--gray-300); color: var(--gray-700); }
+.workspace-command kbd { margin-left: auto; }
+.topbar-action, .operations-shell .desktop-topbar button.icon-btn { border: 0 !important; background: transparent !important; box-shadow: none !important; }
+
+/* ── User menu (replaces the sidebar footer buttons) ────── */
+.user-menu { position: relative; }
+.user-menu > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px;
+  padding: 4px 8px 4px 4px; border-radius: var(--radius);
+}
+.user-menu > summary::-webkit-details-marker { display: none; }
+.user-menu > summary:hover { background: var(--gray-100); }
+.user-menu-avatar {
+  width: 32px; height: 32px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  display: grid; place-items: center; background: var(--ink); color: #fff; font-size: 12px; font-weight: 600;
+}
+[data-theme="dark"] .user-menu-avatar { color: #12161b; }
+.user-menu-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.user-menu-who { display: grid; line-height: 1.25; text-align: left; }
+.user-menu-who strong { font-size: 13px; font-weight: 600; color: var(--ink); }
+.user-menu-who span { font-size: 12px; color: var(--gray-500); text-transform: capitalize; }
+.user-menu-panel {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 60; width: 240px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--gray-200); border-radius: var(--radius-xl); box-shadow: var(--shadow-md);
+}
+.user-menu-panel a, .user-menu-panel button {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 0; border-radius: var(--radius); background: transparent; color: var(--gray-800);
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer; text-decoration: none;
+}
+.user-menu-panel a:hover, .user-menu-panel button:hover { background: var(--gray-100); text-decoration: none; }
+.user-menu-panel svg { color: var(--gray-500); flex-shrink: 0; }
+.user-menu-panel hr { border: 0; border-top: 1px solid var(--gray-200); margin: 6px 4px; }
+.user-menu-panel .user-menu-signout { color: var(--signal); }
+.user-menu-panel .user-menu-signout svg { color: var(--signal); }
+@media (max-width: 900px) { .user-menu-who { display: none; } }
+
+/* ── Page header: one heading, optional one-line context ── */
+.operations-page-header { align-items: flex-end; padding-bottom: 18px; margin-bottom: 22px; border-bottom: 1px solid var(--gray-200); }
+.operations-page-header h1 { font-size: 22px; font-weight: 600; letter-spacing: -.015em; line-height: 1.25; }
+.operations-description { margin-top: 4px; max-width: 68ch; color: var(--gray-500); font-size: 13px; }
+/* Labels that remain carry information (e.g. which team focus applies): sentence case, quiet. */
+.operations-eyebrow { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 500; color: var(--gray-500); }
+
+/* ── Dashboard: what needs you, nothing else up top ─────── */
+.focus-heading h2 { font-size: 16px; font-weight: 600; }
+.focus-metrics { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.focus-metric { padding: 14px 16px; border-radius: var(--radius-lg); border-color: var(--gray-200); }
+.focus-metric strong { font-size: 26px; font-weight: 600; line-height: 1; }
+.focus-metric.needs-attention { border-left: 1px solid var(--gray-200); box-shadow: inset 3px 0 0 var(--signal); }
+.focus-metric.needs-attention strong { color: var(--signal); }
+.focus-metric:hover { border-color: var(--gray-300); }
+.focus-all-clear {
+  display: flex; align-items: center; gap: 10px; padding: 14px 16px; margin-bottom: 16px;
+  border: 1px solid var(--gray-200); border-radius: var(--radius-lg); background: var(--surface); color: var(--gray-600);
+}
+.focus-all-clear svg { color: var(--success); }
+.focus-work-list li > svg { color: var(--gray-500); }
+.focus-work-list li.is-overdue > svg { color: var(--signal); }
+.focus-columns h3 svg { color: var(--gray-500); }
+
+/* ── Status badges: softer, smaller ──────────────────────── */
+.badge { font-weight: 500; letter-spacing: 0; }
+
+/* Dashboard widgets: ink numbers, quiet icons, red only for a live warning. */
+.dashboard-stat { --stat-icon-bg: var(--gray-100); --stat-icon-color: var(--gray-500); --stat-value-color: var(--ink); }
+.dashboard-stat.is-urgent { --stat-icon-bg: var(--signal-soft); --stat-icon-color: var(--signal); --stat-value-color: var(--signal); }
+.dashboard-page .dashboard-stat .dashboard-stat-copy strong { font-weight: 600; letter-spacing: -.01em; }
+.dashboard-page .stat-value { color: var(--ink); font-weight: 600; }
+.section-title { font-weight: 600; letter-spacing: -.005em; }
+
+/* Mobile top bar wordmark matches the sidebar. */
+.topbar { background: var(--surface); border-bottom: 1px solid var(--gray-200); }
+.topbar-logo { color: var(--ink); font-weight: 600; }
+.topbar-logo span { color: var(--signal); }
+
+/* Report templates: Word layout panel. */
+.word-layout { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--gray-200); }
+.word-layout .btn.disabled { opacity: .6; pointer-events: none; }
+.word-layout-problems { margin: 6px 0 0 18px; }
+.word-layout-reference { margin-top: 16px; }
+.word-layout-reference > summary { cursor: pointer; font-weight: 500; color: var(--primary); }
+.word-layout-reference code { font-size: 12px; background: var(--gray-100); padding: 1px 5px; border-radius: 4px; }
+.word-layout-table { width: 100%; min-width: 0; margin-top: 10px; font-size: 13px; }
+.word-layout-table td, .word-layout-table th { padding: 6px 8px; border-bottom: 1px solid var(--gray-200); vertical-align: top; text-align: left; }
+.word-layout-table td:first-child { white-space: nowrap; }
+/* Template names have no icon, so they need the whole width (the settings menu reserves 18px for one). */
+.settings-nav-item.report-template-item { grid-template-columns: minmax(0, 1fr) auto; }
+.error-msg.word-layout-error { display: block; }
+
+/* Reporting obligation: which period's report is owed and how far it has got. */
+.report-due { display: grid; gap: 4px; justify-items: start; }
+.report-due > span { white-space: nowrap; }
+.report-due-banner { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; border-left: 3px solid var(--primary); }
+.report-due-banner > svg { color: var(--primary); flex: none; }
+.report-due-banner > div:first-of-type { flex: 1 1 220px; }
+.report-due-banner p { margin: 2px 0 0; }
+.report-due-banner .report-due { justify-items: end; }
+.report-due-banner.is-overdue { border-left-color: var(--danger); }
+.report-due-banner.is-overdue > svg { color: var(--danger); }
+.report-sent-form { display: grid; grid-template-columns: minmax(200px, 2fr) minmax(140px, 1fr) minmax(200px, 2fr) auto; gap: 12px; align-items: end; }
+.report-sent-form .form-group { margin: 0; }
+@media (max-width: 760px) { .report-sent-form { grid-template-columns: 1fr; } .report-due-banner .report-due { justify-items: start; } }
+
+/* Profile: which personal alerts reach which channel. */
+.alert-choices { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--gray-200); }
+.alert-choices h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+.alert-choices table { width: 100%; max-width: 620px; border-collapse: collapse; font-size: 13px; }
+.alert-choices th, .alert-choices td { padding: 8px 10px; border-bottom: 1px solid var(--gray-200); text-align: center; }
+.alert-choices th[scope="row"], .alert-choices thead th:first-child { text-align: left; font-weight: 500; }
+.alert-choices thead th { font-weight: 600; color: var(--gray-600); }
+.alert-choices input[type="checkbox"] { width: 16px; height: 16px; }
+.alert-choices > p { margin: 10px 0 0; }
+
+/* Customer 360: a plain header and an aligned, quiet summary row. The page's own
+   stylesheet loads later, so these use the page class for precedence. */
+.cs-page .cs-customer-header { background: var(--surface); border: 1px solid var(--gray-200); border-top: 1px solid var(--gray-200); box-shadow: var(--shadow-xs); }
+.cs-page .cs-customer-header .cs-identity-avatar { background: var(--gray-100); color: var(--ink); box-shadow: none; }
+.cs-page .cs-customer-header h1 { color: var(--ink); }
+.cs-page .cs-health-strip { align-items: stretch; }
+.cs-page .cs-health-strip > .card { margin: 0; }
+.cs-page .cs-health-card { border: 1px solid var(--gray-200); border-left: 3px solid transparent; box-shadow: none; }
+.cs-page .cs-health-card.is-warning { border-left-color: var(--warning); }
+.cs-page .cs-health-card.is-danger { border-left-color: var(--danger); }
+.cs-page .cs-health-card.is-actionable:hover { transform: none; box-shadow: none; border-color: var(--gray-300); }
+.cs-page .cs-health-card.is-warning.is-actionable:hover { border-left-color: var(--warning); }
+.cs-page .cs-health-card.is-danger.is-actionable:hover { border-left-color: var(--danger); }
+.cs-page .cs-health-value { color: var(--ink); font-weight: 650; }
+.cs-page .cs-health-value.is-text { font-size: 15px; font-weight: 600; line-height: 1.35; margin-top: 8px; }
+.alert-choices th, .alert-choices td { background: transparent; text-transform: none; letter-spacing: normal; }
+.alert-choices th[scope="row"] { color: var(--gray-700); font-size: 13px; }
+.af-no-customers { margin: -4px 0 0; padding: 10px 12px; border-left: 3px solid var(--warning); background: var(--warning-light); font-size: 13px; color: var(--gray-700); }
+
+/* Reminders page. */
+.reminders-page .ui-surface { margin-bottom: 16px; }
+.reminder-list { list-style: none; margin: 0; padding: 0; }
+.reminder-item { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--gray-200); }
+.reminder-item:first-child { border-top: 0; }
+.reminder-item.is-due { border-left: 3px solid var(--signal); padding-left: 12px; }
+.reminder-item-main { min-width: 0; display: grid; gap: 4px; }
+.reminder-item-main strong { color: var(--ink); font-weight: 600; }
+.reminder-item-main p { margin: 2px 0 0; font-size: 13px; color: var(--gray-600); white-space: pre-wrap; }
+.reminder-item-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--gray-600); }
+.reminder-item-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.reminder-item-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.reminder-snooze { position: relative; }
+.reminder-snooze > summary { list-style: none; }
+.reminder-snooze > summary::-webkit-details-marker { display: none; }
+.reminder-snooze > div { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: grid; min-width: 160px; padding: 4px; background: var(--surface); border: 1px solid var(--gray-200); border-radius: var(--radius); box-shadow: var(--shadow-md); }
+.reminder-snooze > div button { text-align: left; padding: 7px 10px; border: 0; background: none; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; color: var(--gray-800); }
+.reminder-snooze > div button:hover { background: var(--gray-100); }
+.reminders-empty { margin: 4px 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.reminders-empty p { margin: 0; }
+.reminders-automatic { display: grid; gap: 12px; margin-bottom: 12px; }
+.reminders-legacy { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; padding: 12px 16px; border-left: 3px solid var(--warning); background: var(--warning-light); font-size: 13.5px; }
+.reminders-done { margin-top: 4px; font-size: 13px; }
+.reminders-done > summary { cursor: pointer; color: var(--gray-600); font-weight: 500; }
+.reminders-done ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.reminders-done li { display: flex; justify-content: space-between; gap: 12px; color: var(--gray-600); }
+.reminder-form { display: grid; gap: 4px; }
+/* Reminder form: where it is sent besides the bell. */
+.reminder-delivery { border: 0; padding: 0; margin: 4px 0 12px; display: grid; gap: 6px; }
+.reminder-delivery legend { font-weight: 600; font-size: 13px; margin-bottom: 4px; color: var(--gray-800); }
+.reminder-delivery label { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 10px; margin: 0; font-size: 13.5px; font-weight: 400; color: var(--gray-800); text-transform: none; letter-spacing: normal; }
+.reminder-delivery label input[type="checkbox"] { width: 16px; height: 16px; margin: 2px 0 0; padding: 0; }
+.reminder-delivery label span { line-height: 1.45; }
+.reminder-delivery label small { color: var(--gray-500); }
+.reminder-delivery label.is-unavailable { color: var(--gray-500); }
+/* Customer 360: reminders about this customer. */
+.cs-reminders { padding: 14px 18px; margin-bottom: 16px; display: grid; gap: 8px; }
+.cs-reminders-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cs-reminders-head h2 { margin: 0; font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; color: var(--ink); }
+.cs-reminders ul { list-style: none; margin: 0; padding: 0; display: grid; }
+.cs-reminders li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--gray-200); }
+.cs-reminders li:first-child { border-top: 0; }
+.cs-reminders li.is-due { border-left: 3px solid var(--signal); padding-left: 10px; }
+.cs-reminders li strong { display: block; font-weight: 600; color: var(--ink); font-size: 14px; }
+.cs-reminders-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--gray-600); margin-top: 2px; }
+.cs-reminders-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.cs-reminders-actions { display: inline-flex; align-items: center; gap: 12px; }
+.cs-reminders { padding: 10px 16px; gap: 4px; }
+.cs-reminders li { padding: 6px 0; }
+.reminder-form-for { display: flex; gap: 8px; flex-wrap: wrap; }
+.reminder-form-for select { flex: 1 1 180px; }
+.reminder-recipients { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.reminder-recipients span { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: var(--gray-100); font-size: 12px; color: var(--gray-700); }
+.reminder-recipients span.is-done { background: var(--success-light); color: var(--success); }
+.reminder-form-when { display: grid; grid-template-columns: 1.2fr 1fr 1.4fr; gap: 12px; }
+@media (max-width: 640px) {
+  .reminder-item { flex-direction: column; }
+  .reminder-form-when { grid-template-columns: 1fr 1fr; }
+}
+
+/* Settings: category, subcategory and technology editors. */
+.catalog-add { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.catalog-add input { flex: 1 1 220px; min-width: 0; }
+.catalog-add select { width: auto; }
+.catalog-table td { vertical-align: middle; }
+.catalog-table tr.is-off td { color: var(--gray-500); }
+.catalog-table tr.is-off .catalog-name { color: var(--gray-500); text-decoration: line-through; }
+.catalog-name { width: 100%; min-width: 160px; border: 1px solid transparent; background: transparent; padding: 5px 8px; border-radius: 6px; font: inherit; color: var(--ink); }
+.catalog-name:hover { border-color: var(--gray-200); }
+.catalog-name:focus { border-color: var(--primary); background: var(--surface); outline: none; box-shadow: 0 0 0 3px var(--primary-ring); }
+.catalog-order { display: inline-flex; gap: 2px; }
+.catalog-order .btn { padding: 4px 6px; }
+.catalog-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+.catalog-subs-row > td { background: var(--gray-50); }
+.catalog-subs ul { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 4px; }
+.catalog-subs li { display: flex; align-items: center; gap: 8px; }
+.catalog-subs li.is-off .catalog-name { color: var(--gray-500); text-decoration: line-through; }
+.catalog-subs .catalog-add { margin-bottom: 4px; }
+.catalog-table select { min-width: 170px; width: auto; }
+.catalog-table th { white-space: nowrap; }
+
+/* Settings → Localization: server clock. */
+.server-clock .form-group .server-clock-switch { display: flex; flex-direction: row; align-items: center; gap: 8px; font-weight: 400; margin-top: 10px; text-transform: none; letter-spacing: normal; color: var(--gray-800); }
+.server-clock .server-clock-switch input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex: none; }
+.server-clock-status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; padding: 12px 14px; border-radius: var(--radius); border-left: 3px solid var(--gray-300); background: var(--gray-50); }
+.server-clock-status > div { display: grid; gap: 2px; min-width: 200px; }
+.server-clock-status span, .server-clock-status small { font-size: 12px; color: var(--gray-600); }
+.server-clock-status strong { color: var(--ink); }
+.server-clock-status.is-ok { border-left-color: var(--success); }
+.server-clock-status.is-warning { border-left-color: var(--warning); }
+.server-clock-status.is-danger { border-left-color: var(--danger); }
+.server-clock-advice { margin-top: 10px; color: var(--gray-700); }
+/* Settings → Ticketing. */
+.ticketing-heading { margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--ink); }
+.ticketing-search { max-width: 320px; margin: 4px 0 10px; }
+.ticketing-queues select { min-width: 220px; }
+.ticketing-queues td { vertical-align: middle; }
+
+/* Settings → Integrations → Activity bot. */
+.bot-settings .bot-settings-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+.bot-settings .bot-settings-head > svg { color: var(--primary); margin-top: 2px; flex: none; }
+.bot-settings .bot-settings-head p { margin: 4px 0 0; }
+.bot-channel { border-top: 1px solid var(--gray-200); padding-top: 14px; margin-top: 14px; }
+.bot-channel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.bot-channel ol { margin: 6px 0 10px; padding-left: 20px; display: grid; gap: 6px; color: var(--gray-700); }
+.bot-ok { color: var(--success); font-weight: 600; }
+.bot-copy { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 12px; font-size: 13px; }
+.bot-copy span { color: var(--gray-600); }
+.bot-copy code { background: var(--surface); border: 1px solid var(--gray-200); border-radius: 6px; padding: 3px 8px; word-break: break-all; }
+.bot-try { border-top: 1px solid var(--gray-200); padding-top: 14px; margin-top: 16px; }
+.bot-try h4 { margin: 0 0 4px; font-size: 14px; }
+.bot-try-log { max-height: 340px; overflow-y: auto; display: grid; gap: 8px; padding: 12px; margin: 8px 0; background: var(--surface); border: 1px solid var(--gray-200); border-radius: var(--radius); }
+.bot-line { max-width: 85%; padding: 8px 12px; border-radius: 10px; font-size: 13.5px; line-height: 1.5; }
+.bot-line.is-you { justify-self: end; background: var(--primary); color: var(--on-primary); }
+.bot-line.is-bot { justify-self: start; background: var(--gray-100); color: var(--gray-800); }
+.bot-try-input { display: flex; gap: 8px; }
+.bot-try-input input { flex: 1; min-width: 0; }
+
+/* Tick-box list (team members, visit assets). */
+.checklist { border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--surface); }
+.checklist-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--gray-200); }
+.checklist-bar input[type="search"] { flex: 1 1 180px; min-width: 0; }
+.checklist-count { font-size: 12.5px; color: var(--gray-600); margin-right: auto; }
+.checklist-items { list-style: none; margin: 0; padding: 4px; max-height: 280px; overflow-y: auto; }
+.checklist-items li > .text-muted { display: block; padding: 8px; }
+.checklist-items label { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 8px; margin: 0; border-radius: 6px; cursor: pointer; font-weight: 400; font-size: 13.5px; color: var(--gray-800); text-transform: none; letter-spacing: normal; }
+.checklist-items label:hover { background: var(--gray-50); }
+.checklist-items label.is-on { background: var(--primary-light); }
+.checklist-items label input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
+.checklist-items small { color: var(--gray-500); font-size: 12px; }
+.form-label-text { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--gray-700); }
+.ticket-owners-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ticket-owners-tools .ticketing-search { margin: 0; }
+/* The page is older than the server (appVersion.js). */
+.app-update-bar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 2000; display: flex; align-items: center; gap: 12px;
+  max-width: calc(100vw - 32px); padding: 10px 14px; background: var(--gray-900, #111827); color: var(--surface, #fff); border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.25); font-size: 13px; }
+
+/* ── Consistency (2026-10) ─────────────────────────────────────────────── */
+/* One tab style everywhere: the grey segmented tabs look like the underline tabs. */
+.ui-tabs { gap: 18px; padding: 0; margin-bottom: 16px; background: transparent; border-radius: 0; border-bottom: 1px solid var(--gray-200); }
+.ui-tabs button { padding: 9px 1px; margin-bottom: -1px; border-radius: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--gray-500); font-size: 13.5px; font-weight: 550; box-shadow: none; }
+.ui-tabs button:hover { color: var(--gray-800); }
+.ui-tabs button.is-active { background: transparent; color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; box-shadow: none; }
+
+/* List views (Tasks, Customers, Visits, Projects): one row of view tabs with
+   counts instead of wrapping pills; it scrolls sideways on narrow screens. */
+.list-filter-group { align-items: stretch; }
+.list-filter-group .list-filter-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.list-filter-group .filter-bar { flex-wrap: nowrap; gap: 18px; overflow-x: auto; border-bottom: 1px solid var(--gray-200); scrollbar-width: thin; }
+.list-filter-group .filter-pill { flex: none; padding: 8px 1px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--gray-600); }
+.list-filter-group .filter-pill:hover { background: transparent; color: var(--gray-900); border-color: transparent; }
+.list-filter-group .filter-pill.active { background: transparent; color: var(--primary); border-bottom-color: var(--primary); }
+.list-filter-group .filter-pill.overdue-pill { color: var(--danger); }
+.list-filter-group .filter-pill.overdue-pill.active { background: transparent; color: var(--danger); border-bottom-color: var(--danger); }
+
+/* Phones and narrow windows: the page title stays on the left, its buttons wrap in one row. */
+@media (max-width: 900px) {
+  .operations-page-header { align-items: stretch; }
+  .operations-page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+}
+.btn-icon-danger { color: var(--danger); }
+.btn-icon-danger:hover:not(:disabled) { background: var(--danger-light); border-color: var(--danger); color: var(--danger); }
+
+/* Rail toggle beside the logo (desktop only; on phones the menu is a drawer). */
+.operations-shell .sidebar-logo { display: flex; align-items: center; gap: 10px; }
+.sidebar-rail-toggle { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: none;
+  border: 0; border-radius: var(--radius); background: transparent; color: var(--gray-500); cursor: pointer; }
+.sidebar-rail-toggle:hover { background: var(--gray-100); color: var(--ink); }
+.operations-shell .sidebar-more-nav { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+@media (max-width: 900px) { .sidebar-rail-toggle { display: none; } }
+@media (min-width: 901px) {
+  .nav-compact .sidebar-logo { flex-direction: column; height: auto; gap: 6px; padding: 12px 0 8px; }
+  .nav-compact .sidebar-rail-toggle { margin-left: 0; }
+}
+
+/* Settings → Contract types: a short list, kept to a readable width. */
+.contract-types .table-wrap, .contract-types form { max-width: 620px; }
+
+/* ── Sidebar, cleaner: space instead of rules, quiet group labels,
+      a soft tinted pill for the current page ─────────────────── */
+.operations-shell .sidebar-primary-nav { padding: 4px 12px 12px; }
+.sidebar-group + .sidebar-group,
+.sidebar-group.is-untitled + .sidebar-group.is-untitled,
+.nav-compact .sidebar-group + .sidebar-group { margin-top: 10px; padding-top: 0; border-top: 0; }
+.sidebar-group-toggle {
+  margin: 0 0 2px; padding: 2px 10px; color: var(--gray-500);
+  font-size: 11.5px; font-weight: 600; letter-spacing: .02em;
+}
+.sidebar-group-toggle svg { opacity: 0; transition: opacity .12s, transform .15s ease; }
+.sidebar-group-toggle:hover:not(:disabled) { background: transparent; color: var(--gray-700); }
+.sidebar-group-toggle:hover svg, .sidebar-group-toggle:focus-visible svg, .sidebar-group-toggle[aria-expanded="false"] svg { opacity: 1; }
+.operations-shell .sidebar nav a {
+  min-height: 30px; padding: 5px 10px; margin-bottom: 1px; gap: 10px; border-radius: 8px;
+  color: var(--gray-600); font-size: 13.5px; font-weight: 500;
+}
+.operations-shell .sidebar nav a svg { width: 17px; height: 17px; color: var(--gray-500); transition: color .12s; }
+.operations-shell .sidebar nav a:hover { background: var(--gray-50); color: var(--ink); }
+.operations-shell .sidebar nav a:hover svg { color: var(--gray-600); }
+.operations-shell .sidebar nav a.active,
+.nav-compact .sidebar nav a.active {
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface)); color: var(--primary);
+  font-weight: 600; box-shadow: none;
+}
+.operations-shell .sidebar nav a.active svg { color: var(--primary); }
+.sidebar-overdue-count { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
+  background: var(--danger-light) !important; color: var(--danger) !important; }
+.operations-shell .sidebar-footer { border-top: 0; padding: 4px 12px 10px; }
+.operations-shell .sidebar-more-nav a { color: var(--gray-500); }
+
+/* ── Tab and filter rows: scroll sideways only ─────────────────
+   They scroll sideways on narrow screens; scrolling sideways also lets the
+   browser scroll up and down, and the active tab's underline (drawn 1–2px
+   below the row) then gave a small vertical scrollbar. The row's line is
+   drawn inside it instead, so nothing sticks out and nothing is clipped. */
+.tabs, .list-filter-group .filter-bar { overflow-y: hidden; border-bottom: 0; box-shadow: inset 0 -1px 0 var(--gray-200); }
+.tabs .tab, .list-filter-group .filter-bar .filter-pill { margin-bottom: 0; }
+.cs-tabs { border-bottom: 0; }
+.cs-tabs > .tabs { margin: 0; }
+
+/* Small tables inside cards (KPI "Each engineer") fit the card: the app-wide
+   520px minimum is for full tables, which scroll inside .table-wrap. */
+.kpi-card-breakdown table, .kpi-breakdown { min-width: 0; }
+.kpi-card { min-width: 0; }
+/* Cards side by side don't take the stacked-card top margin. */
+.scorecard-team > .card + .card { margin-top: 0; }
+/* A CVE number stays on one line. */
+.vuln-id { white-space: nowrap; }
+.u-b5f0188 > .card + .card, .u-70cfa37 > .card + .card { margin-top: 0; }
+
+/* Customer 360 on phones: the Add menu and the health "See why" list open
+   inside the screen, under the header, instead of off its edge. */
+@media (max-width: 600px) {
+  .cs-page .cs-customer-header { position: relative; }
+  .cs-page .cs-customer-header .cs-quick-add, .cs-page .cs-customer-header .cs-health-ring { position: static; }
+  .cs-page .cs-customer-header .cs-quick-menu, .cs-page .cs-customer-header .cs-ring-factors { left: 12px; right: 12px; min-width: 0; }
+}
+/* Customer 360 work lists on phones are stacked cards, not tables: the
+   app-wide 520px table minimum would cut off their right side. */
+@media (max-width: 760px) { .cs-page .cs-work-table { min-width: 0; } .cs-page .cs-work-table td > * { flex-wrap: wrap; } }
+
+/* ── Click and tap targets ─────────────────────────────────────
+   At least 24×24px everywhere (WCAG 2.2 target size); on phones the controls
+   people tap all day get closer to 44px. */
+button, summary, [role="button"], [role="tab"] { min-height: 24px; }
+button, .filter-pill { min-width: 24px; }
+.cal-add-btn { min-width: 24px; }
+.sidebar-group-toggle { min-height: 26px; }
+.topbar-action { min-width: 32px; min-height: 32px; justify-content: center; }
+.cs-back { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; }
+a.text-sm:not(.btn) { display: inline-block; padding: 3px 0; }
+input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; }
+@media (max-width: 600px) {
+  .hamburger { min-width: 44px; min-height: 44px; }
+  .topbar-action { min-width: 40px; min-height: 40px; }
+  .btn, summary.btn, .header-menu > summary { min-height: 40px; }
+  .tabs .tab, .list-filter-group .filter-pill, .filter-bar .filter-pill { min-height: 44px; }
+  .cs-header-figures button { min-height: 36px; }
+}
+
+/* Tasks list: the status badge opens a short menu; the tick marks the task done. */
+.task-status { display: inline-flex; align-items: center; gap: 6px; }
+.task-status-menu { position: relative; }
+.task-status-menu > summary { display: inline-flex; align-items: center; gap: 4px; list-style: none; cursor: pointer; border-radius: 999px; }
+.task-status-menu > summary::-webkit-details-marker { display: none; }
+.task-status-menu > summary svg { color: var(--gray-500); }
+.task-status-menu > summary:hover svg, .task-status-menu[open] > summary svg { color: var(--gray-800); }
+.task-status-options { position: absolute; left: 0; top: calc(100% + 4px); z-index: 30; min-width: 180px; padding: 4px; display: grid;
+  background: var(--surface); border: 1px solid var(--gray-200); border-radius: 8px; box-shadow: var(--shadow-md); }
+.task-status-options button { padding: 7px 10px; border: 0; border-radius: 6px; background: none; color: var(--gray-800); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.task-status-options button:hover { background: var(--gray-50); }
+.task-status-options button[aria-checked="true"] { font-weight: 600; color: var(--primary); }
+.task-done { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--gray-300);
+  border-radius: 999px; background: var(--surface); color: var(--gray-500); cursor: pointer; }
+.task-done:hover { border-color: var(--success); background: var(--success-light); color: var(--tone-success-text); }
+.visit-month { width: auto; min-width: 170px; }
+.scorecard-empty { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 6px 0 2px; } .scorecard-empty p { margin: 0; }
