@@ -1322,6 +1322,13 @@ async function applyMigrations(pool, transaction) {
       UNIQUE (campaign_id, asset_id)
     );
   `]);
+  migrations.push(['20261116_time_log_work_date', `
+    -- The day the work was done, which may be earlier than the day it was entered
+    -- (an engineer catching up). Older entries take the day they were entered.
+    ALTER TABLE time_logs ADD COLUMN IF NOT EXISTS work_date TEXT;
+    UPDATE time_logs SET work_date = substr(logged_at, 1, 10) WHERE work_date IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_time_logs_user_day ON time_logs(user_id, work_date);
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

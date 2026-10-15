@@ -42,7 +42,7 @@ test('navigation and create actions respect existing role and feature boundaries
 test('the menu shows every page a person can open, in a few groups', () => {
   const menu = user => menuGroups(user, true).map(group => [group.section, group.pages.map(page => page.id)]);
   assert.deepEqual(menu({ role: 'manager', permissions: {} }), [
-    ['Home', ['dashboard', 'calendar', 'reminders']],
+    ['Home', ['dashboard', 'calendar', 'myTime', 'reminders']],
     ['Work', ['projects', 'tasks', 'visits', 'activities', 'approvals']],
     ['Customers', ['customers', 'dataQuality']],
     ['Advisories', ['vulnerabilities', 'softwareVersions']],
@@ -50,7 +50,7 @@ test('the menu shows every page a person can open, in a few groups', () => {
     ['More', ['responses', 'notes', 'settings']],
   ]);
   assert.deepEqual(menu({ role: 'engineer', permissions: {} }), [
-    ['Home', ['dashboard', 'myWork', 'calendar', 'reminders']],
+    ['Home', ['dashboard', 'myWork', 'calendar', 'myTime', 'reminders']],
     ['Work', ['projects', 'tasks', 'visits', 'activities']],
     ['Customers', ['customers']],
     ['Advisories', ['vulnerabilities', 'softwareVersions']],

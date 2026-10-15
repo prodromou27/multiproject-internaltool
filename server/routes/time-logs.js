@@ -3,6 +3,8 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { worksOnTask } = require('../taskAccess');
 const { hasPermission } = require('../permissions');
+const appTime = require('../appTime');
+const { decrypt } = require('../fieldCipher');
 
 // A log belongs to a task (tasks.access) or a visit (visits.access); revoking the
 // module also closes its time logs.
@@ -65,7 +67,7 @@ router.get('/', requireAuth, async (req, res) => {
 
   if (task_id)  { q += 'tl.task_id = ?';  params.push(task_id);  }
   if (visit_id) { q += 'tl.visit_id = ?'; params.push(visit_id); }
-  q += ' ORDER BY tl.logged_at DESC';
+  q += ' ORDER BY COALESCE(tl.work_date, substr(tl.logged_at, 1, 10)) DESC, tl.logged_at DESC';
 
   res.json((await db.prepare(q).all(...params)));
 });
@@ -73,6 +75,11 @@ router.get('/', requireAuth, async (req, res) => {
 // POST /api/time-logs
 router.post('/', requireAuth, async (req, res) => {
   const { task_id, visit_id, hours, description } = req.body;
+  // The day the work was done: today unless given; not in the future, at most a year back.
+  const today = appTime.today();
+  const workDate = req.body.work_date === undefined || req.body.work_date === null ? today : req.body.work_date;
+  if (!validDate(workDate) || workDate > today || workDate < appTime.addDays(today, -366))
+    return res.status(400).json({ error: 'The work date must be a date within the last year, not in the future' });
   const error = targetError(task_id, visit_id);
   if (!error && await moduleDenied(req, res, { task_id, visit_id })) return;
   if (error) return res.status(400).json({ error });
@@ -108,8 +115,8 @@ router.post('/', requireAuth, async (req, res) => {
   }
 
   const result = (await db.prepare(
-    'INSERT INTO time_logs (user_id, task_id, visit_id, hours, description) VALUES (?, ?, ?, ?, ?)'
-  ).run(req.user.id, task_id || null, visit_id || null, Number(hours), description?.trim() || null));
+    'INSERT INTO time_logs (user_id, task_id, visit_id, hours, description, work_date) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(req.user.id, task_id || null, visit_id || null, Number(hours), description?.trim() || null, workDate));
 
   res.json({ id: result.lastInsertRowid });
 });
@@ -121,15 +128,18 @@ router.get('/mine', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'from and to must use YYYY-MM-DD format' });
   if (from > to) return res.status(400).json({ error: 'from must be before or equal to to' });
   const rows = await db.prepare(`
-    SELECT tl.*, t.title AS task_title, mv.title AS visit_title
+    SELECT tl.*, COALESCE(tl.work_date, substr(tl.logged_at, 1, 10)) AS work_date, t.title AS task_title, t.ticket_reference, mv.title AS visit_title,
+      p.title AS project_title, c.name AS customer_name
     FROM time_logs tl
     LEFT JOIN tasks t ON tl.task_id = t.id
+    LEFT JOIN projects p ON p.id = t.project_id
     LEFT JOIN maintenance_visits mv ON tl.visit_id = mv.id
-    WHERE tl.user_id = ? AND substr(tl.logged_at, 1, 10) BETWEEN ? AND ?
-    ORDER BY tl.logged_at DESC
+    LEFT JOIN customers c ON c.id = COALESCE(t.customer_id, p.customer_id, mv.customer_id)
+    WHERE tl.user_id = ? AND COALESCE(tl.work_date, substr(tl.logged_at, 1, 10)) BETWEEN ? AND ?
+    ORDER BY COALESCE(tl.work_date, substr(tl.logged_at, 1, 10)) DESC, tl.logged_at DESC
   `).all(req.user.id, from, to);
   const [tasks, visits] = await Promise.all([hasPermission(req.user, 'tasks.access'), hasPermission(req.user, 'visits.access')]);
-  res.json(rows.filter(row => (row.task_id ? tasks : visits)));
+  res.json(rows.filter(row => (row.task_id ? tasks : visits)).map(row => ({ ...row, customer_name: decrypt(row.customer_name) || null })));
 });
 
 // DELETE /api/time-logs/:id

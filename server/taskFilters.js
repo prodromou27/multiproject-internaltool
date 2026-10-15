@@ -5,17 +5,22 @@ const SORTS = { created: 't.created_at', task: 't.title', project: 'p.title', st
 
 function taskFilters(query, user) {
   const scalar = key => query[key] === undefined || typeof query[key] === 'string';
-  for (const key of ['filter', 'priority', 'search', 'project_id', 'customer_id', 'assigned_to', 'adhoc', 'as_of', 'sort', 'direction']) {
+  for (const key of ['filter', 'priority', 'search', 'project_id', 'customer_id', 'assigned_to', 'team_id', 'status', 'due_from', 'due_to', 'adhoc', 'as_of', 'sort', 'direction']) {
     if (!scalar(key)) return { error: `${key} must be a single value` };
   }
   const filter = query.filter ?? 'all';
   if (!FILTERS.has(filter)) return { error: 'Invalid task filter' };
   if (query.priority !== undefined && !['all', 'low', 'medium', 'high', 'critical'].includes(query.priority)) return { error: 'Invalid priority filter' };
   if (query.search?.length > 500) return { error: 'Search cannot exceed 500 characters' };
-  for (const key of ['project_id', 'customer_id', 'assigned_to']) {
+  for (const key of ['project_id', 'customer_id', 'assigned_to', 'team_id']) {
     if (query[key] !== undefined && (!/^[1-9]\d*$/.test(query[key]) || !Number.isSafeInteger(Number(query[key])))) return { error: `${key} must be a positive integer` };
   }
   if (query.adhoc !== undefined && !['0', '1'].includes(query.adhoc)) return { error: 'adhoc must be 0 or 1' };
+  if (query.status !== undefined && !/^[a-z_]{1,40}$/.test(query.status)) return { error: 'Invalid status' };
+  for (const key of ['due_from', 'due_to']) {
+    const value = query[key];
+    if (value !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) return { error: `${key} must be a YYYY-MM-DD date` };
+  }
   const asOf = query.as_of ?? appTime.today();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf) || Number(asOf.slice(0, 4)) < 1900 || Number(asOf.slice(0, 4)) > 9998
     || Number.isNaN(Date.parse(asOf)) || new Date(asOf).toISOString().slice(0, 10) !== asOf) return { error: 'as_of must be a valid YYYY-MM-DD date' };
@@ -30,6 +35,11 @@ function taskFilters(query, user) {
   else if (query.assigned_to) add('t.assigned_to=?', Number(query.assigned_to));
   if (query.project_id) add('t.project_id=?', Number(query.project_id));
   if (query.customer_id) add('COALESCE(t.customer_id,p.customer_id)=?', Number(query.customer_id));
+  // A team's tasks: given to the team, or assigned to one of its members.
+  if (query.team_id) add('(t.team_id=? OR t.assigned_to IN (SELECT user_id FROM team_members WHERE team_id=?))', Number(query.team_id), Number(query.team_id));
+  if (query.status) add('t.status=?', query.status);
+  if (query.due_from) add('t.deadline>=?', query.due_from);
+  if (query.due_to) add('t.deadline<=?', query.due_to);
   if (query.adhoc === '1' || filter === 'adhoc') add('t.is_adhoc=1');
   if (filter === 'open') add("t.status IN ('open','in_progress','waiting_customer','waiting_vendor')");
   if (filter === 'done') add("t.status IN ('completed','closed')");

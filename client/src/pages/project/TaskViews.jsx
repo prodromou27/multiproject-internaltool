@@ -5,6 +5,7 @@ import { api } from '../../api';
 import { useAuth } from '../../App';
 import { StatusBadge, PriorityBadge, fmtDate, fmtRelative, isOverdue, Modal, MentionInput, renderMentions } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
+import { businessToday } from '../../utils/dates';
 import { WaitingDialog } from './Dialogs';
 
 /* ── Task Detail Modal (with comments) ───────────────────── */
@@ -69,8 +70,8 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
     if (!timeForm.hours || Number(timeForm.hours) <= 0) return;
     setLoggingTime(true);
     try {
-      await api.logTime({ task_id: task.id, hours: Number(timeForm.hours), description: timeForm.description });
-      setTimeForm({ hours: '', description: '' });
+      await api.logTime({ task_id: task.id, hours: Number(timeForm.hours), description: timeForm.description, ...(timeForm.work_date ? { work_date: timeForm.work_date } : {}) });
+      setTimeForm(f => ({ hours: '', description: '', work_date: f.work_date }));
       loadTimeLogs();
     } catch (err) { toast.error(err.message); }
     finally { setLoggingTime(false); }
@@ -197,7 +198,13 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
 
         <form onSubmit={submitTimeLog} className="flex-center gap-6 flex-wrap">
           <input
-            type="number" min="0.25" step="0.25"
+            type="date" aria-label="Day worked" title="Day worked (today if empty)"
+            max={businessToday()}
+            value={timeForm.work_date || ''}
+            onChange={e => setTimeForm(f => ({ ...f, work_date: e.target.value }))}
+          />
+          <input
+            type="number" min="0.25" step="0.25" aria-label="Hours"
             value={timeForm.hours}
             onChange={e => setTimeForm(f => ({ ...f, hours: e.target.value }))}
             placeholder="Hours (e.g. 1.5)"

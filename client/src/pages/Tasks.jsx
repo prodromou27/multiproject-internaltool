@@ -20,6 +20,7 @@ import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { Pagination,Surface } from '../components/EnterpriseUI';
+import LogHours from '../components/LogHours';
 import { useLiveRefresh } from '../live';
 
 const STATUS_LABELS = {
@@ -197,7 +198,7 @@ export default function Tasks() {
   const [tasks, setTasks]       = useState([]);
   const [projects, setProjects] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
-  const [filter, setFilter]     = useSavedFilter('tasks', 'all', { param: 'filter', allowed: TASK_FILTERS });
+  const [filter, setFilter]     = useSavedFilter('tasks', 'open', { param: 'filter', allowed: TASK_FILTERS });
   const [priorityFilter, setPriorityFilter] = useState('all');
 
   const [search, setSearch]     = useState('');
@@ -232,10 +233,33 @@ export default function Tasks() {
   const [loadedQuery, setLoadedQuery] = useState(null);
   const pageSize = 25;
   const today = businessToday();
-  const activeFilter = TASK_FILTERS.includes(filter) ? filter : 'all';
+  const activeFilter = TASK_FILTERS.includes(filter) ? filter : 'open';
+  // More filters, kept in the address so a filtered view can be shared or bookmarked.
+  const more = new URLSearchParams(location.search);
+  const moreFilters = { engineer: more.get('engineer') || '', team: more.get('team') || '', project: more.get('project') || '', status: more.get('status') || '', due_from: more.get('due_from') || '', due_to: more.get('due_to') || '' };
+  const setMore = (key, value) => {
+    const next = new URLSearchParams(location.search);
+    if (value) next.set(key, value); else next.delete(key);
+    navigate({ search: next.toString() ? `?${next}` : '' }, { replace: true });
+  };
+  const clearMore = () => {
+    const next = new URLSearchParams(location.search);
+    for (const key of Object.keys(moreFilters)) next.delete(key);
+    navigate({ search: next.toString() ? `?${next}` : '' }, { replace: true });
+  };
+  const moreCount = Object.values(moreFilters).filter(Boolean).length;
+  const [loggingFor, setLoggingFor] = useState(null);
+  const [filterTeams, setFilterTeams] = useState([]);
+  useEffect(() => { (isManager ? api.teams() : api.teamsMine().then(result => result.teams || [])).then(rows => setFilterTeams(Array.isArray(rows) ? rows : [])).catch(() => setFilterTeams([])); }, [isManager]);
   const baseParams = new URLSearchParams({ filter: activeFilter, priority: priorityFilter, as_of: today, sort: sort.key, direction: sort.direction });
   if (debouncedSearch) baseParams.set('search', debouncedSearch);
   if (myTasksOnly) baseParams.set('assigned_to', String(user.id));
+  if (moreFilters.engineer && /^[1-9]\d*$/.test(moreFilters.engineer)) baseParams.set('assigned_to', moreFilters.engineer);
+  if (/^[1-9]\d*$/.test(moreFilters.team)) baseParams.set('team_id', moreFilters.team);
+  if (/^[1-9]\d*$/.test(moreFilters.project)) baseParams.set('project_id', moreFilters.project);
+  if (MANAGER_STATUSES.includes(moreFilters.status)) baseParams.set('status', moreFilters.status);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(moreFilters.due_from)) baseParams.set('due_from', moreFilters.due_from);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(moreFilters.due_to)) baseParams.set('due_to', moreFilters.due_to);
   if (customerFilter) baseParams.set('customer_id', customerFilter);
   const queryKey = baseParams.toString();
   const page = paging.key === queryKey ? paging.page : 1;
@@ -449,6 +473,18 @@ export default function Tasks() {
               <X size={13} />
             </button>
           )}
+          <details className="column-picker task-more-filters" open={moreCount > 0 || undefined}>
+            <summary className="btn btn-ghost btn-sm">More filters{moreCount ? ` (${moreCount})` : ''}</summary>
+            <div className="column-picker-menu" style={{ minWidth: 260 }}>
+              {(isManager || user.role === 'planner') && <label>Engineer<select aria-label="Engineer" value={moreFilters.engineer} onChange={e => setMore('engineer', e.target.value)}><option value="">Anyone</option>{engineers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>}
+              {filterTeams.length > 0 && <label>Team<select aria-label="Team" value={moreFilters.team} onChange={e => setMore('team', e.target.value)}><option value="">Any team</option>{filterTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>}
+              <label>Project<select aria-label="Project" value={moreFilters.project} onChange={e => setMore('project', e.target.value)}><option value="">Any project</option>{projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
+              <label>Status<select aria-label="Task status" value={moreFilters.status} onChange={e => setMore('status', e.target.value)}><option value="">Any status</option>{MANAGER_STATUSES.map(s => <option key={s} value={s}>{sentenceCase(s.replaceAll('_', ' '))}</option>)}</select></label>
+              <label>Due from<input aria-label="Due from" type="date" value={moreFilters.due_from} onChange={e => setMore('due_from', e.target.value)} /></label>
+              <label>Due to<input aria-label="Due to" type="date" value={moreFilters.due_to} onChange={e => setMore('due_to', e.target.value)} /></label>
+              {moreCount > 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={clearMore}>Clear these filters</button>}
+            </div>
+          </details>
           {/* Which columns the table shows: a view option, beside the filters. */}
           <details className="column-picker">
             <summary className="btn btn-ghost btn-sm"><Columns3 size={13} /> Columns</summary>
@@ -582,7 +618,10 @@ export default function Tasks() {
                   {visibleColumns.has('assignee') && <td>{t.assigned_to_name || (t.team_name ? <>{t.team_name} <span className="text-muted text-sm">(team)</span></> : '—')}</td>}
                   {visibleColumns.has('deadline') && <td className={isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status) ? 'overdue' : ''}>{fmtDate(t.deadline)}</td>}
 
-                  <td className="text-center">
+                  <td className="text-center" style={{ whiteSpace: 'nowrap' }}>
+                    {(isManager || t.assigned_to === user.id || (t.team_id && !t.assigned_to)) && user.role !== 'planner' && (
+                      <button className="btn btn-ghost btn-sm" title="Log hours" aria-label={`Log hours on ${t.title}`} onClick={() => setLoggingFor(t)}><Clock size={13} /></button>
+                    )}
                     {(isManager || t.assigned_to === user.id) && (
                       <button
                         className="btn btn-ghost btn-sm u-51719e9"
@@ -628,6 +667,7 @@ export default function Tasks() {
 
       {subtasksFor && <SubtasksDialog task={subtasksFor} onClose={() => { setSubtasksFor(null); load(); }} />}
 
+      {loggingFor && <LogHours target={{ task_id: loggingFor.id }} title={loggingFor.title} onClose={() => setLoggingFor(null)} />}
       {editTask && (
         <EditTaskModal
           task={editTask}

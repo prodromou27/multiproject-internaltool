@@ -7,6 +7,7 @@ export const PAGES = [
   { id: 'dashboard', path: '/', label: 'Dashboard', section: 'Home', icon: 'LayoutDashboard', roles: everyone, description: 'Operational overview and work that needs attention' },
   { id: 'myWork', path: '/my-day', label: 'My Work', section: 'Home', icon: 'Zap', roles: ['engineer'], description: 'Your assignments, upcoming work and time tracking' },
   { id: 'calendar', path: '/calendar', label: 'Calendar', section: 'Home', icon: 'CalendarDays', roles: everyone, description: 'Plan project deadlines, tasks and maintenance visits' },
+  { id: 'myTime', path: '/my-time', label: 'My time', section: 'Home', icon: 'Clock', roles: ['manager', 'engineer'], description: 'The hours you logged, day by day, for filling in the company timesheet' },
   { id: 'reminders', path: '/reminders', label: 'Reminders', section: 'Home', icon: 'BellRing', roles: everyone, description: 'Your own reminders, and the automatic ones the app sends you' },
   { id: 'projects', path: '/projects', label: 'Projects', section: 'Work', icon: 'FolderOpen', roles: ['manager', 'engineer', 'pm'], permission:'projects.access', description: 'Delivery progress, ownership and project commitments' },
   { id: 'tasks', path: '/tasks', label: 'Tasks', section: 'Work', icon: 'CheckSquare', roles: ['manager', 'engineer'], permission:'tasks.access', badge: 'tasks', description: 'Assigned tasks and operational follow-ups' },
