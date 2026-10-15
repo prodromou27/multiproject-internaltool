@@ -75,7 +75,7 @@ async function validate(body, customerId, existing = {}) {
   // A contract type from the configured list; a contract keeps a type that is no longer offered.
   if (level.value && level.value !== existing.service_level) {
     const offered = (await contractTypes()).find(t => t.toLowerCase() === level.value.toLowerCase());
-    if (!offered) return { error: `"${level.value}" is not one of the contract types (Settings → Contract types)` };
+    if (!offered) return { error: `"${level.value}" is not one of the contract types (Settings → Lists → Contract types)` };
     level.value = offered;
   }
   if (!reference.value) return { error: 'Contract reference is required' };

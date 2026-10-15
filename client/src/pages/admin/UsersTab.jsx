@@ -54,7 +54,7 @@ export function UserForm({ initial, onSave, onClose }) {
             {customRoles.map(role => <option key={role.id} value={`custom:${role.id}`}>{role.name} (on {role.base_role === 'pm' ? 'PM' : sentenceCase(role.base_role)})</option>)}
           </optgroup>}
         </select>
-        {customRoles.length === 0 && <small className="text-muted">Make your own roles in Settings → Permissions.</small>}
+        {customRoles.length === 0 && <small className="text-muted">Make your own roles in Settings → Access & sign-in.</small>}
       </div>
       <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>

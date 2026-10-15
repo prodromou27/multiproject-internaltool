@@ -33,7 +33,7 @@ async function alertBackupFailure(kind, { file = null, error = '' } = {}, store 
     const cfg = await alertSwitch(store);
     if (!cfg.enabled) return { sent: 0 };
     const title = WHAT[kind] || 'A backup step failed', detail = String(error || '').slice(0, 500);
-    const msg = { title: `⚠️ ${title}`, body: `${title}${file ? ` (${file})` : ''}.${detail ? ` ${detail}` : ''} See Settings → Backups.`,
+    const msg = { title: `⚠️ ${title}`, body: `${title}${file ? ` (${file})` : ''}.${detail ? ` ${detail}` : ''} See Settings → Backups & health.`,
       facts: [...(file ? [{ name: 'Backup', value: file }] : []), ...(detail ? [{ name: 'Error', value: detail }] : [])] };
     const managers = await store.prepare("SELECT id, email FROM users WHERE role = 'manager' AND active = 1").all();
     for (const manager of managers) {

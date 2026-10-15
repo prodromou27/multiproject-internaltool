@@ -24,6 +24,8 @@ export default class ErrorBoundary extends React.Component {
     const { error } = this.state;
     if (!error) return this.props.children;
     const { title, description, action } = describeError(error);
+    // Inside a page (one section of several): a short note in place, the rest of the page still works.
+    if (this.props.compact) return <div className="error-msg" role="alert">{this.props.what || 'This part'} could not be shown. <button type="button" className="btn btn-ghost btn-sm" onClick={() => this.setState({ error: null })}>Try again</button></div>;
     return <PageState title={title} description={description}>
       <div className="operations-page-state-actions">
         {action === 'reload'

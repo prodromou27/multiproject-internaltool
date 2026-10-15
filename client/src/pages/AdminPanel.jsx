@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { FolderKanban, Users as UsersIcon, Shield, ShieldCheck, ClipboardList, HardDrive, ScrollText, Globe, FileSpreadsheet, LayoutDashboard, Tag, Building2, UsersRound, Bell, Bot, DatabaseBackup, Timer, FileSignature, AtSign, ListChecks, Gauge } from 'lucide-react';
+import { FolderKanban, Users as UsersIcon, ShieldCheck, HardDrive, ScrollText, Globe, LayoutDashboard, Tag, Building2, AtSign } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -32,33 +33,48 @@ const Templates = lazy(() => import('./Templates'));
 
 /* ── MAIN PAGE ───────────────────────────────────────────── */
 /* ══════════════════════════════════════════════════════════ */
-const TABS = [
-  { key: 'overview',       label: 'Overview',           Icon: LayoutDashboard, group: 'overview', desc: 'Health, activity, and items that need a manager' },
-  { key: 'users',          label: 'Users',              Icon: UsersIcon,       group: 'people',   desc: 'Accounts, roles, activation, passwords, and 2FA exceptions' },
-  { key: 'teams',          label: 'Teams',              Icon: UsersRound,      group: 'people',   desc: 'Teams, their members and activity tracking' },
-  { key: 'permissions',    label: 'Permissions',        Icon: ShieldCheck,     group: 'people',   desc: 'What each role may do, and exceptions for individual people' },
-  { key: 'security',       label: 'Sign-in & passwords', Icon: Shield,         group: 'people',   desc: 'Microsoft 365 sign-in, password expiry and reset policy' },
-  { key: 'service_activity_tracking', label: 'Activity categories', Icon: ClipboardList, group: 'work', desc: 'Categories, subcategories and technologies engineers choose when logging activities' },
-  { key: 'statuses',       label: 'Project statuses',   Icon: Tag,             group: 'work',     desc: 'Project status names, colours and workflow rules' },
-  { key: 'contract_types', label: 'Contract types',     Icon: FileSignature,   group: 'work',     desc: 'The contract types offered for managed customers, such as 24x7 or 8x5' },
-  { key: 'visit_checklists', label: 'Visit checklists', Icon: ListChecks, group: 'work', desc: 'What engineers check on a maintenance visit, step by step' },
-  { key: 'sla',            label: 'SLAs',               Icon: Timer,           group: 'work',     desc: 'Which SLAs apply and their time limits' },
-  { key: 'project_templates', label: 'Project templates', Icon: FolderKanban, group: 'work', desc: 'Reusable project structures with their default tasks' },
-  { key: 'managed_report_templates', label: 'Customer report template', Icon: FileSpreadsheet, group: 'work', desc: 'The company template for the reports we send to customers: wording, colour, default sections and Word layout' },
-  { key: 'weekly_report',  label: 'Weekly report',      Icon: ScrollText,      group: 'work',     desc: 'When the weekly report is sent, to whom, and a preview' },
-  { key: 'email',          label: 'Email (SMTP)',       Icon: AtSign,          group: 'connections', desc: 'The mail server for every email the app sends: reports, reminders, password resets' },
-  { key: 'notifications',  label: 'Notifications',      Icon: Bell,            group: 'connections', desc: 'The shared Teams channel and Webex space, which events they receive, and alerts about the system' },
-  { key: 'ticketing',      label: 'Ticketing',          Icon: Building2,       group: 'connections', desc: 'Request Tracker connection, customer queues, status mapping and sync health' },
-  { key: 'grafana',        label: 'Grafana devices',    Icon: Gauge,           group: 'connections', desc: 'Device versions and models from Grafana, matched to customer assets' },
-  { key: 'activity_bot',   label: 'Activity bot',       Icon: Bot,             group: 'connections', desc: 'Engineers log service activities by chatting with a Webex or Teams bot' },
-  { key: 'localization',   label: 'Time & region',      Icon: Globe,           group: 'system',   desc: 'Time zone, server clock, language and date formats' },
-  { key: 'backups',        label: 'Backups',            Icon: DatabaseBackup,  group: 'system',   desc: 'Automatic database backups, checks, download and restore' },
-  { key: 'audit_log',      label: 'Audit log',          Icon: ClipboardList,   group: 'system',   desc: 'Who changed what, and when' },
-  { key: 'system_health',  label: 'System health',      Icon: HardDrive,       group: 'system',   desc: 'Status, deployment, logging, updates and data export' },
-];
+// The sections (each was a page of its own before; their addresses still work).
+const SECTIONS = {
+  overview: { label: 'Overview', desc: 'Health, activity, and items that need a manager' },
+  users: { label: 'Users', desc: 'Accounts, roles, activation, passwords, and 2FA exceptions' },
+  teams: { label: 'Teams', desc: 'Teams, their members and activity tracking' },
+  permissions: { label: 'Permissions', desc: 'What each role may do, and exceptions for individual people' },
+  security: { label: 'Sign-in & passwords', desc: 'Microsoft 365 sign-in, password expiry and reset policy' },
+  service_activity_tracking: { label: 'Activity categories', desc: 'Categories, subcategories and technologies engineers choose when logging activities' },
+  statuses: { label: 'Project statuses', desc: 'Project status names, colours and workflow rules' },
+  contract_types: { label: 'Contract types', desc: 'The contract types offered for managed customers, such as 24x7 or 8x5' },
+  sla: { label: 'SLAs', desc: 'Which SLAs apply and their time limits' },
+  project_templates: { label: 'Project templates', desc: 'Reusable project structures with their default tasks' },
+  visit_checklists: { label: 'Visit checklists', desc: 'What engineers check on a maintenance visit, step by step' },
+  managed_report_templates: { label: 'Customer report template', desc: 'The company template for the reports we send to customers: wording, colour, default sections and Word layout' },
+  weekly_report: { label: 'Weekly report', desc: 'When the weekly report is sent, to whom, and a preview' },
+  email: { label: 'Email (SMTP)', desc: 'The mail server for every email the app sends: reports, reminders, password resets' },
+  notifications: { label: 'Notifications', desc: 'The shared Teams channel and Webex space, which events they receive, and alerts about the system' },
+  ticketing: { label: 'Ticketing', desc: 'Request Tracker connection, customer queues, status mapping and sync health' },
+  grafana: { label: 'Grafana devices', desc: 'Device versions and models from Grafana, matched to customer assets' },
+  activity_bot: { label: 'Activity bot', desc: 'Engineers log service activities by chatting with a Webex or Teams bot' },
+  localization: { label: 'Time & region', desc: 'Time zone, server clock, language and date formats' },
+  backups: { label: 'Backups', desc: 'Automatic database backups, checks, download and restore' },
+  system_health: { label: 'System health', desc: 'Status, deployment, logging, updates and data export' },
+  audit_log: { label: 'Audit log', desc: 'Who changed what, and when' },
+};
 
-// Four plain groups. Pages that only listed data shown elsewhere (projects,
-// visits, the activity feed) are gone; their old links still lead somewhere useful.
+// Ten pages: related settings share one page, one section under the other.
+const TABS = [
+  { key: 'overview', label: 'Overview', Icon: LayoutDashboard, group: 'overview', desc: SECTIONS.overview.desc, sections: ['overview'] },
+  { key: 'users', label: 'Users & teams', Icon: UsersIcon, group: 'people', desc: 'Accounts and roles, and the teams they work in', sections: ['users', 'teams'] },
+  { key: 'access', label: 'Access & sign-in', Icon: ShieldCheck, group: 'people', desc: 'What each role may do, Microsoft 365 sign-in and password rules', sections: ['permissions', 'security'] },
+  { key: 'lists', label: 'Lists', Icon: Tag, group: 'work', desc: 'Activity categories, project statuses, contract types and SLAs', sections: ['service_activity_tracking', 'statuses', 'contract_types', 'sla'] },
+  { key: 'templates', label: 'Templates', Icon: FolderKanban, group: 'work', desc: 'Project templates, visit checklists and the customer report template', sections: ['project_templates', 'visit_checklists', 'managed_report_templates'] },
+  { key: 'weekly_report', label: 'Weekly report', Icon: ScrollText, group: 'work', desc: SECTIONS.weekly_report.desc, sections: ['weekly_report'] },
+  { key: 'messages', label: 'Email & notifications', Icon: AtSign, group: 'connections', desc: 'The mail server, the shared Teams and Webex channels, and alerts about the system', sections: ['email', 'notifications'] },
+  { key: 'integrations', label: 'Integrations', Icon: Building2, group: 'connections', desc: 'Request Tracker, Grafana devices and the activity bot', sections: ['ticketing', 'grafana', 'activity_bot'] },
+  { key: 'localization', label: 'Time & region', Icon: Globe, group: 'system', desc: SECTIONS.localization.desc, sections: ['localization'] },
+  { key: 'system', label: 'Backups & health', Icon: HardDrive, group: 'system', desc: 'Backups, system health and the audit log', sections: ['backups', 'system_health', 'audit_log'] },
+];
+// The page each section is on.
+const PAGE_OF = Object.fromEntries(TABS.flatMap(page => page.sections.map(key => [key, page.key])));
+
 const TAB_GROUPS = [
   { key: 'overview',    label: 'Overview' },
   { key: 'people',      label: 'People' },
@@ -70,7 +86,6 @@ const TAB_GROUPS = [
 // Old section names → where that content lives now ([tab, part] or a page path).
 const MOVED = {
   managed_services: ['ticketing'],
-  integrations: ['notifications'],
   admin_alerts: ['notifications'],
   activity: ['audit_log'],
   logging: ['system_health', 'logging'],
@@ -106,8 +121,9 @@ export default function AdminPanel() {
   const { section } = useParams();
   const location = useLocation();
   const part = new URLSearchParams(location.search).get('part');
-  const initialTab = TAB_KEYS.has(section) ? section : 'overview';
+  const initialTab = TAB_KEYS.has(section) ? section : PAGE_OF[section] || 'overview';
   const [tab, setTab] = useState(initialTab);
+  const [focus, setFocus] = useState(TAB_KEYS.has(section) ? null : section || null);
   const [tabSearch, setTabSearch] = useState('');
   const [sectionStatus, setSectionStatus] = useState({});
 
@@ -116,9 +132,16 @@ export default function AdminPanel() {
     const moved = MOVED[section];
     if (typeof moved === 'string') { navigate(moved, { replace: true }); return; }
     if (moved) { navigate(`/settings/${moved[0]}${moved[1] ? `?part=${moved[1]}` : ''}`, { replace: true }); return; }
-    if (TAB_KEYS.has(section)) setTab(section);
-    else navigate('/settings', { replace: true });
+    if (TAB_KEYS.has(section)) { setTab(section); setFocus(null); return; }
+    // A section's own address (e.g. /settings/teams): its page, scrolled to it.
+    if (PAGE_OF[section]) { setTab(PAGE_OF[section]); setFocus(section); return; }
+    navigate('/settings', { replace: true });
   }, [section, navigate]);
+  useEffect(() => {
+    if (!focus) return undefined;
+    const timer = setTimeout(() => document.getElementById(`settings-${focus}`)?.scrollIntoView({ block: 'start' }), 150);
+    return () => clearTimeout(timer);
+  }, [focus, tab]);
 
   useEffect(() => {
     let mounted = true;
@@ -126,29 +149,48 @@ export default function AdminPanel() {
       .then(([deployment, security]) => {
         if (!mounted) return;
         const next = {};
-        if (deployment.status === 'fulfilled') {
-          next.system_health = deployment.value?.status || 'warning';
-        } else {
-          next.system_health = 'warning';
-        }
-        if (security.status === 'fulfilled') {
-          next.security = Number(security.value?.password_expiry_days ?? 0) > 0 ? 'ok' : 'warning';
-        } else {
-          next.security = 'warning';
-        }
+        next.system = deployment.status === 'fulfilled' ? deployment.value?.status || 'warning' : 'warning';
+        next.access = security.status === 'fulfilled' && Number(security.value?.password_expiry_days ?? 0) > 0 ? 'ok' : 'warning';
         setSectionStatus(next);
       });
     return () => { mounted = false; };
   }, []);
 
   function selectTab(key) {
-    setTab(key);
+    setTab(key); setFocus(null);
     navigate(key === 'overview' ? '/settings' : `/settings/${key}`);
   }
 
   const activeTab = TABS.find(t => t.key === tab) || TABS[0];
+  function renderSection(key) {
+    switch (key) {
+      case 'overview': return <OverviewTab />;
+      case 'users': return <UsersTab currentUser={user} />;
+      case 'teams': return <TeamsAdminSection />;
+      case 'permissions': return <PermissionsTab />;
+      case 'security': return <><SsoSettings /><SecurityTab /></>;
+      case 'service_activity_tracking': return <ServiceActivityAdminTab />;
+      case 'statuses': return <StatusManagementTab />;
+      case 'contract_types': return <ContractTypesTab />;
+      case 'sla': return <SlaSettingsTab />;
+      case 'project_templates': return <Templates embedded />;
+      case 'visit_checklists': return <VisitChecklistsTab />;
+      case 'managed_report_templates': return <ManagedReportTemplatesTab />;
+      case 'weekly_report': return <WeeklyReportTab />;
+      case 'email': return <EmailSettingsTab />;
+      case 'notifications': return <><IntegrationsTab /><h4 className="settings-subheading">Alerts about the system</h4><AdminAlertsTab /></>;
+      case 'ticketing': return <TicketingSettings />;
+      case 'grafana': return <GrafanaTab />;
+      case 'activity_bot': return <ActivityBotSettings sectionStyle={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 }} />;
+      case 'localization': return <LocalizationTab />;
+      case 'backups': return <BackupsTab />;
+      case 'system_health': return <SystemHealthTab key={part || 'stats'} initial={part} />;
+      case 'audit_log': return <AuditLogTab />;
+      default: return null;
+    }
+  }
   const q = tabSearch.trim().toLowerCase();
-  const filteredTabs = TABS.filter(t => !q || t.label.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q));
+  const filteredTabs = TABS.filter(t => !q || [t.label, t.desc, ...t.sections.map(key => SECTIONS[key].label)].some(text => text.toLowerCase().includes(q)));
 
   return (
     <div className="page">
@@ -206,35 +248,26 @@ export default function AdminPanel() {
             <SettingsStatusPill status={sectionStatus[activeTab.key]} />
           </div>
 
+          {activeTab.sections.length > 1 && <nav className="settings-on-page text-sm" aria-label="On this page">On this page: {activeTab.sections.map((key, index) => <span key={key}>{index ? ' · ' : ''}<a href={`#settings-${key}`} onClick={event => { event.preventDefault(); document.getElementById(`settings-${key}`)?.scrollIntoView({ block: 'start' }); }}>{SECTIONS[key].label}</a></span>)}</nav>}
           <Suspense fallback={<p className="text-muted" role="status">Loading…</p>}>
-          {tab === 'overview'     && <OverviewTab />}
-          {tab === 'users'        && <UsersTab currentUser={user} />}
-          {tab === 'teams'        && <TeamsAdminSection />}
-          {tab === 'permissions'  && <PermissionsTab />}
-          {tab === 'statuses'     && <StatusManagementTab />}
-          {tab === 'service_activity_tracking' && <ServiceActivityAdminTab />}
-          {tab === 'managed_report_templates' && <ManagedReportTemplatesTab />}
-          {tab === 'ticketing' && <TicketingSettings />}
-          {tab === 'system_health' && <SystemHealthTab key={part || 'stats'} initial={part} />}
-          {tab === 'backups' && <BackupsTab />}
-          {tab === 'sla' && <SlaSettingsTab />}
-          {tab === 'contract_types' && <ContractTypesTab />}
-          {tab === 'visit_checklists' && <VisitChecklistsTab />}
-          {tab === 'grafana' && <GrafanaTab />}
-          {tab === 'project_templates' && <Templates embedded />}
-          {tab === 'notifications' && <><IntegrationsTab /><h3 className="settings-subheading">Alerts about the system</h3><AdminAlertsTab /></>}
-          {tab === 'activity_bot'  && <ActivityBotSettings sectionStyle={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 }} />}
-          {tab === 'weekly_report' && <WeeklyReportTab />}
-          {tab === 'email' && <EmailSettingsTab />}
-          {tab === 'localization'  && <LocalizationTab />}
-          {tab === 'audit_log'     && <AuditLogTab />}
-          {tab === 'security'      && <><SsoSettings /><SecurityTab /></>}
+          {activeTab.sections.map(key => {
+            // Each section on its own: one that fails does not take the page with it.
+            const body = <ErrorBoundary compact what={SECTIONS[key].label} resetKey={tab}>{renderSection(key)}</ErrorBoundary>;
+            if (activeTab.sections.length === 1) return <div key={key} id={`settings-${key}`}>{body}</div>;
+            return <section key={key} id={`settings-${key}`} className="settings-section" aria-labelledby={`settings-${key}-title`}>
+              <h3 id={`settings-${key}-title`} className="settings-subheading">{SECTIONS[key].label}</h3>
+              <p className="text-sm text-muted">{SECTIONS[key].desc}</p>
+              {body}
+            </section>;
+          })}
           </Suspense>
         </section>
       </div>
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .settings-section + .settings-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--gray-200); }
+        .settings-on-page { margin: -4px 0 16px; color: var(--gray-500); }
         .settings-shell {
           display: grid;
           grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);

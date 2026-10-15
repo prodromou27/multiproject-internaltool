@@ -50,7 +50,7 @@ export default function VisitRun({ visit, onSaved }) {
     <h4 className="text-sm" style={{ margin: '8px 0 4px' }}>1. Checklist</h4>
     {!checklist ? (templates.length
       ? <label className="text-sm">Start from <select aria-label="Checklist to use" defaultValue="" onChange={event => start(event.target.value)}><option value="" disabled>Choose a checklist…</option>{templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
-      : <p className="text-sm text-muted">No checklists are set up yet (Settings → Visit checklists).</p>)
+      : <p className="text-sm text-muted">No checklists are set up yet (Settings → Templates → Visit checklists).</p>)
       : <div>
         <div className="text-sm text-muted">{checklist.name}{open ? ` · ${open} still to check` : ' · all checked'}{checklist.updated_by ? ` · saved by ${checklist.updated_by}` : ''}</div>
         <ol style={{ paddingLeft: 18, margin: '6px 0' }}>{checklist.items.map((item, index) => <li key={index} style={{ marginBottom: 6 }}>

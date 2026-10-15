@@ -28,7 +28,7 @@ const DATA_SOURCES = Object.freeze([
   source('tasks_on_time', 'Tasks completed on time', 'Share of tasks completed in the period, that had a due date, completed by it.', { percent: true, scopes: [...PEOPLE, 'customer', 'project'] }),
   source('overdue_tasks', 'Overdue tasks', 'Open tasks past their due date right now.', { unit: 'tasks', period: false, scopes: [...PEOPLE, 'customer', 'project'] }),
   source('visits_completed', 'Maintenance visits completed', 'Visits completed in the period.', { unit: 'visits', scopes: [...PEOPLE, 'customer'] }),
-  source('visit_reports_on_time', 'Visit reports on time', 'Share of visits in the period whose report was submitted within the visit report SLA (Settings → SLAs).', { percent: true, scopes: [...PEOPLE, 'customer'] }),
+  source('visit_reports_on_time', 'Visit reports on time', 'Share of visits in the period whose report was submitted within the visit report SLA (Settings → Lists → SLAs).', { percent: true, scopes: [...PEOPLE, 'customer'] }),
   source('time_logged', 'Time logged', 'Hours logged on tasks and visits.', { unit: 'hours', scopes: [...PEOPLE, 'project'] }),
   source('project_completion', 'Project completion', 'Average completion of open projects.', { percent: true, period: false, people: false, scopes: ['organization', 'team', 'project', 'customer'] }),
   source('open_recommendations', 'Open customer recommendations', 'Recommendations not yet implemented, rejected or closed.', { unit: 'recommendations', period: false, scopes: [...PEOPLE, 'customer'] }),

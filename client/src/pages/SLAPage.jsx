@@ -438,7 +438,7 @@ export default function SLAPage() {
             {' '}Working days = Mon–Fri only. &nbsp;
             <span className="u-7ed4c86">Breached</span> = past the deadline. &nbsp;
             <span className="u-71b98aa">At risk</span> = 1 working day remaining. &nbsp;
-            Which SLAs apply, and their limits, are set in <Link to="/settings/sla">Settings → SLAs</Link>.
+            Which SLAs apply, and their limits, are set in <Link to="/settings/sla">Settings → Lists → SLAs</Link>.
           </div>
         </>
       )}

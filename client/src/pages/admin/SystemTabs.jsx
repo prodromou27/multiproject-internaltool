@@ -691,7 +691,7 @@ export function SecurityTab() {
           <p className="text-sm text-muted">
             Users can reset their own password via the <em>Forgot your password?</em> link on the login
             page. A time-limited link (1 hour) is sent to their registered email address.
-            Ensure SMTP is configured in <strong>Settings → Email (SMTP)</strong> for this to work.
+            Ensure SMTP is configured in <strong>Settings → Email & notifications</strong> for this to work.
           </p>
         </div>
       </div>

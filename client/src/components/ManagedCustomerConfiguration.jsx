@@ -196,7 +196,7 @@ export default function ManagedCustomerConfiguration({ customerId }) {
             </div>
           </div>}
           {hasTeam && !syncBad && <p className="msc-ok"><CheckCircle2 size={14} /> Set up. <Link to={`/customers/${customerId}/service-profile?section=tickets`}>See tickets <ExternalLink size={12} /></Link></p>}
-          {syncBad && <p className="msc-hint"><AlertTriangle size={13} /> The last ticket sync failed — check Request Tracker under Settings → Ticketing.</p>}
+          {syncBad && <p className="msc-hint"><AlertTriangle size={13} /> The last ticket sync failed — check Request Tracker under Settings → Integrations → Ticketing.</p>}
         </section>
 
 

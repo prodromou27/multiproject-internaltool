@@ -56,7 +56,7 @@ function CustomRoles({ data,onChanged }) {
     try { await api.deleteCustomRole(role.id);toast.success('Role deleted');onChanged(); } catch(failure) { toast.error(failure.message); }
   }
   const roles=data.custom_roles || [];
-  return <div className="card"><div className="card-header"><div><h3 className="u-de00808">Custom roles</h3><p className="text-muted text-sm mt-4">Your own roles, such as Team lead: built on one of the roles above, with the permissions you tick. Give them to people in Settings → Users.</p></div>
+  return <div className="card"><div className="card-header"><div><h3 className="u-de00808">Custom roles</h3><p className="text-muted text-sm mt-4">Your own roles, such as Team lead: built on one of the roles above, with the permissions you tick. Give them to people in Settings → Users & teams.</p></div>
     <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing({})}><Plus size={14} /> New role</button></div>
     {roles.length===0 ? <p className="text-muted text-sm">No custom roles yet.</p> : <div className="table-wrap"><table><thead><tr><th>Role</th><th>Built on</th><th>Permissions</th><th>People</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>
       {roles.map(role => { const on=data.definitions.filter(definition => role.permissions[definition.key]); return <tr key={role.id}>

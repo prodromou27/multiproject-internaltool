@@ -46,7 +46,7 @@ export default function WorkloadTickets() {
       </div>
     </header>
     {error ? <div className="error-msg" role="alert">{error}</div> : !data ? <p className="text-muted">Loading…</p> : <>
-      {data.unlinked_engineers > 0 && <p className="alert alert-warning wt-unlinked"><span>{data.unlinked_engineers} engineer{data.unlinked_engineers === 1 ? ' is' : 's are'} not linked to a Request Tracker user, so their tickets are not counted. <Link to="/settings/ticketing">Link them in Settings → Ticketing</Link>.</span></p>}
+      {data.unlinked_engineers > 0 && <p className="alert alert-warning wt-unlinked"><span>{data.unlinked_engineers} engineer{data.unlinked_engineers === 1 ? ' is' : 's are'} not linked to a Request Tracker user, so their tickets are not counted. <Link to="/settings/ticketing">Link them in Settings → Integrations → Ticketing</Link>.</span></p>}
       {!data.engineers.length ? <p className="text-muted">No active engineers.</p> : <>
         <div className="wt-legend" aria-hidden="true">{KINDS.map(([key, label]) => <span key={key}><i className={`wt-k-${key}`} />{label}</span>)}</div>
         <div className="table-wrap"><table className="wt-table">

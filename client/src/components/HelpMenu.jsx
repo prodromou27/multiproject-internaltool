@@ -19,11 +19,11 @@ const GLOSSARY = [
 ];
 
 const MANAGER_STEPS = [
-  'Create teams and add members (Settings → Teams)',
-  'Enable Service Activity Tracking for a team, if it does customer service work (Settings → Teams → Tracking Enabled)',
+  'Create teams and add members (Settings → Users & teams)',
+  'Enable Service Activity Tracking for a team, if it does customer service work (Settings → Users & teams → Teams → Tracking Enabled)',
   'Add customers and assign them to a team (Customers)',
-  'Set SLA response/resolution targets per team (Settings → Teams → Targets)',
-  'Configure Teams/Webex notifications and Request Tracker, if used (Settings → Notifications and Settings → Ticketing)',
+  'Set SLA response/resolution targets per team (Settings → Users & teams → Teams → Targets)',
+  'Configure Teams/Webex notifications and Request Tracker, if used (Settings → Email & notifications, and Settings → Integrations → Ticketing)',
 ];
 
 export default function HelpMenu({ role }) {
