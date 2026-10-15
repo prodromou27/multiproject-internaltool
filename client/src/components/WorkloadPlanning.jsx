@@ -4,6 +4,7 @@ import { useLatestRequest } from '../hooks/useLatestRequest';
 import { businessToday } from '../utils/dates';
 import { fmtDate, Modal } from './Shared';
 import { useToast } from './Toast';
+import WorkloadWhatIf from './WorkloadWhatIf';
 
 function HoursForm({ edit, onSaved, onClose }) {
   const [hours,setHours] = useState(edit.hours ?? '');
@@ -56,6 +57,7 @@ export default function WorkloadPlanning() {
   return <section>
     <div className="flex gap-8 mb-16"><label htmlFor="planning-date">Planning date</label><input id="planning-date" type="date" min="1900-01-01" max="9998-12-01" value={asOf} onChange={event => setAsOf(event.target.value)} className="u-30e741d" /><button className="btn btn-ghost" disabled={busy} onClick={load}>Refresh</button></div>
     {error ? <div className="error-msg" role="alert">{error} <button className="btn btn-ghost" onClick={load}>Retry</button></div> : busy ? <p role="status">Loading effort and availability...</p> : <>
+      <WorkloadWhatIf asOf={asOf} engineers={data.engineers} />
       <p className="text-muted mb-16">{data.coverage}</p>
       {data.engineers.length === 0 && <p>No active engineers.</p>}
       {data.engineers.map(engineer => <article className="card mb-20" key={engineer.id}>
