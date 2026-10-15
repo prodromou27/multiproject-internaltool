@@ -6,6 +6,8 @@ import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import { Surface, ToneBadge } from '../components/EnterpriseUI';
 import { fmtDate, fmtDateTime } from '../components/Shared';
 import { useToast } from '../components/Toast';
+import { useNavigate } from 'react-router-dom';
+import { CampaignDialog } from '../components/RemediationCampaigns';
 import { useLiveVersion } from '../live';
 import { localDateISO, businessToday } from '../utils/dates';
 import SoftwareAdmin from './SoftwareAdmin';
@@ -28,8 +30,11 @@ function lifecycle(release, today) {
   return { tone: 'success', text: 'Supported' };
 }
 
-function Product({ product, today }) {
-  return <Surface title={product.name} description={`${product.vendor ? `${product.vendor} · ` : ''}${SOURCE[product.source] || product.source}${product.last_checked_at ? ` · checked ${fmtDateTime(product.last_checked_at)}` : ''}`}>
+function Product({ product, today, canManage }) {
+  const navigate = useNavigate();
+  const [starting, setStarting] = useState(false);
+  return <Surface actions={canManage && product.releases.length ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => setStarting(true)}>Start remediation campaign</button> : null} title={product.name} description={`${product.vendor ? `${product.vendor} · ` : ''}${SOURCE[product.source] || product.source}${product.last_checked_at ? ` · checked ${fmtDateTime(product.last_checked_at)}` : ''}`}>
+    {starting && <CampaignDialog source={{ source_type: 'software', source_ref: product.id }} onClose={() => setStarting(false)} onCreated={id => navigate(`/vulnerabilities?tab=campaigns&campaign=${id}`)} />}
     {product.last_error && <p className="error-msg sv-error" role="alert">The last check failed: {product.last_error}</p>}
     {!product.releases.length ? <p className="text-muted">{product.source === 'manual' ? 'No versions entered yet.' : 'Not read yet. It is checked every morning, or use Check now.'}</p> :
       <div className="table-wrap"><table className="sv-table">
@@ -107,7 +112,7 @@ export default function SoftwareVersions() {
       <div className="sv-main">
         {assetAccess && <CustomerEstate />}
         {!data.products.length && <p className="text-muted">No products are followed yet.{manager ? ' Add them under Products and feeds.' : ''}</p>}
-        {data.products.map(product => <Product key={product.id} product={product} today={today} />)}
+        {data.products.map(product => <Product key={product.id} product={product} today={today} canManage={user?.role === 'manager'} />)}
       </div>
       <aside className="sv-side">
         <Surface title="Recently released">

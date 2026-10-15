@@ -226,6 +226,7 @@ app.use('/api/vulnerabilities', require('./routes/vulnerabilities'));
 app.use('/api/software', require('./routes/software'));
 app.use('/api/data-quality', require('./routes/data-quality'));
 app.use('/api/visit-checklists', require('./routes/visit-checklists'));
+app.use('/api/remediation-campaigns', require('./routes/remediation-campaigns'));
 app.use('/api/skills', require('./routes/skills'));
 app.use('/api/insights', require('./routes/insights'));
 app.use('/api/visit-planning', require('./routes/visit-planning'));

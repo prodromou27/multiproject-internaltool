@@ -9,6 +9,7 @@ import { MetricStrip, Pagination, Surface, Tabs, ToneBadge } from '../components
 import { fmtDate, fmtDateTime, Modal } from '../components/Shared';
 import { useToast } from '../components/Toast';
 import { useLiveVersion } from '../live';
+import { CampaignDialog, Campaigns } from '../components/RemediationCampaigns';
 import './Vulnerabilities.css';
 
 /* CVEs for the vendors and products we support (NVD), flagged when CISA lists
@@ -40,8 +41,8 @@ function versionRange(entry) {
   return entry.version && !['*', '-'].includes(entry.version) ? entry.version : 'all versions';
 }
 
-function CveDetail({ id, onClose }) {
-  const [data, setData] = useState(null), [error, setError] = useState('');
+function CveDetail({ id, onClose, canManage, onCampaign }) {
+  const [data, setData] = useState(null), [error, setError] = useState(''), [starting, setStarting] = useState(false);
   useEffect(() => { const controller = new AbortController(); api.vulnerability(id, { signal: controller.signal }).then(setData).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }); return () => controller.abort(); }, [id]);
   const byProduct = new Map();
   for (const entry of data?.entries || []) { const key = `${entry.vendor}:${entry.product}`; if (!byProduct.has(key)) byProduct.set(key, []); byProduct.get(key).push(versionRange(entry)); }
@@ -51,6 +52,8 @@ function CveDetail({ id, onClose }) {
       <p>{data.description}</p>
       {data.kev && <section className="vuln-kev"><h3>Being exploited (CISA)</h3><p>{data.kev.name}</p><p><strong>What to do:</strong> {data.kev.required_action}</p><p className="text-sm">Listed {fmtDate(data.kev.date_added)}; US federal deadline {fmtDate(data.kev.due_date)}{data.kev.ransomware === 'Known' ? '. Used in ransomware campaigns.' : '.'}</p></section>}
       <section><h3>Our customers' devices</h3>
+        {canManage && data.affected.some(item => item.verdict === 'yes') && <p><button type="button" className="btn btn-primary btn-sm" onClick={() => setStarting(true)}>Start remediation campaign</button></p>}
+        {starting && <CampaignDialog source={{ source_type: 'cve', source_ref: id }} onClose={() => setStarting(false)} onCreated={campaignId => { setStarting(false); onCampaign(campaignId); }} />}
         {!data.affected.length ? <p className="text-muted text-sm">None of the devices you can see run an affected version, or their product has not been set under Products &amp; versions.</p> :
           <table className="vuln-table"><thead><tr><th>Customer</th><th>Device</th><th>Version</th><th>Result</th></tr></thead><tbody>{data.affected.map(item => <tr key={item.asset_id}>
             <td><Link to={`/customers/${item.customer_id}/service-profile?section=assets`}>{item.customer_name}</Link></td><td>{item.asset_name}<div className="text-muted text-sm">{item.vendor} {item.model}</div></td><td>{item.version || 'Not recorded'}</td>
@@ -205,7 +208,7 @@ export default function Vulnerabilities() {
   const { user } = useAuth(), location = useLocation(), navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const canManage = user.role === 'manager';
-  const tabs = [{ key: 'cves', label: 'CVEs' }, { key: 'products', label: 'Products & versions' }, ...(canManage ? [{ key: 'watched', label: 'Watched products' }] : [])];
+  const tabs = [{ key: 'cves', label: 'CVEs' }, { key: 'products', label: 'Products & versions' }, ...(canManage ? [{ key: 'watched', label: 'Watched products' }, { key: 'campaigns', label: 'Campaigns' }] : [])];
   const tab = tabs.some(item => item.key === params.get('tab')) ? params.get('tab') : 'cves';
   const go = (next, extra = {}) => { const search = new URLSearchParams({ ...(next !== 'cves' ? { tab: next } : {}), ...extra }); navigate({ search: search.toString() ? `?${search}` : '' }); };
   const cve = params.get('cve');
@@ -215,6 +218,7 @@ export default function Vulnerabilities() {
     {tab === 'cves' && <CveList initialProduct={params.get('product') || ''} onOpen={id => go('cves', { ...(params.get('product') ? { product: params.get('product') } : {}), cve: id })} />}
     {tab === 'products' && <ProductsVersions canManage={canManage} onShowProduct={product => go('cves', { product })} />}
     {tab === 'watched' && canManage && <Watched />}
-    {cve && <CveDetail id={cve} onClose={() => go(tab, params.get('product') ? { product: params.get('product') } : {})} />}
+    {tab === 'campaigns' && canManage && <Campaigns openId={params.get('campaign') ? Number(params.get('campaign')) : null} onOpen={campaignId => go('campaigns', campaignId ? { campaign: campaignId } : {})} />}
+    {cve && <CveDetail id={cve} canManage={canManage} onCampaign={campaignId => go('campaigns', { campaign: campaignId })} onClose={() => go(tab, params.get('product') ? { product: params.get('product') } : {})} />}
   </div>;
 }

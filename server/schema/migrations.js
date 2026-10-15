@@ -1297,6 +1297,31 @@ async function applyMigrations(pool, transaction) {
     -- The checklist a visit was run with, and what was found (JSON; routes/maintenance-visits.js).
     ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS checklist TEXT;
   `]);
+  migrations.push(['20261115_remediation_campaigns', `
+    -- Remediation campaigns (remediation.js): a CVE or an outdated product turned into
+    -- upgrade tasks, with each device followed to a verified fix or an exception.
+    CREATE TABLE IF NOT EXISTS remediation_campaigns (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      source_type TEXT NOT NULL CHECK (source_type IN ('cve','software')),
+      source_ref TEXT NOT NULL,
+      target_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','closed')),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT ${NOW},
+      closed_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS remediation_campaign_items (
+      id SERIAL PRIMARY KEY,
+      campaign_id INTEGER NOT NULL REFERENCES remediation_campaigns(id) ON DELETE CASCADE,
+      asset_id INTEGER NOT NULL REFERENCES customer_assets(id) ON DELETE CASCADE,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+      subtask_id INTEGER REFERENCES task_subtasks(id) ON DELETE SET NULL,
+      exception_reason TEXT,
+      UNIQUE (campaign_id, asset_id)
+    );
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;
