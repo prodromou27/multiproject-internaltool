@@ -1245,6 +1245,17 @@ async function applyMigrations(pool, transaction) {
       PRIMARY KEY (user_id, pref_key)
     );
   `]);
+  migrations.push(['20261111_customer_quality_dismissals', `
+    -- Data-quality items a manager has decided are fine, and why (dataQuality.js).
+    CREATE TABLE IF NOT EXISTS customer_quality_dismissals (
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      rule TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      dismissed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      dismissed_at TEXT DEFAULT ${NOW},
+      PRIMARY KEY (customer_id, rule)
+    );
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

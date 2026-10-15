@@ -89,4 +89,4 @@ async function assetSoftwareStatus({ customerId = null, store = db, today = appT
   return { products: products.length, assets };
 }
 
-module.exports = { numbers, takeOf, productFor, assessVersion, assetSoftwareStatus };
+module.exports = { numbers, takeOf, productFor, assessVersion, assetSoftwareStatus, loadProducts };
