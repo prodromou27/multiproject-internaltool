@@ -105,6 +105,10 @@ Request Tracker test queue. Record the result of each in the release record.
 Test the Dashboard, Projects, Tasks, Maintenance Visits, Calendar, Activity Log,
 Customers, Customer 360, Managed Customers, Reports and Settings.
 
+CI already runs an automated check (axe, WCAG 2.1 AA) of the main pages at desktop and
+phone width, in the dark theme and at 200% zoom (client/e2e/axeScan.spec.js). It finds
+names, labels, contrast and structure problems; the checks below are the ones it cannot do.
+
 - At 390, 768 and 1440 CSS pixels, verify no page-level horizontal overflow, clipped
   actions, inaccessible filters or dialogs outside the viewport.
 - Check light and dark themes, including tables, status badges, charts, calendar events,

@@ -11,10 +11,12 @@ import { Hamburger } from './Sidebar';
 import { SidebarContent } from './Sidebar';
 import UserMenu from './UserMenu';
 import { CommandPalette } from './CommandPalette';
+import { useScrollableTables } from './useScrollableTables';
 
 /* ── Layout ──────────────────────────────────────────────── */
 export function Layout({ children }) {
   const { user, logout, saAccess } = useAuth();
+  useScrollableTables();
   const [open, setOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [compactNav, setCompactNav] = useState(() => localStorage.getItem(`hub_nav_compact_${user.id}`) === '1');

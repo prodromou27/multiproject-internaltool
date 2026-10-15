@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { PageHeader } from '../components/PageLayout';
-import { MetricStrip, Surface, Tabs, ToneBadge } from '../components/EnterpriseUI';
+import { MetricStrip, Surface, TabPanel, Tabs, ToneBadge } from '../components/EnterpriseUI';
 import { fmtDate } from '../components/Shared';
 import { useToast } from '../components/Toast';
 import { useLiveVersion } from '../live';
@@ -164,6 +164,7 @@ export default function SkillMatrix() {
           </div>
         </div>
         {user?.role === 'manager' && <AddTechnology onAdded={load} />}
+        <TabPanel label="Skill matrix views" value={view}>
         {!data.technologies.length ? <p className="text-muted">No technologies yet.{user?.role === 'manager' ? ' Add the first one above.' : ''}</p>
           : !technologies.length ? <p className="text-muted">No technology matches “{search}”.</p>
           : view === 'matrix'
@@ -173,6 +174,7 @@ export default function SkillMatrix() {
               : <Coverage data={data} technologies={technologies} {...lookups} onTarget={setTarget} onPlan={setPlanFor} />}
         {planFor && <PlanDialog data={data} technology={planFor} mentors={plans.mentors} onClose={() => setPlanFor(null)} onSaved={() => { setPlanFor(null); setView('plans'); load(); }} />}
         {view === 'matrix' && data.activity.length > 0 && <p className="sm-footnote">Activity counts are service activities logged on the technology since {fmtDate(data.activity_since)}.</p>}
+        </TabPanel>
       </Surface>
     </>}
   </div>;

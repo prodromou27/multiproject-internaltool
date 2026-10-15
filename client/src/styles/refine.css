@@ -13,6 +13,8 @@
   --primary-dark:   #233c61;
   --primary-light:  #eef2f8;
   --primary-ring:   rgba(48, 80, 127, .18);
+  --on-primary:     #fff;     /* text on a --primary background */
+  --on-status:      #fff;     /* text on --danger and --warning */
 
   --danger:         #c8102e;
   --danger-light:   #fcedf0;
@@ -63,6 +65,11 @@
   --primary-dark:   #b3cbee;
   --primary-light:  rgba(143, 176, 224, .14);
   --primary-ring:   rgba(143, 176, 224, .25);
+  --on-primary:     #12161b;  /* dark primary, danger and warning are light: dark text */
+  --on-status:      #12161b;
+  --warning:        #e0a94f;  /* 4.5:1+ as text on the dark surface */
+  --warning-light:  rgba(224, 169, 79, .14);
+  --success-light:  rgba(127, 209, 167, .12);
   --danger:         #f0566c;
   --danger-light:   rgba(240, 86, 108, .14);
   --tone-danger-text:  #f58a9b;
@@ -88,6 +95,8 @@
 [data-theme="dark"] .modal,
 [data-theme="dark"] .desktop-topbar { background: var(--surface); }
 [data-theme="dark"] body { background: var(--gray-50); }
+/* White text on the primary colour (today, the open view) turns dark with the light dark-theme primary. */
+[data-theme="dark"] .u-1eab90a.u-1eab90a.u-729d2fa { color: var(--on-primary); }
 
 /* ── Type ─────────────────────────────────────────────────── */
 body {
@@ -413,7 +422,7 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .bot-try h4 { margin: 0 0 4px; font-size: 14px; }
 .bot-try-log { max-height: 340px; overflow-y: auto; display: grid; gap: 8px; padding: 12px; margin: 8px 0; background: var(--surface); border: 1px solid var(--gray-200); border-radius: var(--radius); }
 .bot-line { max-width: 85%; padding: 8px 12px; border-radius: 10px; font-size: 13.5px; line-height: 1.5; }
-.bot-line.is-you { justify-self: end; background: var(--primary); color: #fff; }
+.bot-line.is-you { justify-self: end; background: var(--primary); color: var(--on-primary); }
 .bot-line.is-bot { justify-self: start; background: var(--gray-100); color: var(--gray-800); }
 .bot-try-input { display: flex; gap: 8px; }
 .bot-try-input input { flex: 1; min-width: 0; }

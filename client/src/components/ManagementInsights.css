@@ -8,7 +8,7 @@
 .mi-periods { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--surface); }
 .mi-periods button { padding: 6px 12px; border: 0; border-radius: calc(var(--radius) - 2px); background: transparent; color: var(--gray-600); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .mi-periods button:hover { color: var(--gray-900); }
-.mi-periods button[aria-pressed="true"] { background: var(--primary); color: #fff; }
+.mi-periods button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); }
 .mi-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(122px, 1fr)); gap: 10px; }
 .mi-figure { display: grid; gap: 4px; padding: 13px 15px; border: 1px solid var(--gray-200); border-radius: var(--radius-lg, 8px); background: var(--surface); color: inherit; text-decoration: none; }
 a.mi-figure:hover { border-color: var(--gray-400); text-decoration: none; }

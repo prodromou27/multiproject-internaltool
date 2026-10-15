@@ -410,7 +410,7 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
           {task.logged_hours > 0 ? `${task.logged_hours}h` : '—'}
         </td>
         <td onClick={e => e.stopPropagation()} className="flex-center gap-6">
-          <select
+          <select aria-label={`Status of ${task.title}`}
             value={task.status}
             onChange={e => {
               const s = e.target.value;

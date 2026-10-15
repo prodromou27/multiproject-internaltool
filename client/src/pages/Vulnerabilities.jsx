@@ -5,7 +5,7 @@ import { api } from '../api';
 import { useAuth } from '../App';
 import { PageHeader } from '../components/PageLayout';
 import { ListSearch } from '../components/ListWorkspace';
-import { MetricStrip, Pagination, Surface, Tabs, ToneBadge } from '../components/EnterpriseUI';
+import { MetricStrip, Pagination, Surface, TabPanel, Tabs, ToneBadge } from '../components/EnterpriseUI';
 import { fmtDate, fmtDateTime, Modal } from '../components/Shared';
 import { useToast } from '../components/Toast';
 import { useLiveVersion } from '../live';
@@ -215,10 +215,12 @@ export default function Vulnerabilities() {
   return <div className="page vuln-page">
     <PageHeader title="Vulnerabilities" />
     <Tabs label="Vulnerability sections" items={tabs} value={tab} onChange={next => go(next)} />
+    <TabPanel label="Vulnerability sections" value={tab}>
     {tab === 'cves' && <CveList initialProduct={params.get('product') || ''} onOpen={id => go('cves', { ...(params.get('product') ? { product: params.get('product') } : {}), cve: id })} />}
     {tab === 'products' && <ProductsVersions canManage={canManage} onShowProduct={product => go('cves', { product })} />}
     {tab === 'watched' && canManage && <Watched />}
     {tab === 'campaigns' && canManage && <Campaigns openId={params.get('campaign') ? Number(params.get('campaign')) : null} onOpen={campaignId => go('campaigns', campaignId ? { campaign: campaignId } : {})} />}
+    </TabPanel>
     {cve && <CveDetail id={cve} canManage={canManage} onCampaign={campaignId => go('campaigns', { campaign: campaignId })} onClose={() => go(tab, params.get('product') ? { product: params.get('product') } : {})} />}
   </div>;
 }

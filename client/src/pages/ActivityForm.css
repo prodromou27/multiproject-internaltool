@@ -20,7 +20,7 @@
   font: inherit; font-size: 12px; font-weight: 550; padding: 3px 10px; cursor: pointer;
 }
 .activity-log .af-quick button:hover { border-color: var(--primary); color: var(--primary); }
-.activity-log .af-quick button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
+.activity-log .af-quick button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 
 /* Collapsible sections */
 .activity-log .af-more { border-top: 1px solid var(--gray-200); padding-top: 12px; }

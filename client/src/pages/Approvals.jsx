@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { Tabs } from '../components/EnterpriseUI';
+import { TabPanel, Tabs } from '../components/EnterpriseUI';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCheck, Download, FileCheck2, RefreshCw } from 'lucide-react';
 import { api } from '../api';
@@ -12,6 +12,9 @@ import { useLiveRefresh } from '../live';
 const openWork = project => [project.open_tasks > 0 && `${project.open_tasks} task${project.open_tasks === 1 ? '' : 's'}`, project.open_milestones > 0 && `${project.open_milestones} milestone${project.open_milestones === 1 ? '' : 's'}`].filter(Boolean).join(', ');
 
 // How long a request has waited against its target (approvalAging.js on the server).
+// The tab panel, when there are tabs (someone who reviews both kinds).
+const ApprovalPanel = ({ tabs, view, children }) => tabs ? <TabPanel label="Approval type" value={view}>{children}</TabPanel> : children;
+
 function Waiting({ row }) {
   if (row.waiting_days == null) return <span className="text-muted">Not recorded</span>;
   return <span title={`Requested ${fmtDateTime(row.closure_requested_at)}`}>
@@ -185,6 +188,7 @@ export default function Approvals() {
     <PageHeader title="Approvals" meta={`Oldest requests first. A closure is due within 3 working days.`}
       actions={<HeaderMenu><button type="button" disabled={loading} onClick={reload}><RefreshCw size={14} aria-hidden="true" /> Refresh</button></HeaderMenu>} />
     {canReviewClosures && canReviewReports && <Tabs variant="line" label="Approval type" value={view} onChange={setView} items={[{ key: 'closures', label: 'Project closures' }, { key: 'reports', label: 'Managed reports' }]} />}
+    <ApprovalPanel tabs={canReviewClosures && canReviewReports} view={view}>
     {view==='reports' && <div className="approval-filters" aria-label="Report review filters">
       <label htmlFor="report-review-status">Status</label><select id="report-review-status" value={reportStatus} onChange={event => { setReportStatus(event.target.value);setPage(1); }}><option value="all">All active reviews</option><option value="in_review">Awaiting decision</option><option value="approved">Ready to finalize</option></select>
     </div>}
@@ -205,6 +209,7 @@ export default function Approvals() {
         <Pagination page={page} total={total} pageSize={pageSize} onPage={setPage} />
       </>}
     </section>
+    </ApprovalPanel>
     {reviewing && (view==='reports' ? <ReportReviewDialog report={reviewing} onClose={() => setReviewing(null)} onReviewed={() => { setReviewing(null);reload(); }} /> : <ReviewDialog project={reviewing} onClose={() => setReviewing(null)} onReviewed={() => { setReviewing(null);reload(); }} />)}
   </div>;
 }

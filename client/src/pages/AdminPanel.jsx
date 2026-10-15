@@ -102,9 +102,9 @@ const MOVED = {
 const TAB_KEYS = new Set(TABS.map(t => t.key));
 
 const STATUS_STYLES = {
-  ok:      { label: 'OK',     color: 'var(--success)', bg: '#ecfdf5' },
-  warning: { label: 'Review', color: 'var(--warning)', bg: '#fffbeb' },
-  error:   { label: 'Issue',  color: 'var(--danger)',  bg: '#fef2f2' },
+  ok:      { label: 'OK',     color: 'var(--tone-success-text)', bg: 'var(--success-light)' },
+  warning: { label: 'Review', color: 'var(--tone-warning-text)', bg: 'var(--warning-light)' },
+  error:   { label: 'Issue',  color: 'var(--tone-danger-text)',  bg: 'var(--danger-light)' },
 };
 
 function SettingsStatusPill({ status }) {
@@ -271,6 +271,7 @@ export default function AdminPanel() {
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .settings-section + .settings-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--gray-200); }
         .settings-on-page { margin: -4px 0 16px; color: var(--gray-500); }
+        .settings-on-page a { text-decoration: underline; }
         .settings-shell {
           display: grid;
           grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
@@ -284,7 +285,7 @@ export default function AdminPanel() {
           align-self: start;
           border: 1px solid var(--gray-200);
           border-radius: 8px;
-          background: #fff;
+          background: var(--surface);
           padding: 12px;
           max-height: calc(100vh - 36px);
           overflow-y: auto;
@@ -342,8 +343,8 @@ export default function AdminPanel() {
           color: var(--gray-800);
         }
         .settings-nav-item.active {
-          background: #eff6ff;
-          border-color: #bfdbfe;
+          background: var(--primary-light);
+          border-color: var(--primary-ring);
           color: var(--primary);
         }
         .settings-content { min-width: 0; }
