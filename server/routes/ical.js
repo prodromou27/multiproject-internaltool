@@ -41,8 +41,12 @@ function icalDateTime(d) {
  * is scoped to this read-only feed and grants NO access to any other API — so
  * it is safe for it to land in third-party calendar-server and proxy logs.
  */
-router.get('/', async (req, res) => {
-  const raw = req.query.token;
+// Also /api/calendar/ical/<token>.ics: some calendar apps (Outlook among them) only
+// accept a subscription address that ends in .ics, or drop query strings.
+router.get('/:token.ics', (req, res, next) => { feed(req.params.token, req, res).catch(next); });
+router.get('/', (req, res, next) => { feed(req.query.token, req, res).catch(next); });
+
+async function feed(raw, req, res) {
   if (!raw || typeof raw !== 'string')
     return res.status(401).send('Invalid or missing token');
 
@@ -158,9 +162,10 @@ router.get('/', async (req, res) => {
   lines.push('END:VCALENDAR');
 
   res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-  res.setHeader('Content-Disposition', 'attachment; filename="solutionshub.ics"');
+  // Inline: a calendar app subscribes to it; a browser that opens it may still save it.
+  res.setHeader('Content-Disposition', 'inline; filename="calendar.ics"');
   res.setHeader('Cache-Control', 'no-cache');
-  res.send(lines.join('\r\n'));
-});
+  res.send(lines.join('\r\n') + '\r\n');
+}
 
 module.exports = router;

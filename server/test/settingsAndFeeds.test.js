@@ -91,7 +91,7 @@ test('ical: only a valid token for an active user gets a feed, and it is a calen
   assert.equal(ok.status, 200);
   assert.match(ok.type, /text\/calendar/);
   assert.match(ok.text, /^BEGIN:VCALENDAR\r\n/);
-  assert.match(ok.text, /END:VCALENDAR$/);
+  assert.match(ok.text, /END:VCALENDAR\r\n$/, 'every line ends with CRLF, the last one too (RFC 5545)');
 
   // Deactivating the user kills the feed even though the token itself is unchanged.
   await h.db.prepare('UPDATE users SET active=0 WHERE id=?').run(engineer.id);
@@ -126,4 +126,15 @@ test('ical: a manager\'s feed includes everyone\'s open tasks and no line exceed
   const { text } = await feed('manager-feed-token');
   assert.match(text, new RegExp(`UID:task-${long}@solutionshub`)); // manager sees another engineer's task
   for (const line of text.split('\r\n')) assert.ok(line.length <= 75, `line too long (${line.length}): ${line.slice(0, 30)}…`);
+});
+
+test('ical: the address ending in .ics serves the same feed inline, for Outlook', realDb, async () => {
+  await h.db.prepare('UPDATE users SET ical_token_hash=? WHERE id=?').run(token('outlook-feed-token'), engineer.id);
+  const response = await fetch(`${h.baseUrl}/api/calendar/ical/outlook-feed-token.ics`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /^text\/calendar/);
+  assert.match(response.headers.get('content-disposition'), /^inline/);
+  const text = await response.text();
+  assert.ok(text.startsWith('BEGIN:VCALENDAR\r\n') && text.endsWith('END:VCALENDAR\r\n'));
+  assert.equal((await fetch(`${h.baseUrl}/api/calendar/ical/wrong-token.ics`)).status, 401);
 });

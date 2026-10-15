@@ -21,7 +21,8 @@ export default function ICalSubscribe() {
     setErr(''); setBusy(true);
     try {
       const { token } = await api.generateIcalToken();
-      setUrl(`${window.location.origin}/api/calendar/ical?token=${token}`);
+      // Ends in .ics with the token in the path: the form Outlook accepts most reliably.
+      setUrl(`${window.location.origin}/api/calendar/ical/${encodeURIComponent(token)}.ics`);
       setStatus({ enabled: true, created_at: new Date().toISOString() });
     } catch (e) {
       setErr(e.message || 'Failed to generate subscription URL');
@@ -97,6 +98,15 @@ export default function ICalSubscribe() {
             <p className="u-6777e74">
               ⚠️ Copy this URL now — for security it won't be shown again. It is read-only (calendar events only) and can be revoked at any time.
             </p>
+            <details className="text-sm" style={{ marginTop: 6 }}>
+              <summary>Adding it to Outlook</summary>
+              <ul style={{ margin: '6px 0', paddingLeft: 18 }}>
+                <li><strong>New Outlook or Outlook on the web:</strong> Calendar → Add calendar → Subscribe from web → paste the URL.</li>
+                <li><strong>Classic Outlook (Windows):</strong> Calendar → Add calendar → From Internet → paste the URL.</li>
+                <li>New Outlook and Outlook on the web fetch the calendar from Microsoft's servers, so they can only connect if {window.location.host} can be reached from the internet over https. If it is only on the company network, use classic Outlook on a PC in the network.</li>
+                <li>Outlook refreshes subscribed calendars every few hours, not instantly.</li>
+              </ul>
+            </details>
           </>
         ) : status.enabled ? (
           <div className="flex gap-8 items-center flex-wrap">
