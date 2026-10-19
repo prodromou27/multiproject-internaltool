@@ -72,6 +72,52 @@ async function alertSyncChange(store,mapping,recovered,reason='') {
   } catch(error) { console.error('[ticket-sync] alert failed:',error.message); }
 }
 
+const UPSERT_TICKET=`INSERT INTO external_tickets
+        (customer_id,provider_type,external_queue_id,external_queue_name,external_ticket_id,ticket_number,subject,external_status,normalized_status,status_group,
+         external_priority,normalized_priority,owner_external_id,owner_name,owner_email,created_at_external,updated_at_external,resolved_at_external,closed_at_external,sla_due_at,sla_breached,external_url,last_synced_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,app_now())
+        ON CONFLICT (provider_type,external_ticket_id) DO UPDATE SET customer_id=EXCLUDED.customer_id,external_queue_id=EXCLUDED.external_queue_id,
+          external_queue_name=EXCLUDED.external_queue_name,ticket_number=EXCLUDED.ticket_number,subject=EXCLUDED.subject,external_status=EXCLUDED.external_status,
+          normalized_status=EXCLUDED.normalized_status,status_group=EXCLUDED.status_group,external_priority=EXCLUDED.external_priority,
+          normalized_priority=EXCLUDED.normalized_priority,owner_external_id=EXCLUDED.owner_external_id,owner_name=EXCLUDED.owner_name,owner_email=COALESCE(EXCLUDED.owner_email,external_tickets.owner_email),
+          created_at_external=EXCLUDED.created_at_external,updated_at_external=EXCLUDED.updated_at_external,resolved_at_external=EXCLUDED.resolved_at_external,
+          closed_at_external=EXCLUDED.closed_at_external,sla_due_at=EXCLUDED.sla_due_at,sla_breached=EXCLUDED.sla_breached,
+          external_url=EXCLUDED.external_url,last_synced_at=app_now()`;
+const upsertArgs=record => [record.customer_id,record.provider_type,record.external_queue_id,record.external_queue_name,record.external_ticket_id,record.ticket_number,
+  record.subject,record.external_status,record.normalized_status,record.status_group,record.external_priority,record.normalized_priority,record.owner_external_id,
+  record.owner_name,record.owner_email,record.created_at_external,record.updated_at_external,record.resolved_at_external,record.closed_at_external,record.sla_due_at,record.sla_breached?1:0,record.external_url];
+
+/* The app's open tickets in this queue that RT no longer lists as active there. RT search
+   leaves out a ticket merged into another, so without this it would stay open here for
+   good. Each is looked up: merged or deleted → closed here (Excluded, not resolved);
+   moved to another customer's queue → moved to that customer; moved elsewhere → closed;
+   otherwise its current state is saved. At most MAX_CHECKS lookups per sync. */
+const MAX_CHECKS=200;
+async function reconcileOpen(store,client,mapping,runtime,mappingConfig,justSynced) {
+  const active=await client.getActiveTicketIds(mapping.external_queue_id);
+  const stale=(await store.prepare("SELECT external_ticket_id FROM external_tickets WHERE provider_type='request_tracker' AND customer_id=? AND external_queue_id=? AND status_group='open'")
+    .all(mapping.customer_id,String(mapping.external_queue_id))).map(row => String(row.external_ticket_id)).filter(id => !active.has(id) && !justSynced.has(id));
+  const result={ checked:0,closed:0,updated:0 };
+  const close=(id,reason) => store.prepare(`UPDATE external_tickets SET external_status=?,normalized_status='Excluded',status_group='closed',sla_breached=0,
+    closed_at_external=COALESCE(closed_at_external,?),last_synced_at=app_now() WHERE provider_type='request_tracker' AND external_ticket_id=?`).run(reason,new Date().toISOString(),id);
+  for (const id of stale.slice(0,MAX_CHECKS)) {
+    result.checked++;
+    const ticket=await client.getTicket(id);
+    const effective=ticket ? String(ticket.EffectiveId?.id ?? ticket.EffectiveId ?? ticket.id) : null;
+    if (!ticket) { await close(id,'deleted');result.closed++;continue; }
+    if (String(ticket.id)!==id || effective!==id) { await close(id,`merged into ${effective}`);result.closed++;continue; }
+    const queue=String(ticket.Queue?.id ?? ticket.Queue ?? '');
+    let owner=mapping;
+    if (queue && queue!==String(mapping.external_queue_id)) {
+      owner=await store.prepare("SELECT * FROM customer_ticketing_configurations WHERE provider_type='request_tracker' AND external_queue_id=? AND enabled=1").get(queue);
+      if (!owner) { await close(id,'moved to another queue');result.closed++;continue; }
+    }
+    await store.prepare(UPSERT_TICKET).run(...upsertArgs(ticketRecord(ticket,owner,runtime.base_url,new Date(),mappingConfig)));
+    result.updated++;
+  }
+  return result;
+}
+
 async function syncCustomer(customerId,{ provider,triggeredBy=null,store=db }={}) {
   const mapping=await store.prepare("SELECT * FROM customer_ticketing_configurations WHERE customer_id=? AND provider_type='request_tracker' AND enabled=1").get(customerId);
   if (!mapping) throw Object.assign(new Error('No enabled RT queue mapping exists for this customer'),{ status:400 });
@@ -99,31 +145,26 @@ async function syncCustomer(customerId,{ provider,triggeredBy=null,store=db }={}
     const existing=new Set((await store.prepare("SELECT external_ticket_id FROM external_tickets WHERE provider_type='request_tracker' AND customer_id=?").all(customerId)).map(row => String(row.external_ticket_id)));
     let created=0,updated=0;
     await store.transaction(async tx => {
-      const upsert=tx.prepare(`INSERT INTO external_tickets
-        (customer_id,provider_type,external_queue_id,external_queue_name,external_ticket_id,ticket_number,subject,external_status,normalized_status,status_group,
-         external_priority,normalized_priority,owner_external_id,owner_name,owner_email,created_at_external,updated_at_external,resolved_at_external,closed_at_external,sla_due_at,sla_breached,external_url,last_synced_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,app_now())
-        ON CONFLICT (provider_type,external_ticket_id) DO UPDATE SET customer_id=EXCLUDED.customer_id,external_queue_id=EXCLUDED.external_queue_id,
-          external_queue_name=EXCLUDED.external_queue_name,ticket_number=EXCLUDED.ticket_number,subject=EXCLUDED.subject,external_status=EXCLUDED.external_status,
-          normalized_status=EXCLUDED.normalized_status,status_group=EXCLUDED.status_group,external_priority=EXCLUDED.external_priority,
-          normalized_priority=EXCLUDED.normalized_priority,owner_external_id=EXCLUDED.owner_external_id,owner_name=EXCLUDED.owner_name,owner_email=COALESCE(EXCLUDED.owner_email,external_tickets.owner_email),
-          created_at_external=EXCLUDED.created_at_external,updated_at_external=EXCLUDED.updated_at_external,resolved_at_external=EXCLUDED.resolved_at_external,
-          closed_at_external=EXCLUDED.closed_at_external,sla_due_at=EXCLUDED.sla_due_at,sla_breached=EXCLUDED.sla_breached,
-          external_url=EXCLUDED.external_url,last_synced_at=app_now()`);
+      const upsert=tx.prepare(UPSERT_TICKET);
       for (const record of records) {
-        await upsert.run(record.customer_id,record.provider_type,record.external_queue_id,record.external_queue_name,record.external_ticket_id,record.ticket_number,
-          record.subject,record.external_status,record.normalized_status,record.status_group,record.external_priority,record.normalized_priority,record.owner_external_id,
-          record.owner_name,record.owner_email,record.created_at_external,record.updated_at_external,record.resolved_at_external,record.closed_at_external,record.sla_due_at,record.sla_breached?1:0,record.external_url);
+        await upsert.run(...upsertArgs(record));
         if (existing.has(record.external_ticket_id)) updated++;else created++;
       }
       await tx.prepare("UPDATE customer_ticketing_configurations SET last_successful_sync_at=app_now(),last_sync_status='success',updated_at=app_now() WHERE id=?").run(mapping.id);
       await tx.prepare("UPDATE ticket_sync_runs SET completed_at=app_now(),status='success',tickets_found=?,tickets_created=?,tickets_updated=? WHERE id=?").run(records.length,created,updated,runId);
     });
+    // Open tickets RT no longer has in the queue (merged, moved, deleted, or resolved unnoticed);
+    // a problem here never fails the sync.
+    let reconciled={ checked:0,closed:0,updated:0 };
+    if (typeof client.getActiveTicketIds==='function') {
+      try { reconciled=await reconcileOpen(store,client,mapping,runtime,mappingConfig,new Set(records.map(record => record.external_ticket_id))); }
+      catch(error) { console.error('[ticket-sync] open-ticket check failed:',error.message); }
+    }
     // Link ticket owners to TeamHub users; a problem here never fails the sync.
     await require('./ticketOwners').linkOwners(store).catch(error => console.error('[ticket-owners] linking failed:',error.message));
     if (wasFailing) await alertSyncChange(store,mapping,true);
     const completed=await store.prepare('SELECT completed_at FROM ticket_sync_runs WHERE id=?').get(runId);
-    return { run_id:runId,completed_at:completed?.completed_at || null,tickets_found:records.length,tickets_created:created,tickets_updated:updated };
+    return { run_id:runId,completed_at:completed?.completed_at || null,tickets_found:records.length,tickets_created:created,tickets_updated:updated,tickets_reconciled:reconciled };
   } catch(error) {
     const safeError=error.status ? String(error.message).slice(0,2000) : 'Ticket synchronization failed';
     await store.prepare("UPDATE ticket_sync_runs SET completed_at=app_now(),status='failed',errors=1,error_message=? WHERE id=?").run(safeError,runId);

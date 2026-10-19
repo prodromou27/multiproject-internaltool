@@ -72,6 +72,41 @@ test('ticket synchronization persists normalized snapshots and run counts',async
   assert.deepEqual(runs.map(row => [row.customer_id,row.status]),[[ids.customer,'success'],[ids.customer,'success']]);
 });
 
+test('open tickets RT no longer lists in the queue are checked: merged, deleted and moved ones close; others take their current state',async () => {
+  const { syncCustomer }=require('../ticketSync');
+  // Another customer's queue, for a ticket moved there.
+  await db.prepare(`INSERT INTO customer_ticketing_configurations (customer_id,provider_type,external_queue_id,external_queue_name,enabled,include_in_reporting)
+    VALUES (?,'request_tracker','43','Other Support',1,1) ON CONFLICT DO NOTHING`).run(ids.customerUnassigned);
+  const open=id => db.prepare(`INSERT INTO external_tickets (customer_id,provider_type,external_queue_id,external_queue_name,external_ticket_id,ticket_number,subject,external_status,normalized_status,status_group,created_at_external)
+    VALUES (?,'request_tracker','42','Acme Support',?,?,?,'open','Open','open','2026-09-01T10:00:00.000Z')`).run(ids.customer,id,id,`Ticket ${id}`);
+  for (const id of ['7101','7102','7103','7104','7105','7106']) await open(id);
+  const looked=[];
+  const rt={ '7101':{ id:7100,EffectiveId:{ id:'7100' },Status:'open',Queue:{ id:'42' } },             // merged into 7100 (returned as 7100)
+    '7102':null,                                                                                         // deleted
+    '7103':{ id:7103,EffectiveId:{ id:'7103' },Status:'open',Queue:{ id:'99' },Subject:'Moved away' },  // moved to a queue no customer uses
+    '7104':{ id:7104,EffectiveId:{ id:'7104' },Status:'open',Queue:{ id:'43' },Subject:'Moved over',Created:'2026-09-01T10:00:00Z' }, // to the other customer's queue
+    '7105':{ id:7105,EffectiveId:{ id:'7105' },Status:'resolved',Queue:{ id:'42' },Subject:'Done quietly',Created:'2026-09-01T10:00:00Z',Resolved:'2026-10-01T10:00:00Z' } };
+  const provider={ getTickets:async () => [],getActiveTicketIds:async () => new Set(['7001','7106']),getTicket:async id => { looked.push(id);return rt[id]; } };
+  const result=await syncCustomer(ids.customer,{ provider });
+  assert.deepEqual(result.tickets_reconciled,{ checked:5,closed:3,updated:2 });
+  assert.ok(!looked.includes('7106'),'a ticket RT still lists as active is not looked up');
+  const row=async id => db.prepare("SELECT customer_id,external_status,normalized_status,status_group FROM external_tickets WHERE external_ticket_id=?").get(id);
+  assert.deepEqual(await row('7101'),{ customer_id:ids.customer,external_status:'merged into 7100',normalized_status:'Excluded',status_group:'closed' });
+  assert.equal((await row('7102')).external_status,'deleted');
+  assert.equal((await row('7103')).external_status,'moved to another queue');
+  assert.deepEqual(await row('7104'),{ customer_id:ids.customerUnassigned,external_status:'open',normalized_status:'Open',status_group:'open' },'now the other customer\'s');
+  assert.deepEqual(await row('7105'),{ customer_id:ids.customer,external_status:'resolved',normalized_status:'Resolved',status_group:'closed' });
+  assert.equal((await row('7106')).status_group,'open');
+  // A problem in the check never fails the sync.
+  const failing=await syncCustomer(ids.customer,{ provider:{ getTickets:async () => [],getActiveTicketIds:async () => { throw new Error('RT busy'); } } });
+  assert.deepEqual(failing.tickets_reconciled,{ checked:0,closed:0,updated:0 });
+  // Leave the later tests the data they expect.
+  await db.prepare("DELETE FROM external_tickets WHERE external_ticket_id IN ('7101','7102','7103','7104','7105','7106')").run();
+  await db.prepare("DELETE FROM customer_ticketing_configurations WHERE customer_id=? AND external_queue_id='43'").run(ids.customerUnassigned);
+  const runs=(await db.prepare('SELECT id FROM ticket_sync_runs ORDER BY id DESC LIMIT 2').all()).map(row => row.id);
+  await db.prepare(`DELETE FROM ticket_sync_runs WHERE id IN (${runs.map(() => '?').join(',')})`).run(...runs);
+});
+
 test('ticket synchronization monitoring summarizes mappings and names run history',async () => {
   const monitoring=await api('/api/ticketing/monitoring',{ token:ids.tokenManager });
   assert.equal(monitoring.status,200);assert.equal(monitoring.data.integration.enabled,true);

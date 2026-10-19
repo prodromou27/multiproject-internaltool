@@ -61,7 +61,7 @@ class RequestTrackerProvider {
     let response;
     try { response=await this.fetchImpl(url,{ headers:{ Accept:'application/json',Authorization:`token ${this.config.api_token}` },redirect:'error',addresses:this.addresses,signal:AbortSignal.timeout(this.timeoutMs) }); }
     catch(error) { throw Object.assign(new Error(connectionError(error,url.hostname)),{ status:502 }); }
-    if (!response.ok) throw Object.assign(new Error(httpError(response.status)),{ status:502 });
+    if (!response.ok) throw Object.assign(new Error(httpError(response.status)),{ status:502,httpStatus:response.status });
     const type=response.headers.get('content-type') || '';
     if (!type.toLowerCase().includes('application/json')) throw Object.assign(new Error('Request Tracker returned an unexpected response type'),{ status:502 });
     try { return await response.json(); } catch { throw Object.assign(new Error('Request Tracker returned invalid JSON'),{ status:502 }); }
@@ -85,7 +85,7 @@ class RequestTrackerProvider {
         signal:AbortSignal.timeout(this.timeoutMs),
       });
     } catch(error) { throw Object.assign(new Error(connectionError(error,url.hostname)),{ status:502 }); }
-    if (!response.ok) throw Object.assign(new Error(httpError(response.status)),{ status:502 });
+    if (!response.ok) throw Object.assign(new Error(httpError(response.status)),{ status:502,httpStatus:response.status });
     const type=response.headers.get('content-type') || '';
     let result=null;
     if (type.toLowerCase().includes('application/json')) { try { result=await response.json(); } catch { /* fall through with no parsed body */ } }
@@ -129,6 +129,31 @@ class RequestTrackerProvider {
       page++;
     }
     throw Object.assign(new Error(`Request Tracker ticket pagination exceeded ${MAX_PAGES} pages`),{ status:413 });
+  }
+
+  /** The ids of a queue's active tickets (new, open, stalled…), to find tickets that left it. */
+  async getActiveTicketIds(queueId) {
+    const id=String(queueId ?? '');
+    if (!/^\d+$/.test(id)) throw Object.assign(new Error('Invalid Request Tracker queue identifier'),{ status:400 });
+    const ids=new Set();let page=1;
+    while (page<=MAX_PAGES) {
+      const result=await this.request('/tickets',{ query:`Queue = ${id} AND Status = '__Active__'`,page,per_page:100 });
+      if (!Array.isArray(result.items)) throw Object.assign(new Error('Request Tracker ticket response is invalid'),{ status:502 });
+      for (const item of result.items) if (item && /^\d+$/.test(String(item.id))) ids.add(String(item.id));
+      const hasPageCount=result.pages!==null && result.pages!==undefined && Number.isFinite(Number(result.pages));
+      if ((hasPageCount && page>=Number(result.pages)) || (!hasPageCount && !result.next_page) || result.items.length===0) return ids;
+      page++;
+    }
+    throw Object.assign(new Error(`Request Tracker ticket pagination exceeded ${MAX_PAGES} pages`),{ status:413 });
+  }
+
+  /** One ticket as RT has it now; null when it no longer exists. A merged ticket comes back
+      as the ticket it was merged into (another id, or EffectiveId pointing there). */
+  async getTicket(ticketId) {
+    const id=String(ticketId ?? '');
+    if (!/^\d+$/.test(id)) throw Object.assign(new Error('Invalid Request Tracker ticket identifier'),{ status:400 });
+    try { return await this.request(`/ticket/${encodeURIComponent(id)}`); }
+    catch(error) { if (error.httpStatus===404) return null; throw error; }
   }
 
   /** RT staff accounts (privileged users), to link to TeamHub users. */
