@@ -1420,6 +1420,11 @@ async function applyMigrations(pool, transaction) {
     );
     CREATE INDEX IF NOT EXISTS idx_vendor_case_updates_case ON vendor_case_updates(case_id);
   `]);
+  migrations.push(['20261121_customer_project_name', `
+    -- A customer's project name: a nickname shown beside its name (Customer 360
+    -- banner, customer list) and found by search. Encrypted like the name.
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS project_name TEXT;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

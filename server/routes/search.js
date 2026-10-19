@@ -67,11 +67,11 @@ async function searchCustomers(req, term, limit, offset = 0) {
   if (req.user.role === 'engineer') {
     // The customers an engineer works with (customerAccess.js), as on Customers and Customer 360.
     const allowed = await accessibleCustomerIds(req.user);
-    rows = (await db.prepare(`SELECT id, name, contact_name, contact_email, contact_phone FROM customers WHERE 1=1${only}`).all(...onlyParams)).filter(row => allowed.has(Number(row.id)));
+    rows = (await db.prepare(`SELECT id, name, project_name, contact_name, contact_email, contact_phone FROM customers WHERE 1=1${only}`).all(...onlyParams)).filter(row => allowed.has(Number(row.id)));
   } else if (req.user.role === 'manager' || req.user.role === 'planner') {
-    rows = await db.prepare(`SELECT id, name, contact_name, contact_email, contact_phone FROM customers WHERE 1=1${only}`).all(...onlyParams);
+    rows = await db.prepare(`SELECT id, name, project_name, contact_name, contact_email, contact_phone FROM customers WHERE 1=1${only}`).all(...onlyParams);
   } else {
-    rows = await db.prepare(`SELECT id, name, contact_name, contact_email, contact_phone FROM customers
+    rows = await db.prepare(`SELECT id, name, project_name, contact_name, contact_email, contact_phone FROM customers
       WHERE (id IN (SELECT p.customer_id FROM projects p JOIN project_assignments pa ON pa.project_id = p.id WHERE pa.user_id = ?)
          OR id IN (SELECT mv.customer_id FROM maintenance_visits mv JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id WHERE mve.user_id = ?))${only}`).all(req.user.id, req.user.id, ...onlyParams);
   }
@@ -83,11 +83,12 @@ async function searchCustomers(req, term, limit, offset = 0) {
     const dec = {
       ...r,
       name:          decrypt(r.name),
+      project_name:  decrypt(r.project_name) || null,
       contact_name:  decrypt(r.contact_name),
       contact_email: decrypt(r.contact_email),
       contact_phone: decrypt(r.contact_phone),
     };
-    const hay = [dec.name, dec.contact_name, dec.contact_email]
+    const hay = [dec.name, dec.project_name, dec.contact_name, dec.contact_email]
       .filter(Boolean).join(' ').toLowerCase();
     if (!needle || hay.includes(needle)) {
       if (matched >= offset) out.push(dec);
@@ -109,9 +110,10 @@ async function matchingCustomerIds(term) {
   const candidates = await candidateCustomerIds(db, needle);
   if (candidates && !candidates.size) return [];
   const rows = candidates
-    ? await db.prepare(`SELECT id, name FROM customers WHERE id IN (${[...candidates].map(() => '?').join(',')})`).all(...candidates)
-    : await db.prepare('SELECT id, name FROM customers').all();
-  return rows.filter(r => decrypt(r.name)?.toLowerCase().includes(needle)).map(r => r.id);
+    ? await db.prepare(`SELECT id, name, project_name FROM customers WHERE id IN (${[...candidates].map(() => '?').join(',')})`).all(...candidates)
+    : await db.prepare('SELECT id, name, project_name FROM customers').all();
+  // The name or the project name (a customer's nickname).
+  return rows.filter(r => [decrypt(r.name), decrypt(r.project_name)].some(v => v?.toLowerCase().includes(needle))).map(r => r.id);
 }
 
 // ── Quick search (top bar dropdown) ──────────────────────────────────────────

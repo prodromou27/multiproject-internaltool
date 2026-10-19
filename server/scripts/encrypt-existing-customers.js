@@ -24,7 +24,7 @@ const { replaceCustomerSearchDocument } = require('../customerSearchIndex');
 
 const DRY = process.argv.includes('--dry');
 // Must match fieldCipher.js's encryptCustomer/decryptCustomer field list exactly.
-const CUSTOMER_FIELDS = ['name', 'contact_name', 'contact_email', 'contact_phone', 'address', 'notes', 'primary_contact', 'location', 'service_notes'];
+const CUSTOMER_FIELDS = ['name', 'contact_name', 'contact_email', 'contact_phone', 'address', 'notes', 'primary_contact', 'location', 'service_notes', 'project_name'];
 
 async function main() {
   if (!isConfigured()) {

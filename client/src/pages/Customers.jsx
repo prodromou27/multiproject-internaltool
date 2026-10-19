@@ -44,7 +44,7 @@ export function EditCustomerDialog({ customer, onSaved, onClose }) {
 }
 
 const CUSTOMER_FIELDS = [
-  ['name', 'Name'], ['customer_code', 'Customer code'], ['active', 'Active', yesNo], ['is_internal', 'Internal', yesNo],
+  ['name', 'Name'], ['project_name', 'Project name'], ['customer_code', 'Customer code'], ['active', 'Active', yesNo], ['is_internal', 'Internal', yesNo],
   ['contact_name', 'Contact'], ['contact_email', 'Email'], ['contact_phone', 'Phone'], ['primary_contact', 'Primary contact'],
   ['address', 'Address'], ['location', 'Location'], ['notes', 'Notes'], ['contract_type', 'Contract type'],
   ['contract_start_date', 'Contract start'], ['contract_end_date', 'Contract end'], ['reporting_frequency', 'Reporting'],
@@ -54,7 +54,7 @@ const CUSTOMER_FIELDS = [
 function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClose }) {
   const toast = useToast();
   const [form, setForm] = useState(() => initial ? { ...initial, is_internal: !!initial.is_internal } : {
-    name: '', contact_name: '', contact_email: '', contact_phone: '', address: '', notes: '',
+    name: '', project_name: '', contact_name: '', contact_email: '', contact_phone: '', address: '', notes: '',
     customer_code: '', active: true, service_activity_enabled: false, primary_contact: '', location: '',
     contract_type: '', contract_start_date: '', contract_end_date: '', reporting_frequency: '',
     included_hours: '', contract_hour_period: '', service_notes: '',
@@ -87,6 +87,9 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
         onKeepMine={() => { edit.keepMine(); submit(); }}
         onUseTheirs={() => { const theirs = edit.takeTheirs(); setForm(f => ({ ...f, ...theirs, is_internal: !!theirs.is_internal })); }} />
       <div className="form-group"><label htmlFor="customer-name">Customer Name *</label><input id="customer-name" value={form.name} onChange={set('name')} required /></div>
+      <div className="form-group"><label htmlFor="customer-project-name">Project name</label>
+        <input id="customer-project-name" value={form.project_name || ''} onChange={set('project_name')} maxLength={120} aria-describedby="customer-project-name-hint" />
+        <small id="customer-project-name-hint" className="text-muted">Optional nickname, shown beside the customer's name and found by search.</small></div>
       <div className="form-row">
         <div className="form-group"><label>Customer Code</label><input value={form.customer_code} onChange={set('customer_code')} placeholder="Internal reference" /></div>
         <div className="form-group">
@@ -291,7 +294,7 @@ export default function Customers() {
 
   const managedRows = [...managed.values()];
   const managedColumns = [
-    { key:'customer',label:'Customer',render:c => <div className="customer-identity"><Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link><span>{managed.get(Number(c.id))?.responsible_team || 'No responsible team'}</span></div> },
+    { key:'customer',label:'Customer',render:c => <div className="customer-identity"><Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link>{c.project_name && <span className="customer-project-name">{c.project_name}</span>}<span>{managed.get(Number(c.id))?.responsible_team || 'No responsible team'}</span></div> },
     { key:'report',label:'Customer report',render:c => <ReportDueBadge due={managed.get(Number(c.id))?.report_due} /> },
     { key:'status',label:'Service status',render:c => { const [label, tone] = SERVICE_STATUS[managed.get(Number(c.id))?.service_status] || ['—', 'neutral']; return <ToneBadge tone={tone}>{label}</ToneBadge>; } },
     { key:'tickets',label:'Open tickets',numeric:true,render:c => <Link to={`/customers/${c.id}/service-profile?section=tickets`}>{managed.get(Number(c.id))?.open_tickets ?? 0}</Link> },
@@ -302,6 +305,7 @@ export default function Customers() {
   const columns = [
     { key:'customer',label:'Customer',render:c => <div className="customer-identity">
       {isManager || isEngineer ? <Link to={`/customers/${c.id}/service-profile`}>{c.name}</Link> : <strong>{c.name}</strong>}
+      {c.project_name && <span className="customer-project-name">{c.project_name}</span>}
       {(!!c.is_managed || !!c.is_internal) && <div className="customer-tags">
         {!!c.is_managed && <ToneBadge tone="managed">Managed</ToneBadge>}
         {!!c.is_internal && <ToneBadge tone="info">In-house</ToneBadge>}
@@ -338,7 +342,7 @@ export default function Customers() {
       } />
 
       <Surface label="Directory filters">
-        <ListSearch value={search} onChange={setSearch} label="Search customers" placeholder="Search customers, contacts, email, or location…" />
+        <ListSearch value={search} onChange={setSearch} label="Search customers" placeholder="Search customers, project names, contacts, email, or location…" />
         <FilterGroup label="View">
           {[
             ['all', 'All', counts.all || 0],

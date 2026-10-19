@@ -172,6 +172,8 @@
 .badge-managed-sync_attention  { background: #fef2f2; color: #991b1b; }
 .badge-managed-active          { background: #f0fdf4; color: #166534; }
 .cs-customer-title h1 { margin:0;font-size:24px;line-height:1.2;letter-spacing:-.4px; }
+/* The project name (the customer's nickname), beside the name and quieter than it. */
+.cs-project-name { font-size:18px;font-weight:500;line-height:1.2;color:var(--gray-500); }
 .cs-customer-meta { display:flex;flex-wrap:wrap;gap:7px 16px;margin-top:9px;color:var(--gray-500);font-size:12.5px; }
 .cs-customer-meta span,.cs-customer-meta a { display:inline-flex;align-items:center;gap:5px;min-width:0;color:inherit;text-decoration:none; }
 .cs-customer-meta a:hover { color:var(--primary); }
@@ -217,6 +219,7 @@
   .cs-customer-header { grid-template-columns:1fr; }
   .cs-customer-header .cs-identity-avatar { width:46px;height:46px; }
   .cs-customer-title h1 { font-size:20px; }
+  .cs-project-name { font-size:16px; }
   .cs-header-actions { grid-column:auto; }
   .cs-header-actions .btn { flex:1 1 auto;justify-content:center; }
   .cs-quick-add { flex:1 1 auto; }

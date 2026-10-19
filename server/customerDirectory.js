@@ -1,4 +1,4 @@
-const SEARCH_FIELDS=Object.freeze(['name','contact_name','contact_email','address','location','customer_code']);
+const SEARCH_FIELDS=Object.freeze(['name','project_name','contact_name','contact_email','address','location','customer_code']);
 const VIEWS=new Set(['all','active','inactive','tracked','managed']);
 
 function parseCustomerListQuery(query={}) {

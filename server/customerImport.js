@@ -204,7 +204,7 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
           const changed = await tx.prepare(`UPDATE customers SET customer_code = ?, contact_name = ?, contact_email = ?, contact_phone = ?, primary_contact = ?, location = ?, address = ?, notes = ?, edit_version = edit_version + 1 WHERE id = ? AND edit_version = ?`)
             .run(merged.customer_code || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.primary_contact, enc.location, enc.address, enc.notes, current.id, current.edit_version);
           if (!changed.changes) throw new Error(`Customer "${row.name}" was changed by someone else during the import — not updated`);
-          await replaceCustomerSearchDocument(tx, { id: current.id, name: current.name, contact_name: merged.contact_name, contact_email: merged.contact_email, address: merged.address, location: merged.location, customer_code: merged.customer_code });
+          await replaceCustomerSearchDocument(tx, { id: current.id, name: current.name, project_name: current.project_name, contact_name: merged.contact_name, contact_email: merged.contact_email, address: merged.address, location: merged.location, customer_code: merged.customer_code });
           await linkTeam(tx, current.id, teamId);
           if (managed) await enableManaged(tx, current.id, teamId, user.id);
           if (contract) await saveContract(tx, current.id, contract, user.id);

@@ -182,6 +182,8 @@ function validateCustomerInput(body, existing = {}) {
     if (body[field] != null && (typeof body[field] !== 'string' || body[field].length > 10000))
       return `${field} must be text of at most 10000 characters`;
   }
+  if (body.project_name != null && (typeof body.project_name !== 'string' || body.project_name.trim().length > 120))
+    return 'Project name must be text of at most 120 characters';
   if (body.included_hours != null && body.included_hours !== ''
     && (!['number', 'string'].includes(typeof body.included_hours) || !Number.isFinite(Number(body.included_hours)) || Number(body.included_hours) < 0))
     return 'Included hours must be a finite non-negative number';
@@ -218,6 +220,7 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
     require_duration, require_ticket_reference, require_technology,
     require_category, require_notes, require_billable_classification, is_internal,
   } = req.body;
+  const project_name = req.body.project_name?.trim() || null;
   if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
   if (is_internal) {
     const conflict = await internalConflict(db);
@@ -231,7 +234,7 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
   if (existing.some(c => c.name?.toLowerCase() === name.trim().toLowerCase())) {
     return res.status(409).json({ error: 'Customer already exists' });
   }
-  const enc = encryptCustomer({ name: name.trim(), contact_name, contact_email, contact_phone, address, notes, primary_contact, location, service_notes });
+  const enc = encryptCustomer({ name: name.trim(), contact_name, contact_email, contact_phone, address, notes, primary_contact, location, service_notes, project_name });
   const result = await db.transaction(async tx => {
     const created=await tx.prepare(`INSERT INTO customers
       (name, contact_name, contact_email, contact_phone, address, notes, created_by,
@@ -239,15 +242,15 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
        contract_type, contract_start_date, contract_end_date, reporting_frequency,
        included_hours, contract_hour_period, service_notes,
        require_duration, require_ticket_reference, require_technology,
-       require_category, require_notes, require_billable_classification, is_internal)
-      VALUES (?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?,?, ?)`)
+       require_category, require_notes, require_billable_classification, is_internal, project_name)
+      VALUES (?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?,?, ?,?)`)
       .run(enc.name, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes, req.user.id,
         customer_code || null, active === false ? 0 : 1, service_activity_enabled ? 1 : 0, enc.primary_contact, enc.location,
         contract_type || null, contract_start_date || null, contract_end_date || null, reporting_frequency || null,
         included_hours != null && included_hours !== '' ? Number(included_hours) : null, contract_hour_period || null, enc.service_notes,
         require_duration ? 1 : 0, require_ticket_reference ? 1 : 0, require_technology ? 1 : 0,
-        require_category ? 1 : 0, require_notes ? 1 : 0, require_billable_classification ? 1 : 0, is_internal ? 1 : 0);
-    await replaceCustomerSearchDocument(tx,{ id:created.lastInsertRowid,name:name.trim(),contact_name,contact_email,address,location,customer_code });
+        require_category ? 1 : 0, require_notes ? 1 : 0, require_billable_classification ? 1 : 0, is_internal ? 1 : 0, enc.project_name);
+    await replaceCustomerSearchDocument(tx,{ id:created.lastInsertRowid,name:name.trim(),project_name,contact_name,contact_email,address,location,customer_code });
     return created;
   });
   res.json({ id: result.lastInsertRowid });
@@ -344,7 +347,9 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
     primary_contact: primary_contact !== undefined ? (primary_contact || null) : dec.primary_contact,
     location:        location        !== undefined ? (location        || null) : dec.location,
     service_notes:   service_notes   !== undefined ? (service_notes   || null) : dec.service_notes,
+    project_name:    req.body.project_name !== undefined ? (req.body.project_name?.trim() || null) : dec.project_name,
   });
+  const projectName = req.body.project_name !== undefined ? (req.body.project_name?.trim() || null) : dec.project_name;
   const saved = await db.transaction(async tx => {
     const result = await tx.prepare(`UPDATE customers SET
       name=COALESCE(?,name), contact_name=?, contact_email=?, contact_phone=?, address=?, notes=?,
@@ -358,7 +363,7 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
       require_duration=COALESCE(?,require_duration), require_ticket_reference=COALESCE(?,require_ticket_reference),
       require_technology=COALESCE(?,require_technology), require_category=COALESCE(?,require_category),
       require_notes=COALESCE(?,require_notes), require_billable_classification=COALESCE(?,require_billable_classification),
-      is_internal=COALESCE(?,is_internal), edit_version=edit_version+1
+      is_internal=COALESCE(?,is_internal), project_name=?, edit_version=edit_version+1
     WHERE id=? AND edit_version=?`)
     .run(enc.name || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.address, enc.notes,
       customer_code !== undefined ? (customer_code || null) : existing.customer_code,
@@ -378,11 +383,12 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
       require_category != null ? (require_category ? 1 : 0) : null,
       require_notes != null ? (require_notes ? 1 : 0) : null,
       require_billable_classification != null ? (require_billable_classification ? 1 : 0) : null,
-      is_internal != null ? (is_internal ? 1 : 0) : null, id, existing.edit_version);
+      is_internal != null ? (is_internal ? 1 : 0) : null, enc.project_name, id, existing.edit_version);
     // Saved by someone else between the read above and this write.
     if (!result.changes) return false;
     await replaceCustomerSearchDocument(tx,{ id,
       name:name!==undefined ? name.trim() : dec.name,
+      project_name:projectName,
       contact_name:contact_name!==undefined ? contact_name : dec.contact_name,
       contact_email:contact_email!==undefined ? contact_email : dec.contact_email,
       address:address!==undefined ? address : dec.address,

@@ -150,6 +150,7 @@ function encryptCustomer(fields) {
     primary_contact: encrypt(fields.primary_contact),
     location:        encrypt(fields.location),
     service_notes:   encrypt(fields.service_notes),
+    project_name:    encrypt(fields.project_name),
   };
 }
 
@@ -171,6 +172,7 @@ function decryptCustomer(row) {
     primary_contact: row.primary_contact !== undefined ? decrypt(row.primary_contact) : undefined,
     location:        row.location        !== undefined ? decrypt(row.location)        : undefined,
     service_notes:   row.service_notes   !== undefined ? decrypt(row.service_notes)   : undefined,
+    project_name:    row.project_name    !== undefined ? decrypt(row.project_name)    : undefined,
   };
 }
 
