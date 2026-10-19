@@ -470,6 +470,7 @@ export const api = {
   slaOverview: () => req('GET', '/sla/overview'),
 
   // calendar
+  calendarHolidays: (from, to, options) => req('GET', `/calendar/holidays?from=${from}&to=${to}`, undefined, options),
   calendar: (month, options) => req('GET', `/calendar?${new URLSearchParams({ month })}`, undefined, options),
 
   // settings / integrations

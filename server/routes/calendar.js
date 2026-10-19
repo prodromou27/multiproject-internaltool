@@ -7,6 +7,15 @@ const { ownTasksSql, ownTasksParams } = require('../taskAccess');
 const { hasPermission } = require('../permissions');
 const placeholders = values => values.map(() => '?').join(',');
 
+// Public holidays between two days (at most 400 days), for calendars that show only some events.
+router.get('/holidays', requireAuth, async (req, res) => {
+  const { from, to } = req.query;
+  const isDay = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+  if (!isDay(from) || !isDay(to) || to < from || Date.parse(to) - Date.parse(from) > 400 * 86400000) return res.status(400).json({ error: 'from and to must be days (YYYY-MM-DD), at most 400 days apart' });
+  const businessCalendar = require('../businessCalendar');
+  res.json(businessCalendar.holidaysBetween(from, to, await businessCalendar.load()));
+});
+
 // Returns all events for a given month: tasks (by deadline), project deadlines, maintenance visits
 router.get('/', requireAuth, async (req, res) => {
   const { month } = req.query; // YYYY-MM
@@ -95,7 +104,11 @@ router.get('/', requireAuth, async (req, res) => {
       ORDER BY sa.follow_up_date, sa.id`).all(start, end, ...cancelled, ...taskDone, ...(isManager ? [] : [req.user.id])))
       .map(row => ({ ...row, type: 'follow_up' }));
   }
-  res.json({ tasks, projects, visits, reports, followUps, service_enabled: serviceEnabled });
+  // Public holidays (Settings → Time & region), shown to everyone on the calendar.
+  const businessCalendar = require('../businessCalendar');
+  const lastDay = new Date(Date.parse(`${end}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+  const holidays = businessCalendar.holidaysBetween(start, lastDay, await businessCalendar.load());
+  res.json({ tasks, projects, visits, reports, followUps, holidays, service_enabled: serviceEnabled });
 });
 
 module.exports = router;

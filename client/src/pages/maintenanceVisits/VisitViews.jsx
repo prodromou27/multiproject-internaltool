@@ -34,6 +34,14 @@ export function VisitCalendar({ onOpen, onPlan }) {
     for (let day = start; out.length < 42; day = addDays(day, 1)) { out.push(day); if (out.length >= 35 && day.slice(0, 7) > month && new Date(`${day}T12:00:00`).getDay() === 0) break; }
     return out;
   }, [month]);
+  // Public holidays on the days shown (Settings → Time & region).
+  const [holidays, setHolidays] = useState(new Map());
+  useEffect(() => {
+    const controller = new AbortController();
+    api.calendarHolidays(cells[0], cells[cells.length - 1], { signal: controller.signal })
+      .then(rows => { if (!controller.signal.aborted) setHolidays(new Map((Array.isArray(rows) ? rows : []).map(h => [h.date, h.name]))); }).catch(() => {});
+    return () => controller.abort();
+  }, [cells]);
   const byDay = useMemo(() => { const map = new Map(); for (const visit of visits || []) { const day = String(visit.scheduled_date).slice(0, 10); if (!map.has(day)) map.set(day, []); map.get(day).push(visit); } return map; }, [visits]);
   return <section className="card vv-calendar" aria-label="Visit calendar">
     <header className="vv-head">
@@ -46,8 +54,10 @@ export function VisitCalendar({ onOpen, onPlan }) {
       {WEEKDAYS.map(day => <div key={day} className="vv-weekday" role="columnheader">{day}</div>)}
       {cells.map(day => {
         const list = byDay.get(day) || [], outside = day.slice(0, 7) !== month;
-        return <div key={day} role="gridcell" className={`vv-day${outside ? ' is-outside' : ''}${day === today ? ' is-today' : ''}`}>
+        const holiday = holidays.get(day);
+        return <div key={day} role="gridcell" className={`vv-day${outside ? ' is-outside' : ''}${day === today ? ' is-today' : ''}${holiday ? ' is-holiday' : ''}`}>
           <div className="vv-date"><span>{Number(day.slice(8))}</span>{onPlan && !outside && day >= today && <button type="button" className="vv-add" aria-label={`Plan a visit on ${dayLabel(day)}`} title="Plan a visit" onClick={() => onPlan({ scheduled_date: day })}><Plus size={12} /></button>}</div>
+          {holiday && <div className="cal-holiday" title={`Public holiday: ${holiday}`}><span className="sr-only">Public holiday: </span>{holiday}</div>}
           {list.map(visit => <button type="button" key={visit.id} className={`vv-visit is-${visit.status}`} onClick={() => onOpen(visit)} title={`${visit.title} · ${visit.customer_name}${visit.engineer_names ? ` · ${visit.engineer_names}` : ''}`}>
             <strong>{visit.title}</strong><span>{visit.customer_name}{visit.engineer_names ? ` · ${visit.engineer_names}` : ''}</span></button>)}
         </div>;

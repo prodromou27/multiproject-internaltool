@@ -3,7 +3,7 @@ import { LoadError } from '../../components/LoadError';
 import { Save, Loader2, Globe, Clock } from 'lucide-react';
 import { api } from '../../api';
 import { useToast } from '../../components/Toast';
-import { setLocaleConfig } from '../../utils/locale';
+import { setLocaleConfig, formatDateTime as fmtDateTime } from '../../utils/locale';
 import { BusinessCalendarSettings } from './BusinessCalendarSettings';
 
 /* ── Localization Tab ────────────────────────────────────── */
@@ -62,7 +62,7 @@ function ServerClock({ cfg, set, saved }) {
       {clock && <div className={`server-clock-status ${tone}`} role="status">
         <div><span>Server time ({clock.timezone.replaceAll('_', ' ')})</span><strong>{clock.local_time}</strong></div>
         <div><span>Last check</span><strong>{!ntp ? 'Not checked yet' : ntp.error ? 'Could not reach the NTP server' : drift <= (clock.warn_offset_ms ?? 5000) ? `In sync (${ntp.offset_ms > 0 ? '+' : ''}${ntp.offset_ms} ms)` : `Off by ${(ntp.offset_ms / 1000).toFixed(1)} s`}</strong>
-          {ntp && <small>{ntp.server} · {new Date(ntp.checked_at).toLocaleString()}{ntp.error ? ` · ${ntp.error}` : ''}</small>}</div>
+          {ntp && <small>{ntp.server} · {fmtDateTime(ntp.checked_at)}{ntp.error ? ` · ${ntp.error}` : ''}</small>}</div>
         <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={checkNow}>{busy ? 'Checking…' : 'Check now'}</button>
       </div>}
       {drift != null && drift > (clock?.warn_offset_ms ?? 5000) && <p className="text-sm server-clock-advice">Fix the clock on the server host: turn on time synchronisation (for example <code>timedatectl set-ntp true</code> on Linux, or the Windows Time service), pointing at {ntp.server}. Containers take their time from the host.</p>}

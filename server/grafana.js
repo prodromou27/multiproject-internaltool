@@ -345,4 +345,17 @@ async function sync({ store = db, fetchImpl, validateUrl, userId = null } = {}) 
   return result;
 }
 
-module.exports = { KEY, DEFAULTS, settings, saveSettings, publicSettings, takesOf, dashboardTakes, hostGroupsFromDashboard, suggest, query, rowsOf, versionOf, devicesFrom, softwareVersionOf, takeMapFromDashboard, review, apply, sync };
+
+/* What each device runs, read from Grafana every few hours (GRAFANA_SYNC_HOURS, 4 unless
+   set) when Grafana is set up; soon after a start when one is due. */
+const SYNC_HOURS = Math.max(1, Math.min(24, Number(process.env.GRAFANA_SYNC_HOURS) || 4));
+function startSchedule() {
+  return require('./periodic').everyFewHours('grafana', { hours: SYNC_HOURS, lastRunAt: async () => (await settings()).last_sync_at,
+    run: async () => {
+      const s = await settings();
+      if (!s.base_url || !s.token) return;
+      console.log('[grafana] sync:', JSON.stringify(await sync()));
+    } });
+}
+
+module.exports = { startSchedule, KEY, DEFAULTS, settings, saveSettings, publicSettings, takesOf, dashboardTakes, hostGroupsFromDashboard, suggest, query, rowsOf, versionOf, devicesFrom, softwareVersionOf, takeMapFromDashboard, review, apply, sync };

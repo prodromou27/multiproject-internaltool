@@ -129,12 +129,11 @@ async function lastSync(store = db) {
   return { at: value.last_sync_at || null, result: value.last_result || null, running: !!running };
 }
 
-/** Every morning at 06:00 (organisation time), and soon after the first start. */
+/** Every few hours (SOFTWARE_CHECK_HOURS, 4 unless set), and soon after a start when one is due. */
+const CHECK_HOURS = Math.max(1, Math.min(24, Number(process.env.SOFTWARE_CHECK_HOURS) || 4));
 function startSchedule() {
-  const run = () => syncAll().then(result => console.log('[software] versions:', JSON.stringify(result))).catch(error => console.error('[software] versions:', error.message));
-  lastSync().then(last => { if (!last.at) setTimeout(run, 90 * 1000).unref?.(); }).catch(() => {});
-  const next = () => { const now = new Date(), at = appTime.nextLocalTime(6, 0, now); setTimeout(() => { run(); next(); }, at - now).unref?.(); };
-  next();
+  return require('../periodic').everyFewHours('software', { hours: CHECK_HOURS, lastRunAt: async () => (await lastSync()).at,
+    run: async () => console.log('[software] versions:', JSON.stringify(await syncAll())) });
 }
 
 module.exports = { SOURCES, validateConfig, syncProduct, syncFeed, syncAll, storeReleases, lastSync, startSchedule, isRunning: () => !!running };

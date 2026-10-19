@@ -106,3 +106,32 @@ test('SLA working days skip holidays, and a 24x7 contract never pauses', pgOnly,
   await db.prepare("INSERT INTO customer_contracts (customer_id, reference, start_date, end_date, service_level, created_by) VALUES (?, 'C-24', ?, ?, '24x7', ?)").run(ids.customer, appTime.addDays(today, -400), appTime.addDays(today, 300), ids.manager);
   assert.equal(await daysOf(), 14, 'every day counts for a 24x7 customer');
 });
+
+test('public holidays appear in the calendars: the Calendar month, the visits calendar and the calendar feed', async () => {
+  const year = Number(appTime.today().slice(0, 4)) + 1;
+  assert.equal((await setCalendar({ working_days: [1, 2, 3, 4, 5], holidays: [
+    { date: '2020-12-25', name: 'Christmas Day', yearly: true },
+    { date: `${year}-12-28`, name: 'Company day', yearly: false },
+  ] })).status, 200);
+
+  // The Calendar page's month, for anyone who can open the calendar.
+  const month = (await api(`/api/calendar?month=${year}-12`, { token: ids.tokenEnabled })).data;
+  assert.deepEqual(month.holidays, [{ date: `${year}-12-25`, name: 'Christmas Day' }, { date: `${year}-12-28`, name: 'Company day' }], 'a yearly one on this year\'s date');
+  assert.deepEqual((await api(`/api/calendar?month=${year}-11`, { token: ids.tokenEnabled })).data.holidays, []);
+
+  // The visits calendar asks for the days it shows.
+  const range = await api(`/api/calendar/holidays?from=${year}-12-20&to=${year + 1}-01-05`, { token: ids.tokenEnabled });
+  assert.deepEqual(range.data.map(h => h.date), [`${year}-12-25`, `${year}-12-28`]);
+  assert.equal((await api(`/api/calendar/holidays?from=${year}-01-01&to=${year + 2}-01-01`, { token: ids.tokenEnabled })).status, 400, 'at most 400 days');
+  assert.equal((await api('/api/calendar/holidays?from=soon&to=later', { token: ids.tokenEnabled })).status, 400);
+
+  // The calendar feed (Outlook): all-day events, shown as free time. PostgreSQL only: pg-mem cannot run the feed's task query.
+  if (!process.env.TEST_DATABASE_URL) return;
+  const token = 'holiday-feed-token';
+  await db.prepare('UPDATE users SET ical_token_hash = ? WHERE id = ?').run(require('crypto').createHash('sha256').update(token).digest('hex'), ids.manager);
+  const feed = await (await fetch(`${require('./lib/activityFixture').baseUrl}/api/calendar/ical/${token}.ics`)).text();
+  const nextChristmas = `${appTime.today() > `${appTime.today().slice(0, 4)}-12-25` ? year : year - 1}1225`;
+  const event = ['BEGIN:VEVENT', `UID:holiday-${nextChristmas}@solutionshub`, 'SUMMARY:Christmas Day (public holiday)', `DTSTART;VALUE=DATE:${nextChristmas}`].join('\r\n');
+  assert.ok(feed.includes(event), feed);
+  assert.ok(feed.includes('TRANSP:TRANSPARENT'));
+});

@@ -3,6 +3,7 @@ import { Lock, CheckCircle2, AlertTriangle, BarChart2 } from 'lucide-react';
 import { api } from '../../api';
 import { fmtDate, isOverdue, Modal } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
+import { toDate } from '../../utils/locale';
 import { useConfirm } from '../../components/Confirm';
 
 /* ── Gantt Tab ────────────────────────────────────────────── */
@@ -23,7 +24,7 @@ export function GanttTab({ project, tasks, milestones = [] }) {
   );
 
   // Build timeline range
-  const allDates = rows.map(t => new Date(t.created_at));
+  const allDates = rows.map(t => toDate(t.created_at));
   const allEnds  = [...rows.map(t => new Date(t.deadline)), ...mRows.map(m => new Date(m.due_date))];
   if (project.deadline) allEnds.push(new Date(project.deadline));
 

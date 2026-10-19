@@ -42,3 +42,4 @@
 .vv-timeoff { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 10px 0 14px; border-bottom: 1px solid var(--gray-200); margin-bottom: 12px; }
 .vv-timeoff label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--gray-600); }
 @media (max-width: 720px) { .vv-day { min-height: 70px; } .vv-visit span { display: none; } }
+.vv-day.is-holiday { background: var(--gray-50); }

@@ -3,6 +3,7 @@ import { Camera, KeyRound, User, Save, Trash2, CheckCircle, AlertCircle, ShieldC
 import { api } from '../api';
 import { useAuth } from '../App';
 import { useConfirm } from '../components/Confirm';
+import { toDate } from '../utils/locale';
 import { Toggle } from './admin/shared';
 
 /* ── Inline alert helper ─────────────────────────────────── */
@@ -169,7 +170,7 @@ function PersonalInfoSection({ user, onRefresh }) {
           </p>
           <div className="u-4ac3eb4">
             Role: <strong className="u-6fedee3">{user.role}</strong>
-            {user.created_at && ` · Joined ${new Date(user.created_at).toLocaleDateString([], { month: 'short', year: 'numeric' })}`}
+            {user.created_at && ` · Joined ${toDate(user.created_at).toLocaleDateString([], { month: 'short', year: 'numeric' })}`}
           </div>
         </div>
       ) : (
@@ -213,7 +214,7 @@ function PersonalInfoSection({ user, onRefresh }) {
             </button>
             <span className="u-5be3ef4">
               Role: <strong className="u-6fedee3">{user.role}</strong>
-              {user.created_at && ` · Joined ${new Date(user.created_at).toLocaleDateString([], { month: 'short', year: 'numeric' })}`}
+              {user.created_at && ` · Joined ${toDate(user.created_at).toLocaleDateString([], { month: 'short', year: 'numeric' })}`}
             </span>
           </div>
         </form>

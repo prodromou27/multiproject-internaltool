@@ -101,9 +101,18 @@ export function formatDate(value, cfg = config) {
 }
 
 /** Formats an actual timestamp (created_at, etc.) converted into the configured timezone. */
+/* The server stores times as UTC text without a zone ("2026-10-19 09:00:00", app_now()).
+   A browser reads such text as its own local time, which shifted every time by the
+   time-zone offset; it is read as UTC here. Values with a zone (…Z, +03:00) are as given. */
+const ZONELESS = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?$/;
+export function toDate(value) {
+  if (typeof value === 'string' && ZONELESS.test(value.trim())) return new Date(`${value.trim().replace(' ', 'T')}Z`);
+  return new Date(value);
+}
+
 export function formatDateTime(value, cfg = config) {
   if (!value) return '—';
-  const date = new Date(value);
+  const date = toDate(value);
   if (isNaN(date)) return '—';
   let parts;
   try {

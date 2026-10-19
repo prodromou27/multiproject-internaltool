@@ -323,7 +323,8 @@ const keyFile  = path.join(certDir, 'key.pem');
       activityBotApi.setBase(`https://127.0.0.1:${HTTPS_PORT}`);
       startReminderSchedules();
       require('./cve/sync').startCveSchedule(); // CVEs from NVD and CISA each morning
-      require('./software/sync').startSchedule(); // latest software versions each morning
+      require('./software/sync').startSchedule(); // latest software versions every few hours
+      require('./grafana').startSchedule(); // what each device runs, from Grafana, every few hours
       liveUpdates.startListening();
       initScheduler();
     }));
@@ -348,7 +349,8 @@ const keyFile  = path.join(certDir, 'key.pem');
       activityBotApi.setBase(`http://127.0.0.1:${PORT}`);
       startReminderSchedules();
       require('./cve/sync').startCveSchedule(); // CVEs from NVD and CISA each morning
-      require('./software/sync').startSchedule(); // latest software versions each morning
+      require('./software/sync').startSchedule(); // latest software versions every few hours
+      require('./grafana').startSchedule(); // what each device runs, from Grafana, every few hours
       liveUpdates.startListening();
       initScheduler();
     }));

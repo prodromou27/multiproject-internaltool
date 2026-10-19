@@ -73,6 +73,16 @@ function dayOff(date, calendar) {
 }
 const isWorkingDay = (date, calendar) => !dayOff(date, calendar);
 
+/** The holidays from `start` to `end` (inclusive, YYYY-MM-DD), yearly ones on each year's date: [{ date, name }]. */
+function holidaysBetween(start, end, calendar) {
+  const out = [];
+  for (let day = start; day <= end; day = addDay(day)) {
+    const holiday = holidayOn(day, calendar);
+    if (holiday) out.push({ date: day, name: holiday.name });
+  }
+  return out;
+}
+
 /** Working days after `start` up to and including `end`; `allDays` counts every day (24x7). */
 function workingDaysBetween(start, end, calendar, { allDays = false } = {}) {
   const from = String(start).slice(0, 10), to = String(end).slice(0, 10);
@@ -111,4 +121,4 @@ async function customerModes(store = db, today) {
   return { modeFor: customerId => modes.get(Number(customerId)) || 'business' };
 }
 
-module.exports = { KEY, DEFAULTS, load, validate, save, holidayOn, dayOff, isWorkingDay, workingDaysBetween, contractModes, saveContractModes, customerModes, defaultMode };
+module.exports = { KEY, DEFAULTS, load, validate, save, holidayOn, holidaysBetween, dayOff, isWorkingDay, workingDaysBetween, contractModes, saveContractModes, customerModes, defaultMode };

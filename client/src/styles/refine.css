@@ -589,3 +589,6 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; }
 /* A button that reads as a link (opens something in place). */
 .btn-link { background: none; border: 0; padding: 0; font: inherit; color: var(--primary); cursor: pointer; text-align: left; }
 .btn-link:hover { text-decoration: underline; }
+
+/* A public holiday named in its calendar day (Calendar, visits calendar). */
+.cal-holiday { font-size: 11px; font-weight: 600; color: var(--tone-danger-text); margin: 2px 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

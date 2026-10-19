@@ -27,6 +27,15 @@ test('formatDateTime converts into the configured timezone and time format', () 
   assert.equal(formatDateTime('garbage', cfg({})), '—');
 });
 
+test('a stored time without a zone (UTC text from the server) is read as UTC, not as local time in the browser', () => {
+  // app_now() writes "2026-10-19 09:00:00" in UTC: 12:00 in Nicosia (UTC+3 in October), whatever the browser's zone.
+  assert.equal(formatDateTime('2026-10-19 09:00:00', cfg({ timezone: 'Asia/Nicosia', time_format: '24h' })), '19/10/2026, 12:00');
+  assert.equal(formatDateTime('2026-10-19T09:00:00', cfg({ timezone: 'Asia/Nicosia', time_format: '24h' })), '19/10/2026, 12:00');
+  assert.equal(formatDateTime('2026-10-19 09:00:00.123', cfg({ timezone: 'UTC', time_format: '24h' })), '19/10/2026, 09:00');
+  // With a zone, as given.
+  assert.equal(formatDateTime('2026-10-19T09:00:00+03:00', cfg({ timezone: 'Asia/Nicosia', time_format: '24h' })), '19/10/2026, 09:00');
+});
+
 test('formatDateTime falls back to local time instead of throwing on an unknown timezone', () => {
   assert.doesNotThrow(() => formatDateTime('2026-09-22T00:30:00Z', cfg({ timezone: 'Not/AZone' })));
 });

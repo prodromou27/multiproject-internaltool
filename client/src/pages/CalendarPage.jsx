@@ -230,6 +230,8 @@ export default function CalendarPage() {
                 {cells.map((day, idx) => {
                   const dateStr  = day ? `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : null;
                   const events   = dateStr ? (byDay[dateStr] || []) : [];
+                  // A public holiday (Settings → Time & region): named in the day, shaded like a weekend.
+                  const holiday  = dateStr ? (data.holidays || []).find(h => h.date === dateStr) : null;
                   const isToday  = dateStr === todayStr;
                   const isWeekend = idx % 7 === 5 || idx % 7 === 6;
                   const isPast   = dateStr && dateStr < todayStr;
@@ -243,7 +245,7 @@ export default function CalendarPage() {
                       onDragOver={dateStr ? e => { e.preventDefault(); setDragOverDate(dateStr); } : undefined}
                       onDragLeave={() => setDragOverDate(null)}
                       onDrop={dateStr ? e => { e.preventDefault(); reschedule(draggedEvent, dateStr); } : undefined}
-                      className={["u-5aec1b0", (dragOverDate === dateStr ? 'u-89f9bf0' : (!day ? 'u-85caad1' : (isWeekend ? 'u-85caad1' : 'u-a5acbfa'))), (canCreate ? 'u-2a9295c' : '')].filter(Boolean).join(' ')}
+                      className={["u-5aec1b0", (dragOverDate === dateStr ? 'u-89f9bf0' : (!day ? 'u-85caad1' : (isWeekend || holiday ? 'u-85caad1' : 'u-a5acbfa'))), (canCreate ? 'u-2a9295c' : '')].filter(Boolean).join(' ')}
                       // Hover hint for managers/planners on active days
                       onMouseEnter={canCreate ? e => {
                         const addBtn = e.currentTarget.querySelector('.cal-add-btn');
@@ -270,6 +272,7 @@ export default function CalendarPage() {
                               </button>
                             )}
                           </div>
+                          {holiday && <div className="cal-holiday" title={`Public holiday: ${holiday.name}`}><span className="sr-only">Public holiday: </span>{holiday.name}</div>}
 
                           {events.slice(0, 3).map((e, i) => (
                             <EventChip key={i} event={e} onClick={setSelected}

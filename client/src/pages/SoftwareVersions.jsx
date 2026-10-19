@@ -36,7 +36,7 @@ function Product({ product, today, canManage }) {
   return <Surface actions={canManage && product.releases.length ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => setStarting(true)}>Start remediation campaign</button> : null} title={product.name} description={`${product.vendor ? `${product.vendor} · ` : ''}${SOURCE[product.source] || product.source}${product.last_checked_at ? ` · checked ${fmtDateTime(product.last_checked_at)}` : ''}`}>
     {starting && <CampaignDialog source={{ source_type: 'software', source_ref: product.id }} onClose={() => setStarting(false)} onCreated={id => navigate(`/vulnerabilities?tab=campaigns&campaign=${id}`)} />}
     {product.last_error && <p className="error-msg sv-error" role="alert">The last check failed: {product.last_error}</p>}
-    {!product.releases.length ? <p className="text-muted">{product.source === 'manual' ? 'No versions entered yet.' : 'Not read yet. It is checked every morning, or use Check now.'}</p> :
+    {!product.releases.length ? <p className="text-muted">{product.source === 'manual' ? 'No versions entered yet.' : 'Not read yet. It is checked every 4 hours, or use Check now.'}</p> :
       <div className="table-wrap"><table className="sv-table">
         <thead><tr><th scope="col">Version line</th><th scope="col">Latest</th><th scope="col">Recommended</th><th scope="col">Support ends</th><th scope="col">End of life</th><th scope="col">Status</th></tr></thead>
         <tbody>{product.releases.map(release => {
@@ -100,7 +100,7 @@ export default function SoftwareVersions() {
   const today = businessToday();
   return <div className="page sv-page">
     <PageHeader title="Software versions"
-      meta={data?.last_sync?.at ? `The latest versions of the products we support, checked every morning. Last checked ${fmtDateTime(data.last_sync.at)}.` : 'The latest versions of the products we support, checked every morning.'}
+      meta={data?.last_sync?.at ? `The latest versions of the products we support, checked every 4 hours. Last checked ${fmtDateTime(data.last_sync.at)}.` : 'The latest versions of the products we support, checked every morning.'}
       actions={<>
         {manager && <HeaderMenu>
           <button type="button" disabled={checking || data?.last_sync?.running} onClick={checkNow}><RefreshCw size={14} className={checking ? 'spin' : ''} aria-hidden="true" /> {checking ? 'Checking…' : 'Check now'}</button>

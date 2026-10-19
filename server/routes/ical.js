@@ -159,6 +159,21 @@ async function feed(raw, req, res) {
     lines.push('END:VEVENT');
   }
 
+  // Public holidays (Settings → Time & region): the last month and the year ahead, shown as free time.
+  const businessCalendar = require('../businessCalendar');
+  const dayIso = offset => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+  for (const holiday of businessCalendar.holidaysBetween(dayIso(-31), dayIso(366), await businessCalendar.load())) {
+    const next = new Date(`${holiday.date}T00:00:00Z`); next.setUTCDate(next.getUTCDate() + 1);
+    lines.push('BEGIN:VEVENT');
+    lines.push(fold(`UID:holiday-${holiday.date.replace(/-/g, '')}@solutionshub`));
+    lines.push(fold(`SUMMARY:${icalEsc(holiday.name)} (public holiday)`));
+    lines.push(`DTSTART;VALUE=DATE:${holiday.date.replace(/-/g, '')}`);
+    lines.push(`DTEND;VALUE=DATE:${next.toISOString().slice(0, 10).replace(/-/g, '')}`);
+    lines.push('TRANSP:TRANSPARENT');
+    lines.push(`DTSTAMP:${icalDateTime(new Date())}`);
+    lines.push('END:VEVENT');
+  }
+
   lines.push('END:VCALENDAR');
 
   res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
