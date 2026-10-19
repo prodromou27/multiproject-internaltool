@@ -34,7 +34,7 @@ test('managers pick each user\'s RT account and see the tickets each resolved', 
   api.override('GET /api/ticketing/settings', () => ({ body: { enabled: true, base_url: 'https://rt.example', sync_interval_minutes: 10 } }));
   api.override('GET /api/ticketing/monitoring', () => ({ body: { integration: { enabled: true }, summary: {}, customers: [] } }));
   api.override('GET /api/ticketing/sync-runs', () => ({ body: { rows: [], total: 0, page: 1, page_size: 25 } }));
-  await page.goto('/settings/ticketing');
+  await page.goto('/settings/ticketing?step=engineers');
   // Nick's TeamHub email is also his RT email; Maria's is not.
   await page.getByRole('button', { name: 'Link 1 by matching email' }).click();
   await expect.poll(() => saved).toEqual([[8, 'nnetwork']]);

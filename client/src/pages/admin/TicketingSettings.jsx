@@ -8,10 +8,12 @@ import RequestTrackerIntegration from './RequestTrackerIntegration';
 import TicketMappingConfiguration from './TicketMappingConfiguration';
 import TicketSyncMonitoring from './TicketSyncMonitoring';
 import TicketOwners from './TicketOwners';
+import { TabPanel, Tabs } from '../../components/EnterpriseUI';
+import { useUrlTab } from '../../hooks/useSavedFilter';
 
-/* Settings → Ticketing: everything about Request Tracker in one place —
-   the connection, which queue belongs to which customer, how RT statuses and
-   priorities map onto the app's, and how syncing is going. */
+/* Settings → Integrations → Request Tracker: the connection, which queue belongs
+   to which customer, the engineers' RT accounts, how RT statuses and priorities
+   map onto the app's, and how syncing is going — as five steps, one at a time. */
 
 const sectionStyle = { background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '20px 24px', marginBottom: 20 };
 const labelStyle = { fontSize: 12, fontWeight: 600, color: 'var(--gray-600)', marginBottom: 6, display: 'block' };
@@ -99,31 +101,37 @@ function CustomerQueues() {
   </>;
 }
 
+// The five steps, one on screen at a time (the step is kept in the address as ?step=).
+const STEPS = [
+  { key: 'connection', label: '1. Connection' },
+  { key: 'queues', label: '2. Customer queues' },
+  { key: 'engineers', label: '3. Engineers' },
+  { key: 'mapping', label: '4. Status mapping' },
+  { key: 'health', label: '5. Sync health' },
+];
+
 export default function TicketingSettings() {
   const toast = useToast();
+  const [step, setStep] = useUrlTab(STEPS.map(s => s.key), 'connection', 'step');
   return <div>
-    <section style={sectionStyle} aria-label="Request Tracker connection">
-      <h3 className="ticketing-heading">1. Connection</h3>
-      <p className="text-muted text-sm">The Request Tracker server the app reads tickets from.</p>
-      <RequestTrackerIntegration sectionStyle={{}} labelStyle={labelStyle} />
-    </section>
-    <section style={sectionStyle} aria-label="Customer queues">
-      <h3 className="ticketing-heading">2. Customer queues</h3>
-      <p className="text-muted text-sm">Which RT queue holds each customer's tickets. A queue can belong to one customer only. The same choice appears in each customer's Service Configuration.</p>
-      <CustomerQueues />
-    </section>
-    <section style={sectionStyle} aria-label="Engineers in Request Tracker">
-      <h3 className="ticketing-heading">3. Engineers in Request Tracker</h3>
-      <p className="text-muted text-sm">Each TeamHub user's account in Request Tracker. Their RT tickets are then read from every queue, whether or not it belongs to a customer, for Workload → Tickets resolved.</p>
-      <TicketOwners />
-    </section>
-    <section style={sectionStyle} aria-label="Status and priority mapping">
-      <h3 className="ticketing-heading">4. Status and priority mapping</h3>
-      <TicketMappingConfiguration />
-    </section>
-    <section style={sectionStyle} aria-label="Sync health">
-      <h3 className="ticketing-heading">5. Sync health</h3>
-      <TicketSyncMonitoring standalone onMessage={toast.success} />
-    </section>
+    <Tabs variant="pill" className="mb-12" label="Request Tracker steps" items={STEPS} value={step} onChange={setStep} />
+    <TabPanel label="Request Tracker steps" value={step}>
+      <section style={sectionStyle} aria-label={STEPS.find(s => s.key === step).label.replace(/^\d\. /, '')}>
+        {step === 'connection' && <>
+          <p className="text-muted text-sm">The Request Tracker server the app reads tickets from.</p>
+          <RequestTrackerIntegration sectionStyle={{}} labelStyle={labelStyle} />
+        </>}
+        {step === 'queues' && <>
+          <p className="text-muted text-sm">Which RT queue holds each customer's tickets. A queue can belong to one customer only. The same choice appears in each customer's Service Configuration.</p>
+          <CustomerQueues />
+        </>}
+        {step === 'engineers' && <>
+          <p className="text-muted text-sm">Each TeamHub user's account in Request Tracker. Their RT tickets are then read from every queue, whether or not it belongs to a customer, for Workload → Tickets resolved.</p>
+          <TicketOwners />
+        </>}
+        {step === 'mapping' && <TicketMappingConfiguration />}
+        {step === 'health' && <TicketSyncMonitoring standalone onMessage={toast.success} />}
+      </section>
+    </TabPanel>
   </div>;
 }

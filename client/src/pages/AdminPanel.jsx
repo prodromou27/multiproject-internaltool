@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { FolderKanban, Users as UsersIcon, ShieldCheck, HardDrive, ScrollText, Globe, LayoutDashboard, Tag, Building2, AtSign } from 'lucide-react';
 import { PageHeader } from '../components/PageLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { TabPanel, Tabs } from '../components/EnterpriseUI';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -51,7 +52,7 @@ const SECTIONS = {
   weekly_report: { label: 'Weekly report', desc: 'When the weekly report is sent, to whom, and a preview' },
   email: { label: 'Email (SMTP)', desc: 'The mail server for every email the app sends: reports, reminders, password resets' },
   notifications: { label: 'Notifications', desc: 'The shared Teams channel and Webex space, which events they receive, and alerts about the system' },
-  ticketing: { label: 'Ticketing', desc: 'Request Tracker connection, customer queues, status mapping and sync health' },
+  ticketing: { label: 'Request Tracker', desc: 'The connection, customer queues, engineers, status mapping and sync health' },
   grafana: { label: 'Grafana devices', desc: 'Device versions and models from Grafana, matched to customer assets' },
   activity_bot: { label: 'Activity bot', desc: 'Engineers log service activities by chatting with a Webex or Teams bot' },
   localization: { label: 'Time & region', desc: 'Time zone, server clock, language and date formats' },
@@ -125,6 +126,7 @@ export default function AdminPanel() {
   const part = new URLSearchParams(location.search).get('part');
   const initialTab = TAB_KEYS.has(section) ? section : PAGE_OF[section] || 'overview';
   const [tab, setTab] = useState(initialTab);
+  // The section shown on a page with several (its tab); null = the page's first.
   const [focus, setFocus] = useState(TAB_KEYS.has(section) ? null : section || null);
   const [tabSearch, setTabSearch] = useState('');
   const [sectionStatus, setSectionStatus] = useState({});
@@ -135,15 +137,10 @@ export default function AdminPanel() {
     if (typeof moved === 'string') { navigate(moved, { replace: true }); return; }
     if (moved) { navigate(`/settings/${moved[0]}${moved[1] ? `?part=${moved[1]}` : ''}`, { replace: true }); return; }
     if (TAB_KEYS.has(section)) { setTab(section); setFocus(null); return; }
-    // A section's own address (e.g. /settings/teams): its page, scrolled to it.
+    // A section's own address (e.g. /settings/teams): its page, with that tab open.
     if (PAGE_OF[section]) { setTab(PAGE_OF[section]); setFocus(section); return; }
     navigate('/settings', { replace: true });
   }, [section, navigate]);
-  useEffect(() => {
-    if (!focus) return undefined;
-    const timer = setTimeout(() => document.getElementById(`settings-${focus}`)?.scrollIntoView({ block: 'start' }), 150);
-    return () => clearTimeout(timer);
-  }, [focus, tab]);
 
   useEffect(() => {
     let mounted = true;
@@ -158,12 +155,16 @@ export default function AdminPanel() {
     return () => { mounted = false; };
   }, []);
 
-  function selectTab(key) {
-    setTab(key); setFocus(null);
-    navigate(key === 'overview' ? '/settings' : `/settings/${key}`);
+  // A page, optionally at one of its sections; each has its own address.
+  function selectTab(key, sectionKey = null) {
+    const page = TABS.find(t => t.key === key);
+    const first = !sectionKey || sectionKey === page?.sections[0];
+    setTab(key); setFocus(first ? null : sectionKey);
+    navigate(key === 'overview' ? '/settings' : `/settings/${first ? key : sectionKey}`);
   }
 
   const activeTab = TABS.find(t => t.key === tab) || TABS[0];
+  const activeSection = focus && activeTab.sections.includes(focus) ? focus : activeTab.sections[0];
   function renderSection(key) {
     switch (key) {
       case 'overview': return <OverviewTab />;
@@ -224,7 +225,7 @@ export default function AdminPanel() {
                   <button
                     key={key}
                     type="button"
-                    onClick={() => selectTab(key)}
+                    onClick={() => selectTab(key, q ? TABS.find(t => t.key === key).sections.find(s => SECTIONS[s].label.toLowerCase().includes(q)) : null)}
                     aria-current={tab===key ? 'page' : undefined}
                     className={'settings-nav-item' + (tab === key ? ' active' : '')}
                   >
@@ -251,18 +252,16 @@ export default function AdminPanel() {
             <SettingsStatusPill status={sectionStatus[activeTab.key]} />
           </div>
 
-          {activeTab.sections.length > 1 && <nav className="settings-on-page text-sm" aria-label="On this page">On this page: {activeTab.sections.map((key, index) => <span key={key}>{index ? ' · ' : ''}<a href={`#settings-${key}`} onClick={event => { event.preventDefault(); document.getElementById(`settings-${key}`)?.scrollIntoView({ block: 'start' }); }}>{SECTIONS[key].label}</a></span>)}</nav>}
+          {/* A page with several sections shows them as tabs, one on screen at a time. */}
+          {activeTab.sections.length > 1 && <Tabs variant="line" className="settings-section-tabs" label={`${activeTab.label} sections`}
+            items={activeTab.sections.map(key => ({ key, label: SECTIONS[key].label }))} value={activeSection} onChange={key => selectTab(activeTab.key, key)} />}
           <Suspense fallback={<p className="text-muted" role="status">Loading…</p>}>
-          {activeTab.sections.map(key => {
-            // Each section on its own: one that fails does not take the page with it.
-            const body = <ErrorBoundary compact what={SECTIONS[key].label} resetKey={tab}>{renderSection(key)}</ErrorBoundary>;
-            if (activeTab.sections.length === 1) return <div key={key} id={`settings-${key}`}>{body}</div>;
-            return <section key={key} id={`settings-${key}`} className="settings-section" aria-labelledby={`settings-${key}-title`}>
-              <h3 id={`settings-${key}-title`} className="settings-subheading">{SECTIONS[key].label}</h3>
-              <p className="text-sm text-muted">{SECTIONS[key].desc}</p>
-              {body}
-            </section>;
-          })}
+          {activeTab.sections.length > 1
+            ? <TabPanel label={`${activeTab.label} sections`} value={activeSection} className="settings-section">
+                <p className="text-sm text-muted settings-section-desc">{SECTIONS[activeSection].desc}</p>
+                <ErrorBoundary compact what={SECTIONS[activeSection].label} resetKey={`${tab}:${activeSection}`}>{renderSection(activeSection)}</ErrorBoundary>
+              </TabPanel>
+            : <ErrorBoundary compact what={SECTIONS[activeSection].label} resetKey={tab}>{renderSection(activeSection)}</ErrorBoundary>}
           </Suspense>
         </section>
       </div>
@@ -270,8 +269,8 @@ export default function AdminPanel() {
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .settings-section + .settings-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--gray-200); }
-        .settings-on-page { margin: -4px 0 16px; color: var(--gray-500); }
-        .settings-on-page a { text-decoration: underline; }
+        .settings-section-tabs { margin-bottom: 4px; }
+        .settings-section-desc { margin: 10px 0 16px; }
         .settings-shell {
           display: grid;
           grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
