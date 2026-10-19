@@ -3,7 +3,7 @@
 # One-command deploy for a single machine.
 #
 #   ./deploy/deploy.sh dev      # DEV box  -> tracks the 'dev' branch
-#   ./deploy/deploy.sh prod     # PROD box -> tracks the 'prod' branch
+#   ./deploy/deploy.sh prod     # PROD box -> tracks the 'LIVE' branch
 #
 # What it does: pulls the right branch, rebuilds the image, brings the stack up
 # with the correct compose overrides, and waits for the app to report healthy.
@@ -23,7 +23,7 @@ case "$ENVIRONMENT" in
     COMPOSE=(-f docker-compose.yml)
     ;;
   prod)
-    BRANCH="${DEPLOY_BRANCH:-prod}"
+    BRANCH="${DEPLOY_BRANCH:-LIVE}"
     COMPOSE=(-f docker-compose.yml -f docker-compose.prod.yml)
     ;;
   *)

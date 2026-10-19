@@ -86,7 +86,7 @@ if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>
   fi
 fi
 
-export DEPLOY_BRANCH="${DEPLOY_BRANCH:-$([ "$ENVIRONMENT" = dev ] && echo dev || echo prod)}"
+export DEPLOY_BRANCH="${DEPLOY_BRANCH:-$([ "$ENVIRONMENT" = dev ] && echo dev || echo LIVE)}"
 ./deploy/deploy.sh "$ENVIRONMENT"
 
 echo

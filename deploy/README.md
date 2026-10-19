@@ -98,7 +98,7 @@ For production (HTTPS on port 443): put the company certificate in `certs/`
 first (section 4), then:
 
 ```bash
-sudo APP_URL=https://app.example.com DEPLOY_BRANCH=prod ./deploy/bootstrap.sh prod
+sudo APP_URL=https://app.example.com DEPLOY_BRANCH=LIVE ./deploy/bootstrap.sh prod
 ```
 
 The shorter command below is sufficient once Docker is already installed.
@@ -133,36 +133,29 @@ in the same command when the defaults are not right for the box:
 APP_URL=http://dev.example.com:8080 APP_PORT=8080 DEPLOY_BRANCH=DEV-2 ./deploy/deploy.sh dev
 ```
 
-## 3b. Promote DEV to PROD
+## 3b. Promote DEV-3 to LIVE (production)
 
-Only promote after the DEV box is running the commit you intend to release and the
-verification checklist passes.
+Changes are made and tested on **DEV-3** first. Only when they pass and are
+approved does the same commit go to **LIVE**, the branch production runs.
 
 ```bash
 git fetch origin
-git checkout prod
-git merge --ff-only dev
-git push origin prod
+git checkout LIVE
+git merge --ff-only origin/DEV-3     # exactly what was tested; fails if LIVE has diverged
+git push origin LIVE
 ```
 
-If `prod` does not exist yet, create it from the verified DEV commit:
+CI runs on LIVE too; wait for it to pass. Then deploy on the production server:
 
 ```bash
-git checkout -b prod dev
-git push -u origin prod
-```
-
-Then deploy from the PROD box:
-
-```bash
-./deploy/deploy.sh prod
+./deploy/deploy.sh prod              # deploys LIVE (DEPLOY_BRANCH=LIVE is the default)
 ```
 
 Use a tag for important releases:
 
 ```bash
-git tag prod-YYYYMMDD
-git push origin prod-YYYYMMDD
+git tag live-YYYYMMDD
+git push origin live-YYYYMMDD
 ```
 
 ## 4. HTTPS on port 443 (production)

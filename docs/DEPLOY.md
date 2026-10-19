@@ -108,24 +108,18 @@ checklist before promoting DEV to PROD.
 
 ## PROD promotion
 
-PROD uses the same Docker/PostgreSQL architecture as DEV. Promote only the exact DEV
-commit that passed verification:
+PROD uses the same Docker/PostgreSQL architecture as DEV. Production runs the
+**LIVE** branch. Changes are made and tested on **DEV-3**; promote only the exact
+commit that passed verification and was approved:
 
 ```bash
 git fetch origin
-git checkout prod
-git merge --ff-only dev
-git push origin prod
+git checkout LIVE
+git merge --ff-only origin/DEV-3
+git push origin LIVE
 ```
 
-If `prod` does not exist yet, create it from the verified DEV commit:
-
-```bash
-git checkout -b prod dev
-git push -u origin prod
-```
-
-Then run `./deploy/deploy.sh prod` on the PROD box. To carry existing data over from
+Then run `./deploy/deploy.sh prod` on the PROD box (it deploys LIVE). To carry existing data over from
 the old SQLite database, run the one-time migration from a full (non-`--omit=dev`)
 install with the legacy `app.db` available:
 
