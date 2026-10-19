@@ -5,7 +5,9 @@ test('Settings has ten pages; a page with several sections shows them as tabs, o
   await mockApi(page, { role: 'manager' });
   await page.goto('/settings');
   const menu = page.getByRole('complementary', { name: 'Settings sections' });
-  await expect(menu.getByRole('button')).toHaveText(['Overview', 'Users & teams', 'Access & sign-in', 'Lists', 'Templates', 'Weekly report', 'Email & notifications', 'Integrations', 'Time & region', 'Backups & health']);
+  // Names only: a "Review" status badge may load beside some of them.
+  const pages = ['Overview', 'Users & teams', 'Access & sign-in', 'Lists', 'Templates', 'Weekly report', 'Email & notifications', 'Integrations', 'Time & region', 'Backups & health'];
+  await expect(menu.getByRole('button')).toHaveText(pages.map(name => new RegExp(`^${name}`)));
 
   await menu.getByRole('button', { name: 'Integrations' }).click();
   await expect(page).toHaveURL(/\/settings\/integrations$/);
