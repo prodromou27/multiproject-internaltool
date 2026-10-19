@@ -19,6 +19,8 @@ const AUTOMATIC = Object.freeze([
   { key: 'report_due', label: 'A customer report is due within 3 days, or is overdue', roles: ['manager'] },
   { key: 'asset_expiring', label: 'A managed customer\'s asset support or warranty expires within 30 days', roles: ['manager'] },
   { key: 'contract_ending', label: 'A customer contract ends within 30 days, or has expired without a renewal', roles: ['manager'] },
+  { key: 'licence_expiring', label: 'A customer licence, subscription or certificate expires within 60, 30 or 7 days, or has expired', roles: ['manager'] },
+  { key: 'vendor_case_follow_up', label: 'A vendor case of mine is due a follow-up, or has had no update for a week', roles: ['manager', 'engineer'] },
 ]);
 
 function automaticSettings(raw, role) {
@@ -157,7 +159,7 @@ async function managersFor(store, serviceManagerId) {
 async function sendAutomaticReminders(store = db) {
   const { today } = await store.prepare('SELECT app_today() AS today').get();
   const tomorrow = addDays(today, 1), yesterday = addDays(today, -1);
-  const counts = { visit_tomorrow: 0, task_due: 0, report_due: 0, asset_expiring: 0, contract_ending: 0 };
+  const counts = { visit_tomorrow: 0, task_due: 0, report_due: 0, asset_expiring: 0, contract_ending: 0, licence_expiring: 0, vendor_case_follow_up: 0 };
 
   // Maintenance visits tomorrow (the existing visit reminder, now per-person optional).
   const visits = await store.prepare(`SELECT mv.id, mv.title, mv.scheduled_date, cu.name AS customer_name, mve.user_id, u.name AS engineer_name, u.email AS engineer_email
@@ -262,6 +264,10 @@ async function sendAutomaticReminders(store = db) {
       counts.contract_ending++;
     }
   }
+  // Licences, subscriptions and certificates (customerLicences.js), and vendor cases (vendorCases.js).
+  const helpers = { store, today, wants, firstDelivery, managersFor, notifyUser, notifyShared };
+  counts.licence_expiring = await require('./customerLicences').remind(helpers);
+  counts.vendor_case_follow_up = await require('./vendorCases').remind(helpers);
   return counts;
 }
 

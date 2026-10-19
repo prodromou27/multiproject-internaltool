@@ -8,7 +8,7 @@ import { mockApi } from './support/mockApi.js';
    still checked by hand at staging (docs/STAGING_ACCEPTANCE.md). */
 const PAGES = ['/', '/my-day', '/projects', '/projects/1', '/tasks', '/my-time', '/maintenance-visits', '/calendar',
   '/activity-log', '/customers', '/managed-customers', '/managed-customers/1', '/reports', '/approvals', '/workload',
-  '/vulnerabilities', '/data-quality', '/skills', '/settings', '/settings/users', '/profile'];
+  '/vulnerabilities', '/renewals', '/data-quality', '/skills', '/settings', '/settings/users', '/profile'];
 const project = { id: 1, title: 'Network refresh', status: 'in_progress', priority: 'high', members: [], updates: [], created_by: 1 };
 
 const RUNS = [

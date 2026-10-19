@@ -16,9 +16,9 @@ test('engineers open the customers they work with: overview, tasks, visits, reco
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Customers', exact: true }).click();
   await page.getByRole('link', { name: 'Northwind Logistics' }).click();
   const tabs = page.getByRole('tablist', { name: 'Customer 360 sections' });
-  for (const name of ['Overview', 'Tasks', 'Maintenance Visits', 'Recommendations', 'Assets', 'Contracts']) await expect(tabs.getByRole('tab', { name, exact: true })).toBeVisible();
+  for (const name of ['Overview', 'Tasks', 'Maintenance Visits', 'Recommendations', 'Assets', 'Contracts & licences', 'Vendor cases']) await expect(tabs.getByRole('tab', { name, exact: true })).toBeVisible();
   await expect(tabs.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
-  await tabs.getByRole('tab', { name: 'Contracts' }).click();
+  await tabs.getByRole('tab', { name: 'Contracts & licences' }).click();
   await expect(page.getByRole('heading', { name: 'Active contracts' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add contract' })).toHaveCount(0);
 });

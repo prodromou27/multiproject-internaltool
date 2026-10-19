@@ -117,7 +117,7 @@ async function buildValueReport({ customerId, from, to, sections = null, summary
   const today = appTime.today();
   const dayAfter = appTime.addDays(to, 1);
 
-  const [activities, activityChanges, versionChanges, resolved, tasksDone, recommendations, upcoming, assets] = await Promise.all([
+  const [activities, activityChanges, versionChanges, resolved, tasksDone, recommendations, upcoming, assets, renewals] = await Promise.all([
     store.prepare(`SELECT sa.activity_date, sa.title, sa.duration_minutes, cat.name AS category, u.name AS engineer
       FROM service_activities sa JOIN activity_categories cat ON cat.id = sa.category_id JOIN users u ON u.id = sa.engineer_id
       WHERE sa.customer_id = ? AND sa.activity_date BETWEEN ? AND ? AND sa.status <> 'cancelled' ORDER BY sa.activity_date, sa.id`).all(customerId, from, to),
@@ -135,6 +135,9 @@ async function buildValueReport({ customerId, from, to, sections = null, summary
       WHERE COALESCE(tk.customer_id, p.customer_id) = ? AND tk.status NOT IN ('completed','closed','cancelled') AND tk.deadline IS NOT NULL AND tk.deadline >= ? AND tk.deadline <= ?
       ORDER BY tk.deadline LIMIT 30`).all(customerId, today, appTime.addDays(today, 45)),
     include.has('assets') ? reportData.getAssets(customerId, to, store) : Promise.resolve([]),
+    // Licences, subscriptions and certificates to renew in the next 90 days (customerLicences.js).
+    store.prepare(`SELECT kind, name, expires_on FROM customer_licences WHERE customer_id = ? AND not_renewing = 0 AND expires_on >= ? AND expires_on <= ?
+      ORDER BY expires_on LIMIT 30`).all(customerId, today, appTime.addDays(today, 90)),
   ]);
 
   // Work by type of work.
@@ -185,12 +188,16 @@ async function buildValueReport({ customerId, from, to, sections = null, summary
     tickets: (resolved || []).slice(0, MAX_ROWS).map(t => ({ number: t.ticket_number, subject: t.subject, resolved: String(t.resolved_at || '').slice(0, 10) })),
     tasks: tasksDone.slice(0, MAX_ROWS).map(t => ({ title: t.title, completed: String(t.completed_at).slice(0, 10) })),
     recommendations: recommendations.slice(0, MAX_ROWS).map(r => ({ finding: r.finding, recommendation: r.recommendation, risk: r.risk_level, due: r.due_date || '', status: r.status })),
-    upcoming: upcoming.map(t => ({ title: t.title, due: String(t.deadline).slice(0, 10) })),
+    // Planned tasks and renewals due, by date (a renewal reads "Renewal due: …, expires …").
+    upcoming: [...upcoming.map(t => ({ title: t.title, due: String(t.deadline).slice(0, 10), on: String(t.deadline).slice(0, 10) })),
+      ...renewals.map(r => ({ title: `Renewal due: ${decrypt(r.name)} (${RENEWAL_KINDS[r.kind] || 'licence'}), expires ${dmy(r.expires_on)}`, due: '', on: r.expires_on }))]
+      .sort((a, b) => a.on.localeCompare(b.on)).map(({ title, due }) => ({ title, due })),
     assets: assetSummary,
   };
 }
 
 // ── Shared wording ──────────────────────────────────────────────────────────
+const RENEWAL_KINDS = { licence: 'licence', subscription: 'subscription', certificate: 'certificate' };
 const dmy = iso => { if (!iso) return ''; const [y, m, d] = String(iso).slice(0, 10).split('-'); return d ? `${d}/${m}/${y}` : String(iso); };
 const words = iso => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
 const cap = text => (text ? String(text).charAt(0).toUpperCase() + String(text).slice(1).replace(/_/g, ' ') : '');

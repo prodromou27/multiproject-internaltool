@@ -1361,6 +1361,65 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS file_removed_at TEXT;
     ALTER TABLE managed_report_history ADD COLUMN IF NOT EXISTS request TEXT;
   `]);
+  migrations.push(['20261120_licences_and_vendor_cases', `
+    -- A customer's vendor licences, subscriptions and certificates, with the date each
+    -- expires (customerLicences.js); reminders go out 60, 30 and 7 days before.
+    CREATE TABLE IF NOT EXISTS customer_licences (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      asset_id INTEGER REFERENCES customer_assets(id) ON DELETE SET NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('licence','subscription','certificate')),
+      name TEXT NOT NULL,
+      vendor TEXT,
+      reference TEXT,
+      quantity INTEGER,
+      expires_on TEXT NOT NULL,
+      not_renewing INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      renewed_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT ${NOW},
+      updated_at TEXT DEFAULT ${NOW},
+      edit_version INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_licences_customer ON customer_licences(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_customer_licences_expires ON customer_licences(expires_on);
+    -- Support cases opened with a vendor (Check Point, Fortinet…) on a customer's
+    -- behalf (vendorCases.js), with their updates; quiet ones remind their owner.
+    CREATE TABLE IF NOT EXISTS vendor_cases (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      asset_id INTEGER REFERENCES customer_assets(id) ON DELETE SET NULL,
+      vendor TEXT NOT NULL,
+      case_number TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'medium' CHECK (severity IN ('critical','high','medium','low')),
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','waiting_vendor','waiting_us','resolved','closed')),
+      owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      rt_ticket TEXT,
+      next_follow_up TEXT,
+      opened_on TEXT NOT NULL,
+      closed_on TEXT,
+      last_update_at TEXT DEFAULT ${NOW},
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT ${NOW},
+      updated_at TEXT DEFAULT ${NOW},
+      edit_version INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE INDEX IF NOT EXISTS idx_vendor_cases_customer ON vendor_cases(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_vendor_cases_status ON vendor_cases(status);
+    CREATE TABLE IF NOT EXISTS vendor_case_updates (
+      id SERIAL PRIMARY KEY,
+      case_id INTEGER NOT NULL REFERENCES vendor_cases(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      note TEXT,
+      status_from TEXT,
+      status_to TEXT,
+      created_at TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_vendor_case_updates_case ON vendor_case_updates(case_id);
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

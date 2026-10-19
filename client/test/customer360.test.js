@@ -27,9 +27,9 @@ test('Customer 360 accepts available deep links and safely rejects unavailable s
   // One order for everyone, whatever their team does.
   for (const capabilities of [{ managedServiceOperations:true,projectDelivery:false },{ managedServiceOperations:false,projectDelivery:true }])
     assert.deepEqual(customer360Sections({ role:'engineer' },capabilities).map(section => section.id),
-      ['overview','activities','tasks','projects','recommendations','contracts','maintenance-visits','timeline']);
+      ['overview','activities','tasks','projects','recommendations','contracts','vendor-cases','maintenance-visits','timeline']);
   assert.deepEqual(customer360Sections({ role:'manager' },{},false,true).map(section => section.id),
-    ['overview','activities','tasks','tickets','projects','recommendations','assets','contracts','reports','timeline','service-configuration']);
+    ['overview','activities','tasks','tickets','projects','recommendations','assets','contracts','vendor-cases','reports','timeline','service-configuration']);
   for (const capabilities of [{ managedServiceOperations:false,projectDelivery:true },{ managedServiceOperations:true,projectDelivery:true },{ managedServiceOperations:false,projectDelivery:false }])
     assert.equal(customer360Section({ role:'engineer' },null,capabilities),'overview');
 });

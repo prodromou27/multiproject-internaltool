@@ -585,3 +585,7 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; }
 .task-done:hover { border-color: var(--success); background: var(--success-light); color: var(--tone-success-text); }
 .visit-month { width: auto; min-width: 170px; }
 .scorecard-empty { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 6px 0 2px; } .scorecard-empty p { margin: 0; }
+
+/* A button that reads as a link (opens something in place). */
+.btn-link { background: none; border: 0; padding: 0; font: inherit; color: var(--primary); cursor: pointer; text-align: left; }
+.btn-link:hover { text-decoration: underline; }

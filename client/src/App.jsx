@@ -21,6 +21,7 @@ import { startLive, stopLive, useLiveVersion } from './live';
 const Dashboard         = lazy(() => import('./pages/Dashboard'));
 const Approvals         = lazy(() => import('./pages/Approvals'));
 const DataQuality       = lazy(() => import('./pages/DataQuality'));
+const Renewals          = lazy(() => import('./pages/Renewals'));
 const MyTime            = lazy(() => import('./pages/MyTime'));
 const Projects          = lazy(() => import('./pages/Projects'));
 const ProjectDetail     = lazy(() => import('./pages/ProjectDetail'));
@@ -201,6 +202,7 @@ export default function App() {
           <Route path="/kpis"                element={<PrivateRoute page="kpiManagement"><KpiManagement /></PrivateRoute>} />
           <Route path="/approvals"           element={<PrivateRoute page="approvals"><Approvals /></PrivateRoute>} />
           <Route path="/data-quality"        element={<PrivateRoute page="dataQuality"><DataQuality /></PrivateRoute>} />
+          <Route path="/renewals"            element={<PrivateRoute page="renewals"><Renewals /></PrivateRoute>} />
           <Route path="/my-time"             element={<PrivateRoute page="myTime"><MyTime /></PrivateRoute>} />
           <Route path="/users"               element={<Navigate to="/settings/users" replace />} />
           <Route path="/settings"            element={<PrivateRoute page="settings"><AdminPanel /></PrivateRoute>} />

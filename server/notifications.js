@@ -88,7 +88,7 @@ const EVENT_LINKS = {
   managed_report_submitted: '/approvals', managed_report_decided: '/customers', customer_report_sent: '/customers', customer_report_due: '/customers',
   project_closure_requested: '/approvals', project_closure_decided: '/projects', activity_logged: '/activity-log',
   task_assigned: '/tasks', task_due: '/tasks', project_assigned: '/projects', visit_assigned: '/maintenance-visits', visit_reminder: '/maintenance-visits',
-  report_submitted: '/maintenance-visits', contract_ending: '/customers', asset_expiring: '/customers', recommendation_created: '/customers',
+  report_submitted: '/maintenance-visits', contract_ending: '/customers', asset_expiring: '/customers', licence_expiring: '/renewals', vendor_case_follow_up: '/renewals', recommendation_created: '/customers',
 };
 // The card colour says what the title is; the leading emoji is dropped.
 const plainTitle = title => String(title || '').replace(/^(?:\p{Extended_Pictographic}|️|‍|\s)+/u, '').trim() || String(title || '');
@@ -217,6 +217,8 @@ const PERSONAL_EVENTS = Object.freeze([
   { key: 'report_due',       label: 'A customer report is due soon or overdue', roles: ['manager'] },
   { key: 'asset_expiring',   label: 'Asset support or warranty is expiring', roles: ['manager'] },
   { key: 'contract_ending',  label: 'A customer contract is ending or has expired', roles: ['manager'] },
+  { key: 'licence_expiring', label: 'A customer licence, subscription or certificate is expiring or has expired', roles: ['manager'] },
+  { key: 'vendor_case_follow_up', label: 'A vendor case of mine is due a follow-up or has gone quiet', roles: ['manager', 'engineer'] },
   { key: 'project_closure',  label: 'A project closure needs my review, or a closure on my project is decided' },
   { key: 'managed_report_review', label: 'A customer report needs my review, or my customer report is reviewed' },
   { key: 'recommendation_assigned', label: 'A high or critical recommendation is assigned to me' },

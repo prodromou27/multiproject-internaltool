@@ -15,7 +15,7 @@ test('repeating reminders keep their local time, across daylight saving and shor
 });
 
 test('automatic reminders default on, and only managers get the customer ones', () => {
-  assert.deepEqual(automaticSettings(null, 'engineer'), { visit_tomorrow: true, task_due: true });
-  assert.deepEqual(automaticSettings('{"report_due":false}', 'manager'), { visit_tomorrow: true, task_due: true, report_due: false, asset_expiring: true, contract_ending: true });
-  assert.deepEqual(automaticSettings('not json', 'engineer'), { visit_tomorrow: true, task_due: true });
+  assert.deepEqual(automaticSettings(null, 'engineer'), { visit_tomorrow: true, task_due: true, vendor_case_follow_up: true });
+  assert.deepEqual(automaticSettings('{"report_due":false}', 'manager'), { visit_tomorrow: true, task_due: true, report_due: false, asset_expiring: true, contract_ending: true, licence_expiring: true, vendor_case_follow_up: true });
+  assert.deepEqual(automaticSettings('not json', 'engineer'), { visit_tomorrow: true, task_due: true, vendor_case_follow_up: true });
 });

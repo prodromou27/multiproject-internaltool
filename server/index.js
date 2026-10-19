@@ -232,6 +232,7 @@ app.use('/api/skills', require('./routes/skills'));
 app.use('/api/insights', require('./routes/insights'));
 app.use('/api/visit-planning', require('./routes/visit-planning'));
 app.use('/api/bots', require('./routes/bots'));
+app.use('/api/renewals', require('./routes/renewals'));
 
 // ── 404 handler for unknown /api/* paths (must come before the SPA catchall) ─
 app.use('/api', (req, res) => {

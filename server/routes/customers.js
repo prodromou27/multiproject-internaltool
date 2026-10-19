@@ -17,6 +17,8 @@ router.use('/:id/overview', require('./customer-overview'));
 router.use('/:id/recommendations', require('./customer-recommendations'));
 router.use('/:id/assets', require('./customer-assets'));
 router.use('/:id/contracts', require('./customer-contracts'));
+router.use('/:id/licences', require('./customer-licences'));
+router.use('/:id/vendor-cases', require('./customer-vendor-cases'));
 router.use('/:id/managed-services', require('./managedCustomerConfiguration'));
 router.use('/:id/operations',require('./customer-operations'));
 router.use('/:id/recurring-tasks', require('./customer-recurring-tasks'));
