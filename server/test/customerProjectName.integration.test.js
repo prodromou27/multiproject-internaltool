@@ -35,3 +35,35 @@ test('editing keeps the project name unless it is changed, and clears it when em
   await api(`/api/customers/${id}`, { method: 'PUT', token: ids.tokenManager, body: { project_name: '' } });
   assert.equal((await api(`/api/customers/${id}`, { token: ids.tokenManager })).data.project_name, null);
 });
+
+test('the customer import sets the project name: on new customers, and on existing ones when the cell is filled', async () => {
+  const fixture = require('./lib/activityFixture');
+  const send = async (csv, updateExisting = false) => {
+    const form = new FormData();
+    form.append('file', new Blob([csv], { type: 'text/csv' }), 'customers.csv');
+    if (updateExisting) form.append('update_existing', '1');
+    const res = await fetch(`${fixture.baseUrl}/api/customers/import`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenManager}`, 'X-SolutionsHub-Request': '1' }, body: form });
+    return { status: res.status, data: await res.json() };
+  };
+  const named = async name => (await api('/api/customers', { token: ids.tokenManager })).data.find(c => c.name === name);
+
+  const created = await send('name,project_name,location\nHarbour Freight,Project Lighthouse,Larnaca\nQuay Systems,,Paphos\n');
+  assert.equal(created.data.imported, 2, JSON.stringify(created.data));
+  assert.equal((await named('Harbour Freight')).project_name, 'Project Lighthouse');
+  assert.equal((await named('Quay Systems')).project_name, null);
+  assert.equal((await api('/api/customers?paged=1&search=lighthouse', { token: ids.tokenManager })).data.rows.length, 1, 'searchable');
+  assert.equal((await send(`name,project_name\nToo Long Ltd,${'x'.repeat(121)}\n`)).data.skipped, 1, 'at most 120 characters');
+
+  // Updating: a filled cell changes it; an empty cell leaves it, and it stays searchable.
+  const preview = new FormData();
+  preview.append('file', new Blob(['name,project_name\nQuay Systems,Project Keel\nHarbour Freight,\n'], { type: 'text/csv' }), 'customers.csv');
+  const planned = await (await fetch(`${fixture.baseUrl}/api/customers/import/preview`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenManager}`, 'X-SolutionsHub-Request': '1' }, body: preview })).json();
+  assert.deepEqual(planned.rows.map(r => [r.name, r.action, (r.changes || []).map(c => `${c.field}:${c.to}`)]),
+    [['Quay Systems', 'update', ['project_name:Project Keel']], ['Harbour Freight', 'unchanged', []]]);
+  const updated = await send('name,project_name\nQuay Systems,Project Keel\nHarbour Freight,\n', true);
+  assert.equal(updated.data.updated, 1, JSON.stringify(updated.data));
+  assert.equal((await named('Quay Systems')).project_name, 'Project Keel');
+  assert.equal((await named('Harbour Freight')).project_name, 'Project Lighthouse');
+  assert.equal((await api('/api/customers?paged=1&search=lighthouse', { token: ids.tokenManager })).data.rows.length, 1);
+  assert.equal((await api('/api/customers?paged=1&search=keel', { token: ids.tokenManager })).data.rows.length, 1);
+});

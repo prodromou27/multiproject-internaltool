@@ -196,7 +196,7 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
   );
 }
 
-const CUSTOMER_COLUMNS = ['name*', 'customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes', 'managed', 'team', 'contract_reference', 'contract_type', 'contract_start', 'contract_end'];
+const CUSTOMER_COLUMNS = ['name*', 'project_name', 'customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes', 'managed', 'team', 'contract_reference', 'contract_type', 'contract_start', 'contract_end'];
 
 const SERVICE_STATUS = { healthy:['Healthy','success'],attention:['Sync issue','danger'],awaiting_sync:['Awaiting first sync','warning'],activity_only:['No ticket integration','info'] };
 // A report owed for the last period and not yet sent; "overdue" once its due date has passed.

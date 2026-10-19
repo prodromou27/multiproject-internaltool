@@ -11,12 +11,12 @@ const db = require('./db');
 const { encryptCustomer, decryptCustomer, encrypt, decrypt } = require('./fieldCipher');
 const { replaceCustomerSearchDocument } = require('./customerSearchIndex');
 
-const TEXT_FIELDS = ['customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes'];
-const COLUMNS = ['name*', 'customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes', 'managed', 'team',
+const TEXT_FIELDS = ['project_name', 'customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes'];
+const COLUMNS = ['name*', 'project_name', 'customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes', 'managed', 'team',
   'contract_reference', 'contract_type', 'contract_start', 'contract_end'];
 const YES = new Set(['yes', 'y', 'true', '1', 'x', 'managed']);
 const NO = new Set(['', 'no', 'n', 'false', '0', '-']);
-const MAX_LENGTH = { name: 300, customer_code: 100, contact_email: 320, notes: 5000 };
+const MAX_LENGTH = { name: 300, project_name: 120, customer_code: 100, contact_email: 320, notes: 5000 };
 
 /** CSV text → rows of { header: value }. Handles quotes, "" escapes, CRLF, a BOM, and ; or tab separators (Excel in many locales). */
 function parseCsv(text) {
@@ -201,18 +201,18 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
           const merged = { ...current, ...Object.fromEntries(TEXT_FIELDS.filter(f => row[f]).map(f => [f, row[f]])) };
           const enc = encryptCustomer(merged);
           // Changed since it was read (someone saved it meanwhile): left alone and reported.
-          const changed = await tx.prepare(`UPDATE customers SET customer_code = ?, contact_name = ?, contact_email = ?, contact_phone = ?, primary_contact = ?, location = ?, address = ?, notes = ?, edit_version = edit_version + 1 WHERE id = ? AND edit_version = ?`)
-            .run(merged.customer_code || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.primary_contact, enc.location, enc.address, enc.notes, current.id, current.edit_version);
+          const changed = await tx.prepare(`UPDATE customers SET project_name = ?, customer_code = ?, contact_name = ?, contact_email = ?, contact_phone = ?, primary_contact = ?, location = ?, address = ?, notes = ?, edit_version = edit_version + 1 WHERE id = ? AND edit_version = ?`)
+            .run(enc.project_name, merged.customer_code || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.primary_contact, enc.location, enc.address, enc.notes, current.id, current.edit_version);
           if (!changed.changes) throw new Error(`Customer "${row.name}" was changed by someone else during the import — not updated`);
-          await replaceCustomerSearchDocument(tx, { id: current.id, name: current.name, project_name: current.project_name, contact_name: merged.contact_name, contact_email: merged.contact_email, address: merged.address, location: merged.location, customer_code: merged.customer_code });
+          await replaceCustomerSearchDocument(tx, { id: current.id, name: current.name, project_name: merged.project_name, contact_name: merged.contact_name, contact_email: merged.contact_email, address: merged.address, location: merged.location, customer_code: merged.customer_code });
           await linkTeam(tx, current.id, teamId);
           if (managed) await enableManaged(tx, current.id, teamId, user.id);
           if (contract) await saveContract(tx, current.id, contract, user.id);
         } else {
           const values = Object.fromEntries(TEXT_FIELDS.map(f => [f, row[f] || null]));
           const enc = encryptCustomer({ name: row.name, ...values });
-          const created = await tx.prepare(`INSERT INTO customers (name, customer_code, contact_name, contact_email, contact_phone, primary_contact, location, address, notes, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(enc.name, values.customer_code, enc.contact_name, enc.contact_email, enc.contact_phone, enc.primary_contact, enc.location, enc.address, enc.notes, user.id);
+          const created = await tx.prepare(`INSERT INTO customers (name, project_name, customer_code, contact_name, contact_email, contact_phone, primary_contact, location, address, notes, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(enc.name, enc.project_name, values.customer_code, enc.contact_name, enc.contact_email, enc.contact_phone, enc.primary_contact, enc.location, enc.address, enc.notes, user.id);
           const id = created.lastInsertRowid;
           await replaceCustomerSearchDocument(tx, { id, name: row.name, ...values });
           await linkTeam(tx, id, teamId);

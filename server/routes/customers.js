@@ -97,8 +97,8 @@ router.get('/template/download', requireManagerOrPlanner, async (req, res) => {
   const worksheet = workbook.addWorksheet('Customers');
   [
     IMPORT_COLUMNS,
-    ['Acme Corp', 'ACME', 'Jane Smith', 'jane@acme.com', '+357 22 000000', 'Jane Smith', 'Nicosia', '1 Main St', 'VIP customer', 'yes', 'Security Team', 'MSP-2026-014', '24x7', '2026-01-01', '2026-12-31'],
-    ['Beta Ltd', '', 'Bob Jones', 'bob@beta.com', '', '', 'Limassol', '', '', 'no', '', '', '', '', ''],
+    ['Acme Corp', 'Project Atlas', 'ACME', 'Jane Smith', 'jane@acme.com', '+357 22 000000', 'Jane Smith', 'Nicosia', '1 Main St', 'VIP customer', 'yes', 'Security Team', 'MSP-2026-014', '24x7', '2026-01-01', '2026-12-31'],
+    ['Beta Ltd', '', '', 'Bob Jones', 'bob@beta.com', '', '', 'Limassol', '', '', 'no', '', '', '', '', ''],
   ].forEach(row => worksheet.addRow(row));
   IMPORT_COLUMNS.forEach((_, i) => { worksheet.getColumn(i + 1).width = i === 0 ? 26 : 18; });
   const buf = await workbook.xlsx.writeBuffer();
