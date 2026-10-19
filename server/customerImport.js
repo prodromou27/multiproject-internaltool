@@ -227,6 +227,8 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
       skip(rowNum, error.message);
     }
   }
+  // Contracts and managed services may have changed: asset coverage follows them.
+  if (result.managed || result.contracts) await require('./assetCoverage').syncCoverage({ store, userId: user.id });
   return result;
 }
 

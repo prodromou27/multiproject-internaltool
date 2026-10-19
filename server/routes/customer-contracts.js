@@ -7,6 +7,7 @@ const { canAccessCustomer, engineerOnCustomer, positiveId } = require('../custom
 const { encrypt, decrypt } = require('../fieldCipher');
 const { logAudit } = require('../auditLog');
 const { contractTypes, contractsFor } = require('../customerContracts');
+const { syncCoverage } = require('../assetCoverage');
 
 /* Contracts of one customer (/api/customers/:id/contracts). Anyone who may open
    the customer sees its contracts; asset names only with asset access (the same
@@ -115,6 +116,7 @@ router.post('/', requireManager, async (req, res) => {
     return created;
   });
   await logAudit(db, req, 'customer_contract', id, label(req.customer, { id, ...v }), 'created', `${v.start_date} to ${v.end_date}, ${(checked.assetIds || []).length} assets`);
+  await syncCoverage({ customerIds: [req.customer.id], userId: req.user.id }); // asset coverage follows the contracts
   res.status(201).json({ id: Number(id) });
 });
 
@@ -131,6 +133,7 @@ router.put('/:contractId', requireManager, async (req, res) => {
     if (checked.assetIds) await setAssets(tx, existing.id, checked.assetIds);
   });
   await logAudit(db, req, 'customer_contract', existing.id, label(req.customer, { id: existing.id, ...v }), 'updated', `${v.start_date} to ${v.end_date}`);
+  await syncCoverage({ customerIds: [req.customer.id], userId: req.user.id }); // asset coverage follows the contracts
   res.json({ ok: true });
 });
 
@@ -153,6 +156,7 @@ router.post('/:contractId/renew', requireManager, async (req, res) => {
     return created;
   });
   await logAudit(db, req, 'customer_contract', id, label(req.customer, { id, ...v }), 'renewed', `Renewed contract #${existing.id}: ${v.start_date} to ${v.end_date}`);
+  await syncCoverage({ customerIds: [req.customer.id], userId: req.user.id }); // asset coverage follows the contracts
   res.status(201).json({ id: Number(id) });
 });
 
@@ -161,6 +165,7 @@ router.delete('/:contractId', requireManager, async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Contract not found' });
   await db.prepare('DELETE FROM customer_contracts WHERE id = ?').run(existing.id);
   await logAudit(db, req, 'customer_contract', existing.id, label(req.customer, { id: existing.id, reference: decrypt(existing.reference) }), 'deleted', `${existing.start_date} to ${existing.end_date}`);
+  await syncCoverage({ customerIds: [req.customer.id], userId: req.user.id }); // asset coverage follows the contracts
   res.json({ ok: true });
 });
 

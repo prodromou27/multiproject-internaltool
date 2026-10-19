@@ -1425,6 +1425,12 @@ async function applyMigrations(pool, transaction) {
     -- banner, customer list) and found by search. Encrypted like the name.
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS project_name TEXT;
   `]);
+  migrations.push(['20261122_asset_coverage_source', `
+    -- 'contract' when the asset's coverage was set because a contract in force covers
+    -- it (assetCoverage.js): such assets go back to 'neither' when no contract does.
+    -- NULL: set by a person, and left as it is.
+    ALTER TABLE customer_assets ADD COLUMN IF NOT EXISTS coverage_source TEXT;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

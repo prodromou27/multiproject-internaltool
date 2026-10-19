@@ -288,6 +288,10 @@ function startReminderSchedules() {
     require('./grafana').settings().then(s => (s.base_url && s.token ? require('./grafana').sync() : null))
       .then(result => { if (result) console.log('[grafana] sync:', JSON.stringify(result)); })
       .catch(error => console.error('[grafana] sync:', error.message)),
+    // Contracts that start or end today change their assets' coverage (assetCoverage.js).
+    require('./assetCoverage').syncCoverage()
+      .then(result => { if (result.changed) console.log('[assets] coverage from contracts:', JSON.stringify(result)); })
+      .catch(error => console.error('[assets] coverage:', error.message)),
     // Old report files go; their history stays, to be generated again (reportRetention.js).
     require('./reportRetention').purge()
       .then(result => { if (result.removed) console.log('[reports] files removed after retention:', JSON.stringify(result)); })

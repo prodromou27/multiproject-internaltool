@@ -145,6 +145,8 @@ router.put('/',requireManager,async (req,res) => {
       return nextVersion;
     });
     await logAudit(db,req,'customer',id,`Customer ${id}`,'managed_services_configuration_updated',`managed=${req.body.managed_services_enabled}; ticketing=${req.body.ticket_integration_enabled}; write_back=${req.body.ticket_write_back_enabled}; queue_id=${queueId || 'none'}; report_due_days=${dueDays ?? 'standard'}; version=${result}`);
+    // Managed or not decides the coverage of its assets under contract (managed / under support).
+    await require('../assetCoverage').syncCoverage({ customerIds:[id],userId:req.user.id });
     const customer=await db.prepare('SELECT id,service_activity_enabled FROM customers WHERE id=?').get(id);
     const managed=await db.prepare('SELECT * FROM managed_customer_configurations WHERE customer_id=?').get(id);
     const ticket=await db.prepare("SELECT * FROM customer_ticketing_configurations WHERE customer_id=? AND provider_type='request_tracker'").get(id);
