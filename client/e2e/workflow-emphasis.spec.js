@@ -31,3 +31,17 @@ test('Project Delivery emphasis leads with delivery actions and keeps authorized
   await expect(page.locator('.workflow-banner').getByRole('link',{ name:'Open tasks' })).toHaveClass(/btn-primary/);
   await expect(page.getByRole('link',{ name:'Activity Log' }).first()).toBeVisible();
 });
+
+test('New → Create work starts with Log Activity for managed-services team members, managers included',async ({ page }) => {
+  const teams=[{ id:1,name:'Managed Services',service_activity_enabled:1,managed_service_operations:1,project_delivery_enabled:0 }];
+  for (const role of ['engineer','manager']) {
+    const api=await mockApi(page,{ role,teams });
+    api.override('GET /api/operations/overview',() => ({ body:overview }));
+    await page.goto('/');
+    const menu=page.locator('details.quick-create').filter({ visible:true });
+    await menu.locator('summary').click();
+    const options=menu.getByRole('group',{ name:'Create new work' }).getByRole('link');
+    await expect(options.first()).toContainText('Log Activity');
+    await page.keyboard.press('Escape');
+  }
+});

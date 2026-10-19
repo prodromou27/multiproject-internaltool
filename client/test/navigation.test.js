@@ -23,6 +23,9 @@ test('navigation and create actions respect existing role and feature boundaries
   assert.deepEqual(quickCreateActions('planner', true).map(action => action.id), ['visit']);
   assert.deepEqual(quickCreateActions('pm', true).map(action => action.id), ['activity']);
   assert.equal(quickCreateActions('manager').length, 4);
+  assert.deepEqual(quickCreateActions('manager', true).map(action => action.id), ['task', 'project', 'visit', 'activity']);
+  assert.deepEqual(quickCreateActions('manager', true, { managedServiceOperations: true }).map(action => action.id), ['activity', 'task', 'project', 'visit'],
+    'a manager on a managed-services team also starts with Log Activity');
   const delegatedReviewer={ role:'planner',permissions:{ 'managed_reports.review':true,'managed_customers.view':false } };
   assert.equal(visiblePages(delegatedReviewer).some(page => page.id==='approvals'),true);
   assert.equal(visiblePages(delegatedReviewer).some(page => page.id==='customers'),false);

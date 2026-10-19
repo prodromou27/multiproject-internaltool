@@ -73,8 +73,9 @@ export const QUICK_CREATE = [
 export function quickCreateActions(userOrRole, serviceActivityEnabled = false, capabilities = {}) {
   const user=typeof userOrRole==='string' ? { role:userOrRole,permissions:{} } : userOrRole;
   const role=user?.role;
+  // Members of a managed-services team (any role) log activities most: Log Activity comes first.
   const managed=capabilities.managedServiceOperations===true;
-  const order=role==='engineer' && managed ? ['activity','task','project','visit'] : ['task','project','visit','activity'];
+  const order=managed ? ['activity','task','project','visit'] : ['task','project','visit','activity'];
   return QUICK_CREATE.filter(action => action.roles.includes(role))
     .map(action => ({ ...action, destination: PAGES.find(page => page.id === action.page) }))
     .filter(action => canAccessPage(action.destination, user, serviceActivityEnabled))
