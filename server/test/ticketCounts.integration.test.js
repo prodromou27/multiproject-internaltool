@@ -31,6 +31,7 @@ test('rejected, deleted and reopened tickets are not counted as resolved; older 
     const kpis = (await insights({ days: 30, customerId: customer })).kpis;
     assert.equal(kpis.tickets_resolved, 3, 'Dashboard insights');
     assert.equal(kpis.tickets_created, 6, 'all created in the last 30 days except the old one');
+    assert.equal(kpis.tickets_resolved_earlier, 1, 'the old ticket closed in the period: why resolved can exceed created');
   }
 
   const analytics = await getTicketAnalytics(customer, day(-29), today);

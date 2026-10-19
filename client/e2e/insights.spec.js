@@ -4,7 +4,7 @@ import { mockApi } from './support/mockApi.js';
 const week = (key, extra) => ({ key, start: key, hours: 0, activities: 0, tasks_on_time: 0, tasks_late: 0, tasks_created: 0, tickets_created: 0, tickets_resolved: 0, visits: 0, ...extra });
 const insights = days => ({
   period: { from: '2026-07-14', to: '2026-10-11', days, unit: days > 90 ? 'month' : 'week' },
-  kpis: { hours: 42.5, activities: 31, tasks_done: 20, on_time_rate: 75, open_tasks: 14, overdue_tasks: 3, team_tasks_waiting: 2, visits_done: 6, tickets_created: 40, tickets_resolved: 36, open_tickets: 9,
+  kpis: { hours: 42.5, activities: 31, tasks_done: 20, on_time_rate: 75, open_tasks: 14, overdue_tasks: 3, team_tasks_waiting: 2, visits_done: 6, tickets_created: 40, tickets_resolved: 36, tickets_resolved_earlier: 5, open_tickets: 9,
     reports_owed: 2, reports_overdue: 1, contracts_ending: 1, devices_behind: 4, devices_eol: 1, skill_gaps: 2 },
   series: [week('2026-09-28', { hours: 12, activities: 9, tasks_on_time: 4, tasks_late: 1, tasks_created: 6, tickets_created: 10, tickets_resolved: 9 }), week('2026-10-05', { hours: 8.5, activities: 6, tasks_on_time: 3, tasks_created: 2, tickets_created: 7, tickets_resolved: 8 })],
   hours_by_customer: [{ id: 12, name: 'Northwind Logistics', hours: 30, activities: 20 }, { id: 14, name: 'Contoso Retail', hours: 12.5, activities: 11 }],
@@ -28,6 +28,7 @@ test('managers see the whole operation on the dashboard: figures, charts and wha
   await expect(section).toContainText('75% on time');
   await expect(section.getByRole('link', { name: /Overdue tasks\s*3/ })).toBeVisible();
   await expect(section).toContainText('36 / 40');
+  await expect(section).toContainText('5 of the resolved were opened before this period');
   // On the dashboard the charts open on request, and stay open next time.
   await expect(section.getByRole('region', { name: 'Work logged' })).toHaveCount(0);
   await section.getByRole('button', { name: 'Show charts' }).click();

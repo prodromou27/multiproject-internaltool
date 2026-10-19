@@ -117,12 +117,13 @@ async function insights({ days = 90, customerId = null, teamId = null, engineerI
   // Visits and tickets.
   let visitsDone = 0;
   for (const v of visits) { if (v.status === 'completed') { visitsDone++; add(v.scheduled_date, 'visits'); } }
-  let ticketsCreated = 0, ticketsResolved = 0;
+  // Resolved tickets opened before the period: why resolved can be more than created.
+  let ticketsCreated = 0, ticketsResolved = 0, ticketsResolvedEarlier = 0;
   for (const t of tickets) {
     const c = t.created_at_external && String(t.created_at_external).slice(0, 10), r = t.resolved_at_external && String(t.resolved_at_external).slice(0, 10);
     if (c && c >= from && c <= to) { ticketsCreated++; add(c, 'tickets_created'); }
     // Resolved = done now (Resolved/Closed): RT also dates rejected and deleted tickets, and keeps the date when one is reopened.
-    if (r && r >= from && r <= to && RESOLVED_STATUSES.has(t.normalized_status)) { ticketsResolved++; add(r, 'tickets_resolved'); }
+    if (r && r >= from && r <= to && RESOLVED_STATUSES.has(t.normalized_status)) { ticketsResolved++; add(r, 'tickets_resolved'); if (c && c < from) ticketsResolvedEarlier++; }
   }
 
   const top = (map, names, limit = 8) => [...map.entries()].filter(([id]) => names.has(id)).map(([id, v]) => ({ id, name: names.get(id), hours: Math.round(v.minutes / 6) / 10, activities: v.activities }))
@@ -140,7 +141,7 @@ async function insights({ days = 90, customerId = null, teamId = null, engineerI
       hours: Math.round(minutes / 6) / 10, activities: activityCount,
       tasks_done: totalDone, on_time_rate: totalDone ? Math.round((onTime / totalDone) * 100) : null,
       open_tasks: open.length, overdue_tasks: overdue, team_tasks_waiting: teamOpen,
-      visits_done: visitsDone, tickets_created: ticketsCreated, tickets_resolved: ticketsResolved, open_tickets: Number(openTickets?.n || 0),
+      visits_done: visitsDone, tickets_created: ticketsCreated, tickets_resolved: ticketsResolved, tickets_resolved_earlier: ticketsResolvedEarlier, open_tickets: Number(openTickets?.n || 0),
       reports_owed: attention.reports_owed.length, reports_overdue: attention.reports_owed.filter(r => r.overdue).length,
       contracts_ending: attention.contracts_ending.length, devices_behind: attention.devices.counts.behind || 0, devices_eol: attention.devices.counts.end_of_life || 0,
       skill_gaps: attention.skills.filter(s => s.status === 'gap').length,
