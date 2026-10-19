@@ -1431,6 +1431,12 @@ async function applyMigrations(pool, transaction) {
     -- NULL: set by a person, and left as it is.
     ALTER TABLE customer_assets ADD COLUMN IF NOT EXISTS coverage_source TEXT;
   `]);
+  migrations.push(['20261123_ticket_sync_chunks', `
+    -- A big queue syncs in chunks (ticketSync.js): sync_cursor is how far it got (the
+    -- last ticket change saved), sync_backlog 1 while there is more to read.
+    ALTER TABLE customer_ticketing_configurations ADD COLUMN IF NOT EXISTS sync_cursor TEXT;
+    ALTER TABLE customer_ticketing_configurations ADD COLUMN IF NOT EXISTS sync_backlog INTEGER NOT NULL DEFAULT 0;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

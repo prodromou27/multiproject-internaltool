@@ -118,6 +118,14 @@ async function reconcileOpen(store,client,mapping,runtime,mappingConfig,justSync
   return result;
 }
 
+// Pages of 100 read per run; a queue with more continues in the next run (a minute later).
+const PAGES_PER_RUN=20;
+// The provider's pages, or (a provider without paging, e.g. in tests) all tickets as one page.
+async function* ticketPages(client,queueId,options) {
+  if (typeof client.getTicketPages==='function') { yield* client.getTicketPages(queueId,options);return; }
+  yield { items:await client.getTickets(queueId,options),more:false };
+}
+
 async function syncCustomer(customerId,{ provider,triggeredBy=null,store=db }={}) {
   const mapping=await store.prepare("SELECT * FROM customer_ticketing_configurations WHERE customer_id=? AND provider_type='request_tracker' AND enabled=1").get(customerId);
   if (!mapping) throw Object.assign(new Error('No enabled RT queue mapping exists for this customer'),{ status:400 });
@@ -132,31 +140,44 @@ async function syncCustomer(customerId,{ provider,triggeredBy=null,store=db }={}
     if (!settings.enabled) throw Object.assign(new Error('Request Tracker integration is disabled'),{ status:409 });
     const runtime=ticketingSettings.runtimeSettings(settings);
     const client=provider || createTicketingProvider('request_tracker',runtime);
-    let updatedAfter=null;
-    if (mapping.last_successful_sync_at) {
+    // Where to read from: the bookmark of a sync still catching up, else the last
+    // completed sync (5 minutes back), else (first sync) the last HISTORY_YEARS.
+    let updatedAfter=mapping.sync_cursor || null;
+    if (!updatedAfter && mapping.last_successful_sync_at) {
       const last=new Date(String(mapping.last_successful_sync_at).replace(' ','T')+'Z');
       if (!Number.isNaN(last.getTime())) updatedAfter=new Date(last.getTime()-5*60*1000).toISOString();
     }
-    // The first sync reads the last HISTORY_YEARS of the queue (and older tickets still open).
     const since=updatedAfter ? null : new Date(Date.now()-HISTORY_YEARS*365.25*86400000).toISOString();
-    const tickets=await client.getTickets(mapping.external_queue_id,{ updatedAfter,since });
     const mappingConfig=await loadMappings(store);
-    const records=tickets.map(ticket => ticketRecord(ticket,mapping,runtime.base_url,new Date(),mappingConfig));
     const existing=new Set((await store.prepare("SELECT external_ticket_id FROM external_tickets WHERE provider_type='request_tracker' AND customer_id=?").all(customerId)).map(row => String(row.external_ticket_id)));
-    let created=0,updated=0;
+    // Page by page, oldest change first; each page is saved with the bookmark (the last change
+    // saved), so a big queue fills in over several short runs and an interruption loses one page.
+    const records=[];let created=0,updated=0,pages=0,more=false;
+    for await (const page of ticketPages(client,mapping.external_queue_id,{ updatedAfter,since })) {
+      const pageRecords=page.items.map(ticket => ticketRecord(ticket,mapping,runtime.base_url,new Date(),mappingConfig));
+      const cursor=page.items.map(ticket => normalizeDate(ticket.LastUpdated)).filter(Boolean).sort().pop() || null;
+      await store.transaction(async tx => {
+        const upsert=tx.prepare(UPSERT_TICKET);
+        for (const record of pageRecords) {
+          await upsert.run(...upsertArgs(record));
+          if (existing.has(record.external_ticket_id)) updated++;else { created++;existing.add(record.external_ticket_id); }
+        }
+        // One second back: tickets changed in the same second as the last one saved are read again, not missed.
+        if (cursor) await tx.prepare('UPDATE customer_ticketing_configurations SET sync_cursor=? WHERE id=?').run(new Date(Date.parse(cursor)-1000).toISOString(),mapping.id);
+      });
+      records.push(...pageRecords);pages++;
+      if (page.more && pages>=PAGES_PER_RUN) { more=true;break; }
+    }
     await store.transaction(async tx => {
-      const upsert=tx.prepare(UPSERT_TICKET);
-      for (const record of records) {
-        await upsert.run(...upsertArgs(record));
-        if (existing.has(record.external_ticket_id)) updated++;else created++;
-      }
-      await tx.prepare("UPDATE customer_ticketing_configurations SET last_successful_sync_at=app_now(),last_sync_status='success',updated_at=app_now() WHERE id=?").run(mapping.id);
+      // Caught up: the sync counts as complete; otherwise the next chunk follows within a minute.
+      if (more) await tx.prepare("UPDATE customer_ticketing_configurations SET sync_backlog=1,last_sync_status='success',updated_at=app_now() WHERE id=?").run(mapping.id);
+      else await tx.prepare("UPDATE customer_ticketing_configurations SET last_successful_sync_at=app_now(),last_sync_status='success',sync_cursor=NULL,sync_backlog=0,updated_at=app_now() WHERE id=?").run(mapping.id);
       await tx.prepare("UPDATE ticket_sync_runs SET completed_at=app_now(),status='success',tickets_found=?,tickets_created=?,tickets_updated=? WHERE id=?").run(records.length,created,updated,runId);
     });
     // Open tickets RT no longer has in the queue (merged, moved, deleted, or resolved unnoticed);
     // a problem here never fails the sync.
     let reconciled={ checked:0,closed:0,updated:0 };
-    if (typeof client.getActiveTicketIds==='function') {
+    if (!more && typeof client.getActiveTicketIds==='function') {
       try { reconciled=await reconcileOpen(store,client,mapping,runtime,mappingConfig,new Set(records.map(record => record.external_ticket_id))); }
       catch(error) { console.error('[ticket-sync] open-ticket check failed:',error.message); }
     }
@@ -164,7 +185,7 @@ async function syncCustomer(customerId,{ provider,triggeredBy=null,store=db }={}
     await require('./ticketOwners').linkOwners(store).catch(error => console.error('[ticket-owners] linking failed:',error.message));
     if (wasFailing) await alertSyncChange(store,mapping,true);
     const completed=await store.prepare('SELECT completed_at FROM ticket_sync_runs WHERE id=?').get(runId);
-    return { run_id:runId,completed_at:completed?.completed_at || null,tickets_found:records.length,tickets_created:created,tickets_updated:updated,tickets_reconciled:reconciled };
+    return { run_id:runId,completed_at:completed?.completed_at || null,tickets_found:records.length,tickets_created:created,tickets_updated:updated,tickets_reconciled:reconciled,more };
   } catch(error) {
     const safeError=error.status ? String(error.message).slice(0,2000) : 'Ticket synchronization failed';
     await store.prepare("UPDATE ticket_sync_runs SET completed_at=app_now(),status='failed',errors=1,error_message=? WHERE id=?").run(safeError,runId);

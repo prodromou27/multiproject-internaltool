@@ -22,7 +22,7 @@ export default function TicketSyncMonitoring({ onMessage, standalone }) {
     setSyncing(customer.customer_id);setError('');
     try {
       const result=await api.syncManagedCustomerTickets(customer.customer_id);
-      onMessage?.(`${customer.customer_name} synchronized: ${result.tickets_found} found, ${result.tickets_created} created, ${result.tickets_updated} updated.`);
+      onMessage?.(`${customer.customer_name} synchronized: ${result.tickets_found} found, ${result.tickets_created} created, ${result.tickets_updated} updated.${result.more ? ' More tickets are being read in the background; the rest follow within a few minutes.' : ''}`);
       setRefresh(value => value+1);
     } catch(failure) { setError(failure.message); }
     finally { setSyncing(null); }

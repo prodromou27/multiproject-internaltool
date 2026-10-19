@@ -107,6 +107,57 @@ test('open tickets RT no longer lists in the queue are checked: merged, deleted 
   await db.prepare(`DELETE FROM ticket_sync_runs WHERE id IN (${runs.map(() => '?').join(',')})`).run(...runs);
 });
 
+test('a big queue syncs in chunks that are saved as they are read, and resumes where it stopped',async () => {
+  const { syncCustomer }=require('../ticketSync');
+  const { runDueSyncs }=require('../ticketSyncScheduler');
+  const mappingRow=() => db.prepare("SELECT last_successful_sync_at,sync_cursor,sync_backlog FROM customer_ticketing_configurations WHERE customer_id=? AND external_queue_id='42'").get(ids.customer);
+  // A first sync of this queue.
+  await db.prepare("UPDATE customer_ticketing_configurations SET last_successful_sync_at=NULL,sync_cursor=NULL,sync_backlog=0 WHERE customer_id=? AND external_queue_id='42'").run(ids.customer);
+  const before=null;
+  // 25 pages of one ticket each, one minute apart, oldest first.
+  const ticket=n => ({ id:String(8000+n),Subject:`Chunk ${n}`,Status:'open',Owner:{ id:'alice',Name:'Alice' },Created:'2026-09-01T10:00:00Z',LastUpdated:new Date(Date.UTC(2026,8,1,10,n)).toISOString() });
+  const asked=[];let failAt=null;
+  const provider={ getTicketPages:async function* (queue,options) {
+    asked.push(options);
+    // Tickets changed after `updatedAfter` (all on a first sync), oldest first.
+    const due=Array.from({ length:25 },(_,i) => ticket(i+1)).filter(t => !options.updatedAfter || t.LastUpdated>options.updatedAfter);
+    for (const [i,t] of due.entries()) { if (Number(t.id)-8000===failAt) throw Object.assign(new Error('RT went away'),{ status:502 }); yield { items:[t],more:i<due.length-1 }; }
+  } };
+  const saved=async () => Number((await db.prepare("SELECT COUNT(*) AS n FROM external_tickets WHERE external_ticket_id LIKE '80%' AND subject LIKE 'Chunk %'").get()).n);
+
+  const first=await syncCustomer(ids.customer,{ provider });
+  assert.deepEqual([first.tickets_found,first.more],[20,true],'20 pages per run');
+  let row=await mappingRow();
+  assert.equal(Number(row.sync_backlog),1);
+  assert.equal(row.sync_cursor,'2026-09-01T10:19:59.000Z','the last change saved, one second back');
+  assert.equal(row.last_successful_sync_at,before,'not complete yet');
+  assert.equal(await saved(),20);
+  // The scheduler queues the next chunk straight away, not an interval later.
+  await db.prepare("DELETE FROM background_jobs WHERE type='ticket_sync'").run();
+  await runDueSyncs();
+  assert.ok(await db.prepare("SELECT 1 FROM background_jobs WHERE type='ticket_sync' AND status='queued' AND payload LIKE ?").get(`%${ids.customer}%`));
+  await db.prepare("DELETE FROM background_jobs WHERE type='ticket_sync'").run();
+
+  // An interruption keeps what was saved; the next run continues from the bookmark.
+  failAt=23;
+  await assert.rejects(() => syncCustomer(ids.customer,{ provider }),/RT went away/);
+  assert.equal(asked[0].updatedAfter,null,'the first run reads two years back');
+  assert.equal(asked[1].updatedAfter,'2026-09-01T10:19:59.000Z');
+  assert.equal(await saved(),22,'pages 21 and 22 kept');
+  failAt=null;
+  const last=await syncCustomer(ids.customer,{ provider });
+  assert.deepEqual([last.tickets_found,last.more],[4,false],'22 (read again: the bookmark is a second back) to 25');
+  row=await mappingRow();
+  assert.deepEqual([row.sync_cursor,Number(row.sync_backlog)],[null,0],'caught up');
+  assert.notEqual(row.last_successful_sync_at,before);
+  assert.equal(await saved(),25);
+  // Leave the later tests the data they expect.
+  await db.prepare("DELETE FROM external_tickets WHERE subject LIKE 'Chunk %'").run();
+  const runs=(await db.prepare('SELECT id FROM ticket_sync_runs ORDER BY id DESC LIMIT 3').all()).map(r => r.id);
+  await db.prepare(`DELETE FROM ticket_sync_runs WHERE id IN (${runs.map(() => '?').join(',')})`).run(...runs);
+  await db.prepare("UPDATE customer_ticketing_configurations SET last_sync_status='success' WHERE customer_id=?").run(ids.customer);
+});
+
 test('ticket synchronization monitoring summarizes mappings and names run history',async () => {
   const monitoring=await api('/api/ticketing/monitoring',{ token:ids.tokenManager });
   assert.equal(monitoring.status,200);assert.equal(monitoring.data.integration.enabled,true);

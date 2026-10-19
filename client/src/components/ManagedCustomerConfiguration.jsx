@@ -143,7 +143,7 @@ export default function ManagedCustomerConfiguration({ customerId }) {
 
   async function syncTickets() {
     setBusy('sync');setMessage('');
-    try { const result=await api.syncManagedCustomerTickets(customerId);setMessage(`Synced: ${result.tickets_created} new, ${result.tickets_updated} updated.`); }
+    try { const result=await api.syncManagedCustomerTickets(customerId);setMessage(`Synced: ${result.tickets_created} new, ${result.tickets_updated} updated.${result.more ? ' More tickets are being read in the background; the rest follow within a few minutes.' : ''}`); }
     catch(failure) { setMessage(failure.message); } finally { setBusy(''); }
   }
 

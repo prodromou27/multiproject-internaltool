@@ -54,13 +54,13 @@ class RequestTrackerProvider {
     await this.ready;
   }
 
-  async request(path,params={}) {
+  async request(path,params={},{ timeoutMs=this.timeoutMs }={}) {
     await this.ensureReady();
     const url=new URL(this.apiRoot+path);
     for (const [key,value] of Object.entries(params)) if (value!==undefined) url.searchParams.set(key,String(value));
     let response;
-    try { response=await this.fetchImpl(url,{ headers:{ Accept:'application/json',Authorization:`token ${this.config.api_token}` },redirect:'error',addresses:this.addresses,signal:AbortSignal.timeout(this.timeoutMs) }); }
-    catch(error) { throw Object.assign(new Error(connectionError(error,url.hostname)),{ status:502 }); }
+    try { response=await this.fetchImpl(url,{ headers:{ Accept:'application/json',Authorization:`token ${this.config.api_token}` },redirect:'error',addresses:this.addresses,signal:AbortSignal.timeout(timeoutMs) }); }
+    catch(error) { throw Object.assign(new Error(connectionError(error,url.hostname)),{ status:502,timedOut:error?.name==='TimeoutError' }); }
     if (!response.ok) throw Object.assign(new Error(httpError(response.status)),{ status:502,httpStatus:response.status });
     const type=response.headers.get('content-type') || '';
     if (!type.toLowerCase().includes('application/json')) throw Object.assign(new Error('Request Tracker returned an unexpected response type'),{ status:502 });
@@ -127,6 +127,30 @@ class RequestTrackerProvider {
       const hasPageCount=result.pages!==null && result.pages!==undefined && Number.isFinite(Number(result.pages));
       if ((hasPageCount && page>=Number(result.pages)) || (!hasPageCount && !result.next_page) || result.items.length===0) return tickets;
       page++;
+    }
+    throw Object.assign(new Error(`Request Tracker ticket pagination exceeded ${MAX_PAGES} pages`),{ status:413 });
+  }
+
+  /** A queue's tickets page by page, oldest change first, so a big queue can be saved as it
+      is read and resumed from the last change saved (ticketSync.js). Yields { items, more }.
+      A slow page is asked again once with a longer wait. */
+  async *getTicketPages(queueId,{ updatedAfter,since }={}) {
+    const id=String(queueId ?? '');
+    if (!/^\d+$/.test(id)) throw Object.assign(new Error('Invalid Request Tracker queue identifier'),{ status:400 });
+    const day=(value,label) => { const date=new Date(value);if (Number.isNaN(date.getTime())) throw Object.assign(new Error(`Invalid ${label} date`),{ status:400 });return date.toISOString(); };
+    let query=`Queue = ${id}`;
+    if (updatedAfter) query+=` AND LastUpdated > '${day(updatedAfter,'incremental synchronization')}'`;
+    else if (since) query+=` AND (Status = '__Active__' OR LastUpdated > '${day(since,'history')}')`;
+    const params=page => ({ query,page,per_page:100,orderby:'LastUpdated',order:'ASC',fields:'Subject,Status,Priority,Owner,Created,LastUpdated,Resolved,Due,Queue','fields[Owner]':'Name,EmailAddress,RealName','fields[Queue]':'Name' });
+    for (let page=1;page<=MAX_PAGES;page++) {
+      let result;
+      try { result=await this.request('/tickets',params(page)); }
+      catch(error) { if (!error.timedOut) throw error; result=await this.request('/tickets',params(page),{ timeoutMs:this.timeoutMs*4 }); }
+      if (!Array.isArray(result.items)) throw Object.assign(new Error('Request Tracker ticket response is invalid'),{ status:502 });
+      const hasPageCount=result.pages!==null && result.pages!==undefined && Number.isFinite(Number(result.pages));
+      const more=!((hasPageCount && page>=Number(result.pages)) || (!hasPageCount && !result.next_page) || result.items.length===0);
+      yield { items:result.items,more };
+      if (!more) return;
     }
     throw Object.assign(new Error(`Request Tracker ticket pagination exceeded ${MAX_PAGES} pages`),{ status:413 });
   }

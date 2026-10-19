@@ -58,7 +58,7 @@ function CustomerQueues() {
   }
   async function syncNow(customer) {
     setBusy(`sync-${customer.id}`);
-    try { await api.syncManagedCustomerTickets(customer.id); toast.success(`Sync started for ${customer.name}`); await load(); }
+    try { const result=await api.syncManagedCustomerTickets(customer.id); toast.success(`${customer.name}: ${result.tickets_found ?? 0} tickets read.${result.more ? ' More tickets are being read in the background; the rest follow within a few minutes.' : ''}`); await load(); }
     catch (failure) { toast.error(failure.message); } finally { setBusy(''); }
   }
 

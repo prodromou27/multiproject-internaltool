@@ -62,6 +62,19 @@ test('the first sync of a queue reads two years (and older tickets still open); 
   assert.equal(query,"Queue = 42 AND LastUpdated > '2026-10-01T00:00:00.000Z'");
 });
 
+test('ticket pages come oldest change first, one at a time; a slow page is asked again once with a longer wait',async () => {
+  const asked=[];let slow=true;
+  const provider=new RequestTrackerProvider({ base_url:'https://rt.example.test',api_token:'token' },{ validateUrl:async () => {},fetchImpl:async (url,options) => {
+    asked.push([url.searchParams.get('page'),url.searchParams.get('orderby'),url.searchParams.get('order')]);
+    if (url.searchParams.get('page')==='2' && slow) { slow=false;throw Object.assign(new Error('timed out'),{ name:'TimeoutError' }); }
+    return json({ pages:3,items:[{ id:url.searchParams.get('page') }] });
+  } });
+  const pages=[];
+  for await (const page of provider.getTicketPages('42',{ updatedAfter:'2026-10-01' })) pages.push([page.items[0].id,page.more]);
+  assert.deepEqual(pages,[['1',true],['2',true],['3',false]]);
+  assert.deepEqual(asked,[['1','LastUpdated','ASC'],['2','LastUpdated','ASC'],['2','LastUpdated','ASC'],['3','LastUpdated','ASC']],'page 2 asked again after timing out');
+});
+
 test('RT provider rejects incomplete settings and unbounded queue directories',async () => {
   await assert.rejects(() => new RequestTrackerProvider({ base_url:'https://rt.example.test' },{ validateUrl:async () => {} }).testConnection(),/not fully configured/);
   const provider=new RequestTrackerProvider({ base_url:'https://rt.example.test',api_token:'token' },{ validateUrl:async () => {},fetchImpl:async () => json({ pages:6,items:[] }) });
