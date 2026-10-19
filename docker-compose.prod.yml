@@ -3,7 +3,8 @@
 # (the deploy/deploy.sh prod path does this for you).
 #
 # - HTTPS on port 443 (and 80 → 443) through Caddy, with the company certificate
-#   in ./certs (deploy/Caddyfile, deploy/README.md section 4).
+#   in ./certs (deploy/Caddyfile, deploy/README.md section 4). Without a certificate,
+#   deploy.sh sets PROXY_CONFIG=Caddyfile.http: plain HTTP on port 80 until one is added.
 # - The app itself listens only on 127.0.0.1:8080 (for the proxy, health checks
 #   and deploy/smoke-test.sh); APP_PORT is not used in production.
 # - Postgres is NOT published to the host (only reachable on the internal
@@ -50,7 +51,7 @@ services:
       - "443:443"
       - "80:80"
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/${PROXY_CONFIG:-Caddyfile}:/etc/caddy/Caddyfile:ro
       - ${TLS_CERT_DIR:-./certs}:/certs:ro
       - caddy_data:/data
       - caddy_config:/config

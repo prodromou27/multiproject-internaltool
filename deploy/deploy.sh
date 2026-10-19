@@ -85,41 +85,50 @@ fi
 if [ -n "${APP_URL:-}" ] && ! printf '%s' "$APP_URL" | grep -qE '^https?://[^[:space:]]+$'; then
   echo "ERROR: APP_URL must be a valid http(s) URL." >&2; errs=1
 fi
-# Production serves HTTPS on 443 with the company certificate (deploy/Caddyfile).
+# Production: HTTPS on 443 when a certificate is in ./certs (deploy/Caddyfile);
+# without one, plain HTTP on port 80 (deploy/Caddyfile.http) until one is added.
 if [ "$ENVIRONMENT" = "prod" ]; then
   cert_dir="${TLS_CERT_DIR:-./certs}"
-  if [ -n "${APP_URL:-}" ] && ! printf '%s' "$APP_URL" | grep -qE '^https://'; then
-    echo "ERROR: APP_URL must start with https:// in production (the app is served on port 443)." >&2; errs=1
-  fi
-  if [ ! -f "$cert_dir/tls.crt" ] || [ ! -f "$cert_dir/tls.key" ]; then
-    echo "ERROR: the HTTPS certificate is missing. Put the company certificate in $cert_dir/:" >&2
-    echo "       tls.crt  (the certificate followed by its intermediate CA certificates)" >&2
-    echo "       tls.key  (its private key, unencrypted PEM)   — see deploy/README.md section 4" >&2
-    errs=1
-  elif command -v openssl >/dev/null 2>&1; then
-    if ! openssl x509 -in "$cert_dir/tls.crt" -noout >/dev/null 2>&1; then
-      echo "ERROR: $cert_dir/tls.crt is not a PEM certificate." >&2; errs=1
-    elif [ "$(openssl x509 -in "$cert_dir/tls.crt" -noout -pubkey 2>/dev/null | openssl sha256)" != "$(openssl pkey -in "$cert_dir/tls.key" -pubout 2>/dev/null | openssl sha256)" ]; then
-      echo "ERROR: $cert_dir/tls.key is not the private key of $cert_dir/tls.crt (or it is password-protected)." >&2; errs=1
-    elif ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkend 0 >/dev/null; then
-      echo "ERROR: the certificate in $cert_dir/tls.crt has expired." >&2; errs=1
-    else
-      if ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkend $((30 * 86400)) >/dev/null; then
-        echo "WARNING: the certificate expires within 30 days ($(openssl x509 -in "$cert_dir/tls.crt" -noout -enddate | cut -d= -f2))." >&2
-      fi
-      if command -v ss >/dev/null 2>&1; then
-        # Ports 80/443 held by something other than Docker (e.g. nginx or httpd on the host).
-        holders="$(ss -ltnpH 2>/dev/null | awk '$4 ~ /:(80|443)$/' | grep -v docker-proxy | grep -oE 'users:\(\("[^"]+"' | sed -e 's/users:(("//' -e 's/"$//' | sort -u | tr '\n' ' ')"
-        if [ -n "$holders" ]; then
-          echo "ERROR: port 80 or 443 is already used on this server by: ${holders}" >&2
-          echo "       The HTTPS proxy needs both. If it serves nothing else: sudo systemctl disable --now ${holders%% *}" >&2
-          errs=1
+  if [ -f "$cert_dir/tls.crt" ] || [ -f "$cert_dir/tls.key" ]; then
+    export PROXY_CONFIG=Caddyfile
+    if [ -n "${APP_URL:-}" ] && ! printf '%s' "$APP_URL" | grep -qE '^https://'; then
+      echo "ERROR: APP_URL must start with https:// when a certificate is in $cert_dir (the app is served on port 443)." >&2; errs=1
+    fi
+    if [ ! -f "$cert_dir/tls.crt" ] || [ ! -f "$cert_dir/tls.key" ]; then
+      echo "ERROR: $cert_dir needs both files: tls.crt (certificate + intermediates) and tls.key (its private key) — see deploy/README.md section 4." >&2; errs=1
+    elif command -v openssl >/dev/null 2>&1; then
+      if ! openssl x509 -in "$cert_dir/tls.crt" -noout >/dev/null 2>&1; then
+        echo "ERROR: $cert_dir/tls.crt is not a PEM certificate." >&2; errs=1
+      elif [ "$(openssl x509 -in "$cert_dir/tls.crt" -noout -pubkey 2>/dev/null | openssl sha256)" != "$(openssl pkey -in "$cert_dir/tls.key" -pubout 2>/dev/null | openssl sha256)" ]; then
+        echo "ERROR: $cert_dir/tls.key is not the private key of $cert_dir/tls.crt (or it is password-protected)." >&2; errs=1
+      elif ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkend 0 >/dev/null; then
+        echo "ERROR: the certificate in $cert_dir/tls.crt has expired." >&2; errs=1
+      else
+        if ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkend $((30 * 86400)) >/dev/null; then
+          echo "WARNING: the certificate expires within 30 days ($(openssl x509 -in "$cert_dir/tls.crt" -noout -enddate | cut -d= -f2))." >&2
+        fi
+        app_host="$(printf '%s' "${APP_URL:-}" | sed -E 's#^https?://([^/:]+).*#\1#')"
+        if [ -n "$app_host" ] && ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkhost "$app_host" 2>/dev/null | grep -q 'does match'; then
+          echo "ERROR: the certificate does not cover $app_host (the host in APP_URL)." >&2; errs=1
         fi
       fi
-      app_host="$(printf '%s' "${APP_URL:-}" | sed -E 's#^https?://([^/:]+).*#\1#')"
-      if [ -n "$app_host" ] && ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkhost "$app_host" 2>/dev/null | grep -q 'does match'; then
-        echo "ERROR: the certificate does not cover $app_host (the host in APP_URL)." >&2; errs=1
-      fi
+    fi
+  else
+    export PROXY_CONFIG=Caddyfile.http
+    if [ -n "${APP_URL:-}" ] && ! printf '%s' "$APP_URL" | grep -qE '^http://[^/:]+(:80)?/?$'; then
+      echo "ERROR: there is no certificate in $cert_dir, so the app is served over plain HTTP on port 80:" >&2
+      echo "       set APP_URL=http://<server name> (no port), or add the certificate (deploy/README.md section 4)." >&2; errs=1
+    fi
+    echo "WARNING: no certificate in $cert_dir — serving plain HTTP on port 80. Passwords and sessions cross the" >&2
+    echo "         network unencrypted. Add certs/tls.crt and certs/tls.key, set APP_URL=https://…, and deploy again." >&2
+  fi
+  if command -v ss >/dev/null 2>&1; then
+    # Ports 80/443 held by something other than Docker (e.g. nginx or httpd on the host).
+    holders="$(ss -ltnpH 2>/dev/null | awk '$4 ~ /:(80|443)$/' | grep -v docker-proxy | grep -oE 'users:\(\("[^"]+"' | sed -e 's/users:(("//' -e 's/"$//' | sort -u | tr '\n' ' ')"
+    if [ -n "$holders" ]; then
+      echo "ERROR: port 80 or 443 is already used on this server by: ${holders}" >&2
+      echo "       The proxy needs them. If it serves nothing else: sudo systemctl disable --now ${holders%% *}" >&2
+      errs=1
     fi
   fi
 fi
@@ -165,7 +174,11 @@ done
 
 docker compose "${COMPOSE[@]}" ps
 if [ "$ENVIRONMENT" = "prod" ]; then
-  echo "==> Served at ${APP_URL} (HTTPS on port 443; port 80 redirects). Open ports 443 and 80 in the host firewall."
+  if [ "$PROXY_CONFIG" = Caddyfile ]; then
+    echo "==> Served at ${APP_URL} (HTTPS on port 443; port 80 redirects). Open ports 443 and 80 in the host firewall."
+  else
+    echo "==> Served at ${APP_URL} (plain HTTP on port 80, no certificate yet). Open port 80 in the host firewall."
+  fi
 fi
 echo "==> Deploy of '$ENVIRONMENT' complete."
 echo "    First empty-database login: admin / admin (immediate password change required)."

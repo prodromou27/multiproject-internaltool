@@ -173,6 +173,13 @@ configured by [`deploy/Caddyfile`](Caddyfile)) holds the company certificate and
 forwards to the app. The app itself then listens only on `127.0.0.1:8080`, so
 port 8080 is no longer reachable from the network.
 
+**No certificate yet?** Then production serves **plain HTTP on port 80**
+([`deploy/Caddyfile.http`](Caddyfile.http)) with `APP_URL=http://<server name>`
+(no port), and the deploy prints a warning: passwords and sessions cross the
+network unencrypted. Once the certificate is in `certs/`, set
+`APP_URL=https://<server name>` and deploy again; it switches to HTTPS on 443 by
+itself, and port 80 then redirects.
+
 **1. Put the company certificate on the server**, in `certs/` at the repo root
 (the folder is git-ignored):
 

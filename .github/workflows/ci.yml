@@ -231,7 +231,7 @@ jobs:
 
       # The production proxy (deploy/Caddyfile, pinned Caddy image) serves HTTPS with a
       # certificate from ./certs, redirects HTTP, and streams live updates unbuffered.
-      - name: HTTPS proxy serves the app on 443
+      - name: HTTPS proxy serves the app on 443 (and plain HTTP on 80 without a certificate)
         run: |
           image=$(node -e "console.log(require('/tmp/prod.json').services.proxy.image)")
           mkdir -p /tmp/certs && openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=teamhub.test \
@@ -251,6 +251,10 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --resolve teamhub.test:8081:127.0.0.1 http://teamhub.test:8081/tasks)" = "301 https://teamhub.test/tasks"
           curl -sk --max-time 3 -o /tmp/live.txt --resolve teamhub.test:8443:127.0.0.1 https://teamhub.test:8443/api/live || true  # the stream stays open
           grep -q "data: first" /tmp/live.txt || (echo "live updates were buffered" >&2; exit 1)
+          # Without a certificate (deploy/Caddyfile.http): plain HTTP on port 80, no redirect.
+          docker run -d --name proxyhttp --network proxytest -p 8082:80 --cap-drop ALL --cap-add NET_BIND_SERVICE             -v "$PWD/deploy/Caddyfile.http:/etc/caddy/Caddyfile:ro" "$image"
+          for i in $(seq 1 20); do curl -s http://localhost:8082/api/health >/dev/null && break; sleep 1; done
+          curl -sS --fail http://localhost:8082/api/health | tee /dev/stderr | grep -q '"proto":"http"'
 
       # The network-share example (deploy/README.md) must merge cleanly with the main file.
       - name: Validate the backup share example
