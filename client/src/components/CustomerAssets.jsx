@@ -20,16 +20,37 @@ const CRITICALITY=['low','medium','high','critical'];
 const label=value => value.replaceAll('_',' ').replace(/^./,letter => letter.toUpperCase());
 const empty={ name:'',asset_tag:'',asset_type:'',technology_id:'',vendor:'',model:'',serial_number:'',hostname:'',ip_address:'',mac_address:'',software_version:'',location:'',environment:'production',criticality:'medium',lifecycle_status:'active',coverage_type:'neither',support_provider:'',support_reference:'',support_start_date:'',support_end_date:'',warranty_expiry_date:'',management_url:'',notes:'' };
 
+// Types offered in the form (anything else can be typed). Cloud services and
+// subscriptions have no hostname, IP, MAC, serial or firmware, so those are hidden.
+const TYPE_SUGGESTIONS=['Firewall','Security gateway','Switch','Router','Access point','Wireless controller','Server','Storage','UPS','Cloud service','Subscription','Software'];
+const isCloud=type => /cloud|saas|subscription|software|licen[cs]e|365|tenant/i.test(type || '');
+const DEVICE_FIELDS=['asset_tag','hostname','ip_address','mac_address','serial_number','software_version'];
+const ESSENTIALS=['name','asset_type','vendor','model','technology_id','coverage_type','lifecycle_status','environment','criticality'];
+
 function AssetForm({ customerId,initial,technologies,onClose,onSaved }) {
   const [form,setForm]=useState(initial || empty);
+  const [quantity,setQuantity]=useState('1'),[serials,setSerials]=useState('');
+  // Editing opens the details when any are filled; adding starts with the essentials only.
+  const [more,setMore]=useState(() => !!initial && Object.entries(initial).some(([key,value]) => Object.hasOwn(empty,key) && !ESSENTIALS.includes(key) && value));
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState('');
   const inFlight=useRef(false);
   const set=key => event => setForm(value => ({ ...value,[key]:event.target.value }));
+  const count=Math.max(1,Math.min(50,Number(quantity) || 1));
+  const several=!initial && count>1, cloud=isCloud(form.asset_type);
+  const serialList=serials.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   async function submit(event) {
     event.preventDefault(); if (inFlight.current) return;
     inFlight.current=true; setSaving(true); setError('');
-    try { initial ? await api.updateCustomerAsset(customerId,initial.id,form) : await api.createCustomerAsset(customerId,form); onSaved(); onClose(); }
+    try {
+      if (initial) await api.updateCustomerAsset(customerId,initial.id,form);
+      else {
+        // Device-specific fields do not apply to several at once, nor to a cloud service.
+        const body=several || cloud ? { ...form,...Object.fromEntries(DEVICE_FIELDS.map(key => [key,''])) } : form;
+        await api.createCustomerAsset(customerId,several ? { ...body,quantity:count,serials:serialList } : body);
+      }
+      onSaved(); onClose();
+    }
     catch (failure) { setError(failure.message); }
     finally { inFlight.current=false; setSaving(false); }
   }
@@ -37,20 +58,37 @@ function AssetForm({ customerId,initial,technologies,onClose,onSaved }) {
     <form onSubmit={submit}>
       {error && <div className="error-msg" role="alert">{error}</div>}
       <fieldset disabled={saving} className="border-0 p-0 m-0">
-        <div className="form-row"><div className="form-group"><label htmlFor="asset-name">Asset name</label><input id="asset-name" autoFocus required maxLength={300} value={form.name} onChange={set('name')} placeholder="Primary Check Point gateway" /></div><div className="form-group"><label htmlFor="asset-tag">Asset tag</label><input id="asset-tag" maxLength={500} value={form.asset_tag || ''} onChange={set('asset_tag')} /></div></div>
-        <div className="form-row"><div className="form-group"><label htmlFor="asset-type">Asset type</label><input id="asset-type" required maxLength={100} value={form.asset_type} onChange={set('asset_type')} placeholder="Security gateway, server, switch..." /></div><div className="form-group"><label htmlFor="asset-technology">Technology</label><select id="asset-technology" value={form.technology_id || ''} onChange={set('technology_id')}><option value="">Not linked</option>{initial?.technology_id && !technologies.some(row => row.id===Number(initial.technology_id)) && <option value={initial.technology_id}>{initial.technology_name || 'Previous technology'} (inactive)</option>}{technologies.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></div></div>
-        <div className="form-row"><div className="form-group"><label htmlFor="asset-coverage">Service coverage</label><select id="asset-coverage" value={form.coverage_type} onChange={set('coverage_type')}>{COVERAGE.map(value => <option key={value} value={value}>{value==='support' ? 'Under support' : label(value)}</option>)}</select>{initial?.coverage_source==='contract' && <small className="text-muted">Set by a contract in force; it follows the contract (Managed for a managed customer, otherwise Under support).</small>}</div><div className="form-group"><label htmlFor="asset-status">Lifecycle status</label><select id="asset-status" value={form.lifecycle_status} onChange={set('lifecycle_status')}>{STATUSES.map(value => <option key={value} value={value}>{label(value)}</option>)}</select></div></div>
-        <div className="form-row"><div className="form-group"><label htmlFor="asset-vendor">Vendor</label><input id="asset-vendor" maxLength={500} value={form.vendor || ''} onChange={set('vendor')} placeholder="Check Point" /></div><div className="form-group"><label htmlFor="asset-model">Model</label><input id="asset-model" maxLength={500} value={form.model || ''} onChange={set('model')} /></div></div>
-        <div className="form-row"><div className="form-group"><label htmlFor="asset-hostname">Hostname</label><input id="asset-hostname" maxLength={253} value={form.hostname || ''} onChange={set('hostname')} /></div><div className="form-group"><label htmlFor="asset-ip">IP address</label><input id="asset-ip" maxLength={500} value={form.ip_address || ''} onChange={set('ip_address')} placeholder="IPv4 or IPv6" /></div></div>
-        <div className="form-row"><div className="form-group"><label htmlFor="asset-mac">MAC address</label><input id="asset-mac" maxLength={17} value={form.mac_address || ''} onChange={set('mac_address')} placeholder="00:11:22:33:44:55" /></div><div className="form-group"><label htmlFor="asset-serial">Serial number</label><input id="asset-serial" maxLength={500} value={form.serial_number || ''} onChange={set('serial_number')} /></div></div>
-        <div className="form-row"><div className="form-group"><label htmlFor="asset-version">Software / firmware version</label><input id="asset-version" maxLength={500} value={form.software_version || ''} onChange={set('software_version')} /></div><div className="form-group"><label htmlFor="asset-location">Location</label><input id="asset-location" maxLength={500} value={form.location || ''} onChange={set('location')} /></div></div>
-        <div className="form-row"><div className="form-group"><label htmlFor="asset-environment">Environment</label><select id="asset-environment" value={form.environment} onChange={set('environment')}>{ENVIRONMENTS.map(value => <option key={value} value={value}>{label(value)}</option>)}</select></div><div className="form-group"><label htmlFor="asset-criticality">Criticality</label><select id="asset-criticality" value={form.criticality} onChange={set('criticality')}>{CRITICALITY.map(value => <option key={value} value={value}>{label(value)}</option>)}</select></div></div>
-        <h3 className="u-062cf76">Support and warranty</h3>
-        <div className="form-row"><div className="form-group"><label htmlFor="asset-provider">Support provider</label><input id="asset-provider" maxLength={500} value={form.support_provider || ''} onChange={set('support_provider')} /></div><div className="form-group"><label htmlFor="asset-reference">Support reference</label><input id="asset-reference" maxLength={500} value={form.support_reference || ''} onChange={set('support_reference')} /></div></div>
-        <div className="form-row"><div className="form-group"><label htmlFor="asset-support-start">Support start</label><input id="asset-support-start" type="date" min="1900-01-01" max="9998-12-31" value={form.support_start_date || ''} onChange={set('support_start_date')} /></div><div className="form-group"><label htmlFor="asset-support-end">Support end</label><input id="asset-support-end" type="date" min="1900-01-01" max="9998-12-31" value={form.support_end_date || ''} onChange={set('support_end_date')} /></div><div className="form-group"><label htmlFor="asset-warranty">Warranty expiry</label><input id="asset-warranty" type="date" min="1900-01-01" max="9998-12-31" value={form.warranty_expiry_date || ''} onChange={set('warranty_expiry_date')} /></div></div>
-        <div className="form-group"><label htmlFor="asset-url">Management URL</label><input id="asset-url" type="url" maxLength={500} value={form.management_url || ''} onChange={set('management_url')} placeholder="https://gateway.example.local" /></div>
-        <div className="form-group"><label htmlFor="asset-notes">Notes (do not store passwords or secrets)</label><textarea id="asset-notes" maxLength={10000} rows={3} value={form.notes || ''} onChange={set('notes')} /></div>
-        <div className="modal-footer"><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" type="submit">{saving ? 'Saving...' : 'Save asset'}</button></div>
+        <div className="form-row"><div className="form-group"><label htmlFor="asset-name">Asset name</label><input id="asset-name" autoFocus required maxLength={300} value={form.name} onChange={set('name')} placeholder={cloud ? 'Microsoft 365' : 'Primary Check Point gateway'} /></div>
+          <div className="form-group"><label htmlFor="asset-type">Asset type</label><input id="asset-type" list="asset-type-options" required maxLength={100} value={form.asset_type} onChange={set('asset_type')} placeholder="Firewall, access point, cloud service…" />
+            <datalist id="asset-type-options">{TYPE_SUGGESTIONS.map(type => <option key={type} value={type} />)}</datalist></div></div>
+        <div className="form-row"><div className="form-group"><label htmlFor="asset-vendor">Vendor</label><input id="asset-vendor" maxLength={500} value={form.vendor || ''} onChange={set('vendor')} placeholder={cloud ? 'Microsoft' : 'Check Point'} /></div>
+          <div className="form-group"><label htmlFor="asset-model">{cloud ? 'Plan or edition' : 'Model'}</label><input id="asset-model" maxLength={500} value={form.model || ''} onChange={set('model')} placeholder={cloud ? 'Business Premium' : ''} /></div></div>
+        <div className="form-row">
+          {!initial && <div className="form-group"><label htmlFor="asset-quantity">How many</label><input id="asset-quantity" type="number" min="1" max="50" value={quantity} onChange={event => setQuantity(event.target.value)} aria-describedby="asset-quantity-hint" />
+            <small id="asset-quantity-hint" className="text-muted">{several ? `Adds ${count} assets: ${form.name.trim() || 'Name'} 1 … ${count}.` : 'Several identical devices are added as separate assets.'}</small></div>}
+          <div className="form-group"><label htmlFor="asset-coverage">Service coverage</label><select id="asset-coverage" value={form.coverage_type} onChange={set('coverage_type')}>{COVERAGE.map(value => <option key={value} value={value}>{value==='support' ? 'Under support' : label(value)}</option>)}</select>{initial?.coverage_source==='contract' && <small className="text-muted">Set by a contract in force; it follows the contract (Managed for a managed customer, otherwise Under support).</small>}</div>
+          <div className="form-group"><label htmlFor="asset-technology">Technology</label><select id="asset-technology" value={form.technology_id || ''} onChange={set('technology_id')}><option value="">Not linked</option>{initial?.technology_id && !technologies.some(row => row.id===Number(initial.technology_id)) && <option value={initial.technology_id}>{initial.technology_name || 'Previous technology'} (inactive)</option>}{technologies.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></div>
+        </div>
+        {several && !cloud && <div className="form-group"><label htmlFor="asset-serials">Serial numbers <span className="text-muted">(optional, one per line, in order)</span></label>
+          <textarea id="asset-serials" rows={Math.min(count,6)} value={serials} onChange={event => setSerials(event.target.value)} aria-describedby="asset-serials-hint" />
+          <small id="asset-serials-hint" className={serialList.length>count ? 'text-danger' : 'text-muted'}>{serialList.length} of {count}{serialList.length>count ? ': more serial numbers than devices' : ''}. Hostnames, IP addresses and tags are added to each one afterwards.</small></div>}
+
+        <details className="asset-more" open={more} onToggle={event => setMore(event.currentTarget.open)}>
+          <summary>More details <span className="text-muted text-sm">({cloud ? 'location, support, notes' : several ? 'version, location, support, notes' : 'network, serial, support, notes'})</span></summary>
+          {!cloud && !several && <>
+            <div className="form-row"><div className="form-group"><label htmlFor="asset-hostname">Hostname</label><input id="asset-hostname" maxLength={253} value={form.hostname || ''} onChange={set('hostname')} /></div><div className="form-group"><label htmlFor="asset-ip">IP address</label><input id="asset-ip" maxLength={500} value={form.ip_address || ''} onChange={set('ip_address')} placeholder="IPv4 or IPv6" /></div></div>
+            <div className="form-row"><div className="form-group"><label htmlFor="asset-mac">MAC address</label><input id="asset-mac" maxLength={17} value={form.mac_address || ''} onChange={set('mac_address')} placeholder="00:11:22:33:44:55" /></div><div className="form-group"><label htmlFor="asset-serial">Serial number</label><input id="asset-serial" maxLength={500} value={form.serial_number || ''} onChange={set('serial_number')} /></div></div>
+            <div className="form-group"><label htmlFor="asset-tag">Asset tag</label><input id="asset-tag" maxLength={500} value={form.asset_tag || ''} onChange={set('asset_tag')} /></div>
+          </>}
+          <div className="form-row">{!cloud && <div className="form-group"><label htmlFor="asset-version">Software / firmware version</label><input id="asset-version" maxLength={500} value={form.software_version || ''} onChange={set('software_version')} /></div>}<div className="form-group"><label htmlFor="asset-location">Location</label><input id="asset-location" maxLength={500} value={form.location || ''} onChange={set('location')} /></div></div>
+          <div className="form-row"><div className="form-group"><label htmlFor="asset-status">Lifecycle status</label><select id="asset-status" value={form.lifecycle_status} onChange={set('lifecycle_status')}>{STATUSES.map(value => <option key={value} value={value}>{label(value)}</option>)}</select></div><div className="form-group"><label htmlFor="asset-environment">Environment</label><select id="asset-environment" value={form.environment} onChange={set('environment')}>{ENVIRONMENTS.map(value => <option key={value} value={value}>{label(value)}</option>)}</select></div><div className="form-group"><label htmlFor="asset-criticality">Criticality</label><select id="asset-criticality" value={form.criticality} onChange={set('criticality')}>{CRITICALITY.map(value => <option key={value} value={value}>{label(value)}</option>)}</select></div></div>
+          <h3 className="u-062cf76">Support and warranty</h3>
+          <div className="form-row"><div className="form-group"><label htmlFor="asset-provider">Support provider</label><input id="asset-provider" maxLength={500} value={form.support_provider || ''} onChange={set('support_provider')} /></div><div className="form-group"><label htmlFor="asset-reference">Support reference</label><input id="asset-reference" maxLength={500} value={form.support_reference || ''} onChange={set('support_reference')} /></div></div>
+          <div className="form-row"><div className="form-group"><label htmlFor="asset-support-start">Support start</label><input id="asset-support-start" type="date" min="1900-01-01" max="9998-12-31" value={form.support_start_date || ''} onChange={set('support_start_date')} /></div><div className="form-group"><label htmlFor="asset-support-end">Support end</label><input id="asset-support-end" type="date" min="1900-01-01" max="9998-12-31" value={form.support_end_date || ''} onChange={set('support_end_date')} /></div>{!cloud && <div className="form-group"><label htmlFor="asset-warranty">Warranty expiry</label><input id="asset-warranty" type="date" min="1900-01-01" max="9998-12-31" value={form.warranty_expiry_date || ''} onChange={set('warranty_expiry_date')} /></div>}</div>
+          <div className="form-group"><label htmlFor="asset-url">Management URL</label><input id="asset-url" type="url" maxLength={500} value={form.management_url || ''} onChange={set('management_url')} placeholder={cloud ? 'https://admin.microsoft.com' : 'https://gateway.example.local'} /></div>
+          <div className="form-group"><label htmlFor="asset-notes">Notes (do not store passwords or secrets)</label><textarea id="asset-notes" maxLength={10000} rows={3} value={form.notes || ''} onChange={set('notes')} /></div>
+        </details>
+        <div className="modal-footer"><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" type="submit">{saving ? 'Saving...' : several ? `Add ${count} assets` : 'Save asset'}</button></div>
       </fieldset>
     </form>
   </Modal>;

@@ -84,3 +84,20 @@ test('a person changing the coverage of a contract-set asset takes it over: it i
   assert.equal((await api(`${contracts(customer)}/${covering}`, { method: 'DELETE', token: ids.tokenManager })).status, 200);
   assert.equal((await coverage(ups)).coverage_type, 'managed', 'left as the person set it');
 });
+
+test('several identical devices are added at once as separate assets, with their serial numbers', async () => {
+  const add = body => api(`/api/customers/${customer}/assets`, { method: 'POST', token: ids.tokenManager, body });
+  for (const bad of [{ quantity: 0 }, { quantity: 51 }, { quantity: 2.5 }, { quantity: 3, serials: ['A', 'B', 'C', 'D'] }, { quantity: 3, hostname: 'ap.local' }, { quantity: 2, asset_tag: 'T-1' }])
+    assert.equal((await add({ name: 'Access point', asset_type: 'Access point', ...bad })).status, 400, JSON.stringify(bad));
+  const made = await add({ name: 'Access point', asset_type: 'Access point', vendor: 'Ubiquiti', quantity: 5, serials: ['SN-1', 'SN-2', ' SN-3 '] });
+  assert.equal(made.status, 201, JSON.stringify(made.data));
+  assert.equal(made.data.count, 5);
+  assert.deepEqual(made.data.assets.map(a => [a.name, a.serial_number, a.vendor]),
+    [['Access point 1', 'SN-1', 'Ubiquiti'], ['Access point 2', 'SN-2', 'Ubiquiti'], ['Access point 3', 'SN-3', 'Ubiquiti'], ['Access point 4', null, 'Ubiquiti'], ['Access point 5', null, 'Ubiquiti']]);
+  const history = await db.prepare("SELECT COUNT(*) AS n FROM customer_asset_history WHERE action = 'created' AND asset_id IN (" + made.data.assets.map(() => '?').join(',') + ')').get(...made.data.assets.map(a => a.id));
+  assert.equal(Number(history.n), 5, 'each has its own history');
+  // One at a time works as before and returns the asset itself.
+  const single = await add({ name: 'Microsoft 365', asset_type: 'Cloud service', vendor: 'Microsoft', model: 'Business Premium' });
+  assert.equal(single.status, 201);
+  assert.equal(single.data.name, 'Microsoft 365');
+});

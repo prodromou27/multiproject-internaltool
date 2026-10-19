@@ -264,13 +264,38 @@ router.get('/',async (req,res) => {
   res.json({ rows: rows.map(decryptAsset),total:Number(count.total),page,page_size:25,technologies,expiry_summary });
 });
 
+// Several identical devices at once ("5 × Access point"): `quantity` assets named
+// "<name> 1" … "<name> n", all or none; `serials` (optional) gives each its serial.
+const MAX_QUANTITY=50;
+const PER_DEVICE=['asset_tag','hostname','ip_address','mac_address','serial_number'];
+function checkQuantity(body) {
+  const { quantity=1,serials=[] }=body;
+  if (!Number.isInteger(quantity) || quantity<1 || quantity>MAX_QUANTITY) return { error: `Quantity must be a whole number from 1 to ${MAX_QUANTITY}` };
+  if (!Array.isArray(serials) || serials.length>quantity || serials.some(s => typeof s!=='string' || s.length>500)) return { error: 'Serial numbers must be a list with at most one per device' };
+  if (quantity>1) {
+    const shared=PER_DEVICE.find(field => typeof body[field]==='string' && body[field].trim());
+    if (shared) return { error: `${shared.replace('_',' ')} belongs to one device; leave it empty when adding several (add it to each one afterwards)` };
+  }
+  return { quantity,serials:serials.map(s => s.trim()) };
+}
+
 router.post('/',async (req,res) => {
-  const input=validate(req.body); if (input.error) return res.status(400).json({ error: input.error });
+  const many=checkQuantity(req.body); if (many.error) return res.status(400).json({ error: many.error });
+  const { quantity:_q,serials:_s,...body }=req.body;
+  const input=validate(body); if (input.error) return res.status(400).json({ error: input.error });
   const refError=await references(input.value); if (refError) return res.status(400).json({ error: refError });
   const customer=Number(req.params.id);
   try {
-    const row=await db.transaction(tx => insertRecord(tx,req,customer,input.value));
-    res.status(201).json(decryptAsset(row));
+    if (many.quantity===1) {
+      const row=await db.transaction(tx => insertRecord(tx,req,customer,input.value));
+      return res.status(201).json(decryptAsset(row));
+    }
+    const rows=await db.transaction(async tx => {
+      const made=[];
+      for (let i=1;i<=many.quantity;i++) made.push(await insertRecord(tx,req,customer,{ ...input.value,name:`${input.value.name} ${i}`,serial_number:many.serials[i-1] || null }));
+      return made;
+    });
+    res.status(201).json({ count:rows.length,assets:rows.map(decryptAsset) });
   } catch (error) { if (error.code==='23505') return res.status(409).json({ error: 'This customer already has that asset tag' }); throw error; }
 });
 
