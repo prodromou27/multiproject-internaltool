@@ -124,7 +124,8 @@ if [ "$ENVIRONMENT" = "prod" ]; then
   fi
   if command -v ss >/dev/null 2>&1; then
     # Ports 80/443 held by something other than Docker (e.g. nginx or httpd on the host).
-    holders="$(ss -ltnpH 2>/dev/null | awk '$4 ~ /:(80|443)$/' | grep -v docker-proxy | grep -oE 'users:\(\("[^"]+"' | sed -e 's/users:(("//' -e 's/"$//' | sort -u | tr '\n' ' ')"
+    # `|| true`: no match is the normal case, and must not stop the script (set -e, pipefail).
+    holders="$( { ss -ltnpH 2>/dev/null | awk '$4 ~ /:(80|443)$/' | grep -v docker-proxy | grep -oE 'users:\(\("[^"]+"' | sed -e 's/users:(("//' -e 's/"$//' | sort -u | tr '\n' ' '; } || true)"
     if [ -n "$holders" ]; then
       echo "ERROR: port 80 or 443 is already used on this server by: ${holders}" >&2
       echo "       The proxy needs them. If it serves nothing else: sudo systemctl disable --now ${holders%% *}" >&2
