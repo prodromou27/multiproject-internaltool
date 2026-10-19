@@ -107,6 +107,15 @@ if [ "$ENVIRONMENT" = "prod" ]; then
       if ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkend $((30 * 86400)) >/dev/null; then
         echo "WARNING: the certificate expires within 30 days ($(openssl x509 -in "$cert_dir/tls.crt" -noout -enddate | cut -d= -f2))." >&2
       fi
+      if command -v ss >/dev/null 2>&1; then
+        # Ports 80/443 held by something other than Docker (e.g. nginx or httpd on the host).
+        holders="$(ss -ltnpH 2>/dev/null | awk '$4 ~ /:(80|443)$/' | grep -v docker-proxy | grep -oE 'users:\(\("[^"]+"' | sed -e 's/users:(("//' -e 's/"$//' | sort -u | tr '\n' ' ')"
+        if [ -n "$holders" ]; then
+          echo "ERROR: port 80 or 443 is already used on this server by: ${holders}" >&2
+          echo "       The HTTPS proxy needs both. If it serves nothing else: sudo systemctl disable --now ${holders%% *}" >&2
+          errs=1
+        fi
+      fi
       app_host="$(printf '%s' "${APP_URL:-}" | sed -E 's#^https?://([^/:]+).*#\1#')"
       if [ -n "$app_host" ] && ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkhost "$app_host" 2>/dev/null | grep -q 'does match'; then
         echo "ERROR: the certificate does not cover $app_host (the host in APP_URL)." >&2; errs=1
