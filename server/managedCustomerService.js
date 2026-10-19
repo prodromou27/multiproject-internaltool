@@ -59,7 +59,7 @@ async function getOverview(customerId,from,to,store=db) {
       COUNT(*) FILTER (WHERE normalized_status='Pending') AS pending_now,
       COUNT(*) FILTER (WHERE status_group='open' AND normalized_priority IN ('High','Critical')) AS high_priority_open,
       COUNT(*) FILTER (WHERE created_at_external>=? AND created_at_external<?) AS created_period,
-      COUNT(*) FILTER (WHERE resolved_at_external>=? AND resolved_at_external<?) AS resolved_period,
+      COUNT(*) FILTER (WHERE resolved_at_external>=? AND resolved_at_external<? AND (normalized_status='Resolved' OR normalized_status='Closed')) AS resolved_period,
       COUNT(*) FILTER (WHERE status_group='closed' AND closed_at_external>=? AND closed_at_external<?) AS closed_period,
       COUNT(*) FILTER (WHERE sla_breached=1 AND status_group='open') AS sla_breached_open
       FROM external_tickets WHERE customer_id=?`).get(`${from}T00:00:00.000Z`,`${to}T23:59:59.999Z`,`${from}T00:00:00.000Z`,`${to}T23:59:59.999Z`,`${from}T00:00:00.000Z`,`${to}T23:59:59.999Z`,customerId),
@@ -123,7 +123,8 @@ async function getTicketAnalytics(customerId,from,to,store=db,now=new Date()) {
   const period={ created:0,resolved:0,closed:0,rejected:0,sla_breaches:0 };
   for (const ticket of periodRows) {
     if (inPeriod(ticket.created_at_external)) { period.created++;if (ticket.sla_breached) period.sla_breaches++; }
-    if (inPeriod(ticket.resolved_at_external)) period.resolved++;
+    // Done now only: RT also dates rejected and deleted tickets, and keeps the date when one is reopened.
+    if (inPeriod(ticket.resolved_at_external) && ['Resolved','Closed'].includes(ticket.normalized_status)) period.resolved++;
     const terminal=ticket.closed_at_external || ticket.resolved_at_external || ticket.updated_at_external;
     if (ticket.normalized_status==='Closed' && inPeriod(terminal)) period.closed++;
     if (ticket.normalized_status==='Rejected' && inPeriod(ticket.resolved_at_external || ticket.updated_at_external)) period.rejected++;

@@ -31,6 +31,9 @@ function httpError(status) {
   return `Request Tracker returned HTTP ${status}${hint ? `: ${hint}` : ''}`;
 }
 
+// Pages of 100 tickets one sync may read (the first sync of a busy queue reads two years).
+const MAX_PAGES=500;
+
 class RequestTrackerProvider {
   constructor(config,{ fetchImpl=pinnedFetch,validateUrl=assertPublicHttpUrl,timeoutMs=15000 }={}) {
     this.config=config || {};this.fetchImpl=fetchImpl;this.validateUrl=validateUrl;this.timeoutMs=timeoutMs;this.ready=null;
@@ -106,26 +109,26 @@ class RequestTrackerProvider {
     return { id,name:String(detail.Name || detail.name || `Queue ${id}`).slice(0,500),description:String(detail.Description || detail.description || '').slice(0,2000) };
   }
 
-  async getTickets(queueId,{ updatedAfter }={}) {
+  /** A queue's tickets: changed since `updatedAfter` (later syncs), or, on the first sync, those
+      changed since `since` plus any older ones still open (not the whole history of a big queue). */
+  async getTickets(queueId,{ updatedAfter,since }={}) {
     const id=String(queueId ?? '');
     if (!/^\d+$/.test(id)) throw Object.assign(new Error('Invalid Request Tracker queue identifier'),{ status:400 });
+    const day=(value,label) => { const date=new Date(value);if (Number.isNaN(date.getTime())) throw Object.assign(new Error(`Invalid ${label} date`),{ status:400 });return date.toISOString(); };
     let query=`Queue = ${id}`;
-    if (updatedAfter) {
-      const date=new Date(updatedAfter);
-      if (Number.isNaN(date.getTime())) throw Object.assign(new Error('Invalid incremental synchronization date'),{ status:400 });
-      query+=` AND LastUpdated > '${date.toISOString()}'`;
-    }
+    if (updatedAfter) query+=` AND LastUpdated > '${day(updatedAfter,'incremental synchronization')}'`;
+    else if (since) query+=` AND (Status = '__Active__' OR LastUpdated > '${day(since,'history')}')`;
     const tickets=[];let page=1;
-    while (page<=100) {
+    while (page<=MAX_PAGES) {
       const result=await this.request('/tickets',{ query,page,per_page:100,fields:'Subject,Status,Priority,Owner,Created,LastUpdated,Resolved,Due,Queue','fields[Owner]':'Name,EmailAddress,RealName','fields[Queue]':'Name' });
       if (!Array.isArray(result.items)) throw Object.assign(new Error('Request Tracker ticket response is invalid'),{ status:502 });
       tickets.push(...result.items);
-      if (tickets.length>10000) throw Object.assign(new Error('A single Request Tracker sync cannot exceed 10,000 tickets'),{ status:413 });
+      if (tickets.length>MAX_PAGES*100) throw Object.assign(new Error(`A single Request Tracker sync cannot exceed ${MAX_PAGES*100} tickets`),{ status:413 });
       const hasPageCount=result.pages!==null && result.pages!==undefined && Number.isFinite(Number(result.pages));
       if ((hasPageCount && page>=Number(result.pages)) || (!hasPageCount && !result.next_page) || result.items.length===0) return tickets;
       page++;
     }
-    throw Object.assign(new Error('Request Tracker ticket pagination exceeded 100 pages'),{ status:413 });
+    throw Object.assign(new Error(`Request Tracker ticket pagination exceeded ${MAX_PAGES} pages`),{ status:413 });
   }
 
   /** RT staff accounts (privileged users), to link to TeamHub users. */

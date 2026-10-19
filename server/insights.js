@@ -7,7 +7,9 @@
  *
  * Filters (Reports → Overview): one customer, one team (its members' work and
  * the team's own tasks) and/or one engineer. The dashboard uses none.
- */
+ */
+// Tickets that count as resolved: done now. Rejected/Excluded (deleted) and reopened tickets do not.
+const RESOLVED_STATUSES = new Set(['Resolved', 'Closed']);
 const db = require('./db');
 const appTime = require('./appTime');
 const { decrypt } = require('./fieldCipher');
@@ -55,7 +57,7 @@ async function insights({ days = 90, customerId = null, teamId = null, engineerI
     store.prepare(`SELECT ${taskColumns} FROM tasks tk LEFT JOIN projects p ON p.id = tk.project_id WHERE tk.status NOT IN ('completed', 'closed', 'cancelled')`).all(),
     store.prepare(`SELECT id, customer_id, scheduled_date, status FROM maintenance_visits WHERE scheduled_date >= ? AND scheduled_date <= ?`).all(from, to),
     store.prepare('SELECT visit_id, user_id FROM maintenance_visit_engineers').all(),
-    store.prepare(`SELECT customer_id, owner_user_id, status_group, created_at_external, resolved_at_external FROM external_tickets
+    store.prepare(`SELECT customer_id, owner_user_id, status_group, normalized_status, created_at_external, resolved_at_external FROM external_tickets
       WHERE status_group = 'open' OR created_at_external >= ? OR resolved_at_external >= ?`).all(from, from),
     store.prepare('SELECT id, name FROM customers').all(),
     store.prepare("SELECT id, name, role, active FROM users").all(),
@@ -119,7 +121,8 @@ async function insights({ days = 90, customerId = null, teamId = null, engineerI
   for (const t of tickets) {
     const c = t.created_at_external && String(t.created_at_external).slice(0, 10), r = t.resolved_at_external && String(t.resolved_at_external).slice(0, 10);
     if (c && c >= from && c <= to) { ticketsCreated++; add(c, 'tickets_created'); }
-    if (r && r >= from && r <= to) { ticketsResolved++; add(r, 'tickets_resolved'); }
+    // Resolved = done now (Resolved/Closed): RT also dates rejected and deleted tickets, and keeps the date when one is reopened.
+    if (r && r >= from && r <= to && RESOLVED_STATUSES.has(t.normalized_status)) { ticketsResolved++; add(r, 'tickets_resolved'); }
   }
 
   const top = (map, names, limit = 8) => [...map.entries()].filter(([id]) => names.has(id)).map(([id, v]) => ({ id, name: names.get(id), hours: Math.round(v.minutes / 6) / 10, activities: v.activities }))

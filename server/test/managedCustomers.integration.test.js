@@ -50,12 +50,17 @@ test('ticket synchronization persists normalized snapshots and run counts',async
     (customer_id,provider_type,external_queue_id,external_queue_name,enabled,include_in_reporting)
     VALUES (?,'request_tracker','42','Acme Support',1,1)`).run(ids.customer);
   const { syncCustomer }=require('../ticketSync');
-  const provider={ getTickets:async () => [
+  const asked=[];
+  const provider={ getTickets:async (queue,options) => { asked.push(options); return [ 
     { id:'7001',Subject:'Open gateway alert',Status:'open',Priority:'95',Owner:{ id:'alice',Name:'Alice' },Created:'2026-09-20T10:00:00Z',LastUpdated:'2026-09-21T10:00:00Z',Due:'2026-09-21T12:00:00Z' },
     { id:'7002',Subject:'Resolved request',Status:'resolved',Priority:'Normal',Owner:{ id:'bob',Name:'Bob' },Created:'2026-09-19T10:00:00Z',LastUpdated:'2026-09-20T10:00:00Z',Resolved:'2026-09-20T09:00:00Z' },
-  ] };
+  ]; } };
   const first=await syncCustomer(ids.customer,{ provider,triggeredBy:ids.manager });
   assert.deepEqual([first.tickets_found,first.tickets_created,first.tickets_updated],[2,2,0]);
+  // The first sync reads two years back (and older tickets still open), not the queue's whole history.
+  assert.equal(asked[0].updatedAfter,null);
+  const yearsBack=(Date.now()-Date.parse(asked[0].since))/(365.25*86400000);
+  assert.ok(yearsBack>1.99 && yearsBack<2.01,`about two years: ${asked[0].since}`);
   const rows=await db.prepare('SELECT * FROM external_tickets WHERE customer_id=? ORDER BY external_ticket_id').all(ids.customer);
   assert.equal(rows[0].normalized_priority,'Critical');assert.equal(rows[0].status_group,'open');assert.equal(rows[0].sla_breached,1);
   assert.equal(rows[1].normalized_status,'Resolved');assert.equal(rows[1].status_group,'closed');

@@ -71,7 +71,8 @@ async function getResolvedTickets(customerId, from, to, store = db) {
   return store.prepare(`SELECT ticket_number, subject, normalized_priority, owner_name, created_at_external,
       COALESCE(resolved_at_external, closed_at_external) AS resolved_at
     FROM external_tickets
-    WHERE customer_id = ? AND COALESCE(resolved_at_external, closed_at_external) >= ? AND COALESCE(resolved_at_external, closed_at_external) < ?
+    WHERE customer_id = ? AND normalized_status IN ('Resolved', 'Closed')
+      AND COALESCE(resolved_at_external, closed_at_external) >= ? AND COALESCE(resolved_at_external, closed_at_external) < ?
     ORDER BY COALESCE(resolved_at_external, closed_at_external), id`).all(customerId, `${from}T00:00:00.000Z`, dayAfter(to));
 }
 

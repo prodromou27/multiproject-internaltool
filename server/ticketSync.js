@@ -4,6 +4,9 @@ const { createTicketingProvider }=require('./ticketing');
 const { DEFAULTS,loadMappings }=require('./ticketMappings');
 const { decrypt }=require('./fieldCipher');
 
+// How far back the first sync of a queue goes; later syncs read what changed since.
+const HISTORY_YEARS=2;
+
 function normalizeDate(value) {
   if (!value) return null;
   const text=String(value).trim().replace(/^(\d{4}-\d{2}-\d{2}):(\d{2}:\d{2})/,'$1T$2');
@@ -88,7 +91,9 @@ async function syncCustomer(customerId,{ provider,triggeredBy=null,store=db }={}
       const last=new Date(String(mapping.last_successful_sync_at).replace(' ','T')+'Z');
       if (!Number.isNaN(last.getTime())) updatedAfter=new Date(last.getTime()-5*60*1000).toISOString();
     }
-    const tickets=await client.getTickets(mapping.external_queue_id,{ updatedAfter });
+    // The first sync reads the last HISTORY_YEARS of the queue (and older tickets still open).
+    const since=updatedAfter ? null : new Date(Date.now()-HISTORY_YEARS*365.25*86400000).toISOString();
+    const tickets=await client.getTickets(mapping.external_queue_id,{ updatedAfter,since });
     const mappingConfig=await loadMappings(store);
     const records=tickets.map(ticket => ticketRecord(ticket,mapping,runtime.base_url,new Date(),mappingConfig));
     const existing=new Set((await store.prepare("SELECT external_ticket_id FROM external_tickets WHERE provider_type='request_tracker' AND customer_id=?").all(customerId)).map(row => String(row.external_ticket_id)));

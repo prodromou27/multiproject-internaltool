@@ -46,6 +46,22 @@ test('RT provider fetches expanded ticket pages without following response URLs'
   assert.equal(new URL(pages[1]).searchParams.get('page'),'2');
 });
 
+test('the first sync of a queue reads two years (and older tickets still open); a big queue is read past 100 pages',async () => {
+  let query,pagesRead=0;
+  const provider=new RequestTrackerProvider({ base_url:'https://rt.example.test',api_token:'token' },{ validateUrl:async () => {},fetchImpl:async url => {
+    query=url.searchParams.get('query');pagesRead++;
+    const page=Number(url.searchParams.get('page'));
+    return json({ pages:150,items:[{ id:String(page) }] });
+  } });
+  const tickets=await provider.getTickets('42',{ since:'2024-10-19' });
+  assert.equal(query,"Queue = 42 AND (Status = '__Active__' OR LastUpdated > '2024-10-19T00:00:00.000Z')");
+  assert.equal(pagesRead,150,'all 150 pages');
+  assert.equal(tickets.length,150);
+  // A later sync reads only what changed, whatever `since` says.
+  await provider.getTickets('42',{ updatedAfter:'2026-10-01',since:'2024-10-19' });
+  assert.equal(query,"Queue = 42 AND LastUpdated > '2026-10-01T00:00:00.000Z'");
+});
+
 test('RT provider rejects incomplete settings and unbounded queue directories',async () => {
   await assert.rejects(() => new RequestTrackerProvider({ base_url:'https://rt.example.test' },{ validateUrl:async () => {} }).testConnection(),/not fully configured/);
   const provider=new RequestTrackerProvider({ base_url:'https://rt.example.test',api_token:'token' },{ validateUrl:async () => {},fetchImpl:async () => json({ pages:6,items:[] }) });
