@@ -83,9 +83,14 @@ router.get('/', requireAuth, async (req, res) => {
   // Each customer's current contract (the one in force, else the next or the last).
   const contracts = await contractsFor();
   for (const row of rows) {
-    const current = currentContract(contracts.filter(c => c.customer_id === Number(row.id)));
+    const own = contracts.filter(c => c.customer_id === Number(row.id));
+    const current = currentContract(own);
     row.current_contract = current && { id: current.id, reference: current.reference, description: current.description, service_level: current.service_level,
       start_date: current.start_date, end_date: current.end_date, status: current.status, days_left: current.days_left };
+    // The customer's other contracts in force, shown as "+N more" beside the current one.
+    row.other_active_contracts = own.filter(c => c.id !== current?.id && ['active', 'ending_soon'].includes(c.status))
+      .sort((a, b) => a.end_date.localeCompare(b.end_date))
+      .map(c => ({ id: c.id, reference: c.reference || c.description || `Contract #${c.id}`, end_date: c.end_date }));
   }
   const visible=(candidates ? rows.filter(row => candidates.has(Number(row.id))) : rows).map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name));
   return res.json(listQuery.paged ? customerListPage(visible,listQuery) : visible);

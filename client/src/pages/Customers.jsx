@@ -203,10 +203,16 @@ const SERVICE_STATUS = { healthy:['Healthy','success'],attention:['Sync issue','
 const reportOverdue = due => !!due && due.status!=='not_yet_due' && due.status!=='sent' && due.overdue;
 
 const CONTRACT_STATUS = { active: ['success', 'Active'], ending_soon: ['warning', 'Ending soon'], expired: ['danger', 'Expired'], upcoming: ['info', 'Starts later'], renewed: ['neutral', 'Renewed'] };
-function ContractCell({ contract }) {
+// The customer's current contract, and "+N more" for its other contracts in force.
+function ContractCell({ contract, others = [], link = null }) {
   if (!contract) return <span className="text-muted text-sm">No contract</span>;
   const [tone, text] = CONTRACT_STATUS[contract.status] || ['neutral', contract.status];
-  return <><strong className="text-sm">{contract.reference || contract.description || 'Contract'}</strong>{contract.service_level && <span className="text-muted text-sm"> · {contract.service_level}</span>}
+  const more = others.length > 0 && (() => {
+    const label = `+${others.length} more`, list = others.map(o => `${o.reference} (ends ${fmtDate(o.end_date)})`).join(', ');
+    return link ? <Link className="text-sm contract-more" to={link} title={list} aria-label={`${others.length} more contracts in force: ${list}`}>{label}</Link>
+      : <span className="text-sm text-muted contract-more" title={list}>{label}</span>;
+  })();
+  return <><strong className="text-sm">{contract.reference || contract.description || 'Contract'}</strong>{contract.service_level && <span className="text-muted text-sm"> · {contract.service_level}</span>}{more && <> {more}</>}
     <div className="text-sm"><ToneBadge tone={tone}>{text}</ToneBadge> <span className="text-muted">{contract.status === 'upcoming' ? `starts ${fmtDate(contract.start_date)}` : `ends ${fmtDate(contract.end_date)}`}</span></div></>;
 }
 
@@ -314,7 +320,7 @@ export default function Customers() {
       {c.notes && <small title={c.notes}>{c.notes}</small>}
     </div> },
     { key:'coverage',label:'Coverage',render:c => c.service_activity_enabled ? <ToneBadge tone="success">Tracked</ToneBadge> : <ToneBadge>Standard</ToneBadge> },
-    { key:'contract',label:'Contract',render:c => <ContractCell contract={c.current_contract} /> },
+    { key:'contract',label:'Contract',render:c => <ContractCell contract={c.current_contract} others={c.other_active_contracts} link={isManager || isEngineer ? `/customers/${c.id}/service-profile?section=contracts` : null} /> },
     { key:'contact',label:'Primary contact',render:c => <>{c.contact_name || c.primary_contact || '—'}{c.contact_email && <div><a className="text-sm" href={`mailto:${c.contact_email}`}>{c.contact_email}</a></div>}</> },
     { key:'location',label:'Location',className:'text-sm',render:c => c.location || c.address || '—' },
     { key:'visits',label:'Visits',numeric:true,render:c => c.visit_count ?? 0 },

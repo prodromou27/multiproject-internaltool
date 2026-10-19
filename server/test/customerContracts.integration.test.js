@@ -87,3 +87,24 @@ test('managed customers are flagged so their contract type can be set', async ()
   assert.equal(page.is_managed, true);
   assert.deepEqual(page.service_levels, ['24x7', '12x5', '8x5']);
 });
+
+test('the customer list shows the current contract and how many more are in force', async () => {
+  const id = Number((await api('/api/customers', { method: 'POST', token: ids.tokenManager, body: { name: 'Many Contracts Ltd' } })).data.id);
+  const add = async (reference, start, end) => (await api(base(id), { method: 'POST', token: ids.tokenManager, body: { reference, start_date: start, end_date: end } })).data.id;
+  await add('FW-SUPPORT', day(-30), day(300));
+  await add('EDR-LICENCES', day(-30), day(20));
+  await add('SOC-24x7', day(-10), day(120));
+  await add('OLD-2025', day(-400), day(-40));      // expired: not counted
+  const renewed = await add('MAIL-2026', day(-200), day(10));
+  assert.equal((await api(`${base(id)}/${renewed}/renew`, { method: 'POST', token: ids.tokenManager, body: { start_date: day(11), end_date: day(375) } })).status, 201);
+
+  const row = (await api('/api/customers', { token: ids.tokenManager })).data.find(c => Number(c.id) === id);
+  assert.equal(row.current_contract.reference, 'FW-SUPPORT', 'the one in force ending last');
+  assert.deepEqual(row.other_active_contracts.map(c => c.reference), ['EDR-LICENCES', 'SOC-24x7'], 'the others in force, soonest end first; not expired, renewed or not yet started');
+  assert.equal(row.other_active_contracts[0].end_date, day(20));
+  const one = Number((await api('/api/customers', { method: 'POST', token: ids.tokenManager, body: { name: 'One Contract Ltd' } })).data.id);
+  await api(base(one), { method: 'POST', token: ids.tokenManager, body: { reference: 'ONLY', start_date: day(-5), end_date: day(200) } });
+  const single = (await api('/api/customers', { token: ids.tokenManager })).data.find(c => Number(c.id) === one);
+  assert.equal(single.current_contract.reference, 'ONLY');
+  assert.deepEqual(single.other_active_contracts, [], 'no "+N more" with one contract');
+});

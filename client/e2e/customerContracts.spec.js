@@ -73,3 +73,21 @@ test('others see contracts without changing them, and history keeps expired and 
   await expect(page.getByRole('button', { name: 'Add contract' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Renew' })).toHaveCount(0);
 });
+
+test('the customer list shows the current contract and "+N more" for other contracts in force', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  const rows = [
+    { id: 12, name: 'Northwind Logistics', active: 1, current_contract: { id: 5, reference: 'FW-SUPPORT', status: 'active', end_date: '2027-08-01' },
+      other_active_contracts: [{ id: 6, reference: 'EDR-LICENCES', end_date: '2026-11-08' }, { id: 7, reference: 'SOC-24x7', end_date: '2027-02-16' }] },
+    { id: 14, name: 'Contoso Retail', active: 1, current_contract: { id: 9, reference: 'ONLY', status: 'active', end_date: '2027-05-01' }, other_active_contracts: [] },
+  ];
+  api.override('GET /api/customers', ({ request }) => ({ body: new URL(request.url()).searchParams.get('paged') ? { rows, total: 2, counts: { all: 2, active: 2 } } : rows }));
+  await page.goto('/customers');
+  const northwind = page.getByRole('row', { name: /Northwind Logistics/ });
+  await expect(northwind).toContainText('FW-SUPPORT');
+  const more = northwind.getByRole('link', { name: /2 more contracts in force/ });
+  await expect(more).toHaveText('+2 more');
+  await expect(more).toHaveAttribute('title', /EDR-LICENCES.*SOC-24x7/);
+  await expect(more).toHaveAttribute('href', '/customers/12/service-profile?section=contracts');
+  await expect(page.getByRole('row', { name: /Contoso Retail/ })).not.toContainText('more');
+});
