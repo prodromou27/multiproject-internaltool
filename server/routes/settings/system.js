@@ -201,6 +201,11 @@ router.get('/deployment-health', requireManager, async (req, res) => {
     add('disk_free', 'Disk free space', 'warning', 'Could not inspect disk free space.');
   }
 
+  // The certificate production serves (read from the proxy; certificateStatus.js).
+  const { certificateStatus, detailOf } = require('../../certificateStatus');
+  const certificate = await certificateStatus({ fresh: req.query.refresh === '1' });
+  if (certificate.state !== 'not_checked') add('https_certificate', 'HTTPS certificate', certificate.status, detailOf(certificate));
+
   const status = checks.some(c => c.status === 'error')
     ? 'error'
     : checks.some(c => c.status === 'warning') ? 'warning' : 'ok';
@@ -219,6 +224,7 @@ router.get('/deployment-health', requireManager, async (req, res) => {
     },
     database,
     job_queue:jobQueue,
+    certificate,
     checks,
   });
 });

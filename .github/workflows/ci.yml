@@ -256,6 +256,11 @@ jobs:
           docker run -d --name proxyhttp --network proxytest -p 8082:80 --cap-drop ALL --cap-add NET_BIND_SERVICE             -v "$PWD/deploy/Caddyfile.http:/etc/caddy/Caddyfile:ro" "$image"
           for i in $(seq 1 20); do curl -s http://localhost:8082/api/health >/dev/null && break; sleep 1; done
           curl -sS --fail http://localhost:8082/api/health | tee /dev/stderr | grep -q '"proto":"http"'
+          # System health reads the certificate the proxy serves (server/certificateStatus.js); plain HTTP reads as "http".
+          node -e "require('./server/certificateStatus').certificateStatus({ address: 'localhost:8443', appUrl: 'https://teamhub.test', fresh: true })
+            .then(s => { console.log(JSON.stringify(s)); if (s.state !== 'https' || s.name !== 'teamhub.test' || s.covers_app_host !== true || s.days_left < 0) process.exit(1); })"
+          node -e "require('./server/certificateStatus').certificateStatus({ address: 'localhost:8082', appUrl: 'http://teamhub.test', fresh: true })
+            .then(s => { console.log(JSON.stringify(s)); if (s.state !== 'http') process.exit(1); })"
 
       # The network-share example (deploy/README.md) must merge cleanly with the main file.
       - name: Validate the backup share example

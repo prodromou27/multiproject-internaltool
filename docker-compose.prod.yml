@@ -29,6 +29,8 @@ services:
     environment:
       # One proxy hop (Caddy): the real client IP comes from X-Forwarded-For.
       TRUST_PROXY: ${TRUST_PROXY:-1}
+      # Where System health reads the HTTPS certificate served (never the key).
+      TLS_STATUS_ADDRESS: proxy:443
     logging:
       driver: json-file
       options:
