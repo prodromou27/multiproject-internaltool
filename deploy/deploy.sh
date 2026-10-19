@@ -123,7 +123,7 @@ if [ "$ENVIRONMENT" = "prod" ]; then
     fi
   fi
 fi
-[ "$errs" -eq 0 ] || { echo "Fix .env and re-run." >&2; exit 1; }
+[ "$errs" -eq 0 ] || { echo "Fix the above and re-run." >&2; exit 1; }
 
 # 2. Pull the target branch (fast-forward only — never silently rebases local edits).
 git fetch --all --prune
