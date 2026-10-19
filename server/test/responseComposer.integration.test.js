@@ -29,9 +29,25 @@ test('a response is filled from a visit the person may open, with the customer c
   assert.match(res.data.body, /^Dear Dana Ops,\nwe will visit Compose Ltd on 2026-10-20 at 09:30 \(Engineer Enabled\)\./);
   assert.deepEqual(res.data.missing, [{ name: 'task_title', label: 'Task title' }], 'a visit has no task: shown, not guessed');
   assert.deepEqual(res.data.recipients, ['ops@compose.example']);
-  assert.equal(res.data.email_available, true);
+  assert.equal(res.data.email_available, false, 'emails to customers are off by default (turned on below)');
 
   assert.equal((await compose({ type: 'visit', id: visit }, ids.tokenEnabled)).status, 200, 'the engineer on the visit');
+});
+
+test('emails to customers are off until a manager turns them on: copy only, and sending is refused', async () => {
+  const setting = (body, token = ids.tokenManager) => api('/api/report-settings/customer-email', { method: body ? 'PUT' : 'GET', token, body });
+  assert.deepEqual((await setting()).data, { enabled: false }, 'off by default');
+  const res = await compose({ type: 'visit', id: visit });
+  assert.equal(res.status, 200);
+  assert.deepEqual([res.data.email_available, res.data.customer_email_off], [false, true]);
+  const refused = await send({ context: { type: 'visit', id: visit }, to: 'ops@compose.example', subject: 'Visit on 2026-10-20', body: 'Dear Dana Ops, see you then.' });
+  assert.deepEqual([refused.status, refused.data.code], [403, 'CUSTOMER_EMAIL_OFF']);
+  assert.equal(sent.length, 0);
+  assert.equal((await setting({ enabled: true }, ids.tokenEnabled)).status, 403, 'managers only');
+  assert.equal((await setting({ enabled: 'yes' })).status, 400);
+  assert.deepEqual((await setting({ enabled: true })).data, { enabled: true });
+  const audit = await db.prepare("SELECT detail FROM audit_log WHERE action = 'customer_email_updated' ORDER BY id DESC LIMIT 1").get();
+  assert.equal(audit.detail, 'on');
 });
 
 test('records the person may not open are not found, and nothing of them is shown', async () => {

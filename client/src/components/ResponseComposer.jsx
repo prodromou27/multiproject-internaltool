@@ -45,7 +45,7 @@ export function ResponseComposer({ context, onDone }) {
         {draft.missing.length > 0 && <p className="alert alert-warning" role="note">Not known here, fill in by hand: {draft.missing.map(m => m.label).join(', ')}.</p>}
         <div className="form-group"><label htmlFor="response-subject">Subject</label><input id="response-subject" value={draft.subject} maxLength={200} onChange={event => setDraft(d => ({ ...d, subject: event.target.value }))} /></div>
         <div className="form-group"><label htmlFor="response-body">Text</label><textarea id="response-body" rows={9} value={draft.body} onChange={event => setDraft(d => ({ ...d, body: event.target.value }))} /></div>
-        <p className="text-sm text-muted">{draft.recipients.length ? `To: ${draft.recipients[0]} (the customer's contact)` : 'The customer has no contact email, so this can only be copied.'}{draft.recipients.length > 0 && !draft.email_available && ' Email is not set up, so this can only be copied.'}</p>
+        <p className="text-sm text-muted">{draft.recipients.length ? `To: ${draft.recipients[0]} (the customer's contact)` : 'The customer has no contact email, so this can only be copied.'}{draft.recipients.length > 0 && !draft.email_available && (draft.customer_email_off ? ' Emails to customers are switched off (Settings → Email & notifications), so this can only be copied.' : ' Email is not set up, so this can only be copied.')}</p>
         <div className="flex gap-8">
           <button type="button" className="btn btn-ghost btn-sm" onClick={copy}>Copy text</button>
           {draft.recipients.length > 0 && draft.email_available && (

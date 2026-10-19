@@ -6,6 +6,17 @@ const { gatherReportData, buildReportHtml, buildSubject, sendWeeklyReport } = re
 const { reschedule } = require('../reportScheduler');
 const { PRODUCT_NAME } = require('../product');
 
+// ── Emails to customers (customerEmail.js): off unless a manager turns it on ──
+const { customerEmailEnabled, setCustomerEmail } = require('../customerEmail');
+const { logAudit } = require('../auditLog');
+router.get('/customer-email', requireManager, async (req, res) => res.json({ enabled: await customerEmailEnabled() }));
+router.put('/customer-email', requireManager, async (req, res) => {
+  if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be true or false' });
+  await setCustomerEmail(req.body.enabled);
+  await logAudit(db, req, 'settings', null, 'Emails to customers', 'customer_email_updated', req.body.enabled ? 'on' : 'off');
+  res.json({ enabled: req.body.enabled });
+});
+
 // ── SMTP settings ─────────────────────────────────────────────────────────────
 router.get('/smtp', requireManager, async (req, res) => {
   const smtp = (await getSmtpSettings()) || {};

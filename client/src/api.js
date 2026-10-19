@@ -727,6 +727,8 @@ export const api = {
   serviceActivityTeamReport: (params) => req('GET', '/reports/service-activity/team?' + new URLSearchParams(params).toString()),
 
   // weekly report settings
+  customerEmailSetting: () => req('GET', '/report-settings/customer-email'),
+  saveCustomerEmailSetting: enabled => req('PUT', '/report-settings/customer-email', { enabled }),
   getSmtp: () => req('GET', '/report-settings/smtp'),
   saveSmtp: (data) => req('PUT', '/report-settings/smtp', data),
   testSmtp: (smtp, to) => req('POST', '/report-settings/smtp/test', { smtp, to }),

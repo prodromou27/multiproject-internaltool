@@ -3,6 +3,7 @@ import { FolderKanban, Users as UsersIcon, ShieldCheck, HardDrive, ScrollText, G
 import { PageHeader } from '../components/PageLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { TabPanel, Tabs } from '../components/EnterpriseUI';
+import { CustomerEmailSwitch } from './admin/CustomerEmailSwitch';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -180,7 +181,7 @@ export default function AdminPanel() {
       case 'visit_checklists': return <VisitChecklistsTab />;
       case 'managed_report_templates': return <ManagedReportTemplatesTab />;
       case 'weekly_report': return <WeeklyReportTab />;
-      case 'email': return <EmailSettingsTab />;
+      case 'email': return <><EmailSettingsTab /><CustomerEmailSwitch /></>;
       case 'notifications': return <><IntegrationsTab /><h4 className="settings-subheading">Alerts about the system</h4><AdminAlertsTab /></>;
       case 'ticketing': return <TicketingSettings />;
       case 'grafana': return <GrafanaTab />;

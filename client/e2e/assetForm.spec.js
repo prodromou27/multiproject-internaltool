@@ -37,7 +37,7 @@ test('five identical access points are added in one go, with their serial number
   const { created, dialog } = await assetsTab(page);
   await dialog.getByLabel('Asset name').fill('Access point');
   await dialog.getByLabel('Asset type').fill('Access point');
-  await dialog.getByLabel('How many').fill('5');
+  await dialog.getByLabel('Count').fill('5');
   await expect(dialog.getByText('Adds 5 assets: Access point 1 … 5.')).toBeVisible();
   await dialog.getByLabel(/Serial numbers/).fill('SN-1\nSN-2\n\nSN-3');
   await expect(dialog.getByText(/^3 of 5\./)).toBeVisible();

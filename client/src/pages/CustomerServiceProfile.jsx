@@ -2,7 +2,6 @@ import CustomerContracts from '../components/CustomerContracts';
 import CustomerLicences from '../components/CustomerLicences';
 import VendorCases from '../components/VendorCases';
 import { useEffect, useState, useRef } from 'react';
-import { ReplyWithResponse } from '../components/ResponseComposer';
 import { useParams,useLocation,useNavigate,Link } from 'react-router-dom';
 import { Activity,ArrowLeft,Camera,BellRing,BriefcaseBusiness,Building2,CalendarDays,CheckSquare,ChevronDown,ClipboardList,Layers,Mail,MapPin,Phone,Plus,Wrench } from 'lucide-react';
 import { api } from '../api';
@@ -114,7 +113,7 @@ function CustomerHeader({ customer,operations,operationsError,user,saAccess,onRe
       </div>
       <HeaderFigures data={operations} error={operationsError} onSelectTab={onSelectTab} />
     </div>
-    <div className="cs-header-actions">{health && <HealthRing health={health} />}{onEdit && <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit}>Edit details</button>}<ReplyWithResponse context={{ type:'customer',id:customer.id }} /><QuickAdd customer={customer} user={user} saAccess={saAccess} managed={managedCustomerState(operations)} onRecommendation={onRecommendation} onReminder={onReminder} /></div>
+    <div className="cs-header-actions">{health && <HealthRing health={health} />}{onEdit && <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit}>Edit details</button>}<QuickAdd customer={customer} user={user} saAccess={saAccess} managed={managedCustomerState(operations)} onRecommendation={onRecommendation} onReminder={onReminder} /></div>
   </header>;
 }
 

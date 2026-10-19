@@ -4,6 +4,7 @@
 const router = require('express').Router();
 const crypto = require('crypto');
 const db = require('../db');
+const { customerEmailEnabled } = require('../customerEmail');
 const { requireAuth, requireManager } = require('../middleware/auth');
 const { logAudit } = require('../auditLog');
 
@@ -118,8 +119,9 @@ router.post('/:id/compose', requireAuth, async (req, res) => {
   const { response, context } = target;
   const subject = composer.fill(response.title, context.values), body = composer.fill(response.body, context.values);
   const smtp = await email.getSmtpSettings();
+  const allowed = await customerEmailEnabled();
   res.json({ subject: subject.text, body: body.text, missing: [...new Set([...subject.missing, ...body.missing])].map(name => ({ name, label: composer.PLACEHOLDERS[name] })),
-    recipients: context.contactEmail ? [context.contactEmail] : [], email_available: !!smtp?.host });
+    recipients: context.contactEmail ? [context.contactEmail] : [], email_available: !!smtp?.host && allowed, customer_email_off: !allowed });
 });
 
 // Sent only when asked, only to the customer's contact on record, and recorded.
@@ -127,6 +129,8 @@ router.post('/:id/send', requireAuth, async (req, res) => {
   const target = await composeTarget(req, res);
   if (!target) return;
   const { response, context } = target;
+  // Settings → Email & notifications → Emails to customers (off unless turned on).
+  if (!await customerEmailEnabled()) return res.status(403).json({ error: 'Emails to customers are switched off (Settings → Email & notifications). Copy the text instead.', code: 'CUSTOMER_EMAIL_OFF' });
   const subject = typeof req.body.subject === 'string' ? req.body.subject.trim() : '';
   const body = typeof req.body.body === 'string' ? req.body.body.replace(/\r\n/g, '\n') : '';
   if (!subject || subject.length > 200 || /[\r\n]/.test(subject)) return res.status(400).json({ error: 'The subject must be one line of up to 200 characters' });
