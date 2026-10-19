@@ -26,7 +26,8 @@ sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER"   # log out/in so docker runs without sudo
 ```
 
-Open the app port in firewalld (only if reached from other hosts):
+Open the app port in firewalld (dev, only if reached from other hosts; production
+uses 443 and 80 instead, see section 4):
 
 ```bash
 sudo firewall-cmd --add-port=8080/tcp --permanent && sudo firewall-cmd --reload
@@ -93,7 +94,8 @@ sudo APP_URL=http://SERVER_IP:8080 DEPLOY_BRANCH=DEV-2 ./deploy/bootstrap.sh dev
 The bootstrap supports AlmaLinux/RHEL (`dnf`) and Ubuntu/Debian (`apt-get`). It
 installs Docker only when missing, preserves an existing `.env` and named Docker
 volumes, pulls the selected branch, rebuilds the app, and waits for the healthcheck.
-For production behind a reverse proxy:
+For production (HTTPS on port 443): put the company certificate in `certs/`
+first (section 4), then:
 
 ```bash
 sudo APP_URL=https://app.example.com DEPLOY_BRANCH=prod ./deploy/bootstrap.sh prod
@@ -108,7 +110,8 @@ The shorter command below is sufficient once Docker is already installed.
 
 The script pulls the right branch, rebuilds, starts the stack, and waits for the
 app healthcheck (`/api/health`). On the first empty-database installation, log in
-at `http://<host>:8080` with username `admin` and password `admin`. The application
+at `http://<host>:8080` (dev) or your `https://` address (production) with username
+`admin` and password `admin`. The application
 immediately requires a new password.
 
 Re-deploying later is the same command — it pulls the latest commit on the branch
@@ -162,24 +165,64 @@ git tag prod-YYYYMMDD
 git push origin prod-YYYYMMDD
 ```
 
-## 4. TLS (production)
+## 4. HTTPS on port 443 (production)
 
-The app container serves plain HTTP. In production, front it with a TLS-terminating
-reverse proxy on the host. A ready nginx config is in
-[`deploy/nginx.conf.example`](nginx.conf.example) (Caddy one-liner alternative
-included):
+`./deploy/deploy.sh prod` serves the app over HTTPS on **port 443**, and port 80
+redirects to it. A Caddy container (`proxy` in `docker-compose.prod.yml`,
+configured by [`deploy/Caddyfile`](Caddyfile)) holds the company certificate and
+forwards to the app. The app itself then listens only on `127.0.0.1:8080`, so
+port 8080 is no longer reachable from the network.
+
+**1. Put the company certificate on the server**, in `certs/` at the repo root
+(the folder is git-ignored):
+
+| File | What it holds |
+| --- | --- |
+| `certs/tls.crt` | The server certificate, **followed by** the intermediate CA certificate(s), all PEM |
+| `certs/tls.key` | Its private key, PEM, without a password |
 
 ```bash
-sudo cp deploy/nginx.conf.example /etc/nginx/conf.d/solutionshub.conf
-# edit server_name; then get a cert:
-sudo dnf install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d app.example.com
-sudo nginx -t && sudo systemctl reload nginx
+mkdir -p certs
+cat server.crt intermediate.crt > certs/tls.crt     # the order matters: server first
+cp server.key certs/tls.key
+sudo chown root:root certs/tls.key && sudo chmod 600 certs/tls.key   # the proxy reads it as root
 ```
 
-In `.env` set `APP_PORT=127.0.0.1:8080` (only the proxy can reach the app) and
-`TRUST_PROXY=1` (so the audit log and rate limiter see the real client IP from
-`X-Forwarded-For`). The prod env template already has both.
+If IT gives you a `.pfx` / `.p12` file instead:
+
+```bash
+openssl pkcs12 -in company.pfx -clcerts -nokeys -out server.crt
+openssl pkcs12 -in company.pfx -cacerts -nokeys -out intermediate.crt
+openssl pkcs12 -in company.pfx -nocerts -nodes  -out certs/tls.key
+cat server.crt intermediate.crt > certs/tls.crt
+```
+
+To keep the certificate elsewhere, set `TLS_CERT_DIR=/path/to/dir` in `.env`.
+
+**2. Set the address in `.env`**: `APP_URL=https://teamhub.company.local` (the
+name on the certificate, which must also resolve in your internal DNS).
+`TRUST_PROXY` defaults to 1 in production; `APP_PORT` is not used there.
+
+**3. Deploy**: `DEPLOY_BRANCH=<branch> ./deploy/deploy.sh prod`. Before
+building, it checks that the certificate is there, is not expired, matches its
+key and covers the host in `APP_URL`, and warns 30 days before it expires.
+`bootstrap.sh prod` opens 443 and 80 in firewalld; otherwise:
+
+```bash
+sudo firewall-cmd --add-service=https --add-service=http --permanent && sudo firewall-cmd --reload
+# and close the old port if it was opened:  sudo firewall-cmd --remove-port=8080/tcp --permanent
+```
+
+**Renewing the certificate**: replace the two files, then
+`docker compose -f docker-compose.yml -f docker-compose.prod.yml restart proxy`.
+
+**Check it**: `curl -I https://teamhub.company.local/api/health` answers
+`200`, and `curl -I http://teamhub.company.local` answers `301` to https.
+`./deploy/smoke-test.sh` still runs against `http://localhost:8080` on the server.
+
+Prefer nginx on the host instead? [`deploy/nginx.conf.example`](nginx.conf.example)
+does the same job; then deploy without the `proxy` service and bind the app to
+`127.0.0.1:8080`.
 
 ## 4b. Auto-start on boot (systemd, optional)
 

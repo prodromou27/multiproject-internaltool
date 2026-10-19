@@ -21,6 +21,8 @@ API, PostgreSQL data, storage, SMTP and configured integrations.
 ## Preflight and recovery
 
 - Confirm the deployment uses the reviewed commit and `/api/health` returns healthy.
+- Open the `https://` address on port 443 from another machine: no certificate warning,
+  `http://` redirects to it, and port 8080 is not reachable from the network.
 - Confirm startup migrations complete once and a restart adds no duplicate migration.
 - Confirm database and encrypted-file backups exist and a restore owner is identified.
 - Restore drill (Settings → Backups & health → Backups): take a backup, "Check" it, then

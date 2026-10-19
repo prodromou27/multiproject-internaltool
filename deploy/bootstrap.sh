@@ -72,13 +72,18 @@ if [ ! -f .env ]; then
   ./deploy/gen-secrets.sh "$ENVIRONMENT"
 fi
 
-# Open a direct HTTP port only when firewalld is active and APP_PORT is a plain
-# numeric host port. Reverse-proxy bindings such as 127.0.0.1:8080 stay private.
+# Open the firewall when firewalld is active: production serves HTTPS on 443
+# (and 80, which redirects); dev opens APP_PORT when it is a plain numeric port
+# (bindings such as 127.0.0.1:8080 stay private).
 set -a; . ./.env; set +a
-if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1 \
-   && printf '%s' "${APP_PORT:-}" | grep -qE '^[0-9]+$'; then
-  firewall-cmd --add-port="${APP_PORT}/tcp" --permanent >/dev/null
-  firewall-cmd --reload >/dev/null
+if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+  if [ "$ENVIRONMENT" = "prod" ]; then
+    firewall-cmd --add-service=https --add-service=http --permanent >/dev/null
+    firewall-cmd --reload >/dev/null
+  elif printf '%s' "${APP_PORT:-}" | grep -qE '^[0-9]+$'; then
+    firewall-cmd --add-port="${APP_PORT}/tcp" --permanent >/dev/null
+    firewall-cmd --reload >/dev/null
+  fi
 fi
 
 export DEPLOY_BRANCH="${DEPLOY_BRANCH:-$([ "$ENVIRONMENT" = dev ] && echo dev || echo prod)}"

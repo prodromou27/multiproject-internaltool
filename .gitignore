@@ -23,6 +23,8 @@ server/certs/*.pem
 server/certs/*.key
 server/certs/*.p12
 server/certs/*.pfx
+# The HTTPS certificate for the production proxy (deploy/Caddyfile)
+certs/
 
 # Environment / secrets
 .env

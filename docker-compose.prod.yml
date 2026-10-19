@@ -2,14 +2,19 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 # (the deploy/deploy.sh prod path does this for you).
 #
+# - HTTPS on port 443 (and 80 → 443) through Caddy, with the company certificate
+#   in ./certs (deploy/Caddyfile, deploy/README.md section 4).
+# - The app itself listens only on 127.0.0.1:8080 (for the proxy, health checks
+#   and deploy/smoke-test.sh); APP_PORT is not used in production.
 # - Postgres is NOT published to the host (only reachable on the internal
 #   compose network by the app). Use deploy/backup.sh for dumps.
 # - Log rotation so container logs don't fill the disk.
+#
+# !reset / !override need Docker Compose 2.24.4 or later.
 
 services:
   db:
     # !reset removes the base file's port (a plain [] is merged, leaving it published).
-    # Needs Docker Compose 2.24 or later.
     ports: !reset []
     logging:
       driver: json-file
@@ -18,8 +23,43 @@ services:
         max-file: "5"
 
   app:
+    ports: !override
+      - "127.0.0.1:8080:8080"
+    environment:
+      # One proxy hop (Caddy): the real client IP comes from X-Forwarded-For.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "5"
+
+  proxy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE   # ports 80 and 443
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${TLS_CERT_DIR:-./certs}:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  caddy_data:
+  caddy_config:

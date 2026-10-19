@@ -85,6 +85,35 @@ fi
 if [ -n "${APP_URL:-}" ] && ! printf '%s' "$APP_URL" | grep -qE '^https?://[^[:space:]]+$'; then
   echo "ERROR: APP_URL must be a valid http(s) URL." >&2; errs=1
 fi
+# Production serves HTTPS on 443 with the company certificate (deploy/Caddyfile).
+if [ "$ENVIRONMENT" = "prod" ]; then
+  cert_dir="${TLS_CERT_DIR:-./certs}"
+  if [ -n "${APP_URL:-}" ] && ! printf '%s' "$APP_URL" | grep -qE '^https://'; then
+    echo "ERROR: APP_URL must start with https:// in production (the app is served on port 443)." >&2; errs=1
+  fi
+  if [ ! -f "$cert_dir/tls.crt" ] || [ ! -f "$cert_dir/tls.key" ]; then
+    echo "ERROR: the HTTPS certificate is missing. Put the company certificate in $cert_dir/:" >&2
+    echo "       tls.crt  (the certificate followed by its intermediate CA certificates)" >&2
+    echo "       tls.key  (its private key, unencrypted PEM)   — see deploy/README.md section 4" >&2
+    errs=1
+  elif command -v openssl >/dev/null 2>&1; then
+    if ! openssl x509 -in "$cert_dir/tls.crt" -noout >/dev/null 2>&1; then
+      echo "ERROR: $cert_dir/tls.crt is not a PEM certificate." >&2; errs=1
+    elif [ "$(openssl x509 -in "$cert_dir/tls.crt" -noout -pubkey 2>/dev/null | openssl sha256)" != "$(openssl pkey -in "$cert_dir/tls.key" -pubout 2>/dev/null | openssl sha256)" ]; then
+      echo "ERROR: $cert_dir/tls.key is not the private key of $cert_dir/tls.crt (or it is password-protected)." >&2; errs=1
+    elif ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkend 0 >/dev/null; then
+      echo "ERROR: the certificate in $cert_dir/tls.crt has expired." >&2; errs=1
+    else
+      if ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkend $((30 * 86400)) >/dev/null; then
+        echo "WARNING: the certificate expires within 30 days ($(openssl x509 -in "$cert_dir/tls.crt" -noout -enddate | cut -d= -f2))." >&2
+      fi
+      app_host="$(printf '%s' "${APP_URL:-}" | sed -E 's#^https?://([^/:]+).*#\1#')"
+      if [ -n "$app_host" ] && ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkhost "$app_host" 2>/dev/null | grep -q 'does match'; then
+        echo "ERROR: the certificate does not cover $app_host (the host in APP_URL)." >&2; errs=1
+      fi
+    fi
+  fi
+fi
 [ "$errs" -eq 0 ] || { echo "Fix .env and re-run." >&2; exit 1; }
 
 # 2. Pull the target branch (fast-forward only — never silently rebases local edits).
@@ -126,5 +155,8 @@ for i in $(seq 1 40); do
 done
 
 docker compose "${COMPOSE[@]}" ps
+if [ "$ENVIRONMENT" = "prod" ]; then
+  echo "==> Served at ${APP_URL} (HTTPS on port 443; port 80 redirects). Open ports 443 and 80 in the host firewall."
+fi
 echo "==> Deploy of '$ENVIRONMENT' complete."
 echo "    First empty-database login: admin / admin (immediate password change required)."
