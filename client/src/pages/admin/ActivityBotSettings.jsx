@@ -83,7 +83,9 @@ export function ActivityBotSettings({ sectionStyle }) {
       <ol className="text-sm">
         <li>{view.webex.bot_token_set ? 'The bot token from Webex notifications above is used.' : <>Add the Webex <strong>bot token</strong> under Webex notifications above.</>}</li>
         <li>Register the webhook so Webex sends direct messages to the bot here. {view.webex.webhook_registered ? <span className="bot-ok">Registered</span> : <span className="text-muted">Not registered</span>}
-          <div><button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || !view.webex.bot_token_set || !view.public_url_https} onClick={register}>{busy === 'register' ? 'Registering…' : view.webex.webhook_registered ? 'Register again' : 'Register webhook'}</button></div></li>
+          <div><button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || !view.webex.bot_token_set || !view.public_url_https} onClick={register}>{busy === 'register' ? 'Registering…' : view.webex.webhook_registered ? 'Register again' : 'Register webhook'}</button>
+            {!view.webex.bot_token_set ? <small className="text-muted"> Save the bot token first (step above).</small>
+              : !view.public_url_https && <small className="text-muted"> Webex only sends to an https:// address: install the HTTPS certificate and set APP_URL to https://… (deploy/README.md section 4).</small>}</div></li>
         <li>Engineers open a one-to-one chat with the bot in Webex and say <em>help</em>.</li>
       </ol>
       <CopyField label="Webhook address" value={view.webex.target_url} />
