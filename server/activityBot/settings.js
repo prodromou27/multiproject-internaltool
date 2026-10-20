@@ -7,7 +7,7 @@ const db = require('../db');
 const { encrypt, decrypt } = require('../fieldCipher');
 
 const KEY = 'activity_bot';
-const EMPTY = { webex: { enabled: false, webhook_secret: '', webhook_id: '' }, teams: { enabled: false, app_id: '', app_password: '', tenant_id: '' } };
+const EMPTY = { webex: { enabled: false, webhook_secret: '', webhook_id: '', device_url: '' }, teams: { enabled: false, app_id: '', app_password: '', tenant_id: '' } };
 
 async function stored() {
   const row = await db.prepare('SELECT value FROM settings WHERE key = ?').get(KEY);
@@ -49,7 +49,9 @@ async function view() {
   return {
     public_url: base || null,
     public_url_https: /^https:\/\//i.test(base),
-    webex: { enabled: !!value.webex.enabled, bot_token_set: webexToken, webhook_registered: !!value.webex.webhook_id, target_url: base ? `${base}/api/bots/webex/events` : null },
+    webex: { enabled: !!value.webex.enabled, bot_token_set: webexToken, webhook_registered: !!value.webex.webhook_id, target_url: base ? `${base}/api/bots/webex/events` : null,
+      // The outbound connection (webexSocket.js): off, connecting, connected, reconnecting.
+      connection: require('./webexSocket').status() },
     teams: { enabled: !!value.teams.enabled, app_id: value.teams.app_id || '', app_password_set: !!value.teams.app_password, tenant_id: value.teams.tenant_id || '', messaging_endpoint: base ? `${base}/api/bots/teams/messages` : null },
   };
 }

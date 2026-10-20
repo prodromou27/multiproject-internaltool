@@ -40,6 +40,8 @@ router.post('/integrations', requireManager, async (req, res) => {
   const value = JSON.stringify(body);
   (await db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(value));
   await logSettingsChange(req, 'integrations_updated', `platforms=${Object.keys(body || {}).join(',')}`);
+  // The activity bot's Webex connection uses this bot token: reconnect with the new one.
+  require('../../activityBot/webexSocket').sync().catch(error => console.error('[activity-bot] webex connect:', error.message));
   res.json({ ok: true });
 });
 

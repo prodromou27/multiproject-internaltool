@@ -34,6 +34,8 @@ router.put('/activity-bot', requireManager, async (req, res) => {
       if (next.enabled && (!next.app_id || !next.app_password)) fail('Enter the Microsoft App ID and password before turning the Teams bot on');
     }
     await botSettings.save(change);
+    // Webex: connect out (or disconnect) to match; the page then shows the connection.
+    if (change.webex) await require('../../activityBot/webexSocket').sync().catch(error => console.error('[activity-bot] webex connect:', error.message));
     await logSettingsChange(req, 'activity_bot_updated', `webex=${change.webex?.enabled ?? '-'}; teams=${change.teams?.enabled ?? '-'}`);
     res.json(await botSettings.view());
   } catch (error) { send(res, error, 'Could not save the bot settings'); }

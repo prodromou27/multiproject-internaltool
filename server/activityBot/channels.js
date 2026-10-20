@@ -142,4 +142,4 @@ async function handleTeamsActivity(activity, teams) {
   return 'answered';
 }
 
-module.exports = { verifyWebexSignature, handleWebexEvent, registerWebexWebhook, verifyTeamsRequest, handleTeamsActivity, trustedServiceUrl, pruneProcessed, _resetCaches: () => { keyCache = { at: 0, keys: [] }; tokenCache = { value: '', expires: 0, for: '' }; } };
+module.exports = { webexToken, verifyWebexSignature, handleWebexEvent, registerWebexWebhook, verifyTeamsRequest, handleTeamsActivity, trustedServiceUrl, pruneProcessed, _resetCaches: () => { keyCache = { at: 0, keys: [] }; tokenCache = { value: '', expires: 0, for: '' }; } };

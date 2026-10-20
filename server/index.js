@@ -326,6 +326,7 @@ const keyFile  = path.join(certDir, 'key.pem');
       require('./software/sync').startSchedule(); // latest software versions every few hours
       require('./grafana').startSchedule(); // what each device runs, from Grafana, every few hours
       liveUpdates.startListening();
+      require('./activityBot/webexSocket').sync().catch(error => console.error('[activity-bot] webex connect:', error.message)); // the Webex bot connects out
       initScheduler();
     }));
 
@@ -352,6 +353,7 @@ const keyFile  = path.join(certDir, 'key.pem');
       require('./software/sync').startSchedule(); // latest software versions every few hours
       require('./grafana').startSchedule(); // what each device runs, from Grafana, every few hours
       liveUpdates.startListening();
+      require('./activityBot/webexSocket').sync().catch(error => console.error('[activity-bot] webex connect:', error.message)); // the Webex bot connects out
       initScheduler();
     }));
   }

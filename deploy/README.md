@@ -220,6 +220,12 @@ sudo firewall-cmd --add-service=https --add-service=http --permanent && sudo fir
 `200`, and `curl -I http://teamhub.company.local` answers `301` to https.
 `./deploy/smoke-test.sh` still runs against `http://localhost:8080` on the server.
 
+**The Webex activity bot needs no inbound access.** It connects out to Webex and
+receives messages over that connection, so the server stays unreachable from the
+internet. Allow outbound HTTPS (443) to `*.webex.com` and `*.wbx2.com` (WebSocket
+included). Only the optional Webex webhook, and the Microsoft Teams bot, need the app
+at a public `https://` address.
+
 Prefer nginx on the host instead? [`deploy/nginx.conf.example`](nginx.conf.example)
 does the same job; then deploy without the `proxy` service and bind the app to
 `127.0.0.1:8080`.

@@ -51,6 +51,15 @@ function TryIt() {
   </div>;
 }
 
+// The Webex bot's outbound connection (server: activityBot/webexSocket.js).
+function WebexConnection({ connection, enabled, tokenSet }) {
+  if (!tokenSet || !enabled) return <span className="text-muted">Off</span>;
+  const status = connection?.status || 'off';
+  if (status === 'connected') return <span className="bot-ok">Connected to Webex</span>;
+  if (status === 'connecting') return <span className="text-muted">Connecting…</span>;
+  return <span className="text-danger">{status === 'reconnecting' ? 'Reconnecting' : 'Not connected'}{connection?.error ? `: ${connection.error}` : ''}</span>;
+}
+
 export function ActivityBotSettings({ sectionStyle }) {
   const toast = useToast();
   const [view, setView] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState('');
@@ -76,22 +85,26 @@ export function ActivityBotSettings({ sectionStyle }) {
       <strong>Activity bot</strong>
       <p className="text-sm text-muted">Engineers message the bot in plain words (<em>“45m support for Contoso, ticket 4521”</em>). It drafts the service activity, asks for anything missing, and saves it when they reply <strong>yes</strong>, under their own account and permissions. It understands messages with built-in rules on this server; nothing is sent to an AI service. People are matched by their Webex or Teams email address, which must be their TeamHub email.</p>
     </div></div>
-    {!view.public_url_https && <div className="alert alert-warning"><span>Webex and Teams deliver messages to this app over the internet, so it needs a public <code>https://</code> address set as <code>APP_URL</code> on the server{view.public_url ? ` (currently ${view.public_url})` : ''}.</span></div>}
 
     <div className="bot-channel">
       <div className="bot-channel-head"><strong>Webex</strong><Toggle checked={view.webex.enabled} disabled={!!busy} onChange={value => save({ webex: { enabled: value } }, value ? 'Webex bot turned on' : 'Webex bot turned off')} label={view.webex.enabled ? 'On' : 'Off'} /></div>
       <ol className="text-sm">
         <li>{view.webex.bot_token_set ? 'The bot token from Webex notifications above is used.' : <>Add the Webex <strong>bot token</strong> under Webex notifications above.</>}</li>
-        <li>Register the webhook so Webex sends direct messages to the bot here. {view.webex.webhook_registered ? <span className="bot-ok">Registered</span> : <span className="text-muted">Not registered</span>}
-          <div><button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || !view.webex.bot_token_set || !view.public_url_https} onClick={register}>{busy === 'register' ? 'Registering…' : view.webex.webhook_registered ? 'Register again' : 'Register webhook'}</button>
-            {!view.webex.bot_token_set ? <small className="text-muted"> Save the bot token first (step above).</small>
-              : !view.public_url_https && <small className="text-muted"> Webex only sends to an https:// address: install the HTTPS certificate and set APP_URL to https://… (deploy/README.md section 4).</small>}</div></li>
+        <li>Turn the bot on. The app connects out to Webex and receives the messages over that connection: nothing on this server needs to be reachable from the internet, only outgoing HTTPS to Webex. <WebexConnection connection={view.webex.connection} enabled={view.webex.enabled} tokenSet={view.webex.bot_token_set} /></li>
         <li>Engineers open a one-to-one chat with the bot in Webex and say <em>help</em>.</li>
       </ol>
-      <CopyField label="Webhook address" value={view.webex.target_url} />
+      <details className="text-sm">
+        <summary>Alternative: a webhook (only if this server is reachable from the internet)</summary>
+        <p>Webex can instead deliver messages to this app's public <code>https://</code> address. {view.webex.webhook_registered ? <span className="bot-ok">Registered</span> : <span className="text-muted">Not registered</span>}</p>
+        <div><button type="button" className="btn btn-ghost btn-sm" disabled={!!busy || !view.webex.bot_token_set || !view.public_url_https} onClick={register}>{busy === 'register' ? 'Registering…' : view.webex.webhook_registered ? 'Register again' : 'Register webhook'}</button>
+          {!view.webex.bot_token_set ? <small className="text-muted"> Save the bot token first (step 1).</small>
+            : !view.public_url_https && <small className="text-muted"> Needs APP_URL to be a public https:// address.</small>}</div>
+        <CopyField label="Webhook address" value={view.webex.target_url} />
+      </details>
     </div>
 
     <div className="bot-channel">
+      {!view.public_url_https && <p className="text-sm text-muted">Teams delivers messages over the internet: it needs this app at a public <code>https://</code> address (APP_URL){view.public_url ? `, currently ${view.public_url}` : ''}.</p>}
       <div className="bot-channel-head"><strong>Microsoft Teams</strong><Toggle checked={view.teams.enabled} disabled={!!busy || !view.teams.app_id || !view.teams.app_password_set} onChange={value => save({ teams: { enabled: value } }, value ? 'Teams bot turned on' : 'Teams bot turned off')} label={view.teams.enabled ? 'On' : 'Off'} /></div>
       <ol className="text-sm">
         <li>In Azure, create an <strong>Azure Bot</strong> (single tenant is fine), enable the <strong>Microsoft Teams</strong> channel, and set its messaging endpoint to the address below.</li>
