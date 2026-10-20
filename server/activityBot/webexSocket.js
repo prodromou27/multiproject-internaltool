@@ -18,8 +18,15 @@ const DEVICES_URL = 'https://wdm-a.wbx2.com/wdm/api/v1/devices';
 // Webex's service catalogue: where this account's device service (WDM) is, when wdm-a is not it.
 const CATALOG_URL = 'https://u2c.wbx2.com/u2c/api/v1/limited/catalog?format=hostmap';
 const webexHost = url => { try { const u = new URL(url); return u.protocol === 'https:' && /(^|\.)(wbx2|webex|ciscospark)\.com$/i.test(u.hostname); } catch { return false; } };
-/** What an answer held, for the error shown in Settings: field names only, never values. */
-const shapeOf = data => data == null ? 'an empty or non-JSON answer' : typeof data !== 'object' ? `a ${typeof data}` : `fields: ${Object.keys(data).slice(0, 12).join(', ') || 'none'}`;
+// A device registration answer is large (it lists Webex's services): read up to 8 MB.
+const DEVICE_MAX_BYTES = 8_000_000;
+/** What an answer held, for the error shown in Settings: field names, status, type and size, never values. */
+function shapeOf(answer) {
+  const data = answer?.data;
+  if (data && typeof data === 'object') return `fields: ${Object.keys(data).slice(0, 12).join(', ') || 'none'}`;
+  const how = [`HTTP ${answer?.status ?? '?'}`, answer?.contentType || 'no content type', `${answer?.size ?? 0} bytes`, ...(answer?.truncated ? ['cut off'] : [])].join(', ');
+  return `${answer?.size ? 'an answer that is not JSON' : 'an empty answer'} (${how})`;
+}
 const DEVICE = { deviceName: 'TeamHub activity bot', deviceType: 'DESKTOP', localizedModel: 'nodeJS', model: 'nodeJS', name: 'teamhub-activity-bot', systemName: 'TeamHub', systemVersion: '1.0' };
 const PING_MS = 30 * 1000, SILENT_MS = 100 * 1000, MAX_PAUSE_MS = 5 * 60 * 1000;
 
@@ -31,19 +38,22 @@ const clearTimers = () => { for (const t of timers) { clearTimeout(t); clearInte
 /** Webex REST ids are base64 of a "ciscospark://<cluster>/MESSAGE/<uuid>" URI. */
 const messageIdFor = (uuid, cluster = 'us') => Buffer.from(`ciscospark://${cluster}/MESSAGE/${uuid}`).toString('base64').replace(/=+$/, '');
 
-/** The device service Webex's catalogue names for this account (asked only when wdm-a fails). */
-async function catalogDeviceService(headers) {
+/** The device service Webex's catalogue names for this account (asked only when wdm-a fails); notes what happened. */
+async function catalogDeviceService(headers, answers) {
   try {
-    const wdm = (await http.request('GET', CATALOG_URL, { headers }))?.serviceLinks?.wdm;
-    return wdm && webexHost(wdm) ? `${wdm.replace(/\/+$/, '')}/devices` : null;
-  } catch { return null; }
+    const answer = await http.request('GET', CATALOG_URL, { headers, raw: true, maxBytes: DEVICE_MAX_BYTES });
+    const wdm = answer.data?.serviceLinks?.wdm;
+    if (wdm && webexHost(wdm)) return `${wdm.replace(/\/+$/, '')}/devices`;
+    answers.push(`the catalogue gave ${wdm ? 'a device service outside Webex' : shapeOf(answer)}`);
+  } catch (error) { answers.push(`the catalogue: ${error.message}`); }
+  return null;
 }
 
 /** A registered device's WebSocket address (asking for the device again when the answer lacks it). */
 async function socketOf(device, headers) {
   if (device?.webSocketUrl) return device.webSocketUrl;
   if (device?.url && webexHost(device.url)) {
-    const again = await http.request('GET', device.url, { headers }).catch(() => null);
+    const again = await http.request('GET', device.url, { headers, maxBytes: DEVICE_MAX_BYTES }).catch(() => null);
     if (again?.webSocketUrl) return again.webSocketUrl;
   }
   return null;
@@ -54,26 +64,27 @@ async function deviceSocketUrl(token) {
   const headers = { Authorization: `Bearer ${token}` };
   const saved = (await botSettings.load()).webex.device_url;
   if (saved && webexHost(saved)) {
-    try { const device = await http.request('GET', saved, { headers }); if (device?.webSocketUrl) return device.webSocketUrl; }
+    try { const device = await http.request('GET', saved, { headers, maxBytes: DEVICE_MAX_BYTES }); if (device?.webSocketUrl) return device.webSocketUrl; }
     catch (error) { if (error.status !== 404) throw error; }
   }
   // wdm-a first; when it gives no address, the device service the catalogue names.
   const answers = [];
   const register = async service => {
-    let device;
-    try { device = await http.request('POST', service, { headers, json: DEVICE }); }
+    let answer;
+    try { answer = await http.request('POST', service, { headers, json: DEVICE, raw: true, maxBytes: DEVICE_MAX_BYTES }); }
     catch (error) { answers.push(`${new URL(service).hostname}: ${error.message}`); return null; }
+    const device = answer.data;
     const socket = await socketOf(device, headers);
     if (socket && webexHost(socket.replace(/^wss:/, 'https:'))) {
       await botSettings.save({ webex: { device_url: device.url || null } });
       return socket;
     }
-    answers.push(`${new URL(service).hostname} gave ${shapeOf(device)}`);
+    answers.push(`${new URL(service).hostname} gave ${shapeOf(answer)}`);
     return null;
   };
   const first = await register(DEVICES_URL);
   if (first) return first;
-  const other = await catalogDeviceService(headers);
+  const other = await catalogDeviceService(headers, answers);
   const second = other && other !== DEVICES_URL ? await register(other) : null;
   if (second) return second;
   throw new Error(`Webex did not return a connection address (${answers.join('; ')})`);
