@@ -74,7 +74,7 @@ test('a visit report goes from the engineer to the manager', async ({ page, brow
 
 test('a project closure is requested by the engineer and approved by the manager', async ({ page, browser }) => {
   await signIn(page, 'manager');
-  const project = await call(page, 'POST', '/projects', { title: `Core refresh ${stamp}`, customer_id: shared.customerId, member_ids: [shared.ids.engineer] });
+  const project = await call(page, 'POST', '/projects', { project_code: `PRJ-${stamp}`, title: `Core refresh ${stamp}`, description: 'Core switch refresh', start_date: '2026-10-01', customer_id: shared.customerId, member_ids: [shared.ids.engineer] });
   expect([200, 201]).toContain(project.status);
   shared.projectId = project.data.id;
   const engineer = await browser.newPage();
