@@ -8,7 +8,8 @@ import CustomerRecurringTasks from './CustomerRecurringTasks';
 import CustomerTaskForm from './CustomerTaskForm';
 import { LastUpdate, SubtaskProgress, SubtasksDialog, TaskTicket } from './TaskSubtasks';
 import { useToast } from './Toast';
-import { Check, Hand, MessageSquare, Play, Plus, Repeat } from 'lucide-react';
+import { Check, Hand, MessageSquare, Pencil, Play, Plus, Repeat } from 'lucide-react';
+import EditTaskModal from './EditTaskModal';
 import { useConfirm } from './Confirm';
 import AddToCalendarButton from './AddToCalendarButton';
 
@@ -60,11 +61,18 @@ const DONE_STATUSES=new Set(['completed','closed','cancelled','pending_approval'
    default) with Start and Done on the ones you work on. Engineers see all the
    customer's tasks: they take an unassigned one, or take one over from a
    colleague (who is told); a team task becomes theirs when they start or finish it. */
-export function CustomerTasks({ customerId,initialFilter='',engineers=[],canManage=false,canAdd=false,isEngineer=false,create=false,openTaskId=null }) {
-  const toast=useToast(),confirm=useConfirm(),[mine,setMine]=useState(false),[adding,setAdding]=useState(canAdd && create),[busy,setBusy]=useState(null),[subtasksFor,setSubtasksFor]=useState(null);
+export function CustomerTasks({ customerId,initialFilter='',engineers=[],canManage=false,canAdd=false,isEngineer=false,create=false,onCreateConsumed,openTaskId=null }) {
+  const toast=useToast(),confirm=useConfirm(),[mine,setMine]=useState(false),[adding,setAdding]=useState(false),[editing,setEditing]=useState(null),[busy,setBusy]=useState(null),[subtasksFor,setSubtasksFor]=useState(null);
   const [page,setPage]=useState(1),[filter,setFilter]=useState(initialFilter || 'open'),[priority,setPriority]=useState(''),[engineer,setEngineer]=useState(''),[draft,setDraft]=useState(''),[search,setSearch]=useState('');
   const state=useCustomerList((params,options) => api.customerOperationTasks(customerId,params,options),{ page,page_size:25,filter,search,...(priority?{priority}:{}),...(engineer?{engineer_id:engineer}:{}),...(mine?{ mine:'1' }:{}) },customerId);
   const update=(setter,value) => { setter(value);setPage(1); };
+  // "Create task" (Add menu, or a link with create=1) opens the form, also when this tab is already open;
+  // the request is then taken off the address, so asking again opens it again.
+  useEffect(() => {
+    if (!create) return;
+    if (canAdd) setAdding(true);
+    onCreateConsumed?.();
+  },[create]); // eslint-disable-line react-hooks/exhaustive-deps
   // A link to one task (e.g. from a mention) opens it once its row is loaded; if it is not in the open list, all tasks are listed.
   const opened=useRef(false);
   useEffect(() => {
@@ -89,6 +97,7 @@ export function CustomerTasks({ customerId,initialFilter='',engineers=[],canMana
   return <section><CustomerRecurringTasks customerId={customerId} canManage={canManage} engineers={engineers} />
     {canAdd && <div className="cs-tasks-head"><h2>Tasks</h2><button type="button" className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Plus size={14} /> Add task</button></div>}
     {subtasksFor && <SubtasksDialog task={subtasksFor} customerId={customerId} canEdit={subtasksFor.can_update!==false} onClose={() => { setSubtasksFor(null);state.retry(); }} />}
+    {editing && <EditTaskModal task={editing} allUsers={engineers} isManager={canManage} onClose={() => setEditing(null)} onSave={() => { setEditing(null);toast.success('Task saved');state.retry(); }} />}
     {adding && <CustomerTaskForm customerId={customerId} isManager={canManage} engineers={engineers} onClose={() => setAdding(false)} onSaved={() => { setAdding(false);toast.success('Task added');state.retry(); }} />}
     <SearchFilter value={draft} onChange={setDraft} onSubmit={() => { setSearch(draft.trim());setPage(1); }}><label><span>Status</span><select value={filter} onChange={event => update(setFilter,event.target.value)}><option value="open">Open</option><option value="in_progress">In progress</option><option value="overdue">Overdue</option><option value="recently_completed">Recently completed</option><option value="all">All</option></select></label><label><span>Priority</span><select value={priority} onChange={event => update(setPriority,event.target.value)}><option value="">All priorities</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>{isEngineer && <label className="cs-mine"><input type="checkbox" checked={mine} onChange={event => update(setMine,event.target.checked)} /> Mine only</label>}{engineers.length>0 && <label><span>Engineer</span><select value={engineer} onChange={event => update(setEngineer,event.target.value)}><option value="">All engineers</option>{engineers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}</SearchFilter>
     <ResultState {...state} empty={filter==='open' ? 'No open tasks' : 'No tasks found'}>{state.data && <div className="card cs-work-table-wrap"><table className="cs-work-table"><thead><tr><th>Task</th><th>For</th><th>Status</th><th>Priority</th><th>Due date</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{state.data.rows.map(row => {
@@ -103,6 +112,7 @@ export function CustomerTasks({ customerId,initialFilter='',engineers=[],canMana
         <td data-label="Due date" className={overdue ? 'cs-overdue' : ''}>{fmtDate(row.deadline)}{overdue && <div className="text-sm">Overdue</div>}</td>
         <td><div className="table-actions">{!done && !canUpdate && isEngineer && <button type="button" className="btn btn-ghost btn-sm" disabled={busy===row.id} onClick={() => take(row)}
           aria-label={`${row.assigned_to ? 'Take over' : 'Take'} ${row.title}`}><Hand size={13} /> {row.assigned_to ? 'Take over' : 'Take'}</button>}
+          {canUpdate && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(row)} aria-label={`Edit ${row.title}`}><Pencil size={13} /> Edit</button>}
           {canUpdate && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSubtasksFor(row)} aria-label={`Post an update on ${row.title}`}><MessageSquare size={13} /> Update</button>}
           {!done && canUpdate && <>
           {row.status!=='in_progress' && <button type="button" className="btn btn-ghost btn-sm" disabled={busy===row.id} onClick={() => setStatus(row,'in_progress')} aria-label={`Start ${row.title}`}><Play size={13} /> Start</button>}

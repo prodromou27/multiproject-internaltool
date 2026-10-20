@@ -169,7 +169,7 @@ router.get('/tasks',requireAuth,async (req,res) => {
   // Whether this person may change the task (start, finish, subtasks): managers; engineers for theirs and their teams' unassigned ones.
   const myTeams=req.user.role==='engineer' ? new Set((await db.prepare('SELECT team_id FROM team_members WHERE user_id=?').all(req.user.id)).map(r => Number(r.team_id))) : null;
   const canUpdate=row => req.user.role==='manager' || (row.assigned_to!=null ? Number(row.assigned_to)===Number(req.user.id) : !!row.team_id && myTeams.has(Number(row.team_id)));
-  const rows=(await db.prepare(`SELECT t.id,t.project_id,t.title,t.status,t.priority,t.deadline,t.updated_at,t.assigned_to,t.team_id,t.recurring_task_id,t.asset_id,t.ticket_reference,ca.name AS asset_name,u.name AS assigned_to_name,tm.name AS team_name,p.title AS project_title,COALESCE(t.customer_id,p.customer_id) AS customer_id
+  const rows=(await db.prepare(`SELECT t.id,t.project_id,t.title,t.description,t.pending_from_customer,t.status,t.priority,t.deadline,t.updated_at,t.assigned_to,t.team_id,t.recurring_task_id,t.asset_id,t.ticket_reference,ca.name AS asset_name,u.name AS assigned_to_name,tm.name AS team_name,p.title AS project_title,COALESCE(t.customer_id,p.customer_id) AS customer_id
     FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to LEFT JOIN teams tm ON tm.id=t.team_id LEFT JOIN customer_assets ca ON ca.id=t.asset_id WHERE ${where}
     ORDER BY CASE WHEN t.deadline IS NULL THEN 1 ELSE 0 END,t.deadline,t.id LIMIT ? OFFSET ?`).all(...params,paging.pageSize,paging.offset))
     .map(row => ({ ...row,asset_name:row.asset_name ? decrypt(row.asset_name) : null }));

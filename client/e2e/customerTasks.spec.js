@@ -122,3 +122,39 @@ test('engineers take an unassigned customer task, or take one over from a collea
   await page.getByLabel('Mine only').check();
   await expect.poll(() => asked.at(-1)).toBe('1');
 });
+
+test('Add → Create task opens the form on the Tasks tab too, every time it is asked', async ({ page }) => {
+  await customerTasks(page, 'manager');
+  await page.goto('/customers/12/service-profile?section=tasks');
+  for (const round of [1, 2]) {
+    await page.locator('.cs-header-actions').getByText('Add', { exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Create Task' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Add task' });
+    await expect(dialog, `round ${round}`).toBeVisible();
+    await expect(page).not.toHaveURL(/create=1/);
+    await dialog.getByRole('button', { name: /Cancel|Close/ }).first().click();
+    await expect(dialog).toHaveCount(0);
+  }
+});
+
+test('a task is edited from Customer 360', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  let saved = null;
+  const task = { id: 70, title: 'Renew firewall licence', description: 'Before it lapses', status: 'open', priority: 'medium', deadline: '2026-11-30', assigned_to: 7, assigned_to_name: 'Maria Ioannou', customer_id: 12, can_update: true, ticket_reference: null };
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
+  api.override('GET /api/customers/12/operations/tasks', () => ({ body: { rows: [saved ? { ...task, ...saved } : task], total: 1, page: 1, page_size: 25 } }));
+  api.override('GET /api/auth/users', () => ({ body: [{ id: 7, name: 'Maria Ioannou', role: 'engineer', active: 1 }, { id: 8, name: 'Nick Network', role: 'engineer', active: 1 }] }));
+  api.override('PUT /api/tasks/70', ({ body }) => { saved = body; return { body: { ok: true } }; });
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await page.getByRole('button', { name: 'Edit Renew firewall licence' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit Task' });
+  await expect(dialog.locator('textarea').first()).toHaveValue('Before it lapses');
+  await dialog.locator('input').first().fill('Renew firewall licence (2027)');
+  await dialog.locator('select').first().selectOption('high');
+  await dialog.getByRole('button', { name: /Save/ }).click();
+  await expect.poll(() => saved).toMatchObject({ title: 'Renew firewall licence (2027)', priority: 'high', description: 'Before it lapses', deadline: '2026-11-30' });
+  await expect(page.getByRole('button', { name: 'Renew firewall licence (2027)', exact: true })).toBeVisible();
+});
