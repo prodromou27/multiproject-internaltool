@@ -92,7 +92,9 @@ router.get('/', requireAuth, async (req, res) => {
       .sort((a, b) => a.end_date.localeCompare(b.end_date))
       .map(c => ({ id: c.id, reference: c.reference || c.description || `Contract #${c.id}`, end_date: c.end_date }));
   }
-  const visible=(candidates ? rows.filter(row => candidates.has(Number(row.id))) : rows).map(decryptCustomer).sort((a, b) => a.name.localeCompare(b.name));
+  // In-house infrastructure first, then by name.
+  const visible=(candidates ? rows.filter(row => candidates.has(Number(row.id))) : rows).map(decryptCustomer)
+    .sort((a, b) => (Number(!!b.is_internal) - Number(!!a.is_internal)) || a.name.localeCompare(b.name));
   return res.json(listQuery.paged ? customerListPage(visible,listQuery) : visible);
 });
 
@@ -206,13 +208,6 @@ function validateCustomerInput(body, existing = {}) {
   return null;
 }
 
-/* Only one customer can stand for the organisation's own (in-house)
-   infrastructure. Returns an error message naming the current one, or null. */
-async function internalConflict(store, exceptId = null) {
-  const current = await store.prepare('SELECT id, name FROM customers WHERE is_internal=1').get();
-  if (!current || Number(current.id) === Number(exceptId)) return null;
-  return `"${decryptCustomer(current).name}" is already marked as your organisation's in-house infrastructure`;
-}
 
 router.post('/', requireManagerOrPlanner, async (req, res) => {
   const inputError = validateCustomerInput(req.body);
@@ -227,10 +222,6 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
   } = req.body;
   const project_name = req.body.project_name?.trim() || null;
   if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
-  if (is_internal) {
-    const conflict = await internalConflict(db);
-    if (conflict) return res.status(409).json({ error: conflict });
-  }
   if (contract_hour_period && !VALID_CONTRACT_HOUR_PERIODS.has(contract_hour_period))
     return res.status(400).json({ error: 'Invalid contract_hour_period' });
   const duplicateCandidates=await candidateCustomerNameIds(db,name);
@@ -326,10 +317,6 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
     require_category, require_notes, require_billable_classification, is_internal,
   } = req.body;
   if (name !== undefined && !name?.trim()) return res.status(400).json({ error: 'Name cannot be empty' });
-  if (is_internal) {
-    const conflict = await internalConflict(db, id);
-    if (conflict) return res.status(409).json({ error: conflict });
-  }
   if (contract_hour_period && !VALID_CONTRACT_HOUR_PERIODS.has(contract_hour_period))
     return res.status(400).json({ error: 'Invalid contract_hour_period' });
   if (name?.trim()) {

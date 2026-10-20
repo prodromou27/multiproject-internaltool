@@ -1437,6 +1437,10 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE customer_ticketing_configurations ADD COLUMN IF NOT EXISTS sync_cursor TEXT;
     ALTER TABLE customer_ticketing_configurations ADD COLUMN IF NOT EXISTS sync_backlog INTEGER NOT NULL DEFAULT 0;
   `]);
+  migrations.push(['20261124_several_in_house_customers', `
+    -- Several customers may stand for the organisation's own (in-house) infrastructure.
+    DROP INDEX IF EXISTS idx_customers_one_internal;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

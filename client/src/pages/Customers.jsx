@@ -44,7 +44,7 @@ export function EditCustomerDialog({ customer, onSaved, onClose }) {
 }
 
 const CUSTOMER_FIELDS = [
-  ['name', 'Name'], ['project_name', 'Project name'], ['customer_code', 'Customer code'], ['active', 'Active', yesNo], ['is_internal', 'Internal', yesNo],
+  ['name', 'Name'], ['project_name', 'Project name'], ['active', 'Active', yesNo], ['is_internal', 'Internal', yesNo],
   ['contact_name', 'Contact'], ['contact_email', 'Email'], ['contact_phone', 'Phone'], ['primary_contact', 'Primary contact'],
   ['address', 'Address'], ['location', 'Location'], ['notes', 'Notes'], ['contract_type', 'Contract type'],
   ['contract_start_date', 'Contract start'], ['contract_end_date', 'Contract end'], ['reporting_frequency', 'Reporting'],
@@ -55,9 +55,9 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
   const toast = useToast();
   const [form, setForm] = useState(() => initial ? { ...initial, is_internal: !!initial.is_internal } : {
     name: '', project_name: '', contact_name: '', contact_email: '', contact_phone: '', address: '', notes: '',
-    customer_code: '', active: true, service_activity_enabled: false, primary_contact: '', location: '',
+    active: true, service_activity_enabled: false, primary_contact: '', location: '',
     contract_type: '', contract_start_date: '', contract_end_date: '', reporting_frequency: '',
-    included_hours: '', contract_hour_period: '', service_notes: '',
+    service_notes: '',
     require_duration: false, require_ticket_reference: false, require_technology: false,
     require_category: false, require_notes: false, require_billable_classification: false,
     is_internal: false,
@@ -90,13 +90,10 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
       <div className="form-group"><label htmlFor="customer-project-name">Project name</label>
         <input id="customer-project-name" value={form.project_name || ''} onChange={set('project_name')} maxLength={120} aria-describedby="customer-project-name-hint" />
         <small id="customer-project-name-hint" className="text-muted">Optional nickname, shown beside the customer's name and found by search.</small></div>
-      <div className="form-row">
-        <div className="form-group"><label>Customer Code</label><input value={form.customer_code} onChange={set('customer_code')} placeholder="Internal reference" /></div>
-        <div className="form-group">
-          <label className="u-7ff4b47">
-            <input type="checkbox" checked={!!form.active} onChange={setBool('active')} className="u-30e741d" /> Active
-          </label>
-        </div>
+      <div className="form-group">
+        <label className="u-7ff4b47">
+          <input type="checkbox" checked={!!form.active} onChange={setBool('active')} className="u-30e741d" /> Active
+        </label>
       </div>
       <div className="form-row">
         <div className="form-group"><label>Contact Person</label><input value={form.contact_name} onChange={set('contact_name')} /></div>
@@ -112,7 +109,7 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
           <input type="checkbox" checked={!!form.is_internal} onChange={setBool('is_internal')} className="u-30e741d" />
           This is our own organisation (in-house infrastructure)
         </label>
-        <p className="text-muted text-sm">Track work on your own systems here. It gets assets, team assignment and activity tracking like any customer.</p>
+        <p className="text-muted text-sm">Track work on your own systems here; several entries can be in-house (for example one per site or company). It gets assets, team assignment and activity tracking like any customer, and in-house entries are listed first.</p>
       </div>
 
       <details className="column-picker u-96ad609" open={showService} onToggle={e => setShowService(e.target.open)}>
@@ -161,16 +158,6 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
             <div className="form-group"><label>Reporting Frequency</label><input value={form.reporting_frequency} onChange={set('reporting_frequency')} placeholder="e.g. Monthly" /></div>
           </div>
           <p className="text-muted text-sm">Contracts (reference, dates, contract type and assets) are kept on the customer’s Contracts tab.</p>
-          <div className="form-row">
-            <div className="form-group"><label>Included Hours</label><input type="number" min="0" step="0.5" value={form.included_hours} onChange={set('included_hours')} /></div>
-            <div className="form-group"><label>Hour Period</label>
-              <select value={form.contract_hour_period} onChange={set('contract_hour_period')}>
-                <option value="">Not applicable</option>
-                <option value="monthly">Monthly</option>
-                <option value="annual">Annual</option>
-              </select>
-            </div>
-          </div>
           <div className="form-group"><label>Service Notes</label><textarea value={form.service_notes} onChange={set('service_notes')} rows={2} /></div>
 
           <label className="u-6a565d3">Activity Requirements</label>
@@ -196,7 +183,7 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
   );
 }
 
-const CUSTOMER_COLUMNS = ['name*', 'project_name', 'customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes', 'managed', 'team', 'contract_reference', 'contract_type', 'contract_start', 'contract_end'];
+const CUSTOMER_COLUMNS = ['name*', 'project_name', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes', 'managed', 'team', 'contract_reference', 'contract_type', 'contract_start', 'contract_end'];
 
 const SERVICE_STATUS = { healthy:['Healthy','success'],attention:['Sync issue','danger'],awaiting_sync:['Awaiting first sync','warning'],activity_only:['No ticket integration','info'] };
 // A report owed for the last period and not yet sent; "overdue" once its due date has passed.
@@ -316,7 +303,7 @@ export default function Customers() {
         {!!c.is_managed && <ToneBadge tone="managed">Managed</ToneBadge>}
         {!!c.is_internal && <ToneBadge tone="info">In-house</ToneBadge>}
       </div>}
-      <span>{c.customer_code || 'No customer code'} · {c.active ? 'Active' : 'Archived'}</span>
+      <span>{c.active ? 'Active' : 'Archived'}</span>
       {c.notes && <small title={c.notes}>{c.notes}</small>}
     </div> },
     { key:'coverage',label:'Coverage',render:c => c.service_activity_enabled ? <ToneBadge tone="success">Tracked</ToneBadge> : <ToneBadge>Standard</ToneBadge> },

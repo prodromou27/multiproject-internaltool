@@ -404,24 +404,31 @@ test('direct URL access to a disabled team\'s data is rejected server-side regar
   assert.equal(status, 403);
 });
 
-test('one customer can stand for in-house infrastructure, and managed-services engineers log work against it like any customer', async () => {
+test('several customers can stand for in-house infrastructure; they are listed first, and managed-services engineers log work against them like any customer', async () => {
   const create = body => api('/api/customers', { method: 'POST', token: ids.tokenManager, body });
   assert.equal((await create({ name: 'Bad flag', is_internal: 'yes' })).status, 400);
 
   const ours = await create({ name: 'Our own infrastructure', is_internal: true, service_activity_enabled: true });
   assert.equal(ours.status, 200);
+  let second;
   try {
-    // At most one: a second create, or flagging another customer, names the current one.
-    const second = await create({ name: 'Second in-house', is_internal: true });
-    assert.equal(second.status, 409);
-    assert.match(second.data.error, /Our own infrastructure/);
-    assert.equal((await api(`/api/customers/${ids.customer}`, { method: 'PUT', token: ids.tokenManager, body: { is_internal: true } })).status, 409);
+    // More than one: another in-house record, and flagging an existing customer, are both allowed.
+    second = await create({ name: 'Another site (in-house)', is_internal: true });
+    assert.equal(second.status, 200, JSON.stringify(second.data));
+    assert.equal((await api(`/api/customers/${ids.customer}`, { method: 'PUT', token: ids.tokenManager, body: { is_internal: true } })).status, 200);
     // The edit form sends back the stored 0/1; that must not break ordinary edits.
     assert.equal((await api(`/api/customers/${ids.customer}`, { method: 'PUT', token: ids.tokenManager, body: { is_internal: 0, notes: 'edited' } })).status, 200);
     // Re-saving the in-house record itself is fine, and other edits leave the flag alone.
     assert.equal((await api(`/api/customers/${ours.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { is_internal: true } })).status, 200);
     assert.equal((await api(`/api/customers/${ours.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { notes: 'Firewalls, EDR, SIEM' } })).status, 200);
     assert.equal((await api(`/api/customers/${ours.data.id}`, { token: ids.tokenManager })).data.is_internal, 1);
+
+    // The customers list shows in-house records first (by name), then everyone else.
+    const list = await api('/api/customers', { token: ids.tokenManager });
+    assert.equal(list.status, 200);
+    const rows = Array.isArray(list.data) ? list.data : list.data.items || list.data.customers;
+    assert.deepEqual(rows.slice(0, 2).map(c => c.name), ['Another site (in-house)', 'Our own infrastructure']);
+    assert.ok(rows.slice(2).every(c => !c.is_internal));
 
     // Assigned to the team like any customer, it is offered first and flagged in the activity form.
     await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(ours.data.id, ids.teamEnabled);
@@ -436,6 +443,7 @@ test('one customer can stand for in-house infrastructure, and managed-services e
     assert.equal(logged.status, 200);
   } finally {
     await db.prepare('UPDATE customers SET is_internal=0 WHERE id=?').run(ours.data.id);
+    if (second?.data?.id) await db.prepare('UPDATE customers SET is_internal=0 WHERE id=?').run(second.data.id);
   }
 });
 

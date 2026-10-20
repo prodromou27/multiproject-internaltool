@@ -12,7 +12,8 @@ const { encryptCustomer, decryptCustomer, encrypt, decrypt } = require('./fieldC
 const { replaceCustomerSearchDocument } = require('./customerSearchIndex');
 
 const TEXT_FIELDS = ['project_name', 'customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes'];
-const COLUMNS = ['name*', 'project_name', 'customer_code', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes', 'managed', 'team',
+// customer_code is no longer in the template, but older files that have it still import.
+const COLUMNS = ['name*', 'project_name', 'contact_name', 'contact_email', 'contact_phone', 'primary_contact', 'location', 'address', 'notes', 'managed', 'team',
   'contract_reference', 'contract_type', 'contract_start', 'contract_end'];
 const YES = new Set(['yes', 'y', 'true', '1', 'x', 'managed']);
 const NO = new Set(['', 'no', 'n', 'false', '0', '-']);
