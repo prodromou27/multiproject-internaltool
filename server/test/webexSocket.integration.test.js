@@ -95,7 +95,7 @@ test('when wdm-a gives no connection address, the device service from Webex\'s c
     await socket.sync({ WebSocketImpl: FakeSocket });
     const shown = socket.status();
     assert.equal(shown.status, 'reconnecting');
-    assert.match(shown.error, /Webex did not return a connection address \(wdm-a\.wbx2\.com gave fields: id, deviceSettings; the catalogue gave a device service outside Webex\)/);
+    assert.match(shown.error, /Webex did not return a connection address \(wdm-a\.wbx2\.com gave fields: id, deviceSettings; the catalogue gave a device service outside Webex; the limited catalogue: u2c\.wbx2\.com answered 404/);
 
     // An answer that is not JSON: its status, type and size are shown.
     socket.stop();
@@ -106,5 +106,18 @@ test('when wdm-a gives no connection address, the device service from Webex\'s c
     });
     await socket.sync({ WebSocketImpl: FakeSocket });
     assert.match(socket.status().error, /wdm-a\.wbx2\.com gave an answer that is not JSON \(HTTP 200, text\/html, 20 bytes\); the catalogue gave an empty answer/);
+
+    // An EU bot: wdm-a is not its service; the catalogue (asked with the bot token) names the EU one.
+    socket.stop();
+    await botSettings.save({ webex: { enabled: true, device_url: null } });
+    const eu = { url: 'https://wdm-k.wbx2.com/wdm/api/v1/devices/eu-1', webSocketUrl: 'wss://mercury-connection-k.wbx2.com/v1/apps/wx2/registrations/eu-1/messages' };
+    http._setTransport(async ({ method, url }) => {
+      if (method === 'POST' && url === socket.DEVICES_URL) return { status: 200, text: '' };
+      if (method === 'GET' && url === socket.CATALOG_URL) return { status: 200, text: JSON.stringify({ serviceLinks: { wdm: 'https://wdm-k.wbx2.com/wdm/api/v1/' } }) };
+      if (method === 'POST' && url === 'https://wdm-k.wbx2.com/wdm/api/v1/devices') return { status: 200, text: JSON.stringify(eu) };
+      return { status: 404, text: '{}' };
+    });
+    await socket.sync({ WebSocketImpl: FakeSocket });
+    assert.equal(FakeSocket.last.url, eu.webSocketUrl);
   } finally { socket.stop(); http._setTransport(null); }
 });

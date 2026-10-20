@@ -15,8 +15,11 @@ const http = require('./http');
 const botSettings = require('./settings');
 
 const DEVICES_URL = 'https://wdm-a.wbx2.com/wdm/api/v1/devices';
-// Webex's service catalogue: where this account's device service (WDM) is, when wdm-a is not it.
-const CATALOG_URL = 'https://u2c.wbx2.com/u2c/api/v1/limited/catalog?format=hostmap';
+// Webex's service catalogue: where this bot's device service (WDM) is, when wdm-a is not it
+// (e.g. an organisation in the EU). Asked with the bot token, it answers for the bot's own
+// organisation; the limited catalogue (the default regions) is the last resort.
+const CATALOG_URL = 'https://u2c.wbx2.com/u2c/api/v1/catalog?format=hostmap';
+const LIMITED_CATALOG_URL = 'https://u2c.wbx2.com/u2c/api/v1/limited/catalog?format=hostmap';
 const webexHost = url => { try { const u = new URL(url); return u.protocol === 'https:' && /(^|\.)(wbx2|webex|ciscospark)\.com$/i.test(u.hostname); } catch { return false; } };
 // A device registration answer is large (it lists Webex's services): read up to 8 MB.
 const DEVICE_MAX_BYTES = 8_000_000;
@@ -38,14 +41,20 @@ const clearTimers = () => { for (const t of timers) { clearTimeout(t); clearInte
 /** Webex REST ids are base64 of a "ciscospark://<cluster>/MESSAGE/<uuid>" URI. */
 const messageIdFor = (uuid, cluster = 'us') => Buffer.from(`ciscospark://${cluster}/MESSAGE/${uuid}`).toString('base64').replace(/=+$/, '');
 
-/** The device service Webex's catalogue names for this account (asked only when wdm-a fails); notes what happened. */
+/** The device service Webex's catalogue names for this bot (asked only when wdm-a fails); notes what happened. */
 async function catalogDeviceService(headers, answers) {
-  try {
-    const answer = await http.request('GET', CATALOG_URL, { headers, raw: true, maxBytes: DEVICE_MAX_BYTES });
-    const wdm = answer.data?.serviceLinks?.wdm;
-    if (wdm && webexHost(wdm)) return `${wdm.replace(/\/+$/, '')}/devices`;
-    answers.push(`the catalogue gave ${wdm ? 'a device service outside Webex' : shapeOf(answer)}`);
-  } catch (error) { answers.push(`the catalogue: ${error.message}`); }
+  for (const [url, name] of [[CATALOG_URL, 'the catalogue'], [LIMITED_CATALOG_URL, 'the limited catalogue']]) {
+    try {
+      const answer = await http.request('GET', url, { headers, raw: true, maxBytes: DEVICE_MAX_BYTES });
+      const wdm = answer.data?.serviceLinks?.wdm;
+      if (wdm && webexHost(wdm)) {
+        const service = `${wdm.replace(/\/+$/, '')}/devices`;
+        if (service !== DEVICES_URL) return service;
+        continue;   // the same wdm-a: try the other catalogue
+      }
+      answers.push(`${name} gave ${wdm ? 'a device service outside Webex' : shapeOf(answer)}`);
+    } catch (error) { answers.push(`${name}: ${error.message}`); }
+  }
   return null;
 }
 
@@ -159,4 +168,4 @@ async function sync(options = {}) {
 const status = () => ({ ...state });
 function stop() { wanted = false; clearTimers(); try { socket?.close(); } catch { /* closed */ } socket = null; setState('off'); }
 
-module.exports = { sync, status, stop, messageIdFor, onActivity, DEVICES_URL, CATALOG_URL };
+module.exports = { sync, status, stop, messageIdFor, onActivity, DEVICES_URL, CATALOG_URL, LIMITED_CATALOG_URL };
