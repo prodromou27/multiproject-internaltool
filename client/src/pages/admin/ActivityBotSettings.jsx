@@ -3,6 +3,7 @@ import { Bot, Copy, Send } from 'lucide-react';
 import { api } from '../../api';
 import { useToast } from '../../components/Toast';
 import { Toggle } from './shared';
+import { fmtDateTime } from '../../components/Shared';
 
 /* Settings → Activity bot: engineers log service activities by
    messaging a Webex or Teams bot in plain words. */
@@ -55,7 +56,12 @@ function TryIt() {
 function WebexConnection({ connection, enabled, tokenSet }) {
   if (!tokenSet || !enabled) return <span className="text-muted">Off</span>;
   const status = connection?.status || 'off';
-  if (status === 'connected') return <span className="bot-ok">Connected to Webex</span>;
+  if (status === 'connected') {
+    // The last message received, so a message that got no answer shows why.
+    const last = connection.last_message;
+    return <><span className="bot-ok">Connected to Webex</span>
+      {last && <span className={`text-sm ${last.outcome === 'failed' ? 'text-danger' : 'text-muted'}`}> · Last message {fmtDateTime(last.at)}: {last.outcome === 'failed' ? `not answered (${last.error})` : last.outcome}</span>}</>;
+  }
   if (status === 'connecting') return <span className="text-muted">Connecting…</span>;
   return <span className="text-danger">{status === 'reconnecting' ? 'Reconnecting' : 'Not connected'}{connection?.error ? `: ${connection.error}` : ''}</span>;
 }

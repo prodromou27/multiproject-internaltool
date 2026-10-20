@@ -35,11 +35,27 @@ const PING_MS = 30 * 1000, SILENT_MS = 100 * 1000, MAX_PAUSE_MS = 5 * 60 * 1000;
 
 let socket = null, timers = [], pause = 5000, wanted = false;
 let state = { status: 'off', since: null, error: null };
+// The last message received over the connection and what became of it (shown in Settings).
+let lastMessage = null;
+const noteMessage = (outcome, error = null) => { lastMessage = { at: new Date().toISOString(), outcome, error }; };
 const setState = (status, error = null) => { state = { status, since: new Date().toISOString(), error }; };
 const clearTimers = () => { for (const t of timers) { clearTimeout(t); clearInterval(t); } timers = []; };
 
-/** Webex REST ids are base64 of a "ciscospark://<cluster>/MESSAGE/<uuid>" URI. */
+/** Webex REST ids are base64 of a "ciscospark://<cluster>/MESSAGE/<uuid>" URI (US: "us"; EU: "urn:TEAM:eu-central-1_k"). */
 const messageIdFor = (uuid, cluster = 'us') => Buffer.from(`ciscospark://${cluster}/MESSAGE/${uuid}`).toString('base64').replace(/=+$/, '');
+const CLUSTERS = ['us', 'urn:TEAM:eu-central-1_k'];
+
+/** The message's REST id, from the bot's own (regional) conversation service named in the event. */
+async function restMessageId(activity) {
+  const target = activity?.target;
+  if (!target?.url || !target?.id || !webexHost(target.url)) return null;
+  const url = target.url.replace(`conversations/${target.id}`, `messages/${activity.id}`);
+  if (url === target.url) return null;
+  const token = await require('./channels').webexToken();
+  if (!token) return null;
+  const message = await http.request('GET', url, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+  return typeof message?.id === 'string' && message.id ? message.id : null;
+}
 
 /** The device service Webex's catalogue names for this bot (asked only when wdm-a fails); notes what happened. */
 async function catalogDeviceService(headers, answers) {
@@ -99,14 +115,20 @@ async function deviceSocketUrl(token) {
   throw new Error(`Webex did not return a connection address (${answers.join('; ')})`);
 }
 
-/** A new message from the socket → the webhook's handler (tries the US, then the EU, cluster id). */
+/** A new message from the socket → the webhook's handler. Its REST id comes from the
+    conversation service named in the event; failing that, the US then the EU form is tried. */
 async function onActivity(activity, handle) {
   if (activity?.verb !== 'post' || !activity.id) return 'ignored';
   const email = activity.actor?.emailAddress || '';
   if (/@webex\.bot$/i.test(email)) return 'ignored';   // the bot's own replies
-  for (const cluster of ['us', 'eu']) {
-    try { return await handle({ resource: 'messages', event: 'created', data: { id: messageIdFor(activity.id, cluster), personEmail: email } }); }
-    catch (error) { if (error.status !== 404 || cluster === 'eu') throw error; }
+  const resolved = await restMessageId(activity);
+  const ids = [...new Set([resolved, ...CLUSTERS.map(cluster => messageIdFor(activity.id, cluster))].filter(Boolean))];
+  for (const [index, id] of ids.entries()) {
+    try { return await handle({ resource: 'messages', event: 'created', data: { id, personEmail: email } }); }
+    catch (error) {
+      // Not this form of the id (Webex answers 400, 403 or 404): try the next one.
+      if (index === ids.length - 1 || ![400, 403, 404].includes(error.status)) throw error;
+    }
   }
   return 'ignored';
 }
@@ -145,8 +167,10 @@ async function connect({ WebSocketImpl = globalThis.WebSocket, handle } = {}) {
   ws.onmessage = event => {
     lastHeard = Date.now();
     let message; try { message = JSON.parse(typeof event.data === 'string' ? event.data : Buffer.from(event.data).toString('utf8')); } catch { return; }
-    if (message?.data?.eventType === 'conversation.activity')
-      onActivity(message.data.activity, handle || channels.handleWebexEvent).catch(error => console.error('[activity-bot] webex message:', error.message));
+    if (message?.data?.eventType === 'conversation.activity' && message.data.activity?.verb === 'post')
+      onActivity(message.data.activity, handle || channels.handleWebexEvent)
+        .then(outcome => { if (outcome !== 'ignored') noteMessage(outcome); })
+        .catch(error => { noteMessage('failed', error.message); console.error('[activity-bot] webex message:', error.message); });
   };
   ws.onerror = () => {};
   ws.onclose = () => { if (socket === ws) scheduleReconnect('The connection to Webex closed'); };
@@ -158,6 +182,7 @@ async function sync(options = {}) {
   const settings = await botSettings.load();
   const token = await require('./channels').webexToken();
   wanted = !!(settings.webex.enabled && token);
+  lastMessage = null;
   if (!wanted) { clearTimers(); try { socket?.close(); } catch { /* closed */ } socket = null; setState('off'); return state; }
   pause = 5000;
   try { socket?.close(); } catch { /* closed */ }
@@ -165,7 +190,7 @@ async function sync(options = {}) {
   return connect(options);
 }
 
-const status = () => ({ ...state });
-function stop() { wanted = false; clearTimers(); try { socket?.close(); } catch { /* closed */ } socket = null; setState('off'); }
+const status = () => ({ ...state, last_message: lastMessage });
+function stop() { wanted = false; lastMessage = null; clearTimers(); try { socket?.close(); } catch { /* closed */ } socket = null; setState('off'); }
 
 module.exports = { sync, status, stop, messageIdFor, onActivity, DEVICES_URL, CATALOG_URL, LIMITED_CATALOG_URL };

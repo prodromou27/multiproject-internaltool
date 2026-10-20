@@ -26,7 +26,7 @@ test('new messages reach the bot; its own and other events do not; the EU cluste
   assert.equal(await socket.onActivity({ ...activity().data.activity, verb: 'acknowledge' }, handle), 'ignored', 'a read receipt');
   seen.length = 2;
   assert.equal(await socket.onActivity(activity().data.activity, handle), 'answered');
-  assert.equal(seen[3].id, socket.messageIdFor('92db3be0-43bd-11e6-8ae9-dd5b3dfc565d', 'eu'));
+  assert.equal(seen[3].id, socket.messageIdFor('92db3be0-43bd-11e6-8ae9-dd5b3dfc565d', 'urn:TEAM:eu-central-1_k'));
 });
 
 test('with the bot on and a token, the app registers a device once, connects out, authorises and passes messages on; it reconnects after a drop and stops when turned off', async () => {
@@ -119,5 +119,38 @@ test('when wdm-a gives no connection address, the device service from Webex\'s c
     });
     await socket.sync({ WebSocketImpl: FakeSocket });
     assert.equal(FakeSocket.last.url, eu.webSocketUrl);
+  } finally { socket.stop(); http._setTransport(null); }
+});
+
+test('the message id comes from the conversation service named in the event (any region); the last message shows in Settings', async () => {
+  await db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify({ webex: { bot_token: 'bot-token-123' } }));
+  const restId = 'Y2lzY29zcGFyazovL3VybjpURUFNOmV1LWNlbnRyYWwtMV9rL01FU1NBR0UvYWJj';
+  const asked = [];
+  http._setTransport(async ({ method, url }) => {
+    asked.push(url);
+    if (method === 'GET' && url === 'https://conv-k.wbx2.com/conversation/api/v1/messages/abc') return { status: 200, text: JSON.stringify({ id: restId }) };
+    return { status: 404, text: '{}' };
+  });
+  try {
+    const seen = [];
+    const activity = { verb: 'post', id: 'abc', actor: { emailAddress: 'maria@company.example' },
+      target: { id: 'room-1', url: 'https://conv-k.wbx2.com/conversation/api/v1/conversations/room-1' } };
+    assert.equal(await socket.onActivity(activity, async event => { seen.push(event.data.id); return 'answered'; }), 'answered');
+    assert.deepEqual(seen, [restId], 'the EU id, first time');
+
+    // A conversation address outside Webex is not called.
+    asked.length = 0;
+    await socket.onActivity({ ...activity, target: { id: 'room-1', url: 'https://evil.example.com/conversation/api/v1/conversations/room-1' } }, async () => 'answered');
+    assert.deepEqual(asked, []);
+
+    // A failing message is shown with the connection.
+    await botSettings.save({ webex: { enabled: true, device_url: null } });
+    http._setTransport(async ({ method, url }) => method === 'POST' && url === socket.DEVICES_URL
+      ? { status: 200, text: JSON.stringify({ url: 'https://wdm-a.wbx2.com/wdm/api/v1/devices/d', webSocketUrl: 'wss://mercury.wbx2.com/v1/x' }) } : { status: 404, text: '{}' });
+    await socket.sync({ WebSocketImpl: FakeSocket, handle: async () => { throw Object.assign(new Error('webexapis.com answered 500'), { status: 500 }); } });
+    FakeSocket.last.onopen();
+    FakeSocket.last.onmessage({ data: JSON.stringify({ data: { eventType: 'conversation.activity', activity: { verb: 'post', id: 'zzz', actor: { emailAddress: 'maria@company.example' } } } }) });
+    for (let i = 0; i < 20 && !socket.status().last_message; i++) await settle();
+    assert.deepEqual([socket.status().last_message?.outcome, socket.status().last_message?.error], ['failed', 'webexapis.com answered 500']);
   } finally { socket.stop(); http._setTransport(null); }
 });

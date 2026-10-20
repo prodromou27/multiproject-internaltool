@@ -22,3 +22,12 @@ test('the Webex bot connects out: Settings shows the connection, and the webhook
   await page.reload();
   await expect(page.getByText('Reconnecting: Could not register with Webex: wdm-a.wbx2.com did not answer in time')).toBeVisible();
 });
+
+test('the last message the Webex bot received is shown, with why it was not answered', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/settings/activity-bot', () => ({ body: view({ status: 'connected', since: '2026-10-20T08:00:00Z', error: null,
+    last_message: { at: '2026-10-20T09:15:00Z', outcome: 'failed', error: 'webexapis.com answered 404: The requested resource could not be found.' } }) }));
+  await page.goto('/settings/activity_bot');
+  await expect(page.getByText('Connected to Webex')).toBeVisible();
+  await expect(page.getByText(/Last message .*: not answered \(webexapis\.com answered 404/)).toBeVisible();
+});
