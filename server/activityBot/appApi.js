@@ -47,4 +47,8 @@ module.exports = {
   meta: user => call(user, 'GET', '/service-activities/meta'),
   assets: (user, customerId) => call(user, 'GET', `/service-activities/assets?customer_id=${encodeURIComponent(customerId)}`),
   createActivity: (user, body) => call(user, 'POST', '/service-activities', body),
+  // The quick commands (commands.js): any app route, as the user.
+  get: (user, path) => call(user, 'GET', path),
+  put: (user, path, body) => call(user, 'PUT', path, body),
+  post: (user, path, body) => call(user, 'POST', path, body),
 };

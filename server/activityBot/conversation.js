@@ -11,17 +11,21 @@ const db = require('../db');
 const appTime = require('../appTime');
 const api = require('./appApi');
 const parse = require('./parse');
+const commands = require('./commands');
 
 const EXPIRES_MS = 30 * 60 * 1000;
 const BILLABLE = [['included_in_contract', 'Included in the contract'], ['billable', 'Billable'], ['non_billable', 'Not billable'], ['internal', 'Internal work'], ['not_applicable', 'Not applicable']];
 
 const HELP = [
-  'Tell me what you did and I\'ll log it as a service activity. For example:',
+  '**Log an activity**: tell me what you did. For example:',
   '• *1h on Northwind, upgraded NW-FW-01 to 7.6.0, ticket 4521*',
   '• *Contoso Bank / health check / 2h / reviewed firewall rules*',
   '• *45m troubleshooting the VPN for Contoso yesterday*',
+  'I\'ll show you a draft first. Reply **yes** to save it, tell me what to change, or **cancel**.',
   '',
-  'I\'ll show you a draft first. Reply **yes** to save it, tell me what to change, or **cancel**. **help** shows this again.',
+  commands.COMMANDS_HELP,
+  '',
+  '**help** shows this again.',
 ].join('\n');
 
 const formatMinutes = minutes => { const h = Math.floor(minutes / 60), m = minutes % 60; return h ? `${h}h${m ? ` ${m}m` : ''}` : `${m}m`; };
@@ -202,6 +206,10 @@ async function handleMessage({ user, channel, text, appUrl = process.env.APP_URL
     await saveState(channel, user.id, null);
     return 'Discarded. Tell me about the next piece of work whenever you\'re ready.';
   }
+  // Quick commands (tasks, today, done 123…); an activity draft being written is kept.
+  const pending = await loadState(channel, user.id);
+  const answer = await commands.handleCommand({ user, message, appUrl, answering: !!(pending?.draft && pending.question) });
+  if (answer) return answer;
 
   let context;
   try { context = await api.meta(user); }

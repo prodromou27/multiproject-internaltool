@@ -724,4 +724,12 @@ router.post('/:id/take', requireAuth, async (req, res) => {
 
 router.use('/:id/subtasks', require('./task-subtasks'));
 
+// One task, for anyone who may see it (e.g. the chat bot's "task 123").
+router.get('/:id', requireAuth, requireReadableTask, async (req, res) => {
+  const row = await db.prepare(`SELECT t.*, COALESCE(t.customer_id, p.customer_id) AS customer_id, u.name AS assigned_to_name, p.title AS project_title, tm.name AS team_name
+    FROM tasks t LEFT JOIN projects p ON p.id = t.project_id LEFT JOIN users u ON u.id = t.assigned_to LEFT JOIN teams tm ON tm.id = t.team_id WHERE t.id = ?`).get(req.task.id);
+  const [task] = await taskEngineers.withEngineers(await subtasks.withLastUpdates(await subtasks.withSubtaskCounts(await withCustomerNames([row]))));
+  res.json(task);
+});
+
 module.exports = router;

@@ -10,7 +10,7 @@ const say = async (userId, text) => {
 };
 
 test('an engineer logs an activity by describing it, corrects it, and confirms', async () => {
-  assert.match(await say(ids.engineerEnabled, 'help'), /Tell me what you did/);
+  assert.match(await say(ids.engineerEnabled, 'help'), /tell me what you did/i);
   assert.match(await say(ids.engineerEnabled, 'yes'), /nothing waiting to be saved/);
   assert.match(await say(ids.engineerEnabled, 'the weather is lovely'), /didn't recognise a customer/);
 
