@@ -22,6 +22,19 @@ async function withCustomerNames(rows) {
   return rows.map(row => ({ ...row, customer_name: row.customer_id ? names.get(Number(row.customer_id)) || null : null }));
 }
 
+// A task given to a team (nobody yet): one post to the team's Webex space, or the shared one.
+async function postTeamTask(teamId, { title, deadline, priority, customerId, projectTitle }) {
+  const team = await db.prepare('SELECT name FROM teams WHERE id = ?').get(teamId);
+  const customer = customerId ? await db.prepare('SELECT name FROM customers WHERE id = ?').get(customerId) : null;
+  require('../notifications').notifyTeam(teamId, 'task_assigned', {
+    title: `🧩 New team task: ${title}`,
+    body: `A task for **${team?.name || 'the team'}**. Whoever starts it takes it.`,
+    facts: [{ name: 'Team', value: team?.name }, { name: 'Customer', value: customer ? decrypt(customer.name) : null }, { name: 'Project', value: projectTitle },
+      { name: 'Due', value: deadline || null }, { name: 'Priority', value: priority || 'medium' }].filter(fact => fact.value),
+    link: '/tasks',
+  });
+}
+
 // Tells engineers a task is now theirs (as its assignee or as another engineer on it).
 async function notifyAssigned(userIds, task) {
   if (!userIds.length) return;
@@ -234,8 +247,11 @@ router.post('/', requireAuth, async (req, res) => {
       deadline:       deadline || null,
       priority:       priority || 'medium',
       is_adhoc:       !!is_adhoc,
+      // A team task is posted once, to the team's space (below), not once per member.
+      ...(teamId ? { shared: false } : {}),
     });
   }
+  if (teamId) await postTeamTask(teamId, { title: title.trim(), deadline, priority, customerId: customerId || projectCustomer, projectTitle: project?.title || null });
   await notifyAssigned(addedEngineers.filter(id => id !== Number(req.user.id)), { project_id, title, deadline, priority, is_adhoc });
 
   res.json({ id: taskId });

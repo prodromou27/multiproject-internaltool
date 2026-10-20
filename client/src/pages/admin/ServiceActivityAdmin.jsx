@@ -15,6 +15,7 @@ export function TeamsAdminSection() {
   const [users, setUsers] = useState([]);
   const [name, setName] = useState('');
   const [editingMembers, setEditingMembers] = useState(null);
+  const [editingSpace, setEditingSpace] = useState(null);   // { team, value }
 
   const load = () => Promise.all([api.teams(), api.users()]).then(([t, u]) => { setTeams(t); setUsers(u); });
   useEffect(() => { load(); }, []);
@@ -43,6 +44,14 @@ export function TeamsAdminSection() {
     try { await api.deleteTeam(team.id); toast.success('Team deleted'); load(); } catch (e2) { toast.error(e2.message); }
   }
 
+  async function saveSpace() {
+    try {
+      await api.updateTeam(editingSpace.team.id, { webex_space_id: editingSpace.value.trim() || null });
+      toast.success(editingSpace.value.trim() ? 'Webex space saved' : 'Webex space removed');
+      setEditingSpace(null); load();
+    } catch (e2) { toast.error(e2.message); }
+  }
+
   async function openMembers(team) {
     const full = await api.team(team.id);
     setEditingMembers({ ...team, memberIds: full.members.map(m => m.id) });
@@ -65,7 +74,7 @@ export function TeamsAdminSection() {
       </form>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Team</th><th>Members</th><th>Workflow emphasis</th><th>Activity tracking</th><th></th></tr></thead>
+          <thead><tr><th>Team</th><th>Members</th><th>Workflow emphasis</th><th>Activity tracking</th><th>Webex space</th><th></th></tr></thead>
           <tbody>
             {teams.map(t => (
               <tr key={t.id}>
@@ -78,13 +87,29 @@ export function TeamsAdminSection() {
                   <label className="text-sm u-25b5288"><input type="checkbox" checked={!!t.project_delivery_enabled} onChange={() => toggleCapability(t,'project_delivery_enabled')} className="u-30e741d" /> Project Delivery</label>
                 </div></td>
                 <td><input type="checkbox" aria-label={`Activity tracking for ${t.name}`} checked={!!t.service_activity_enabled} onChange={() => toggleEnabled(t)} className="u-30e741d" /></td>
+                <td><button type="button" className="btn btn-sm btn-ghost" aria-label={`Webex space for ${t.name}`} onClick={() => setEditingSpace({ team: t, value: t.webex_space_id || '' })}>{t.webex_space_id ? 'Own space' : 'Shared space'}</button></td>
                 <td><button type="button" className="btn btn-sm btn-ghost" aria-label={`Delete team ${t.name}`} onClick={() => remove(t)}><Trash2 size={12} /></button></td>
               </tr>
             ))}
-            {teams.length === 0 && <tr><td colSpan={5} className="text-muted">No teams yet.</td></tr>}
+            {teams.length === 0 && <tr><td colSpan={6} className="text-muted">No teams yet.</td></tr>}
           </tbody>
         </table>
       </div>
+
+      {editingSpace && (
+        <Modal title={`Webex space — ${editingSpace.team.name}`} onClose={() => setEditingSpace(null)}>
+          <p className="text-sm text-muted">The team's unassigned tasks, its recurring tasks and its team reminders are posted here. Leave it empty to use the shared Webex space.</p>
+          <div className="form-group">
+            <label htmlFor="team-webex-space">Webex space ID</label>
+            <input id="team-webex-space" value={editingSpace.value} onChange={e => setEditingSpace(s => ({ ...s, value: e.target.value }))} placeholder="Y2lzY29zcGFyazovL3VzL1JPT00v…" />
+            <small className="text-muted">In Webex, open the space, then Space settings → Copy space ID. Add the Webex bot (Settings → Email &amp; notifications) to the space so it can post there.</small>
+          </div>
+          <div className="modal-footer u-cc45258">
+            <button className="btn btn-ghost" onClick={() => setEditingSpace(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveSpace}>Save</button>
+          </div>
+        </Modal>
+      )}
 
       {editingMembers && (
         <Modal title={`Members — ${editingMembers.name}`} onClose={() => setEditingMembers(null)}>

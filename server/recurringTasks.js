@@ -117,7 +117,7 @@ function validateTemplate(body, current = null) {
  */
 const checklistOf = template => { try { const list = JSON.parse(template.subtasks || '[]'); return Array.isArray(list) ? list.filter(item => typeof item === 'string') : []; } catch { return []; } };
 
-async function createDueTasks({ store = db, today = appTime.today(), templateId = null, notify = require('./notifications').notify } = {}) {
+async function createDueTasks({ store = db, today = appTime.today(), templateId = null, notify = require('./notifications').notify, notifyTeam = require('./notifications').notifyTeam } = {}) {
   const rows = await store.prepare(`SELECT * FROM recurring_tasks WHERE active = 1${templateId ? ' AND id = ?' : ''}`).all(...(templateId ? [templateId] : []));
   let created = 0;
   for (const template of rows) {
@@ -145,12 +145,26 @@ async function createDueTasks({ store = db, today = appTime.today(), templateId 
       return made;
     });
     created += ids.length;
+    const forTeam = !template.assigned_to && template.team_id;
     if (ids.length && template.notify) {
-      // The engineer, or every engineer in the team.
+      // The engineer, or every engineer in the team (a team's task is posted once, below).
       const people = template.assigned_to
         ? await store.prepare('SELECT id, name, email FROM users WHERE id = ? AND active = 1').all(template.assigned_to)
         : template.team_id ? await store.prepare("SELECT u.id, u.name, u.email FROM users u JOIN team_members tm ON tm.user_id = u.id WHERE tm.team_id = ? AND u.active = 1 AND u.role = 'engineer'").all(template.team_id) : [];
-      for (const engineer of people) for (const task of ids) notify('task.assigned', { engineer_id: engineer.id, engineer_name: engineer.name, engineer_email: engineer.email, task_title: template.title, project_title: null, deadline: task.deadline, priority: template.priority, is_adhoc: false });
+      for (const engineer of people) for (const task of ids) notify('task.assigned', { engineer_id: engineer.id, engineer_name: engineer.name, engineer_email: engineer.email, task_title: template.title, project_title: null, deadline: task.deadline, priority: template.priority, is_adhoc: false, ...(forTeam ? { shared: false } : {}) });
+    }
+    // A recurring team task goes to the team's Webex space when it has one; to the shared
+    // space only when the template asks to notify.
+    if (ids.length && forTeam) {
+      const team = await store.prepare('SELECT name FROM teams WHERE id = ?').get(template.team_id);
+      const customer = template.customer_id ? await store.prepare('SELECT name FROM customers WHERE id = ?').get(template.customer_id) : null;
+      for (const task of ids) notifyTeam(template.team_id, 'task_assigned', {
+        title: `🔁 Team task: ${template.title}`,
+        body: `This repeating task for **${team?.name || 'the team'}** is due. Whoever starts it takes it.`,
+        facts: [{ name: 'Team', value: team?.name }, { name: 'Customer', value: customer ? require('./fieldCipher').decrypt(customer.name) : null },
+          { name: 'Due', value: task.deadline || null }, { name: 'Priority', value: template.priority || 'medium' }].filter(fact => fact.value),
+        link: '/tasks',
+      }, { shared: !!template.notify });
     }
   }
   if (created) require('./liveUpdates').emitChange('tasks');

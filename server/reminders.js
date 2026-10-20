@@ -130,7 +130,9 @@ async function sendTeamReminders(now = new Date(), store = db) {
         { title: `${repeatNotice ? 'Still open' : 'Team reminder'}: ${reminder.title}`, body: [reminder.team_name, customer].filter(Boolean).join(' · '), link: '/reminders' },
         { channels: !!reminder.notify_personal });
     }
-    if (reminder.post_shared) await postToSharedChannels(message);
+    // The team's own Webex space when it has one; the shared channels when the reminder asks.
+    const inTeamSpace = await require('./notifications').deliverTeam(reminder.team_id, 'reminder_due', { ...message, link: '/reminders' }, { shared: false });
+    if (reminder.post_shared && !inTeamSpace) await postToSharedChannels(message);
     sent++;
   }
   if (sent) require('./liveUpdates').emitChange('reminders');

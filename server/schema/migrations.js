@@ -1460,6 +1460,10 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS start_date TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_code ON projects(project_code) WHERE project_code IS NOT NULL;
   `]);
+  migrations.push(['20261127_team_webex_space', `
+    -- A team's own Webex space: its unassigned tasks, recurring team tasks and team reminders go there.
+    ALTER TABLE teams ADD COLUMN IF NOT EXISTS webex_space_id TEXT;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

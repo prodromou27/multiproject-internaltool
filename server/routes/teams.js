@@ -88,6 +88,11 @@ router.put('/:id', async (req, res) => {
   if (!team) return res.status(404).json({ error: 'Not found' });
   const { name, description, service_activity_enabled } = req.body;
   if (name !== undefined && !name?.trim()) return res.status(400).json({ error: 'Name cannot be empty' });
+  // The team's Webex space (its room ID, as Webex shows it); '' or null removes it.
+  const space = req.body.webex_space_id;
+  if (space !== undefined && space !== null && space !== '' && (typeof space !== 'string' || !/^[A-Za-z0-9_=-]{10,300}$/.test(space.trim())))
+    return res.status(400).json({ error: 'Enter the Webex space ID (from the space\'s details in Webex)' });
+  const nextSpace = space === undefined ? team.webex_space_id : (space ? space.trim() : null);
   const tracking=optionalBoolean(service_activity_enabled,'service_activity_enabled');
   const managed=optionalBoolean(req.body.managed_service_operations,'managed_service_operations');
   const delivery=optionalBoolean(req.body.project_delivery_enabled,'project_delivery_enabled');
@@ -98,9 +103,11 @@ router.put('/:id', async (req, res) => {
     if (dupe) return res.status(409).json({ error: 'A team with this name already exists' });
   }
   await db.prepare(`UPDATE teams SET name=COALESCE(?,name), description=?, service_activity_enabled=COALESCE(?,service_activity_enabled),
-    managed_service_operations=COALESCE(?,managed_service_operations),project_delivery_enabled=COALESCE(?,project_delivery_enabled) WHERE id=?`)
+    managed_service_operations=COALESCE(?,managed_service_operations),project_delivery_enabled=COALESCE(?,project_delivery_enabled), webex_space_id=? WHERE id=?`)
     .run(name?.trim() || null, description !== undefined ? description : team.description,
-      tracking.value,managed.value,delivery.value,id);
+      tracking.value,managed.value,delivery.value,nextSpace,id);
+  if (space !== undefined && (nextSpace || null) !== (team.webex_space_id || null))
+    await logAudit(db, req, 'team', id, name?.trim() || team.name, 'team_webex_space', nextSpace ? 'set' : 'removed');
   if (service_activity_enabled != null && !!service_activity_enabled !== !!team.service_activity_enabled) {
     await logAudit(db, req, 'team', id, name?.trim() || team.name, 'team_tracking_toggled',
       `service_activity_enabled ${!!team.service_activity_enabled}->${!!service_activity_enabled}`);

@@ -127,3 +127,49 @@ test('while notifications are paused nothing is posted or emailed (the bell stil
   await settle(1);
   assert.equal(posts.length, 1, 'posted once resumed (the paused one was not recorded as sent)');
 });
+
+test('a team with its own Webex space gets its unassigned tasks, recurring team tasks and team reminders there, once each', async () => {
+  await shareTo({ task_assigned: true });
+  const setSpace = webex_space_id => api(`/api/teams/${ids.teamEnabled}`, { method: 'PUT', token: ids.tokenManager, body: { webex_space_id } });
+  assert.equal((await setSpace('not a space id!')).status, 400);
+  assert.equal((await setSpace('Y2lzY29zcGFyazovL3VzL1JPT00vdGVhbS1zZWN1cml0eQ')).status, 200);
+  const roomOf = post => post.roomId;
+  try {
+    // A team task: one post, in the team's space (not one per member in the shared space).
+    posts.length = 0;
+    const made = await api('/api/tasks', { method: 'POST', token: ids.tokenManager, body: { customer_id: ids.customer, title: 'Rotate VPN certificates', team_id: ids.teamEnabled } });
+    assert.equal(made.status, 200, JSON.stringify(made.data));
+    await settle(1);
+    assert.deepEqual(posts.filter(p => p.roomId).map(roomOf), ['Y2lzY29zcGFyazovL3VzL1JPT00vdGVhbS1zZWN1cml0eQ']);
+    assert.match(posts.find(p => p.roomId).markdown, /New team task: Rotate VPN certificates/);
+
+    // A recurring team task, even when the template does not ask to notify.
+    posts.length = 0;
+    const today = require('../appTime').today();
+    const template = (await db.prepare(`INSERT INTO recurring_tasks (customer_id, title, priority, frequency, start_date, lead_days, next_due, created_by, team_id, notify)
+      VALUES (?, ?, 'medium', 'monthly', ?, 7, ?, ?, ?, 0)`).run(ids.customer, 'Monthly patching', today, today, ids.manager, ids.teamEnabled)).lastInsertRowid;
+    await require('../recurringTasks').createDueTasks({ templateId: template });
+    await settle(1);
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0].roomId, 'Y2lzY29zcGFyazovL3VzL1JPT00vdGVhbS1zZWN1cml0eQ');
+    assert.match(posts[0].markdown, /Team task: Monthly patching/);
+
+    // A team reminder.
+    posts.length = 0;
+    const due = new Date(Date.now() - 60 * 1000).toISOString();
+    await db.prepare(`INSERT INTO reminders (user_id, title, due_at, scheduled_at, time_zone, status, shared, team_id, notify_personal, post_shared)
+      VALUES (?, ?, ?, ?, 'UTC', 'active', 1, ?, 0, 0)`).run(ids.manager, 'Renew the firewall support', due, due, ids.teamEnabled);
+    await require('../reminders').sendTeamReminders();
+    await settle(1);
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0].roomId, 'Y2lzY29zcGFyazovL3VzL1JPT00vdGVhbS1zZWN1cml0eQ');
+    assert.match(posts[0].markdown, /Renew the firewall support/);
+
+    // Without a team space, a team task falls back to the shared space, once.
+    assert.equal((await setSpace('')).status, 200);
+    posts.length = 0;
+    await api('/api/tasks', { method: 'POST', token: ids.tokenManager, body: { customer_id: ids.customer, title: 'Check backups', team_id: ids.teamEnabled } });
+    await settle(1);
+    assert.deepEqual(posts.filter(p => p.roomId).map(roomOf), ['team-space']);
+  } finally { await setSpace(''); }
+});

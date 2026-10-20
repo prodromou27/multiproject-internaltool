@@ -410,7 +410,8 @@ function notify(event, data) {
       const eventKey = event.replace('.', '_');  // e.g. task.assigned → task_assigned
       // The admin's event switches govern the shared organisation channels (the
       // Teams channel and Webex space). Each person decides for their own.
-      const orgEnabled = sharedEventEnabled(notifyOn, eventKey);
+      // shared: false — the caller posts to a team's space (or the shared one) itself, once.
+      const orgEnabled = data.shared !== false && sharedEventEnabled(notifyOn, eventKey);
 
       // A submitted report goes to managers, so never DM the submitting
       // engineer via the org Webex bot. Personal channels (Teams webhook,
@@ -539,6 +540,28 @@ async function deliverShared(eventKey, msg, { dedupeKey } = {}) {
   }
 }
 
+/**
+ * Post a team's message once: to the team's own Webex space when it has one (team tasks,
+ * recurring team tasks, team reminders), otherwise as the shared event (when switched on).
+ * `shared: false` skips the fallback. Never throws; true when posted somewhere.
+ */
+function notifyTeam(...args) { return track(deliverTeam(...args)); }
+async function deliverTeam(teamId, eventKey, msg, { shared = true } = {}) {
+  try {
+    if (await require('./notificationPause').isPaused()) return false;
+    const team = teamId ? await db.prepare('SELECT webex_space_id FROM teams WHERE id = ?').get(teamId) : null;
+    const webex = (await getSettings())?.webex;
+    if (team?.webex_space_id && webex?.enabled && webex?.bot_token) {
+      await sendWebex({ ...webex, mode: 'space', space_id: team.webex_space_id }, { ...msg, link: msg.link || EVENT_LINKS[eventKey] }, null);
+      return true;
+    }
+    return shared ? await deliverShared(eventKey, msg) : false;
+  } catch (error) {
+    console.error(`[team ${teamId} ${eventKey}]`, error.message);
+    return false;
+  }
+}
+
 /** sendTest — used by the Admin "Test" button; rejects with the real delivery error. */
 async function sendTest(platform, settings) {
   const msg = {
@@ -589,4 +612,4 @@ async function sendPersonalTest(channel, { email, webhook_url }) {
   } else throw new Error('Unknown channel');
 }
 
-module.exports = { settled, track, notifyShared, notifyUser, sharedChannelsAvailable, postToSharedChannels, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, messageCard, webexMessage, emailHtml, postJSON, _setTransport };
+module.exports = { settled, track, notifyShared, notifyTeam, deliverTeam, notifyUser, sharedChannelsAvailable, postToSharedChannels, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, messageCard, webexMessage, emailHtml, postJSON, _setTransport };
