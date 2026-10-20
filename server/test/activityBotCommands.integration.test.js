@@ -66,6 +66,9 @@ test('a new task is added for a customer with a due date in plain words', async 
   const id = Number(reply.match(/#(\d+)/)[1]);
   const row = await db.prepare('SELECT title, customer_id, assigned_to, deadline FROM tasks WHERE id = ?').get(id);
   assert.deepEqual([row.title, row.customer_id, row.assigned_to, row.deadline], ['Renew the support contract', ids.customer, ids.engineerEnabled, appTime.addDays(today(), 1)]);
+  // "for" inside the title: the customer is the one after the last "for".
+  const twice = await say(ids.engineerEnabled, 'new task Check for Powerlink alternative for Acme due Friday');
+  assert.match(twice, /Task \*\*#\d+ Check for Powerlink alternative\*\* added for Acme Corp/);
   assert.match(await say(ids.engineerEnabled, 'new task Check the backups due someday'), /didn't understand the due date "someday"/);
   assert.match(await say(ids.engineerEnabled, 'new task Check the backups'), /Which customer is it for/);
 });

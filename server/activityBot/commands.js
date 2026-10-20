@@ -159,13 +159,16 @@ async function newTask(user, text, appUrl) {
   }
   let customers = [];
   try { customers = (await api.meta(user)).customers || []; } catch { customers = []; }
-  let customer = null;
-  const forMatch = rest.match(/\s+(?:for|at|για)\s+(.+)$/i);
-  if (forMatch) {
-    const found = parse.matchCustomers(forMatch[1], customers);
-    if (found.length && found[0].score >= 80 && !(found[1] && found[1].score === found[0].score)) { customer = found[0]; rest = rest.slice(0, forMatch.index).trim(); }
-    else if (found.length > 1) return `Which customer? ${found.slice(0, 5).map(item => item.name).join(', ')}. Write the name as it appears in the app.`;
+  // The customer follows the last "for" (or "at") that names one: in "Check for Powerlink
+  // alternative for Acme" the title keeps its own "for".
+  let customer = null, unclear = null;
+  const markers = [...rest.matchAll(/\s+(?:for|at|για)\s+/gi)].reverse();
+  for (const marker of markers) {
+    const found = parse.matchCustomers(rest.slice(marker.index + marker[0].length), customers);
+    if (found.length && found[0].score >= 80 && !(found[1] && found[1].score === found[0].score)) { customer = found[0]; rest = rest.slice(0, marker.index).trim(); break; }
+    if (!unclear && found.length > 1) unclear = found;
   }
+  if (!customer && unclear) return `Which customer? ${unclear.slice(0, 5).map(item => item.name).join(', ')}. Write the name as it appears in the app.`;
   if (!customer && user.role !== 'manager') {
     const found = parse.matchCustomers(rest, customers);
     if (found.length && found[0].score >= 100 && !(found[1] && found[1].score === found[0].score)) customer = found[0];
