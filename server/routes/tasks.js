@@ -12,6 +12,7 @@ const subtasks = require('../taskSubtasks');
 const taskTickets = require('../taskTickets');
 const taskEngineers = require('../taskEngineers');
 const taskFiles = require('../taskFiles');
+const permanentDelete = require('../permanentDelete');
 
 // A task shows its own customer or its project's. Names are stored encrypted.
 async function withCustomerNames(rows) {
@@ -409,12 +410,13 @@ router.post('/bulk', requireAuth, async (req, res) => {
 
   if (action === 'delete') {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
-    const files = await taskFiles.storedFiles(ids);
-    await db.transaction(async (tx) => {
-      const del = tx.prepare('DELETE FROM tasks WHERE id = ?');
-      for (const id of ids) await del.run(id);
+    // For good, with their updates, subtasks, files and time logged on them.
+    const files = await db.transaction(async tx => {
+      const found = await tx.prepare(`SELECT id, title FROM tasks WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+      for (const task of found) await require('../auditLog').logAudit(tx, req, 'task', task.id, task.title, 'task_deleted', 'bulk');
+      return permanentDelete.deleteTasks(tx, found.map(task => task.id));
     });
-    await taskFiles.removeStored(files);
+    await permanentDelete.removeFiles(files);
     return res.json({ ok: true, affected: ids.length });
   }
 
@@ -525,10 +527,14 @@ router.get('/overdue-counts', requireAuth, async (req, res) => {
 
 router.delete('/:id', requireManager, async (req, res) => {
   const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
-  if (task) logActivity(task.project_id, req.user.id, 'task_deleted', task.title);
-  const files = task ? await taskFiles.storedFiles([task.id]) : [];
-  (await db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id));
-  await taskFiles.removeStored(files);
+  if (!task) return res.json({ ok: true });
+  logActivity(task.project_id, req.user.id, 'task_deleted', task.title);
+  // For good, with its updates, subtasks, files and time logged on it.
+  const files = await db.transaction(async tx => {
+    await require('../auditLog').logAudit(tx, req, 'task', task.id, task.title, 'task_deleted', null);
+    return permanentDelete.deleteTasks(tx, [task.id]);
+  });
+  await permanentDelete.removeFiles(files);
   res.json({ ok: true });
 });
 

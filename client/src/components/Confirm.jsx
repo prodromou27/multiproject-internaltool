@@ -4,10 +4,13 @@ import { Modal } from './Shared';
 
 const ConfirmContext = createContext(null);
 
+// opts.typeToConfirm: the text (e.g. the name) to type before the button works — for deletes that cannot be undone.
 export function ConfirmProvider({ children }) {
   const [req, setReq] = useState(null);
+  const [typed, setTyped] = useState('');
 
   const confirm = useCallback((message, opts = {}) => new Promise(resolve => {
+    setTyped('');
     setReq({ message, resolve, ...opts });
   }), []);
 
@@ -15,6 +18,7 @@ export function ConfirmProvider({ children }) {
     req?.resolve(v);
     setReq(null);
   }
+  const blocked = !!req?.typeToConfirm && typed.trim() !== String(req.typeToConfirm).trim();
 
   return (
     <ConfirmContext.Provider value={confirm}>
@@ -29,10 +33,15 @@ export function ConfirmProvider({ children }) {
               {req.message}
             </p>
           </div>
+          {req.typeToConfirm && <div className="form-group">
+            <label htmlFor="confirm-typed">Type <strong>{req.typeToConfirm}</strong> to confirm</label>
+            <input id="confirm-typed" value={typed} onChange={event => setTyped(event.target.value)} autoComplete="off" />
+          </div>}
           <div className="modal-footer u-75cb963">
             <button autoFocus className="btn btn-ghost" onClick={() => done(false)}>Cancel</button>
             <button
               className={req.danger === false ? 'btn btn-primary' : 'btn btn-danger'}
+              disabled={blocked}
               onClick={() => done(true)}
             >
               {req.label ?? 'Delete'}

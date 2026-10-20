@@ -597,25 +597,20 @@ async function setActive(req, res, active) {
 router.post('/:id/archive', requireManagerOrPlanner, (req, res) => setActive(req, res, false));
 router.post('/:id/restore', requireManagerOrPlanner, (req, res) => setActive(req, res, true));
 
-// Deleting removes the customer and its maintenance visits for good, so only managers
-// may, and only once the customer is archived.
+// Deleting removes the customer for good with all its history (permanentDelete.js), so only
+// managers may, and only once the customer is archived. Its projects are kept, without it.
 router.delete('/:id', requireManager, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
   const customer = await db.prepare('SELECT id, name, active FROM customers WHERE id = ?').get(id);
   if (!customer) return res.status(404).json({ error: 'Not found' });
   if (customer.active) return res.status(409).json({ error: 'Archive the customer first. Archiving keeps its history and can be undone; deleting cannot.' });
-  try {
-    await db.prepare('DELETE FROM customers WHERE id = ?').run(id);
-  } catch (e) {
-    // service_activities.customer_id is ON DELETE RESTRICT (Postgres error code 23503)
-    // so a customer with logged service activity history cannot be silently deleted.
-    if (e.code === '23503') {
-      return res.status(409).json({ error: 'Cannot delete this customer: it has service activity, recommendation or asset history. Keep it archived instead.' });
-    }
-    throw e;
-  }
-  await logAudit(db, req, 'customer', id, decryptCustomer(customer).name, 'customer_deleted', '');
+  const permanentDelete = require('../permanentDelete');
+  const files = await db.transaction(async tx => {
+    await logAudit(tx, req, 'customer', id, decryptCustomer(customer).name, 'customer_deleted', 'with its history');
+    return permanentDelete.deleteCustomer(tx, id);
+  });
+  await permanentDelete.removeFiles(files);
   res.json({ ok: true });
 });
 

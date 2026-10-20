@@ -161,6 +161,7 @@ export const api = {
   deleteTaskSubtask: (id, subtaskId) => req('DELETE', `/tasks/${id}/subtasks/${subtaskId}`),
   reorderTaskSubtasks: (id, ids) => req('PUT', `/tasks/${id}/subtasks/order`, { ids }),
   deleteTask: (id) => req('DELETE', `/tasks/${id}`),
+  deleteProject: id => req('DELETE', `/projects/${id}`),
   bulkUpdateTasks: (data) => req('POST', '/tasks/bulk', data),
   duplicateTask: (id) => req('POST', `/tasks/${id}/duplicate`, {}),
   overdueCounts: () => req('GET', '/tasks/overdue-counts'),

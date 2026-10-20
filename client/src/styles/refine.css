@@ -600,3 +600,6 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; }
 .notifications-paused-banner { display: flex; align-items: center; gap: 8px; padding: 8px 16px; font-size: 13px;
   background: var(--tone-warning-bg, #fff7e6); color: var(--tone-warning-text, #8a5300); border-bottom: 1px solid var(--tone-warning-border, #f5c26b); }
 .notifications-paused-banner a { font-weight: 600; color: inherit; text-decoration: underline; }
+
+/* A destructive action at the start of a dialog's footer, away from Save */
+.modal-footer .modal-footer-start { margin-right: auto; }

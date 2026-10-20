@@ -4,6 +4,7 @@ import { Modal } from './Shared';
 import TaskSubtasks, { TaskUpdates } from './TaskSubtasks';
 import TaskFiles from './TaskFiles';
 import { OtherEngineers } from './TaskPeople';
+import { useConfirm } from './Confirm';
 
 export const STATUS_LABELS = {
   open: 'Open', in_progress: 'In Progress', completed: 'Completed',
@@ -33,6 +34,14 @@ export default function EditTaskModal({ task, allUsers, isManager, onSave, onClo
   }));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const confirm = useConfirm();
+
+  // Managers: for good, with its updates, subtasks, files and time logged on it.
+  async function deleteTask() {
+    if (!await confirm(`Delete "${task.title}" for good? Its updates, subtasks, files and logged time are deleted with it. This cannot be undone.`,
+      { title: 'Delete task permanently', label: 'Delete permanently' })) return;
+    try { await api.deleteTask(task.id); onSave(); } catch (ex) { setErr(ex.message); }
+  }
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const isWaiting = form.status === 'waiting_customer' || form.status === 'waiting_vendor';
@@ -150,6 +159,7 @@ export default function EditTaskModal({ task, allUsers, isManager, onSave, onClo
         <div className="task-edit-subtasks"><TaskUpdates task={{ ...task, status: form.status }} beforePost={saveChanges} onPosted={posted} /></div>
         <div className="task-edit-subtasks"><TaskFiles task={task} beforeAdd={saveChanges} onAdded={() => { changedRef.current = true; }} /></div>
         <div className="modal-footer u-cc45258">
+          {isManager && <button type="button" className="btn btn-danger btn-sm modal-footer-start" onClick={deleteTask}>Delete task</button>}
           <button type="button" className="btn btn-ghost" onClick={close}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={saving}>
             {saving ? 'Saving…' : 'Save Changes'}

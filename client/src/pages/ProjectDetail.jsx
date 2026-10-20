@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { TabPanel, Tabs } from '../components/EnterpriseUI';
 import { useUrlTab } from '../hooks/useSavedFilter';
 import CustomerSearchSelect from '../components/CustomerSearchSelect';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Building2, ChevronLeft, MessageSquare, ClipboardList, Plus, RefreshCw, Trash2, FolderOpen, GitBranch, FileText, UserPlus, UserX, Lock, CheckCircle2, X, Upload, LayoutGrid, List as ListIcon, Printer } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PageState } from '../components/PageLayout';
@@ -27,6 +27,7 @@ export default function ProjectDetail() {
   const { user } = useAuth();
   const toast     = useToast();
   const confirm   = useConfirm();
+  const navigate  = useNavigate();
   const isManager  = user.role === 'manager';
   const isPlanner  = user.role === 'planner';
   const isEngineer = user.role === 'engineer';
@@ -168,6 +169,15 @@ export default function ProjectDetail() {
       toast.success('Project reopened');
       load();
     } catch (e) { toast.error(e.message); }
+  }
+
+  // For good, with its tasks, updates, files, milestones and KPIs (managers).
+  async function deleteProject() {
+    const ok = await confirm(`Delete ${project.title} for good? Its tasks, updates, files, milestones, KPIs and the time logged on its tasks are deleted with it. This cannot be undone.`,
+      { title: 'Delete project permanently', label: 'Delete permanently', typeToConfirm: project.project_code || project.title });
+    if (!ok) return;
+    try { await api.deleteProject(id); toast.success(`${project.title} deleted`); navigate('/projects'); }
+    catch (err) { toast.error(err.message); }
   }
 
   async function saveEdit(e) {
@@ -688,6 +698,7 @@ export default function ProjectDetail() {
               <CustomerSearchSelect value={editForm.customer_id || ''} label="Customer" onChange={id => setEditForm(f => ({ ...f, customer_id: id ? String(id) : '' }))} />
             </div>
             <div className="modal-footer u-cc45258">
+              <button type="button" className="btn btn-danger btn-sm modal-footer-start" onClick={() => { setShowEdit(false); deleteProject(); }}><Trash2 size={13} /> Delete project</button>
               <button type="button" className="btn btn-ghost" onClick={() => setShowEdit(false)}>Cancel</button>
               <button type="submit" className="btn btn-primary">Save</button>
             </div>

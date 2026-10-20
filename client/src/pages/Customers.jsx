@@ -280,7 +280,8 @@ export default function Customers() {
     try { await api.restoreCustomer(c.id); toast.success(`${c.name} restored`); load(); } catch (e) { toast.error(e.message); }
   }
   async function handleDelete(c) {
-    const ok = await confirm(`Delete ${c.name} for good? Its maintenance visits are deleted with it, and this cannot be undone. Customers with service activity, recommendation or asset history cannot be deleted; keep them archived.`, { title: 'Delete customer permanently', label: 'Delete permanently' });
+    const ok = await confirm(`Delete ${c.name} for good, with all its history: activities, assets, contracts, licences, visits, recommendations, tasks, KPIs and customer reports. Its projects are kept, without the customer. This cannot be undone.`,
+      { title: 'Delete customer permanently', label: 'Delete permanently', typeToConfirm: c.name });
     if (!ok) return;
     try { await api.deleteCustomer(c.id); toast.success(`${c.name} deleted`); load(); } catch (e) { toast.error(e.message); }
   }

@@ -425,6 +425,21 @@ router.put('/:id', requireManager, async (req, res) => {
   res.json({ ok: true });
 });
 
+// Deleting a project for good (managers): its tasks, updates, files, milestones, KPIs and
+// time logged on its tasks go with it. Recommendations that pointed at it are kept.
+router.delete('/:id', requireManager, async (req, res) => {
+  if (!/^[1-9]\d*$/.test(String(req.params.id))) return res.status(400).json({ error: 'Invalid project ID' });
+  const project = await db.prepare('SELECT id, title, project_code FROM projects WHERE id = ?').get(Number(req.params.id));
+  if (!project) return res.status(404).json({ error: 'Not found' });
+  const files = await db.transaction(async tx => {
+    await logAudit(tx, req, 'project', project.id, project.title, 'project_deleted', project.project_code ? `project_id=${project.project_code}` : null);
+    return require('../permanentDelete').deleteProject(tx, project.id);
+  });
+  await require('../permanentDelete').removeFiles(files);
+  require('../liveUpdates').emitChange('projects');
+  res.json({ ok: true });
+});
+
 // Engineer/planner requests closure — must be assigned to the project; PM is read-only
 async function recordClosureEvent(tx, req, project, action, message, version) {
   await tx.prepare('INSERT INTO project_status_updates (project_id, user_id, message) VALUES (?, ?, ?)').run(project.id, req.user.id, message);

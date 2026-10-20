@@ -602,8 +602,15 @@ router.post('/:id/complete', requireAuth, async (req, res) => {
 });
 
 // ── Delete ───────────────────────────────────────────────────────────────────
+// For good, with its engineers, assets and report; recommendations raised on it are kept.
 router.delete('/:id', requireManagerOrPlanner, async (req, res) => {
-  (await db.prepare('DELETE FROM maintenance_visits WHERE id = ?').run(req.params.id));
+  if (!/^[1-9]\d*$/.test(String(req.params.id))) return res.status(400).json({ error: 'Invalid visit ID' });
+  const visit = await db.prepare('SELECT id, title FROM maintenance_visits WHERE id = ?').get(Number(req.params.id));
+  if (!visit) return res.json({ ok: true });
+  await db.transaction(async tx => {
+    await require('../auditLog').logAudit(tx, req, 'maintenance_visit', visit.id, visit.title, 'visit_deleted', null);
+    await require('../permanentDelete').deleteVisits(tx, [visit.id]);
+  });
   res.json({ ok: true });
 });
 

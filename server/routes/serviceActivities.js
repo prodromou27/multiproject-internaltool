@@ -547,8 +547,13 @@ router.delete('/:id', requireManager, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
   const activity = await db.prepare('SELECT * FROM service_activities WHERE id = ?').get(id);
-  if (activity) await logAudit(db, req, 'service_activity', id, activity.title, 'activity_deleted', null);
-  await db.prepare('DELETE FROM service_activities WHERE id = ?').run(id);
+  if (!activity) return res.json({ ok: true });
+  // For good, with its files.
+  const files = await db.transaction(async tx => {
+    await logAudit(tx, req, 'service_activity', id, activity.title, 'activity_deleted', null);
+    return require('../permanentDelete').deleteActivities(tx, [id]);
+  });
+  await require('../permanentDelete').removeFiles(files);
   res.json({ ok: true });
 });
 
