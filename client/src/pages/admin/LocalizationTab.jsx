@@ -31,13 +31,19 @@ export const NUMBER_FORMATS = ['1,000.00','1.000,00','1 000.00','1000.00'];
 
 const zoneTime = zone => { try { return new Intl.DateTimeFormat(undefined, { timeZone: zone, weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date()); } catch { return '—'; } };
 
-/* The server's clock: which NTP server it is checked against, and how far off it was. */
-function ServerClock({ cfg, set, saved }) {
+/* The server's clock: which NTP server it is checked against, and how far off it was.
+   A changed NTP server is saved here, before it is checked (it used to be checked unsaved,
+   which looked applied while the 6-hourly checks kept using the stored server). */
+function ServerClock({ cfg, set, saved, onSaveClock }) {
   const [clock, setClock] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   useEffect(() => { api.serverClock().then(setClock).catch(failure => setError(failure.message)); }, []);
+  const changed = (cfg.ntp_server || '') !== (saved?.ntp_server || '') || (cfg.ntp_check_enabled !== false) !== (saved?.ntp_check_enabled !== false);
   async function checkNow() {
     setBusy(true); setError('');
-    try { setClock(await api.checkServerClock(cfg.ntp_server && cfg.ntp_server !== saved?.ntp_server ? cfg.ntp_server : undefined)); }
+    try {
+      if (changed) await onSaveClock();
+      setClock(await api.checkServerClock());
+    }
     catch (failure) { setError(failure.message); } finally { setBusy(false); }
   }
   const ntp = clock?.ntp;
@@ -58,12 +64,13 @@ function ServerClock({ cfg, set, saved }) {
           <label className="server-clock-switch"><input id="localization-ntp-check" type="checkbox" checked={cfg.ntp_check_enabled !== false} onChange={e => set('ntp_check_enabled', e.target.checked)} /> Check every 6 hours</label>
         </div>
       </div>
+      {changed && <p className="text-sm text-muted" role="status">Not saved yet: press Save and check.</p>}
       {error && <div className="error-msg" role="alert">{error}</div>}
       {clock && <div className={`server-clock-status ${tone}`} role="status">
         <div><span>Server time ({clock.timezone.replaceAll('_', ' ')})</span><strong>{clock.local_time}</strong></div>
         <div><span>Last check</span><strong>{!ntp ? 'Not checked yet' : ntp.error ? 'Could not reach the NTP server' : drift <= (clock.warn_offset_ms ?? 5000) ? `In sync (${ntp.offset_ms > 0 ? '+' : ''}${ntp.offset_ms} ms)` : `Off by ${(ntp.offset_ms / 1000).toFixed(1)} s`}</strong>
           {ntp && <small>{ntp.server} · {fmtDateTime(ntp.checked_at)}{ntp.error ? ` · ${ntp.error}` : ''}</small>}</div>
-        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={checkNow}>{busy ? 'Checking…' : 'Check now'}</button>
+        <button type="button" className={`btn btn-sm ${changed ? 'btn-primary' : 'btn-ghost'}`} disabled={busy} onClick={checkNow}>{busy ? 'Checking…' : changed ? 'Save and check' : 'Check now'}</button>
       </div>}
       {drift != null && drift > (clock?.warn_offset_ms ?? 5000) && <p className="text-sm server-clock-advice">Fix the clock on the server host: turn on time synchronisation (for example <code>timedatectl set-ntp true</code> on Linux, or the Windows Time service), pointing at {ntp.server}. Containers take their time from the host.</p>}
     </div>
@@ -101,6 +108,14 @@ export function LocalizationTab() {
     }
     catch (e) { toast.error(e.message); }
     finally { setSaving(false); }
+  }
+
+  // Saves only the clock settings (other unsaved changes on the page stay unsaved).
+  async function saveClock() {
+    const next = { ...saved, ntp_server: cfg.ntp_server, ntp_check_enabled: cfg.ntp_check_enabled !== false };
+    await api.saveLocalization(next);
+    setSaved(next);
+    toast.success(`NTP server saved: ${next.ntp_server || 'pool.ntp.org'}`);
   }
 
   if (loading) return <p className="text-muted">Loading…</p>;
@@ -177,7 +192,7 @@ export function LocalizationTab() {
         </div>
       </div>
 
-      <ServerClock cfg={cfg} set={set} saved={saved} />
+      <ServerClock cfg={cfg} set={set} saved={saved} onSaveClock={saveClock} />
 
       <BusinessCalendarSettings />
 

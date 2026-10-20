@@ -56,3 +56,24 @@ test('a visit with a problem is shown before saving, and saves only when chosen'
     scheduled_date: '2026-12-25', start_time: '10:00', duration_minutes: 120, confirm_warnings: true,
   });
 });
+
+test('a new NTP server is saved when it is checked, without saving the page\'s other changes', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  let stored = { default_language: 'en', supported_languages: ['en'], date_format: 'DD/MM/YYYY', time_format: '24h', number_format: '1,000.00', timezone: 'Asia/Nicosia', ntp_server: 'pool.ntp.org', ntp_check_enabled: true };
+  api.override('GET /api/settings/localization', () => ({ body: stored }));
+  api.override('PUT /api/settings/localization', ({ body }) => { stored = body; return { body: { ok: true } }; });
+  const ntp = server => ({ server, offset_ms: 12, checked_at: '2026-10-20T08:00:00Z', error: null });
+  api.override('GET /api/settings/clock', () => ({ body: { timezone: 'Asia/Nicosia', local_time: '10:00', ntp: ntp('pool.ntp.org'), warn_offset_ms: 5000 } }));
+  api.override('POST /api/settings/clock/check', () => ({ body: { timezone: 'Asia/Nicosia', local_time: '10:01', ntp: ntp(stored.ntp_server), warn_offset_ms: 5000 } }));
+  await page.goto('/settings/localization');
+  await page.getByLabel('Time Zone').selectOption('Europe/Athens');   // another, unsaved change
+  await page.getByLabel('NTP server').fill('dc01.company.local');
+  await expect(page.getByText('Not saved yet: press Save and check.')).toBeVisible();
+  await page.getByRole('button', { name: 'Save and check' }).click();
+  await expect(page.getByText('dc01.company.local ·')).toBeVisible();
+  expect([stored.ntp_server, stored.timezone]).toEqual(['dc01.company.local', 'Asia/Nicosia']);
+  await expect(page.getByRole('button', { name: 'Check now' })).toBeVisible();
+  // Coming back, it is still there.
+  await page.reload();
+  await expect(page.getByLabel('NTP server')).toHaveValue('dc01.company.local');
+});
