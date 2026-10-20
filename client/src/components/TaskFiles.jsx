@@ -17,7 +17,7 @@ const fileSize = bytes => {
  * Files attached to a task, in its dialog. Anyone who may see the task downloads them;
  * those working on it (and managers) add files; whoever added a file, or a manager, removes it.
  */
-export default function TaskFiles({ task, canAdd = true }) {
+export default function TaskFiles({ task, canAdd = true, beforeAdd, onAdded }) {
   const { user } = useAuth() || {};
   const isManager = user?.role === 'manager', currentUserId = user?.id;
   const toast = useToast(), confirm = useConfirm(), inputRef = useRef(null);
@@ -29,7 +29,9 @@ export default function TaskFiles({ task, canAdd = true }) {
     if (!selected.length) return;
     setBusy(true); setError('');
     try {
+      await beforeAdd?.();   // e.g. the edit form saves its changes first
       for (const file of selected) await api.uploadTaskAttachment(task.id, file);
+      onAdded?.();
       toast.success(selected.length === 1 ? 'File attached' : `${selected.length} files attached`);
       await load();
     } catch (failure) { setError(failure.message); }

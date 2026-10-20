@@ -197,7 +197,7 @@ const UPDATE_STATUSES = [['', 'Keep the status'], ['in_progress', 'In progress']
  * on the task posts one, and may change the status with it; when waiting on the
  * customer or a vendor, the update is the reason.
  */
-export function TaskUpdates({ task, canPost = true, onChange }) {
+export function TaskUpdates({ task, canPost = true, onChange, beforePost, onPosted }) {
   const toast = useToast();
   const people = usePeople(canPost);
   const [list, setList] = useState(null), [message, setMessage] = useState(''), [status, setStatus] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -209,8 +209,10 @@ export function TaskUpdates({ task, canPost = true, onChange }) {
     if (!text) return;
     setBusy(true); setError('');
     try {
+      await beforePost?.();   // e.g. the edit form saves its changes first
       if (status && status !== task.status) await api.updateTask(task.id, { status, ...(['waiting_customer', 'waiting_vendor'].includes(status) ? { pending_from_customer: text } : {}) });
       await api.addTaskComment(task.id, text);
+      onPosted?.(status && status !== task.status ? { status, pending_from_customer: ['waiting_customer', 'waiting_vendor'].includes(status) ? text : undefined } : {});
       setMessage(''); setStatus(''); await load();
       toast.success(status && status !== task.status ? 'Update posted and status changed' : 'Update posted');
       onChange?.();
