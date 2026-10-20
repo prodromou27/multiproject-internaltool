@@ -103,3 +103,27 @@ test('people can choose the new alerts for their own channels', async () => {
   const after = (await db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND type='recommendation_assigned'").get(ids.engineerEnabled)).n;
   assert.equal(Number(after), Number(before) + 1);
 });
+
+test('while notifications are paused nothing is posted or emailed (the bell still is), until a manager resumes them', async () => {
+  await shareTo({ task_assigned: true });
+  const pause = paused => api('/api/settings/notifications-pause', { method: 'PUT', token: ids.tokenManager, body: { paused } });
+  assert.equal((await api('/api/settings/notifications-pause', { method: 'PUT', token: ids.tokenEnabled, body: { paused: true } })).status, 403, 'managers only');
+  assert.equal((await api('/api/settings/notifications-pause', { method: 'PUT', token: ids.tokenManager, body: { paused: 'yes' } })).status, 400);
+  const on = await pause(true);
+  assert.equal(on.status, 200);
+  assert.deepEqual([on.data.paused, on.data.by], [true, 'Manager One']);
+  assert.equal((await api('/api/settings/notifications-pause', { token: ids.tokenManager })).data.paused, true);
+
+  const bellBefore = Number((await db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ?').get(ids.engineerEnabled)).n);
+  const made = await api('/api/tasks', { method: 'POST', token: ids.tokenManager, body: { customer_id: ids.customer, title: 'Batch task 1', assigned_to: ids.engineerEnabled } });
+  assert.equal(made.status, 200);
+  notifications.notifyShared('task_assigned', { title: 'Shared while paused', body: 'x' }, { dedupeKey: 'paused-1' });
+  await settle(1);
+  assert.equal(posts.length, 0, 'nothing posted while paused');
+  assert.ok(Number((await db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ?').get(ids.engineerEnabled)).n) > bellBefore, 'the bell still gets it');
+
+  assert.equal((await pause(false)).data.paused, false);
+  notifications.notifyShared('task_assigned', { title: 'After resuming', body: 'x' }, { dedupeKey: 'paused-1' });
+  await settle(1);
+  assert.equal(posts.length, 1, 'posted once resumed (the paused one was not recorded as sent)');
+});

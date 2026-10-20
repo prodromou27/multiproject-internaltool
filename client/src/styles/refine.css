@@ -592,3 +592,11 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; }
 
 /* A public holiday named in its calendar day (Calendar, visits calendar). */
 .cal-holiday { font-size: 11px; font-weight: 600; color: var(--tone-danger-text); margin: 2px 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Pausing notifications (Settings → Email & notifications) and the reminder while paused */
+.notifications-pause-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.notifications-pause-row > div { flex: 1 1 320px; min-width: 0; }
+.notifications-pause.is-paused { border-color: var(--tone-warning-border, #f5c26b); }
+.notifications-paused-banner { display: flex; align-items: center; gap: 8px; padding: 8px 16px; font-size: 13px;
+  background: var(--tone-warning-bg, #fff7e6); color: var(--tone-warning-text, #8a5300); border-bottom: 1px solid var(--tone-warning-border, #f5c26b); }
+.notifications-paused-banner a { font-weight: 600; color: inherit; text-decoration: underline; }

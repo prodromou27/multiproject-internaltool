@@ -11,6 +11,7 @@ import { Hamburger } from './Sidebar';
 import { SidebarContent } from './Sidebar';
 import UserMenu from './UserMenu';
 import { CommandPalette } from './CommandPalette';
+import { NotificationsPausedBanner } from '../components/NotificationsPause';
 import { useScrollableTables } from './useScrollableTables';
 
 /* ── Layout ──────────────────────────────────────────────── */
@@ -142,6 +143,7 @@ export function Layout({ children }) {
             <UserMenu user={user} team={currentTeams} logout={logout} dense={dense} onToggleDensity={toggleDensity} />
           </div>
         </div>
+        {user.role === 'manager' && <NotificationsPausedBanner />}
         <main id="main-content" tabIndex={-1}>{children}</main>
       </div>
     </div>

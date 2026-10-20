@@ -400,6 +400,8 @@ function notify(event, data) {
       }
 
       // ── External channels (Teams / Webex) ─────────────────────────────────
+      // Paused by a manager (notificationPause.js): the bell above only.
+      if (await require('./notificationPause').isPaused()) return;
       // No organisation Teams/Webex integration configured is normal; it must not
       // stop each person's own channels (email, personal Teams) below.
       const settings = (await getSettings()) || {};
@@ -472,7 +474,7 @@ function notifyUser(...args) { return track(deliverToUser(...args)); }
 async function deliverToUser(userId, eventKey, msg, inApp, { channels = true, bell = true } = {}) {
   msg = { ...msg, link: msg.link || inApp?.link || EVENT_LINKS[eventKey] };
   if (bell) await persistNotification(userId, eventKey, inApp.title, inApp.body, inApp.link);
-  if (!channels) return;
+  if (!channels || await require('./notificationPause').isPaused()) return;
   const person = await db.prepare(`SELECT id, email, active, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled, notify_events
     FROM users WHERE id = ?`).get(userId);
   if (!person?.active) return;
@@ -503,6 +505,7 @@ async function sharedChannelsAvailable() {
 
 /** Post one message to the organisation's shared Teams channel and Webex space (those set up). */
 async function postToSharedChannels(msg) {
+  if (await require('./notificationPause').isPaused()) return [];
   const settings = (await getSettings()) || {};
   const available = await sharedChannelsAvailable();
   const sends = [], labels = [];
@@ -523,6 +526,8 @@ async function deliverShared(eventKey, msg, { dedupeKey } = {}) {
   try {
     const settings = (await getSettings()) || {};
     if (!sharedEventEnabled(settings.notify_on, eventKey)) return false;
+    // Paused: not posted, and not recorded as posted.
+    if (await require('./notificationPause').isPaused()) return false;
     if (dedupeKey) {
       const first = await db.prepare('INSERT INTO shared_event_deliveries (key) VALUES (?) ON CONFLICT DO NOTHING').run(`${eventKey}:${dedupeKey}`.slice(0, 300));
       if (first.changes !== 1) return false;

@@ -484,6 +484,8 @@ export const api = {
   // settings / integrations
   getIntegrations: (options) => req('GET', '/settings/integrations',undefined,options),
   saveIntegrations: (data) => req('POST', '/settings/integrations', data),
+  notificationsPause: () => req('GET', '/settings/notifications-pause'),
+  setNotificationsPause: paused => req('PUT', '/settings/notifications-pause', { paused }),
   testIntegration: (platform, settings) => req('POST', '/settings/integrations/test', { platform, settings }),
   serverClock: (options) => req('GET','/settings/clock',undefined,options),
   activityBotSettings: (options) => req('GET','/settings/activity-bot',undefined,options),

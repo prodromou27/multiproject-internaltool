@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, AlertTriangle, Bell, Save, Loader2 } from 'lucide-react';
 import { api } from '../../api';
 import { Toggle } from './shared';
+import { NotificationsPauseCard } from '../../components/NotificationsPause';
 
 /* ══════════════════════════════════════════════════════════ */
 /* ── INTEGRATIONS TAB ────────────────────────────────────── */
@@ -66,6 +67,8 @@ export function IntegrationsTab() {
   const labelStyle   = { fontSize: 12, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6, display: 'block' };
 
   return (
+    <>
+    <NotificationsPauseCard />
     <fieldset disabled={saving || Object.values(testing).some(Boolean)} className="u-af2cbf6">
       {msg && <div className="alert alert-success u-01eae41"><CheckCircle2 size={14} /> {msg}</div>}
       {err && <div className="alert alert-danger u-01eae41"><AlertTriangle size={14} /> {err}</div>}
@@ -164,5 +167,6 @@ export function IntegrationsTab() {
         {saving ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving…</> : <><Save size={14} /> Save notification settings</>}
       </button>
     </fieldset>
+    </>
   );
 }

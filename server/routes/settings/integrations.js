@@ -21,6 +21,16 @@ async function validateWebhookUrl(url) {
   return null;
 }
 
+// Pausing Webex, Teams and notification emails (e.g. while creating many projects at once).
+const pause = require('../../notificationPause');
+router.get('/notifications-pause', requireManager, async (req, res) => res.json(await pause.status()));
+router.put('/notifications-pause', requireManager, async (req, res) => {
+  if (typeof req.body?.paused !== 'boolean') return res.status(400).json({ error: 'paused must be true or false' });
+  const now = await pause.setPaused(req.body.paused, req.user);
+  await logSettingsChange(req, req.body.paused ? 'notifications_paused' : 'notifications_resumed', req.body.paused ? 'Webex, Teams and email notifications paused' : 'notifications resumed');
+  res.json(now);
+});
+
 // GET /api/settings/integrations
 router.get('/integrations', requireManager, async (req, res) => {
   res.json(safeSettings(await integrations()));
