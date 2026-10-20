@@ -79,7 +79,7 @@ npm run encrypt:customers -- --dry
 npm run encrypt:customers
 ```
 
-The Admin `Deployment Health` tab reports the active customer-key fingerprint and
+Settings → Backups & health → System health reports the active customer-key fingerprint and
 whether any populated customer fields are still plaintext.
 
 ## 3. Deploy
@@ -222,8 +222,9 @@ sudo firewall-cmd --add-service=https --add-service=http --permanent && sudo fir
 
 **The Webex activity bot needs no inbound access.** It connects out to Webex and
 receives messages over that connection, so the server stays unreachable from the
-internet. Allow outbound HTTPS (443) to `*.webex.com` and `*.wbx2.com` (WebSocket
-included). Only the optional Webex webhook, and the Microsoft Teams bot, need the app
+internet. Allow outbound HTTPS (443) to `webexapis.com`, `*.webex.com` and `*.wbx2.com`
+(WebSocket included); bots in any region (e.g. the EU) are found automatically. The full
+list of outgoing connections is in [docs/DEPLOY.md](../docs/DEPLOY.md). Only the optional Webex webhook, and the Microsoft Teams bot, need the app
 at a public `https://` address.
 
 Prefer nginx on the host instead? [`deploy/nginx.conf.example`](nginx.conf.example)

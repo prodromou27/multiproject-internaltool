@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2, Award, BarChart2, UsersIcon, Settings, Search, MessageSquare, CheckCheck, ClipboardList, FileText, StickyNote, UserCircle, ShieldCheck, Zap, Activity, BellRing, ShieldAlert, PackageCheck, GraduationCap, Gauge, ListChecks, Clock, CalendarClock, ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2, Award, BarChart2, UsersIcon, Settings, Search, MessageSquare, CheckCheck, ClipboardList, FileText, StickyNote, UserCircle, ShieldCheck, Zap, Activity, BellRing, ShieldAlert, PackageCheck, GraduationCap, Gauge, ListChecks, Clock, CalendarClock, HelpCircle, ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { api } from '../api';
 import { PRODUCT_WORDMARK } from '../product';
 import { pageZoom } from '../utils/zoom';
@@ -20,7 +20,7 @@ export function Hamburger({ open, onClick }) {
 /* ── Sidebar content ─────────────────────────────────────── */
 export const PAGE_ICONS = { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2,
   Award, BarChart2, UsersIcon, Settings, Search, ClipboardList, FileText, StickyNote,
-  UserCircle, MessageSquare, ShieldCheck, ShieldAlert, PackageCheck, GraduationCap, Gauge, ListChecks, Clock, CalendarClock, Zap, Activity, CheckCheck, BellRing };
+  UserCircle, MessageSquare, ShieldCheck, ShieldAlert, PackageCheck, GraduationCap, Gauge, ListChecks, Clock, CalendarClock, Zap, Activity, CheckCheck, BellRing, HelpCircle };
 
 function OverdueDot({ count }) {
   if (!count) return null;

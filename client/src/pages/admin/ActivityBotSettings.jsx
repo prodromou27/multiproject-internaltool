@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Bot, Copy, Send } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { useToast } from '../../components/Toast';
 import { Toggle } from './shared';
@@ -100,7 +101,7 @@ export function ActivityBotSettings({ sectionStyle }) {
       <ol className="text-sm">
         <li>{view.webex.bot_token_set ? 'The bot token from Webex notifications above is used.' : <>Add the Webex <strong>bot token</strong> under Webex notifications above.</>}</li>
         <li>Turn the bot on. The app connects out to Webex and receives the messages over that connection: nothing on this server needs to be reachable from the internet, only outgoing HTTPS to Webex. <WebexConnection connection={view.webex.connection} enabled={view.webex.enabled} tokenSet={view.webex.bot_token_set} /></li>
-        <li>Engineers open a one-to-one chat with the bot in Webex and say <em>help</em>.</li>
+        <li>Engineers open a one-to-one chat with the bot in Webex and say <em>help</em>. Besides logging activities, it lists their tasks and day, and starts, completes, updates and adds tasks: see <Link to="/help/bot">Help → Chat bot</Link>.</li>
       </ol>
       <details className="text-sm">
         <summary>Alternative: a webhook (only if this server is reachable from the internet)</summary>

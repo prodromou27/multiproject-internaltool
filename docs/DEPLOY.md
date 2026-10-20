@@ -79,7 +79,8 @@ APP_URL=http://dev.example.com:8080 APP_PORT=8080 DEPLOY_BRANCH=DEV-3 ./deploy/d
 
 ```bash
 BASE=http://localhost:8080
-# 1. login (first empty-database credentials are admin / admin)
+# 1. login (an empty database starts with admin / admin, or ADMIN_PASSWORD when set;
+#    the password must be changed at the first sign-in)
 TOKEN=$(curl -s $BASE/api/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"admin","password":"admin"}' | jq -r .token)
 # 2. core reads
@@ -131,6 +132,22 @@ DATABASE_URL=postgres://… node scripts/sqlite-to-postgres.js /path/to/app.db
 It copies every table in FK-safe order preserving ids, resets the sequences, and is
 re-runnable (ON CONFLICT DO NOTHING). Verify row counts per table and confirm a known
 customer decrypts through the API afterward.
+
+## Outgoing connections the server needs
+
+Nothing has to reach the server from the internet, except for the **Teams bot**: Microsoft
+delivers its messages to the app's messaging endpoint, which must be a public `https://` address.
+(The Webex bot connects out instead.) Outgoing, the server needs only what you use:
+
+| For | To |
+|-----|----|
+| Webex notifications and the chat bot (it connects out; no webhook needed) | HTTPS (443) to `webexapis.com`, `*.wbx2.com` (device service, catalogue, message service, its WebSocket) and `*.webex.com` |
+| Teams notifications and the Teams bot | HTTPS to the channel's webhook address; for the bot, `login.microsoftonline.com` and `*.botframework.com` |
+| Microsoft 365 sign-in | the user's browser reaches `login.microsoftonline.com`; the server needs no outgoing access for it |
+| Request Tracker, Grafana | HTTPS to your own servers |
+| Clock check | UDP 123 to the NTP server set in Settings → Time & region |
+| Email | the SMTP server set in Settings → Email & notifications |
+| Software versions and vulnerabilities | HTTPS to `services.nvd.nist.gov`, `www.cisa.gov`, `docs.fortinet.com` and `sc1.checkpoint.com` |
 
 ## Notes / known items
 

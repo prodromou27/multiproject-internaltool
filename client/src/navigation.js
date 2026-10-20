@@ -27,6 +27,7 @@ export const PAGES = [
   { id: 'sla', path: '/sla', label: 'SLA', section: 'Team & performance', icon: 'ShieldCheck', roles: ['manager'], description: 'Service commitments and exceptions requiring attention' },
   { id: 'responses', path: '/customer-responses', label: 'Customer Responses', section: 'More', icon: 'MessageSquare', roles: everyone, description: 'Ready-to-use email texts to copy; managers add and change them' },
   { id: 'notes', path: '/notes', label: 'My Notes', section: 'More', icon: 'StickyNote', roles: everyone, description: 'Your private scratchpad and personal to-do list' },
+  { id: 'help', path: '/help', label: 'Help', section: 'More', icon: 'HelpCircle', roles: everyone, description: 'How to use the app, page by page, and the chat bot commands' },
   { id: 'settings', path: '/settings', label: 'Settings', section: 'More', icon: 'Settings', roles: ['manager'], description: 'Business configuration, integrations and system settings' },
   { id: 'serviceOperations', path: '/service-operations', label: 'Service Activity Reports', section: 'Team & performance', icon: 'Activity', roles: ['manager'], permission:'reports.access', inMenu: false, parent: 'reports', description: 'Aggregated reporting over logged service activity — see Customer 360 for per-customer detail' },
   { id: 'users', path: '/settings/users', label: 'Users', section: 'More', icon: 'UsersIcon', roles: ['manager'], inMenu: false, parent: 'settings', description: 'User accounts and operational roles' },

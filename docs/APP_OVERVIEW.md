@@ -3,7 +3,8 @@
 A code-grounded description of the application: architecture, data model, security,
 and every feature module with notes on how each is handled.
 
-> Last reviewed: 2026-09-21.
+> Last reviewed: 2026-10-20. People using the app have their own help inside it (Help in
+> the menu and the ? button), written in `client/src/help/helpContent.js`.
 
 ---
 
@@ -22,11 +23,11 @@ database — behind role-based access control, 2FA, and field-level PII encrypti
 |-------|-----------|
 | Backend | Node.js + Express |
 | Database | **PostgreSQL** via the `pg` driver (see "Database dialect" note below — this is not obvious from reading route files in isolation) |
-| Frontend | React 18 + Vite SPA (built to `client/dist`, served statically by Express) |
-| Transport | HTTPS on port 443 (self-signed certs in `server/certs`), HTTP:80 → HTTPS redirect; falls back to HTTP:3001/8080 if no certs |
+| Frontend | React 19 + Vite SPA (built to `client/dist`, committed, served statically by Express) |
+| Transport | Production: a Caddy proxy (`deploy/Caddyfile`) serves HTTPS on 443 with the company certificate (`certs/tls.crt`, `tls.key`) and redirects 80; without a certificate it serves plain HTTP on 80 (`deploy/Caddyfile.http`). The app listens on HTTP 8080, bound to 127.0.0.1, behind it (`TRUST_PROXY=1`). Run on its own, the app serves HTTPS itself when `server/certs` has a certificate, else HTTP on 3001/8080 |
 | Auth | JWT (stateless), bcrypt password hashing, TOTP 2FA |
 | Config | Hand-rolled `.env` loader at startup (no dotenv dependency) |
-| Deployment | Docker multi-stage build (`Dockerfile`) + `docker-compose.yml`/`docker-compose.prod.yml`, Postgres as a separate compose service |
+| Deployment | Docker multi-stage build (`Dockerfile`) + `docker-compose.yml`/`docker-compose.prod.yml` (app, Postgres, Caddy proxy). Branch **DEV-3** for changes, **LIVE** for production (see deploy/README.md) |
 
 **Single-process deployment:** Express serves both the JSON API (`/api/*`) and the
 compiled React app (SPA catch-all). Unknown `/api/*` paths return a JSON 404 *before*
@@ -54,15 +55,17 @@ there instead of on the one screen that uses it. Keep using `?` placeholders in 
 code, as all existing routes do.
 
 `db.js` is also **self-migrating**: `init()` runs a full `CREATE TABLE IF NOT EXISTS`
-schema (the "final state," so fresh installs get every column immediately) followed by
-`applyCompatibilityMigrations()` — a hand-maintained, ordered list of
+schema (`server/schema/baseTables.js`, the "final state," so fresh installs get every
+column immediately) followed by `applyMigrations()` (`server/schema/migrations.js`) — a
+hand-maintained, ordered list of
 `[migration_id, sql]` tuples tracked in a `schema_migrations` table, each applied once
 inside a transaction, for `ALTER TABLE ADD COLUMN IF NOT EXISTS` changes needed on
 already-deployed databases. Both paths must be kept in sync when adding a column — see
 existing migration tuples for the pattern. After schema/migrations, it seeds default
 status configuration, service-activity lookups (categories/technologies), creates
-performance indexes, and — if the `users` table is empty — seeds a first-run `admin`
-manager account with a forced password change on first login.
+performance indexes (`schema/indexes.js`), and — if the `users` table is empty — seeds a
+first-run `admin` manager account (password `admin`, or `ADMIN_PASSWORD`) with a forced
+password change on first login (`schema/seeds.js`).
 
 ### Layering and code layout
 
@@ -387,6 +390,14 @@ milestones, KPIs, custom fields, task dependencies, attachments, Excel import,
 templates, and a **closure-approval workflow** (request → manager approves/rejects).
 Project detail decrypts the linked customer's contact fields for display.
 
+A new project needs a **Project ID** (`project_code`: typed, unique ignoring letter case,
+searchable), a name, a description, a **start date** (`start_date`) and at least one
+engineer; the deadline is optional and cannot precede the start date. Projects made before
+this keep working and get their Project ID when edited. Managers delete a project for good
+(`DELETE /api/projects/:id`, typing the Project ID to confirm in the UI) with its tasks,
+updates, files, milestones, KPIs and logged time (`permanentDelete.js`); recommendations
+that pointed at it are kept without the link.
+
 The project page (`pages/ProjectDetail.jsx`, with its parts in `pages/project/`) offers
 the task list and a **Kanban** board (drag a card to change status), a **Gantt**
 timeline with milestones, permission-controlled **KPIs** and a manager-only **Scorecard** tab, **Custom
@@ -489,6 +500,19 @@ current user unless requested by a manager. Time log IDs, hours and date filters
 are validated before querying or storing data.
 Engineers self-assign and are confined to their own tasks and member projects.
 
+**Several engineers on a task.** Besides the assignee (the lead), `task_engineers` lists
+other engineers ("Also working on it"). They count as working on the task everywhere
+(`taskAccess.js`: `ownTasksSql`, `worksOnTask`): their task lists, calendar, search, edits,
+updates and files; they are told when added. Lists show "Lead +N".
+**Files** attach to a task (`attachments.task_id`, `taskFiles.js`) with the same type and
+content checks and encryption as project files: anyone who may see the task downloads,
+those working on it add, the uploader or a manager removes. In **Edit Task**, posting an
+update or attaching a file first saves the form's changes. `GET /api/tasks/:id` returns one
+task for anyone who may see it (used by the chat bot). Engineers may read the subtasks of
+any task they may see (e.g. a colleague's task of their customer), read-only. Managers
+delete a task for good (Edit Task → Delete task) with its updates, subtasks, files and
+logged time.
+
 ### My Day timer
 The engineer timer is stored per user and validates saved values before resuming.
 Saving disables further submissions; failed saves keep the timer available to retry.
@@ -510,7 +534,18 @@ assignment. Validates text, finite non-negative included hours, and contract dat
 Partial edits preserve omitted contract values and allow explicitly clearing
 optional contract fields.
 Excel import (≤5,000 rows, duplicate detection by normalized
-name, downloadable template). Engineers see only customers linked to their work
+name, downloadable template).
+
+Current customer behaviour: several customers can be **in-house infrastructure** and they
+are listed first; a customer may have a **project name** (a nickname, encrypted and
+searchable); the list shows the current contract and "+N more". The customer form no longer
+has a customer code or included hours (stored values are kept). Contracts carry dates,
+type, renewal and covered assets, and an asset's coverage follows its contracts
+(`assetCoverage.js`). Assets need only a name and type, and **Count** adds several identical
+ones. Licences and certificates (`customer_licences`) and vendor cases (`vendor_cases`) have
+their own Customer 360 tab and the **Renewals & cases** page. An archived customer can be
+deleted for good with all its history (activities, assets, contracts, licences, visits,
+recommendations, tasks, KPIs, customer reports); its projects are kept without it. Engineers see only customers linked to their work
 (project/visit assignment for the legacy modules; team/engineer assignment for Service
 Activity Tracking).
 
@@ -766,10 +801,35 @@ customer/date/overdue filters). Because PII columns are encrypted and can't be
 candidates, then substring-match in the app layer.
 
 ### Notifications
-In-app bell + optional **Microsoft Teams** (MessageCard webhook) and **Cisco Webex**
-(Bot API, direct/space) channels, all fire-and-forget. Events: task/project/visit
-assignment, @mentions, report submitted, visit reminders, scorecard-pending. Per-event
-toggles in settings.
+The in-app bell, plus Microsoft Teams (webhook) and Cisco Webex (bot) channels, all
+fire-and-forget (`notifications.js`). Each person chooses, per event, which of their own
+channels (email, a personal Teams webhook, a Webex message) receive it (Profile). The
+shared Teams channel and Webex space get the events a manager switches on (Settings →
+Email & notifications; `sharedEvents.js`). A team can have its own Webex space
+(`teams.webex_space_id`): its unassigned tasks, recurring tasks and team reminders are
+posted there once, else to the shared space (`notifyTeam`). Managers can **pause**
+Webex, Teams and notification emails (`notificationPause.js`): nothing is sent or queued
+while paused, the bell keeps working, and managers see a reminder banner. Password resets,
+scheduled reports and Test buttons are not affected. Emails to customers are never
+automatic.
+
+### Chat bot (Webex and Teams)
+Engineers chat one-to-one with a bot (`server/activityBot/`). The Webex bot connects
+**out** over a WebSocket (`webexSocket.js`: device registration with the bot's regional
+device service, found through Webex's catalogue; events acknowledged; message ids read from
+the conversation service), so the server needs no inbound access; a webhook remains an
+alternative. Teams uses Azure Bot Service (inbound HTTPS). Settings → Integrations →
+Activity bot shows the connection, how many events arrived and what became of the last
+message. `conversation.js` turns plain words into a service-activity draft, asks for what
+is missing and saves on "yes"; `commands.js` answers quick commands: `tasks`, `overdue`,
+`today`, `logged`, `week`, `visits`, `task 123`, `start/done 123`,
+`waiting 123 <reason>`, `update 123 <text>`, `new task <title> for <customer> due <when>`.
+Every action goes through the app's API as that person (`appApi.js`, a two-minute token),
+so their permissions and the usual validation, audit and live updates apply.
+
+### Help
+`/help` (every role) lists help topics for the person's role, searchable; the ? button
+opens the topic for the current page (`client/src/help/helpContent.js`).
 
 ### Notes
 Scratchpad saves are serialized; failed saves remain unsaved and display an error.
@@ -790,12 +850,17 @@ activity** status — the status editor is now shared across four entity types v
 same generic `settings.status_config` JSON blob), the audit log, and the Service
 Activity Tracking admin tab described above.
 
-Settings (`/settings/:section`, manager-only) has 18 sections in two areas plus an
-overview. *Business*: Users & Access, Projects, Maintenance Visits, Status Workflow,
-Service Activity Tracking. *Technical*: Integrations, Weekly Report, Localization,
-Security Policy, Audit Log, Logging, System Alerts, System Stats, Activity Feed,
-Deployment Health, Data Export, System Update. Search covers all sections and old
-`/admin/...` URLs redirect. The code for each section is in `client/src/pages/admin/`.
+Settings (`/settings/:section`, manager-only) has ten pages, each with its sections:
+**Overview**; **Users & teams** (users, teams with their Webex space); **Access & sign-in**
+(permissions, Microsoft 365 sign-in and password rules); **Lists** (activity categories,
+project statuses, contract types, SLAs); **Templates** (project templates, visit checklists,
+customer report template); **Weekly report**; **Email & notifications** (SMTP, shared
+channels and their events, pausing notifications, system alerts); **Integrations**
+(Request Tracker, Grafana devices, activity bot); **Time & region** (time zone, NTP server
+with Save and check, language, formats, working days and public holidays); **Backups &
+health** (backups, storage, system health including the HTTPS certificate, audit log).
+Search covers all sections and old URLs redirect. The code for each section is in
+`client/src/pages/admin/`.
 
 **System Update** lets a manager check for outdated packages, install them, rebuild the
 client and restart the server (`/api/settings/system-update/*`, backed by
@@ -809,34 +874,45 @@ with filtered, paginated retrieval (`?entity_type/user_id/action/date_from/date_
 max 500/page).
 
 ### Customer Responses
-A library of ready-to-send customer email texts (Closing Ticket, Chargeable Task,
-CRM - Chargeable, Late Response, Notification of Asset Upgrade) with one-click copy, for
-every role, under *Personal* in the sidebar (`/customer-responses`). It is static
-client-side content: no API, no database, no audit. To change a text, edit the
-`TEMPLATES` list in `pages/CustomerResponses.jsx`.
+A library of ready-to-send customer email texts with one-click copy, for every role
+(`/customer-responses`). Managers add, change and remove texts (`/api/customer-responses`,
+stored in settings); built-in ones can be changed or removed too. Copying never sends
+anything: emails to customers are always sent by a person.
 
 ### Users (manager)
-`/users` is a searchable team directory grouped by role (managers, engineers, planners,
-PMs) with join dates. It is read-only; accounts are created and changed in Settings →
-Users & Access.
+Accounts are created and changed in Settings → Users & teams (`/settings/users`).
 
 ### Profile
 Self-service name/email update (with format + uniqueness checks), avatar upload
 (JPEG/PNG/GIF/WebP, ≤2 MB, SVG blocked), password change, and TOTP enable/disable —
-each issuing a fresh token when identity fields change.
+each issuing a fresh token when identity fields change. **Display size** (80–110%, 90% by
+default) zooms the whole app and is kept with the person's preferences; notification
+channels per event are chosen here too.
 
 ## 8. Background jobs
 
-- **Daily visit reminders** — runs at startup and re-schedules for 08:00 daily, then
-  every 24h.
-- **Weekly report scheduler** — configurable day/hour/recipients via settings.
-- **Saved custom-report delivery** (`customReportScheduler.js`, started with the weekly
-  scheduler) — polls every minute for due schedules, claims each slot atomically,
-  rechecks the owner's access and recipients, and does not retry a failed slot (see
-  Reports in §7). Stopped on graceful shutdown.
-- All started only after the server successfully binds.
-- Service Activity Tracking has **no** background job — retention purge is a manual,
-  manager-triggered admin action, not a scheduled task (see §11).
+Started after the server binds (`index.js`), unless noted:
+
+- **Every minute:** personal and team reminders that fall due (`reminders.js`); queued
+  background jobs (`backgroundJobs.js`: ticket sync, backups and their off-server copies,
+  report exports); saved custom-report deliveries (`customReportScheduler.js`).
+- **Each morning at 08:00** in the organisation's time zone: automatic reminders (tasks,
+  visits, contracts, licences, asset support, reports, vendor cases), asset coverage from
+  contracts, removal of old customer-report files (`reportRetention.js`), overdue-approval
+  reminders and recurring tasks that are due. Deliveries are recorded, so a restart sends
+  nothing twice.
+- **Request Tracker ticket sync** per customer on its interval; a large queue is synced in
+  chunks of pages, oldest first, up to two years back (`ticketSyncScheduler.js`).
+- **Every few hours (4 by default):** software versions (`software/sync.js`) and Grafana
+  devices (`grafana.js`). **Each morning:** CVEs from NVD and CISA (`cve/sync.js`).
+- **Clock:** the time zone is re-read every 5 minutes; the server clock is checked against
+  the NTP server every 6 hours (`ntpCheck.js`).
+- **Database backups** on their schedule (`databaseBackups.js`) and KPI snapshots
+  (`kpiSnapshots.js`), started with the database.
+- **The Webex bot connection**, kept open and re-opened after a drop (`webexSocket.js`);
+  processed bot message ids are pruned every 6 hours.
+- **Weekly report** on its configured day and hour (`reportScheduler.js`).
+- Service Activity Tracking retention purge stays a manual, manager-triggered action.
 
 ## 9. API surface (prefixes)
 
@@ -866,6 +942,15 @@ query param).
 | `/api/notifications`, `/api/notes`, `/api/search` | bell, scratchpad, global search |
 | `/api/settings`, `/api/report-settings`, `/api/statuses` | configuration; `/settings/system-update/*` (disabled in production by default) |
 | `/api/templates`, `/api/audit`, `/api/admin` | templates, audit log, user admin |
+| `/api/tasks/:id/attachments`, `/api/tasks/:id/subtasks`, `/api/recurring-tasks` | task files, subtasks, recurring tasks |
+| `/api/customers/:id/contracts`, `/licences`, `/vendor-cases`; `/api/renewals` | contracts, licences and certificates, vendor cases; what expires soon |
+| `/api/reminders`, `/api/calendar/holidays` | personal, team and automatic reminders; public holidays |
+| `/api/ticketing`, `/api/managed-customers`, `/api/managed-report-templates` | Request Tracker, managed customers and their reports |
+| `/api/vulnerabilities`, `/api/software`, `/api/grafana` | CVEs, software versions, Grafana devices |
+| `/api/data-quality`, `/api/insights`, `/api/skills`, `/api/visit-checklists`, `/api/visit-planning`, `/api/remediation-campaigns`, `/api/permissions` | the pages of the same names |
+| `/api/bots` | Webex webhook and Teams messaging endpoint for the chat bot (the Webex bot normally connects out instead) |
+| `/api/settings/notifications-pause`, `/api/settings/activity-bot`, `/api/settings/clock` | pausing notifications, the bot's settings and connection, the server clock |
+| `/api/live` | live updates (server-sent events) |
 
 ## 10. Testing
 
@@ -915,7 +1000,7 @@ Playwright tests (report uploaded on failure) and `npm audit`; and
 `docker compose config` validation.
 
 Database calls made through the application data facade are timed in-process. The
-management-only Deployment Health view reports pool pressure, aggregate latency and
+management-only System health view (Settings → Backups & health) reports pool pressure, aggregate latency and
 a bounded list of slow-query labels. Labels contain only the SQL operation and table;
 query text, parameters and customer data are never retained. `SLOW_QUERY_MS` may
 override the default 250 ms threshold. The backup helper integrity-checks each archive
@@ -926,7 +1011,7 @@ Scheduled weekly reports and Request Tracker synchronizations run through the
 PostgreSQL `background_jobs` queue. Workers claim rows with `FOR UPDATE SKIP LOCKED`,
 deduplicate active work, retry transient failures with bounded backoff, recover stale
 locks after a restart and retain thirty days of job history. Queue backlog and recent
-failures appear in the management Deployment Health checklist. Manual ticket sync
+failures appear in the System health checklist. Manual ticket sync
 remains synchronous so administrators receive its detailed result immediately.
 Custom Report Excel and CSV exports also use this queue. Generated files are encrypted
 at rest with `ATTACHMENT_KEY`, can be read only by the manager who requested them,
@@ -940,7 +1025,7 @@ core metrics render before secondary visit and customer panels finish. Smart Sea
 uses validated server pagination with stale-request protection in the client. On real
 PostgreSQL deployments, `pg_trgm` GIN indexes accelerate the existing literal
 substring searches for project, task and maintenance-visit titles and descriptions;
-Deployment Health reports if any expected index is missing.
+System health reports if any expected index is missing.
 
 Not covered: a manual browser and screen-reader pass on real staging data, real-device
 testing, and end-to-end runs of the browser against the real API.

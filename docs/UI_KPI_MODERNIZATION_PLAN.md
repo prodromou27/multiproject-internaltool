@@ -1,5 +1,9 @@
 # UI, branding and KPI modernization plan
 
+> **Historical.** The plan as reviewed in September 2026. Part was delivered and the broad
+> visual redesign was later reverted in favour of the original look with small changes. For
+> how the app works now, read [APP_OVERVIEW.md](APP_OVERVIEW.md).
+
 Reviewed on 2026-09-23 against `DEV-3` at commit `975cb61`. This document records
 the architecture review and recommended delivery sequence. It deliberately separates
 security, data-model and design-system work so each stage can be reviewed, tested,

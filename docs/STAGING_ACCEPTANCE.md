@@ -76,6 +76,11 @@ explicit permission override.
   step shows the changes before anything is saved.
 - In Settings → Backups & health → Storage, check the retention days; on a customer's
   Reports, download a previous report and generate one again whose file was removed.
+- Create a project with a Project ID and start date (a duplicate ID must be refused).
+  Give a task a second engineer and a file; as that engineer, update it. Delete a test
+  project and an archived test customer for good, and check the audit log records both.
+- Open **Help** as an engineer and a manager: each sees their own topics; the ? button on
+  Tasks opens the Tasks topic.
 
 ## Connections
 
@@ -90,8 +95,14 @@ Request Tracker test queue. Record the result of each in the release record.
   check it arrives, is not marked as spam, and its links point to the staging address.
 - **Teams and Webex** (same page): send a test to each channel; then create one event
   that is set to notify (e.g. a task assigned) and check it arrives once.
-- **Activity bot** (Settings → Integrations): log one activity by chatting with the bot
-  and check it appears in the Activity Log for the right engineer.
+- **Activity bot** (Settings → Integrations): Settings shows "Connected to Webex". Log one
+  activity by chatting with the bot and check it appears in the Activity Log for the right
+  engineer; then try `tasks`, `today` and `done <number>` on a test task. Settings shows
+  the last message and what became of it.
+- **Pausing notifications** (Settings → Email & notifications): pause, assign a test task
+  (nothing reaches Teams, Webex or email; the bell does), then resume.
+- **Team Webex space** (Settings → Users & teams → Teams): give a test team a test space
+  with the bot in it; a task given to the team is posted there once.
 - **Request Tracker** (Settings → Integrations): "Test Connection", "Sync now", then
   check a test ticket shows on its customer with the mapped status and owner; change
   it in RT and confirm the next sync updates it.

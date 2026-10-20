@@ -1,5 +1,8 @@
 # Engineering Operations platform: discovery and delivery
 
+> **Historical.** This plan was delivered; it is kept for its reasoning and constraints. For
+> how the app works now, read [APP_OVERVIEW.md](APP_OVERVIEW.md).
+
 Reviewed on 2026-09-17 against DEV-3. This document tracks the requested extension
 of TeamHub. It complements `APP_OVERVIEW.md`; it does not replace the existing
 application or promise that every listed gap has already been resolved.

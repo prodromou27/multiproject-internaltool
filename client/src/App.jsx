@@ -38,6 +38,7 @@ const CustomerResponses = lazy(() => import('./pages/CustomerResponses'));
 const Workload          = lazy(() => import('./pages/Workload'));
 const SkillMatrix       = lazy(() => import('./pages/SkillMatrix'));
 const Notes             = lazy(() => import('./pages/Notes'));
+const HelpCenter        = lazy(() => import('./pages/HelpCenter'));
 const Reminders         = lazy(() => import('./pages/Reminders'));
 const Vulnerabilities   = lazy(() => import('./pages/Vulnerabilities'));
 const SoftwareVersions  = lazy(() => import('./pages/SoftwareVersions'));
@@ -217,6 +218,8 @@ export default function App() {
           <Route path="/skills"              element={<PrivateRoute page="skills"><SkillMatrix /></PrivateRoute>} />
           <Route path="/sla"               element={<PrivateRoute page="sla"><SLAPage /></PrivateRoute>} />
           <Route path="/notes"               element={<PrivateRoute page="notes"><Notes /></PrivateRoute>} />
+          <Route path="/help"                element={<PrivateRoute page="help"><HelpCenter /></PrivateRoute>} />
+          <Route path="/help/:topic"         element={<PrivateRoute page="help"><HelpCenter /></PrivateRoute>} />
           <Route path="/reminders"           element={<PrivateRoute page="reminders"><Reminders /></PrivateRoute>} />
           <Route path="/vulnerabilities"     element={<PrivateRoute page="vulnerabilities"><Vulnerabilities /></PrivateRoute>} />
           <Route path="/software"            element={<PrivateRoute page="softwareVersions"><SoftwareVersions /></PrivateRoute>} />
