@@ -17,7 +17,7 @@ test('a save over someone else\'s change keeps the input and shows what they cha
   await page.goto('/projects/1');
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  const title = dialog.getByRole('textbox').first();
+  const title = dialog.getByLabel('Project name *');
   await title.fill('Network refresh, Rotterdam');
   await dialog.getByRole('button', { name: 'Save' }).click();
 
@@ -25,7 +25,7 @@ test('a save over someone else\'s change keeps the input and shows what they cha
   const panel = dialog.getByRole('alert').filter({ hasText: 'Someone else saved this project after you opened it.' });
   await expect(panel).toBeVisible();
   await expect(title).toHaveValue('Network refresh, Rotterdam');
-  await expect(panel.getByRole('row', { name: /Title Network refresh, phase 2 Network refresh, Rotterdam/ })).toBeVisible();
+  await expect(panel.getByRole('row', { name: /Project name Network refresh, phase 2 Network refresh, Rotterdam/ })).toBeVisible();
   await expect(panel.getByRole('row', { name: /Priority high medium/ })).toBeVisible();
 
   // "Use theirs" loads their values; nothing is saved until Save.

@@ -1454,6 +1454,12 @@ async function applyMigrations(pool, transaction) {
     ALTER TABLE attachments ADD COLUMN IF NOT EXISTS task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE;
     CREATE INDEX IF NOT EXISTS idx_attachments_task ON attachments(task_id);
   `]);
+  migrations.push(['20261126_project_code_and_start', `
+    -- A project's own reference (typed, unique) and its start date; required when a project is created.
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_code TEXT;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS start_date TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_code ON projects(project_code) WHERE project_code IS NOT NULL;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

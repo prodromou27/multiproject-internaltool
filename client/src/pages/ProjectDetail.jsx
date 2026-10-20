@@ -173,13 +173,15 @@ export default function ProjectDetail() {
   async function saveEdit(e) {
     e?.preventDefault();
     try {
-      await api.updateProject(id, { ...editForm, version: projectEdit.version });
+      // A project made before Project IDs existed may stay without one until someone types it.
+      const { project_code, ...rest } = editForm;
+      await api.updateProject(id, { ...rest, ...(project_code.trim() || project.project_code ? { project_code } : {}), version: projectEdit.version });
       toast.success('Project updated');
       setShowEdit(false); load();
     } catch (err) { if (!projectEdit.caught(err)) toast.error(err.message); }
   }
   // The edit form's values from a project record.
-  const editValues = p => ({ title: p.title, description: p.description, priority: p.priority, deadline: p.deadline?.slice(0, 10) || '', status: p.status, customer_id: p.customer_id || '', pending_from_customer: p.pending_from_customer || '', completion_pct: p.completion_pct ?? '', rag_override: p.rag_override || '' });
+  const editValues = p => ({ project_code: p.project_code || '', start_date: p.start_date?.slice(0, 10) || '', title: p.title, description: p.description, priority: p.priority, deadline: p.deadline?.slice(0, 10) || '', status: p.status, customer_id: p.customer_id || '', pending_from_customer: p.pending_from_customer || '', completion_pct: p.completion_pct ?? '', rag_override: p.rag_override || '' });
 
   async function addTask(e) {
     e.preventDefault();
@@ -238,11 +240,12 @@ export default function ProjectDetail() {
           <p className="text-sm text-muted u-c81ce4b">
             <Link to="/projects" className="inline-flex items-center gap-4"><ChevronLeft size={14} /> Projects</Link>
           </p>
-          <h1 className="page-title">{project.title}</h1>
+          <h1 className="page-title">{project.title}{project.project_code && <span className="text-muted text-sm"> {project.project_code}</span>}</h1>
           <div className="flex-center gap-8 mt-4 u-62da067">
             <StatusBadge entityType="project" s={project.status} />
             <PriorityBadge p={project.priority} />
             {project.rag_status && <RagBadge rag={project.rag_status} />}
+            {project.start_date && <span className="text-sm text-muted">Started: {fmtDate(project.start_date)}</span>}
             {project.deadline && <span className={'text-sm ' + (isOverdue(project.deadline) && !['closed','cancelled'].includes(project.status) ? 'overdue' : 'text-muted')}>Due: {fmtDate(project.deadline)}</span>}
           </div>
         </div>
@@ -605,10 +608,13 @@ export default function ProjectDetail() {
         <Modal title="Edit Project" onClose={() => setShowEdit(false)}>
           <form onSubmit={saveEdit}>
             <EditConflict edit={projectEdit} what="project" mine={editForm}
-              fields={[['title', 'Title'], ['description', 'Description'], ['priority', 'Priority'], ['status', 'Status'], ['deadline', 'Deadline', d => d?.slice(0, 10) || '—'], ['customer_id', 'Customer'], ['pending_from_customer', 'Waiting for'], ['completion_pct', 'Completion %'], ['rag_override', 'RAG override']]}
+              fields={[['project_code', 'Project ID'], ['title', 'Project name'], ['start_date', 'Start date', d => d?.slice(0, 10) || '—'], ['description', 'Description'], ['priority', 'Priority'], ['status', 'Status'], ['deadline', 'Deadline', d => d?.slice(0, 10) || '—'], ['customer_id', 'Customer'], ['pending_from_customer', 'Waiting for'], ['completion_pct', 'Completion %'], ['rag_override', 'RAG override']]}
               onKeepMine={() => { projectEdit.keepMine(); saveEdit(); }}
               onUseTheirs={() => setEditForm(editValues(projectEdit.takeTheirs()))} />
-            <div className="form-group"><label>Title</label><input value={editForm.title} onChange={setE('title')} required /></div>
+            <div className="form-row">
+              <div className="form-group"><label htmlFor="edit-project-code">Project ID{project.project_code ? ' *' : ''}</label><input id="edit-project-code" value={editForm.project_code} onChange={setE('project_code')} maxLength={50} required={!!project.project_code} /></div>
+              <div className="form-group"><label htmlFor="edit-project-name">Project name *</label><input id="edit-project-name" value={editForm.title} onChange={setE('title')} required /></div>
+            </div>
             <div className="form-group"><label>Description</label><textarea value={editForm.description || ''} onChange={setE('description')} /></div>
             <div className="form-row">
               <div className="form-group"><label>Priority</label>
@@ -664,7 +670,10 @@ export default function ProjectDetail() {
                 />
               </div>
             )}
-            <div className="form-group"><label>Deadline</label><input type="date" value={editForm.deadline || ''} onChange={setE('deadline')} /></div>
+            <div className="form-row">
+              <div className="form-group"><label htmlFor="edit-project-start">Start date</label><input id="edit-project-start" type="date" value={editForm.start_date || ''} onChange={setE('start_date')} /></div>
+              <div className="form-group"><label htmlFor="edit-project-deadline">Deadline</label><input id="edit-project-deadline" type="date" value={editForm.deadline || ''} min={editForm.start_date || undefined} onChange={setE('deadline')} /></div>
+            </div>
             <div className="form-group">
               <label>Health Override (RAG)</label>
               <select value={editForm.rag_override || ''} onChange={setE('rag_override')}>

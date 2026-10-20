@@ -141,7 +141,7 @@ function CustomerPicker({ value, onChange, onCustomerCreated }) {
 /* ── Project Form ─────────────────────────────────────────────── */
 function ProjectForm({ initial, users, onSave, onClose, onCustomerCreated }) {
   const toast = useToast();
-  const [form, setForm] = useState(() => ({ title: '', description: '', priority: 'medium', deadline: '', customer_id: null,...(initial || {}),member_ids:initial?.member_ids || [] }));
+  const [form, setForm] = useState(() => ({ project_code: '', title: '', description: '', priority: 'medium', start_date: '', deadline: '', customer_id: null,...(initial || {}),member_ids:initial?.member_ids || [] }));
   const [saving,      setSaving]      = useState(false);
   const [memberError, setMemberError] = useState('');
   const draft = useFormDraft({ name: `project:${initial?.id || 'new'}`, value: form, base: initial?.updated_at ?? null });
@@ -166,16 +166,20 @@ function ProjectForm({ initial, users, onSave, onClose, onCustomerCreated }) {
   return (
     <form onSubmit={submit}>
       <DraftBanner draft={draft} onRestore={data => data && setForm(data)} />
-      <div className="form-group"><label>Title *</label><input value={form.title} onChange={set('title')} required /></div>
-      <div className="form-group"><label>Description</label><textarea value={form.description || ''} onChange={set('description')} /></div>
       <div className="form-row">
+        <div className="form-group"><label htmlFor="project-code">Project ID *</label><input id="project-code" value={form.project_code || ''} onChange={set('project_code')} maxLength={50} required placeholder="e.g. PRJ-2026-014" /></div>
+        <div className="form-group"><label htmlFor="project-name">Project name *</label><input id="project-name" value={form.title} onChange={set('title')} maxLength={500} required /></div>
+      </div>
+      <div className="form-group"><label htmlFor="project-description">Description *</label><textarea id="project-description" value={form.description || ''} onChange={set('description')} maxLength={10000} required /></div>
+      <div className="form-row">
+        <div className="form-group"><label htmlFor="project-start">Start date *</label><input id="project-start" type="date" value={form.start_date || ''} onChange={set('start_date')} required /></div>
+        <div className="form-group"><label htmlFor="project-deadline">Deadline</label><input id="project-deadline" type="date" value={form.deadline || ''} min={form.start_date || undefined} onChange={set('deadline')} /></div>
         <div className="form-group">
-          <label>Priority</label>
-          <select value={form.priority} onChange={set('priority')}>
+          <label htmlFor="project-priority">Priority</label>
+          <select id="project-priority" value={form.priority} onChange={set('priority')}>
             <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
           </select>
         </div>
-        <div className="form-group"><label>Deadline</label><input type="date" value={form.deadline || ''} onChange={set('deadline')} /></div>
       </div>
       <div className="form-group">
         <label>Customer</label>
@@ -304,6 +308,7 @@ export default function Projects() {
       {isManager && <button onClick={event => handlePin(p,event)} title={p.is_pinned?'Unpin project':'Pin to dashboard'}
         className={`project-pin${p.is_pinned?' is-pinned':''}`} aria-pressed={!!p.is_pinned}><Pin size={13} /></button>}
       <Link to={`/projects/${p.id}`} className="font-semibold">{p.title}</Link>
+      {p.project_code && <span className="text-muted text-sm">{p.project_code}</span>}
     </div> },
     { key:'customer',label:'Customer',render:p => p.customer_name
       ? <span className="project-customer"><Building2 size={12} /> {p.customer_name}</span>

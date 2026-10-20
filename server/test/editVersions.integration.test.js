@@ -32,7 +32,7 @@ test('customers: the second of two editors gets the current record instead of ov
 });
 
 test('projects: the same, and quick status changes do not need a version', async () => {
-  const made = await as('POST', '/api/projects', { title: 'Versioned project', customer_id: ids.customer });
+  const made = await as('POST', '/api/projects', { project_code: 'PRJ-VERSIONED', title: 'Versioned project', description: 'Edit versions', start_date: '2026-10-01', member_ids: [ids.engineerEnabled], customer_id: ids.customer });
   assert.ok([200, 201].includes(made.status), JSON.stringify(made.data));
   const id = made.data.id;
   const opened = (await as('GET', `/api/projects/${id}`)).data;

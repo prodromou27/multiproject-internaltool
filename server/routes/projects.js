@@ -94,6 +94,20 @@ const VALID_PROJECT_STATUSES = new Set([
 ]);
 const VALID_RAG = new Set(['red', 'amber', 'green']);
 
+const MAX_CODE = 50;
+/** A Project ID as typed: trimmed, 1–50 characters; { value } or { error }. */
+function checkProjectCode(value) {
+  if (typeof value !== 'string' || !value.trim()) return { error: 'Project ID required' };
+  const code = value.trim();
+  if (code.length > MAX_CODE) return { error: `Project ID cannot exceed ${MAX_CODE} characters` };
+  return { value: code };
+}
+/** The project already using a Project ID (any letter case), other than exceptId. */
+async function codeTakenBy(code, exceptId = null) {
+  const row = await db.prepare('SELECT id, title FROM projects WHERE LOWER(project_code) = LOWER(?)').get(code);
+  return row && Number(row.id) !== Number(exceptId) ? row : null;
+}
+
 function isIsoDate(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
     && new Date(value).toISOString().slice(0, 10) === value;
@@ -161,7 +175,7 @@ router.get('/', requireAuth, async (req, res) => {
   const statuses=new Set(['open','all','overdue',...VALID_PROJECT_STATUSES]);
   if (!Number.isSafeInteger(page) || page<1 || page>10_000 || !Number.isSafeInteger(pageSize) || pageSize<1 || pageSize>100 || search.length>200 || !statuses.has(status) || !['all','red','amber','green'].includes(rag)) return res.status(400).json({ error:'Invalid project filters or pagination' });
   const terminal=new Set(['closed','cancelled']);
-  const searched=search ? rows.map(withName).filter(row => [row.title,row.customer_name,row.created_by_name].some(value => String(value || '').toLowerCase().includes(search))) : rows;
+  const searched=search ? rows.map(withName).filter(row => [row.project_code,row.title,row.customer_name,row.created_by_name].some(value => String(value || '').toLowerCase().includes(search))) : rows;
   const counts={ all:searched.length,open:searched.filter(row => !terminal.has(row.status)).length,overdue:searched.filter(row => !terminal.has(row.status) && row.status!=='pending_approval' && row.deadline && row.deadline<require('../appTime').today()).length };
   for (const value of VALID_PROJECT_STATUSES) counts[value]=searched.filter(row => row.status===value).length;
   let filtered=status==='all' ? searched : status==='open' ? searched.filter(row => !terminal.has(row.status)) : status==='overdue' ? searched.filter(row => !terminal.has(row.status) && row.status!=='pending_approval' && row.deadline && row.deadline<require('../appTime').today()) : searched.filter(row => row.status===status);
@@ -269,13 +283,21 @@ router.get('/:id/activity', requireAuth, requireProjectId, async (req, res) => {
 });
 
 router.post('/', requireManager, async (req, res) => {
-  const { title, description, priority, deadline, customer_id, member_ids } = req.body;
-  if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'Title required' });
+  const { title, description, priority, deadline, customer_id, member_ids, start_date } = req.body;
+  // Required: Project ID, name, description, start date and at least one engineer; the deadline is optional.
+  const code = checkProjectCode(req.body.project_code);
+  if (code.error) return res.status(400).json({ error: code.error });
+  if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'Project name required' });
   if (title.trim().length > 500) return res.status(400).json({ error: 'Title cannot exceed 500 characters' });
-  if (description !== undefined && description !== null && typeof description !== 'string') return res.status(400).json({ error: 'Description must be text' });
-  if (description && description.length > 10000) return res.status(400).json({ error: 'Description cannot exceed 10000 characters' });
+  if (typeof description !== 'string' || !description.trim()) return res.status(400).json({ error: 'Description required' });
+  if (description.length > 10000) return res.status(400).json({ error: 'Description cannot exceed 10000 characters' });
   if (priority && !VALID_PROJECT_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
+  if (!isIsoDate(start_date)) return res.status(400).json({ error: 'Start date required (YYYY-MM-DD)' });
   if (deadline && !isIsoDate(deadline)) return res.status(400).json({ error: 'deadline must be YYYY-MM-DD' });
+  if (deadline && deadline < start_date) return res.status(400).json({ error: 'The deadline cannot be before the start date' });
+  if (!Array.isArray(member_ids) || !member_ids.length) return res.status(400).json({ error: 'Assign at least one engineer' });
+  const taken = await codeTakenBy(code.value);
+  if (taken) return res.status(409).json({ error: `Project ID ${code.value} is already used by "${taken.title}"` });
   const normalizedCustomer = normalizeOptionalId(customer_id, 'customer_id');
   if (normalizedCustomer.error) return res.status(400).json({ error: normalizedCustomer.error });
   if (normalizedCustomer.value) {
@@ -293,8 +315,8 @@ router.post('/', requireManager, async (req, res) => {
       return res.status(400).json({ error: 'member_ids may only include active engineers' });
   }
   const pid = await db.transaction(async tx => {
-    const result = await tx.prepare('INSERT INTO projects (title, description, priority, deadline, customer_id, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(title.trim(), description || null, priority || 'medium', deadline || null, normalizedCustomer.value || null, req.user.id);
+    const result = await tx.prepare('INSERT INTO projects (project_code, title, description, priority, start_date, deadline, customer_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(code.value, title.trim(), description.trim(), priority || 'medium', start_date, deadline || null, normalizedCustomer.value || null, req.user.id);
     const ins = tx.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING');
     for (const uid of normalizedMemberIds) await ins.run(result.lastInsertRowid, uid);
     return result.lastInsertRowid;
@@ -325,7 +347,21 @@ router.put('/:id', requireManager, async (req, res) => {
   if (version.error) return res.status(400).json({ error: version.error });
   if (version.value !== undefined && version.value !== Number(p.edit_version)) return conflict(res, 'This project', { ...p, customer_name: undefined });
 
-  const { title, description, priority, deadline, customer_id, status, pending_from_customer, completion_pct, rag_override } = req.body;
+  const { title, description, priority, deadline, customer_id, status, pending_from_customer, completion_pct, rag_override, start_date } = req.body;
+  // Project ID and start date: when sent, a Project ID cannot be emptied and stays unique; '' clears the start date.
+  let nextCode = p.project_code;
+  if (req.body.project_code !== undefined) {
+    const code = checkProjectCode(req.body.project_code);
+    if (code.error) return res.status(400).json({ error: code.error });
+    const taken = await codeTakenBy(code.value, p.id);
+    if (taken) return res.status(409).json({ error: `Project ID ${code.value} is already used by "${taken.title}"` });
+    nextCode = code.value;
+  }
+  if (start_date !== undefined && start_date !== null && start_date !== '' && !isIsoDate(start_date)) return res.status(400).json({ error: 'start_date must be YYYY-MM-DD' });
+  const nextStart = start_date === undefined ? p.start_date : (start_date || null);
+  const nextDeadline = deadline === undefined ? p.deadline : (deadline || null);
+  if (nextStart && nextDeadline && nextDeadline < nextStart && (start_date !== undefined || deadline !== undefined))
+    return res.status(400).json({ error: 'The deadline cannot be before the start date' });
   if (pending_from_customer != null && (typeof pending_from_customer !== 'string' || pending_from_customer.length > 10000))
     return res.status(400).json({ error: 'pending_from_customer must be text of at most 10000 characters' });
   if (title !== undefined && (typeof title !== 'string' || !title.trim())) return res.status(400).json({ error: 'Title cannot be empty' });
@@ -371,10 +407,10 @@ router.put('/:id', requireManager, async (req, res) => {
   const changed = await db.prepare(`UPDATE projects SET title=COALESCE(?,title), description=COALESCE(?,description),
     priority=COALESCE(?,priority), deadline=?, customer_id=?,
     status=COALESCE(?,status), pending_from_customer=?,
-    completion_pct=COALESCE(?,completion_pct), rag_override=?, edit_version=edit_version+1,
+    completion_pct=COALESCE(?,completion_pct), rag_override=?, project_code=?, start_date=?, edit_version=edit_version+1,
     updated_at=app_now() WHERE id=? AND status=? AND closure_request_version=? AND edit_version=?`)
-    .run(title?.trim() || null, description, priority, deadline === undefined ? p.deadline : (deadline || null), normalizedCustomer.value !== undefined ? normalizedCustomer.value : p.customer_id, status, newPfc,
-         completion_pct !== undefined ? completion_pct : null, newRagOverride, p.id, p.status, p.closure_request_version, p.edit_version);
+    .run(title?.trim() || null, description, priority, nextDeadline, normalizedCustomer.value !== undefined ? normalizedCustomer.value : p.customer_id, status, newPfc,
+         completion_pct !== undefined ? completion_pct : null, newRagOverride, nextCode, nextStart, p.id, p.status, p.closure_request_version, p.edit_version);
   if (!changed.changes) {
     const now = await db.prepare('SELECT * FROM projects WHERE id = ?').get(p.id);
     if (version.value !== undefined) return conflict(res, 'This project', now);

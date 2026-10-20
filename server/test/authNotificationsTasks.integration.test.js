@@ -354,13 +354,26 @@ test('customer contracts validate merged dates and allow clearing optional field
 });
 
 test('projects validate memberships, calendar dates, status updates and pin access', async () => {
-  for (const body of [{ title: 'Invalid members', member_ids: {} }, { title: 'Invalid date', deadline: '2026-02-30' },
-    { title: 'Wrong role', member_ids: [ids.manager] }]) {
-    assert.equal((await api('/api/projects', { method: 'POST', token: ids.tokenManager, body })).status, 400);
+  const required = { project_code: 'PRJ-REVIEW', description: 'Quarterly review', start_date: '2026-10-01', member_ids: [ids.engineerEnabled] };
+  for (const body of [{ ...required, title: 'Invalid members', member_ids: {} }, { ...required, title: 'Invalid date', deadline: '2026-02-30' },
+    { ...required, title: 'Wrong role', member_ids: [ids.manager] }, { ...required, title: 'No engineers', member_ids: [] },
+    { ...required, title: 'No ID', project_code: '  ' }, { ...required, title: 'No start', start_date: '' },
+    { ...required, title: 'No description', description: '' }, { ...required, title: 'Ends first', deadline: '2026-09-30' }]) {
+    assert.equal((await api('/api/projects', { method: 'POST', token: ids.tokenManager, body })).status, 400, body.title);
   }
   const created = await api('/api/projects', { method: 'POST', token: ids.tokenManager,
-    body: { title: 'Project review', deadline: '2026-12-01', member_ids: [ids.engineerEnabled] } });
-  assert.equal(created.status, 200);
+    body: { ...required, title: 'Project review', deadline: '2026-12-01' } });
+  assert.equal(created.status, 200, JSON.stringify(created.data));
+  const stored = await db.prepare('SELECT project_code, start_date FROM projects WHERE id=?').get(created.data.id);
+  assert.deepEqual([stored.project_code, stored.start_date], ['PRJ-REVIEW', '2026-10-01']);
+  // The Project ID is unique, whatever the letter case, on create and on edit.
+  const twin = await api('/api/projects', { method: 'POST', token: ids.tokenManager, body: { ...required, project_code: 'prj-review', title: 'Twin' } });
+  assert.equal(twin.status, 409);
+  assert.match(twin.data.error, /already used by "Project review"/);
+  const other = await api('/api/projects', { method: 'POST', token: ids.tokenManager, body: { ...required, project_code: 'PRJ-OTHER', title: 'Other' } });
+  assert.equal((await api(`/api/projects/${other.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { project_code: 'PRJ-REVIEW' } })).status, 409);
+  assert.equal((await api(`/api/projects/${other.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { project_code: 'PRJ-OTHER-2', start_date: '2026-11-01' } })).status, 200);
+  assert.equal((await api(`/api/projects/${other.data.id}`, { method: 'PUT', token: ids.tokenManager, body: { deadline: '2026-10-15' } })).status, 400, 'before the start');
   const endpoint = `/api/projects/${created.data.id}`;
   if (process.env.TEST_DATABASE_URL) {
     const page=await api('/api/projects?paged=1&page=1&page_size=1&search=Project%20review&status=open&rag=all',{ token:ids.tokenManager });
