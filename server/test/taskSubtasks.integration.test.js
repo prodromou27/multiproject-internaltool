@@ -201,3 +201,12 @@ test('a subtask has an owner and a due date; the owner ticks it on someone else\
   await api(`/api/tasks/${id}/subtasks/${mr2.id}`, { method: 'PUT', token: ids.tokenManager, body: { assigned_to: ids.engineerDisabled, due_date: '2026-11-21' } });
   assert.deepEqual((await api('/api/tasks/my-subtasks', { token: ids.tokenDisabled })).data.map(s => [s.title, s.due_date]), [['Replace MR-02', '2026-11-21']]);
 });
+
+test('an engineer opening a colleague\'s task of a customer they work with sees its subtasks, read-only', async () => {
+  const id = (await newTask({ assigned_to: ids.engineerDisabled, subtasks: ['Back up config', 'Upgrade firmware'] })).data.id;
+  const seen = await subtasksOf(id, ids.tokenEnabled);
+  assert.equal(seen.status, 200, 'works with the customer');
+  assert.deepEqual(seen.data.map(s => s.title), ['Back up config', 'Upgrade firmware']);
+  assert.equal((await api(`/api/tasks/${id}/subtasks`, { method: 'POST', token: ids.tokenEnabled, body: { title: 'More' } })).status, 403);
+  assert.equal((await api(`/api/tasks/${id}/subtasks/${seen.data[0].id}`, { method: 'PUT', token: ids.tokenEnabled, body: { done: true } })).status, 403);
+});

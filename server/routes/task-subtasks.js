@@ -1,7 +1,7 @@
 const router = require('express').Router({ mergeParams: true });
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { worksOnTask } = require('../taskAccess');
+const { worksOnTask, canReadTask } = require('../taskAccess');
 const { checkOwner, checkDue, notifyOwners } = require('../taskSubtasks');
 const { decrypt } = require('../fieldCipher');
 const { MAX_PER_TASK, checkNewSubtasks, insertSubtasks } = require('../taskSubtasks');
@@ -9,7 +9,8 @@ const { MAX_PER_TASK, checkNewSubtasks, insertSubtasks } = require('../taskSubta
 /* Subtasks of one task (/api/tasks/:id/subtasks): a checklist the task cannot be
    completed without. Managers, and engineers who work on the task (theirs, or
    their team's), list, add, tick, rename, assign and remove them; an engineer who
-   owns a subtask of someone else's task sees the list and ticks their own. When the last open
+   owns a subtask of someone else's task sees the list and ticks their own; anyone else who
+   may see the task (e.g. a colleague's task of a customer they work with) reads the list. When the last open
    subtask is done the task is completed; opening one again (unticking or adding)
    puts a completed task back in progress. Replies: { subtasks, task: { status } }. */
 
@@ -22,7 +23,8 @@ router.use(requireAuth, async (req, res, next) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     const full = req.user.role === 'manager' || (req.user.role === 'engineer' && await worksOnTask(req.user, task));
     const owner = !full && req.user.role === 'engineer' && !!await db.prepare('SELECT 1 FROM task_subtasks WHERE task_id = ? AND assigned_to = ?').get(task.id, req.user.id);
-    if (!full && !owner) return res.status(403).json({ error: 'Forbidden' });
+    const reader = !full && !owner && req.method === 'GET' && await canReadTask(req.user, { ...task, customer_id: task.task_customer_id });
+    if (!full && !owner && !reader) return res.status(403).json({ error: 'Forbidden' });
     // Owners of a subtask only: read the list, and tick or untick their own.
     if (!full && !(req.method === 'GET' || (req.method === 'PUT' && /^\/\d+$/.test(req.path)))) return res.status(403).json({ error: 'You can tick only your own subtasks of this task' });
     req.ownerOnly = !full;
