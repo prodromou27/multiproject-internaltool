@@ -88,7 +88,6 @@ test('recommendations enforce customer links and concurrent conversions on Postg
   assert.deepEqual(responses.map(row => row.status).sort(), [201,409]);
   assert.equal(Number((await db.prepare('SELECT COUNT(*) AS total FROM projects WHERE customer_id=?').get(customer)).total), 1);
   assert.equal((await api(`/api/maintenance-visits/${visit}`, { method: 'PUT', token: ids.tokenManager, body: { customer_id: ids.customer } })).status, 409);
-  assert.equal((await api(`/api/maintenance-visits/${visit}`, { method: 'DELETE', token: ids.tokenManager })).status, 409);
   const converted = responses.find(row => row.status === 201).data;
   assert.equal((await api(`/api/projects/${converted.related_project_id}`, { method: 'PUT', token: ids.tokenManager, body: { customer_id: ids.customer } })).status, 409);
   assert.equal((await api(`/api/customers/${customer}`, { method: 'DELETE', token: ids.tokenManager })).status, 409);
@@ -99,6 +98,9 @@ test('recommendations enforce customer links and concurrent conversions on Postg
   assert.equal((await api(`${path}?page=0`, { token: ids.tokenManager })).status, 400);
   const overview = await api(`/api/customers/${customer}/overview`, { token: ids.tokenManager });
   assert.equal(overview.data.timeline.filter(row => row.kind === 'recommendation').length, 2);
+  // Deleting the visit for good keeps the recommendation raised on it, without the link.
+  assert.equal((await api(`/api/maintenance-visits/${visit}`, { method: 'DELETE', token: ids.tokenManager })).status, 200);
+  assert.equal((await db.prepare('SELECT source_visit_id FROM customer_recommendations WHERE id = ?').get(created.data.id)).source_visit_id, null);
 });
 
 test('customer overview rejects unauthorized roles and malformed inputs', async () => {
