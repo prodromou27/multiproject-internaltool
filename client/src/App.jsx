@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { dropLegacyPrefs, loadServerPrefs, setPrefsUser } from './utils/prefs';
+import { useDisplayZoom } from './utils/zoom';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import Login from './pages/Login';
 import ConfirmEmail from './pages/ConfirmEmail';
@@ -89,6 +90,8 @@ export default function App() {
   const [user, setUser] = useState(null);
   // View preferences are kept per person (utils/prefs.js).
   setPrefsUser(user?.id);
+  // The person's display size (Profile; 90% unless changed).
+  useDisplayZoom();
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
   const [passwordChangeUser, setPasswordChangeUser] = useState(null);

@@ -563,6 +563,8 @@ const VIEW_PREFERENCES = {
     && (p.myTasksOnly === undefined || typeof p.myTasksOnly === 'boolean')
     && Object.keys(p).every(k => ['name', 'filter', 'priorityFilter', 'search', 'myTasksOnly'].includes(k))),
   'tasks.columns': value => Array.isArray(value) && value.length <= 30 && value.every(c => typeof c === 'string' && /^[a-z_]{1,30}$/.test(c)),
+  // How large the app is drawn (client utils/zoom.js).
+  'display.zoom': value => [0.8, 0.9, 1, 1.1].includes(value),
 };
 router.get('/preferences', requireAuth, async (req, res) => {
   const rows = await db.prepare('SELECT pref_key, value FROM user_preferences WHERE user_id = ?').all(req.user.id);

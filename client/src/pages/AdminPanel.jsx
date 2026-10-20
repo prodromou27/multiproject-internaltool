@@ -287,7 +287,7 @@ export default function AdminPanel() {
           border-radius: 8px;
           background: var(--surface);
           padding: 12px;
-          max-height: calc(100vh - 36px);
+          max-height: calc(100vh / var(--zoom, 1) - 36px);
           overflow-y: auto;
         }
         .settings-search input {

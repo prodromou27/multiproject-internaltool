@@ -186,7 +186,7 @@ a { color: var(--primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 /* ── Layout ───────────────────────────────────────────────── */
-.layout { display: flex; min-height: 100vh; }
+.layout { display: flex; min-height: calc(100vh / var(--zoom, 1)); }
 
 /* ── Sidebar ──────────────────────────────────────────────── */
 .sidebar {
@@ -198,7 +198,7 @@ a:hover { text-decoration: underline; }
   flex-shrink: 0;
   position: sticky;
   top: 0;
-  height: 100vh;
+  height: calc(100vh / var(--zoom, 1));
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 100;
@@ -404,7 +404,7 @@ kbd {
 .search-footer:hover { background: var(--gray-50) !important; }
 
 .command-backdrop {
-  position: fixed; inset: 0; z-index: 10000; padding: 12vh 16px 16px;
+  position: fixed; inset: 0; z-index: 10000; padding: calc(12vh / var(--zoom, 1)) 16px 16px;
   display: flex; align-items: flex-start; justify-content: center;
   background: rgba(15,23,42,.48); backdrop-filter: blur(3px);
 }
@@ -416,7 +416,7 @@ kbd {
 .command-input-row { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--gray-100); }
 .command-input-row svg { color: var(--gray-500); flex-shrink: 0; }
 .command-input-row input { flex: 1; padding: 0; border: 0; outline: 0; background: transparent; color: var(--gray-900); font-size: 15px; }
-.command-results { max-height: min(410px, 55vh); overflow-y: auto; padding: 7px; }
+.command-results { max-height: min(410px, calc(55vh / var(--zoom, 1))); overflow-y: auto; padding: 7px; }
 .command-item {
   width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 11px;
   border: 0; border-radius: 9px; background: transparent; color: var(--gray-700);
@@ -607,7 +607,7 @@ tr:hover td { background: var(--gray-50); transition: background .1s; }
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
   width: 100%; max-width: 540px;
-  max-height: 92vh; overflow-y: auto;
+  max-height: calc(92vh / var(--zoom, 1)); overflow-y: auto;
   border: 1px solid var(--gray-100);
 }
 .modal-header {
@@ -713,7 +713,7 @@ tr:hover td { background: var(--gray-50); transition: background .1s; }
 
 /* ── Login (centered card) ───────────────────────────────────── */
 .login-wrap {
-  min-height: 100vh;
+  min-height: calc(100vh / var(--zoom, 1));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -989,7 +989,7 @@ tr:hover td { background: var(--gray-50); transition: background .1s; }
     position: fixed; top: 0; left: 0; bottom: 0;
     transform: translateX(-100%);
     transition: transform .25s cubic-bezier(.4,0,.2,1);
-    z-index: 200; height: 100vh;
+    z-index: 200; height: calc(100vh / var(--zoom, 1));
   }
   .sidebar.open { transform: translateX(0); }
   .sidebar-overlay.open { display: block; }
@@ -1255,7 +1255,7 @@ tr:hover td { background: var(--gray-50); transition: background .1s; }
     width: auto !important;
     max-width: none !important;
   }
-  .notification-popover { max-height: calc(100vh - var(--topbar-h) - 16px) !important; }
+  .notification-popover { max-height: calc(100vh / var(--zoom, 1) - var(--topbar-h) - 16px) !important; }
 }
 .badge-blocked { background: var(--danger-light); color: var(--danger); }
 
@@ -1354,7 +1354,7 @@ a.topbar-action { display: inline-flex; align-items: center; justify-content: ce
 .operations-shell .workspace-command { min-width: 0; width: min(440px, 40vw); }
 .workspace-command > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .command-palette { width: min(680px, calc(100vw - 32px)); }
-.command-results { max-height: min(480px, 60vh); }
+.command-results { max-height: min(480px, calc(60vh / var(--zoom, 1))); }
 .command-group { padding: 10px 12px 4px; color: var(--gray-500); font-size: 11.5px; font-weight: 600; }
 .command-item { min-width: 0; }
 .command-item .command-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; text-align: left; }
@@ -1370,7 +1370,7 @@ a.topbar-action { display: inline-flex; align-items: center; justify-content: ce
 /* Notifications pop-up: wide enough that the header stays on one line, and a
    light segmented filter instead of three heavy buttons. */
 @media (min-width: 521px) {
-  .topbar-popover.notification-popover.notification-popover.notification-popover { width: 400px; max-height: min(560px, calc(100vh - var(--topbar-h) - 16px)); }
+  .topbar-popover.notification-popover.notification-popover.notification-popover { width: 400px; max-height: min(560px, calc(100vh / var(--zoom, 1) - var(--topbar-h) - 16px)); }
 }
 .notification-popover .u-af08a6d, .notification-popover .u-64a9ece, .notification-popover .u-059aecf, .notification-popover .u-3bcf89e { white-space: nowrap; }
 .notification-popover .u-23d8d35.u-23d8d35.u-23d8d35 { gap: 2px; padding: 8px 12px; }

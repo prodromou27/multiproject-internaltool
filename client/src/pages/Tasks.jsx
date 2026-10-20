@@ -21,6 +21,7 @@ import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { Pagination,Surface } from '../components/EnterpriseUI';
 import LogHours from '../components/LogHours';
+import { pageZoom } from '../utils/zoom';
 import { useLiveRefresh } from '../live';
 
 const STATUS_LABELS = {
@@ -44,8 +45,10 @@ function TaskStatusControl({ task, statuses, onChange }) {
   const place = () => {
     const details = menu.current; if (!details?.open) return;
     const at = details.querySelector('summary').getBoundingClientRect(), list = details.querySelector('.task-status-options');
-    const below = window.innerHeight - at.bottom > list.offsetHeight + 12;
-    Object.assign(list.style, { position: 'fixed', left: `${Math.min(at.left, window.innerWidth - list.offsetWidth - 8)}px`, top: `${below ? at.bottom + 4 : at.top - list.offsetHeight - 4}px` });
+    // Screen pixels (the button, the window) and the page's zoomed pixels (the list) differ by the display size.
+    const z = pageZoom(), height = list.offsetHeight * z, width = list.offsetWidth * z;
+    const below = window.innerHeight - at.bottom > height + 12;
+    Object.assign(list.style, { position: 'fixed', left: `${Math.min(at.left, window.innerWidth - width - 8) / z}px`, top: `${(below ? at.bottom + 4 : at.top - height - 4) / z}px` });
   };
   useEffect(() => {
     const close = event => { if (menu.current?.open && !menu.current.contains(event.target)) menu.current.open = false; };

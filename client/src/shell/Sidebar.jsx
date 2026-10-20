@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, FolderOpen, CheckSquare, Wrench, Building2, Award, BarChart2, UsersIcon, Settings, Search, MessageSquare, CheckCheck, ClipboardList, FileText, StickyNote, UserCircle, ShieldCheck, Zap, Activity, BellRing, ShieldAlert, PackageCheck, GraduationCap, Gauge, ListChecks, Clock, CalendarClock, ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { api } from '../api';
 import { PRODUCT_WORDMARK } from '../product';
+import { pageZoom } from '../utils/zoom';
 import { useLiveRefresh } from '../live';
 
 /* ── Hamburger icon ──────────────────────────────────────── */
@@ -62,8 +63,9 @@ export function SidebarContent({ onNav, groups, currentPage, compact, collapsed,
     const nav = document.querySelector('.sidebar-primary-nav'), active = nav?.querySelector('a.active');
     if (!nav || !active || !nav.offsetParent) return;
     const box = nav.getBoundingClientRect(), item = active.getBoundingClientRect();
-    if (item.top < box.top) nav.scrollTop -= box.top - item.top;
-    else if (item.bottom > box.bottom) nav.scrollTop += item.bottom - box.bottom;
+    const z = pageZoom(); // screen pixels → the menu's own (zoomed) pixels
+    if (item.top < box.top) nav.scrollTop -= (box.top - item.top) / z;
+    else if (item.bottom > box.bottom) nav.scrollTop += (item.bottom - box.bottom) / z;
   }, [currentPage?.id]);
 
   return (

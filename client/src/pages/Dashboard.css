@@ -58,7 +58,7 @@
   padding: 20px; background: rgba(8,15,28,.58); backdrop-filter: blur(3px);
 }
 .dashboard-customizer {
-  width: min(520px, 100%); max-height: min(760px, 92vh); display: flex; flex-direction: column;
+  width: min(520px, 100%); max-height: min(760px, calc(92vh / var(--zoom, 1))); display: flex; flex-direction: column;
   overflow: hidden; border: 1px solid var(--gray-200); border-radius: 12px; background: var(--surface);
   box-shadow: 0 28px 80px rgba(0,0,0,.28);
 }
@@ -106,7 +106,7 @@
   .dashboard-page .focus-columns { display: block; }
   .dashboard-page .focus-columns > .card + .card { border-left: 0; border-top: 1px solid var(--dashboard-rule); }
   .dashboard-customizer-backdrop { padding: 0; align-items: stretch; }
-  .dashboard-customizer { width: 100%; max-height: 100vh; border: 0; border-radius: 0; }
+  .dashboard-customizer { width: 100%; max-height: calc(100vh / var(--zoom, 1)); border: 0; border-radius: 0; }
   .dashboard-widget-options { padding: 12px 14px; }
   .dashboard-customizer > header, .dashboard-customizer > footer { padding-left: 14px; padding-right: 14px; }
 }

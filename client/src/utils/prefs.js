@@ -5,7 +5,7 @@ import { api } from '../api';
    id, so someone else signing in here does not get them, and checked when read back
    (a stored value that is no longer valid is ignored). The names in SYNCED are also
    saved on the server, so they follow the person to other browsers. */
-const SYNCED = new Set(['tasks.presets', 'tasks.columns']);
+const SYNCED = new Set(['tasks.presets', 'tasks.columns', 'display.zoom']);
 let userId = null;
 const listeners = new Set();
 const keyOf = name => `hub:${userId ?? 'anon'}:${name}`;
@@ -25,6 +25,8 @@ export function readPref(name, valid, fallback) {
 export function writePref(name, value) {
   try { localStorage.setItem(keyOf(name), JSON.stringify(value)); } catch { /* kept for this visit only */ }
   if (SYNCED.has(name) && userId != null) api.savePreference(name, value).catch(() => { /* kept in this browser */ });
+  // Other places using the same preference see the change (e.g. the display size chosen in Profile).
+  for (const reload of [...listeners]) reload();
 }
 
 /** The server's copy, after sign-in: it wins over this browser's. */

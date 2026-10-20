@@ -12,6 +12,7 @@ import ContextMenu from './calendar/ContextMenu';
 import EventChip from './calendar/EventChip';
 import EventPopover from './calendar/EventPopover';
 import ICalSubscribe from './calendar/ICalSubscribe';
+import { pageZoom } from '../utils/zoom';
 import { useLiveRefresh } from '../live';
 
 /* ══════════════════════════════════════════════════════════ */
@@ -116,7 +117,8 @@ export default function CalendarPage() {
   function handleCellContextMenu(e, dateStr) {
     if (!isManagerOrPlanner || !dateStr) return;
     e.preventDefault();
-    setCtxMenu({ x: e.clientX, y: e.clientY, date: dateStr });
+    // The mouse is in screen pixels; the menu is placed in the page's (zoomed) pixels.
+    setCtxMenu({ x: e.clientX / pageZoom(), y: e.clientY / pageZoom(), date: dateStr });
   }
 
   function canReschedule(event) {

@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../App';
 import { useConfirm } from '../components/Confirm';
 import { toDate } from '../utils/locale';
+import { DEFAULT_ZOOM, ZOOMS, useDisplaySize } from '../utils/zoom';
 import { Toggle } from './admin/shared';
 
 /* ── Inline alert helper ─────────────────────────────────── */
@@ -575,6 +576,19 @@ function NotificationPreferencesSection({ user, onRefresh }) {
 }
 
 /* ── Main page ───────────────────────────────────────────── */
+// How large the app is drawn, for this person (utils/zoom.js); kept between browsers.
+function DisplaySizeSection() {
+  const [zoom, setZoom] = useDisplaySize();
+  return <div className="card mb-20">
+    <h3 className="section-title">Display size</h3>
+    <div className="flex gap-8" role="radiogroup" aria-label="Display size" style={{ flexWrap: 'wrap' }}>
+      {ZOOMS.map(value => <button key={value} type="button" role="radio" aria-checked={zoom === value} className={`btn btn-sm ${zoom === value ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setZoom(value)}>
+        {Math.round(value * 100)}%{value === DEFAULT_ZOOM ? ' (default)' : ''}</button>)}
+    </div>
+    <p className="text-sm text-muted" style={{ marginBottom: 0 }}>How large the whole app is drawn. Your browser's own zoom (Ctrl and + or −) still works on top.</p>
+  </div>;
+}
+
 export default function Profile() {
   const { user: ctxUser, login } = useAuth();
   const [user, setUser] = useState(ctxUser);
@@ -612,6 +626,7 @@ export default function Profile() {
         <ChangePasswordSection />
         <TwoFactorSection    user={user} onRefresh={refresh} />
         <NotificationPreferencesSection user={user} onRefresh={refresh} />
+        <DisplaySizeSection />
       </div>
     </div>
   );
