@@ -158,3 +158,39 @@ test('a task is edited from Customer 360', async ({ page }) => {
   await expect.poll(() => saved).toMatchObject({ title: 'Renew firewall licence (2027)', priority: 'high', description: 'Before it lapses', deadline: '2026-11-30' });
   await expect(page.getByRole('button', { name: 'Renew firewall licence (2027)', exact: true })).toBeVisible();
 });
+
+test('a task has other engineers besides its lead, and files', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  let saved = null, uploads = 0;
+  const task = { id: 70, title: 'Firewall migration', status: 'open', priority: 'medium', assigned_to: 7, assigned_to_name: 'Maria Ioannou', engineers: [], customer_id: 12, can_update: true };
+  const files = [{ id: 3, original_name: 'rules-export.pdf', size: 2048, uploaded_by: 7, uploaded_by_name: 'Maria Ioannou', created_at: '2026-10-19 09:00:00' }];
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
+  api.override('GET /api/customers/12/operations/tasks', () => ({ body: { rows: [saved ? { ...task, engineers: [{ id: 8, name: 'Nick Network' }] } : task], total: 1, page: 1, page_size: 25 } }));
+  api.override('GET /api/auth/users', () => ({ body: [{ id: 7, name: 'Maria Ioannou', role: 'engineer', active: 1 }, { id: 8, name: 'Nick Network', role: 'engineer', active: 1 }] }));
+  api.override('GET /api/tasks/70/attachments', () => ({ body: files }));
+  api.override('POST /api/tasks/70/attachments', () => { uploads++; files.unshift({ id: 4, original_name: 'plan.pdf', size: 100, uploaded_by: 1, uploaded_by_name: 'Alex Mercer', created_at: '2026-10-20 10:00:00' }); return { status: 201, body: { id: 4 } }; });
+  api.override('PUT /api/tasks/70', ({ body }) => { saved = body; return { body: { ok: true } }; });
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await page.getByRole('button', { name: 'Edit Firewall migration' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit Task' });
+
+  // The lead is not offered again; the colleague is added as a chip.
+  const others = dialog.getByLabel('Also working on it');
+  await expect(others.locator('option', { hasText: 'Maria Ioannou' })).toHaveCount(0);
+  await others.selectOption({ label: 'Nick Network' });
+  await expect(dialog.getByRole('button', { name: 'Remove Nick Network' })).toBeVisible();
+
+  // Files: listed, and one attached.
+  const filesSection = dialog.getByRole('region', { name: 'Files' });
+  await expect(filesSection.getByRole('button', { name: 'rules-export.pdf', exact: true })).toBeVisible();
+  await filesSection.locator('input[type=file]').setInputFiles({ name: 'plan.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') });
+  await expect(filesSection.getByRole('button', { name: 'plan.pdf', exact: true })).toBeVisible();
+  expect(uploads).toBe(1);
+
+  await dialog.getByRole('button', { name: /Save/ }).click();
+  await expect.poll(() => saved).toMatchObject({ engineer_ids: [8] });
+  await expect(page.getByText('+1', { exact: true })).toBeVisible();
+});

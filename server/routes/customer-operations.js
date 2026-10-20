@@ -157,7 +157,7 @@ router.get('/tasks',requireAuth,async (req,res) => {
   const clauses=['COALESCE(t.customer_id,p.customer_id)=?'],params=[customerId],filter=req.query.filter || 'all';
   // Engineers see all of this customer's tasks (?mine=1: only theirs and their teams'); managers may pick an engineer.
   if (req.user.role==='engineer' && req.query.mine==='1') { clauses.push(ownTasksSql('t'));params.push(...ownTasksParams(req.user.id)); }
-  else if (req.user.role==='manager' && req.query.engineer_id) { clauses.push('t.assigned_to=?');params.push(Number(req.query.engineer_id)); }
+  else if (req.user.role==='manager' && req.query.engineer_id) { clauses.push('(t.assigned_to=? OR t.id IN (SELECT task_id FROM task_engineers WHERE user_id=?))');params.push(Number(req.query.engineer_id),Number(req.query.engineer_id)); }
   if (filter==='open') clauses.push("t.status NOT IN ('completed','closed','cancelled')");
   if (filter==='in_progress') clauses.push("t.status='in_progress'");
   if (filter==='overdue') clauses.push("t.status NOT IN ('completed','closed','cancelled') AND t.deadline IS NOT NULL AND t.deadline<app_today()");
@@ -166,14 +166,14 @@ router.get('/tasks',requireAuth,async (req,res) => {
   if (req.query.priority) { clauses.push('t.priority=?');params.push(req.query.priority); }
   if (req.query.search?.trim()) { const pattern=searchPattern(req.query.search);clauses.push('(LOWER(t.title) ILIKE ? OR LOWER(COALESCE(p.title,\'\')) ILIKE ? OR LOWER(COALESCE(u.name,\'\')) ILIKE ? OR LOWER(COALESCE(t.ticket_reference,\'\')) ILIKE ?)');params.push(pattern,pattern,pattern,pattern); }
   const where=clauses.join(' AND ');
-  // Whether this person may change the task (start, finish, subtasks): managers; engineers for theirs and their teams' unassigned ones.
+  // Whether this person may change the task (start, finish, subtasks): managers; engineers for theirs (as lead or another engineer on it) and their teams' unassigned ones.
   const myTeams=req.user.role==='engineer' ? new Set((await db.prepare('SELECT team_id FROM team_members WHERE user_id=?').all(req.user.id)).map(r => Number(r.team_id))) : null;
-  const canUpdate=row => req.user.role==='manager' || (row.assigned_to!=null ? Number(row.assigned_to)===Number(req.user.id) : !!row.team_id && myTeams.has(Number(row.team_id)));
+  const canUpdate=row => req.user.role==='manager' || row.engineers.some(person => person.id===Number(req.user.id)) || (row.assigned_to!=null ? Number(row.assigned_to)===Number(req.user.id) : !!row.team_id && myTeams.has(Number(row.team_id)));
   const rows=(await db.prepare(`SELECT t.id,t.project_id,t.title,t.description,t.pending_from_customer,t.status,t.priority,t.deadline,t.updated_at,t.assigned_to,t.team_id,t.recurring_task_id,t.asset_id,t.ticket_reference,ca.name AS asset_name,u.name AS assigned_to_name,tm.name AS team_name,p.title AS project_title,COALESCE(t.customer_id,p.customer_id) AS customer_id
     FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to LEFT JOIN teams tm ON tm.id=t.team_id LEFT JOIN customer_assets ca ON ca.id=t.asset_id WHERE ${where}
     ORDER BY CASE WHEN t.deadline IS NULL THEN 1 ELSE 0 END,t.deadline,t.id LIMIT ? OFFSET ?`).all(...params,paging.pageSize,paging.offset))
     .map(row => ({ ...row,asset_name:row.asset_name ? decrypt(row.asset_name) : null }));
-  const withProgress=(await require('../taskSubtasks').withLastUpdates(await require('../taskTickets').withTickets(await require('../taskSubtasks').withSubtaskCounts(rows)))).map(row => ({ ...row,can_update:canUpdate(row) }));
+  const withProgress=(await require('../taskEngineers').withEngineers(await require('../taskSubtasks').withLastUpdates(await require('../taskTickets').withTickets(await require('../taskSubtasks').withSubtaskCounts(rows))))).map(row => ({ ...row,can_update:canUpdate(row) }));
   const count=await db.prepare(`SELECT COUNT(*) AS total FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to WHERE ${where}`).get(...params);
   res.json({ rows:withProgress,total:Number(count.total),page:paging.page,page_size:paging.pageSize });
 });

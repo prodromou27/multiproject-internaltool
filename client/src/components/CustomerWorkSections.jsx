@@ -10,6 +10,7 @@ import { LastUpdate, SubtaskProgress, SubtasksDialog, TaskTicket } from './TaskS
 import { useToast } from './Toast';
 import { Check, Hand, MessageSquare, Pencil, Play, Plus, Repeat } from 'lucide-react';
 import EditTaskModal from './EditTaskModal';
+import { TaskPeople } from './TaskPeople';
 import { useConfirm } from './Confirm';
 import AddToCalendarButton from './AddToCalendarButton';
 
@@ -106,7 +107,7 @@ export function CustomerTasks({ customerId,initialFilter='',engineers=[],canMana
         <td data-label="Task"><button type="button" className="cs-task-title" onClick={() => setSubtasksFor(row)} title="Open the task: subtasks and updates">{row.title}</button>
           <div className="cs-task-meta"><SubtaskProgress total={row.subtasks_total} done={row.subtasks_done} compact={!row.subtasks_total} onClick={canUpdate || row.subtasks_total ? () => setSubtasksFor(row) : undefined} /><TaskTicket task={row} />{row.recurring_task_id && <span title="Created by a recurring task"><Repeat size={12} aria-hidden="true" /> Repeats</span>}{row.asset_name && <span>Asset: {row.asset_name}</span>}{row.project_title && <span>Project: <Link to={`/projects/${row.project_id}`}>{row.project_title}</Link></span>}</div>
           {row.last_update && <div className="cs-task-update"><LastUpdate update={row.last_update} /></div>}</td>
-        <td data-label="For">{row.assigned_to_name || (row.team_name ? `${row.team_name} (team)` : 'Unassigned')}</td>
+        <td data-label="For"><TaskPeople task={row} /></td>
         <td data-label="Status"><StatusBadge entityType="task" s={row.status} /></td>
         <td data-label="Priority"><span className={`badge badge-${row.priority}`}>{sentenceCase(row.priority)}</span></td>
         <td data-label="Due date" className={overdue ? 'cs-overdue' : ''}>{fmtDate(row.deadline)}{overdue && <div className="text-sm">Overdue</div>}</td>

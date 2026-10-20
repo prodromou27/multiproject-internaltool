@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import { api } from '../api';
+import { useAuth } from '../auth';
+import { OtherEngineers } from './TaskPeople';
 import { Modal } from './Shared';
 import { DraftChecklist } from './TaskSubtasks';
 
@@ -17,6 +19,8 @@ export default function CustomerTaskForm({ customerId, isManager, engineers = []
   const [form, setForm] = useState({ title: initial.title || '', description: initial.description || '', priority: initial.priority || 'medium', deadline: '', assignee: isManager ? 'engineer' : 'me', assigned_to: '', team_id: '', ticket_reference: '' });
   const [teams, setTeams] = useState([]), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const [subtasks, setSubtasks] = useState(() => initial.subtasks || []);
+  const [others, setOthers] = useState([]);
+  const { user } = useAuth() || {};
   const draft = useFormDraft({ name: `customer-task:${customerId}`, value: form, enabled: !initial.title });
   const set = key => event => setForm(current => ({ ...current, [key]: event.target.value }));
   useEffect(() => {
@@ -30,6 +34,9 @@ export default function CustomerTaskForm({ customerId, isManager, engineers = []
     const body = { title: form.title, description: form.description || null, priority: form.priority, deadline: form.deadline || null, customer_id: Number(customerId), ...(initial.asset_id ? { asset_id: initial.asset_id } : {}), ...(subtasks.length ? { subtasks } : {}), ...(form.ticket_reference.trim() ? { ticket_reference: form.ticket_reference.trim() } : {}) };
     if (form.assignee === 'team') body.team_id = Number(form.team_id);
     else if (form.assignee === 'engineer' && form.assigned_to) body.assigned_to = Number(form.assigned_to);
+    const lead = form.assignee === 'me' ? user?.id : form.assignee === 'engineer' ? form.assigned_to : null;
+    const otherIds = others.filter(id => id !== Number(lead || 0));
+    if (otherIds.length) body.engineer_ids = otherIds;
     try { await api.createTask(body); draft.clear(); onSaved(); } catch (failure) { setError(failure.message); } finally { setSaving(false); }
   }
 
@@ -54,6 +61,7 @@ export default function CustomerTaskForm({ customerId, isManager, engineers = []
         {form.assignee === 'team' && <><select aria-label="Team" value={form.team_id} onChange={set('team_id')} required><option value="">Choose a team</option>{teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}</select>
           <small className="text-muted">It shows in the tasks of everyone in the team, and they are told; whoever starts or completes it takes it.</small></>}
       </fieldset>
+      <OtherEngineers id="ct-other-engineers" engineers={engineers} leadId={form.assignee === 'me' ? user?.id : form.assignee === 'engineer' ? form.assigned_to : null} value={others} onChange={setOthers} />
       <fieldset className="ct-subtasks"><legend>Subtasks {subtasks.length > 0 && <span className="text-muted">({subtasks.length})</span>}</legend>
         <small className="text-muted">Optional. The task is completed when all its subtasks are done.</small>
         <DraftChecklist value={subtasks} onChange={setSubtasks} customerId={customerId} />

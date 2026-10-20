@@ -6,6 +6,7 @@ import { fmtDate, fmtDateTime, MentionInput, Modal, PriorityBadge, renderMention
 import { useAuth } from '../auth';
 import { useToast } from './Toast';
 import CheckList from './CheckList';
+import TaskFiles from './TaskFiles';
 import './TaskSubtasks.css';
 
 /* Subtasks of a task (a checklist, as in Planner): the task cannot be completed
@@ -240,7 +241,7 @@ function TaskSummary({ task }) {
     <dl>
       <div><dt>Status</dt><dd><StatusBadge entityType="task" s={task.status} /></dd></div>
       {task.priority && <div><dt>Priority</dt><dd><PriorityBadge p={task.priority} /></dd></div>}
-      <div><dt>Who</dt><dd>{task.assigned_to_name || (task.team_name ? `${task.team_name} (team)` : 'Unassigned')}</dd></div>
+      <div><dt>Who</dt><dd>{[task.assigned_to_name || (task.team_name ? `${task.team_name} (team)` : (task.engineers?.length ? null : 'Unassigned')), ...(task.engineers || []).map(person => person.name)].filter(Boolean).join(', ')}</dd></div>
       <div><dt>Due</dt><dd className={late ? 'is-late' : ''}>{task.deadline ? fmtDate(task.deadline) : '—'}{late ? ' · overdue' : ''}</dd></div>
       {(task.customer_name || task.project_title) && <div><dt>{task.project_title ? 'Project' : 'Customer'}</dt><dd>{task.project_title || task.customer_name}</dd></div>}
       {task.ticket_reference && <div><dt>Ticket</dt><dd><TaskTicket task={task} /></dd></div>}
@@ -257,6 +258,7 @@ export function SubtasksDialog({ task, customerId, canEdit = true, onClose, onCh
       <TaskSummary task={task} />
       <TaskSubtasks taskId={task.id} customerId={customerId ?? task.customer_id ?? null} canEdit={canEdit} onChange={onChange} />
       <TaskUpdates task={task} canPost={canEdit} onChange={onChange} />
+      <TaskFiles task={task} canAdd={canEdit} />
     </div>
     <div className="modal-footer"><button type="button" className="btn btn-primary" onClick={onClose}>Close</button></div>
   </Modal>;

@@ -73,3 +73,9 @@ a.st-ticket:hover { border-color: var(--primary); }
 .hub-subtasks li small { color: var(--gray-500); font-size: 12px; }
 .hub-subtask-due { color: var(--gray-600); font-size: 12px; font-weight: 600; }
 .hub-subtask-due.is-late { color: var(--tone-danger-text, var(--danger)); }
+
+/* Task files and the other engineers on a task */
+.task-files { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
+.task-files li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.task-files li > .btn:first-child { padding-left: 0; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+.task-person-remove { border: 0; background: none; padding: 0 2px; cursor: pointer; color: inherit; font-size: 14px; line-height: 1; }

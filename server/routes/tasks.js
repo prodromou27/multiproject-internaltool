@@ -10,6 +10,8 @@ const { canAccessCustomer } = require('../customerAccess');
 const { decrypt } = require('../fieldCipher');
 const subtasks = require('../taskSubtasks');
 const taskTickets = require('../taskTickets');
+const taskEngineers = require('../taskEngineers');
+const taskFiles = require('../taskFiles');
 
 // A task shows its own customer or its project's. Names are stored encrypted.
 async function withCustomerNames(rows) {
@@ -18,6 +20,17 @@ async function withCustomerNames(rows) {
   const names = new Map((await db.prepare(`SELECT id, name FROM customers WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids))
     .map(row => [Number(row.id), decrypt(row.name)]));
   return rows.map(row => ({ ...row, customer_name: row.customer_id ? names.get(Number(row.customer_id)) || null : null }));
+}
+
+// Tells engineers a task is now theirs (as its assignee or as another engineer on it).
+async function notifyAssigned(userIds, task) {
+  if (!userIds.length) return;
+  const people = await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${userIds.map(() => '?').join(',')})`).all(...userIds);
+  const project = task.project_id ? await db.prepare('SELECT title FROM projects WHERE id = ?').get(task.project_id) : null;
+  for (const engineer of people) {
+    notify('task.assigned', { engineer_id: engineer.id, engineer_name: engineer.name, engineer_email: engineer.email,
+      task_title: task.title, project_title: project?.title || null, deadline: task.deadline || null, priority: task.priority || 'medium', is_adhoc: !!task.is_adhoc });
+  }
 }
 
 /* ── helper: log activity into a project ──────────────────── */
@@ -96,7 +109,7 @@ router.get('/', requireAuth, async (req, res) => {
     }));
   }
 
-  rows = await subtasks.withLastUpdates(await taskTickets.withTickets(await subtasks.withSubtaskCounts(rows)));
+  rows = await taskEngineers.withEngineers(await subtasks.withLastUpdates(await taskTickets.withTickets(await subtasks.withSubtaskCounts(rows))));
   res.json(pagination ? { rows, total: counts[req.query.filter || 'all'], counts, page: pagination.page, page_size: pagination.page_size } : rows);
 });
 
@@ -186,6 +199,8 @@ router.post('/', requireAuth, async (req, res) => {
 
   const relationshipError = await validateTaskRelationships(project_id, assigned_to);
   if (relationshipError) return res.status(400).json({ error: relationshipError });
+  const others = await taskEngineers.checkEngineerIds(req.body.engineer_ids, assigned_to);
+  if (others.error) return res.status(400).json({ error: others.error });
   const projectCustomer = project_id ? (await db.prepare('SELECT customer_id FROM projects WHERE id = ?').get(project_id))?.customer_id : null;
   const newSubtasks = await subtasks.checkNewSubtasks(req.body.subtasks, customerId || projectCustomer);
   if (newSubtasks.error) return res.status(400).json({ error: newSubtasks.error });
@@ -197,6 +212,7 @@ router.post('/', requireAuth, async (req, res) => {
 
   // Log activity
   const taskId = result.lastInsertRowid;
+  const addedEngineers = others.value?.length ? await taskEngineers.setEngineers(db, taskId, others.value) : [];
   if (newSubtasks.value.length) {
     await subtasks.insertSubtasks(db, taskId, newSubtasks.value, req.user.id);
     await subtasks.notifyOwners({ id: taskId, title: title.trim(), customer_id: customerId || projectCustomer || null }, newSubtasks.value, req.user);
@@ -220,6 +236,7 @@ router.post('/', requireAuth, async (req, res) => {
       is_adhoc:       !!is_adhoc,
     });
   }
+  await notifyAssigned(addedEngineers.filter(id => id !== Number(req.user.id)), { project_id, title, deadline, priority, is_adhoc });
 
   res.json({ id: taskId });
 });
@@ -247,6 +264,17 @@ router.put('/:id', requireAuth, async (req, res) => {
     if (open) return res.status(409).json({ error: subtasks.closingBlocked(open), code: 'OPEN_SUBTASKS', open_subtasks: open });
   }
   if (inputError) return res.status(400).json({ error: inputError });
+  const leadAfter = req.user.role === 'manager' && req.body.assigned_to !== undefined ? (req.body.assigned_to || null) : task.assigned_to;
+  const others = await taskEngineers.checkEngineerIds(req.body.engineer_ids, leadAfter);
+  if (others.error) return res.status(400).json({ error: others.error });
+  // The other engineers, after the task itself is saved; the newly added are told.
+  const saveEngineers = async () => {
+    if (others.value !== undefined) {
+      const added = await taskEngineers.setEngineers(db, task.id, others.value);
+      await notifyAssigned(added.filter(id => id !== Number(req.user.id)), { ...task, title: req.body.title?.trim() || task.title });
+    }
+    await taskEngineers.dropLead(db, task.id, leadAfter);
+  };
 
   if (req.user.role === 'engineer') {
     const { status, pending_from_customer, title, description, priority, deadline } = req.body;
@@ -279,6 +307,7 @@ router.put('/:id', requireAuth, async (req, res) => {
         task.id, Number(task.assigned_to) || 0, task.status
       ));
     if (!updated.changes) return res.status(409).json({ error: CHANGED_MEANWHILE });
+    await saveEngineers();
     if (status && task.status !== status) {
       logActivity(task.project_id, req.user.id, 'task_status', `"${title || task.title}" → ${status}`);
       await stampCompletion([task.id]);
@@ -322,6 +351,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     .run(title?.trim(), description, priority, deadline === undefined ? task.deadline : (deadline || null), nextAssignee, status,
          is_adhoc != null ? (is_adhoc ? 1 : 0) : null, newPfc, nextTicket, task.id, Number(task.assigned_to) || 0, task.status));
   if (!updated.changes) return res.status(409).json({ error: CHANGED_MEANWHILE });
+  await saveEngineers();
 
   // Log status change
   if (status && status !== task.status) {
@@ -363,10 +393,12 @@ router.post('/bulk', requireAuth, async (req, res) => {
 
   if (action === 'delete') {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
+    const files = await taskFiles.storedFiles(ids);
     await db.transaction(async (tx) => {
       const del = tx.prepare('DELETE FROM tasks WHERE id = ?');
       for (const id of ids) await del.run(id);
     });
+    await taskFiles.removeStored(files);
     return res.json({ ok: true, affected: ids.length });
   }
 
@@ -438,6 +470,8 @@ router.post('/:id/duplicate', requireAuth, async (req, res) => {
     `).run(task.project_id, task.customer_id, task.title + ' (copy)', task.description, task.priority, task.deadline,
            task.assigned_to, task.team_id ?? null, task.asset_id ?? null, req.user.id, task.is_adhoc, task.ticket_reference || null));
     if (checklist.length) await subtasks.insertSubtasks(tx, result.lastInsertRowid, checklist, req.user.id);
+    const others = await tx.prepare('SELECT user_id FROM task_engineers WHERE task_id = ?').all(task.id);
+    if (others.length) await taskEngineers.setEngineers(tx, result.lastInsertRowid, others.map(row => Number(row.user_id)));
     return result.lastInsertRowid;
   });
   logActivity(task.project_id, req.user.id, 'task_created', task.title + ' (copy)');
@@ -476,7 +510,9 @@ router.get('/overdue-counts', requireAuth, async (req, res) => {
 router.delete('/:id', requireManager, async (req, res) => {
   const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
   if (task) logActivity(task.project_id, req.user.id, 'task_deleted', task.title);
+  const files = task ? await taskFiles.storedFiles([task.id]) : [];
   (await db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id));
+  await taskFiles.removeStored(files);
   res.json({ ok: true });
 });
 
@@ -553,6 +589,29 @@ router.delete('/:id/comments/:cid', requireAuth, requireVisibleTask, async (req,
     return res.status(403).json({ error: 'Forbidden' });
   }
   (await db.prepare('DELETE FROM task_comments WHERE id = ?').run(req.params.cid));
+  res.json({ ok: true });
+});
+
+/* ── Task files: read by anyone who may see the task; added by those working on it
+   (and managers); removed by whoever added the file or a manager. ── */
+router.get('/:id/attachments', requireAuth, requireReadableTask, async (req, res) => {
+  res.json(await taskFiles.list(req.task.id));
+});
+
+router.post('/:id/attachments', requireAuth, requireVisibleTask, async (req, res) => {
+  const result = await taskFiles.add(req, res, req.task);
+  if (result) res.status(201).json(result);
+});
+
+router.get('/:id/attachments/:attId/download', requireDownloadAuth, requireReadableTask, async (req, res) => {
+  if (!positiveId(req.params.attId)) return res.status(400).json({ error: 'Invalid attachment ID' });
+  await taskFiles.send(res, req.task.id, Number(req.params.attId));
+});
+
+router.delete('/:id/attachments/:attId', requireAuth, requireVisibleTask, async (req, res) => {
+  if (!positiveId(req.params.attId)) return res.status(400).json({ error: 'Invalid attachment ID' });
+  const outcome = await taskFiles.remove(req, req.task, Number(req.params.attId));
+  if (outcome.error) return res.status(outcome.status).json({ error: outcome.error });
   res.json({ ok: true });
 });
 

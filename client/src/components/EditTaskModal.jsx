@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { api } from '../api';
 import { Modal } from './Shared';
 import TaskSubtasks, { TaskUpdates } from './TaskSubtasks';
+import TaskFiles from './TaskFiles';
+import { OtherEngineers } from './TaskPeople';
 
 export const STATUS_LABELS = {
   open: 'Open', in_progress: 'In Progress', completed: 'Completed',
@@ -14,7 +16,8 @@ export const MANAGER_STATUSES  = ['open', 'in_progress', 'waiting_customer', 'wa
 export const ENGINEER_STATUSES = ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed'];
 
 /* Editing a task: title, description, priority, deadline, status, ticket reference,
-   and (managers) who it is assigned to. Used on Tasks and on Customer 360 → Tasks. */
+   (managers) who it is assigned to, the other engineers on it, its subtasks, updates
+   and files. Used on Tasks and on Customer 360 → Tasks. */
 export default function EditTaskModal({ task, allUsers, isManager, onSave, onClose }) {
   const [form, setForm] = useState({
     title:       task.title || '',
@@ -25,6 +28,7 @@ export default function EditTaskModal({ task, allUsers, isManager, onSave, onClo
     status:      task.status || 'open',
     pending_from_customer: task.pending_from_customer || '',
     ticket_reference: task.ticket_reference || '',
+    engineer_ids: (task.engineers || []).map(person => Number(person.id)),
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
@@ -43,6 +47,7 @@ export default function EditTaskModal({ task, allUsers, isManager, onSave, onClo
         deadline:    form.deadline || null,
         status:      form.status,
         ticket_reference: form.ticket_reference.trim() || null,
+        engineer_ids: form.engineer_ids,
         ...(isWaiting ? { pending_from_customer: form.pending_from_customer } : {}),
         ...(isManager  ? { assigned_to: form.assigned_to ? Number(form.assigned_to) : null } : {}),
       };
@@ -88,6 +93,8 @@ export default function EditTaskModal({ task, allUsers, isManager, onSave, onClo
             </select>
           </div>
         )}
+        <OtherEngineers engineers={engineers} leadId={isManager ? form.assigned_to : task.assigned_to} value={form.engineer_ids}
+          onChange={ids => setForm(f => ({ ...f, engineer_ids: ids }))} />
         <div className="form-group">
           <label>Status</label>
           <select value={form.status} onChange={set('status')}>
@@ -114,6 +121,7 @@ export default function EditTaskModal({ task, allUsers, isManager, onSave, onClo
 <div className="form-group"><label htmlFor="edit-task-ticket">Ticket (optional)</label><input id="edit-task-ticket" value={form.ticket_reference} onChange={set('ticket_reference')} maxLength={50} placeholder="e.g. RT#12345" /></div>
         <div className="task-edit-subtasks"><TaskSubtasks taskId={task.id} customerId={task.customer_id} /></div>
         <div className="task-edit-subtasks"><TaskUpdates task={task} /></div>
+        <div className="task-edit-subtasks"><TaskFiles task={task} /></div>
         <div className="modal-footer u-cc45258">
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={saving}>

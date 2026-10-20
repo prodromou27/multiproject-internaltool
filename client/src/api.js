@@ -383,6 +383,14 @@ export const api = {
   taskComments: (taskId) => req('GET', `/tasks/${taskId}/comments`),
   mySubtasks: (options) => req('GET', '/tasks/my-subtasks', undefined, options),
   addTaskComment: (taskId, message) => req('POST', `/tasks/${taskId}/comments`, { message }),
+  taskAttachments: taskId => req('GET', `/tasks/${taskId}/attachments`),
+  uploadTaskAttachment: (taskId, file) => upload(`/tasks/${taskId}/attachments`, 'file', file),
+  downloadTaskAttachment: async (taskId, attachmentId) => {
+    const response = await fetch(`${BASE}/tasks/${taskId}/attachments/${attachmentId}/download`, { credentials: 'same-origin' });
+    if (!response.ok) { const data = await response.json().catch(() => ({})); handleUnauthorized(response.status, data, true); throw new Error(data.error || 'Download failed'); }
+    return response.blob();
+  },
+  deleteTaskAttachment: (taskId, attachmentId) => req('DELETE', `/tasks/${taskId}/attachments/${attachmentId}`),
   deleteTaskComment: (taskId, cid) => req('DELETE', `/tasks/${taskId}/comments/${cid}`),
 
   // project activity

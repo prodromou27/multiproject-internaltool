@@ -1441,6 +1441,19 @@ async function applyMigrations(pool, transaction) {
     -- Several customers may stand for the organisation's own (in-house) infrastructure.
     DROP INDEX IF EXISTS idx_customers_one_internal;
   `]);
+  migrations.push(['20261125_task_engineers_and_files', `
+    -- Engineers working on a task besides the one it is assigned to (the lead).
+    CREATE TABLE IF NOT EXISTS task_engineers (
+      task_id  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      added_at TEXT DEFAULT ${NOW},
+      PRIMARY KEY (task_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_engineers_user ON task_engineers(user_id);
+    -- Files attached to a task (same encrypted store as project and activity files).
+    ALTER TABLE attachments ADD COLUMN IF NOT EXISTS task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE;
+    CREATE INDEX IF NOT EXISTS idx_attachments_task ON attachments(task_id);
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

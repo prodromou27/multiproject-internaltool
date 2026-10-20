@@ -23,6 +23,7 @@ import { Pagination,Surface } from '../components/EnterpriseUI';
 import LogHours from '../components/LogHours';
 import { pageZoom } from '../utils/zoom';
 import EditTaskModal, { STATUS_LABELS, MANAGER_STATUSES, ENGINEER_STATUSES } from '../components/EditTaskModal';
+import { OtherEngineers, TaskPeople } from '../components/TaskPeople';
 import { useLiveRefresh } from '../live';
 
 const FINISHED = ['completed', 'closed', 'cancelled', 'pending_approval'];
@@ -168,7 +169,7 @@ export default function Tasks() {
     const referenceKey = `${user.id}:${user.role}`;
     const referenceData = references.current?.key === referenceKey
       ? Promise.resolve(references.current.data)
-      : Promise.all([api.projects(options), isManager ? api.users(options) : Promise.resolve([])]);
+      : Promise.all([api.projects(options), api.users(options)]);   // engineers pick colleagues to work with on a task
     return Promise.all([api.tasks(Object.fromEntries(new URLSearchParams(query)), options), referenceData])
       .then(([result, data]) => {
         if (!isCurrent(request)) return;
@@ -216,6 +217,8 @@ export default function Tasks() {
   }
 
   const taskDraft = useFormDraft({ name: 'task:new', value: form });
+  // Who leads a new task: the chosen engineer, or (an engineer adding it) themselves; a team has none.
+  const createLead = () => String(form.assigned_to).startsWith('t:') ? 0 : form.assigned_to ? Number(form.assigned_to) : isManager ? 0 : Number(user.id);
   async function createTask(e) {
     e.preventDefault(); setCreateErr('');
     if (!isManager && !form.project_id && !form.customer_id) { setCreateErr('Choose the customer or project this task is for'); return; }
@@ -223,7 +226,8 @@ export default function Tasks() {
       // A project's task takes the project's customer; otherwise it belongs to the chosen customer.
       const team = String(form.assigned_to).startsWith('t:') ? Number(form.assigned_to.slice(2)) : null;
       await api.createTask({ ...form, project_id: form.project_id ? Number(form.project_id) : null, customer_id: !form.project_id && form.customer_id ? Number(form.customer_id) : null,
-        assigned_to: !team && form.assigned_to ? Number(form.assigned_to) : null, team_id: team, subtasks: form.subtasks || [], ticket_reference: form.ticket_reference?.trim() || null });
+        assigned_to: !team && form.assigned_to ? Number(form.assigned_to) : null, team_id: team, subtasks: form.subtasks || [], ticket_reference: form.ticket_reference?.trim() || null,
+        engineer_ids: (form.engineer_ids || []).filter(id => id !== createLead()) });
       setShowCreate(false);
       taskDraft.clear();
       setForm({ title: '', description: '', priority: 'medium', deadline: '', assigned_to: '', project_id: '', customer_id: '', is_adhoc: false });
@@ -500,7 +504,7 @@ export default function Tasks() {
                     ? <TaskStatusControl task={t} statuses={isManager ? managerStatuses : engineerStatuses} onChange={handleStatusChange} />
                     : <StatusBadge entityType="task" s={t.status} />}</td>}
                   {visibleColumns.has('priority') && <td><PriorityBadge p={t.priority} /></td>}
-                  {visibleColumns.has('assignee') && <td>{t.assigned_to_name || (t.team_name ? <>{t.team_name} <span className="text-muted text-sm">(team)</span></> : '—')}</td>}
+                  {visibleColumns.has('assignee') && <td><TaskPeople task={t} fallback="—" /></td>}
                   {visibleColumns.has('deadline') && <td className={isOverdue(t.deadline) && !['completed','closed','cancelled'].includes(t.status) ? 'overdue' : ''}>{fmtDate(t.deadline)}</td>}
 
                   <td className="text-center" style={{ whiteSpace: 'nowrap' }}>
@@ -599,6 +603,7 @@ export default function Tasks() {
                 {createTeams.length > 0 && <optgroup label={isManager ? 'Teams' : 'My teams'}>{createTeams.map(t => <option key={t.id} value={`t:${t.id}`}>{t.name} (team)</option>)}</optgroup>}
               </select>
             </div>
+            <OtherEngineers id="task-other-engineers" engineers={engineers} leadId={createLead()} value={form.engineer_ids || []} onChange={ids => setForm(current => ({ ...current, engineer_ids: ids }))} />
 <div className="form-group"><label htmlFor="task-ticket">Ticket (optional)</label><input id="task-ticket" value={form.ticket_reference || ''} onChange={set('ticket_reference')} maxLength={50} placeholder="e.g. RT#12345" /></div>
             <fieldset className="ct-subtasks"><legend>Subtasks</legend>
               <small className="text-muted">Optional. The task is completed when all its subtasks are done.</small>
