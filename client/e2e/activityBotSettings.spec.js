@@ -30,4 +30,5 @@ test('the last message the Webex bot received is shown, with why it was not answ
   await page.goto('/settings/activity_bot');
   await expect(page.getByText('Connected to Webex')).toBeVisible();
   await expect(page.getByText(/Last message .*: not answered \(webexapis\.com answered 404/)).toBeVisible();
+  await expect(page.getByText(/nothing received from Webex yet/)).toBeVisible();
 });

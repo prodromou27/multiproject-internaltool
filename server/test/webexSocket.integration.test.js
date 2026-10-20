@@ -154,3 +154,26 @@ test('the message id comes from the conversation service named in the event (any
     assert.deepEqual([socket.status().last_message?.outcome, socket.status().last_message?.error], ['failed', 'webexapis.com answered 500']);
   } finally { socket.stop(); http._setTransport(null); }
 });
+
+test('a message in a binary frame is read, each event is confirmed, and Settings counts what Webex sent', async () => {
+  await db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify({ webex: { bot_token: 'bot-token-123' } }));
+  await botSettings.save({ webex: { enabled: true, device_url: null } });
+  http._setTransport(async ({ method, url }) => method === 'POST' && url === socket.DEVICES_URL
+    ? { status: 200, text: JSON.stringify({ url: 'https://wdm-a.wbx2.com/wdm/api/v1/devices/d', webSocketUrl: 'wss://mercury.wbx2.com/v1/x' }) } : { status: 404, text: '{}' });
+  const handled = [];
+  try {
+    await socket.sync({ WebSocketImpl: FakeSocket, handle: async event => { handled.push(event.data.id); return 'group-space'; } });
+    const ws = FakeSocket.last;
+    ws.onopen();
+    assert.equal(ws.binaryType, 'arraybuffer');
+    const frame = JSON.stringify({ id: 'evt-1', data: { eventType: 'conversation.activity', activity: { verb: 'post', id: 'm-1', actor: { emailAddress: 'maria@company.example' } } } });
+    await ws.onmessage({ data: new Blob([frame]) });
+    await ws.onmessage({ data: new TextEncoder().encode(JSON.stringify({ id: 'evt-2', data: { eventType: 'status.start_typing' } })).buffer });
+    await ws.onmessage({ data: '{not json' });
+    assert.equal(handled.length, 1, 'the Blob frame reached the bot');
+    assert.deepEqual(ws.sent.filter(m => m.type === 'ack').map(m => m.messageId), ['evt-1', 'evt-2']);
+    const shown = socket.status();
+    assert.deepEqual([shown.events.count, shown.events.last_type], [3, 'unreadable']);
+    assert.equal(shown.last_message.outcome, 'group-space', 'a message from a group space is noted too');
+  } finally { socket.stop(); http._setTransport(null); }
+});

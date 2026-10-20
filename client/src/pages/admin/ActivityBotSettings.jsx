@@ -52,15 +52,18 @@ function TryIt() {
   </div>;
 }
 
+const MESSAGE_OUTCOMES = { answered: 'answered', failed: 'not answered', 'group-space': 'not answered: it was sent in a group space; the bot answers one-to-one chats', duplicate: 'already answered', 'no-token': 'not answered: no bot token' };
+
 // The Webex bot's outbound connection (server: activityBot/webexSocket.js).
 function WebexConnection({ connection, enabled, tokenSet }) {
   if (!tokenSet || !enabled) return <span className="text-muted">Off</span>;
   const status = connection?.status || 'off';
   if (status === 'connected') {
-    // The last message received, so a message that got no answer shows why.
-    const last = connection.last_message;
+    // What Webex has sent since connecting, and the last message: so a message that got no answer shows why.
+    const last = connection.last_message, events = connection.events;
     return <><span className="bot-ok">Connected to Webex</span>
-      {last && <span className={`text-sm ${last.outcome === 'failed' ? 'text-danger' : 'text-muted'}`}> · Last message {fmtDateTime(last.at)}: {last.outcome === 'failed' ? `not answered (${last.error})` : last.outcome}</span>}</>;
+      <span className="text-sm text-muted"> · {events?.count ? `${events.count} event${events.count === 1 ? '' : 's'} received, the last ${fmtDateTime(events.last_at)}` : 'nothing received from Webex yet'}</span>
+      {last && <span className={`text-sm ${last.outcome === 'answered' ? 'text-muted' : 'text-danger'}`}> · Last message {fmtDateTime(last.at)}: {MESSAGE_OUTCOMES[last.outcome] || last.outcome}{last.error ? ` (${last.error})` : ''}</span>}</>;
   }
   if (status === 'connecting') return <span className="text-muted">Connecting…</span>;
   return <span className="text-danger">{status === 'reconnecting' ? 'Reconnecting' : 'Not connected'}{connection?.error ? `: ${connection.error}` : ''}</span>;

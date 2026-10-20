@@ -35,9 +35,19 @@ const PING_MS = 30 * 1000, SILENT_MS = 100 * 1000, MAX_PAUSE_MS = 5 * 60 * 1000;
 
 let socket = null, timers = [], pause = 5000, wanted = false;
 let state = { status: 'off', since: null, error: null };
-// The last message received over the connection and what became of it (shown in Settings).
-let lastMessage = null;
+// The last message received over the connection and what became of it, and how many events
+// Webex has sent since connecting (shown in Settings, so a missing answer can be traced).
+let lastMessage = null, events = { count: 0, last_at: null, last_type: null };
 const noteMessage = (outcome, error = null) => { lastMessage = { at: new Date().toISOString(), outcome, error }; };
+
+/** A WebSocket frame's text: Webex may send text or binary frames (a Blob, ArrayBuffer or Buffer). */
+async function frameText(data) {
+  if (typeof data === 'string') return data;
+  if (data && typeof data.text === 'function' && typeof data.arrayBuffer === 'function') return data.text();   // Blob
+  if (data instanceof ArrayBuffer) return Buffer.from(data).toString('utf8');
+  if (ArrayBuffer.isView(data)) return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('utf8');
+  return String(data ?? '');
+}
 const setState = (status, error = null) => { state = { status, since: new Date().toISOString(), error }; };
 const clearTimers = () => { for (const t of timers) { clearTimeout(t); clearInterval(t); } timers = []; };
 
@@ -154,6 +164,7 @@ async function connect({ WebSocketImpl = globalThis.WebSocket, handle } = {}) {
   try { url = await deviceSocketUrl(token); }
   catch (error) { scheduleReconnect(`Could not register with Webex: ${error.message}`); return state; }
   const ws = new WebSocketImpl(url);
+  try { ws.binaryType = 'arraybuffer'; } catch { /* not settable */ }
   socket = ws;
   let lastHeard = Date.now();
   ws.onopen = () => {
@@ -164,13 +175,21 @@ async function connect({ WebSocketImpl = globalThis.WebSocket, handle } = {}) {
       try { ws.send(JSON.stringify({ id: crypto.randomUUID(), type: 'ping' })); } catch { scheduleReconnect('The connection to Webex dropped'); }
     }, PING_MS); ping.unref?.(); timers.push(ping);
   };
-  ws.onmessage = event => {
+  ws.onmessage = async event => {
     lastHeard = Date.now();
-    let message; try { message = JSON.parse(typeof event.data === 'string' ? event.data : Buffer.from(event.data).toString('utf8')); } catch { return; }
-    if (message?.data?.eventType === 'conversation.activity' && message.data.activity?.verb === 'post')
-      onActivity(message.data.activity, handle || channels.handleWebexEvent)
-        .then(outcome => { if (outcome !== 'ignored') noteMessage(outcome); })
-        .catch(error => { noteMessage('failed', error.message); console.error('[activity-bot] webex message:', error.message); });
+    let message;
+    try { message = JSON.parse(await frameText(event.data)); }
+    catch { events = { count: events.count + 1, last_at: new Date().toISOString(), last_type: 'unreadable' }; return; }
+    const type = message?.data?.eventType || message?.type || 'other';
+    events = { count: events.count + 1, last_at: new Date().toISOString(), last_type: type };
+    // Confirm each event, as Webex's own clients do.
+    if (message?.id) { try { ws.send(JSON.stringify({ type: 'ack', messageId: message.id })); } catch { /* closing */ } }
+    if (type === 'conversation.activity' && message.data.activity?.verb === 'post') {
+      try {
+        const outcome = await onActivity(message.data.activity, handle || channels.handleWebexEvent);
+        if (outcome !== 'ignored') noteMessage(outcome);   // the bot's own replies are 'ignored'
+      } catch (error) { noteMessage('failed', error.message); console.error('[activity-bot] webex message:', error.message); }
+    }
   };
   ws.onerror = () => {};
   ws.onclose = () => { if (socket === ws) scheduleReconnect('The connection to Webex closed'); };
@@ -182,7 +201,7 @@ async function sync(options = {}) {
   const settings = await botSettings.load();
   const token = await require('./channels').webexToken();
   wanted = !!(settings.webex.enabled && token);
-  lastMessage = null;
+  lastMessage = null; events = { count: 0, last_at: null, last_type: null };
   if (!wanted) { clearTimers(); try { socket?.close(); } catch { /* closed */ } socket = null; setState('off'); return state; }
   pause = 5000;
   try { socket?.close(); } catch { /* closed */ }
@@ -190,7 +209,7 @@ async function sync(options = {}) {
   return connect(options);
 }
 
-const status = () => ({ ...state, last_message: lastMessage });
+const status = () => ({ ...state, last_message: lastMessage, events: { ...events } });
 function stop() { wanted = false; lastMessage = null; clearTimers(); try { socket?.close(); } catch { /* closed */ } socket = null; setState('off'); }
 
 module.exports = { sync, status, stop, messageIdFor, onActivity, DEVICES_URL, CATALOG_URL, LIMITED_CATALOG_URL };

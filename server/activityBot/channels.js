@@ -54,7 +54,7 @@ async function handleWebexEvent(event) {
   if (!token) return 'no-token';
   const headers = { Authorization: `Bearer ${token}` };
   const message = await http.request('GET', `${WEBEX_API}/messages/${encodeURIComponent(event.data.id)}`, { headers });
-  if (message.roomType !== 'direct') return 'ignored'; // one-to-one chats only
+  if (message.roomType !== 'direct') return 'group-space'; // one-to-one chats only
   const user = await userByEmail(message.personEmail);
   const reply = user ? await handleMessage({ user, channel: 'webex', text: message.text }) : UNKNOWN_SENDER;
   await http.request('POST', `${WEBEX_API}/messages`, { headers, json: { roomId: message.roomId, markdown: reply } });
