@@ -15,6 +15,11 @@ const http = require('./http');
 const botSettings = require('./settings');
 
 const DEVICES_URL = 'https://wdm-a.wbx2.com/wdm/api/v1/devices';
+// Webex's service catalogue: where this account's device service (WDM) is, when wdm-a is not it.
+const CATALOG_URL = 'https://u2c.wbx2.com/u2c/api/v1/limited/catalog?format=hostmap';
+const webexHost = url => { try { const u = new URL(url); return u.protocol === 'https:' && /(^|\.)(wbx2|webex|ciscospark)\.com$/i.test(u.hostname); } catch { return false; } };
+/** What an answer held, for the error shown in Settings: field names only, never values. */
+const shapeOf = data => data == null ? 'an empty or non-JSON answer' : typeof data !== 'object' ? `a ${typeof data}` : `fields: ${Object.keys(data).slice(0, 12).join(', ') || 'none'}`;
 const DEVICE = { deviceName: 'TeamHub activity bot', deviceType: 'DESKTOP', localizedModel: 'nodeJS', model: 'nodeJS', name: 'teamhub-activity-bot', systemName: 'TeamHub', systemVersion: '1.0' };
 const PING_MS = 30 * 1000, SILENT_MS = 100 * 1000, MAX_PAUSE_MS = 5 * 60 * 1000;
 
@@ -26,18 +31,52 @@ const clearTimers = () => { for (const t of timers) { clearTimeout(t); clearInte
 /** Webex REST ids are base64 of a "ciscospark://<cluster>/MESSAGE/<uuid>" URI. */
 const messageIdFor = (uuid, cluster = 'us') => Buffer.from(`ciscospark://${cluster}/MESSAGE/${uuid}`).toString('base64').replace(/=+$/, '');
 
+/** The device service Webex's catalogue names for this account (asked only when wdm-a fails). */
+async function catalogDeviceService(headers) {
+  try {
+    const wdm = (await http.request('GET', CATALOG_URL, { headers }))?.serviceLinks?.wdm;
+    return wdm && webexHost(wdm) ? `${wdm.replace(/\/+$/, '')}/devices` : null;
+  } catch { return null; }
+}
+
+/** A registered device's WebSocket address (asking for the device again when the answer lacks it). */
+async function socketOf(device, headers) {
+  if (device?.webSocketUrl) return device.webSocketUrl;
+  if (device?.url && webexHost(device.url)) {
+    const again = await http.request('GET', device.url, { headers }).catch(() => null);
+    if (again?.webSocketUrl) return again.webSocketUrl;
+  }
+  return null;
+}
+
 /** A device's WebSocket address: the saved device when Webex still knows it, else a new one. */
 async function deviceSocketUrl(token) {
   const headers = { Authorization: `Bearer ${token}` };
   const saved = (await botSettings.load()).webex.device_url;
-  if (saved && /^https:\/\/[a-z0-9.-]+\.wbx2\.com\//i.test(saved)) {
+  if (saved && webexHost(saved)) {
     try { const device = await http.request('GET', saved, { headers }); if (device?.webSocketUrl) return device.webSocketUrl; }
     catch (error) { if (error.status !== 404) throw error; }
   }
-  const device = await http.request('POST', DEVICES_URL, { headers, json: DEVICE });
-  if (!device?.webSocketUrl || !device?.url) throw new Error('Webex did not return a connection address');
-  await botSettings.save({ webex: { device_url: device.url } });
-  return device.webSocketUrl;
+  // wdm-a first; when it gives no address, the device service the catalogue names.
+  const answers = [];
+  const register = async service => {
+    let device;
+    try { device = await http.request('POST', service, { headers, json: DEVICE }); }
+    catch (error) { answers.push(`${new URL(service).hostname}: ${error.message}`); return null; }
+    const socket = await socketOf(device, headers);
+    if (socket && webexHost(socket.replace(/^wss:/, 'https:'))) {
+      await botSettings.save({ webex: { device_url: device.url || null } });
+      return socket;
+    }
+    answers.push(`${new URL(service).hostname} gave ${shapeOf(device)}`);
+    return null;
+  };
+  const first = await register(DEVICES_URL);
+  if (first) return first;
+  const other = await catalogDeviceService(headers);
+  const second = other && other !== DEVICES_URL ? await register(other) : null;
+  if (second) return second;
+  throw new Error(`Webex did not return a connection address (${answers.join('; ')})`);
 }
 
 /** A new message from the socket → the webhook's handler (tries the US, then the EU, cluster id). */
@@ -109,4 +148,4 @@ async function sync(options = {}) {
 const status = () => ({ ...state });
 function stop() { wanted = false; clearTimers(); try { socket?.close(); } catch { /* closed */ } socket = null; setState('off'); }
 
-module.exports = { sync, status, stop, messageIdFor, onActivity, DEVICES_URL };
+module.exports = { sync, status, stop, messageIdFor, onActivity, DEVICES_URL, CATALOG_URL };

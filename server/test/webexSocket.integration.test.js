@@ -71,3 +71,30 @@ test('with the bot on and a token, the app registers a device once, connects out
     assert.equal(FakeSocket.last.closed, true);
   } finally { socket.stop(); http._setTransport(null); }
 });
+
+test('when wdm-a gives no connection address, the device service from Webex\'s catalogue is used; when none does, the error says what came back', async () => {
+  await db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify({ webex: { bot_token: 'bot-token-123' } }));
+  await botSettings.save({ webex: { enabled: true, device_url: null } });
+  const device = { url: 'https://wdm-k.wbx2.com/wdm/api/v1/devices/dev-9', webSocketUrl: 'wss://mercury-k.wbx2.com/v1/apps/wx2/registrations/dev-9/messages' };
+  let catalogWdm = 'https://wdm-k.wbx2.com/wdm/api/v1';
+  http._setTransport(async ({ method, url }) => {
+    if (method === 'POST' && url === socket.DEVICES_URL) return { status: 200, text: JSON.stringify({ id: 'x', deviceSettings: {} }) };
+    if (method === 'GET' && url === socket.CATALOG_URL) return { status: 200, text: JSON.stringify({ serviceLinks: { wdm: catalogWdm } }) };
+    if (method === 'POST' && url === 'https://wdm-k.wbx2.com/wdm/api/v1/devices') return { status: 200, text: JSON.stringify(device) };
+    return { status: 404, text: '{}' };
+  });
+  try {
+    await socket.sync({ WebSocketImpl: FakeSocket });
+    assert.equal(FakeSocket.last.url, device.webSocketUrl, 'connected through the catalogue\'s device service');
+    assert.equal((await botSettings.load()).webex.device_url, device.url);
+
+    // Neither gives an address: the error names the fields Webex sent (no values).
+    socket.stop();
+    await botSettings.save({ webex: { enabled: true, device_url: null } });
+    catalogWdm = 'https://evil.example.com/wdm';   // not a Webex host: not used
+    await socket.sync({ WebSocketImpl: FakeSocket });
+    const shown = socket.status();
+    assert.equal(shown.status, 'reconnecting');
+    assert.match(shown.error, /Webex did not return a connection address \(wdm-a\.wbx2\.com gave fields: id, deviceSettings\)/);
+  } finally { socket.stop(); http._setTransport(null); }
+});
