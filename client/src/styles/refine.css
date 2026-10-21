@@ -603,3 +603,18 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; }
 
 /* A destructive action at the start of a dialog's footer, away from Save */
 .modal-footer .modal-footer-start { margin-right: auto; }
+
+/* Customer 360 → Overview → Contacts, and the customer export choices */
+.customer-contact-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.customer-contact-list li { display: grid; gap: 3px; padding-bottom: 10px; border-bottom: 1px solid var(--gray-100); }
+.customer-contact-list li:last-child { border-bottom: 0; padding-bottom: 0; }
+.customer-contact-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.customer-contact-primary { display: inline-flex; align-items: center; gap: 3px; }
+.customer-contact-ways { display: flex; flex-wrap: wrap; gap: 4px 14px; overflow-wrap: anywhere; }
+.customer-contact-notes { margin: 0; }
+.customer-contact-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-left: -8px; }
+.customer-contact-primary-choice, .export-choice-check { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
+.export-choice { border: 0; padding: 0; margin: 0 0 12px; display: grid; gap: 6px; }
+.export-choice legend { font-weight: 600; margin-bottom: 4px; }
+.export-choice label { display: flex; align-items: center; gap: 8px; }
+.customer-contact-primary-choice input, .export-choice input, .export-choice-check input { width: auto; min-height: 0; }

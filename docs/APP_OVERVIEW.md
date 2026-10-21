@@ -542,7 +542,12 @@ searchable); the list shows the current contract and "+N more". The customer for
 has a customer code or included hours (stored values are kept). Contracts carry dates,
 type, renewal and covered assets, and an asset's coverage follows its contracts
 (`assetCoverage.js`). Assets need only a name and type, and **Count** adds several identical
-ones. Licences and certificates (`customer_licences`) and vendor cases (`vendor_cases`) have
+ones. A customer has any number of **contacts** (`customer_contacts`, encrypted; one
+primary, mirrored into the customer's `contact_*` fields so reports, search and visits
+follow it; `customerContacts.js`, `/api/customers/:id/contacts`), and managers and planners
+**export** customers with their primary or all contacts to Excel or CSV
+(`GET /api/customers/export`, audited; CSV cells cannot start a formula).
+Licences and certificates (`customer_licences`) and vendor cases (`vendor_cases`) have
 their own Customer 360 tab and the **Renewals & cases** page. An archived customer can be
 deleted for good with all its history (activities, assets, contracts, licences, visits,
 recommendations, tasks, KPIs, customer reports); its projects are kept without it. Engineers see only customers linked to their work

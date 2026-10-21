@@ -318,6 +318,18 @@ export const api = {
   createCustomer: (data) => req('POST', '/customers', data),
   updateCustomer: (id, data) => req('PUT', `/customers/${id}`, data),
   deleteCustomer: (id) => req('DELETE', `/customers/${id}`),
+  customerContacts: id => req('GET', `/customers/${id}/contacts`),
+  addCustomerContact: (id, body) => req('POST', `/customers/${id}/contacts`, body),
+  updateCustomerContact: (id, contactId, body) => req('PUT', `/customers/${id}/contacts/${contactId}`, body),
+  deleteCustomerContact: (id, contactId) => req('DELETE', `/customers/${id}/contacts/${contactId}`),
+  // Customers with their contacts, as an Excel or CSV file: { blob, filename }.
+  exportCustomers: async ({ format, contacts, archived }) => {
+    const query = new URLSearchParams({ format, contacts, archived: archived ? '1' : '0' });
+    const response = await fetch(`${BASE}/customers/export?${query}`, { credentials: 'same-origin' });
+    if (!response.ok) { const data = await response.json().catch(() => ({})); handleUnauthorized(response.status, data, true); throw new Error(data.error || 'Export failed'); }
+    const filename = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') || '')?.[1] || `customers.${format}`;
+    return { blob: await response.blob(), filename };
+  },
   archiveCustomer: (id) => req('POST', `/customers/${id}/archive`, {}),
   restoreCustomer: (id) => req('POST', `/customers/${id}/restore`, {}),
   customersTemplateUrl: () => `${BASE}/customers/template/download`,

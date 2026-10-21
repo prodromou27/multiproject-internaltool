@@ -206,6 +206,7 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
             .run(enc.project_name, merged.customer_code || null, enc.contact_name, enc.contact_email, enc.contact_phone, enc.primary_contact, enc.location, enc.address, enc.notes, current.id, current.edit_version);
           if (!changed.changes) throw new Error(`Customer "${row.name}" was changed by someone else during the import — not updated`);
           await replaceCustomerSearchDocument(tx, { id: current.id, name: current.name, project_name: merged.project_name, contact_name: merged.contact_name, contact_email: merged.contact_email, address: merged.address, location: merged.location, customer_code: merged.customer_code });
+          await require('./customerContacts').primaryFromCustomer(tx, current.id);
           await linkTeam(tx, current.id, teamId);
           if (managed) await enableManaged(tx, current.id, teamId, user.id);
           if (contract) await saveContract(tx, current.id, contract, user.id);
@@ -216,6 +217,7 @@ async function importCustomers(rawRows, { user, updateExisting = false, store = 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(enc.name, enc.project_name, values.customer_code, enc.contact_name, enc.contact_email, enc.contact_phone, enc.primary_contact, enc.location, enc.address, enc.notes, user.id);
           const id = created.lastInsertRowid;
           await replaceCustomerSearchDocument(tx, { id, name: row.name, ...values });
+          await require('./customerContacts').primaryFromCustomer(tx, id);
           await linkTeam(tx, id, teamId);
           if (managed) await enableManaged(tx, id, teamId, user.id);
           if (contract) await saveContract(tx, id, contract, user.id);

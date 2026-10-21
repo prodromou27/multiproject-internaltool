@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { HelpCircle } from 'lucide-react';
 import { Modal } from './Shared';
 import { HELP_TOPICS, topicForPath } from '../help/helpContent';
-import { HelpTopic } from '../pages/HelpCenter';
+import { HelpTopic } from './HelpTopic';
 
 /**
  * The ? button: help for the page you are on (help/helpContent.js), with a way to the

@@ -5,7 +5,8 @@ const multer  = require('multer');
 const ExcelJS = require('exceljs');
 const db = require('../db');
 const { logAudit } = require('../auditLog');
-const { requireAuth, requireManager, requireManagerOrPlanner, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireManager, requireManagerOrPlanner, requirePermission, requireDownloadManagerOrPlanner } = require('../middleware/auth');
+const customerContacts = require('../customerContacts');
 const { encryptCustomer, decryptCustomer } = require('../fieldCipher');
 const { canAccessCustomer,positiveId }=require('../customerAccess');
 const { sentVersion, conflict }=require('../editVersion');
@@ -19,6 +20,7 @@ router.use('/:id/assets', require('./customer-assets'));
 router.use('/:id/contracts', require('./customer-contracts'));
 router.use('/:id/licences', require('./customer-licences'));
 router.use('/:id/vendor-cases', require('./customer-vendor-cases'));
+router.use('/:id/contacts', require('./customer-contacts'));
 router.use('/:id/managed-services', require('./managedCustomerConfiguration'));
 router.use('/:id/operations',require('./customer-operations'));
 router.use('/:id/recurring-tasks', require('./customer-recurring-tasks'));
@@ -98,14 +100,75 @@ router.get('/', requireAuth, async (req, res) => {
   return res.json(listQuery.paged ? customerListPage(visible,listQuery) : visible);
 });
 
+// ── Export customers with their contacts — MUST be before /:id ──────────────
+// Excel or CSV; the primary contact only (one row per customer) or every contact (one row
+// per contact). Customer details are personal data: managers and planners only, audited.
+const csvCell = value => {
+  let text = value === null || value === undefined ? '' : String(value);
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;   // never a formula in a spreadsheet
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+router.get('/export', requireDownloadManagerOrPlanner, async (req, res) => {
+  const format = req.query.format ?? 'xlsx', which = req.query.contacts ?? 'primary', archived = req.query.archived ?? '0';
+  if (!['xlsx', 'csv'].includes(format) || !['primary', 'all'].includes(which) || !['0', '1'].includes(archived))
+    return res.status(400).json({ error: 'Choose format xlsx or csv, contacts primary or all, archived 0 or 1' });
+  const customers = (await db.prepare(`SELECT * FROM customers${archived === '1' ? '' : ' WHERE active = 1'}`).all())
+    .map(decryptCustomer).sort((a, b) => (Number(!!b.is_internal) - Number(!!a.is_internal)) || a.name.localeCompare(b.name));
+  const teams = new Map();
+  for (const row of await db.prepare('SELECT ct.customer_id, t.name FROM customer_teams ct JOIN teams t ON t.id = ct.team_id ORDER BY t.name').all())
+    teams.set(Number(row.customer_id), [...(teams.get(Number(row.customer_id)) || []), row.name]);
+  const contactsOf = new Map();
+  for (const row of await db.prepare('SELECT * FROM customer_contacts ORDER BY customer_id, is_primary DESC, id').all()) {
+    const contact = customerContacts.decryptContact(row);
+    contactsOf.set(contact.customer_id, [...(contactsOf.get(contact.customer_id) || []), contact]);
+  }
+  const base = customer => [customer.name, customer.project_name || '', customer.active ? 'Active' : 'Archived', customer.is_internal ? 'Yes' : 'No',
+    (teams.get(Number(customer.id)) || []).join(', '), customer.location || '', customer.address || ''];
+  const head = ['Customer', 'Project name', 'Status', 'In-house', 'Teams', 'Location', 'Address'];
+  let header, rows;
+  if (which === 'primary') {
+    header = [...head, 'Primary contact', 'Role', 'Email', 'Phone', 'Other contacts'];
+    rows = customers.map(customer => {
+      const list = contactsOf.get(Number(customer.id)) || [];
+      const primary = list.find(contact => contact.is_primary) || null;
+      return [...base(customer), primary?.name || '', primary?.role || '', primary?.email || '', primary?.phone || '', Math.max(list.length - (primary ? 1 : 0), 0)];
+    });
+  } else {
+    header = [...head, 'Contact', 'Role', 'Email', 'Phone', 'Primary', 'Notes'];
+    rows = customers.flatMap(customer => {
+      const list = contactsOf.get(Number(customer.id)) || [];
+      return list.length ? list.map(contact => [...base(customer), contact.name, contact.role, contact.email, contact.phone, contact.is_primary ? 'Yes' : 'No', contact.notes])
+        : [[...base(customer), '', '', '', '', '', '']];
+    });
+  }
+  await logAudit(db, req, 'customer', null, 'Customer export', 'customers_exported', `format=${format}; contacts=${which}; archived=${archived}; customers=${customers.length}; rows=${rows.length}`);
+  const stamp = require('../appTime').today();
+  res.setHeader('Cache-Control', 'private, no-store');
+  if (format === 'csv') {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="customers-${which === 'all' ? 'all-contacts' : 'primary-contacts'}-${stamp}.csv"`);
+    // A byte-order mark so Excel opens Greek and other non-Latin text correctly.
+    return res.send(`\uFEFF${[header, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n')}\r\n`);
+  }
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Customers');
+  sheet.addRow(header).font = { bold: true };
+  rows.forEach(row => sheet.addRow(row));
+  header.forEach((title, index) => { sheet.getColumn(index + 1).width = ['Customer', 'Address', 'Email', 'Notes'].includes(title) ? 30 : 18; });
+  sheet.views = [{ state: 'frozen', ySplit: 1 }];
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="customers-${which === 'all' ? 'all-contacts' : 'primary-contacts'}-${stamp}.xlsx"`);
+  res.send(Buffer.from(await workbook.xlsx.writeBuffer()));
+});
+
 // ── Template download — MUST be before /:id ─────────────────────────────────
 router.get('/template/download', requireManagerOrPlanner, async (req, res) => {
   const workbook  = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Customers');
   [
     IMPORT_COLUMNS,
-    ['Acme Corp', 'Project Atlas', 'ACME', 'Jane Smith', 'jane@acme.com', '+357 22 000000', 'Jane Smith', 'Nicosia', '1 Main St', 'VIP customer', 'yes', 'Security Team', 'MSP-2026-014', '24x7', '2026-01-01', '2026-12-31'],
-    ['Beta Ltd', '', '', 'Bob Jones', 'bob@beta.com', '', '', 'Limassol', '', '', 'no', '', '', '', '', ''],
+    ['Acme Corp', 'Project Atlas', 'Jane Smith', 'jane@acme.com', '+357 22 000000', 'Jane Smith', 'Nicosia', '1 Main St', 'VIP customer', 'yes', 'Security Team', 'MSP-2026-014', '24x7', '2026-01-01', '2026-12-31'],
+    ['Beta Ltd', '', 'Bob Jones', 'bob@beta.com', '', '', 'Limassol', '', '', 'no', '', '', '', '', ''],
   ].forEach(row => worksheet.addRow(row));
   IMPORT_COLUMNS.forEach((_, i) => { worksheet.getColumn(i + 1).width = i === 0 ? 26 : 18; });
   const buf = await workbook.xlsx.writeBuffer();
@@ -247,6 +310,7 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
         require_duration ? 1 : 0, require_ticket_reference ? 1 : 0, require_technology ? 1 : 0,
         require_category ? 1 : 0, require_notes ? 1 : 0, require_billable_classification ? 1 : 0, is_internal ? 1 : 0, enc.project_name);
     await replaceCustomerSearchDocument(tx,{ id:created.lastInsertRowid,name:name.trim(),project_name,contact_name,contact_email,address,location,customer_code });
+    await customerContacts.primaryFromCustomer(tx, created.lastInsertRowid);
     return created;
   });
   res.json({ id: result.lastInsertRowid });
@@ -378,6 +442,7 @@ router.put('/:id', requireManagerOrPlanner, async (req, res) => {
       is_internal != null ? (is_internal ? 1 : 0) : null, enc.project_name, id, existing.edit_version);
     // Saved by someone else between the read above and this write.
     if (!result.changes) return false;
+    if ([contact_name, contact_email, contact_phone].some(value => value !== undefined)) await customerContacts.primaryFromCustomer(tx, id);
     await replaceCustomerSearchDocument(tx,{ id,
       name:name!==undefined ? name.trim() : dec.name,
       project_name:projectName,

@@ -1,28 +1,11 @@
-import { Fragment, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { useAuth } from '../App';
 import { PageHeader } from '../components/PageLayout';
 import { searchTopics, topicsFor } from '../help/helpContent';
+import { HelpTopic } from '../components/HelpTopic';
 import './HelpCenter.css';
-
-/** **bold** and *italic* in help text. */
-export function HelpText({ text }) {
-  const parts = String(text).split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean);
-  return parts.map((part, index) => part.startsWith('**') ? <strong key={index}>{part.slice(2, -2)}</strong>
-    : part.startsWith('*') && part.length > 2 ? <em key={index}>{part.slice(1, -1)}</em> : <Fragment key={index}>{part}</Fragment>);
-}
-
-/** One topic's text (also shown in the ? dialog). */
-export function HelpTopic({ topic }) {
-  return <>
-    <p className="help-summary">{topic.summary}</p>
-    {topic.sections.map(section => <section key={section.heading} className="help-section">
-      <h3>{section.heading}</h3>
-      <ul>{section.items.map(item => <li key={item}><HelpText text={item} /></li>)}</ul>
-    </section>)}
-  </>;
-}
 
 /* The Help page: every topic for the person's role, searchable, one open at a time. */
 export default function HelpCenter() {

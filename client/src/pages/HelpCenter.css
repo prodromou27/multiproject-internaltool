@@ -15,8 +15,3 @@
 
 .help-article { padding: 20px 24px; max-width: 760px; }
 .help-article h2 { margin: 0 0 6px; font-size: 20px; }
-.help-summary { margin: 0 0 16px; color: var(--gray-600); }
-.help-section h3 { margin: 16px 0 6px; font-size: 15px; }
-.help-section ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; line-height: 1.5; }
-
-.help-more { margin: 18px 0 0; padding-top: 12px; border-top: 1px solid var(--gray-200); font-size: 13px; color: var(--gray-600); }

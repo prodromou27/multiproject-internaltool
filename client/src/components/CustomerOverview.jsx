@@ -7,6 +7,7 @@ import { fmtDate,StatusBadge, sentenceCase } from './Shared';
 import { fmtDuration } from './activityLedger';
 import { fmtHours,plural } from './ServiceCharts';
 import { useLiveVersion } from '../live';
+import CustomerContacts from './CustomerContacts';
 
 function useOverviewModule(load,key) {
   const [data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
@@ -93,6 +94,7 @@ export default function CustomerOverview({ customer,summary,summaryError,onSelec
     {!(summary?.is_managed || ['active','sync_attention','setup_required'].includes(summary?.managed?.state)) && <section className="card cs-command-module"><header><div><CalendarDays size={17} aria-hidden="true" /><h2>Maintenance visits</h2><span>{summary?.visits?.this_year ?? '—'} this year</span></div><button type="button" onClick={() => onSelectTab('maintenance-visits')}>View all <ArrowRight size={13} /></button></header>
       {summaryError ? <div className="cs-module-local-error">Operational summary unavailable.</div> : !summary ? <div className="cs-module-skeleton"><span /><span /></div> : <div className="cs-visit-pair"><div><small>Previous visit</small><strong>{summary.visits.last?.title || 'No previous visit'}</strong><span>{fmtDate(summary.visits.last?.scheduled_date)}</span></div><div><small>Next visit</small><strong>{summary.visits.next?.title || 'None scheduled'}</strong><span>{fmtDate(summary.visits.next?.scheduled_date)}</span></div>{summary.visits.reports_pending>0 && <button type="button" className="cs-attention-link" onClick={() => onSelectTab('maintenance-visits','report_pending')}>{summary.visits.reports_pending} reports pending</button>}</div>}
     </section>}
+    <CustomerContacts customerId={customer.id} />
     <Module icon={Activity} title="Recent service activities" wide state={activities} onView={() => onSelectTab('activities')} empty="No service activity has been logged.">{activities.data?.map(row => <article key={row.id}><div><strong>{row.title}</strong><small>{fmtDate(row.activity_date)} · {row.engineer_name} · {row.category_name}</small></div><div className="cs-overview-status"><StatusBadge entityType="service_activity" s={row.status} /><small>{fmtDuration(row.duration_minutes)}</small></div></article>)}</Module>
     <ActivityTrendCard trend={trend} />
     {ticketing && <TicketTrendCard trend={ticketTrend} />}

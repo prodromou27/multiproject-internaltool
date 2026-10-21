@@ -1464,6 +1464,29 @@ async function applyMigrations(pool, transaction) {
     -- A team's own Webex space: its unassigned tasks, recurring team tasks and team reminders go there.
     ALTER TABLE teams ADD COLUMN IF NOT EXISTS webex_space_id TEXT;
   `]);
+  migrations.push(['20261128_customer_contacts', `
+    -- Any number of contacts per customer, one primary (mirrored into the customer's own
+    -- contact fields). Text is encrypted like the customer's other fields.
+    CREATE TABLE IF NOT EXISTS customer_contacts (
+      id          SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      name        TEXT,
+      role        TEXT,
+      email       TEXT,
+      phone       TEXT,
+      notes       TEXT,
+      is_primary  INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT DEFAULT ${NOW},
+      updated_at  TEXT DEFAULT ${NOW}
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_contacts_customer ON customer_contacts(customer_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_contacts_one_primary ON customer_contacts(customer_id) WHERE is_primary = 1;
+    -- Each customer's current contact becomes its primary contact (the values are already encrypted).
+    INSERT INTO customer_contacts (customer_id, name, email, phone, is_primary)
+      SELECT id, contact_name, contact_email, contact_phone, 1 FROM customers
+      WHERE (contact_name IS NOT NULL OR contact_email IS NOT NULL OR contact_phone IS NOT NULL)
+        AND id NOT IN (SELECT customer_id FROM customer_contacts);
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

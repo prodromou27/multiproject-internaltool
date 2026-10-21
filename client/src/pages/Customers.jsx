@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import { EditConflict, useEditVersion, yesNo } from '../hooks/useEditVersion';
 import { Link, useLocation } from 'react-router-dom';
-import { Archive, ArchiveRestore, RefreshCw, Trash2, Upload } from 'lucide-react';
+import { Archive, ArchiveRestore, Download, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { api } from '../api';
 import { Modal, fmtDate } from '../components/Shared';
 import ImportModal from '../components/ImportModal';
@@ -216,6 +216,7 @@ export default function Customers() {
   const [teams,       setTeams]       = useState([]);
   const [showForm,    setShowForm]    = useState(false);
   const [showImport,  setShowImport]  = useState(false);
+  const [showExport,  setShowExport]  = useState(false);
   const [editing,     setEditing]     = useState(null);
   const [search,      setSearch]      = useState('');
   // Managed customers are a view of this list (they used to have their own page).
@@ -330,6 +331,7 @@ export default function Customers() {
           {/* Customer Responses opens from here rather than the menu. */}
           <HeaderMenu>
             {canCreate && <button type="button" onClick={() => setShowImport(true)}><Upload size={14} aria-hidden="true" /> Import customers</button>}
+            {canCreate && <button type="button" onClick={() => setShowExport(true)}><Download size={14} aria-hidden="true" /> Export customers</button>}
             <button type="button" onClick={() => load()} disabled={loading}><RefreshCw size={14} aria-hidden="true" /> Refresh</button>
           </HeaderMenu>
         </div>
@@ -383,6 +385,7 @@ export default function Customers() {
         </Modal>
       )}
 
+      {showExport && <ExportCustomers onClose={() => setShowExport(false)} />}
       {showImport && (
         <ImportModal
           title="Import Customers"
@@ -399,4 +402,38 @@ export default function Customers() {
       )}
     </div>
   );
+}
+
+/* Customers with their contacts to Excel or CSV: the primary contact (one row per customer)
+   or every contact (one row per contact). The download is recorded in the audit log. */
+function ExportCustomers({ onClose }) {
+  const toast = useToast();
+  const [format, setFormat] = useState('xlsx'), [contacts, setContacts] = useState('primary'), [archived, setArchived] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  async function download() {
+    setBusy(true); setError('');
+    try {
+      const { blob, filename } = await api.exportCustomers({ format, contacts, archived });
+      const url = URL.createObjectURL(blob), link = document.createElement('a');
+      link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success('Customers exported'); onClose();
+    } catch (failure) { setError(failure.message); } finally { setBusy(false); }
+  }
+  return <Modal title="Export customers" onClose={onClose}>
+    {error && <div className="error-msg" role="alert">{error}</div>}
+    <fieldset className="export-choice"><legend>Contacts</legend>
+      <label><input type="radio" name="export-contacts" checked={contacts === 'primary'} onChange={() => setContacts('primary')} /> The primary contact (one row per customer)</label>
+      <label><input type="radio" name="export-contacts" checked={contacts === 'all'} onChange={() => setContacts('all')} /> Every contact (one row per contact)</label>
+    </fieldset>
+    <fieldset className="export-choice"><legend>File</legend>
+      <label><input type="radio" name="export-format" checked={format === 'xlsx'} onChange={() => setFormat('xlsx')} /> Excel (.xlsx)</label>
+      <label><input type="radio" name="export-format" checked={format === 'csv'} onChange={() => setFormat('csv')} /> CSV</label>
+    </fieldset>
+    <label className="export-choice-check"><input type="checkbox" checked={archived} onChange={event => setArchived(event.target.checked)} /> Include archived customers</label>
+    <p className="text-muted text-sm">The file holds customer contact details: keep it within the company.</p>
+    <div className="modal-footer u-cc45258">
+      <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+      <button type="button" className="btn btn-primary" disabled={busy} onClick={download}><Download size={14} aria-hidden="true" /> {busy ? 'Exporting…' : 'Download'}</button>
+    </div>
+  </Modal>;
 }

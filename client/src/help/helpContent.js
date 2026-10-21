@@ -50,6 +50,12 @@ export const HELP_TOPICS = [
         'Several contracts show as the current one and "+N more".',
         'Managers create, edit, archive and import customers. **Archive** keeps the history and can be undone.',
         'Mark a customer as **in-house infrastructure** to track work on your own systems; several entries can be in-house.',
+        '**Export customers** (in the **More actions** menu at the top right of Customers; managers and planners): Excel or CSV, with the primary contact (one row per customer) or every contact (one row per contact), and archived customers if you choose.',
+      ] },
+      { heading: 'Contacts', items: [
+        'A customer can have any number of contacts: open it, and on **Overview** use **Contacts → Add contact** (name, role, email, phone, notes).',
+        'One contact is the **primary** one: it is the contact on the customer record, in reports and in search. **Make primary** changes it; the contact fields in the customer form edit the primary contact.',
+        'Everyone who can open the customer sees its contacts; managers and planners add, change and remove them.',
       ] },
       { heading: 'Customer 360', items: [
         'Open a customer to see its tabs: **Overview, Service Activities, Tasks, Tickets, Projects, Recommendations, Assets, Contracts & licences, Vendor cases, Maintenance Visits, Reports, Timeline** and **Service Configuration**. Which ones you see depends on your role and the customer.',
