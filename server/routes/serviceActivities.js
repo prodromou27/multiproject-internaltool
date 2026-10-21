@@ -45,16 +45,20 @@ router.get('/meta', requireAuth, requireServiceActivityAccess, async (req, res) 
   } else {
     const teamIds = [...req.enabledTeamIds];
     const placeholders = teamIds.map(() => '?').join(',');
-    const rows = await db.prepare(`
-      SELECT DISTINCT c.id, c.name, c.require_duration, c.require_ticket_reference, c.require_technology,
-        c.require_notes, c.require_billable_classification, c.is_internal FROM customers c
+    const columns = `c.id, c.name, c.require_duration, c.require_ticket_reference, c.require_technology,
+        c.require_notes, c.require_billable_classification, c.is_internal`;
+    // The customers of the engineer's teams, and those the engineer was added to individually.
+    const byTeam = await db.prepare(`
+      SELECT DISTINCT ${columns} FROM customers c
       JOIN customer_teams ct ON ct.customer_id = c.id
       WHERE c.active = 1 AND c.service_activity_enabled = 1 AND ct.team_id IN (${placeholders})
     `).all(...teamIds);
-    // Filter out customers with explicit engineer restrictions that don't include this engineer
-    const restrictedIds = new Set((await db.prepare('SELECT DISTINCT customer_id FROM customer_engineers').all()).map(r => r.customer_id));
-    const allowedRestricted = new Set((await db.prepare('SELECT customer_id FROM customer_engineers WHERE user_id = ?').all(req.user.id)).map(r => r.customer_id));
-    customers = rows.filter(c => !restrictedIds.has(c.id) || allowedRestricted.has(c.id))
+    const byName = await db.prepare(`
+      SELECT ${columns} FROM customers c JOIN customer_engineers ce ON ce.customer_id = c.id
+      WHERE c.active = 1 AND c.service_activity_enabled = 1 AND ce.user_id = ?
+    `).all(req.user.id);
+    const seen = new Set();
+    customers = [...byTeam, ...byName].filter(c => !seen.has(Number(c.id)) && seen.add(Number(c.id)))
       .map(c => ({ ...c, name: decryptField(c.name) }));
   }
   // In-house infrastructure first (the managed-services team's most frequent choice), then A–Z.
@@ -203,7 +207,8 @@ router.post('/', requireAuth, requireServiceActivityAccess, async (req, res) => 
     const teamIds = [...req.enabledTeamIds];
     const placeholders = teamIds.map(() => '?').join(',');
     const match = await db.prepare(`SELECT team_id FROM customer_teams WHERE customer_id = ? AND team_id IN (${placeholders})`).get(customerId, ...teamIds);
-    teamId = match.team_id;
+    // An engineer added to the customer individually logs it under a team of their own.
+    teamId = match?.team_id ?? Math.min(...teamIds);
   }
 
   const validation = await validateActivityPayload(body, { customerId, isCreate: true });

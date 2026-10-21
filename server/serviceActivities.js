@@ -44,9 +44,10 @@ async function getEnabledTeamIdsForUser(userId) {
 
 /**
  * Returns true if `userId` (an engineer) is authorized to log/view activity
- * against `customerId`: customer must be active + service-tracking enabled +
- * assigned to a team the engineer belongs to (with tracking enabled), and if
- * the customer has explicit engineer restrictions, the engineer must be listed.
+ * against `customerId`: the customer must be active and service-tracking enabled,
+ * and either assigned to a team the engineer belongs to (with tracking enabled) or
+ * have the engineer added to it individually (customer_engineers: an engineer from
+ * another team). The engineer needs activity tracking through a team of their own.
  */
 async function isCustomerAuthorizedForEngineer(userId, customerId, enabledTeamIds) {
   if (!enabledTeamIds.size) return false;
@@ -60,16 +61,8 @@ async function isCustomerAuthorizedForEngineer(userId, customerId, enabledTeamId
   const teamMatch = await db.prepare(
     `SELECT 1 FROM customer_teams WHERE customer_id = ? AND team_id IN (${placeholders})`
   ).get(customerId, ...teamIds);
-  if (!teamMatch) return false;
-
-  const restricted = await db.prepare('SELECT 1 FROM customer_engineers WHERE customer_id = ?').get(customerId);
-  if (restricted) {
-    const allowed = await db.prepare(
-      'SELECT 1 FROM customer_engineers WHERE customer_id = ? AND user_id = ?'
-    ).get(customerId, userId);
-    if (!allowed) return false;
-  }
-  return true;
+  if (teamMatch) return true;
+  return !!await db.prepare('SELECT 1 FROM customer_engineers WHERE customer_id = ? AND user_id = ?').get(customerId, userId);
 }
 
 module.exports = {

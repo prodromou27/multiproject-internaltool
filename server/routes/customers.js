@@ -501,14 +501,21 @@ router.put('/:id/engineers', requireManagerOrPlanner, async (req, res) => {
   if (!id) return res.status(400).json({ error: 'Invalid ID' });
   const customer = await db.prepare('SELECT 1 FROM customers WHERE id = ?').get(id);
   if (!customer) return res.status(404).json({ error: 'Not found' });
+  // Engineers added individually (e.g. from another team) work with the customer like its
+  // teams' engineers: they see it, its tasks and assets, and log its activities.
   const { user_ids } = req.body;
-  if (!Array.isArray(user_ids)) return res.status(400).json({ error: 'user_ids must be an array' });
+  if (!Array.isArray(user_ids) || !user_ids.every(uid => Number.isSafeInteger(uid) && uid > 0)) return res.status(400).json({ error: 'user_ids must be a list of user IDs' });
+  const ids = [...new Set(user_ids)];
+  if (ids.length > 200) return res.status(400).json({ error: 'At most 200 engineers' });
+  if (ids.length) {
+    const found = await db.prepare(`SELECT id FROM users WHERE id IN (${ids.map(() => '?').join(',')}) AND role = 'engineer' AND active = 1`).all(...ids);
+    if (found.length !== ids.length) return res.status(400).json({ error: 'Add only active engineers' });
+  }
   await db.transaction(async (tx) => {
     await tx.prepare('DELETE FROM customer_engineers WHERE customer_id = ?').run(id);
     const ins = tx.prepare('INSERT INTO customer_engineers (customer_id, user_id) VALUES (?, ?)');
-    for (const uid of user_ids) {
-      if (Number.isInteger(uid) && uid > 0) await ins.run(id, uid);
-    }
+    for (const uid of ids) await ins.run(id, uid);
+    await logAudit(tx, req, 'customer', id, null, 'customer_engineers_set', `engineers=${ids.join(',') || 'none'}`);
   });
   res.json({ ok: true });
 });

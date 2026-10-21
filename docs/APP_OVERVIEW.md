@@ -500,6 +500,8 @@ current user unless requested by a manager. Time log IDs, hours and date filters
 are validated before querying or storing data.
 Engineers self-assign and are confined to their own tasks and member projects.
 
+Managers can take a task too (`POST /api/tasks/:id/take`), or choose themselves under
+Assigned to: a task's assignee is an active engineer or manager.
 **Several engineers on a task.** Besides the assignee (the lead), `task_engineers` lists
 other engineers ("Also working on it"). They count as working on the task everywhere
 (`taskAccess.js`: `ownTasksSql`, `worksOnTask`): their task lists, calendar, search, edits,
@@ -535,6 +537,12 @@ Partial edits preserve omitted contract values and allow explicitly clearing
 optional contract fields.
 Excel import (≤5,000 rows, duplicate detection by normalized
 name, downloadable template).
+
+A customer is served by its teams (`customer_teams`) and by engineers added individually,
+e.g. from another team (`customer_engineers`, the customer form's "Engineers from other
+teams"). Both add access: such an engineer sees the customer and logs its activities under a
+team of their own (`isCustomerAuthorizedForEngineer`); the list no longer restricts the
+customer's teams.
 
 Current customer behaviour: several customers can be **in-house infrastructure** and they
 are listed first; a customer may have a **project name** (a nickname, encrypted and

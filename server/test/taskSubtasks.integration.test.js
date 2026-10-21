@@ -136,8 +136,13 @@ test('engineers take an unassigned task, or take over one assigned to someone el
   assert.equal(told.title, 'Engineer Enabled took over: Patch Cisco ISE');
   assert.ok(await db.prepare("SELECT 1 FROM audit_log WHERE action = 'task_taken_over'").get());
 
-  // Not for managers, other customers' engineers, or finished tasks.
-  assert.equal((await take(theirs, {}, ids.tokenManager)).status, 403);
+  // A manager takes one too (here, taking it over from the engineer).
+  assert.equal((await take(theirs, {}, ids.tokenManager)).status, 409, 'assigned: asks to take it over');
+  const byManager = await take(theirs, { take_over: true }, ids.tokenManager);
+  assert.equal(byManager.status, 200, JSON.stringify(byManager.data));
+  assert.equal(Number((await db.prepare('SELECT assigned_to FROM tasks WHERE id = ?').get(theirs)).assigned_to), Number(ids.manager));
+  assert.equal((await take(theirs, {}, ids.tokenPlanner)).status, 403, 'not planners');
+  // Not for other customers' engineers, or finished tasks.
   const elsewhere = (await api('/api/tasks', { method: 'POST', token: ids.tokenManager, body: { customer_id: ids.customerUnassigned, title: 'Configure the new Synology' } })).data.id;
   assert.equal((await take(elsewhere)).status, 403);
   await api(`/api/tasks/${unassigned}`, { method: 'PUT', token: ids.tokenEnabled, body: { status: 'completed' } });

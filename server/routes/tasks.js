@@ -156,8 +156,9 @@ function validateTaskInput(body, creating = false) {
 async function validateTaskRelationships(projectId, assigneeId) {
   if (projectId && !await db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return 'Project not found';
   if (assigneeId) {
+    // Engineers, or a manager who takes the work on themselves.
     const user = await db.prepare('SELECT role, active FROM users WHERE id = ?').get(assigneeId);
-    if (!user || !user.active || user.role !== 'engineer') return 'Assign tasks to an active engineer';
+    if (!user || !user.active || !['engineer', 'manager'].includes(user.role)) return 'Assign tasks to an active engineer or manager';
   }
   return null;
 }
@@ -689,19 +690,19 @@ router.delete('/:id/dependencies/:depId', requireManager, requireVisibleTask, as
   res.json({ ok: true });
 });
 
-// An engineer takes a task: an unassigned one, or (with take_over) one assigned to someone
-// else, who is told. They must be able to work on it: a customer they work with, a project
-// they are on, or their team's task. Finished tasks cannot be taken.
+// An engineer or a manager takes a task: an unassigned one, or (with take_over) one assigned
+// to someone else, who is told. Engineers must be able to work on it: a customer they work
+// with, a project they are on, or their team's task. Finished tasks cannot be taken.
 router.post('/:id/take', requireAuth, async (req, res) => {
-  if (req.user.role !== 'engineer') return res.status(403).json({ error: 'Engineers take tasks; managers assign them' });
+  if (!['engineer', 'manager'].includes(req.user.role)) return res.status(403).json({ error: 'Engineers and managers take tasks' });
   if (!/^[1-9]\d*$/.test(String(req.params.id))) return res.status(400).json({ error: 'Invalid task ID' });
   const task = await db.prepare('SELECT t.*, COALESCE(t.customer_id, p.customer_id) AS task_customer_id FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?').get(Number(req.params.id));
   if (!task) return res.status(404).json({ error: 'Task not found' });
   if (['completed', 'closed', 'cancelled', 'pending_approval'].includes(task.status)) return res.status(409).json({ error: 'This task is already finished' });
   if (Number(task.assigned_to) === Number(req.user.id)) return res.json({ ok: true, assigned_to: req.user.id });
-  const allowed = task.project_id
+  const allowed = req.user.role === 'manager' || (task.project_id
     ? !!await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(task.project_id, req.user.id)
-    : (task.task_customer_id && await canAccessCustomer(req.user, task.task_customer_id)) || await worksOnTask(req.user, { ...task, assigned_to: null });
+    : (task.task_customer_id && await canAccessCustomer(req.user, task.task_customer_id)) || await worksOnTask(req.user, { ...task, assigned_to: null }));
   if (!allowed) return res.status(403).json({ error: task.project_id ? 'You can take tasks of projects you are on' : 'You can take tasks of customers you work with' });
   const previous = task.assigned_to ? await db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(task.assigned_to) : null;
   if (previous && req.body?.take_over !== true) return res.status(409).json({ error: `This task is assigned to ${previous.name}. Take it over?`, code: 'ASSIGNED', assigned_to_name: previous.name });

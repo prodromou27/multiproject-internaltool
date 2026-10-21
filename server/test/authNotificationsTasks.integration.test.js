@@ -182,7 +182,7 @@ test('task edits can clear assignments and validate fields and relationships', a
   const endpoint = `/api/tasks/${created.data.id}`;
   assert.equal((await db.prepare('SELECT title FROM tasks WHERE id=?').get(created.data.id)).title, 'Assignment test');
   for (const body of [{ title: {} }, { title: '' }, { title: 'x'.repeat(501) }, { description: [] },
-    { deadline: '2026-02-30' }, { priority: '' }, { assigned_to: ids.manager }, { assigned_to: 99999999 }]) {
+    { deadline: '2026-02-30' }, { priority: '' }, { assigned_to: ids.planner }, { assigned_to: 99999999 }]) {
     assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenManager, body })).status, 400, JSON.stringify(body));
   }
   assert.equal((await api(endpoint, { method: 'PUT', token: ids.tokenManager, body: { assigned_to: null, deadline: null } })).status, 200);

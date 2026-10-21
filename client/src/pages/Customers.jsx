@@ -64,6 +64,15 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
   });
   const [selectedTeams, setSelectedTeams] = useState(() => (initial?.team_ids) || []);
   const [newTeam, setNewTeam] = useState(null); // null = not creating; string = name being typed
+  // Engineers added individually, e.g. from another team (managers, with the teams).
+  const [people, setPeople] = useState([]), [selectedEngineers, setSelectedEngineers] = useState(null);
+  useEffect(() => {
+    if (!teams) return undefined;
+    let live = true;
+    Promise.all([api.users().catch(() => []), initial?.id ? api.customerEngineers(initial.id).catch(() => []) : Promise.resolve([])])
+      .then(([users, current]) => { if (!live) return; setPeople(users.filter(person => person.role === 'engineer' && person.active !== 0 && person.active !== false)); setSelectedEngineers(current.map(person => person.id)); });
+    return () => { live = false; };
+  }, [!!teams, initial?.id]);   // eslint-disable-line react-hooks/exhaustive-deps -- once per form, not when a team is added
   const [showService, setShowService] = useState(!!initial?.service_activity_enabled);
   const [saving, setSaving] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -76,6 +85,7 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
     try {
       const id = await onSave(edit.version === undefined ? form : { ...form, version: edit.version });
       if (onSaveTeams) await onSaveTeams(initial?.id || id, selectedTeams);
+      if (teams && selectedEngineers) await api.setCustomerEngineers(initial?.id || id, selectedEngineers);
       draft.clear();
       onClose();
     } catch (err) { if (!edit.caught(err)) toast.error(err.message); } finally { setSaving(false); }
@@ -143,6 +153,26 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
                     <span key={id} className="badge badge-open inline-flex items-center gap-4">
                       {teams.find(t => t.id === id)?.name || `Team ${id}`}
                       <button type="button" aria-label="Remove team" onClick={() => setSelectedTeams(selectedTeams.filter(x => x !== id))}
+                        className="u-d7e0c12">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {teams && selectedEngineers && (
+            <div className="form-group"><label htmlFor="customer-engineer-add">Engineers from other teams</label>
+              <select id="customer-engineer-add" value="" onChange={e => { const id = Number(e.target.value); if (id && !selectedEngineers.includes(id)) setSelectedEngineers([...selectedEngineers, id]); }}>
+                <option value="">{selectedEngineers.length ? 'Add another engineer…' : 'Add an engineer…'}</option>
+                {people.filter(person => !selectedEngineers.includes(person.id)).map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
+              </select>
+              <small className="text-muted">They work with this customer like its teams' engineers: they see it, its tasks and assets, and log its activities (under their own team).</small>
+              {selectedEngineers.length > 0 && (
+                <div className="flex gap-6 flex-wrap mt-8">
+                  {selectedEngineers.map(id => (
+                    <span key={id} className="badge badge-open inline-flex items-center gap-4">
+                      {people.find(person => person.id === id)?.name || `Engineer ${id}`}
+                      <button type="button" aria-label={`Remove ${people.find(person => person.id === id)?.name || 'engineer'}`} onClick={() => setSelectedEngineers(selectedEngineers.filter(x => x !== id))}
                         className="u-d7e0c12">×</button>
                     </span>
                   ))}

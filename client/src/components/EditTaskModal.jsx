@@ -5,6 +5,7 @@ import TaskSubtasks, { TaskUpdates } from './TaskSubtasks';
 import TaskFiles from './TaskFiles';
 import { OtherEngineers } from './TaskPeople';
 import { useConfirm } from './Confirm';
+import { useAuth } from '../auth';
 
 export const STATUS_LABELS = {
   open: 'Open', in_progress: 'In Progress', completed: 'Completed',
@@ -35,6 +36,7 @@ export default function EditTaskModal({ task, allUsers, isManager, onSave, onClo
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const confirm = useConfirm();
+  const { user: me } = useAuth() || {};
 
   // Managers: for good, with its updates, subtasks, files and time logged on it.
   async function deleteTask() {
@@ -125,6 +127,8 @@ export default function EditTaskModal({ task, allUsers, isManager, onSave, onClo
             <label>Assigned to</label>
             <select value={form.assigned_to} onChange={set('assigned_to')}>
               <option value="">Unassigned</option>
+              {/* A manager may take the task on themselves. */}
+              {me?.role === 'manager' && <option value={me.id}>Me ({me.name})</option>}
               {engineers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>

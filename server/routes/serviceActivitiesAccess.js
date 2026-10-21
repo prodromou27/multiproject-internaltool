@@ -42,6 +42,8 @@ async function requireAuthorizedActivityCustomer(req, res, next) {
 async function resolveActivityTeam(req, customerId, preferredTeamId) {
   const assigned = await db.prepare('SELECT team_id FROM customer_teams WHERE customer_id = ? ORDER BY team_id').all(customerId);
   const eligible = req.user.role === 'manager' ? assigned : assigned.filter(t => req.enabledTeamIds.has(t.team_id));
+  // An engineer added to the customer individually: a team of their own.
+  if (!eligible.length && req.user.role !== 'manager' && req.enabledTeamIds?.size) return Math.min(...req.enabledTeamIds);
   return eligible.find(t => t.team_id === preferredTeamId)?.team_id || eligible[0]?.team_id;
 }
 

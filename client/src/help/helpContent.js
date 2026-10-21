@@ -50,6 +50,7 @@ export const HELP_TOPICS = [
         'Several contracts show as the current one and "+N more".',
         'Managers create, edit, archive and import customers. **Archive** keeps the history and can be undone.',
         'Mark a customer as **in-house infrastructure** to track work on your own systems; several entries can be in-house.',
+        'A customer is served by its **Assigned Team(s)** (add whole teams), and by **Engineers from other teams** added one by one in the customer form. They see the customer, its tasks and assets, and log its activities under their own team.',
         '**Export customers** (in the **More actions** menu at the top right of Customers; managers and planners): Excel or CSV, with the primary contact (one row per customer) or every contact (one row per contact), and archived customers if you choose.',
       ] },
       { heading: 'Contacts', items: [
@@ -104,7 +105,7 @@ export const HELP_TOPICS = [
         '**Waiting for the customer / vendor** asks what you are waiting for, and shows it on the task.',
         'In an update, type **@** and a name to tag a colleague; they are told.',
         'Posting an update or attaching a file in **Edit Task** also saves your other changes, so closing the window loses nothing.',
-        'Engineers can **take** an unassigned task, or take one over from a colleague (who is told).',
+        '**Take** an unassigned task, or take one over from a colleague (who is told): engineers for their customers, managers for any task. Managers can also choose **Me** under **Assigned to**.',
       ] },
       { heading: 'Recurring tasks', items: [
         'On a customer\'s Tasks tab, managers set up tasks that repeat (weekly, monthly, quarterly…) for an engineer or a team.',

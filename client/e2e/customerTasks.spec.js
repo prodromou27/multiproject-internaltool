@@ -228,3 +228,19 @@ test('posting an update or attaching a file in Edit Task saves the task\'s chang
   await expect(dialog).toHaveCount(0);
   expect(task.priority).toBe('high');
 });
+
+test('a manager takes a customer task that is not theirs', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  let taken = null;
+  const task = { id: 81, title: 'Check the UPS', status: 'open', priority: 'medium', assigned_to: 7, assigned_to_name: 'Maria Ioannou', customer_id: 12, can_update: true };
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
+  api.override('GET /api/customers/12/operations/tasks', () => ({ body: { rows: [task], total: 1, page: 1, page_size: 25 } }));
+  api.override('POST /api/tasks/81/take', ({ body }) => { taken = body; return { body: { ok: true } }; });
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await page.getByRole('button', { name: 'Take over Check the UPS' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Take over' }).click();
+  await expect.poll(() => taken).toEqual({ take_over: true });
+});

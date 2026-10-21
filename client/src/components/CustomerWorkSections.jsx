@@ -13,6 +13,7 @@ import EditTaskModal from './EditTaskModal';
 import { TaskPeople } from './TaskPeople';
 import { useConfirm } from './Confirm';
 import AddToCalendarButton from './AddToCalendarButton';
+import { useAuth } from '../auth';
 
 function useCustomerList(load,params,customerId) {
   const [data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
@@ -63,6 +64,7 @@ const DONE_STATUSES=new Set(['completed','closed','cancelled','pending_approval'
    customer's tasks: they take an unassigned one, or take one over from a
    colleague (who is told); a team task becomes theirs when they start or finish it. */
 export function CustomerTasks({ customerId,initialFilter='',engineers=[],canManage=false,canAdd=false,isEngineer=false,create=false,onCreateConsumed,openTaskId=null }) {
+  const { user:me }=useAuth() || {};
   const toast=useToast(),confirm=useConfirm(),[mine,setMine]=useState(false),[adding,setAdding]=useState(false),[editing,setEditing]=useState(null),[busy,setBusy]=useState(null),[subtasksFor,setSubtasksFor]=useState(null);
   const [page,setPage]=useState(1),[filter,setFilter]=useState(initialFilter || 'open'),[priority,setPriority]=useState(''),[engineer,setEngineer]=useState(''),[draft,setDraft]=useState(''),[search,setSearch]=useState('');
   const state=useCustomerList((params,options) => api.customerOperationTasks(customerId,params,options),{ page,page_size:25,filter,search,...(priority?{priority}:{}),...(engineer?{engineer_id:engineer}:{}),...(mine?{ mine:'1' }:{}) },customerId);
@@ -102,7 +104,8 @@ export function CustomerTasks({ customerId,initialFilter='',engineers=[],canMana
     {adding && <CustomerTaskForm customerId={customerId} isManager={canManage} engineers={engineers} onClose={() => setAdding(false)} onSaved={() => { setAdding(false);toast.success('Task added');state.retry(); }} />}
     <SearchFilter value={draft} onChange={setDraft} onSubmit={() => { setSearch(draft.trim());setPage(1); }}><label><span>Status</span><select value={filter} onChange={event => update(setFilter,event.target.value)}><option value="open">Open</option><option value="in_progress">In progress</option><option value="overdue">Overdue</option><option value="recently_completed">Recently completed</option><option value="all">All</option></select></label><label><span>Priority</span><select value={priority} onChange={event => update(setPriority,event.target.value)}><option value="">All priorities</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>{isEngineer && <label className="cs-mine"><input type="checkbox" checked={mine} onChange={event => update(setMine,event.target.checked)} /> Mine only</label>}{engineers.length>0 && <label><span>Engineer</span><select value={engineer} onChange={event => update(setEngineer,event.target.value)}><option value="">All engineers</option>{engineers.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}</SearchFilter>
     <ResultState {...state} empty={filter==='open' ? 'No open tasks' : 'No tasks found'}>{state.data && <div className="card cs-work-table-wrap"><table className="cs-work-table"><thead><tr><th>Task</th><th>For</th><th>Status</th><th>Priority</th><th>Due date</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{state.data.rows.map(row => {
-      const done=DONE_STATUSES.has(row.status),canUpdate=row.can_update!==false,openSubtasks=(row.subtasks_total || 0)-(row.subtasks_done || 0),overdue=!done && row.deadline && row.deadline.slice(0,10)<businessToday();
+      // Engineers take a task they cannot change yet; managers take one that is not already theirs.
+      const done=DONE_STATUSES.has(row.status),canUpdate=row.can_update!==false,canTake=!done && (isEngineer ? !canUpdate : canManage && Number(row.assigned_to)!==Number(me?.id)),openSubtasks=(row.subtasks_total || 0)-(row.subtasks_done || 0),overdue=!done && row.deadline && row.deadline.slice(0,10)<businessToday();
       return <tr key={row.id}>
         <td data-label="Task"><button type="button" className="cs-task-title" onClick={() => setSubtasksFor(row)} title="Open the task: subtasks and updates">{row.title}</button>
           <div className="cs-task-meta"><SubtaskProgress total={row.subtasks_total} done={row.subtasks_done} compact={!row.subtasks_total} onClick={canUpdate || row.subtasks_total ? () => setSubtasksFor(row) : undefined} /><TaskTicket task={row} />{row.recurring_task_id && <span title="Created by a recurring task"><Repeat size={12} aria-hidden="true" /> Repeats</span>}{row.asset_name && <span>Asset: {row.asset_name}</span>}{row.project_title && <span>Project: <Link to={`/projects/${row.project_id}`}>{row.project_title}</Link></span>}</div>
@@ -111,7 +114,7 @@ export function CustomerTasks({ customerId,initialFilter='',engineers=[],canMana
         <td data-label="Status"><StatusBadge entityType="task" s={row.status} /></td>
         <td data-label="Priority"><span className={`badge badge-${row.priority}`}>{sentenceCase(row.priority)}</span></td>
         <td data-label="Due date" className={overdue ? 'cs-overdue' : ''}>{fmtDate(row.deadline)}{overdue && <div className="text-sm">Overdue</div>}</td>
-        <td><div className="table-actions">{!done && !canUpdate && isEngineer && <button type="button" className="btn btn-ghost btn-sm" disabled={busy===row.id} onClick={() => take(row)}
+        <td><div className="table-actions">{canTake && <button type="button" className="btn btn-ghost btn-sm" disabled={busy===row.id} onClick={() => take(row)}
           aria-label={`${row.assigned_to ? 'Take over' : 'Take'} ${row.title}`}><Hand size={13} /> {row.assigned_to ? 'Take over' : 'Take'}</button>}
           {canUpdate && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(row)} aria-label={`Edit ${row.title}`}><Pencil size={13} /> Edit</button>}
           {canUpdate && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSubtasksFor(row)} aria-label={`Post an update on ${row.title}`}><MessageSquare size={13} /> Update</button>}
