@@ -102,6 +102,7 @@ export const HELP_TOPICS = [
       ] },
       { heading: 'Following it up', items: [
         'Open a task to change its status, due date and people, tick its **subtasks**, post **updates** and attach **files**.',
+        'Each subtask can be given to an engineer (**Assign an engineer…** beside it) with its own due date; they see it in My Work and can tick it off. This works in every task window, including a project\'s tasks.',
         'A task with open subtasks cannot be completed; completing the last subtask completes the task.',
         '**Waiting for the customer / vendor** asks what you are waiting for, and shows it on the task.',
         'In an update, type **@** and a name to tag a colleague; they are told.',
