@@ -1487,6 +1487,10 @@ async function applyMigrations(pool, transaction) {
       WHERE (contact_name IS NOT NULL OR contact_email IS NOT NULL OR contact_phone IS NOT NULL)
         AND id NOT IN (SELECT customer_id FROM customer_contacts);
   `]);
+  migrations.push(['20261129_customer_hidden_sections', `
+    -- Customer 360 tabs a manager hid on this customer's page (a JSON list of tab ids).
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS hidden_sections TEXT;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

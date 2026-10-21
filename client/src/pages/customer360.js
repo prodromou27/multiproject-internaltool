@@ -21,18 +21,21 @@ const permitted=(user,permission) => Object.prototype.hasOwnProperty.call(user?.
    earns the Assets tab (view, add, review) without the assets.access permission. `managedCustomer`: the customer receives managed
    services, which adds the Reports tab. `hasTickets`: it has a Request Tracker
    queue (managed or not), which adds the Tickets tab. */
-export function customer360Sections(user,capabilities={},assetsGrant=false,managedCustomer=false,hasTickets=false,noVisits=false) {
+/* `hidden`: tabs a manager hid on this customer's page; Overview and Service Configuration always stay. */
+export const ALWAYS_SHOWN_SECTIONS=Object.freeze(['overview','service-configuration']);
+export function customer360Sections(user,capabilities={},assetsGrant=false,managedCustomer=false,hasTickets=false,noVisits=false,hidden=[]) {
   const assetAllowed=assetsGrant===true || permitted(user,'assets.access');
   const managedAllowed=managedCustomer===true && permitted(user,'managed_customers.view');
   const ticketsAllowed=(managedCustomer===true || hasTickets===true) && permitted(user,'managed_customers.view');
   const available=CUSTOMER_360_SECTIONS.filter(section => !section.pending && (section.tickets ? ticketsAllowed && section.roles.includes(user?.role) : section.managed ? managedAllowed && section.roles.includes(user?.role) : section.id==='assets' ? assetAllowed : section.roles.includes(user?.role)));
+  const shown=available.filter(section => ALWAYS_SHOWN_SECTIONS.includes(section.id) || !(hidden || []).includes(section.id));
   // Managed customers do not have maintenance visits.
-  if (managedCustomer===true || noVisits===true) return available.filter(section => section.id!=='maintenance-visits');
-  return available;
+  if (managedCustomer===true || noVisits===true) return shown.filter(section => section.id!=='maintenance-visits');
+  return shown;
 }
 
-export function customer360Section(user,requested,capabilities={},assetsGrant=false,managedCustomer=false,hasTickets=false,noVisits=false) {
-  const available=customer360Sections(user,capabilities,assetsGrant,managedCustomer,hasTickets,noVisits);
+export function customer360Section(user,requested,capabilities={},assetsGrant=false,managedCustomer=false,hasTickets=false,noVisits=false,hidden=[]) {
+  const available=customer360Sections(user,capabilities,assetsGrant,managedCustomer,hasTickets,noVisits,hidden);
   const aliases={ 'managed-services':'service-configuration' };
   const normalized=aliases[requested] || requested;
   return available.some(section => section.id===normalized) ? normalized : available[0]?.id || 'overview';

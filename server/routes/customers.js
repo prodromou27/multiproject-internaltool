@@ -185,7 +185,27 @@ router.get('/:id', requireAuth, async (req, res) => {
   // Engineers may only view customers from their own assigned visits/projects
   if (!await canAccessCustomer(req.user,c.id)) return res.status(403).json({ error:'Forbidden' });
   const logo = await db.prepare('SELECT updated_at FROM customer_logos WHERE customer_id = ?').get(c.id);
-  res.json({ ...decryptCustomer(c), logo_updated_at: logo?.updated_at || null });
+  res.json({ ...decryptCustomer(c), hidden_sections: hiddenSections(c.hidden_sections), logo_updated_at: logo?.updated_at || null });
+});
+
+/* ── Customer 360 tabs hidden on this customer's page (managers) ─────────────
+   Tidies the page only: what each person may see is unchanged. Overview and
+   Service Configuration (where tabs are shown again) cannot be hidden. */
+const HIDEABLE_SECTIONS = new Set(['activities', 'tasks', 'tickets', 'projects', 'recommendations', 'assets', 'contracts', 'vendor-cases', 'maintenance-visits', 'reports', 'timeline']);
+function hiddenSections(value) {
+  try { const list = JSON.parse(value || '[]'); return Array.isArray(list) ? list.filter(id => HIDEABLE_SECTIONS.has(id)) : []; } catch { return []; }
+}
+router.put('/:id/sections', requireManager, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  const customer = await db.prepare('SELECT id, name FROM customers WHERE id = ?').get(id);
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  const hidden = req.body?.hidden;
+  if (!Array.isArray(hidden) || !hidden.every(section => HIDEABLE_SECTIONS.has(section))) return res.status(400).json({ error: `hidden must list tabs among: ${[...HIDEABLE_SECTIONS].join(', ')}` });
+  const value = [...new Set(hidden)];
+  await db.prepare('UPDATE customers SET hidden_sections = ? WHERE id = ?').run(value.length ? JSON.stringify(value) : null, id);
+  await logAudit(db, req, 'customer', id, decryptCustomer(customer).name, 'customer_tabs_hidden', value.join(',') || 'none');
+  res.json({ hidden_sections: value });
 });
 
 /* ── Customer logo ───────────────────────────────────────────

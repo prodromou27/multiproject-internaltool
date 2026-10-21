@@ -734,6 +734,7 @@ export const api = {
   setCustomerTeams: (id, team_ids) => req('PUT', `/customers/${id}/teams`, { team_ids }),
   customerEngineers: (id) => req('GET', `/customers/${id}/engineers`),
   setCustomerEngineers: (id, user_ids) => req('PUT', `/customers/${id}/engineers`, { user_ids }),
+  setCustomerHiddenSections: (id, hidden) => req('PUT', `/customers/${id}/sections`, { hidden }),
   customerServiceActivities: (id, params = {}, options) => req('GET', `/customers/${id}/service-activities?` + new URLSearchParams(params).toString(), undefined, options),
   customerServiceSummary: (id, params = {}, options) => req('GET', `/customers/${id}/service-summary?` + new URLSearchParams(params).toString(), undefined, options),
   customerContractHours: (id, options) => req('GET', `/customers/${id}/contract-hours`, undefined, options),

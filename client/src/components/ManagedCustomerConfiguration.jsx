@@ -3,6 +3,7 @@ import { AlertTriangle,CheckCircle2,ChevronDown,ExternalLink,Loader2 } from 'luc
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { Toggle,ToggleRow } from '../pages/admin/shared';
+import { ALWAYS_SHOWN_SECTIONS,CUSTOMER_360_SECTIONS } from '../pages/customer360';
 
 const DEFAULTS={ managed_services_enabled:false,service_activity_tracking_enabled:false,task_reporting_enabled:true,project_reporting_enabled:true,maintenance_visit_reporting_enabled:true,recommendation_tracking_enabled:true,include_in_managed_services_reports:true,responsible_team_id:null,service_manager_id:null,reporting_frequency:'',report_due_days:null,default_report_template_id:null,ticket_integration_enabled:false,ticket_include_in_reporting:true,ticket_write_back_enabled:false,ticket_write_back_status:'',external_queue_id:'',external_queue_name:'',version:0 };
 const TRACKING=[
@@ -32,7 +33,7 @@ function SaveStatus({ status,message,onRetry }) {
   return <span className="msc-save" />;
 }
 
-export default function ManagedCustomerConfiguration({ customerId }) {
+export default function ManagedCustomerConfiguration({ customerId,hiddenSections=[],onHiddenSections }) {
   const [form,setForm]=useState(DEFAULTS),[allTeams,setAllTeams]=useState([]),[queues,setQueues]=useState([]),[queueError,setQueueError]=useState('');
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState(''),[status,setStatus]=useState('idle'),[saveError,setSaveError]=useState(''),[busy,setBusy]=useState('');
   const [message,setMessage]=useState('');
@@ -251,5 +252,58 @@ export default function ManagedCustomerConfiguration({ customerId }) {
           </>}
         </Optional>
     </div>
+    <OtherEngineers customerId={customerId} engineers={engineers} />
+    <PageTabs customerId={customerId} hidden={hiddenSections} onChange={onHiddenSections} />
   </div>;
+}
+
+/* Engineers added to this customer one by one, e.g. from another team (the same list as
+   the customer form's "Engineers from other teams"). Saved at once. */
+function OtherEngineers({ customerId,engineers }) {
+  const [chosen,setChosen]=useState(null),[error,setError]=useState('');
+  useEffect(() => {
+    let live=true;
+    api.customerEngineers(customerId).then(list => { if (live) setChosen(list.map(person => person.id)); }).catch(failure => { if (live) setError(failure.message); });
+    return () => { live=false; };
+  },[customerId]);
+  async function save(ids) {
+    const previous=chosen;setChosen(ids);setError('');
+    try { await api.setCustomerEngineers(customerId,ids); } catch(failure) { setChosen(previous);setError(failure.message); }
+  }
+  const nameOf=id => engineers.find(person => person.id===id)?.name || `Engineer ${id}`;
+  return <section className="card msc-shell">
+    <header className="msc-shell-head"><div><h2>Engineers from other teams</h2>
+      <p>Besides this customer's teams: they see the customer, its tasks and assets, and log its activities under their own team.</p></div></header>
+    <div className="msc-group">
+    {error && <p className="msc-hint" role="alert">{error}</p>}
+    {!chosen ? <p className="text-muted text-sm" role="status">Loading…</p> : <div className="flex gap-6 flex-wrap items-center">
+      {chosen.map(id => <span key={id} className="badge badge-open inline-flex items-center gap-4">{nameOf(id)}<button type="button" aria-label={`Remove ${nameOf(id)}`} onClick={() => save(chosen.filter(item => item!==id))}>×</button></span>)}
+      <select value="" aria-label="Add an engineer from another team" onChange={event => { const id=Number(event.target.value); if (id) save([...chosen,id]); }}>
+        <option value="">{chosen.length ? 'Add another engineer…' : 'Add an engineer…'}</option>
+        {engineers.filter(person => !chosen.includes(person.id)).map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
+      </select>
+    </div>}
+    </div>
+  </section>;
+}
+
+/* Which tabs this customer's page shows, for everyone. Hiding tidies the page only;
+   what each person may see is unchanged. Overview and this tab always stay. */
+function PageTabs({ customerId,hidden,onChange }) {
+  const [error,setError]=useState('');
+  const hideable=CUSTOMER_360_SECTIONS.filter(section => !ALWAYS_SHOWN_SECTIONS.includes(section.id));
+  async function toggle(id,shown) {
+    const next=shown ? hidden.filter(item => item!==id) : [...hidden,id];
+    setError('');
+    try { const result=await api.setCustomerHiddenSections(customerId,next); onChange?.(result.hidden_sections); }
+    catch(failure) { setError(failure.message); }
+  }
+  return <section className="card msc-shell">
+    <header className="msc-shell-head"><div><h2>Tabs on this page</h2>
+      <p>Hide the tabs this customer does not need. Some only appear when they apply (Tickets, Reports, Assets).</p></div></header>
+    <div className="msc-group">
+      {error && <p className="msc-hint" role="alert">{error}</p>}
+      <div className="msc-group-body-rows">{hideable.map(section => <ToggleRow key={section.id} label={section.label} value={!hidden.includes(section.id)} onChange={value => toggle(section.id,value)} />)}</div>
+    </div>
+  </section>;
 }

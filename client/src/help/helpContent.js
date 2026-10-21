@@ -61,6 +61,7 @@ export const HELP_TOPICS = [
       { heading: 'Customer 360', items: [
         'Open a customer to see its tabs: **Overview, Service Activities, Tasks, Tickets, Projects, Recommendations, Assets, Contracts & licences, Vendor cases, Maintenance Visits, Reports, Timeline** and **Service Configuration**. Which ones you see depends on your role and the customer.',
         '**Add** (top right) creates a task, visit, activity, reminder or recommendation for this customer.',
+        'Managers: **Service Configuration** sets the responsible team and its members, **engineers from other teams**, and **which tabs the customer page shows** (Overview and Service Configuration always stay). Hiding a tab tidies the page; it does not change who may see what.',
       ] },
       { heading: 'Assets', items: [
         'Add devices and services (firewalls, Microsoft 365, access points…). Only a name and type are required; **More details** has the rest.',

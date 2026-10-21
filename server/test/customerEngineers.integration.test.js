@@ -33,3 +33,17 @@ test('an engineer from another team, added to a customer, works with it like its
   assert.equal((await set([])).status, 200);
   assert.equal((await log(token, 'After removal')).status, 403);
 });
+
+test('a manager hides tabs on a customer\'s page; Overview and Service Configuration always stay', async () => {
+  const hide = (hidden, token = ids.tokenManager) => api(`/api/customers/${ids.customer}/sections`, { method: 'PUT', token, body: { hidden } });
+  assert.equal((await hide(['timeline'], ids.tokenEnabled)).status, 403, 'managers only');
+  assert.equal((await hide(['overview'])).status, 400);
+  assert.equal((await hide(['service-configuration'])).status, 400);
+  assert.equal((await hide('timeline')).status, 400);
+  const done = await hide(['timeline', 'vendor-cases', 'timeline']);
+  assert.equal(done.status, 200, JSON.stringify(done.data));
+  assert.deepEqual(done.data.hidden_sections, ['timeline', 'vendor-cases']);
+  assert.deepEqual((await api(`/api/customers/${ids.customer}`, { token: ids.tokenEnabled })).data.hidden_sections, ['timeline', 'vendor-cases'], 'everyone gets the same page');
+  assert.deepEqual((await hide([])).data.hidden_sections, []);
+  assert.deepEqual((await api(`/api/customers/${ids.customer}`, { token: ids.tokenManager })).data.hidden_sections, []);
+});

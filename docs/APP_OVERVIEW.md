@@ -542,7 +542,9 @@ A customer is served by its teams (`customer_teams`) and by engineers added indi
 e.g. from another team (`customer_engineers`, the customer form's "Engineers from other
 teams"). Both add access: such an engineer sees the customer and logs its activities under a
 team of their own (`isCustomerAuthorizedForEngineer`); the list no longer restricts the
-customer's teams.
+customer's teams. Managers also choose which Customer 360 tabs a customer's page shows
+(`customers.hidden_sections`, `PUT /api/customers/:id/sections`; Overview and Service
+Configuration always stay); hiding tidies the page and grants or removes no access.
 
 Current customer behaviour: several customers can be **in-house infrastructure** and they
 are listed first; a customer may have a **project name** (a nickname, encrypted and
