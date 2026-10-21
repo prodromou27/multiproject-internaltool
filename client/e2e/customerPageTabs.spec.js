@@ -33,3 +33,18 @@ test('a manager hides a tab on a customer\'s page and adds an engineer from anot
   await expect.poll(() => hidden).toEqual([]);
   await expect(tabs.getByRole('tab', { name: 'Timeline' })).toBeVisible();
 });
+
+test('the responsible team shows its members by name, managers included', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1, hidden_sections: [] } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/managed-services', () => ({ body: { managed_services_enabled: true, responsible_team_id: 1 } }));
+  api.override('GET /api/teams', () => ({ body: [{ id: 1, name: 'Security Team' }] }));
+  api.override('GET /api/teams/1', () => ({ body: { id: 1, name: 'Security Team', members: [{ id: 2, name: 'Alex Mercer' }, { id: 4, name: 'Maria Ioannou' }] } }));
+  api.override('GET /api/auth/users', () => ({ body: [{ id: 2, name: 'Alex Mercer', role: 'manager', active: 1 }, { id: 4, name: 'Maria Ioannou', role: 'engineer', active: 1 }] }));
+  await page.goto('/customers/12/service-profile?section=service-configuration');
+  await expect(page.getByRole('button', { name: 'Remove Alex Mercer from the team' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove Maria Ioannou from the team' })).toBeVisible();
+  await expect(page.getByText(/User \d/)).toHaveCount(0);
+});

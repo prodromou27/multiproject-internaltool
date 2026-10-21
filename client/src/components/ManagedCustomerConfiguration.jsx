@@ -38,7 +38,9 @@ export default function ManagedCustomerConfiguration({ customerId,hiddenSections
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState(''),[status,setStatus]=useState('idle'),[saveError,setSaveError]=useState(''),[busy,setBusy]=useState('');
   const [message,setMessage]=useState('');
   const [creatingTeam,setCreatingTeam]=useState(false),[newTeamName,setNewTeamName]=useState(''),[teamError,setTeamError]=useState('');
-  const [engineers,setEngineers]=useState([]),[members,setMembers]=useState([]);
+  // Everyone a team can have (managers and engineers), for names and the members list; engineers for the customer's own list.
+  const [people,setPeople]=useState([]),[members,setMembers]=useState([]);
+  const engineers=people.filter(person => person.role==='engineer');
 
   // Autosave plumbing. The latest form lives in a ref so a save always sends
   // the newest edits; only one save runs at a time and edits made during a
@@ -80,7 +82,7 @@ export default function ManagedCustomerConfiguration({ customerId,hiddenSections
         if (controller.signal.aborted) return;
         formRef.current={ ...DEFAULTS,...configuration };setForm(formRef.current);
         assignedRef.current=(assigned || []).map(team => team.id);
-        setAllTeams(teams || []);setEngineers((users || []).filter(user => user.role==='engineer' && user.active!==0));;
+        setAllTeams(teams || []);setPeople((users || []).filter(user => ['engineer','manager'].includes(user.role) && user.active!==0 && user.active!==false));
       })
       .catch(failure => { if (!controller.signal.aborted) setLoadError(failure.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -189,10 +191,10 @@ export default function ManagedCustomerConfiguration({ customerId,hiddenSections
           {hasTeam && <div className="msc-members">
             <span className="msc-members-label">Team members</span>
             <div className="flex gap-6 flex-wrap items-center">
-              {members.map(id => <span key={id} className="badge badge-open inline-flex items-center gap-4">{engineers.find(user => user.id===id)?.name || `User ${id}`}<button type="button" aria-label="Remove member" onClick={() => setTeamMembers(members.filter(item => item!==id))}>×</button></span>)}
-              <select value="" aria-label="Add engineer to team" onChange={event => { const id=Number(event.target.value); if (id) setTeamMembers([...members,id]); }}>
-                <option value="">{members.length ? 'Add another engineer…' : 'Add an engineer…'}</option>
-                {engineers.filter(user => !members.includes(user.id)).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+              {members.map(id => <span key={id} className="badge badge-open inline-flex items-center gap-4">{people.find(user => user.id===id)?.name || 'A former user'}<button type="button" aria-label={`Remove ${people.find(user => user.id===id)?.name || 'member'} from the team`} onClick={() => setTeamMembers(members.filter(item => item!==id))}>×</button></span>)}
+              <select value="" aria-label="Add a member to the team" onChange={event => { const id=Number(event.target.value); if (id) setTeamMembers([...members,id]); }}>
+                <option value="">{members.length ? 'Add another member…' : 'Add a member…'}</option>
+                {people.filter(user => !members.includes(user.id)).map(user => <option key={user.id} value={user.id}>{user.name}{user.role==='manager' ? ' (manager)' : ''}</option>)}
               </select>
             </div>
           </div>}
