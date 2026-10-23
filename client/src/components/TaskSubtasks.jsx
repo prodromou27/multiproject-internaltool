@@ -85,7 +85,7 @@ export function ChecklistEditor({ items, canEdit = true, busy = false, onAdd, on
         {canEdit && owners && onAssign
           ? <span className="st-meta">
             <select className="st-owner" aria-label={`Owner of ${item.title}`} value={item.assigned_to || ''} disabled={busy} onChange={event => onAssign(item, { assigned_to: event.target.value ? Number(event.target.value) : null })}>
-              <option value="">No owner</option>{owners.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
+              <option value="">Assign an engineer…</option>{owners.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
             </select>
             <input type="date" className={`st-due${!item.done && item.due_date && item.due_date < today() ? ' is-late' : ''}`} aria-label={`Due date of ${item.title}`} value={item.due_date || ''} disabled={busy}
               onChange={event => onAssign(item, { due_date: event.target.value || null })} />

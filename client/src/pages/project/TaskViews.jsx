@@ -7,12 +7,17 @@ import { StatusBadge, PriorityBadge, fmtDate, fmtRelative, isOverdue, Modal, Men
 import { useToast } from '../../components/Toast';
 import { businessToday } from '../../utils/dates';
 import { WaitingDialog } from './Dialogs';
+import TaskSubtasks from '../../components/TaskSubtasks';
+import TaskFiles from '../../components/TaskFiles';
 
 /* ── Task Detail Modal (with comments) ───────────────────── */
 export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, onUpdate, onClose }) {
   const { user }  = useAuth();
   const toast     = useToast();
   const canManageTask = isManager || isPlanner;
+  // Subtasks (each with an owner) and files: managers, and the engineers working on the task.
+  const worksOnIt = Number(task.assigned_to) === Number(user?.id) || (task.engineers || []).some(person => Number(person.id) === Number(user?.id));
+  const canEditSubtasks = isManager || worksOnIt;
   const [comments,     setComments]     = useState([]);
   const [commentText,  setCommentText]  = useState('');
   const [submitting,   setSubmitting]   = useState(false);
@@ -165,6 +170,9 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
           />
         )}
       </div>
+
+      <div className="task-edit-subtasks"><TaskSubtasks taskId={task.id} customerId={task.customer_id ?? null} canEdit={canEditSubtasks} /></div>
+      <div className="task-edit-subtasks"><TaskFiles task={task} canAdd={canEditSubtasks} /></div>
 
       {/* Time Tracking */}
       <div className="u-1e1ab6a">
