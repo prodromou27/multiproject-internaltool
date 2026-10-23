@@ -122,15 +122,7 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
         <p className="text-muted text-sm">Track work on your own systems here; several entries can be in-house (for example one per site or company). It gets assets, team assignment and activity tracking like any customer, and in-house entries are listed first.</p>
       </div>
 
-      <details className="column-picker u-96ad609" open={showService} onToggle={e => setShowService(e.target.open)}>
-        <summary className="btn btn-ghost btn-sm u-60e32dc">Service Activity Tracking</summary>
-        <div className="u-ffb3bf2">
-          <div className="form-group">
-            <label className="u-ea06b0c">
-              <input type="checkbox" checked={!!form.service_activity_enabled} onChange={setBool('service_activity_enabled')} className="u-30e741d" />
-              Service Activity Tracking Enabled
-            </label>
-          </div>
+      {teams && <p className="text-muted text-sm">Assign teams and engineers to any customer, independently of Managed Services and Service Activity Tracking.</p>}
           {teams && (
             <div className="form-group"><label htmlFor="customer-team-add">Assigned Team(s)</label>
               <select id="customer-team-add" value="" onChange={e => { if (e.target.value === '__new__') { setNewTeam(''); return; } const id = Number(e.target.value); if (id && !selectedTeams.includes(id)) setSelectedTeams([...selectedTeams, id]); }}>
@@ -180,6 +172,15 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
               )}
             </div>
           )}
+      <details className="column-picker u-96ad609" open={showService} onToggle={e => setShowService(e.target.open)}>
+        <summary className="btn btn-ghost btn-sm u-60e32dc">Service Activity Tracking</summary>
+        <div className="u-ffb3bf2">
+          <div className="form-group">
+            <label className="u-ea06b0c">
+              <input type="checkbox" checked={!!form.service_activity_enabled} onChange={setBool('service_activity_enabled')} className="u-30e741d" />
+              Service Activity Tracking Enabled
+            </label>
+          </div>
           <div className="form-row">
             <div className="form-group"><label>Primary Contact</label><input value={form.primary_contact} onChange={set('primary_contact')} /></div>
             <div className="form-group"><label>Location</label><input value={form.location} onChange={set('location')} /></div>
