@@ -9,7 +9,7 @@ import { useLatestRequest } from '../hooks/useLatestRequest';
 import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
 import WaitingReasonDialog from '../components/WaitingReasonDialog';
 import CustomerRecurringTasks from '../components/CustomerRecurringTasks';
-import TaskSubtasks, { DraftChecklist, LastUpdate, SubtaskProgress, SubtasksDialog, TaskTicket, TaskUpdates } from '../components/TaskSubtasks';
+import { DraftChecklist, LastUpdate, SubtaskProgress, SubtasksDialog, TaskTicket } from '../components/TaskSubtasks';
 import { api } from '../api';
 import { useAuth } from '../App';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue, Modal, sentenceCase } from '../components/Shared';
