@@ -123,8 +123,9 @@ export default function ManagedCustomerConfiguration({ customerId,hiddenSections
       // Picking a team is the whole job: if it isn't yet assigned to this
       // customer, assign it here instead of sending the manager elsewhere.
       if (teamId && !assignedRef.current.includes(teamId)) {
-        assignedRef.current=[...assignedRef.current,teamId];
-        await api.setCustomerTeams(customerId,assignedRef.current);
+        const assigned=[...assignedRef.current,teamId];
+        await api.setCustomerTeams(customerId,assigned);
+        assignedRef.current=assigned;
       }
       update({ responsible_team_id:teamId },{ delay:0 });
     } catch(failure) { setStatus('error');setSaveError(failure.message); }
@@ -171,7 +172,6 @@ export default function ManagedCustomerConfiguration({ customerId,hiddenSections
         </div>
       </header>
 
-      {enabled && <>
         <section className="msc-group">
           <label className="msc-field msc-field-primary">
             <span>Responsible team</span>
@@ -180,7 +180,8 @@ export default function ManagedCustomerConfiguration({ customerId,hiddenSections
               {allTeams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
               <option value="__new__">+ Create a new team…</option>
             </select>
-            {!hasTeam && <small className="msc-hint">Choose the team that owns this customer — that's the only required step.</small>}
+            <small className="text-muted">Assign a team to any customer, with or without Managed Services.</small>
+            {enabled && !hasTeam && <small className="msc-hint">Choose the team that owns this customer — that's the only required step.</small>}
           </label>
           {creatingTeam && <form className="msc-inline-form" onSubmit={createTeam}>
             <input aria-label="New team name" autoFocus value={newTeamName} onChange={event => setNewTeamName(event.target.value)} placeholder="New team name" maxLength={120} />
@@ -198,11 +199,11 @@ export default function ManagedCustomerConfiguration({ customerId,hiddenSections
               </select>
             </div>
           </div>}
-          {hasTeam && !syncBad && <p className="msc-ok"><CheckCircle2 size={14} /> Set up. <Link to={`/customers/${customerId}/service-profile?section=tickets`}>See tickets <ExternalLink size={12} /></Link></p>}
-          {syncBad && <p className="msc-hint"><AlertTriangle size={13} /> The last ticket sync failed — check Request Tracker under Settings → Integrations → Ticketing.</p>}
+          {enabled && hasTeam && !syncBad && <p className="msc-ok"><CheckCircle2 size={14} /> Set up. <Link to={`/customers/${customerId}/service-profile?section=tickets`}>See tickets <ExternalLink size={12} /></Link></p>}
+          {enabled && syncBad && <p className="msc-hint"><AlertTriangle size={13} /> The last ticket sync failed — check Request Tracker under Settings → Integrations → Ticketing.</p>}
         </section>
 
-
+      {enabled && <>
         <Optional title="Reporting" hint="Optional — how often and in what format reports are prepared">
           <div className="msc-group-body">
             <label className="msc-field"><span>Frequency</span>
