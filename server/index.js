@@ -16,11 +16,26 @@ const path       = require('path');
 const fs         = require('fs');
 const helmet     = require('helmet');
 const rateLimit  = require('express-rate-limit');
+const { validateRuntimeConfig } = require('./config');
+
+validateRuntimeConfig();
+
 require('./db'); // initialize DB
 const db = require('./db');
-const { notify } = require('./notifications');
 
 const app = express();
+// Keep Express 4's query parsing (nested keys, arrays); Express 5 defaults to the simple parser.
+app.set('query parser', 'extended');
+
+// ── Reverse-proxy awareness ──────────────────────────────────────────────────
+// In production the app sits behind a TLS-terminating proxy (nginx/Caddy). Set
+// TRUST_PROXY to the number of proxy hops so req.ip and the rate limiter read the
+// real client IP from X-Forwarded-For. Left off by default — trusting the header
+// without a proxy in front would let clients spoof their IP.
+if (process.env.TRUST_PROXY) {
+  const hops = Number(process.env.TRUST_PROXY);
+  app.set('trust proxy', Number.isFinite(hops) ? hops : 1);
+}
 
 // ── Security headers ─────────────────────────────────────────────────────────
 // HSTS is enabled whenever TLS certs exist (regardless of NODE_ENV).
@@ -39,6 +54,11 @@ app.use(helmet({
       objectSrc:   ["'none'"],
       baseUri:     ["'self'"],
       formAction:  ["'self'"],
+      // The container serves plain HTTP (TLS is terminated upstream by the
+      // reverse proxy, or absent on a direct-access dev box). Disable helmet's
+      // default upgrade-insecure-requests, which would otherwise force the
+      // browser to fetch same-origin assets over HTTPS and blank the page.
+      upgradeInsecureRequests: null,
     },
   },
   hsts: certsExist ? { maxAge: 31536000, includeSubDomains: true } : false,
@@ -55,7 +75,25 @@ app.use(cors(allowedOrigin ? {
   origin: false,
 }));
 
-app.use(express.json({ limit: '1mb' }));
+// ── Response compression (optional) ──────────────────────────────────────────
+// Gzips API JSON and static assets when the `compression` package is present.
+// To enable: `npm install compression` in server/ (updates package-lock.json so
+// the Docker `npm ci` step picks it up). Guarded so the server boots without it.
+try {
+  const compression = require('compression');
+  app.use(compression());
+} catch {
+  // module not installed — responses served uncompressed
+}
+
+// Chat webhooks are verified against the exact bytes received, so keep them for /api/bots.
+app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { if (req.originalUrl.startsWith('/api/bots/')) req.rawBody = buf; } }));
+app.use(require('./middleware/body').ensureBody);
+app.use('/api', require('./middleware/session').protectCookieRequests);
+// Tell every open browser when data changes (see liveUpdates.js).
+const liveUpdates = require('./liveUpdates');
+app.use('/api', liveUpdates.trackChanges);
+app.use('/api/live', liveUpdates.router);
 
 // ── Rate limiting on auth endpoints ──────────────────────────────────────────
 const authLimiter = rateLimit({
@@ -67,12 +105,47 @@ const authLimiter = rateLimit({
   skipSuccessfulRequests: true, // only count failures toward the limit
 });
 app.use('/api/auth/login',                  authLimiter);
+// Downloading, uploading or restoring a backup asks for the manager's password:
+// failed attempts are limited like sign-in.
+const backupPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, skipSuccessfulRequests: true,
+  message: { error: 'Too many attempts. Please try again in 15 minutes.' },
+});
+app.use(/^\/api\/settings\/backups\/(upload|[^/]+\/(download|restore))$/, backupPasswordLimiter);
+// Per account as well as per address: guesses spread over many addresses still
+// pause after 10 failures on one account. Same message whether or not it exists.
+app.use('/api/auth/login', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: req => {
+    const id = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    return `account:${id === 'admin' ? 'admin@company.com' : id}`;
+  },
+  validate: { keyGeneratorIpFallback: false },
+  message: { error: 'Too many attempts. Please try again in 15 minutes.' },
+}));
 app.use('/api/auth/2fa/verify',            authLimiter);
 app.use('/api/auth/2fa/enable',            authLimiter); // brute-force 6-digit TOTP
 app.use('/api/auth/change-password',       authLimiter);
 app.use('/api/auth/change-password-first', authLimiter);
-app.use('/api/auth/forgot-password',       authLimiter);
+// Forgot-password always returns 200, so its limit must also count successful responses.
+app.use('/api/auth/forgot-password', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many reset requests. Please try again in 15 minutes.' },
+}));
 app.use('/api/auth/reset-password',        authLimiter);
+// Password checks inside a session (turning 2FA off, changing the email) and
+// email confirmation links count failures per address too; routes/auth.js also
+// limits them per account.
+app.delete('/api/auth/2fa',                authLimiter);
+app.put('/api/auth/profile',               authLimiter);
+app.use('/api/auth/confirm-email',         authLimiter);
 
 // ── Rate limiting on bulk-import endpoints ───────────────────────────────────
 // Each import can insert up to 5,000 rows; cap the burst rate to protect the DB.
@@ -87,8 +160,32 @@ app.use('/api/customers/import',          importLimiter);
 app.use('/api/maintenance-visits/import', importLimiter);
 
 // ── Routes ───────────────────────────────────────────────────────────────────
+// Which build of the pages this server serves (its entry script). A page open
+// from an older build compares it and asks to be reloaded (client/src/appVersion.js).
+const APP_BUILD = (() => {
+  try { return (fs.readFileSync(path.join(__dirname, '../client/dist/index.html'), 'utf8').match(/\/assets\/(index-[\w-]+\.js)/) || [])[1] || null; }
+  catch { return null; }
+})();
+app.use('/api', (req, res, next) => { if (APP_BUILD) res.setHeader('X-App-Build', APP_BUILD); next(); });
+// While a backup is being restored, the API waits (the app restarts afterwards).
+app.use('/api', (req, res, next) => {
+  if (req.path !== '/health' && require('./databaseBackups').isRestoring()) return res.status(503).json({ error: 'TeamHub is restoring a database backup and will restart in a moment. Try again in a minute.', code: 'RESTORING' });
+  next();
+});
+
+// ── Health check (no auth) — used by Docker/compose healthchecks & load balancers
+app.get('/api/health', async (req, res) => {
+  try {
+    await db.prepare('SELECT 1 AS ok').get();
+    res.json({ status: 'ok', db: 'up', build: APP_BUILD });
+  } catch (e) {
+    res.status(503).json({ status: 'degraded', db: 'down' });
+  }
+});
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/projects', require('./routes/projects'));
+app.use('/api/operations', require('./routes/operations'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/kpis', require('./routes/kpis'));
 app.use('/api/reports', require('./routes/reports'));
@@ -105,6 +202,8 @@ app.use('/api/templates',      require('./routes/templates'));
 app.use('/api/workload',       require('./routes/workload'));
 app.use('/api/time-logs',      require('./routes/time-logs'));
 app.use('/api/notes',          require('./routes/notes'));
+app.use('/api/customer-responses', require('./routes/customerResponses'));
+app.use('/api/recurring-tasks', require('./routes/customer-recurring-tasks').internal);
 app.use('/api/sla',            require('./routes/sla'));
 app.use('/api/report-settings', require('./routes/report-settings'));
 app.use('/api/statuses',       require('./routes/statuses'));
@@ -113,97 +212,79 @@ app.use('/api/audit',          require('./routes/audit'));
 app.use('/api/projects',       require('./routes/importExcel'));
 app.use('/api/projects/:projectId/custom-fields', require('./routes/customFields'));
 app.use('/api/calendar/ical',  require('./routes/ical'));
+app.use('/api/teams',              require('./routes/teams'));
+app.use('/api/activity-categories', require('./routes/activityCategories'));
+app.use('/api/technologies',       require('./routes/technologies'));
+app.use('/api/service-activities', require('./routes/serviceActivities'));
+app.use('/api/service-activity-settings', require('./routes/serviceActivitySettings'));
+app.use('/api/ticketing', require('./routes/ticketing'));
+app.use('/api/managed-customers', require('./routes/managedCustomers'));
+app.use('/api/managed-report-templates', require('./routes/managedReportTemplates'));
+app.use('/api/permissions', require('./routes/permissions'));
+app.use('/api/reminders', require('./routes/reminders'));
+app.use('/api/vulnerabilities', require('./routes/vulnerabilities'));
+app.use('/api/software', require('./routes/software'));
+app.use('/api/data-quality', require('./routes/data-quality'));
+app.use('/api/visit-checklists', require('./routes/visit-checklists'));
+app.use('/api/remediation-campaigns', require('./routes/remediation-campaigns'));
+app.use('/api/grafana', require('./routes/grafana'));
+app.use('/api/skills', require('./routes/skills'));
+app.use('/api/insights', require('./routes/insights'));
+app.use('/api/visit-planning', require('./routes/visit-planning'));
+app.use('/api/bots', require('./routes/bots'));
+app.use('/api/renewals', require('./routes/renewals'));
 
 // ── 404 handler for unknown /api/* paths (must come before the SPA catchall) ─
 app.use('/api', (req, res) => {
   res.status(404).json({ error: 'API endpoint not found' });
 });
 
-// Serve uploaded files — avatars are displayed in-browser; all other uploads are forced to download
-app.use('/uploads', (req, res, next) => {
-  // Avatars are displayed as <img> in the UI — no forced download
-  if (!req.path.startsWith('/avatars/')) {
-    res.setHeader('Content-Disposition', 'attachment');
-  }
-  // Never allow browser to sniff MIME type (defense-in-depth against SVG/HTML injection)
+// Public uploads are limited to user avatars. Project attachments live in the
+// same volume but must be retrieved through /api/attachments, where project
+// membership and scoped download-token checks are enforced.
+app.use('/uploads/avatars', (req, res, next) => {
+  // Never allow browser to sniff MIME type (defense-in-depth against image upload abuse)
   res.setHeader('X-Content-Type-Options', 'nosniff');
   next();
-}, express.static(path.join(__dirname, 'uploads')));
+}, express.static(path.join(__dirname, 'uploads', 'avatars'), {
+  fallthrough: false,
+  immutable: true,
+  maxAge: '1h',
+}));
+app.use('/uploads', (req, res) => {
+  res.status(404).json({ error: 'Upload not found' });
+});
 
 // ── Global error handler — catches unhandled errors from any route ────────────
 // Keeps stack traces out of API responses in all environments.
 // eslint-disable-next-line no-unused-vars
-app.use((err, req, res, next) => {
-  console.error('[unhandled error]', err);
-  if (res.headersSent) return;
-  // Only expose the message in development; production gets a generic message.
-  const message = process.env.NODE_ENV === 'production'
-    ? 'An internal error occurred'
-    : (err.message || 'An internal error occurred');
-  res.status(err.status || 500).json({ error: message });
-});
+app.use(require('./middleware/errors').errorHandler);
 
 // Serve React build in production
 const clientBuild = path.join(__dirname, '../client/dist');
-app.use(express.static(clientBuild));
-app.get('*', (req, res) => {
+app.use(express.static(clientBuild, {
+  setHeaders(res, filePath) {
+    // Vite emits content-hashed filenames under /assets — safe to cache forever.
+    // Everything else (index.html, logos) must revalidate so deploys take effect.
+    if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  },
+}));
+app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(clientBuild, 'index.html'));
 });
 
-// ── Daily next-day visit reminders ───────────────────────────────────────────
-function sendNextDayReminders() {
-  try {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
-
-    const visits = db.prepare(`
-      SELECT mv.id, mv.title, mv.scheduled_date,
-             cu.name AS customer_name,
-             mve.user_id,
-             u.name  AS engineer_name,
-             u.email AS engineer_email
-      FROM maintenance_visits mv
-      JOIN customers cu ON mv.customer_id = cu.id
-      JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
-      JOIN users u ON mve.user_id = u.id
-      WHERE mv.scheduled_date = ? AND mv.status = 'scheduled' AND u.active = 1
-    `).all(tomorrowStr);
-
-    console.log(`[reminders] ${visits.length} engineer-visit pair(s) for ${tomorrowStr}`);
-
-    visits.forEach(v => {
-      notify('visit.reminder', {
-        visit_id:       v.id,
-        visit_title:    v.title,
-        customer_name:  v.customer_name,
-        scheduled_date: v.scheduled_date,
-        engineer_id:    v.user_id,
-        engineer_name:  v.engineer_name,
-        engineer_email: v.engineer_email,
-      });
-    });
-  } catch (e) {
-    console.error('[reminders]', e.message);
-  }
-}
-
-function scheduleDailyReminders() {
-  sendNextDayReminders();
-
-  function scheduleNext() {
-    const now  = new Date();
-    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
-    if (next <= now) next.setDate(next.getDate() + 1);
-    const delay = next - now;
-    console.log(`[reminders] Next run at ${next.toLocaleString()} (in ${Math.round(delay / 60000)} min)`);
-    setTimeout(() => {
-      sendNextDayReminders();
-      setInterval(sendNextDayReminders, 24 * 60 * 60 * 1000);
-    }, delay);
-  }
-  scheduleNext();
-}
+// Personal reminders every minute; automatic ones (visits, tasks, customer
+// reports, asset expiry) each morning. See reminders.js.
+const { startReminderSchedules } = require('./reminders');
+const appTime = require('./appTime');
+const { startClockChecks } = require('./ntpCheck');
+// The activity bot calls the app's own API as the engineer (see activityBot/appApi.js).
+const activityBotApi = require('./activityBot/appApi');
+setInterval(() => require('./activityBot/channels').pruneProcessed().catch(() => {}), 6 * 60 * 60 * 1000).unref?.();
 
 const { initScheduler } = require('./reportScheduler');
 
@@ -214,32 +295,95 @@ const certDir  = path.join(__dirname, 'certs');
 const certFile = path.join(certDir, 'cert.pem');
 const keyFile  = path.join(certDir, 'key.pem');
 
-if (fs.existsSync(certFile) && fs.existsSync(keyFile)) {
-  const tlsOptions = { cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) };
+// Initialize the database (create schema + seed) before accepting traffic, then
+// start the server. In containers there are no TLS certs, so we serve HTTP on
+// PORT (TLS is terminated by an upstream proxy / load balancer).
+(async () => {
+  try {
+    await db.init();
+    console.log('[db] schema ready');
+    await appTime.refreshTimeZone();
+    console.log(`[time] organisation time zone: ${appTime.timeZone()}`);
+    setInterval(() => appTime.refreshTimeZone(), 5 * 60 * 1000).unref?.();
+    startClockChecks();
+    require('./databaseBackups').start();
+    require('./kpiSnapshots').start();
+  } catch (e) {
+    console.error('[db] initialization failed — refusing to start:', e.message);
+    process.exit(1);
+  }
 
-  https.createServer(tlsOptions, app).listen(HTTPS_PORT, '0.0.0.0', () => {
-    console.log(`Server running on https://0.0.0.0:${HTTPS_PORT}`);
-    scheduleDailyReminders();
-    initScheduler();
-  });
+  const servers = [];
 
-  const httpRedirect = http.createServer((req, res) => {
-    const host = (req.headers.host || 'localhost').replace(/:\d+$/, '');
-    res.writeHead(301, { Location: `https://${host}${req.url}` });
-    res.end();
-  });
-  httpRedirect.on('error', (err) => {
-    console.warn(`[HTTP redirect] Could not bind port ${HTTP_PORT}: ${err.message} — skipping`);
-  });
-  httpRedirect.listen(HTTP_PORT, '0.0.0.0', () => {
-    console.log(`HTTP redirect listening on port ${HTTP_PORT} → HTTPS`);
-  });
+  if (fs.existsSync(certFile) && fs.existsSync(keyFile)) {
+    const tlsOptions = { cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) };
 
-} else {
-  const PORT = process.env.PORT || 3001;
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://0.0.0.0:${PORT} (no TLS certs found)`);
-    scheduleDailyReminders();
-    initScheduler();
-  });
-}
+    servers.push(https.createServer(tlsOptions, app).listen(HTTPS_PORT, '0.0.0.0', () => {
+      console.log(`Server running on https://0.0.0.0:${HTTPS_PORT}`);
+      activityBotApi.setBase(`https://127.0.0.1:${HTTPS_PORT}`);
+      startReminderSchedules();
+      require('./cve/sync').startCveSchedule(); // CVEs from NVD and CISA each morning
+      require('./software/sync').startSchedule(); // latest software versions every few hours
+      require('./grafana').startSchedule(); // what each device runs, from Grafana, every few hours
+      liveUpdates.startListening();
+      require('./activityBot/webexSocket').sync().catch(error => console.error('[activity-bot] webex connect:', error.message)); // the Webex bot connects out
+      initScheduler();
+    }));
+
+    const httpRedirect = http.createServer((req, res) => {
+      const host = (req.headers.host || 'localhost').replace(/:\d+$/, '');
+      res.writeHead(301, { Location: `https://${host}${req.url}` });
+      res.end();
+    });
+    httpRedirect.on('error', (err) => {
+      console.warn(`[HTTP redirect] Could not bind port ${HTTP_PORT}: ${err.message} — skipping`);
+    });
+    httpRedirect.listen(HTTP_PORT, '0.0.0.0', () => {
+      console.log(`HTTP redirect listening on port ${HTTP_PORT} → HTTPS`);
+    });
+    servers.push(httpRedirect);
+
+  } else {
+    const PORT = process.env.PORT || 3001;
+    servers.push(app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://0.0.0.0:${PORT} (no TLS certs found)`);
+      activityBotApi.setBase(`http://127.0.0.1:${PORT}`);
+      startReminderSchedules();
+      require('./cve/sync').startCveSchedule(); // CVEs from NVD and CISA each morning
+      require('./software/sync').startSchedule(); // latest software versions every few hours
+      require('./grafana').startSchedule(); // what each device runs, from Grafana, every few hours
+      liveUpdates.startListening();
+      require('./activityBot/webexSocket').sync().catch(error => console.error('[activity-bot] webex connect:', error.message)); // the Webex bot connects out
+      initScheduler();
+    }));
+  }
+
+  // ── Graceful shutdown ──────────────────────────────────────────────────────
+  // Docker/systemd send SIGTERM on stop/restart. Stop accepting connections,
+  // then close the pg pool, so restarts are clean instead of waiting for SIGKILL.
+  let shuttingDown = false;
+  async function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    require('./customReportScheduler').stop();
+    require('./ticketSyncScheduler').stop();
+    require('./backgroundJobs').stop();
+    console.log(`[shutdown] ${signal} received — closing servers…`);
+    const forceTimer = setTimeout(() => {
+      console.error('[shutdown] timed out — forcing exit');
+      process.exit(1);
+    }, 10000).unref();
+    try {
+      await Promise.all(servers.map(s => new Promise(res => s.close(res))));
+      await db.pool.end();
+      clearTimeout(forceTimer);
+      console.log('[shutdown] clean exit');
+      process.exit(0);
+    } catch (e) {
+      console.error('[shutdown] error:', e.message);
+      process.exit(1);
+    }
+  }
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
+})();

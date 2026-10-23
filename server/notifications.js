@@ -1,38 +1,35 @@
 /**
- * Notification dispatcher — Teams (Incoming Webhook) and Cisco Webex (Bot API).
- * All sends are fire-and-forget so they never block request handlers.
+ * Notification dispatcher — Teams (Workflows / legacy connector webhook),
+ * Cisco Webex (Bot API), and email (the admin-configured SMTP). All sends
+ * are fire-and-forget so they never block request handlers.
  */
 const https = require('https');
 const http  = require('http');
 const db    = require('./db');
+const { assertPublicHttpUrl, pinnedLookup } = require('./security');
+const { PRODUCT_NAME } = require('./product');
+const { sendEmail } = require('./email');
+const { decrypt: decryptField } = require('./fieldCipher');
+const { sharedEventEnabled } = require('./sharedEvents');
 
 // ── Fetch settings from DB ───────────────────────────────────────────────────
-function getSettings() {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get();
+async function getSettings() {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get();
   if (!row) return null;
   try { return JSON.parse(row.value); } catch { return null; }
 }
 
-// ── Block requests to private / loopback addresses (SSRF guard) ─────────────
-function isPrivateHost(hostname) {
-  // Reject localhost, loopback, link-local, RFC-1918, and AWS metadata endpoint
-  return /^(localhost|127\.|0\.0\.0\.0|::1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.)/.test(hostname);
-}
-
-// ── Generic HTTP/S POST (no external deps) ───────────────────────────────────
-function postJSON(url, body, extraHeaders = {}) {
+// Generic HTTP/S POST (no external deps). Outbound URLs are DNS-resolved and
+// blocked if they target private, loopback, link-local, or metadata addresses.
+// Non-2xx responses reject; 429/5xx are retried once after a short back-off.
+function rawPost(u, data, extraHeaders) {
   return new Promise((resolve, reject) => {
-    let u;
-    try { u = new URL(url); } catch (e) { return reject(new Error('Invalid URL: ' + url)); }
-    if (isPrivateHost(u.hostname)) {
-      return reject(new Error(`Webhook URL points to a private/internal host: ${u.hostname}`));
-    }
-    const data = JSON.stringify(body);
     const options = {
       hostname: u.hostname,
       port:     u.port || (u.protocol === 'https:' ? 443 : 80),
       path:     u.pathname + u.search,
       method:   'POST',
+      lookup:   pinnedLookup(u),
       headers:  {
         'Content-Type':   'application/json',
         'Content-Length': Buffer.byteLength(data),
@@ -41,9 +38,9 @@ function postJSON(url, body, extraHeaders = {}) {
     };
     const mod = u.protocol === 'https:' ? https : http;
     const req = mod.request(options, (res) => {
-      let body = '';
-      res.on('data', d => body += d);
-      res.on('end', () => resolve({ status: res.statusCode, body }));
+      let text = '';
+      res.on('data', d => { if (text.length < 2000) text += d; });
+      res.on('end', () => resolve({ status: res.statusCode, body: text, headers: res.headers }));
     });
     req.on('error', reject);
     req.setTimeout(8000, () => { req.destroy(); reject(new Error('Timeout')); });
@@ -52,62 +49,210 @@ function postJSON(url, body, extraHeaders = {}) {
   });
 }
 
-// ── Teams (O365 Connector MessageCard) ──────────────────────────────────────
-async function sendTeams(cfg, msg) {
-  if (!cfg?.enabled || !cfg?.webhook_url) return;
-  try {
-    await postJSON(cfg.webhook_url, {
+let transport = rawPost;
+/** Test hook: replace the network layer. Call with no argument to restore it. */
+function _setTransport(fn) { transport = fn || rawPost; }
+
+async function postJSON(url, body, extraHeaders = {}) {
+  const u = await assertPublicHttpUrl(url, { label: 'Outbound notification URL' });
+  const data = JSON.stringify(body);
+  let res = await transport(u, data, extraHeaders);
+  if (res.status === 429 || res.status >= 500) {
+    const wait = Math.min(Math.max(Number(res.headers?.['retry-after']) || 1, 1), 5) * 1000;
+    await new Promise(r => setTimeout(r, wait));
+    res = await transport(u, data, extraHeaders);
+  }
+  if (res.status < 200 || res.status >= 300) {
+    const detail = String(res.body || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    throw new Error(`HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+  }
+  return res;
+}
+
+// ── Teams ────────────────────────────────────────────────────────────────────
+// Legacy Office 365 connector URLs (*.webhook.office.com) take a MessageCard;
+// Workflows / Power Automate URLs ("Post to a channel when a webhook request is
+// received") take an Adaptive Card wrapped in a message envelope.
+function isLegacyTeamsUrl(url) {
+  try { return /(^|\.)webhook\.office(365)?\.com$/i.test(new URL(url).hostname); } catch { return false; }
+}
+
+/* ── One message design for Teams and Webex ─────────────────────────────────
+   A short card: the title in a colour that says what it is (red: failed or
+   overdue; amber: due soon or waiting; green: done; blue: news), one or two
+   lines of text, up to five facts, and an "Open in TeamHub" button to the page
+   it is about. Webex gets the same card, with markdown for clients without cards. */
+const MAX_FACTS = 5;
+const EVENT_LINKS = {
+  backup_failed: '/settings/backups', ticket_sync_failed: '/settings/ticketing', visit_report_approved: '/maintenance-visits',
+  managed_report_submitted: '/approvals', managed_report_decided: '/customers', customer_report_sent: '/customers', customer_report_due: '/customers',
+  project_closure_requested: '/approvals', project_closure_decided: '/projects', activity_logged: '/activity-log',
+  task_assigned: '/tasks', task_due: '/tasks', project_assigned: '/projects', visit_assigned: '/maintenance-visits', visit_reminder: '/maintenance-visits',
+  report_submitted: '/maintenance-visits', contract_ending: '/customers', asset_expiring: '/customers', licence_expiring: '/renewals', vendor_case_follow_up: '/renewals', certificate_expiring: '/settings/system_health', recommendation_created: '/customers',
+};
+// The card colour says what the title is; the leading emoji is dropped.
+const plainTitle = title => String(title || '').replace(/^(?:\p{Extended_Pictographic}|️|‍|\s)+/u, '').trim() || String(title || '');
+function toneOf(msg) {
+  if (msg.tone) return msg.tone;
+  const title = String(msg.title || '');
+  if (/⚠️|❌|failed|overdue|expired|critical|breach/i.test(title)) return 'attention';
+  if (/✅|approved|closed|completed|resolved|\bsent\b/i.test(title)) return 'good';
+  if (/🔔|due|expiring|ending|soon|requested|reminder|waiting|tomorrow/i.test(title)) return 'warning';
+  return 'accent';
+}
+const CARD_COLOURS = { attention: 'Attention', warning: 'Warning', good: 'Good', accent: 'Accent' };
+/** The address of a page in the app, when APP_URL is set. */
+function appLink(link) {
+  const base = String(process.env.APP_URL || '').replace(/\/+$/, '');
+  if (!link || !base) return null;
+  if (/^https?:\/\//i.test(link)) return link;
+  return `${base}${link.startsWith('/') ? '' : '/'}${link}`;
+}
+function messageFacts(msg) {
+  return (msg.facts || []).filter(f => f && f.value != null && String(f.value).trim() !== '').slice(0, MAX_FACTS)
+    .map(f => ({ title: String(f.name), value: String(f.value) }));
+}
+function messageCard(msg) {
+  const facts = messageFacts(msg), url = appLink(msg.link);
+  return {
+    $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+    type: 'AdaptiveCard',
+    version: '1.3',
+    body: [
+      { type: 'TextBlock', text: plainTitle(msg.title), weight: 'Bolder', size: 'Medium', color: CARD_COLOURS[toneOf(msg)] || 'Accent', wrap: true },
+      ...(msg.subtitle ? [{ type: 'TextBlock', text: msg.subtitle, isSubtle: true, spacing: 'None', size: 'Small', wrap: true }] : []),
+      ...(msg.body ? [{ type: 'TextBlock', text: msg.body, wrap: true, spacing: 'Small' }] : []),
+      ...(facts.length ? [{ type: 'FactSet', facts, spacing: 'Medium' }] : []),
+    ],
+    ...(url ? { actions: [{ type: 'Action.OpenUrl', title: `Open in ${PRODUCT_NAME}`, url }] } : {}),
+  };
+}
+
+function teamsPayload(url, msg) {
+  if (isLegacyTeamsUrl(url)) {
+    const link = appLink(msg.link);
+    return {
       '@type':    'MessageCard',
       '@context': 'http://schema.org/extensions',
-      themeColor: '0078D4',
-      summary:    msg.title,
+      themeColor: { attention: 'C4314B', warning: 'C19C00', good: '237B4B', accent: '0078D4' }[toneOf(msg)] || '0078D4',
+      summary:    plainTitle(msg.title),
       sections: [{
-        activityTitle:    msg.title,
+        activityTitle:    plainTitle(msg.title),
         activitySubtitle: msg.subtitle || '',
         activityText:     msg.body,
-        facts: (msg.facts || []).map(f => ({ name: f.name, value: f.value })),
+        facts: messageFacts(msg).map(f => ({ name: f.title, value: f.value })),
         markdown: true,
       }],
-    });
-  } catch (e) {
-    console.error('[Teams notify]', e.message);
+      ...(link ? { potentialAction: [{ '@type': 'OpenUri', name: `Open in ${PRODUCT_NAME}`, targets: [{ os: 'default', uri: link }] }] } : {}),
+    };
   }
+  return {
+    type: 'message',
+    attachments: [{ contentType: 'application/vnd.microsoft.card.adaptive', contentUrl: null, content: messageCard(msg) }],
+  };
+}
+
+async function sendTeams(cfg, msg) {
+  if (!cfg?.enabled || !cfg?.webhook_url) return;
+  await postJSON(cfg.webhook_url, teamsPayload(cfg.webhook_url, msg));
 }
 
 // ── Webex Bot API ────────────────────────────────────────────────────────────
+function webexMarkdown(msg) {
+  const facts = messageFacts(msg), url = appLink(msg.link);
+  return `**${plainTitle(msg.title)}**${msg.body ? `  \n${msg.body}` : ''}`
+    + (facts.length ? `\n\n${facts.map(f => `${f.title}: **${f.value}**`).join('  \n')}` : '')
+    + (url ? `\n\n[Open in ${PRODUCT_NAME}](${url})` : '');
+}
+// Webex shows the card; markdown is for clients that cannot.
+const webexMessage = (target, msg) => ({ ...target, markdown: webexMarkdown(msg), attachments: [{ contentType: 'application/vnd.microsoft.card.adaptive', content: messageCard(msg) }] });
+
+// ── Personal email alerts ────────────────────────────────────────────────────
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+function emailHtml(msg) {
+  const facts = (msg.facts || []).filter(f => f.value != null && f.value !== '');
+  return `<div style="font-family:sans-serif;font-size:14px;color:#1f2937;max-width:480px">
+    <h2 style="margin:0 0 4px;font-size:16px">${escapeHtml(msg.title)}</h2>
+    ${msg.subtitle ? `<p style="margin:0 0 10px;color:#6b7280;font-size:13px">${escapeHtml(msg.subtitle)}</p>` : ''}
+    <p style="margin:0 0 10px">${escapeHtml(msg.body).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')}</p>
+    ${facts.length ? `<table style="border-collapse:collapse;font-size:13px">${facts.map(f => `<tr><td style="padding:2px 10px 2px 0;color:#6b7280">${escapeHtml(f.name)}</td><td>${escapeHtml(String(f.value))}</td></tr>`).join('')}</table>` : ''}
+  </div>`;
+}
+
 async function sendWebex(cfg, msg, engineerEmail) {
   if (!cfg?.enabled || !cfg?.bot_token) return;
 
   const headers = { Authorization: `Bearer ${cfg.bot_token}` };
-  const markdown = `## ${msg.title}\n${msg.body}${msg.facts?.length
-    ? '\n\n' + msg.facts.map(f => `**${f.name}:** ${f.value}`).join('  \n')
-    : ''}`;
-
+  const url = 'https://webexapis.com/v1/messages';
   const sends = [];
 
   // Direct message to engineer
   if ((cfg.mode === 'direct' || cfg.mode === 'both') && engineerEmail) {
-    sends.push(postJSON('https://webexapis.com/v1/messages', { toPersonEmail: engineerEmail, markdown }, headers));
+    sends.push(postJSON(url, webexMessage({ toPersonEmail: engineerEmail }, msg), headers));
   }
 
   // Team Space / Room
   if ((cfg.mode === 'space' || cfg.mode === 'both') && cfg.space_id) {
-    sends.push(postJSON('https://webexapis.com/v1/messages', { roomId: cfg.space_id, markdown }, headers));
+    sends.push(postJSON(url, webexMessage({ roomId: cfg.space_id }, msg), headers));
   }
 
-  try {
-    await Promise.all(sends);
-  } catch (e) {
-    console.error('[Webex notify]', e.message);
+  const results = await Promise.allSettled(sends);
+  const failed = results.find(r => r.status === 'rejected');
+  if (failed) throw failed.reason;
+}
+
+// ── Personal alert choices ───────────────────────────────────────────────────
+// Each person picks, per event, which of their own channels it reaches. Stored
+// as JSON on users.notify_events; anything not chosen yet defaults to on, so
+// enabling a channel keeps working as it did before these choices existed.
+const PERSONAL_EVENTS = Object.freeze([
+  { key: 'task_assigned',    label: 'A task is assigned to me' },
+  { key: 'mention',          label: 'Someone mentions me in a task update' },
+  { key: 'project_assigned', label: 'I am added to a project' },
+  { key: 'visit_assigned',   label: 'A maintenance visit is assigned to me' },
+  { key: 'visit_reminder',   label: 'The day before one of my maintenance visits' },
+  { key: 'report_submitted', label: 'An engineer submits a visit report for review', roles: ['manager'] },
+  { key: 'reminder_due',     label: 'One of my reminders is due' },
+  { key: 'task_due',         label: 'A task of mine is due tomorrow or has become overdue' },
+  { key: 'report_due',       label: 'A customer report is due soon or overdue', roles: ['manager'] },
+  { key: 'asset_expiring',   label: 'Asset support or warranty is expiring', roles: ['manager'] },
+  { key: 'contract_ending',  label: 'A customer contract is ending or has expired', roles: ['manager'] },
+  { key: 'licence_expiring', label: 'A customer licence, subscription or certificate is expiring or has expired', roles: ['manager'] },
+  { key: 'vendor_case_follow_up', label: 'A vendor case of mine is due a follow-up or has gone quiet', roles: ['manager', 'engineer'] },
+  { key: 'certificate_expiring', label: 'The HTTPS certificate of the app is expiring or has expired', roles: ['manager'] },
+  { key: 'project_closure',  label: 'A project closure needs my review, or a closure on my project is decided' },
+  { key: 'managed_report_review', label: 'A customer report needs my review, or my customer report is reviewed' },
+  { key: 'recommendation_assigned', label: 'A high or critical recommendation is assigned to me' },
+  { key: 'visit_report_approved', label: 'The report for one of my maintenance visits is approved' },
+  { key: 'ticket_sync_failed', label: 'Request Tracker ticket sync stops working, or starts working again', roles: ['manager'] },
+]);
+const PERSONAL_CHANNELS = Object.freeze(['teams', 'email', 'webex']);
+
+function eventPreferences(raw, role) {
+  let stored = {};
+  try { stored = raw ? JSON.parse(raw) : {}; } catch { stored = {}; }
+  const result = {};
+  for (const event of PERSONAL_EVENTS) {
+    if (event.roles && role && !event.roles.includes(role)) continue;
+    result[event.key] = Object.fromEntries(PERSONAL_CHANNELS.map(channel => [channel, stored?.[event.key]?.[channel] !== false]));
   }
+  return result;
+}
+const wantsAlert = (person, eventKey, channel) => eventPreferences(person.notify_events)[eventKey]?.[channel] !== false;
+
+/** Whether the organisation's Webex bot can send direct messages to people. */
+async function webexDirectAvailable() {
+  const webex = (await getSettings())?.webex;
+  return !!(webex?.enabled && webex?.bot_token && (webex.mode === 'direct' || webex.mode === 'both'));
 }
 
 // ── Persist notification to DB for a specific user ──────────────────────────
-function persistNotification(userId, type, title, body, link) {
+async function persistNotification(userId, type, title, body, link) {
   try {
-    db.prepare(
+    await db.prepare(
       `INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)`
     ).run(userId, type, title, body || null, link || null);
+    require('./liveUpdates').emitChange('notifications', { userId }); // only the recipient's bell updates, without waiting for its poll
   } catch (e) {
     console.error('[notify persist]', e.message);
   }
@@ -194,36 +339,49 @@ function buildMessage(event, data) {
  *   data:  { engineer_name, engineer_email, ... }
  * Non-blocking — errors are caught and logged.
  */
+/* Deliveries run in the background (route handlers never wait for Teams, Webex
+   or email). Each one is tracked, so settled() resolves once all that have
+   started are done: tests wait on that instead of sleeping, and nothing still
+   sending can run into the next test. */
+const pending = new Set();
+function track(work) {
+  const done = Promise.resolve(work).catch(() => {}).finally(() => pending.delete(done));
+  pending.add(done);
+  return work;
+}
+async function settled() { while (pending.size) await Promise.all([...pending]); }
+
 function notify(event, data) {
   // Always fire-and-forget — never await in route handlers
-  setImmediate(async () => {
+  track(new Promise(resolve => setImmediate(resolve)).then(async () => {
     try {
       const msg = buildMessage(event, data);
       if (!msg) return;
+      msg.link = event === 'project.assigned' && data.project_id ? `/projects/${data.project_id}` : EVENT_LINKS[event.replace('.', '_')];
 
       // ── Persist in-app notifications to DB ────────────────────────────────
       if (event === 'task.assigned' && data.engineer_id) {
         const body = data.project_title
           ? `${data.task_title} · ${data.project_title}`
           : data.task_title;
-        persistNotification(data.engineer_id, event, 'New task assigned to you', body, '/tasks');
+        await persistNotification(data.engineer_id, event, 'New task assigned to you', body, '/tasks');
       } else if (event === 'project.assigned' && data.engineer_id) {
         const link = data.project_id ? `/projects/${data.project_id}` : '/projects';
-        persistNotification(data.engineer_id, event, `Added to project: ${data.project_title}`, null, link);
+        await persistNotification(data.engineer_id, event, `Added to project: ${data.project_title}`, null, link);
       } else if (event === 'visit.assigned' && data.engineer_id) {
         const body = `${data.visit_title} · ${data.customer_name} · ${data.scheduled_date}`;
-        persistNotification(data.engineer_id, event, 'Maintenance visit assigned to you', body, '/maintenance-visits');
+        await persistNotification(data.engineer_id, event, 'Maintenance visit assigned to you', body, '/maintenance-visits');
       } else if (event === 'visit.reminder' && data.engineer_id) {
         // Dedup: only create one reminder per visit per user per day
         const dedupLink = `/maintenance-visits?reminder=${data.visit_id}`;
-        const today = new Date().toISOString().slice(0, 10);
+        const today = (await db.prepare('SELECT app_today() AS d').get()).d;
         try {
-          const exists = db.prepare(
-            `SELECT 1 FROM notifications WHERE user_id = ? AND link = ? AND date(created_at) = ?`
+          const exists = await db.prepare(
+            `SELECT 1 FROM notifications WHERE user_id = ? AND link = ? AND substr(created_at,1,10) = ?`
           ).get(data.engineer_id, dedupLink, today);
           if (!exists) {
             const body = `${data.visit_title} · ${data.customer_name} · ${data.scheduled_date}`;
-            persistNotification(data.engineer_id, event, '🔔 Visit tomorrow: ' + data.visit_title, body, dedupLink);
+            await persistNotification(data.engineer_id, event, '🔔 Visit tomorrow: ' + data.visit_title, body, dedupLink);
           }
         } catch (e) {
           console.error('[notify visit.reminder dedup]', e.message);
@@ -231,38 +389,184 @@ function notify(event, data) {
       } else if (event === 'report.submitted') {
         // Notify all active managers
         try {
-          const managers = db.prepare("SELECT id FROM users WHERE role = 'manager' AND active = 1").all();
+          const managers = await db.prepare("SELECT id FROM users WHERE role = 'manager' AND active = 1").all();
           const body = `${data.visit_title} · ${data.customer_name} · by ${data.engineer_name}`;
-          managers.forEach(m => persistNotification(m.id, event, 'Report submitted for review', body, '/maintenance-visits'));
+          for (const m of managers) {
+            await persistNotification(m.id, event, 'Report submitted for review', body, '/maintenance-visits');
+          }
         } catch (e) {
           console.error('[notify persist managers]', e.message);
         }
       }
 
       // ── External channels (Teams / Webex) ─────────────────────────────────
-      const settings = getSettings();
-      if (!settings) return;
+      // Paused by a manager (notificationPause.js): the bell above only.
+      if (await require('./notificationPause').isPaused()) return;
+      // No organisation Teams/Webex integration configured is normal; it must not
+      // stop each person's own channels (email, personal Teams) below.
+      const settings = (await getSettings()) || {};
 
       const notifyOn = settings.notify_on || {};
       const eventKey = event.replace('.', '_');  // e.g. task.assigned → task_assigned
-      // visit.reminder defaults to enabled unless explicitly disabled
-      if (notifyOn[eventKey] === false) return;
+      // The admin's event switches govern the shared organisation channels (the
+      // Teams channel and Webex space). Each person decides for their own.
+      // shared: false — the caller posts to a team's space (or the shared one) itself, once.
+      const orgEnabled = data.shared !== false && sharedEventEnabled(notifyOn, eventKey);
 
-      await Promise.all([
-        sendTeams(settings.teams, msg),
-        sendWebex(settings.webex, msg, data.engineer_email),
-      ]);
+      // A submitted report goes to managers, so never DM the submitting
+      // engineer via the org Webex bot. Personal channels (Teams webhook,
+      // email) apply to whoever the event is FOR: the single assigned
+      // engineer for assignment/reminder events, or every active manager for
+      // report.submitted (each with their own preferences). The Webex DM
+      // additionally honors the engineer's opt-out. In-app (bell icon)
+      // notifications are unaffected by any of this — persisted above,
+      // unconditionally.
+      const PREF_COLS = 'id, email, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled, notify_events';
+      let dmEmail = event === 'report.submitted' ? null : data.engineer_email;
+      let recipients = [];
+      if (event === 'report.submitted') {
+        recipients = await db.prepare(`SELECT ${PREF_COLS} FROM users WHERE role = 'manager' AND active = 1`).all();
+      } else if (data.engineer_id) {
+        const recipient = await db.prepare(`SELECT ${PREF_COLS} FROM users WHERE id = ?`).get(data.engineer_id);
+        if (recipient) {
+          recipients = [recipient];
+          if (!recipient.notify_external_enabled || !wantsAlert(recipient, eventKey, 'webex')) dmEmail = null;
+        }
+      }
+
+      const sends = [], sendLabels = [];
+      if (orgEnabled) { sends.push(sendTeams(settings.teams, msg)); sendLabels.push('Teams'); }
+      // The Webex space follows the admin's choice; the direct message, the person's.
+      const webexMode = settings.webex?.mode;
+      const space = orgEnabled && (webexMode === 'space' || webexMode === 'both');
+      const direct = !!dmEmail && (webexMode === 'direct' || webexMode === 'both');
+      if (space || direct) {
+        sends.push(sendWebex({ ...settings.webex, mode: space && direct ? 'both' : space ? 'space' : 'direct' }, msg, direct ? dmEmail : null));
+        sendLabels.push('Webex');
+      }
+      for (const person of recipients) {
+        if (person.notify_teams_enabled && person.notify_teams_webhook_url && wantsAlert(person, eventKey, 'teams')) {
+          sends.push(sendTeams({ enabled: true, webhook_url: decryptField(person.notify_teams_webhook_url) }, msg));
+          sendLabels.push(`Personal Teams (user ${person.id})`);
+        }
+        if (person.notify_email_enabled && person.email && wantsAlert(person, eventKey, 'email')) {
+          sends.push(sendEmail({ to: person.email, subject: msg.title, html: emailHtml(msg) }));
+          sendLabels.push(`Personal email (user ${person.id})`);
+        }
+      }
+      const results = await Promise.allSettled(sends);
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') console.error(`[${sendLabels[i]} notify]`, r.reason?.message);
+      });
     } catch (e) {
       console.error('[notify]', e.message);
     }
-  });
+  }));
 }
 
-/** sendTest — used by the Admin "Test" button */
+/**
+ * notifyUser(userId, eventKey, msg, inApp) — one person: always the bell, plus
+ * whichever of their own channels (Teams, email, Webex message) they chose for
+ * this event in their Profile. Resolves when every send has settled; a failing
+ * channel is logged and never stops the others.
+ */
+// `bell: false` when the bell entry was already written (e.g. inside a transaction).
+function notifyUser(...args) { return track(deliverToUser(...args)); }
+async function deliverToUser(userId, eventKey, msg, inApp, { channels = true, bell = true } = {}) {
+  msg = { ...msg, link: msg.link || inApp?.link || EVENT_LINKS[eventKey] };
+  if (bell) await persistNotification(userId, eventKey, inApp.title, inApp.body, inApp.link);
+  if (!channels || await require('./notificationPause').isPaused()) return;
+  const person = await db.prepare(`SELECT id, email, active, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url, notify_email_enabled, notify_events
+    FROM users WHERE id = ?`).get(userId);
+  if (!person?.active) return;
+  const sends = [], labels = [];
+  if (person.notify_teams_enabled && person.notify_teams_webhook_url && wantsAlert(person, eventKey, 'teams')) {
+    sends.push(sendTeams({ enabled: true, webhook_url: decryptField(person.notify_teams_webhook_url) }, msg)); labels.push('Personal Teams');
+  }
+  if (person.notify_email_enabled && person.email && wantsAlert(person, eventKey, 'email')) {
+    sends.push(sendEmail({ to: person.email, subject: msg.title, html: emailHtml(msg) })); labels.push('Personal email');
+  }
+  if (person.notify_external_enabled && person.email && wantsAlert(person, eventKey, 'webex') && await webexDirectAvailable()) {
+    const webex = (await getSettings())?.webex;
+    sends.push(sendWebex({ ...webex, mode: 'direct' }, msg, person.email)); labels.push('Webex message');
+  }
+  const results = await Promise.allSettled(sends);
+  results.forEach((result, index) => { if (result.status === 'rejected') console.error(`[${labels[index]} notify user ${userId}]`, result.reason?.message); });
+}
+
+/** Which shared organisation channels are set up: the Teams channel and the Webex space. */
+async function sharedChannelsAvailable() {
+  const settings = (await getSettings()) || {};
+  const webex = settings.webex || {};
+  return {
+    teams: !!(settings.teams?.enabled && settings.teams?.webhook_url),
+    webex: !!(webex.enabled && webex.bot_token && webex.space_id && (webex.mode === 'space' || webex.mode === 'both')),
+  };
+}
+
+/** Post one message to the organisation's shared Teams channel and Webex space (those set up). */
+async function postToSharedChannels(msg) {
+  if (await require('./notificationPause').isPaused()) return [];
+  const settings = (await getSettings()) || {};
+  const available = await sharedChannelsAvailable();
+  const sends = [], labels = [];
+  if (available.teams) { sends.push(sendTeams(settings.teams, msg)); labels.push('Teams channel'); }
+  if (available.webex) { sends.push(sendWebex({ ...settings.webex, mode: 'space' }, msg, null)); labels.push('Webex space'); }
+  const results = await Promise.allSettled(sends);
+  results.forEach((result, index) => { if (result.status === 'rejected') console.error(`[${labels[index]} reminder]`, result.reason?.message); });
+  return labels.filter((_, index) => results[index].status === 'fulfilled');
+}
+
+/**
+ * Post an event to the shared Teams channel and Webex space, if the admin has it
+ * switched on (Settings → Notifications). `dedupeKey` posts it once only, for
+ * events raised by scheduled checks. Never throws: a failed post is logged.
+ */
+function notifyShared(...args) { return track(deliverShared(...args)); }
+async function deliverShared(eventKey, msg, { dedupeKey } = {}) {
+  try {
+    const settings = (await getSettings()) || {};
+    if (!sharedEventEnabled(settings.notify_on, eventKey)) return false;
+    // Paused: not posted, and not recorded as posted.
+    if (await require('./notificationPause').isPaused()) return false;
+    if (dedupeKey) {
+      const first = await db.prepare('INSERT INTO shared_event_deliveries (key) VALUES (?) ON CONFLICT DO NOTHING').run(`${eventKey}:${dedupeKey}`.slice(0, 300));
+      if (first.changes !== 1) return false;
+    }
+    return (await postToSharedChannels({ ...msg, link: msg.link || EVENT_LINKS[eventKey] })).length > 0;
+  } catch (error) {
+    console.error(`[shared ${eventKey}]`, error.message);
+    return false;
+  }
+}
+
+/**
+ * Post a team's message once: to the team's own Webex space when it has one (team tasks,
+ * recurring team tasks, team reminders), otherwise as the shared event (when switched on).
+ * `shared: false` skips the fallback. Never throws; true when posted somewhere.
+ */
+function notifyTeam(...args) { return track(deliverTeam(...args)); }
+async function deliverTeam(teamId, eventKey, msg, { shared = true } = {}) {
+  try {
+    if (await require('./notificationPause').isPaused()) return false;
+    const team = teamId ? await db.prepare('SELECT webex_space_id FROM teams WHERE id = ?').get(teamId) : null;
+    const webex = (await getSettings())?.webex;
+    if (team?.webex_space_id && webex?.enabled && webex?.bot_token) {
+      await sendWebex({ ...webex, mode: 'space', space_id: team.webex_space_id }, { ...msg, link: msg.link || EVENT_LINKS[eventKey] }, null);
+      return true;
+    }
+    return shared ? await deliverShared(eventKey, msg) : false;
+  } catch (error) {
+    console.error(`[team ${teamId} ${eventKey}]`, error.message);
+    return false;
+  }
+}
+
+/** sendTest — used by the Admin "Test" button; rejects with the real delivery error. */
 async function sendTest(platform, settings) {
   const msg = {
     title:    '🔔 Test Notification',
-    subtitle: 'Solutions Hub integration test',
+    subtitle: `${PRODUCT_NAME} integration test`,
     body:     'If you see this, your notification integration is working correctly.',
     facts:    [
       { name: 'Platform', value: platform === 'teams' ? 'Microsoft Teams' : 'Cisco Webex' },
@@ -271,14 +575,41 @@ async function sendTest(platform, settings) {
   };
 
   if (platform === 'teams') {
-    await sendTeams(settings.teams, msg);
+    if (!settings.teams?.webhook_url) throw new Error('Enter the Teams webhook URL first');
+    await sendTeams({ ...settings.teams, enabled: true }, msg);
     return { ok: true };
   } else if (platform === 'webex') {
-    // For test: if direct mode pick first engineer's email, or use the test_email from body
-    await sendWebex(settings.webex, msg, settings.webex?.test_email || null);
+    const w = settings.webex || {};
+    if (!w.bot_token) throw new Error('Enter the Webex bot token first');
+    const dm = (w.mode === 'direct' || w.mode === 'both') && w.test_email;
+    const space = (w.mode === 'space' || w.mode === 'both') && w.space_id;
+    if (!dm && !space) throw new Error('Set a test email (direct) or a space ID (space) to send the test to');
+    await sendWebex({ ...w, enabled: true }, msg, w.test_email || null);
     return { ok: true };
   }
   throw new Error('Unknown platform');
 }
 
-module.exports = { notify, sendTest };
+/** sendPersonalTest — the Profile page's "Send test" buttons; rejects with the real delivery error. */
+async function sendPersonalTest(channel, { email, webhook_url }) {
+  const msg = {
+    title:    '🔔 Test Notification',
+    subtitle: `${PRODUCT_NAME} personal notification test`,
+    body:     'If you see this, your personal notification channel is working correctly.',
+    facts:    [{ name: 'Sent at', value: new Date().toLocaleString() }],
+  };
+  if (channel === 'teams') {
+    if (!webhook_url) throw new Error('Save a Teams webhook URL first');
+    await sendTeams({ enabled: true, webhook_url }, msg);
+  } else if (channel === 'webex') {
+    const webex = (await getSettings())?.webex;
+    if (!(await webexDirectAvailable())) throw new Error('Webex direct messages are not set up for this organization');
+    if (!email) throw new Error('Your account has no email address for Webex to message');
+    await sendWebex({ ...webex, mode: 'direct', enabled: true }, msg, email);
+  } else if (channel === 'email') {
+    if (!email) throw new Error('Your account has no email address');
+    await sendEmail({ to: email, subject: msg.title, html: emailHtml(msg) });
+  } else throw new Error('Unknown channel');
+}
+
+module.exports = { settled, track, notifyShared, notifyTeam, deliverTeam, notifyUser, sharedChannelsAvailable, postToSharedChannels, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, messageCard, webexMessage, emailHtml, postJSON, _setTransport };

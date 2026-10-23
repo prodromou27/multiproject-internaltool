@@ -1,0 +1,905 @@
+const { afterSeed, seedCustomerWork, test, assert, api, db, ids, bcrypt, signJwt,  } = require('./lib/activityFixture');
+const suiteFixture = require('./lib/activityFixture');
+
+afterSeed(seedCustomerWork);
+
+test('managed customer configuration enforces manager access, versions and unique RT queues',async () => {
+  const path=`/api/customers/${ids.customer}/managed-services`;
+  assert.equal((await api(path,{ token:ids.tokenEnabled })).status,403);
+  const initial=await api(path,{ token:ids.tokenManager });
+  assert.equal(initial.status,200);assert.equal(initial.data.version,0);assert.equal(initial.data.managed_services_enabled,false);
+  const body={ ...initial.data,managed_services_enabled:true,service_activity_tracking_enabled:true,responsible_team_id:ids.teamEnabled,
+    service_manager_id:ids.manager,reporting_frequency:'monthly',ticket_integration_enabled:true,ticket_include_in_reporting:true,
+    external_queue_id:'42',external_queue_name:'Acme Support' };
+  for (const key of ['customer_id','last_successful_sync_at','last_sync_status']) delete body[key];
+  await db.prepare("INSERT INTO settings (key,value) VALUES ('ticketing_rt',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ enabled:false }));
+  assert.equal((await api(path,{ method:'PUT',token:ids.tokenManager,body })).status,409);
+  await db.prepare("UPDATE settings SET value=? WHERE key='ticketing_rt'").run(JSON.stringify({ enabled:true,base_url:'https://8.8.8.8/rt' }));
+  const saved=await api(path,{ method:'PUT',token:ids.tokenManager,body });
+  assert.equal(saved.status,200);assert.equal(saved.data.version,1);assert.equal(saved.data.external_queue_id,'42');
+  assert.equal((await db.prepare('SELECT service_activity_enabled FROM customers WHERE id=?').get(ids.customer)).service_activity_enabled,1);
+  assert.equal((await db.prepare('SELECT external_queue_name FROM customer_ticketing_configurations WHERE customer_id=?').get(ids.customer)).external_queue_name,'Acme Support');
+  assert.equal((await api(path,{ method:'PUT',token:ids.tokenManager,body })).status,409);
+
+  const otherInitial=(await api(`/api/customers/${ids.customerUnassigned}/managed-services`,{ token:ids.tokenManager })).data;
+  const other={ ...otherInitial,managed_services_enabled:true,ticket_integration_enabled:true,external_queue_id:'42',external_queue_name:'Duplicate Queue' };
+  for (const key of ['customer_id','last_successful_sync_at','last_sync_status']) delete other[key];
+  assert.equal((await api(`/api/customers/${ids.customerUnassigned}/managed-services`,{ method:'PUT',token:ids.tokenManager,body:other })).status,409);
+  assert.equal((await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...body,version:1,responsible_team_id:ids.teamDisabled } })).status,400);
+  assert.equal((await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...body,version:1,external_queue_id:'not-an-id' } })).status,400);
+
+  const cleared={ ...saved.data,ticket_integration_enabled:false,external_queue_id:'',external_queue_name:'' };
+  for (const key of ['customer_id','last_successful_sync_at','last_sync_status']) delete cleared[key];
+  const removed=await api(path,{ method:'PUT',token:ids.tokenManager,body:cleared });
+  assert.equal(removed.status,200);assert.equal(removed.data.external_queue_id,'');
+  assert.equal(await db.prepare('SELECT id FROM customer_ticketing_configurations WHERE customer_id=?').get(ids.customer),undefined);
+});
+
+test('ticket synchronization controls remain manager-only and validate mappings',async () => {
+  assert.equal((await api(`/api/ticketing/sync/${ids.customer}`,{ method:'POST',token:ids.tokenEnabled,body:{} })).status,403);
+  assert.equal((await api('/api/ticketing/sync/not-an-id',{ method:'POST',token:ids.tokenManager,body:{} })).status,400);
+  assert.equal((await api(`/api/ticketing/sync/${ids.customer}`,{ method:'POST',token:ids.tokenManager,body:{} })).status,400);
+  assert.equal((await api('/api/ticketing/sync-runs',{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api('/api/ticketing/monitoring',{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api('/api/ticketing/sync-runs?customer_id=invalid',{ token:ids.tokenManager })).status,400);
+});
+
+test('ticket synchronization persists normalized snapshots and run counts',async () => {
+  await db.prepare("INSERT INTO settings (key,value) VALUES ('ticketing_rt',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ enabled:true,base_url:'https://rt.example.test/rt',sync_interval_minutes:60 }));
+  await db.prepare(`INSERT INTO customer_ticketing_configurations
+    (customer_id,provider_type,external_queue_id,external_queue_name,enabled,include_in_reporting)
+    VALUES (?,'request_tracker','42','Acme Support',1,1)`).run(ids.customer);
+  const { syncCustomer }=require('../ticketSync');
+  const asked=[];
+  const provider={ getTickets:async (queue,options) => { asked.push(options); return [ 
+    { id:'7001',Subject:'Open gateway alert',Status:'open',Priority:'95',Owner:{ id:'alice',Name:'Alice' },Created:'2026-09-20T10:00:00Z',LastUpdated:'2026-09-21T10:00:00Z',Due:'2026-09-21T12:00:00Z' },
+    { id:'7002',Subject:'Resolved request',Status:'resolved',Priority:'Normal',Owner:{ id:'bob',Name:'Bob' },Created:'2026-09-19T10:00:00Z',LastUpdated:'2026-09-20T10:00:00Z',Resolved:'2026-09-20T09:00:00Z' },
+  ]; } };
+  const first=await syncCustomer(ids.customer,{ provider,triggeredBy:ids.manager });
+  assert.deepEqual([first.tickets_found,first.tickets_created,first.tickets_updated],[2,2,0]);
+  // The first sync reads two years back (and older tickets still open), not the queue's whole history.
+  assert.equal(asked[0].updatedAfter,null);
+  const yearsBack=(Date.now()-Date.parse(asked[0].since))/(365.25*86400000);
+  assert.ok(yearsBack>1.99 && yearsBack<2.01,`about two years: ${asked[0].since}`);
+  const rows=await db.prepare('SELECT * FROM external_tickets WHERE customer_id=? ORDER BY external_ticket_id').all(ids.customer);
+  assert.equal(rows[0].normalized_priority,'Critical');assert.equal(rows[0].status_group,'open');assert.equal(rows[0].sla_breached,1);
+  assert.equal(rows[1].normalized_status,'Resolved');assert.equal(rows[1].status_group,'closed');
+  const firstTicket=(await provider.getTickets())[0];
+  const second=await syncCustomer(ids.customer,{ provider:{ getTickets:async () => [{ ...firstTicket,Subject:'Updated gateway alert' }] } });
+  assert.deepEqual([second.tickets_found,second.tickets_created,second.tickets_updated],[1,0,1]);
+  assert.equal((await db.prepare("SELECT subject FROM external_tickets WHERE external_ticket_id='7001'").get()).subject,'Updated gateway alert');
+  const runs=await db.prepare('SELECT id,customer_id,status FROM ticket_sync_runs ORDER BY id').all();
+  assert.deepEqual(runs.map(row => [row.customer_id,row.status]),[[ids.customer,'success'],[ids.customer,'success']]);
+});
+
+test('open tickets RT no longer lists in the queue are checked: merged, deleted and moved ones close; others take their current state',async () => {
+  const { syncCustomer }=require('../ticketSync');
+  // Another customer's queue, for a ticket moved there.
+  await db.prepare(`INSERT INTO customer_ticketing_configurations (customer_id,provider_type,external_queue_id,external_queue_name,enabled,include_in_reporting)
+    VALUES (?,'request_tracker','43','Other Support',1,1) ON CONFLICT DO NOTHING`).run(ids.customerUnassigned);
+  const open=id => db.prepare(`INSERT INTO external_tickets (customer_id,provider_type,external_queue_id,external_queue_name,external_ticket_id,ticket_number,subject,external_status,normalized_status,status_group,created_at_external)
+    VALUES (?,'request_tracker','42','Acme Support',?,?,?,'open','Open','open','2026-09-01T10:00:00.000Z')`).run(ids.customer,id,id,`Ticket ${id}`);
+  for (const id of ['7101','7102','7103','7104','7105','7106']) await open(id);
+  const looked=[];
+  const rt={ '7101':{ id:7100,EffectiveId:{ id:'7100' },Status:'open',Queue:{ id:'42' } },             // merged into 7100 (returned as 7100)
+    '7102':null,                                                                                         // deleted
+    '7103':{ id:7103,EffectiveId:{ id:'7103' },Status:'open',Queue:{ id:'99' },Subject:'Moved away' },  // moved to a queue no customer uses
+    '7104':{ id:7104,EffectiveId:{ id:'7104' },Status:'open',Queue:{ id:'43' },Subject:'Moved over',Created:'2026-09-01T10:00:00Z' }, // to the other customer's queue
+    '7105':{ id:7105,EffectiveId:{ id:'7105' },Status:'resolved',Queue:{ id:'42' },Subject:'Done quietly',Created:'2026-09-01T10:00:00Z',Resolved:'2026-10-01T10:00:00Z' } };
+  const provider={ getTickets:async () => [],getActiveTicketIds:async () => new Set(['7001','7106']),getTicket:async id => { looked.push(id);return rt[id]; } };
+  const result=await syncCustomer(ids.customer,{ provider });
+  assert.deepEqual(result.tickets_reconciled,{ checked:5,closed:3,updated:2 });
+  assert.ok(!looked.includes('7106'),'a ticket RT still lists as active is not looked up');
+  const row=async id => db.prepare("SELECT customer_id,external_status,normalized_status,status_group FROM external_tickets WHERE external_ticket_id=?").get(id);
+  assert.deepEqual(await row('7101'),{ customer_id:ids.customer,external_status:'merged into 7100',normalized_status:'Excluded',status_group:'closed' });
+  assert.equal((await row('7102')).external_status,'deleted');
+  assert.equal((await row('7103')).external_status,'moved to another queue');
+  assert.deepEqual(await row('7104'),{ customer_id:ids.customerUnassigned,external_status:'open',normalized_status:'Open',status_group:'open' },'now the other customer\'s');
+  assert.deepEqual(await row('7105'),{ customer_id:ids.customer,external_status:'resolved',normalized_status:'Resolved',status_group:'closed' });
+  assert.equal((await row('7106')).status_group,'open');
+  // A problem in the check never fails the sync.
+  const failing=await syncCustomer(ids.customer,{ provider:{ getTickets:async () => [],getActiveTicketIds:async () => { throw new Error('RT busy'); } } });
+  assert.deepEqual(failing.tickets_reconciled,{ checked:0,closed:0,updated:0 });
+  // Leave the later tests the data they expect.
+  await db.prepare("DELETE FROM external_tickets WHERE external_ticket_id IN ('7101','7102','7103','7104','7105','7106')").run();
+  await db.prepare("DELETE FROM customer_ticketing_configurations WHERE customer_id=? AND external_queue_id='43'").run(ids.customerUnassigned);
+  const runs=(await db.prepare('SELECT id FROM ticket_sync_runs ORDER BY id DESC LIMIT 2').all()).map(row => row.id);
+  await db.prepare(`DELETE FROM ticket_sync_runs WHERE id IN (${runs.map(() => '?').join(',')})`).run(...runs);
+});
+
+test('a big queue syncs in chunks that are saved as they are read, and resumes where it stopped',async () => {
+  const { syncCustomer }=require('../ticketSync');
+  const { runDueSyncs }=require('../ticketSyncScheduler');
+  const mappingRow=() => db.prepare("SELECT last_successful_sync_at,sync_cursor,sync_backlog FROM customer_ticketing_configurations WHERE customer_id=? AND external_queue_id='42'").get(ids.customer);
+  // A first sync of this queue.
+  await db.prepare("UPDATE customer_ticketing_configurations SET last_successful_sync_at=NULL,sync_cursor=NULL,sync_backlog=0 WHERE customer_id=? AND external_queue_id='42'").run(ids.customer);
+  const before=null;
+  // 25 pages of one ticket each, one minute apart, oldest first.
+  const ticket=n => ({ id:String(8000+n),Subject:`Chunk ${n}`,Status:'open',Owner:{ id:'alice',Name:'Alice' },Created:'2026-09-01T10:00:00Z',LastUpdated:new Date(Date.UTC(2026,8,1,10,n)).toISOString() });
+  const asked=[];let failAt=null;
+  const provider={ getTicketPages:async function* (queue,options) {
+    asked.push(options);
+    // Tickets changed after `updatedAfter` (all on a first sync), oldest first.
+    const due=Array.from({ length:25 },(_,i) => ticket(i+1)).filter(t => !options.updatedAfter || t.LastUpdated>options.updatedAfter);
+    for (const [i,t] of due.entries()) { if (Number(t.id)-8000===failAt) throw Object.assign(new Error('RT went away'),{ status:502 }); yield { items:[t],more:i<due.length-1 }; }
+  } };
+  const saved=async () => Number((await db.prepare("SELECT COUNT(*) AS n FROM external_tickets WHERE external_ticket_id LIKE '80%' AND subject LIKE 'Chunk %'").get()).n);
+
+  const first=await syncCustomer(ids.customer,{ provider });
+  assert.deepEqual([first.tickets_found,first.more],[20,true],'20 pages per run');
+  let row=await mappingRow();
+  assert.equal(Number(row.sync_backlog),1);
+  assert.equal(row.sync_cursor,'2026-09-01T10:19:59.000Z','the last change saved, one second back');
+  assert.equal(row.last_successful_sync_at,before,'not complete yet');
+  assert.equal(await saved(),20);
+  // The scheduler queues the next chunk straight away, not an interval later.
+  await db.prepare("DELETE FROM background_jobs WHERE type='ticket_sync'").run();
+  await runDueSyncs();
+  assert.ok(await db.prepare("SELECT 1 FROM background_jobs WHERE type='ticket_sync' AND status='queued' AND payload LIKE ?").get(`%${ids.customer}%`));
+  await db.prepare("DELETE FROM background_jobs WHERE type='ticket_sync'").run();
+
+  // An interruption keeps what was saved; the next run continues from the bookmark.
+  failAt=23;
+  await assert.rejects(() => syncCustomer(ids.customer,{ provider }),/RT went away/);
+  assert.equal(asked[0].updatedAfter,null,'the first run reads two years back');
+  assert.equal(asked[1].updatedAfter,'2026-09-01T10:19:59.000Z');
+  assert.equal(await saved(),22,'pages 21 and 22 kept');
+  failAt=null;
+  const last=await syncCustomer(ids.customer,{ provider });
+  assert.deepEqual([last.tickets_found,last.more],[4,false],'22 (read again: the bookmark is a second back) to 25');
+  row=await mappingRow();
+  assert.deepEqual([row.sync_cursor,Number(row.sync_backlog)],[null,0],'caught up');
+  assert.notEqual(row.last_successful_sync_at,before);
+  assert.equal(await saved(),25);
+  // Leave the later tests the data they expect.
+  await db.prepare("DELETE FROM external_tickets WHERE subject LIKE 'Chunk %'").run();
+  const runs=(await db.prepare('SELECT id FROM ticket_sync_runs ORDER BY id DESC LIMIT 3').all()).map(r => r.id);
+  await db.prepare(`DELETE FROM ticket_sync_runs WHERE id IN (${runs.map(() => '?').join(',')})`).run(...runs);
+  await db.prepare("UPDATE customer_ticketing_configurations SET last_sync_status='success' WHERE customer_id=?").run(ids.customer);
+});
+
+test('ticket synchronization monitoring summarizes mappings and names run history',async () => {
+  const monitoring=await api('/api/ticketing/monitoring',{ token:ids.tokenManager });
+  assert.equal(monitoring.status,200);assert.equal(monitoring.data.integration.enabled,true);
+  assert.equal(monitoring.data.summary.mapped_customers,1);assert.equal(monitoring.data.summary.total_tickets,2);
+  assert.equal(monitoring.data.summary.last_successful_sync_at!==null,true);
+  assert.equal(monitoring.data.customers[0].customer_name,'Acme Corp');assert.equal(monitoring.data.customers[0].open_ticket_count,1);
+  const history=await api('/api/ticketing/sync-runs',{ token:ids.tokenManager });
+  assert.equal(history.status,200);assert.equal(history.data.rows.length,2);
+  assert.equal(history.data.rows.every(run => run.customer_name==='Acme Corp'),true);
+  assert.equal(history.data.rows.some(run => run.triggered_by_name),true);
+});
+
+test('managed customer dashboard separates current state from period metrics',async () => {
+  await db.prepare(`INSERT INTO managed_customer_configurations (customer_id,managed_services_enabled,version,updated_by)
+    VALUES (?,1,1,?) ON CONFLICT (customer_id) DO UPDATE SET managed_services_enabled=1`).run(ids.customer,ids.manager);
+  assert.equal((await api('/api/managed-customers',{ token:ids.tokenEnabled })).status,403);
+  const list=await api('/api/managed-customers',{ token:ids.tokenManager });
+  assert.equal(list.status,200);assert.equal(list.data.rows.some(row => row.id===ids.customer),true);
+  assert.equal(['healthy','attention','awaiting_sync','activity_only'].includes(list.data.rows.find(row => row.id===ids.customer).service_status),true);
+  assert.equal((await api(`/api/managed-customers/${ids.customer}/overview?from=bad&to=2026-09-21`,{ token:ids.tokenManager })).status,400);
+  const overview=await api(`/api/managed-customers/${ids.customer}/overview?from=2026-09-01&to=2026-09-30`,{ token:ids.tokenManager });
+  assert.equal(overview.status,200);assert.equal(overview.data.customer.id,ids.customer);
+  assert.equal(overview.data.tickets.open_now>=1,true);assert.equal(overview.data.tickets.created_period>=2,true);
+  assert.equal(typeof overview.data.activities.hours,'number');assert.equal(overview.data.period.from,'2026-09-01');
+});
+
+test('my-managed-customers scopes to the requesting user\'s own team, not the full managed customer list',async () => {
+  await db.prepare('UPDATE managed_customer_configurations SET responsible_team_id=? WHERE customer_id=?').run(ids.teamEnabled,ids.customer);
+  const owned=await api('/api/operations/my-managed-customers',{ token:ids.tokenEnabled }); // engineerEnabled is on teamEnabled
+  assert.equal(owned.status,200);
+  assert.equal(owned.data.rows.some(row => row.id===ids.customer),true);
+  const ownedRow=owned.data.rows.find(row => row.id===ids.customer);
+  assert.equal(ownedRow.responsible_team,'Security Team');
+  assert.equal(typeof ownedRow.open_tickets,'number');
+  const unowned=await api('/api/operations/my-managed-customers',{ token:ids.tokenDisabled }); // engineerDisabled is on teamDisabled, not teamEnabled
+  assert.equal(unowned.status,200);
+  assert.equal(unowned.data.rows.some(row => row.id===ids.customer),false);
+  const manager=await api('/api/operations/my-managed-customers',{ token:ids.tokenManager }); // not on any team at all
+  assert.equal(manager.status,200);
+  assert.deepEqual(manager.data.rows,[]);
+  assert.equal((await api('/api/operations/my-managed-customers')).status,401);
+});
+
+test('managed customer tickets enforce access, validate filters and paginate local results',async () => {
+  const path=`/api/managed-customers/${ids.customer}/tickets`;
+  assert.equal((await api(path,{ token:ids.tokenEnabled })).status,403);
+  for (const query of ['page=0','page_size=101','from=2026-02-30','from=2026-09-22&to=2026-09-21','search=']) {
+    assert.equal((await api(`${path}?${query}`,{ token:ids.tokenManager })).status,400);
+  }
+  // Any active customer can have Request Tracker tickets, managed or not; an unknown one cannot.
+  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/tickets`,{ token:ids.tokenManager })).status,200);
+  assert.equal((await api('/api/managed-customers/999999/tickets',{ token:ids.tokenManager })).status,404);
+  const first=await api(`${path}?page=1&page_size=1`,{ token:ids.tokenManager });
+  assert.equal(first.status,200);assert.equal(first.data.total,2);assert.equal(first.data.rows.length,1);assert.equal(first.data.page_size,1);
+  assert.equal(first.data.facets.owners.includes('Alice'),true);assert.equal(first.data.facets.statuses.includes('Open'),true);
+  const filtered=await api(`${path}?status=Open&priority=Critical&owner=Alice&from=2026-09-20&to=2026-09-20&search=gateway`,{ token:ids.tokenManager });
+  assert.equal(filtered.status,200);assert.equal(filtered.data.total,1);assert.equal(filtered.data.rows[0].ticket_number,'7001');
+  assert.match(filtered.data.rows[0].external_url,/^https:\/\//);
+  const literalWildcard=await api(`${path}?search=%25`,{ token:ids.tokenManager });
+  assert.equal(literalWildcard.status,200);assert.equal(literalWildcard.data.total,0);
+});
+
+test('managed customer ticket analytics separate current backlog from period throughput',async () => {
+  const path=`/api/managed-customers/${ids.customer}/ticket-analytics`;
+  assert.equal((await api(path,{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api(`${path}?from=bad&to=2026-09-21`,{ token:ids.tokenManager })).status,400);
+  assert.equal((await api(`/api/managed-customers/${ids.customerUnassigned}/ticket-analytics?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager })).status,200);
+  assert.equal((await api('/api/managed-customers/999999/ticket-analytics?from=2026-01-01&to=2026-12-31',{ token:ids.tokenManager })).status,404);
+  const result=await api(`${path}?from=2026-09-01&to=2026-09-30`,{ token:ids.tokenManager });
+  assert.equal(result.status,200);assert.equal(result.data.current.total_open,1);
+  assert.deepEqual(result.data.current.statuses,[{ name:'Open',count:1 }]);
+  assert.deepEqual(result.data.current.priorities,[{ name:'Critical',count:1 }]);
+  assert.equal(result.data.period.created,2);assert.equal(result.data.period.resolved,1);
+  assert.equal(result.data.current.aging.reduce((sum,row) => sum+row.count,0),1);
+  assert.equal(result.data.trend.bucket_days,1);assert.equal(result.data.trend.points.length,30);
+  assert.equal(result.data.trend.points.reduce((sum,row) => sum+row.created,0),2);assert.equal(result.data.trend.points.reduce((sum,row) => sum+row.resolved,0),1);
+});
+
+// The customer report reads activities, work and the service review through these.
+const managedService=require('../managedCustomerService');
+
+test('managed customer activities reuse customer-scoped activity records and period totals',async () => {
+  assert.equal(await managedService.getActivities(ids.customerUnassigned,'2026-01-01','2026-12-31',{ page:1,pageSize:25,offset:0 }),null);
+  const result=await managedService.getActivities(ids.customer,'2026-01-01','2026-12-31',{ page:1,pageSize:1,offset:0 });
+  assert.equal(result.enabled,true);assert.equal(result.rows.length,1);
+  assert.equal(result.total>=1,true);assert.equal(result.summary.activities,result.total);
+  assert.equal(typeof result.summary.hours,'number');assert.equal(result.breakdowns.categories.length>=1,true);
+  assert.equal(result.rows[0].category_name.length>0,true);assert.equal(result.rows[0].engineer_name.length>0,true);
+});
+
+test('managed customer work reuses task and project relationships with configured reporting gates',async () => {
+  assert.equal(await managedService.getWork(ids.customerUnassigned,'2026-01-01','2026-12-31'),null);
+  const result=await managedService.getWork(ids.customer,'2026-01-01','2026-12-31');
+  assert.equal(result.tasks.enabled,true);assert.equal(result.projects.enabled,true);
+  assert.equal(result.tasks.summary.total>=result.tasks.rows.length,true);
+  assert.equal(result.projects.summary.total>=result.projects.rows.length,true);
+  assert.equal(result.projects.rows.every(row => Number.isInteger(row.completion_pct)),true);
+});
+
+test('managed customer service review combines visits, report delivery and recommendations',async () => {
+  assert.equal(await managedService.getServiceReview(ids.customerUnassigned,'2026-01-01','2026-12-31'),null);
+  const result=await managedService.getServiceReview(ids.customer,'2026-01-01','2026-12-31');
+  assert.equal(result.visits.enabled,true);assert.equal(result.recommendations.enabled,true);
+  assert.equal(result.visits.summary.visits_period>=result.visits.rows.length,true);
+  assert.equal(result.visits.rows.every(row => Number.isInteger(row.recommendation_count)),true);
+  assert.equal(typeof result.recommendations.summary.open_now,'number');assert.equal(Array.isArray(result.recommendations.statuses),true);
+});
+
+test('the old dashboard-only endpoints are gone (Customer 360 serves those views)',async () => {
+  for (const part of ['activities','work','service-review','timeline']) assert.equal((await api(`/api/managed-customers/${ids.customer}/${part}?from=2026-01-01&to=2026-12-31`,{ token:ids.tokenManager })).status,404,part);
+});
+
+test('managed customer report preview reuses dashboard metrics and protects customer-facing input',async () => {
+  const path=`/api/managed-customers/${ids.customer}/report-preview`,body={ from:'2026-09-01',to:'2026-09-30',sections:['service_activities','executive_summary','ticket_summary'],narratives:{ executive_summary:'  Customer-facing summary  ',risks_concerns:'No material risks.' } };
+  assert.equal((await api(path,{ method:'POST',token:ids.tokenEnabled,body })).status,403);
+  assert.equal((await api('/api/managed-customers/not-an-id/report-preview',{ method:'POST',token:ids.tokenManager,body })).status,400);
+  assert.equal((await api(path,{ method:'POST',token:ids.tokenManager,body:{ ...body,from:'2026-02-31' } })).status,400);
+  assert.equal((await api(path,{ method:'POST',token:ids.tokenManager,body:{ ...body,sections:['not_a_section'] } })).status,400);
+  assert.equal((await api(path,{ method:'POST',token:ids.tokenManager,body:{ ...body,narratives:{ internal_notes:'must not leak' } } })).status,400);
+  const [preview,overview]=await Promise.all([api(path,{ method:'POST',token:ids.tokenManager,body }),api(`/api/managed-customers/${ids.customer}/overview?from=${body.from}&to=${body.to}`,{ token:ids.tokenManager })]);
+  assert.equal(preview.status,200);assert.equal(preview.data.schema_version,1);assert.deepEqual(preview.data.sections,body.sections);
+  assert.equal(preview.data.narratives.executive_summary,'Customer-facing summary');assert.equal(JSON.stringify(preview.data).includes('internal_notes'),false);
+  assert.deepEqual(Object.keys(preview.data.customer).sort(),['id','name','reporting_frequency','responsible_team','service_manager']);
+  assert.deepEqual(preview.data.overview.tickets,overview.data.tickets);assert.deepEqual(preview.data.overview.activities,overview.data.activities);
+  assert.equal(preview.data.tickets.open.rows.every(ticket => ticket.status_group==='open'),true);
+  const documentResponse=await fetch(`${suiteFixture.baseUrl}${path.replace('report-preview','report.docx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) });
+  assert.equal(documentResponse.status,200);assert.match(documentResponse.headers.get('content-type'),/wordprocessingml/);assert.match(documentResponse.headers.get('content-disposition'),/Acme_Corp_2026-09-01_2026-09-30\.docx/);
+  const documentBuffer=Buffer.from(await documentResponse.arrayBuffer());assert.equal(documentBuffer.subarray(0,2).toString(),'PK');
+  const archive=await require('jszip').loadAsync(documentBuffer),documentXml=await archive.file('word/document.xml').async('string');
+  assert.match(documentXml,/Managed Services Report/);assert.match(documentXml,/Customer-facing summary/);assert.doesNotMatch(documentXml,/internal_notes/);
+  assert.equal(documentXml.indexOf('Service Activities')<documentXml.indexOf('Executive Summary'),true);assert.equal(documentXml.indexOf('Executive Summary')<documentXml.indexOf('Ticket Summary'),true);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='managed_customer_word_report_generated'").get()).count,1);
+  const workbookResponse=await fetch(`${suiteFixture.baseUrl}${path.replace('report-preview','report.xlsx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) });
+  assert.equal(workbookResponse.status,200);assert.match(workbookResponse.headers.get('content-type'),/spreadsheetml/);
+  const workbook=new (require('exceljs').Workbook)();await workbook.xlsx.load(Buffer.from(await workbookResponse.arrayBuffer()));
+  assert.deepEqual(workbook.worksheets.map(sheet => sheet.name),['Summary','Charts','Activities']);assert.equal(workbook.getWorksheet('Summary').getCell('B2').value,'Acme Corp');assert.equal(workbook.getWorksheet('Charts').getCell('A1').value,'Ticket Throughput Trend');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='managed_customer_excel_report_generated'").get()).count,1);
+  assert.equal((await api(path.replace('report-preview','report.docx'),{ method:'POST',token:ids.tokenManager,body:{ ...body,status:'published' } })).status,400);
+  assert.equal((await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenEnabled })).status,403);
+  const history=await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager });
+  assert.equal(history.status,200);assert.equal(history.data.rows.length,2);
+  assert.deepEqual(history.data.rows.map(row => row.output_format).sort(),['docx','xlsx']);
+  assert.equal(history.data.rows.every(row => row.report_version===1 && row.status==='draft'),true);
+  assert.equal(history.data.rows.every(row => row.stored_name===undefined && row.enc_iv===undefined && row.enc_tag===undefined),true);
+  const wordHistory=history.data.rows.find(row => row.output_format==='docx');
+  const archived=await fetch(`${suiteFixture.baseUrl}/api/managed-customers/${ids.customer}/reports/${wordHistory.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenManager}`,'X-SolutionsHub-Request':'1' } });
+  assert.equal(archived.status,200);assert.match(archived.headers.get('content-disposition'),/Acme_Corp_2026-09-01_2026-09-30\.docx/);
+  assert.equal(Buffer.from(await archived.arrayBuffer()).subarray(0,2).toString(),'PK');
+  const secondDocument=await fetch(`${suiteFixture.baseUrl}${path.replace('report-preview','report.docx')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ ...body,status:'draft' }) });
+  assert.equal(secondDocument.status,200);assert.equal(secondDocument.headers.get('x-report-version'),'2');
+  const updatedHistory=await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager });
+  assert.equal(updatedHistory.data.rows[0].report_version,2);assert.equal(updatedHistory.data.rows[0].status,'draft');
+  const pdfResponse=await fetch(`${suiteFixture.baseUrl}${path.replace('report-preview','report.pdf')}`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ ...body,status:'draft' }) });
+  assert.equal(pdfResponse.status,200);assert.match(pdfResponse.headers.get('content-type'),/application\/pdf/);assert.match(pdfResponse.headers.get('content-disposition'),/Acme_Corp_2026-09-01_2026-09-30\.pdf/);
+  const pdfBuffer=Buffer.from(await pdfResponse.arrayBuffer());assert.equal(pdfBuffer.subarray(0,5).toString(),'%PDF-');
+  const pdfHistory=await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager });
+  assert.equal(pdfHistory.data.rows[0].output_format,'pdf');assert.equal(pdfHistory.data.rows[0].report_version,1);assert.equal(pdfHistory.data.rows[0].status,'draft');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='managed_customer_pdf_report_generated'").get()).count,1);
+});
+
+test('managed reports follow a conflict-safe reviewed workflow with an audit trail',async () => {
+  const reports=(await api(`/api/managed-customers/${ids.customer}/reports`,{ token:ids.tokenManager })).data.rows;
+  const report=reports.find(item => item.output_format==='pdf');assert.ok(report);assert.equal(report.workflow_version,1);
+  const endpoint=`/api/managed-customers/${ids.customer}/reports/${report.id}/workflow`;
+  assert.equal((await api(endpoint,{ method:'PUT',token:ids.tokenEnabled,body:{ action:'submit',version:1 } })).status,403);
+  await db.prepare(`INSERT INTO user_permission_overrides (user_id,permission_key,allowed,updated_by) VALUES (?,'managed_reports.review',1,?)`).run(ids.planner,ids.manager);
+  const submitted=await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'submit',version:1 } });
+  assert.equal(submitted.status,200);assert.equal(submitted.data.report.status,'in_review');assert.equal(submitted.data.report.workflow_version,2);
+  assert.equal((await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'submit',version:1 } })).status,409);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM notifications WHERE user_id=? AND type='managed_report.submitted'").get(ids.planner)).count,1);
+  assert.equal((await db.prepare("SELECT link FROM notifications WHERE user_id=? AND type='managed_report.submitted'").get(ids.planner)).link,'/approvals?view=reports');
+  assert.equal((await api('/api/managed-customers/report-reviews',{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api('/api/managed-customers/report-reviews?status=bad',{ token:ids.tokenPlanner })).status,400);
+  assert.equal((await api('/api/managed-customers/report-reviews?page=0',{ token:ids.tokenPlanner })).status,400);
+  const reviewQueue=await api('/api/managed-customers/report-reviews',{ token:ids.tokenPlanner });
+  assert.equal(reviewQueue.status,200);assert.equal(reviewQueue.data.total,1);assert.equal(reviewQueue.data.rows[0].id,report.id);
+  assert.equal(reviewQueue.data.rows[0].customer_name,'Acme Corp');assert.equal(reviewQueue.data.rows[0].status,'in_review');
+  const reviewDownload=await fetch(`${suiteFixture.baseUrl}/api/managed-customers/report-reviews/${report.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenPlanner}`,'X-SolutionsHub-Request':'1' } });
+  assert.equal(reviewDownload.status,200);assert.match(reviewDownload.headers.get('content-type'),/application\/pdf/);
+  assert.equal((await api(`/api/managed-customers/report-reviews/${report.id}`,{ method:'PUT',token:ids.tokenEnabled,body:{ action:'approve',version:2 } })).status,403);
+  const approved=await api(`/api/managed-customers/report-reviews/${report.id}`,{ method:'PUT',token:ids.tokenPlanner,body:{ action:'approve',version:2,comment:'Reviewed against the source data.' } });
+  assert.equal(approved.status,200);assert.equal(approved.data.report.status,'approved');
+  const readyToFinalize=await api('/api/managed-customers/report-reviews?status=approved',{ token:ids.tokenPlanner });
+  assert.equal(readyToFinalize.status,200);assert.equal(readyToFinalize.data.total,1);assert.equal(readyToFinalize.data.rows[0].workflow_version,3);
+  const finalized=await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'finalize',version:3 } });
+  assert.equal(finalized.status,200);assert.equal(finalized.data.report.status,'final');assert.equal(finalized.data.report.workflow_version,4);
+  assert.equal((await api('/api/managed-customers/report-reviews',{ token:ids.tokenPlanner })).data.total,0);
+  assert.equal((await fetch(`${suiteFixture.baseUrl}/api/managed-customers/report-reviews/${report.id}/download`,{ headers:{ Authorization:`Bearer ${ids.tokenPlanner}`,'X-SolutionsHub-Request':'1' } })).status,404);
+  assert.equal((await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'reopen',version:4 } })).status,400);
+  const reopened=await api(endpoint,{ method:'PUT',token:ids.tokenManager,body:{ action:'reopen',version:4,comment:'Customer scope changed.' } });
+  assert.equal(reopened.status,200);assert.equal(reopened.data.report.status,'draft');
+  const trail=await api(endpoint,{ token:ids.tokenManager });assert.equal(trail.status,200);assert.deepEqual(trail.data.rows.map(item => item.action),['generated','submitted','approved','finalized','reopened']);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action LIKE 'managed_report_%' AND entity_id=?").get(report.id)).count>=4,true);
+  await db.prepare("DELETE FROM user_permission_overrides WHERE user_id=? AND permission_key='managed_reports.review'").run(ids.planner);
+});
+
+test('managed report templates are manager-only, validated and versioned',async () => {
+  assert.equal((await api('/api/managed-report-templates',{ token:ids.tokenEnabled })).status,403);
+  const seeded=await api('/api/managed-report-templates',{ token:ids.tokenManager });assert.equal(seeded.status,200);assert.equal(seeded.data.rows.length>=1,true); // the company template (the two unused seeds were removed)
+  assert.equal((await api('/api/managed-report-templates',{ method:'POST',token:ids.tokenManager,body:{ name:'Bad',description:'',sections:['unknown'],default_narratives:{},active:true } })).status,400);
+  const created=await api('/api/managed-report-templates',{ method:'POST',token:ids.tokenManager,body:{ name:'Customer Security Review',description:'Reusable security review',sections:['executive_summary','ticket_summary','risks'],default_narratives:{ executive_summary:'Security services review.' },active:true } });
+  assert.equal(created.status,201);assert.equal(created.data.version,1);assert.deepEqual(created.data.sections,['executive_summary','ticket_summary','risks']);
+  const editable={ name:'Customer Security Review Updated',description:created.data.description,sections:created.data.sections,default_narratives:created.data.default_narratives,active:true,version:created.data.version };
+  const updated=await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:editable });
+  assert.equal(updated.status,200);assert.equal(updated.data.version,2);
+  // Settings saves back the whole record it loaded (id, timestamps, Word template status).
+  const asListed=(await api('/api/managed-report-templates',{ token:ids.tokenManager })).data.rows.find(row => row.id===created.data.id);
+  const resaved=await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...asListed,description:'Edited in Settings' } });
+  assert.equal(resaved.status,200,JSON.stringify(resaved.data));assert.equal(resaved.data.description,'Edited in Settings');
+  assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...asListed,version:resaved.data.version,surprise:1 } })).status,400);
+  // Report tables: columns, sorting and a row limit per table.
+  assert.ok(seeded.data.tables.some(table => table.key==='service_activities' && table.columns.some(column => column.key==='hours')));
+  assert.deepEqual(resaved.data.tables,{});
+  assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...asListed,version:resaved.data.version,tables:{ assets:{ columns:['ghost'] } } } })).status,400);
+  const withTables=await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...asListed,version:resaved.data.version,tables:{ assets:{ columns:['asset','vendor'],sort:{ column:'asset',direction:'desc' },limit:5 } } } });
+  assert.equal(withTables.status,200,JSON.stringify(withTables.data));
+  assert.deepEqual(withTables.data.tables,{ assets:{ columns:['asset','vendor'],sort:{ column:'asset',direction:'desc' },limit:5 } });
+  // Reports made with the template use its columns.
+  const activitiesOnly=await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...asListed,version:withTables.data.version,tables:{ service_activities:{ columns:['engineer','reference'] } } } });
+  assert.equal(activitiesOnly.status,200);
+  const sheetResponse=await fetch(`${suiteFixture.baseUrl}/api/managed-customers/${ids.customer}/report.xlsx`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ from:'2026-09-01',to:'2026-09-30',sections:['service_activities'],template_id:created.data.id }) });
+  assert.equal(sheetResponse.status,200,await sheetResponse.clone().text());
+  const sheetBook=new (require('exceljs').Workbook)();await sheetBook.xlsx.load(Buffer.from(await sheetResponse.arrayBuffer()));
+  assert.deepEqual(sheetBook.getWorksheet('Activities').getRow(1).values.slice(1),['Engineer','Reference']);
+  assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'PUT',token:ids.tokenManager,body:{ ...editable,name:'Stale' } })).status,409);
+  assert.equal((await api(`/api/managed-report-templates/${created.data.id}`,{ method:'DELETE',token:ids.tokenManager })).status,200);
+});
+
+test('permission administration supports versioned role and user overrides',async () => {
+  const path='/api/permissions',permission_key='managed_customers.view';
+  assert.equal((await api(path,{ token:ids.tokenPlanner })).status,403);
+  const matrix=await api(path,{ token:ids.tokenManager });assert.equal(matrix.status,200);assert.equal(matrix.data.definitions.some(item => item.key===permission_key),true);
+  assert.equal(matrix.data.definitions.some(item => item.key==='kpis.view' && item.eligible_roles?.includes('manager')),true);
+  assert.equal(matrix.data.definitions.some(item => item.key==='reports.access' && item.eligible_roles?.includes('planner')),true);
+  assert.equal(matrix.data.definitions.some(item => item.key==='service_activities.access' && item.eligible_roles?.includes('engineer')),true);
+  const engineerKpiRule={ scope:'user',user_id:ids.engineerEnabled,permission_key:'kpis.view',allowed:true,version:0 };
+  const rejectedEngineerKpi=await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:engineerKpiRule });
+  assert.equal(rejectedEngineerKpi.status,400);assert.match(rejectedEngineerKpi.data.error,/not eligible/i);
+  const roleBody={ scope:'role',role:'planner',permission_key,allowed:true,version:0 };
+  const role=await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:roleBody });assert.equal(role.status,200);assert.equal(role.data.rule.version,1);
+  assert.equal((await api('/api/auth/permissions',{ token:ids.tokenPlanner })).data.permissions[permission_key],true);
+  const delegated=await api('/api/managed-customers',{ token:ids.tokenPlanner });assert.equal(delegated.status,200);
+  const delegatedTemplates=await api('/api/managed-report-templates',{ token:ids.tokenPlanner });assert.equal(delegatedTemplates.status,200);
+  const delegatedExport=await api(`/api/managed-customers/${ids.customer}/report.docx`,{ method:'POST',token:ids.tokenPlanner,body:{ from:'2026-09-01',to:'2026-09-30',sections:['executive_summary'],narratives:{},status:'draft' } });assert.equal(delegatedExport.status,403);
+  const me=await api('/api/auth/me',{ token:ids.tokenPlanner });assert.equal(me.status,200);assert.equal(me.data.permissions[permission_key],true);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...roleBody,allowed:false } })).status,409);
+  const userBody={ scope:'user',user_id:ids.planner,permission_key,allowed:false,version:0 };
+  const user=await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:userBody });assert.equal(user.status,200);assert.equal(user.data.rule.version,1);
+  assert.equal((await api('/api/auth/permissions',{ token:ids.tokenPlanner })).data.permissions[permission_key],false);
+  const permissionService=require('../permissions');assert.equal(await permissionService.hasPermission({ id:ids.planner,role:'planner' },permission_key),false);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...userBody,allowed:null,version:1 } })).status,200);
+  assert.equal(await permissionService.hasPermission({ id:ids.planner,role:'planner' },permission_key),true);
+  assert.equal((await api('/api/auth/permissions',{ token:ids.tokenPlanner })).data.permissions[permission_key],true);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...roleBody,allowed:null,version:1 } })).status,200);
+  assert.equal(await permissionService.hasPermission({ id:ids.planner,role:'planner' },permission_key),false);
+  assert.equal((await api('/api/auth/permissions',{ token:ids.tokenPlanner })).data.permissions[permission_key],false);
+  const customerRule={ scope:'user',user_id:ids.planner,permission_key:'customers.access',allowed:false,version:0 };
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:customerRule })).status,200);
+  assert.equal((await api(`/api/customers/${ids.customer}`,{ token:ids.tokenPlanner })).status,403);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...customerRule,allowed:null,version:1 } })).status,200);
+  assert.notEqual((await api(`/api/customers/${ids.customer}`,{ token:ids.tokenPlanner })).status,403);
+  const assetRule={ scope:'user',user_id:ids.planner,permission_key:'assets.access',allowed:true,version:0 };
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:assetRule })).status,200);
+  assert.equal((await api(`/api/customers/${ids.customer}/assets`,{ token:ids.tokenPlanner })).status,200);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...assetRule,allowed:null,version:1 } })).status,200);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ scope:'user',user_id:ids.engineerEnabled,permission_key:'assets.access',allowed:true,version:0 } })).status,400);
+  const reportsRule={ scope:'user',user_id:ids.planner,permission_key:'reports.access',allowed:true,version:0 };
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:reportsRule })).status,200);
+  assert.equal((await api('/api/reports/summary',{ token:ids.tokenPlanner })).status,200);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...reportsRule,allowed:null,version:1 } })).status,200);
+  const reportsDeny={ scope:'user',user_id:ids.manager,permission_key:'reports.access',allowed:false,version:0 };
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:reportsDeny })).status,200);
+  assert.equal((await api('/api/reports/summary',{ token:ids.tokenManager })).status,403);
+  assert.equal((await api('/api/reports/service-activity/export',{ token:ids.tokenManager })).status,403);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...reportsDeny,allowed:null,version:1 } })).status,200);
+  const activityRule={ scope:'user',user_id:ids.engineerEnabled,permission_key:'service_activities.access',allowed:false,version:0 };
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:activityRule })).status,200);
+  assert.equal((await api('/api/service-activities/meta',{ token:ids.tokenEnabled })).status,403);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ ...activityRule,allowed:null,version:1 } })).status,200);
+  assert.equal((await api(`${path}/rule`,{ method:'PUT',token:ids.tokenManager,body:{ scope:'user',user_id:ids.planner,permission_key:'service_activities.access',allowed:true,version:0 } })).status,400);
+});
+
+test('team directory paging validates filters while preserving the legacy roster',async () => {
+  const legacy=await api('/api/auth/users',{ token:ids.tokenManager });
+  assert.equal(legacy.status,200);assert.equal(Array.isArray(legacy.data),true);
+  const paged=await api('/api/auth/users?paged=1&page=1&page_size=2&role=engineer&search=Engineer',{ token:ids.tokenManager });
+  assert.equal(paged.status,200);assert.equal(paged.data.page,1);assert.equal(paged.data.page_size,2);
+  assert.equal(paged.data.rows.length<=2,true);assert.equal(paged.data.rows.every(user => user.role==='engineer'),true);
+  assert.equal(paged.data.total,paged.data.counts.engineer);assert.equal(paged.data.counts.all>=paged.data.total,true);
+  const engineerView=await api('/api/auth/users?paged=1&page_size=2',{ token:ids.tokenEnabled });
+  assert.equal(engineerView.status,200);assert.equal(engineerView.data.rows.every(user => !Object.hasOwn(user,'email') && !Object.hasOwn(user,'last_login')),true);
+  assert.equal((await api('/api/auth/users?paged=1&search=%25',{ token:ids.tokenManager })).data.total,0,'wildcards are searched literally');
+  for (const query of ['page=0','page=1&page=2','page_size=101','role=owner','unknown=1']) {
+    assert.equal((await api(`/api/auth/users?paged=1&${query}`,{ token:ids.tokenManager })).status,400,query);
+  }
+});
+
+test('concurrent report exports allocate unique versions on PostgreSQL', { skip:!process.env.TEST_DATABASE_URL },async () => {
+  const endpoint=`${suiteFixture.baseUrl}/api/managed-customers/${ids.customer}/report.docx`,body={ from:'2026-08-01',to:'2026-08-31',sections:['executive_summary'],narratives:{ executive_summary:'Concurrent version allocation test.' },status:'draft' };
+  const responses=await Promise.all(Array.from({ length:4 },() => fetch(endpoint,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify(body) })));
+  assert.equal(responses.every(response => response.status===200),true);
+  const versions=responses.map(response => Number(response.headers.get('x-report-version'))).sort((a,b) => a-b);
+  assert.deepEqual(versions,[1,2,3,4]);await Promise.all(responses.map(response => response.arrayBuffer()));
+  const rows=await db.prepare(`SELECT report_version,stored_name FROM managed_report_history
+    WHERE customer_id=? AND period_start=? AND period_end=? AND output_format='docx' ORDER BY report_version`).all(ids.customer,body.from,body.to);
+  assert.deepEqual(rows.map(row => row.report_version),[1,2,3,4]);assert.equal(new Set(rows.map(row => row.stored_name)).size,4);
+});
+
+test('ticket mapping administration is manager-only and reclassifies stored tickets',async () => {
+  assert.equal((await api('/api/ticketing/mappings',{ token:ids.tokenEnabled })).status,403);
+  const current=await api('/api/ticketing/mappings',{ token:ids.tokenManager });
+  assert.equal(current.status,200);assert.equal(current.data.statuses.some(item => item.external==='open'),true);
+  const config={ statuses:[{ external:'open',normalized:'In Progress',group:'open' },{ external:'resolved',normalized:'Closed',group:'closed' }],priorities:[{ external:'95',normalized:'High' },{ external:'Normal',normalized:'Normal' }] };
+  const saved=await api('/api/ticketing/mappings',{ method:'PUT',token:ids.tokenManager,body:config });
+  assert.equal(saved.status,200);assert.equal(saved.data.reclassified>=2,true);
+  const open=await db.prepare("SELECT normalized_status,normalized_priority FROM external_tickets WHERE external_ticket_id='7001'").get();
+  assert.deepEqual(open,{ normalized_status:'In Progress',normalized_priority:'High' });
+  assert.equal((await api('/api/ticketing/mappings',{ method:'PUT',token:ids.tokenManager,body:{ statuses:[{ external:'open',normalized:'Bad',group:'open' }],priorities:[] } })).status,400);
+});
+
+test('SMTP settings await reads, redact and retain passwords on ordinary edits', async () => {
+  await db.prepare("INSERT INTO settings (key,value) VALUES ('email_smtp',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ host: 'smtp.test.local',port: 587,user: 'report-user',password: 'retained-secret' }));
+  const before = await api('/api/report-settings/smtp',{ token: ids.tokenManager });
+  assert.equal(before.status,200);
+  assert.equal(before.data.host,'smtp.test.local');
+  assert.equal(before.data.password_set,true);
+  assert.equal(before.data.password,undefined);
+  assert.equal((await api('/api/report-settings/smtp',{ token: ids.tokenEnabled })).status,403);
+  assert.equal((await api('/api/report-settings/smtp',{ method: 'PUT',token: ids.tokenManager,body: { from_name: 'Updated sender' } })).status,200);
+  let stored = JSON.parse((await db.prepare("SELECT value FROM settings WHERE key='email_smtp'").get()).value);
+  assert.equal(stored.password,'retained-secret');
+  assert.equal(stored.host,'smtp.test.local');
+  assert.equal(stored.from_name,'Updated sender');
+  await api('/api/report-settings/smtp',{ method: 'PUT',token: ids.tokenManager,body: { password: '\u2022'.repeat(8) } });
+  stored = JSON.parse((await db.prepare("SELECT value FROM settings WHERE key='email_smtp'").get()).value);
+  assert.equal(stored.password,'retained-secret');
+  for (const body of [{ enabled: true,day: 7,hour: 9,minute: 0,recipients: [ids.manager] },{ enabled: true,day: 1,hour: 9,minute: 0,recipients: [ids.engineerEnabled] }]) assert.equal((await api('/api/report-settings/schedule',{ method: 'PUT',token: ids.tokenManager,body })).status,400);
+});
+
+test('weekly report previews await actual report data on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const preview = await api('/api/report-settings/preview-data',{ token: ids.tokenManager });
+  assert.equal(preview.status,200);
+  assert.equal(typeof preview.data.stats.activeProjects,'number');
+  assert.equal(typeof preview.data.subject,'string');
+  const html = await fetch(`${suiteFixture.baseUrl}/api/report-settings/preview`,{ headers: { Authorization: `Bearer ${ids.tokenManager}` } });
+  assert.equal(html.status,200);
+  assert.match(await html.text(),/<!DOCTYPE html>/);
+});
+
+test('report schedules enforce ownership, recipient eligibility, versions and rechecked delivery', async () => {
+  const owner = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Scheduled owner','scheduled-owner@test.local',bcrypt.hashSync('pw',4),'manager')).lastInsertRowid;
+  const peer = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Scheduled peer','scheduled-peer@test.local',bcrypt.hashSync('pw',4),'manager')).lastInsertRowid;
+  const token = signJwt({ id: owner }),peerToken = signJwt({ id: peer });
+  const body = { name: 'Scheduled fixture',visibility: 'shared',shared_user_ids: [peer],shared_team_ids: [],definition: { source: 'tasks',fields: ['id'] } };
+  const report = (await api('/api/reports/custom/saved',{ method: 'POST',token,body })).data;
+  const path = `/api/reports/custom/saved/${report.id}/schedule`;
+  assert.equal((await api(path,{ token: peerToken })).status,403);
+  assert.equal((await api(path,{ token: ids.tokenEnabled })).status,403);
+  const schedule = { frequency: 'weekly',day: 1,hour: 9,minute: 0,enabled: true,recipient_ids: [peer],version: 0 };
+  for (const change of [{ recipient_ids: [ids.engineerEnabled] },{ day: 7 },{ hour: true },{ recipient_ids: [peer,peer] }]) assert.equal((await api(path,{ method: 'PUT',token,body: { ...schedule,...change } })).status,400);
+  assert.equal((await api(path,{ method: 'PUT',token: peerToken,body: schedule })).status,403);
+  assert.equal((await api(path,{ method: 'PUT',token,body: schedule })).data.version,1);
+  if (process.env.TEST_DATABASE_URL) assert.equal((await api(path,{ method: 'PUT',token,body: schedule })).status,409);
+  assert.equal((await api(path,{ method: 'PUT',token,body: { ...schedule,version: 1 } })).data.version,2);
+  assert.equal((await api(path,{ method: 'PUT',token,body: { ...schedule,version: 1 } })).status,409);
+  assert.equal((await api(path,{ token })).data.schedule.enabled,true);
+  const { tick } = require('../customReportScheduler');
+  const now = new Date('2040-01-02T10:00:00Z'),sent = [];
+  const run = async () => ({ columns: [{ key: 'id',label: 'ID' }],rows: [{ id: 1 }],truncated: false });
+  // Each run is its own slot (deliveries are kept per slot and recipient).
+  let slot = 0;
+  const due = () => db.prepare('UPDATE custom_report_schedules SET next_run=? WHERE report_id=?').run(`2000-01-${String(++slot).padStart(2,'0')}T00:00:00.000Z`,report.id);
+  await due();
+  await tick({ now,run,send: async mail => sent.push(mail) });
+  assert.equal(sent.length,1);
+  assert.equal(sent[0].to,'scheduled-peer@test.local');
+  assert.match(sent[0].attachments[0].content.toString(),/"ID"/);
+  await tick({ now,run,send: async mail => sent.push(mail) });
+  assert.equal(sent.length,1,'already claimed slots are not resent');
+  await db.prepare("UPDATE users SET role='engineer' WHERE id=?").run(peer);
+  await due();
+  await tick({ now,run,send: async mail => sent.push(mail) });
+  assert.equal(sent.length,1,'demoted recipients receive no report');
+  let current = (await api(path,{ token })).data.schedule;
+  assert.equal(current.last_status,'blocked');
+  assert.equal(current.enabled,false);
+  await db.prepare("UPDATE users SET role='manager' WHERE id=?").run(peer);
+  assert.equal((await api(path,{ method: 'PUT',token,body: { ...schedule,version: current.version } })).status,200);
+  await due();
+  await tick({ now,run: async () => ({ ...(await run()),truncated: true }),send: async mail => sent.push(mail) });
+  current = (await api(path,{ token })).data.schedule;
+  assert.equal(current.last_status,'failed');
+  assert.match(current.last_error,/5000 rows/);
+  assert.equal(sent.length,1);
+  await due();
+  await tick({ now,run: async () => {
+    await db.prepare('UPDATE users SET active=0 WHERE id=?').run(peer);
+    return run();
+  },send: async mail => sent.push(mail) });
+  current = (await api(path,{ token })).data.schedule;
+  assert.equal(current.last_status,'blocked');
+  assert.equal(sent.length,1,'access is checked again after the query and before delivery');
+  await db.prepare('UPDATE users SET active=1 WHERE id=?').run(peer);
+  assert.equal((await api(path,{ method: 'PUT',token,body: { ...schedule,version: current.version } })).status,200);
+  await db.prepare("UPDATE saved_custom_reports SET visibility='private' WHERE id=?").run(report.id);
+  await due();
+  await tick({ now,run,send: async mail => sent.push(mail) });
+  current = (await api(path,{ token })).data.schedule;
+  assert.equal(current.last_status,'blocked');
+  assert.equal(sent.length,1,'unshared reports no longer reach other managers');
+  assert.equal((await api(path,{ method: 'PUT',token,body: { ...schedule,version: current.version,enabled: false,recipient_ids: [] } })).status,200);
+  assert.equal((await api(`/api/reports/custom/saved/${report.id}`,{ method: 'DELETE',token,body: { version: 1 } })).status,200);
+  assert.equal(await db.prepare('SELECT * FROM custom_report_schedules WHERE report_id=?').get(report.id),undefined);
+});
+
+test('queued custom report exports remain encrypted and private to their owner',async () => {
+  const previousKey=process.env.ATTACHMENT_KEY;
+  const fs=require('node:fs'),path=require('node:path'),{ exportRoot }=require('../customReportExport');
+  let jobId,filePath;
+  process.env.ATTACHMENT_KEY='ab'.repeat(32);
+  try {
+    const owner=(await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Export owner','export-owner@test.local',bcrypt.hashSync('pw',4),'manager')).lastInsertRowid;
+    const peer=(await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Export peer','export-peer@test.local',bcrypt.hashSync('pw',4),'manager')).lastInsertRowid;
+    const token=signJwt({ id:owner }),peerToken=signJwt({ id:peer });
+    const queued=await api('/api/reports/custom/exports',{ method:'POST',token,body:{ format:'csv',definition:{ source:'tasks',fields:['id','title'] } } });
+    assert.equal(queued.status,202);assert.equal(queued.data.status,'queued');jobId=queued.data.id;
+    assert.equal((await api(`/api/reports/custom/exports/${jobId}`,{ token:peerToken })).status,404);
+    assert.equal((await api(`/api/reports/custom/exports/${jobId}`,{ token:ids.tokenEnabled })).status,403);
+    await db.prepare("UPDATE users SET role='engineer' WHERE id=?").run(owner);
+    await assert.rejects(require('../customReportExport').generate({ format:'csv',definition:{ source:'tasks',fields:['id'] } },{ id:jobId,created_by:owner }),/no longer has permission/);
+    await db.prepare("UPDATE users SET role='manager' WHERE id=?").run(owner);
+    const fileCipher=require('../cipher');
+    const plain=Buffer.from('ID,Title\n1,Private result\n'),encrypted=fileCipher.encrypt(plain),file=`job-${jobId}.bin`;
+    filePath=path.join(exportRoot,file);
+    await fs.promises.mkdir(exportRoot,{ recursive:true });await fs.promises.writeFile(filePath,encrypted.data);
+    await db.prepare("UPDATE background_jobs SET status='completed',artifact_name='custom-report.csv',artifact_path=?,artifact_type='text/csv',artifact_iv=?,artifact_tag=?,artifact_expires_at='2999-01-01 00:00:00',completed_at=app_now() WHERE id=?").run(file,encrypted.iv,encrypted.tag,jobId);
+    const download=await fetch(`${suiteFixture.baseUrl}/api/reports/custom/exports/${jobId}/download`,{ headers:{ Authorization:`Bearer ${token}` } });
+    assert.equal(download.status,200);assert.equal(Buffer.from(await download.arrayBuffer()).equals(plain),true);
+    assert.equal((await fetch(`${suiteFixture.baseUrl}/api/reports/custom/exports/${jobId}/download`,{ headers:{ Authorization:`Bearer ${peerToken}` } })).status,404);
+    assert.equal((await api('/api/reports/custom/exports',{ method:'POST',token,body:{ format:'docx',definition:{ source:'tasks',fields:['id'] } } })).status,400);
+  } finally {
+    if (filePath) await fs.promises.unlink(filePath).catch(()=>{});
+    if (jobId) await db.prepare('DELETE FROM background_jobs WHERE id=?').run(jobId);
+    if (previousKey === undefined) delete process.env.ATTACHMENT_KEY; else process.env.ATTACHMENT_KEY=previousKey;
+  }
+});
+
+test('concurrent schedule creation and edits conflict on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const report = (await api('/api/reports/custom/saved',{ method: 'POST',token: ids.tokenManager,body: { name: 'Concurrent schedule',visibility: 'private',definition: { source: 'tasks',fields: ['id'] } } })).data;
+  const path = `/api/reports/custom/saved/${report.id}/schedule`;
+  const save = version => api(path,{ method: 'PUT',token: ids.tokenManager,body: { frequency: 'daily',day: 0,hour: 9,minute: 0,enabled: false,recipient_ids: [],version } });
+  assert.deepEqual((await Promise.all([save(0),save(0)])).map(row => row.status).sort(),[200,409]);
+  assert.deepEqual((await Promise.all([save(1),save(1)])).map(row => row.status).sort(),[200,409]);
+});
+
+test('custom report metadata and execution enforce manager access and validate structure', async () => {
+  for (const token of [ids.tokenEnabled,ids.tokenDisabled]) {
+    assert.equal((await api('/api/reports/custom/sources',{ token })).status,403);
+    for (const route of ['preview','export','export-csv']) assert.equal((await api(`/api/reports/custom/${route}`,{ method: 'POST',token,body: { source: 'tasks',fields: ['id'] } })).status,403);
+  }
+  const sources = await api('/api/reports/custom/sources',{ token: ids.tokenManager });
+  assert.equal(sources.status,200);
+  assert.equal(sources.data.preview_limit,100);
+  for (const body of [null,[],{ source: 'users',fields: ['password'] },{ source: 'tasks',fields: ['secret'] },{ source: 'tasks',fields: ['id'],filters: [{ field: 'id',operator: 'eq',value: '1' }] }]) {
+    for (const route of ['preview','export','export-csv']) assert.equal((await api(`/api/reports/custom/${route}`,{ method: 'POST',token: ids.tokenManager,body })).status,400);
+  }
+});
+
+test('custom reports preview, aggregate and export bounded matching rows on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const project = (await db.prepare('INSERT INTO projects (title,created_by) VALUES (?,?)').run('Custom report fixture',ids.manager)).lastInsertRowid;
+  for (let i=0;i<102;i++) await db.prepare('INSERT INTO tasks (title,project_id,created_by,status) VALUES (?,?,?,?)').run(`Custom report task ${i}`,project,ids.manager,i<100 ? 'open' : 'completed');
+  const definition = { source: 'tasks',fields: ['id','title','status'],filters: [{ field: 'project_id',operator: 'eq',value: project }] };
+  const preview = await api('/api/reports/custom/preview',{ method: 'POST',token: ids.tokenManager,body: definition });
+  assert.equal(preview.status,200);
+  assert.equal(preview.data.rows.length,100);
+  assert.equal(preview.data.truncated,true);
+  const grouped = await api('/api/reports/custom/preview',{ method: 'POST',token: ids.tokenManager,body: { ...definition,fields: ['status'],group_by: ['status'],aggregations: [{ field: '*',operation: 'count' }] } });
+  assert.equal(grouped.status,200);
+  assert.deepEqual(grouped.data.rows,[{ status: 'completed',metric_0: 2 },{ status: 'open',metric_0: 100 }]);
+  const excluded = await api('/api/reports/custom/preview',{ method: 'POST',token: ids.tokenManager,body: { ...definition,filters: [...definition.filters,{ field: 'status',operator: 'not_in',value: ['completed'] }] } });
+  assert.equal(excluded.status,200);
+  assert.equal(excluded.data.rows.length,100);
+  assert.equal(excluded.data.truncated,false);
+  assert.ok(excluded.data.rows.every(row => row.status==='open'));
+  const response = await fetch(`${suiteFixture.baseUrl}/api/reports/custom/export`,{ method: 'POST',headers: { 'Content-Type': 'application/json','X-SolutionsHub-Request': '1',Authorization: `Bearer ${ids.tokenManager}` },body: JSON.stringify(definition) });
+  assert.equal(response.status,200);
+  const workbook = new (require('exceljs').Workbook)();
+  await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
+  assert.equal(workbook.worksheets[0].rowCount,103);
+  assert.deepEqual(workbook.worksheets[0].getRow(2).values.slice(1),Object.values(preview.data.rows[0]));
+  const csv = await fetch(`${suiteFixture.baseUrl}/api/reports/custom/export-csv`,{ method: 'POST',headers: { 'Content-Type': 'application/json','X-SolutionsHub-Request': '1',Authorization: `Bearer ${ids.tokenManager}` },body: JSON.stringify(definition) });
+  assert.equal(csv.status,200);
+  assert.match(csv.headers.get('content-type'),/text\/csv/);
+  const lines = (await csv.text()).trim().split('\r\n');
+  assert.equal(lines.length,103);
+  assert.equal(lines[1],Object.values(preview.data.rows[0]).map(require('../customReports').csvCell).join(','));
+  await db.exec(`INSERT INTO tasks (title,project_id,created_by) SELECT 'Report budget fixture',${project},${ids.manager} FROM generate_series(1,5001);`);
+  const oversized = await api('/api/reports/custom/export',{ method: 'POST',token: ids.tokenManager,body: definition });
+  assert.equal(oversized.status,413);
+  assert.match(oversized.data.error,/5000 rows/);
+  assert.equal((await api('/api/reports/custom/export-csv',{ method: 'POST',token: ids.tokenManager,body: definition })).status,413);
+});
+
+test('workload planning validates inputs, scopes roles and rejects conflicting input saves', async () => {
+  const task = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by,deadline) VALUES (?,?,?,?)').run('Estimated task',ids.engineerEnabled,ids.manager,'2026-09-18')).lastInsertRowid;
+  for (const token of [ids.tokenEnabled,ids.tokenDisabled]) {
+    assert.equal((await api('/api/workload/planning', { token })).status,403);
+    assert.equal((await api('/api/workload/planning/estimate', { method: 'PUT',token,body: { kind: 'task',id: task,version: 0,remaining_hours: 2 } })).status,403);
+  }
+  for (const query of ['as_of=2026-02-29','as_of=','as_of=2026-09-18&as_of=2026-09-19']) assert.equal((await api(`/api/workload/planning?${query}`, { token: ids.tokenManager })).status,400);
+  const estimate = { kind: 'task',id: task,version: 0,remaining_hours: 2 };
+  for (const extra of [{ kind: 'users' },{ id: true },{ version: -1 },{ remaining_hours: '2' },{ remaining_hours: -1 },{ remaining_hours: 10001 }]) assert.equal((await api('/api/workload/planning/estimate', { method: 'PUT',token: ids.tokenManager,body: { ...estimate,...extra } })).status,400);
+  assert.equal((await api('/api/workload/planning/estimate', { method: 'PUT',token: ids.tokenManager,body: estimate })).status,200);
+  // pg-mem incorrectly returns an existing row for DO NOTHING RETURNING.
+  if (process.env.TEST_DATABASE_URL) assert.equal((await api('/api/workload/planning/estimate', { method: 'PUT',token: ids.tokenManager,body: estimate })).status,409);
+  assert.equal((await api('/api/workload/planning/estimate', { method: 'PUT',token: ids.tokenManager,body: { ...estimate,version: 1,remaining_hours: 3 } })).data.version,2);
+  assert.equal((await api('/api/workload/planning/estimate', { method: 'PUT',token: ids.tokenManager,body: { ...estimate,version: 1,remaining_hours: 99 } })).status,409);
+  const availability = { user_id: ids.engineerEnabled,week_start: '2026-09-14',version: 0,available_hours: 30 };
+  for (const extra of [{ week_start: '2026-09-15' },{ user_id: ids.manager },{ available_hours: '30' },{ available_hours: 169 },{ version: null }]) assert.equal((await api('/api/workload/planning/availability', { method: 'PUT',token: ids.tokenManager,body: { ...availability,...extra } })).status,400);
+  assert.equal((await api('/api/workload/planning/availability', { method: 'PUT',token: ids.tokenManager,body: availability })).status,200);
+  if (process.env.TEST_DATABASE_URL) assert.equal((await api('/api/workload/planning/availability', { method: 'PUT',token: ids.tokenManager,body: availability })).status,409);
+  assert.equal((await api('/api/workload/planning/availability', { method: 'PUT',token: ids.tokenManager,body: { ...availability,version: 1,available_hours: 0 } })).data.version,2);
+  assert.equal((await api('/api/workload/planning/availability', { method: 'PUT',token: ids.tokenManager,body: { ...availability,version: 1,available_hours: 99 } })).status,409);
+});
+
+test('workload input creation and updates detect simultaneous changes on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const task = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by) VALUES (?,?,?)').run('Concurrent effort input',ids.engineerEnabled,ids.manager)).lastInsertRowid;
+  const inputs = [
+    ['estimate',{ kind: 'task',id: task,version: 0,remaining_hours: 1 }],
+    ['availability',{ user_id: ids.engineerEnabled,week_start: '2050-01-03',version: 0,available_hours: 20 }],
+  ];
+  for (const [endpoint,body] of inputs) {
+    const save = version => api(`/api/workload/planning/${endpoint}`, { method: 'PUT',token: ids.tokenManager,body: { ...body,version } });
+    assert.deepEqual((await Promise.all([save(0),save(0)])).map(row => row.status).sort(),[200,409]);
+    assert.deepEqual((await Promise.all([save(1),save(1)])).map(row => row.status).sort(),[200,409]);
+  }
+});
+
+test('workload planning calculates known coverage, per-engineer visits and recorded availability on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const engineer = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Capacity fixture','capacity@test.local',bcrypt.hashSync('pw',4),'engineer')).lastInsertRowid;
+  const peer = (await db.prepare('INSERT INTO users (name,email,password,role) VALUES (?,?,?,?)').run('Capacity peer','capacity-peer@test.local',bcrypt.hashSync('pw',4),'engineer')).lastInsertRowid;
+  const task = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by,deadline) VALUES (?,?,?,?)').run('Capacity task',engineer,ids.manager,'2045-01-03')).lastInsertRowid;
+  const visit = (await db.prepare('INSERT INTO maintenance_visits (title,customer_id,scheduled_date,created_by) VALUES (?,?,?,?)').run('Capacity visit',ids.customer,'2045-01-03',ids.manager)).lastInsertRowid;
+  for (const user of [engineer,peer]) await db.prepare('INSERT INTO maintenance_visit_engineers (visit_id,user_id) VALUES (?,?)').run(visit,user);
+  const save = (endpoint,body) => api(`/api/workload/planning/${endpoint}`, { method: 'PUT',token: ids.tokenManager,body });
+  await save('estimate',{ kind: 'task',id: task,version: 0,remaining_hours: 15 });
+  await save('estimate',{ kind: 'visit',id: visit,version: 0,remaining_hours: 5 });
+  await save('availability',{ user_id: engineer,week_start: '2045-01-02',version: 0,available_hours: 10 });
+  const response = await api('/api/workload/planning?as_of=2045-01-03', { token: ids.tokenManager });
+  assert.equal(response.status,200);
+  const week = response.data.engineers.find(row => row.id === engineer).weeks[0];
+  assert.equal(week.estimated_hours,20);
+  assert.equal(week.capacity_percent,200);
+  assert.equal(week.unknown_estimates,0);
+  assert.equal(week.items.length,2);
+  assert.equal(response.data.engineers.find(row => row.id === peer).weeks[0].items.find(row => row.kind === 'visit' && row.id === visit).remaining_hours,5);
+  const missing = (await db.prepare('INSERT INTO tasks (title,assigned_to,created_by,deadline) VALUES (?,?,?,?)').run('Unknown capacity task',engineer,ids.manager,'2045-01-03')).lastInsertRowid;
+  const partial = await api('/api/workload/planning?as_of=2045-01-03', { token: ids.tokenManager });
+  assert.equal(partial.data.engineers.find(row => row.id === engineer).weeks[0].capacity_percent,null);
+  assert.equal(partial.data.engineers.find(row => row.id === engineer).weeks[0].unknown_estimates,1);
+  await db.prepare("UPDATE tasks SET status='completed' WHERE id=?").run(missing);
+});
+
+test('the configuration read by Customer 360 can be saved back as-is (the autosave round trip)',async () => {
+  const customer=(await db.prepare('INSERT INTO customers (name,active,service_activity_enabled) VALUES (?,1,1)').run('Round-trip customer')).lastInsertRowid;
+  await db.prepare('INSERT INTO customer_teams (customer_id,team_id) VALUES (?,?)').run(customer,ids.teamEnabled);
+  const path=`/api/customers/${customer}/managed-services`;
+  const read=await api(path,{ token:ids.tokenManager });
+  assert.equal(read.status,200);
+  assert.ok('last_successful_sync_at' in read.data && 'last_sync_status' in read.data,'the read includes server-owned sync status');
+  // Exactly what the card holds: everything it read, plus the edits.
+  const saved=await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...read.data,managed_services_enabled:true,responsible_team_id:ids.teamEnabled } });
+  assert.equal(saved.status,200,JSON.stringify(saved.data));
+  assert.equal(saved.data.managed_services_enabled,true);
+  // Server-owned fields are ignored, never written from the client.
+  const forged=await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...saved.data,last_sync_status:'success',last_successful_sync_at:'2026-01-01T00:00:00Z' } });
+  assert.equal(forged.status,200);
+  assert.equal(forged.data.last_sync_status,null);
+  assert.equal(forged.data.last_successful_sync_at,null);
+  // Anything else unknown is still refused.
+  assert.equal((await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...forged.data,surprise:1 } })).status,400);
+});
+
+test('managed-customer report activities say which asset was worked on and the version it was left on',async () => {
+  const customer=(await db.prepare('INSERT INTO customers (name,active,service_activity_enabled) VALUES (?,1,1)').run('Report asset customer')).lastInsertRowid;
+  await db.prepare('INSERT INTO customer_teams (customer_id,team_id) VALUES (?,?)').run(customer,ids.teamEnabled);
+  await db.prepare('INSERT INTO managed_customer_configurations (customer_id,managed_services_enabled,responsible_team_id) VALUES (?,1,?)').run(customer,ids.teamEnabled);
+  const asset=await api(`/api/customers/${customer}/assets`,{ method:'POST',token:ids.tokenManager,
+    body:{ name:'FW-REPORT-01',asset_type:'Firewall',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'managed' } });
+  assert.equal(asset.status,201);
+  const logged=await api('/api/service-activities',{ method:'POST',token:ids.tokenEnabled,
+    body:{ customer_id:customer,activity_date:'2026-10-02',category_id:ids.category,title:'Upgraded firmware',status:'completed',asset_ids:[asset.data.id],asset_versions:{ [asset.data.id]:'7.4.3' } } });
+  assert.equal(logged.status,200,JSON.stringify(logged.data));
+  const result=await managedService.getActivities(customer,'2026-10-01','2026-10-31',{ page:1,pageSize:25,offset:0 });
+  const row=result.rows.find(item => item.title==='Upgraded firmware');
+  assert.deepEqual(row.assets,[{ name:'FW-REPORT-01',version:'7.4.3' }]);
+  assert.equal(row.assets_label,'FW-REPORT-01 -> 7.4.3');
+});
+
+test('customer reports can use Odyssey\'s own Word template, checked on upload and filled with work done and changes',async () => {
+  const PizZip=require('pizzip');
+  const docText=buffer => new PizZip(buffer).file('word/document.xml').asText().replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
+  const base=suiteFixture.baseUrl;
+  const auth=token => ({ Authorization:`Bearer ${token}`,'X-SolutionsHub-Request':'1' });
+  const upload=(id,buffer,name,token=ids.tokenManager) => { const form=new FormData();form.append('file',new Blob([buffer]),name);
+    return fetch(`${base}/api/managed-report-templates/${id}/word-template`,{ method:'POST',headers:auth(token),body:form }); };
+
+  // A managed customer with a firewall upgraded twice in September.
+  const customer=(await db.prepare('INSERT INTO customers (name,active,service_activity_enabled) VALUES (?,1,1)').run('Word Template Customer')).lastInsertRowid;
+  await db.prepare('INSERT INTO customer_teams (customer_id,team_id) VALUES (?,?)').run(customer,ids.teamEnabled);
+  await db.prepare('INSERT INTO managed_customer_configurations (customer_id,managed_services_enabled,responsible_team_id) VALUES (?,1,?)').run(customer,ids.teamEnabled);
+  const asset=await api(`/api/customers/${customer}/assets`,{ method:'POST',token:ids.tokenManager,
+    body:{ name:'FW-WORD-01',asset_type:'Firewall',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'managed',support_end_date:'2026-11-15' } });
+  for (const [date,version,title] of [['2026-09-02','7.2.8','Baseline firmware'],['2026-09-20','7.4.3','Upgraded firewall firmware']]) {
+    const made=await api('/api/service-activities',{ method:'POST',token:ids.tokenEnabled,
+      body:{ customer_id:customer,activity_date:date,category_id:ids.category,title,status:'completed',duration_minutes:90,asset_ids:[asset.data.id],asset_versions:{ [asset.data.id]:version } } });
+    assert.equal(made.status,200,JSON.stringify(made.data));
+  }
+  const template=(await api('/api/managed-report-templates',{ method:'POST',token:ids.tokenManager,
+    body:{ name:'Word layout test',description:'',sections:['executive_summary','service_activities','changes','assets'],default_narratives:{},active:true } })).data;
+
+  // Starter template, reference, and permissions.
+  const starter=await fetch(`${base}/api/managed-report-templates/starter.docx`,{ headers:auth(ids.tokenManager) });
+  assert.equal(starter.status,200);
+  const starterBuffer=Buffer.from(await starter.arrayBuffer());
+  assert.ok(docText(starterBuffer).includes('{customer_name}'));
+  const reference=await api('/api/managed-report-templates/placeholders',{ token:ids.tokenManager });
+  assert.ok(reference.data.rows.some(row => row.tag==='changes' && row.fields.some(field => field.field==='new_version')));
+  assert.equal((await upload(template.id,starterBuffer,'layout.docx',ids.tokenEnabled)).status,403);
+
+  // Bad uploads are refused with the reason.
+  const typo=new PizZip(starterBuffer);typo.file('word/document.xml',typo.file('word/document.xml').asText().replace('{customer_name}','{custmer_name}'));
+  const typoResponse=await upload(template.id,typo.generate({ type:'nodebuffer' }),'layout.docx');
+  assert.equal(typoResponse.status,400);
+  assert.deepEqual((await typoResponse.json()).details,['{custmer_name} is not a known placeholder']);
+  assert.equal((await upload(template.id,Buffer.from('not a word file'),'layout.docx')).status,400);
+
+  // A good upload; listings never carry the file itself.
+  const saved=await upload(template.id,starterBuffer,'Odyssey layout.docx');
+  assert.equal(saved.status,200);
+  const listed=(await api('/api/managed-report-templates',{ token:ids.tokenManager })).data.rows.find(row => row.id===template.id);
+  assert.equal(listed.has_word_template,true);
+  assert.equal(listed.word_template_name,'Odyssey layout.docx');
+  assert.equal('word_template' in listed,false);
+
+  // Generating with that template fills it: work done, change log with from -> to, asset support status.
+  const generate=templateId => fetch(`${base}/api/managed-customers/${customer}/report.docx`,{ method:'POST',headers:{ ...auth(ids.tokenManager),'Content-Type':'application/json' },
+    body:JSON.stringify({ from:'2026-09-01',to:'2026-09-30',sections:['executive_summary','service_activities','changes','assets'],narratives:{ executive_summary:'Stable month.' },template_id:templateId }) });
+  const report=await generate(template.id);
+  assert.equal(report.status,200);
+  const text=docText(Buffer.from(await report.arrayBuffer()));
+  for (const expected of ['Word Template Customer','1 September 2026 to 30 September 2026','Stable month.','Upgraded firewall firmware','FW-WORD-01','7.2.8','7.4.3','Expires within 90 days']) assert.ok(text.includes(expected),`report contains ${expected}`);
+  assert.match(text,/FW-WORD-01 7\.2\.8 7\.4\.3 Upgraded firewall firmware/,'the change row shows the device, version before and version after');
+  assert.doesNotMatch(text,/[{}]/,'no placeholder is left unfilled');
+  assert.doesNotMatch(text,/Resolved tickets/,'sections the report template leaves out are not shown');
+
+  // Removing the Word template goes back to the built-in layout.
+  assert.equal((await fetch(`${base}/api/managed-report-templates/${template.id}/word-template`,{ method:'DELETE',headers:auth(ids.tokenManager) })).status,200);
+  const builtIn=docText(Buffer.from(await (await generate(template.id)).arrayBuffer()));
+  assert.ok(builtIn.includes('Managed Services Report'));
+  assert.ok(!builtIn.includes('Prepared by'),'the built-in layout, not the uploaded one');
+});
+
+test('the reporting obligation shows which period is owed, and that a report made for it settles it',async () => {
+  const { periodFor }=require('../managedReportObligations');
+  const { today }=await db.prepare('SELECT app_today() AS today').get();
+  const owed=periodFor('monthly',today);
+  const customer=(await db.prepare('INSERT INTO customers (name,active) VALUES (?,1)').run('Obligation Customer')).lastInsertRowid;
+  await db.prepare("INSERT INTO managed_customer_configurations (customer_id,managed_services_enabled,reporting_frequency,created_at) VALUES (?,1,'monthly','2020-01-01')").run(customer);
+  const due=async () => (await api('/api/managed-customers',{ token:ids.tokenManager })).data.rows.find(row => Number(row.id)===Number(customer)).report_due;
+
+  const before=await due();
+  assert.deepEqual([before.from,before.to,before.label,before.due_date,before.status,before.report_id],[owed.from,owed.to,owed.label,owed.due_date,'not_started',null]);
+  assert.equal(before.overdue,today>owed.due_date);
+  assert.deepEqual((await api(`/api/managed-customers/${customer}/overview`,{ token:ids.tokenManager })).data.report_due,before);
+
+  // A report generated for that month is the report for it: done, not overdue (no review steps).
+  const generated=await fetch(`${suiteFixture.baseUrl}/api/managed-customers/${customer}/report.pdf`,{ method:'POST',headers:{ Authorization:`Bearer ${ids.tokenManager}`,'Content-Type':'application/json','X-SolutionsHub-Request':'1' },body:JSON.stringify({ from:owed.from,to:owed.to,sections:['service_overview'],status:'draft' }) });
+  assert.equal(generated.status,200);
+  const reportId=Number(generated.headers.get('x-report-id'));
+  assert.deepEqual([(await due()).status,(await due()).report_id,(await due()).overdue],['sent',reportId,false]);
+
+  // A customer taken on after the owed month owes nothing yet.
+  await db.prepare('UPDATE managed_customer_configurations SET created_at=? WHERE customer_id=?').run(`${today} 09:00:00`,customer);
+  const fresh=await due();
+  assert.deepEqual([fresh.status,fresh.overdue,fresh.next.label],['not_yet_due',false,periodFor('monthly',today,0).label]);
+});
+
+test('a managed customer is always open for activity logging by its responsible team, even with tracking left off',async () => {
+  const customer=(await db.prepare('INSERT INTO customers (name,active,service_activity_enabled) VALUES (?,1,0)').run('Managed but untracked')).lastInsertRowid;
+  await db.prepare('INSERT INTO customer_teams (customer_id,team_id) VALUES (?,?)').run(customer,ids.teamEnabled);
+  const listed=async () => (await api('/api/service-activities/meta',{ token:ids.tokenEnabled })).data.customers.some(row => Number(row.id)===Number(customer));
+  assert.equal(await listed(),false,'not yet managed or tracked');
+
+  const path=`/api/customers/${customer}/managed-services`;
+  const read=(await api(path,{ token:ids.tokenManager })).data;
+  const saved=await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...read,managed_services_enabled:true,responsible_team_id:ids.teamEnabled,service_activity_tracking_enabled:false } });
+  assert.equal(saved.status,200,JSON.stringify(saved.data));
+  assert.equal(saved.data.service_activity_tracking_enabled,true);
+  assert.equal(await listed(),true,'the engineer can now pick the customer when logging an activity');
+
+  // Turning managed services off again leaves tracking as the manager chose it.
+  const off=await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...saved.data,managed_services_enabled:false,service_activity_tracking_enabled:false } });
+  assert.equal(off.status,200,JSON.stringify(off.data));
+  assert.equal(await listed(),false);
+});
+
+test('each managed customer can have its own report due window', async () => {
+  const { periodFor } = require('../managedReportObligations');
+  const { today } = await db.prepare('SELECT app_today() AS today').get();
+  const customer = (await db.prepare('INSERT INTO customers (name,active) VALUES (?,1)').run('Due Window Customer')).lastInsertRowid;
+  const path = `/api/customers/${customer}/managed-services`;
+  const initial = (await api(path, { token: ids.tokenManager })).data;
+  assert.equal(initial.report_due_days, null);
+  const body = { ...initial, managed_services_enabled: true, reporting_frequency: 'monthly' };
+  for (const key of ['customer_id', 'last_successful_sync_at', 'last_sync_status']) delete body[key];
+  for (const bad of [-1, 121, 'soon', 2.5]) assert.equal((await api(path, { method: 'PUT', token: ids.tokenManager, body: { ...body, report_due_days: bad } })).status, 400, String(bad));
+  const saved = await api(path, { method: 'PUT', token: ids.tokenManager, body: { ...body, report_due_days: 30 } });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.data.report_due_days, 30);
+  const due = async () => (await api(`/api/managed-customers/${customer}/overview`, { token: ids.tokenManager })).data.report_due;
+  assert.equal((await due()).due_date, periodFor('monthly', today, -1, 30).due_date);
+  const cleared = await api(path, { method: 'PUT', token: ids.tokenManager, body: { ...body, version: saved.data.version, report_due_days: null } });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.data.report_due_days, null);
+  assert.equal((await due()).due_date, periodFor('monthly', today).due_date);
+});
+
+test('a customer that is not managed can be connected to a Request Tracker queue and gets a Tickets tab', async () => {
+  await db.prepare("INSERT INTO settings (key,value) VALUES ('ticketing_rt',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ enabled:true,base_url:'https://rt.example.test/rt',api_token:'x' }));
+  const customer=(await db.prepare('INSERT INTO customers (name,active) VALUES (?,1)').run('Project-only customer')).lastInsertRowid;
+  const path=`/api/customers/${customer}/managed-services`;
+  const current=(await api(path,{ token:ids.tokenManager })).data;
+  for (const key of ['customer_id','last_successful_sync_at','last_sync_status']) delete current[key];
+  const saved=await api(path,{ method:'PUT',token:ids.tokenManager,body:{ ...current,managed_services_enabled:false,ticket_integration_enabled:true,external_queue_id:'912',external_queue_name:'Projects queue' } });
+  assert.equal(saved.status,200,JSON.stringify(saved.data));
+  assert.equal(saved.data.managed_services_enabled,false);
+  assert.equal(saved.data.ticket_integration_enabled,true);
+  const summary=(await api(`/api/customers/${customer}/operations/summary`,{ token:ids.tokenManager })).data;
+  assert.equal(summary.tickets_mapped,true,'Customer 360 shows its Tickets tab');
+  assert.equal(summary.managed.state,'not_enabled');
+  const monitoring=(await api('/api/ticketing/monitoring',{ token:ids.tokenManager })).data;
+  const row=monitoring.customers.find(item => Number(item.customer_id)===Number(customer));
+  assert.equal(row.mapping_problem,null,'not flagged for being outside managed services');
+});

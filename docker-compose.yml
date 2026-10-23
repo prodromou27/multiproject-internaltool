@@ -1,0 +1,88 @@
+# Base stack: PostgreSQL (bundled) + the app container.
+#
+# Deploy via the helper script (recommended):
+#   ./deploy/deploy.sh dev      # this file only
+#   ./deploy/deploy.sh prod     # this file + docker-compose.prod.yml override
+#
+# Or directly:
+#   docker compose up -d --build
+#
+# Secrets come from a .env file next to this file (see deploy/env.*.example):
+#   POSTGRES_PASSWORD, JWT_SECRET, CUSTOMER_FIELD_KEY, ATTACHMENT_KEY,
+#   APP_URL, and optionally APP_PORT.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:5432:5432"   # localhost-only (debugging); prod override removes it
+
+  app:
+    build: .
+    restart: unless-stopped
+    init: true            # tini as PID 1 — proper signal forwarding + zombie reaping
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-app}
+      PORT: "8080"
+      NODE_ENV: production
+      DEPLOY_BRANCH: ${DEPLOY_BRANCH:-}
+      APP_REVISION: ${APP_REVISION:-unknown}
+      # Must be >= 32 chars in production or the server refuses to start.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      # 64-char hex key for customer PII encryption. Empty = encryption disabled
+      # (plaintext passthrough). Set this in .env to encrypt at rest.
+      CUSTOMER_FIELD_KEY: ${CUSTOMER_FIELD_KEY:-}
+      # 64-char hex key for attachment encryption. Empty = uploads are stored
+      # as plain files for backward compatibility.
+      ATTACHMENT_KEY: ${ATTACHMENT_KEY:-}
+      # Only during a key rotation: retired keys, comma-separated, used for
+      # decryption only (docs/KEY_ROTATION.md). Leave empty otherwise.
+      CUSTOMER_FIELD_KEYS_PREVIOUS: ${CUSTOMER_FIELD_KEYS_PREVIOUS:-}
+      ATTACHMENT_KEYS_PREVIOUS: ${ATTACHMENT_KEYS_PREVIOUS:-}
+      # Public base URL used in password reset emails.
+      APP_URL: ${APP_URL:?set APP_URL in .env}
+      # Request Tracker may be on an internal address (10.x, 172.16-31.x, 192.168.x).
+      # Set false to require a public address instead.
+      ALLOW_PRIVATE_TICKETING_URLS: ${ALLOW_PRIVATE_TICKETING_URLS:-true}
+      # Used only when the users table is empty. First login forces a change.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      # Keep false in production; use the Docker/branch deployment pipeline.
+      ALLOW_IN_APP_UPDATES: ${ALLOW_IN_APP_UPDATES:-false}
+      # Number of reverse-proxy hops to trust for the client IP (set to 1 when
+      # behind nginx/Caddy). Empty = don't trust X-Forwarded-For.
+      TRUST_PROXY: ${TRUST_PROXY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - uploads:/app/server/uploads
+      - backups:/app/server/backups
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  pgdata:
+  uploads:
+  backups:

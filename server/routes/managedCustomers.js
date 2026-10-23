@@ -1,0 +1,306 @@
+const router=require('express').Router();
+const { notifyShared, notifyUser } = require('../notifications');
+const appTime = require('../appTime');
+const { requirePermission }=require('../middleware/auth');
+const service=require('../managedCustomerService');
+const reporting=require('../managedCustomerReportingService');
+const { renderWord }=require('../managedCustomerWordRenderer');
+const wordTemplates=require('../managedReportDocx');
+const { renderExcel }=require('../managedCustomerExcelRenderer');
+const { renderPdf }=require('../managedCustomerPdfRenderer');
+const reportHistory=require('../managedReportHistoryService');
+const db=require('../db');
+const { logAudit }=require('../auditLog');
+const { hasPermission,usersWithPermission }=require('../permissions');
+const { decrypt }=require('../fieldCipher');
+
+const positiveInteger=(value,fallback,max) => {
+  if (value===undefined) return fallback;
+  if (typeof value!=='string' || !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value)>max) return null;
+  return Number(value);
+};
+const positiveId=value => Number.isSafeInteger(Number(value)) && Number(value)>0 && /^\d+$/.test(String(value));
+async function updateReportWorkflow(req,res,customerId,reportId) {
+  const action=req.body?.action;
+  try {
+    const result=await reportHistory.transition(customerId,reportId,req.body || {},req.user.id);
+    const link=action==='submit' ? '/approvals?view=reports' : `/customers/${customerId}/service-profile?section=reports`;
+    const titleByAction={ submit:'Managed report awaiting review',approve:'Managed report approved',reject:'Managed report returned for changes',finalize:'Managed report finalized',reopen:'Managed report reopened' };
+    let recipients=[];
+    if (action==='submit') {
+      recipients=(await usersWithPermission('managed_reports.review')).filter(user => user.id!==req.user.id).map(user => user.id);
+    } else if (result.report.generated_by && result.report.generated_by!==req.user.id) recipients=[result.report.generated_by];
+    try {
+      const priority=['submit','reject','finalize'].includes(action) ? 'high' : 'normal';
+      for (const userId of recipients) await db.prepare('INSERT INTO notifications (user_id,type,title,body,link,priority) VALUES (?,?,?,?,?,?)').run(userId,`managed_report.${result.change.event}`,titleByAction[action],result.report.original_name,link,priority);
+    } catch(error) { console.error('[managed-reports] workflow notification failed:',error.message); }
+    const reportCustomer=await db.prepare('SELECT name FROM customers WHERE id=?').get(customerId);
+    for (const userId of recipients) notifyUser(userId,'managed_report_review',{ title:`📑 ${titleByAction[action]}`,body:`**${result.report.original_name}** (${decrypt(reportCustomer?.name) || 'customer'})${result.change.comment ? `: ${result.change.comment}` : ''}`,
+      facts:[{ name:'By',value:req.user.name }] },{},{ bell:false }).catch(error => console.error('[managed-reports] alert failed:',error.message));
+    notifyShared(action==='submit' ? 'managed_report_submitted' : 'managed_report_decided',{ title:`📑 Customer report ${result.change.event}`,body:`**${result.report.original_name}** was ${result.change.event} by ${req.user.name}${result.change.comment ? `: ${result.change.comment}` : ''}.`,
+      facts:[{ name:'Customer',value:decrypt(reportCustomer?.name) || '—' },{ name:'Status',value:String(result.change.to).replace('_',' ') }] });
+    await logAudit(db,req,'managed_report',reportId,result.report.original_name,`managed_report_${result.change.event}`,`customer_id=${customerId}; from=${result.change.from}; to=${result.change.to}; workflow_version=${result.report.workflow_version}; comment=${result.change.comment || ''}`);
+    res.json({ report:(await reportHistory.list(customerId)).find(item => item.id===reportId) });
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not update the report workflow' }); }
+}
+router.put('/report-reviews/:reportId',requirePermission('managed_reports.review'),async (req,res) => {
+  if (!positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  if (!['approve','reject','finalize'].includes(req.body?.action)) return res.status(400).json({ error:'Invalid report review action' });
+  const report=await db.prepare("SELECT customer_id FROM managed_report_history WHERE id=? AND workflow_status IN ('in_review','approved')").get(Number(req.params.reportId));
+  if (!report) return res.status(404).json({ error:'Report review not found' });
+  return updateReportWorkflow(req,res,Number(report.customer_id),Number(req.params.reportId));
+});
+router.get('/report-reviews/:reportId/download',requirePermission('managed_reports.review'),async (req,res) => {
+  if (!positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  const report=await db.prepare("SELECT * FROM managed_report_history WHERE id=? AND workflow_status IN ('in_review','approved')").get(Number(req.params.reportId));
+  if (!report) return res.status(404).json({ error:'Report review not found' });
+  try {
+    const buffer=await reportHistory.read(report);
+    res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');
+    res.setHeader('Content-Type',report.mime_type);res.setHeader('Content-Disposition',`attachment; filename="${report.original_name}"`);res.setHeader('Content-Length',String(buffer.length));
+    res.send(buffer);
+  } catch(error) { console.error('[managed-reports] review download failed:',error.message);res.status(error.status || 500).json({ error:'Could not download the report under review' }); }
+});
+router.get('/report-reviews',requirePermission('managed_reports.review'),async (req,res) => {
+  const page=positiveInteger(req.query.page,1,1000000),pageSize=positiveInteger(req.query.page_size,25,100);
+  const status=req.query.status===undefined ? 'all' : req.query.status;
+  if (!page || !pageSize || !Number.isSafeInteger((page-1)*pageSize)) return res.status(400).json({ error:'Invalid pagination' });
+  if (typeof status!=='string' || !['all','in_review','approved'].includes(status)) return res.status(400).json({ error:'Invalid report review status' });
+  const where=status==='all' ? "h.workflow_status IN ('in_review','approved')" : 'h.workflow_status=?';
+  const params=status==='all' ? [] : [status];
+  const count=await db.prepare(`SELECT COUNT(*) AS total FROM managed_report_history h WHERE ${where}`).get(...params);
+  const rows=await db.prepare(`SELECT h.id,h.customer_id,c.name AS customer_name,h.template_id,t.name AS template_name,
+    h.period_start,h.period_end,h.output_format,h.report_version,h.workflow_status AS status,h.workflow_version,
+    h.original_name,h.generated_at,u.name AS generated_by_name,h.submitted_at,su.name AS submitted_by_name,
+    h.reviewed_at,ru.name AS reviewed_by_name,h.decision_comment
+    FROM managed_report_history h JOIN customers c ON c.id=h.customer_id
+    LEFT JOIN managed_report_templates t ON t.id=h.template_id LEFT JOIN users u ON u.id=h.generated_by
+    LEFT JOIN users su ON su.id=h.submitted_by LEFT JOIN users ru ON ru.id=h.reviewed_by
+    WHERE ${where}
+    ORDER BY CASE h.workflow_status WHEN 'in_review' THEN 0 ELSE 1 END,COALESCE(h.submitted_at,h.generated_at),h.id
+    LIMIT ? OFFSET ?`).all(...params,pageSize,(page-1)*pageSize);
+  res.json({ rows:rows.map(row => ({ ...row,customer_name:decrypt(row.customer_name) })),total:Number(count.total),page,page_size:pageSize });
+});
+
+router.use(requirePermission('managed_customers.view'));
+const validCalendarDay=value => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value;
+const reportStatus=value => value===undefined || value==='draft' ? 'draft' : null;
+const reportRequest=async body => {
+  const { from,to,sections,narratives,template_id:templateId }=body || {};
+  const status=reportStatus(body?.status);
+  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) throw Object.assign(new Error('from and to must be valid dates with from on or before to'),{ status:400 });
+  if (!status) throw Object.assign(new Error('Generated reports must begin as drafts and follow the review workflow'),{ status:400 });
+  const id=await reportHistory.validateTemplate(templateId);
+  // The template's table choices (columns, sorting, row limit), if it has any.
+  const row=id ? await db.prepare('SELECT tables FROM managed_report_templates WHERE id=?').get(id) : null;
+  return { from,to,sections,narratives,status,templateId:id,tables:row?.tables ? JSON.parse(row.tables) : {} };
+};
+
+router.get('/',async (req,res) => res.json({ rows:await service.listManagedCustomers() }));
+router.get('/:id/overview',async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  const defaultFrom=`${appTime.thisMonth()}-01`,defaultTo=appTime.today();
+  const from=req.query.from || defaultFrom,to=req.query.to || defaultTo;
+  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
+  const result=await service.getOverview(id,from,to);if (!result) return res.status(404).json({ error:'Managed customer not found' });
+  res.json(result);
+});
+router.get('/:id/tickets',async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  const page=positiveInteger(req.query.page,1,1000000),pageSize=positiveInteger(req.query.page_size,25,100);
+  if (!page || !pageSize || !Number.isSafeInteger((page-1)*pageSize)) return res.status(400).json({ error:'Invalid pagination' });
+  const strings={};
+  for (const key of ['status','priority','owner','search']) {
+    const value=req.query[key];
+    if (value!==undefined && (typeof value!=='string' || !value.trim() || value.length>(key==='search'?200:100))) return res.status(400).json({ error:`Invalid ${key}` });
+    strings[key]=value?.trim();
+  }
+  // group: every open (or closed) status at once, e.g. New, Open and Pending.
+  if (req.query.group!==undefined) { if (!['open','closed'].includes(req.query.group)) return res.status(400).json({ error:'Invalid group' });strings.group=req.query.group; }
+  const from=req.query.from,to=req.query.to;
+  if ((from!==undefined && !validCalendarDay(from)) || (to!==undefined && !validCalendarDay(to)) || (from && to && from>to)) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
+  const result=await service.listTickets(id,{ ...strings,from,to,page,pageSize,offset:(page-1)*pageSize });
+  if (!result) return res.status(404).json({ error:'Managed customer not found' });
+  res.json(result);
+});
+router.get('/:id/ticket-analytics',async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  const from=req.query.from || `${appTime.thisMonth()}-01`,to=req.query.to || appTime.today();
+  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
+  const result=await service.getTicketAnalytics(id,from,to);if (!result) return res.status(404).json({ error:'Managed customer not found' });
+  res.json(result);
+});
+router.post('/:id/report-preview',async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  const { from,to,sections,narratives }=req.body || {};
+  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) return res.status(400).json({ error:'from and to must be valid dates with from on or before to' });
+  try {
+    const result=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives });
+    if (!result) return res.status(404).json({ error:'Managed customer not found' });
+    res.json(result);
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not prepare the managed customer report' }); }
+});
+router.post('/:id/report.docx',requirePermission('managed_reports.generate'),async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  try {
+    const { from,to,sections,narratives,status,templateId,tables }=await reportRequest(req.body);
+    const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives });
+    if (!model) return res.status(404).json({ error:'Managed customer not found' });
+    model.tables=tables;
+    // Odyssey's own Word layout when the report template has one; the built-in layout otherwise.
+    const word=templateId ? await db.prepare('SELECT word_template FROM managed_report_templates WHERE id=?').get(templateId) : null;
+    const buffer=word?.word_template
+      ? wordTemplates.render(Buffer.from(word.word_template,'base64'),wordTemplates.templateData(model,{ preparedBy:req.user.name }))
+      : await renderWord(model);
+    const safeName=model.customer.name.replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,80) || `customer_${id}`,filename=`${safeName}_${from}_${to}.docx`;
+    const history=await reportHistory.archive({ customerId:id,templateId,from,to,format:'docx',status,filename,sections:model.sections,userId:req.user.id,buffer });
+    await logAudit(db,req,'managed_report',history.id,filename,'managed_customer_word_report_generated',`customer_id=${id}; period=${from}:${to}; version=${history.report_version}; status=${status}; sections=${model.sections.join(',')}`);
+    res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
+    res.setHeader('X-Report-Id',String(history.id));res.setHeader('X-Report-Version',String(history.report_version));
+    res.send(buffer);
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the Word report',details:error.details }); }
+});
+router.post('/:id/report.xlsx',requirePermission('managed_reports.generate'),async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  try {
+    const { from,to,sections,narratives,status,templateId,tables }=await reportRequest(req.body);
+    const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives });
+    if (!model) return res.status(404).json({ error:'Managed customer not found' });
+    model.tables=tables;
+    const buffer=await renderExcel(model),safeName=model.customer.name.replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,80) || `customer_${id}`,filename=`${safeName}_${from}_${to}.xlsx`;
+    const history=await reportHistory.archive({ customerId:id,templateId,from,to,format:'xlsx',status,filename,sections:model.sections,userId:req.user.id,buffer });
+    await logAudit(db,req,'managed_report',history.id,filename,'managed_customer_excel_report_generated',`customer_id=${id}; period=${from}:${to}; version=${history.report_version}; status=${status}; sections=${model.sections.join(',')}`);
+    res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
+    res.setHeader('X-Report-Id',String(history.id));res.setHeader('X-Report-Version',String(history.report_version));
+    res.send(buffer);
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the Excel report' }); }
+});
+router.post('/:id/report.pdf',requirePermission('managed_reports.generate'),async (req,res) => {
+  const id=Number(req.params.id);if (!Number.isSafeInteger(id) || id<1) return res.status(400).json({ error:'Invalid customer ID' });
+  try {
+    const { from,to,sections,narratives,status,templateId,tables }=await reportRequest(req.body);
+    const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives });
+    if (!model) return res.status(404).json({ error:'Managed customer not found' });
+    model.tables=tables;
+    const buffer=await renderPdf(model),safeName=model.customer.name.replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,80) || `customer_${id}`,filename=`${safeName}_${from}_${to}.pdf`;
+    const history=await reportHistory.archive({ customerId:id,templateId,from,to,format:'pdf',status,filename,sections:model.sections,userId:req.user.id,buffer });
+    await logAudit(db,req,'managed_report',history.id,filename,'managed_customer_pdf_report_generated',`customer_id=${id}; period=${from}:${to}; version=${history.report_version}; status=${status}; sections=${model.sections.join(',')}`);
+    res.setHeader('Content-Type','application/pdf');res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
+    res.setHeader('X-Report-Id',String(history.id));res.setHeader('X-Report-Version',String(history.report_version));res.send(buffer);
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the PDF report' }); }
+});
+
+/* The customer report (customerValueReport.js): what we did for the customer in a
+   period, previewed here and downloaded as PDF or Word. No review steps: a report
+   generated for a period is the report for that period. */
+const valueReport=require('../customerValueReport');
+async function valueRequest(req,res) {
+  const id=Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id<1) { res.status(400).json({ error:'Invalid customer ID' });return null; }
+  const { from,to }=req.body || {};
+  if (!validCalendarDay(from) || !validCalendarDay(to) || from>to) { res.status(400).json({ error:'from and to must be valid dates with from on or before to' });return null; }
+  try {
+    const options=valueReport.checkRequest(req.body);
+    const report=await valueReport.buildValueReport({ customerId:id,from,to,...options,preparedBy:req.user.name });
+    if (!report) { res.status(404).json({ error:'Managed customer not found' });return null; }
+    return { id,from,to,options,report };
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not prepare the customer report' });return null; }
+}
+router.post('/:id/customer-report/preview',async (req,res) => {
+  const built=await valueRequest(req,res);if (!built) return;
+  res.json(built.report);
+});
+router.post('/:id/customer-report.:format',requirePermission('managed_reports.generate'),async (req,res) => {
+  const format=req.params.format;
+  if (!['pdf','docx'].includes(format)) return res.status(400).json({ error:'Download the report as pdf or docx' });
+  const built=await valueRequest(req,res);if (!built) return;
+  const { id,from,to,options,report }=built;
+  try {
+    // The company's own Word layout, when one is uploaded (Settings → Customer report template):
+    // the Word report is that document, and the PDF is the same document turned into a PDF.
+    const company=await valueReport.companyTemplate();
+    const template=company?.word_template ? company : null;
+    let buffer;
+    if (template) {
+      // The parts ticked on the Reports tab switch the template's {#include_…} sections on or off.
+      // "Tickets" covers both the tickets resolved and the tickets still open.
+      const picked={ changes:['changes'],tickets:['resolved_tickets','open_tickets'],assets:['assets'],recommendations:['recommendations'],work_log:['service_activities'] };
+      const sections=['executive_summary','service_overview','upcoming_work',...report.sections.flatMap(key => picked[key] || [])];
+      const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives:{ executive_summary:options.summary,upcoming_activities:options.coming_next } });
+      model.tasks_completed_count=report.figures.tasks_completed; // the same count as the preview and the PDF
+      buffer=wordTemplates.render(Buffer.from(template.word_template,'base64'),{ ...wordTemplates.templateData(model,{ preparedBy:req.user.name }),report_title:report.wording.title });
+      if (format==='pdf') buffer=await (router._docxToPdf || require('../docxToPdf').docxToPdf)(buffer);
+    } else buffer=format==='pdf' ? await valueReport.renderPdf(report) : await valueReport.renderWord(report);
+    const filename=valueReport.fileName(report,format);
+    const history=await reportHistory.archive({ customerId:id,templateId:template?.id || null,from,to,format,status:'draft',filename,sections:report.sections,userId:req.user.id,buffer,request:{ from,to,sections:options.sections,summary:options.summary,coming_next:options.coming_next } });
+    await logAudit(db,req,'managed_report',history.id,filename,'customer_report_generated',`customer_id=${id}; period=${from}:${to}; format=${format}; sections=${report.sections.join(',')}`);
+    require('../liveUpdates').emitChange('managed-customers');
+    res.setHeader('Content-Type',format==='pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);res.setHeader('X-Report-Id',String(history.id));
+    res.send(buffer);
+  } catch(error) { console.error('[customer-report]',error.message);res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not generate the customer report',details:error.details }); }
+});
+
+router.get('/:id/reports',async (req,res) => {
+  if (!positiveId(req.params.id)) return res.status(400).json({ error:'Invalid customer ID' });
+  const customer=await db.prepare('SELECT customer_id FROM managed_customer_configurations WHERE customer_id=? AND managed_services_enabled=1').get(Number(req.params.id));
+  if (!customer) return res.status(404).json({ error:'Managed customer not found' });
+  res.json({ rows:await reportHistory.list(Number(req.params.id)) });
+});
+
+router.get('/:id/reports/:reportId/workflow',async (req,res) => {
+  if (!positiveId(req.params.id) || !positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  const rows=await reportHistory.workflowHistory(Number(req.params.id),Number(req.params.reportId));
+  if (!rows) return res.status(404).json({ error:'Report not found' });
+  res.json({ rows });
+});
+
+router.put('/:id/reports/:reportId/workflow',async (req,res) => {
+  if (!positiveId(req.params.id) || !positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  const action=req.body?.action;
+  const permission=action==='submit' ? 'managed_reports.generate' : 'managed_reports.review';
+  if (!await hasPermission(req.user,permission)) return res.status(403).json({ error:'You do not have permission to perform this report workflow action' });
+  return updateReportWorkflow(req,res,Number(req.params.id),Number(req.params.reportId));
+});
+
+// Sending happens outside the app; reviewers record that a final report reached the customer.
+router.put('/:id/reports/:reportId/sent',requirePermission('managed_reports.review'),async (req,res) => {
+  if (!positiveId(req.params.id) || !positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  const customerId=Number(req.params.id),reportId=Number(req.params.reportId);
+  try {
+    const { report,sent }=await reportHistory.markSent(customerId,reportId,req.body,req.user.id);
+    await logAudit(db,req,'managed_report',reportId,report.original_name,'managed_report_sent',`customer_id=${customerId}; sent_on=${sent.sentOn}; sent_to=${sent.sentTo}`);
+    const sentCustomer=await db.prepare('SELECT name FROM customers WHERE id=?').get(customerId);
+    notifyShared('customer_report_sent',{ title:'📨 Customer report sent',body:`**${report.original_name}** was sent to ${sent.sentTo} on ${sent.sentOn}.`,
+      facts:[{ name:'Customer',value:decrypt(sentCustomer?.name) || '—' },{ name:'Recorded by',value:req.user.name }] });
+    res.json({ report:(await reportHistory.list(customerId)).find(item => item.id===reportId) });
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not record that the report was sent' }); }
+});
+router.delete('/:id/reports/:reportId/sent',requirePermission('managed_reports.review'),async (req,res) => {
+  if (!positiveId(req.params.id) || !positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  const customerId=Number(req.params.id),reportId=Number(req.params.reportId);
+  try {
+    const report=await reportHistory.clearSent(customerId,reportId);
+    await logAudit(db,req,'managed_report',reportId,report.original_name,'managed_report_sent_cleared',`customer_id=${customerId}; was_sent_on=${report.sent_at}; was_sent_to=${report.sent_to}`);
+    res.json({ report:(await reportHistory.list(customerId)).find(item => item.id===reportId) });
+  } catch(error) { res.status(error.status || 500).json({ error:error.status ? error.message : 'Could not clear the sent record' }); }
+});
+
+router.get('/:id/reports/:reportId/download',async (req,res) => {
+  if (!positiveId(req.params.id) || !positiveId(req.params.reportId)) return res.status(400).json({ error:'Invalid report reference' });
+  const report=await reportHistory.get(Number(req.params.id),Number(req.params.reportId));
+  if (!report) return res.status(404).json({ error:'Report not found' });
+  try {
+    const buffer=await reportHistory.read(report);
+    res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');
+    res.setHeader('Content-Type',report.mime_type);res.setHeader('Content-Disposition',`attachment; filename="${report.original_name}"`);res.setHeader('Content-Length',String(buffer.length));
+    res.send(buffer);
+  } catch(error) {
+    if (error.code==='FILE_REMOVED') return res.status(410).json({ error:error.message,code:'FILE_REMOVED' });
+    console.error('[managed-reports] download failed:',error.message);res.status(error.status || 500).json({ error:'Could not download the archived report' });
+  }
+});
+
+module.exports=router;

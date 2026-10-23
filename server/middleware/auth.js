@@ -1,4 +1,7 @@
 const jwt = require('jsonwebtoken');
+const db = require('../db');
+const { hasPermission } = require('../permissions');
+const { requestToken, sessionCookie } = require('./session');
 
 // Fail fast at startup if JWT_SECRET is missing or too short
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -16,24 +19,79 @@ const _secret = JWT_SECRET || require('crypto').randomBytes(32).toString('hex');
 
 /** Sign a JWT payload with the module-private secret */
 function signJwt(payload, options) {
-  return jwt.sign(payload, _secret, options);
+  return jwt.sign(payload, _secret, { algorithm: 'HS256', ...options });
 }
 
 /** Verify a JWT and return its decoded payload (throws on invalid/expired) */
 function verifyJwt(token) {
-  return jwt.verify(token, _secret);
+  return jwt.verify(token, _secret, { algorithms: ['HS256'] });
 }
 
-function requireAuth(req, res, next) {
-  const header = req.headers.authorization;
-  const token  = header ? header.split(' ')[1] : null;
-  if (!token) return res.status(401).json({ error: 'No token' });
-  try {
-    req.user = verifyJwt(token);
-    next();
-  } catch {
-    res.status(401).json({ error: 'Invalid token' });
+async function freshActiveUser(payload) {
+  if (!payload?.id) return { errorStatus: 401, error: 'Invalid token' };
+  const user = await db.prepare(
+    'SELECT id, name, email, role, active, token_version, must_change_password FROM users WHERE id = ?'
+  ).get(payload.id);
+  if (!user || !user.active) return { errorStatus: 401, error: 'Account is deactivated or no longer exists' };
+  if ((payload.token_version ?? 0) !== (user.token_version ?? 0)) return { errorStatus: 401, error: 'Session expired' };
+  return {
+    user: { id: user.id, name: user.name, email: user.email, role: user.role,
+      token_version: user.token_version ?? 0, must_change_password: !!user.must_change_password },
+  };
+}
+
+function modulePermission(req) {
+  const base=req.baseUrl || '';
+  // Attachments and milestones belong to projects, so the same capability applies.
+  if (base.startsWith('/api/projects') || base.startsWith('/api/attachments') || base.startsWith('/api/milestones')) return 'projects.access';
+  if (base.startsWith('/api/tasks') || base.startsWith('/api/recurring-tasks')) return 'tasks.access';
+  if (base.startsWith('/api/maintenance-visits')) return 'visits.access';
+  if (base.startsWith('/api/service-activities')) return 'service_activities.access';
+  if (base.startsWith('/api/reports')) return 'reports.access';
+  if (base.startsWith('/api/customers') && /\/assets(?:\/|$)/.test(base + (req.path || ''))) return 'assets.access';
+  if (base.startsWith('/api/customers')) return 'customers.access';
+  return null;
+}
+
+// An engineer who works with the customer may, without holding
+// assets.access, list and add that customer's assets, see their software status,
+// review one, edit its details (not its service coverage) and read its version
+// history; the asset router (routes/customer-assets.js) applies the same rule.
+// See customerAccess.engineerOnCustomer.
+const TEAM_ASSET_CALLS=[['GET',/^$/],['POST',/^$/],['GET',/^\/software-status$/],['GET',/^\/options$/],['POST',/^\/\d+\/review$/],['GET',/^\/\d+\/versions$/],['PUT',/^\/\d+$/]];
+async function isManagedTeamAssetCall(req,user) {
+  if (user?.role!=='engineer') return false;
+  const match=/^\/api\/customers\/(\d+)\/assets(\/.*)?$/.exec((req.baseUrl || '') + (req.path && req.path!=='/' ? req.path : ''));
+  if (!match || !TEAM_ASSET_CALLS.some(([method,rest]) => method===req.method && rest.test(match[2] || ''))) return false;
+  return require('../customerAccess').engineerOnCustomer(user,Number(match[1]));
+}
+
+async function enforceModulePermission(req,res,user) {
+  const key=modulePermission(req);
+  if (key && !await hasPermission(user,key) && !(key==='assets.access' && await isManagedTeamAssetCall(req,user))) {
+    res.status(403).json({ error:'You do not have permission to access this module' });return false;
   }
+  return true;
+}
+
+async function requireAuth(req, res, next) {
+  const token = requestToken(req);
+  if (!token) return res.status(401).json({ error: 'No token' });
+  let payload;
+  try {
+    payload = verifyJwt(token);
+  } catch {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+  if (payload.partial || payload.download) return res.status(401).json({ error: 'Invalid token scope' });
+  const result = await freshActiveUser(payload);
+  if (result.errorStatus) return res.status(result.errorStatus).json({ error: result.error });
+  if (result.user.must_change_password && !(req.baseUrl === '/api/auth'
+    && ['/me', '/change-password-first', '/change-password', '/logout'].includes(req.path)))
+    return res.status(403).json({ error: 'Change your password before continuing', code: 'PASSWORD_CHANGE_REQUIRED' });
+  req.user = result.user;
+  if (!await enforceModulePermission(req,res,req.user)) return;
+  next();
 }
 
 // Used only by file-download routes that must accept ?token= (export, template endpoints).
@@ -41,33 +99,37 @@ function requireAuth(req, res, next) {
 // When it arrives via the URL query string (?token=) we only accept short-lived download
 // tokens (issued by POST /api/auth/download-token, TTL 60 s, claim download:true) so that
 // full 24-hour session JWTs are never captured in server / proxy access logs.
-function requireDownloadAuth(req, res, next) {
+async function requireDownloadAuth(req, res, next) {
   const header = req.headers.authorization;
-  const fromHeader = header ? header.split(' ')[1] : null;
+  const fromHeader = header ? /^Bearer\s+(\S+)$/i.exec(header)?.[1] : null;
   const fromQuery  = req.query.token || null;
-  const token = fromHeader || fromQuery;
+  const fromCookie = sessionCookie(req);
+  const token = fromHeader || fromQuery || fromCookie;
   if (!token) return res.status(401).json({ error: 'No token' });
-  try {
-    const payload = verifyJwt(token);
-    // URL-embedded tokens must be explicitly scoped for downloads
-    if (fromQuery && !fromHeader && !payload.download)
-      return res.status(401).json({ error: 'A scoped download token is required for URL-based downloads. Use POST /api/auth/download-token.' });
-    req.user = payload;
-    next();
-  } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
-  }
+  let payload;
+  try { payload = verifyJwt(token); }
+  catch { return res.status(401).json({ error: 'Invalid or expired token' }); }
+  // URL-embedded tokens must be explicitly scoped for downloads.
+  if (fromQuery && !fromHeader && !payload.download)
+    return res.status(401).json({ error: 'A scoped download token is required for URL-based downloads. Use POST /api/auth/download-token.' });
+  if (payload.partial || (!fromHeader && !fromQuery && payload.download)) return res.status(401).json({ error: 'Invalid token scope' });
+  const result = await freshActiveUser(payload);
+  if (result.errorStatus) return res.status(result.errorStatus).json({ error: result.error });
+  if (result.user.must_change_password) return res.status(403).json({ error: 'Change your password before continuing', code: 'PASSWORD_CHANGE_REQUIRED' });
+  req.user = result.user;
+  if (!await enforceModulePermission(req,res,req.user)) return;
+  next();
 }
 
 function requireManager(req, res, next) {
-  requireAuth(req, res, () => {
+  return requireAuth(req, res, () => {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
     next();
   });
 }
 
 function requireManagerOrPlanner(req, res, next) {
-  requireAuth(req, res, () => {
+  return requireAuth(req, res, () => {
     if (req.user.role !== 'manager' && req.user.role !== 'planner')
       return res.status(403).json({ error: 'Managers and planners only' });
     next();
@@ -75,11 +137,46 @@ function requireManagerOrPlanner(req, res, next) {
 }
 
 function requireDownloadManagerOrPlanner(req, res, next) {
-  requireDownloadAuth(req, res, () => {
+  return requireDownloadAuth(req, res, () => {
     if (req.user.role !== 'manager' && req.user.role !== 'planner')
       return res.status(403).json({ error: 'Managers and planners only' });
     next();
   });
 }
 
-module.exports = { requireAuth, requireDownloadAuth, requireManager, requireManagerOrPlanner, requireDownloadManagerOrPlanner, signJwt, verifyJwt };
+function requireDownloadManager(req, res, next) {
+  return requireDownloadAuth(req, res, () => {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
+    next();
+  });
+}
+
+function requirePermission(permissionKey) {
+  return function requirePermissionMiddleware(req, res, next) {
+    return requireAuth(req, res, async () => {
+      try {
+        if (!await hasPermission(req.user, permissionKey))
+          return res.status(403).json({ error: 'You do not have permission to perform this action' });
+        next();
+      } catch (error) {
+        next(error);
+      }
+    });
+  };
+}
+
+function requireDownloadPermission(permissionKey) {
+  return function requireDownloadPermissionMiddleware(req, res, next) {
+    return requireDownloadAuth(req, res, async () => {
+      try {
+        if (!await hasPermission(req.user, permissionKey))
+          return res.status(403).json({ error: 'You do not have permission to perform this action' });
+        next();
+      } catch (error) {
+        next(error);
+      }
+    });
+  };
+}
+
+module.exports = { freshActiveUser, requireAuth, requireDownloadAuth, requireManager, requireManagerOrPlanner, requireDownloadManager, requireDownloadManagerOrPlanner, requirePermission, requireDownloadPermission, signJwt, verifyJwt };

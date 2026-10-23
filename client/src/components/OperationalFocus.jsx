@@ -1,0 +1,60 @@
+import { Link } from 'react-router-dom';
+import { ArrowRight, CalendarDays, CheckCircle2, CheckSquare, ClipboardList, FileCheck2, FolderOpen, Send, Wrench } from 'lucide-react';
+import { fmtDate } from './Shared';
+
+function WorkList({ items, empty }) {
+  return items.length ? <ul className="focus-work-list">{items.map(item => <li key={`${item.kind}-${item.id}`} className={/^Overdue/.test(item.kind) ? 'is-overdue' : undefined}>
+    <item.icon size={16} aria-hidden="true" />
+    <Link to={item.link}><strong>{item.title}</strong><span>{item.kind}{item.date ? ` · ${fmtDate(item.date)}` : ''}</span></Link>
+    <ArrowRight size={14} aria-hidden="true" />
+  </li>)}</ul> : <p className="focus-empty">{empty}</p>;
+}
+
+export default function OperationalFocus({ data, error, onRefresh }) {
+  if (!data) return <section className="card operational-focus"><h2>Work overview</h2>
+    <p className={error ? 'error-msg' : 'text-muted'} role={error ? 'alert' : undefined}>{error || 'Loading work overview...'}</p>
+    {error && <button className="btn btn-ghost btn-sm" onClick={onRefresh}>Retry overview</button>}
+  </section>;
+  const manager = data.scope === 'management';
+  const attention = [
+    ...data.tasks.attention.map(item => ({ ...item, kind: item.deadline < data.as_of ? 'Overdue task' : 'Task due today', date: item.deadline, icon: CheckSquare, link: item.deadline < data.as_of ? '/tasks?filter=overdue' : '/tasks?filter=due_today' })),
+    ...data.projects.commitments.filter(item => item.deadline < data.as_of).map(item => ({ ...item, kind: 'Overdue project', date: item.deadline, icon: FolderOpen, link: `/projects/${item.id}` })),
+    ...data.visits.reports.map(item => ({ ...item, kind: 'Visit report pending', date: item.scheduled_date, icon: Send, link: '/maintenance-visits?filter=report_pending' })),
+    ...(data.service.follow_ups || []).map(item => ({ ...item, kind: 'Service follow-up due', date: item.follow_up_date, icon: ClipboardList, link: `/activity-log?activity=${item.id}` })),
+    ...((manager && data.approvals?.reports) || []).map(item => ({ ...item, title: `${item.customer_name}: ${item.original_name}`,kind: item.status==='approved' ? 'Report ready to finalize' : 'Managed report review',date:(item.submitted_at || data.as_of).slice(0,10),icon:FileCheck2,link:'/approvals?view=reports' })),
+  ].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8);
+  const upcoming = [
+    ...data.projects.commitments.filter(item => item.deadline >= data.as_of).map(item => ({ ...item, kind: 'Project deadline', date: item.deadline, icon: FolderOpen, link: `/projects/${item.id}` })),
+    ...data.visits.upcoming_items.map(item => ({ ...item, kind: 'Maintenance visit', date: item.scheduled_date, icon: Wrench, link: '/maintenance-visits' })),
+  ].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
+  const metrics = [
+    { value: data.tasks.overdue, label: 'Overdue tasks', link: '/tasks?filter=overdue', urgent: true },
+    { value: data.tasks.due_today, label: 'Tasks due today', link: '/tasks?filter=due_today' },
+    { value: data.projects.overdue, label: 'Overdue projects', link: '/projects?filter=overdue', urgent: true },
+    { value: data.projects.awaiting_approval, label: manager ? 'Closure requests' : 'Awaiting closure review', link: manager ? '/approvals' : '/projects?filter=pending_approval' },
+    ...(manager ? [{ value:data.approvals?.managed_reports || 0,label:'Managed reports',link:'/approvals?view=reports' }] : []),
+    { value: data.visits.reports_pending, label: 'Visit reports pending', link: '/maintenance-visits?filter=report_pending', urgent: true },
+    ...(data.service.enabled ? [{ value: data.service.due, label: 'Service follow-ups due', link: '/activity-log', urgent: true }] : [{ value: data.visits.upcoming, label: 'Upcoming visits', link: '/maintenance-visits' }]),
+  ].map(metric => ({ ...metric, value: Number(metric.value) || 0 }));
+  const active = metrics.filter(metric => metric.value > 0);
+  const count = value => Number(value) || 0;
+  const context = [
+    count(data.tasks.waiting_customer) + count(data.projects.waiting_customer) > 0 && <Link key="waiting" to="/tasks?filter=waiting_customer">{count(data.tasks.waiting_customer) + count(data.projects.waiting_customer)} waiting for the customer</Link>,
+    count(data.tasks.awaiting_approval) > 0 && <Link key="approval" to="/tasks?filter=pending_approval">{count(data.tasks.awaiting_approval)} tasks awaiting approval</Link>,
+    manager && count(data.projects.stale) > 0 && <Link key="stale" to="/projects">{count(data.projects.stale)} active projects without updates in seven days</Link>,
+    manager && count(data.visits.customer_delivery_pending) > 0 && <Link key="delivery" to="/maintenance-visits">{count(data.visits.customer_delivery_pending)} visit reports awaiting customer delivery</Link>,
+  ].filter(Boolean);
+  // Empty cards only repeat the all-clear line, so each list shows only when it has something in it.
+  const showUpcoming = upcoming.length > 0 || context.length > 0;
+  return <section className="operational-focus" aria-label={manager ? 'Management exceptions' : 'Personal work priorities'}>
+    {error && <p className="error-msg" role="alert">{error} Showing the last loaded overview. <button className="btn btn-ghost btn-sm" onClick={onRefresh}>Retry</button></p>}
+    <div className="focus-heading"><h2>{manager ? 'Where attention is needed' : 'What needs you'}</h2></div>
+    {/* Only counts that need someone; a wall of zeros hides the one that matters. */}
+    {active.length ? <div className="focus-metrics">{active.map(metric => <Link key={metric.label} to={metric.link} className={`focus-metric${metric.urgent ? ' needs-attention' : ''}`}><strong>{metric.value}</strong><span>{metric.label}</span><ArrowRight size={14} aria-hidden="true" /></Link>)}</div>
+      : <p className="focus-all-clear"><CheckCircle2 size={18} aria-hidden="true" /> Nothing needs you right now.</p>}
+    {(attention.length > 0 || showUpcoming) && <div className={`focus-columns${attention.length && showUpcoming ? '' : ' is-single'}`}>
+      {attention.length > 0 && <section className="card"><h3><CheckSquare size={16} /> Needs attention</h3><WorkList items={attention} empty="Nothing is due or overdue." /></section>}
+      {showUpcoming && <section className="card"><h3><CalendarDays size={16} /> Upcoming commitments</h3>{upcoming.length > 0 && <WorkList items={upcoming} empty="" />}{context.length > 0 && <div className="focus-context">{context}</div>}</section>}
+    </div>}
+  </section>;
+}

@@ -1,76 +1,149 @@
-const BASE = '/api';
+import { CLIENT_ID } from './live.js';
+import { noteServerBuild, pageOutdated } from './appVersion.js';
 
-function token() {
-  return localStorage.getItem('token');
-}
+const BASE = '/api';
 
 function forceLogout() {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
+  fetch(BASE + '/auth/logout', { method: 'POST', credentials: 'same-origin', keepalive: true,
+    headers: { 'X-SolutionsHub-Request': '1' } }).catch(() => {});
   // Hard redirect — clears React state and lands on login
   window.location.href = '/login';
 }
 
-async function req(method, path, body) {
+function handleUnauthorized(status, data, redirect) {
+  if (redirect && status === 401) {
+    forceLogout();
+    return true;
+  }
+  if (redirect && data.code === 'PASSWORD_CHANGE_REQUIRED') window.location.href = '/login';
+  return false;
+}
+
+async function req(method, path, body, { redirectOnUnauthorized = true, signal } = {}) {
   const res = await fetch(BASE + path, {
     method,
+    credentials: 'same-origin',
+    signal,
     headers: {
       'Content-Type': 'application/json',
-      ...(token() ? { Authorization: 'Bearer ' + token() } : {})
+      'X-SolutionsHub-Request': '1',
+      'X-Client-Id': CLIENT_ID,
     },
     body: body != null ? JSON.stringify(body) : undefined
   });
+  noteServerBuild(res.headers.get('X-App-Build'));
   const data = await res.json().catch(() => ({}));
 
   // Token expired or invalid → log out immediately
-  if (res.status === 401) {
-    forceLogout();
-    return; // never reached, but keeps TS happy
+  if (!res.ok) {
+    handleUnauthorized(res.status, data, redirectOnUnauthorized);
+    // A page from before an update can ask for something the server no longer has.
+    const outdated = res.status === 404 && pageOutdated();
+    const error = new Error(outdated ? 'TeamHub has been updated. Reload the page (Ctrl+F5) to use the new version.' : data.error || res.statusText);
+    error.status = res.status;
+    error.code = data.code;
+    if (data.warnings) error.warnings = data.warnings; // a visit that needs a second look
+    if (data.current) error.current = data.current; // EDIT_CONFLICT: the record as it is now
+    throw error;
   }
-
-  if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
+}
+
+async function upload(path, field, file, extra = {}) {
+  const fd = new FormData();
+  for (const [key, value] of Object.entries(extra)) fd.append(key, value);
+  fd.append(field, file);
+  const res = await fetch(BASE + path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'X-SolutionsHub-Request': '1', 'X-Client-Id': CLIENT_ID },
+    body: fd,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    handleUnauthorized(res.status, data, true);
+    const error = new Error(data.error || res.statusText);
+    error.details = data.details; // e.g. the placeholders a Word template got wrong
+    error.code = data.code;
+    if (data.preview) error.preview = data.preview; // an import whose file or records changed since the review
+    throw error;
+  }
+  return data;
+}
+
+// Saves a downloaded file under the name the server gives it (POST sends `body`, e.g. a password).
+export async function saveDownload(path,fallbackName,body) {
+  const response=await fetch(BASE+path,body ? { method:'POST',credentials:'same-origin',headers:{ 'Content-Type':'application/json','X-SolutionsHub-Request':'1','X-Client-Id':CLIENT_ID },body:JSON.stringify(body) }
+    : { credentials:'same-origin',headers:{ 'X-SolutionsHub-Request':'1','X-Client-Id':CLIENT_ID } });
+  if (!response.ok) { const error=await response.json().catch(() => ({}));handleUnauthorized(response.status,error,true);throw new Error(error.error || 'Download failed'); }
+  const name=(response.headers.get('content-disposition') || '').match(/filename="([^"]+)"/)?.[1] || fallbackName;
+  const url=URL.createObjectURL(await response.blob());
+  const link=Object.assign(document.createElement('a'),{ href:url,download:name });
+  document.body.appendChild(link);link.click();link.remove();
+  setTimeout(() => URL.revokeObjectURL(url),1000);
+}
+
+async function download(path,body) {
+  const response=await fetch(BASE+path,{ method:body===undefined?'GET':'POST',credentials:'same-origin',headers:{ ...(body===undefined?{}:{ 'Content-Type':'application/json' }),'X-SolutionsHub-Request':'1','X-Client-Id':CLIENT_ID },body:body===undefined?undefined:JSON.stringify(body) });
+  if (!response.ok) { const error=await response.json().catch(() => ({}));handleUnauthorized(response.status,error,true);throw new Error(error.error || 'Download failed'); }
+  return response.blob();
 }
 
 export const api = {
   // auth
-  login: (email, password) => req('POST', '/auth/login', { email, password }),
-  verify2fa: (partial_token, code) => req('POST', '/auth/2fa/verify', { partial_token, code }),
-  setup2fa: () => req('GET', '/auth/2fa/setup'),
+  login: (email, password) => req('POST', '/auth/login', { email, password }, { redirectOnUnauthorized: false }),
+  samlStatus: () => req('GET', '/auth/saml/status', undefined, { redirectOnUnauthorized: false }),
+  ssoSettings: options => req('GET', '/settings/sso', undefined, options),
+  saveSsoSettings: data => req('PUT', '/settings/sso', data),
+  refreshSsoMetadata: () => req('POST', '/settings/sso/refresh-metadata', {}),
+  logout: () => req('POST', '/auth/logout', {}, { redirectOnUnauthorized: false }),
+  verify2fa: (partial_token, code) => req('POST', '/auth/2fa/verify', { partial_token, code }, { redirectOnUnauthorized: false }),
+  setup2fa: () => req('POST', '/auth/2fa/setup', {}),
   enable2fa: (code) => req('POST', '/auth/2fa/enable', { code }),
   disable2fa: (password) => req('DELETE', '/auth/2fa', { password }),
-  register: (name, email, password, role) => req('POST', '/auth/register', { name, email, password, role }),
-  users: () => req('GET', '/auth/users'),
-  me: () => req('GET', '/auth/me'),
+  users: (options) => req('GET', '/auth/users', undefined, options),
+  pagedUsers: (params = {},options) => req('GET','/auth/users?' + new URLSearchParams({ ...params,paged:1 }).toString(),undefined,options),
+  me: (options) => req('GET', '/auth/me', undefined, options),
+  myPermissions: (options) => req('GET','/auth/permissions',undefined,options),
   updateProfile: (data) => req('PUT', '/auth/profile', data),
+  confirmEmail: (token) => req('POST', '/auth/confirm-email', { token }, { redirectOnUnauthorized: false }),
+  updateNotificationPreferences: (changes) => req('PUT', '/auth/notification-preferences', changes),
+  preferences: () => req('GET', '/auth/preferences'),
+  dataQuality: options => req('GET', '/data-quality', undefined, options),
+  dismissDataQuality: body => req('POST', '/data-quality/dismiss', body),
+  restoreDataQuality: body => req('POST', '/data-quality/restore', body),
+  savePreference: (key, value) => req('PUT', `/auth/preferences/${encodeURIComponent(key)}`, { value }),
+  testNotificationChannel: (channel) => req('POST', '/auth/notification-preferences/test', { channel }),
   changePassword: (data) => req('POST', '/auth/change-password', data),
   firstTimeChangePassword: (new_password) => req('POST', '/auth/change-password-first', { new_password }),
-  forgotPassword: (email) => req('POST', '/auth/forgot-password', { email }),
+  forgotPassword: (email) => req('POST', '/auth/forgot-password', { email }, { redirectOnUnauthorized: false }),
   downloadToken: () => req('POST', '/auth/download-token', {}),
   icalTokenStatus: () => req('GET', '/auth/ical-token'),
   generateIcalToken: () => req('POST', '/auth/ical-token', {}),
   revokeIcalToken: () => req('DELETE', '/auth/ical-token'),
-  resetPassword: (token, new_password) => req('POST', '/auth/reset-password', { token, new_password }),
+  resetPassword: (token, new_password) => req('POST', '/auth/reset-password', { token, new_password }, { redirectOnUnauthorized: false }),
   getSecuritySettings: () => req('GET', '/settings/security'),
   saveSecuritySettings: (data) => req('PUT', '/settings/security', data),
   uploadAvatar: (file) => {
-    const fd = new FormData();
-    fd.append('avatar', file);
-    return fetch(`${BASE}/auth/avatar`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token() },
-      body: fd,
-    }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.statusText); return d; }));
+    return upload('/auth/avatar', 'avatar', file);
   },
   removeAvatar: () => req('DELETE', '/auth/avatar'),
+  uploadCustomerLogo: (id, file) => upload(`/customers/${id}/logo`, 'logo', file),
+  removeCustomerLogo: (id) => req('DELETE', `/customers/${id}/logo`),
 
   // projects
-  projects: () => req('GET', '/projects'),
-  project: (id) => req('GET', `/projects/${id}`),
+  projects: (options) => req('GET', '/projects', undefined, options),
+  pagedProjects: (params = {},options) => req('GET','/projects?' + new URLSearchParams({ ...params,paged:1 }).toString(),undefined,options),
+  project: (id, options) => req('GET', `/projects/${id}`, undefined, options),
   createProject: (data) => req('POST', '/projects', data),
   updateProject: (id, data) => req('PUT', `/projects/${id}`, data),
   requestClosure: (id) => req('POST', `/projects/${id}/request-closure`, {}),
-  approveClosure: (id) => req('POST', `/projects/${id}/approve-closure`, {}),
+  approveClosure: (id, review = {}) => req('POST', `/projects/${id}/approve-closure`, review),
+  rejectClosure: (id, review) => req('POST', `/projects/${id}/reject-closure`, review),
+  closureApprovals: (params = {}, options) => req('GET', '/projects/approvals?' + new URLSearchParams(params), undefined, options),
+  delegateClosure: (id, userId) => req('POST', `/projects/${id}/closure-delegate`, { user_id: userId }),
   addStatusUpdate: (id, message) => req('POST', `/projects/${id}/status-update`, { message }),
   addMembers: (id, user_ids) => req('POST', `/projects/${id}/members`, { user_ids }),
   removeMember: (pid, uid) => req('DELETE', `/projects/${pid}/members/${uid}`),
@@ -78,10 +151,17 @@ export const api = {
   unpinProject: (id) => req('DELETE', `/projects/${id}/pin`),
 
   // tasks
-  tasks: (params = {}) => req('GET', '/tasks?' + new URLSearchParams(params).toString()),
+  tasks: (params = {}, options) => req('GET', '/tasks?' + new URLSearchParams(params).toString(), undefined, options),
   createTask: (data) => req('POST', '/tasks', data),
   updateTask: (id, data) => req('PUT', `/tasks/${id}`, data),
+  takeTask: (id, body = {}) => req('POST', `/tasks/${id}/take`, body),
+  taskSubtasks: (id, options) => req('GET', `/tasks/${id}/subtasks`, undefined, options),
+  addTaskSubtasks: (id, body) => req('POST', `/tasks/${id}/subtasks`, body),
+  updateTaskSubtask: (id, subtaskId, body) => req('PUT', `/tasks/${id}/subtasks/${subtaskId}`, body),
+  deleteTaskSubtask: (id, subtaskId) => req('DELETE', `/tasks/${id}/subtasks/${subtaskId}`),
+  reorderTaskSubtasks: (id, ids) => req('PUT', `/tasks/${id}/subtasks/order`, { ids }),
   deleteTask: (id) => req('DELETE', `/tasks/${id}`),
+  deleteProject: id => req('DELETE', `/projects/${id}`),
   bulkUpdateTasks: (data) => req('POST', '/tasks/bulk', data),
   duplicateTask: (id) => req('POST', `/tasks/${id}/duplicate`, {}),
   overdueCounts: () => req('GET', '/tasks/overdue-counts'),
@@ -97,15 +177,9 @@ export const api = {
   // attachments
   attachments: (project_id) => req('GET', `/attachments/${project_id}`),
   uploadAttachment: (project_id, file) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    return fetch(`/api/attachments/${project_id}`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token() },
-      body: fd
-    }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.statusText); return d; }));
+    return upload(`/attachments/${project_id}`, 'file', file);
   },
-  downloadAttachment: (project_id, id) => `/api/attachments/${project_id}/download/${id}`,
+  downloadAttachmentUrl: (project_id, id, downloadToken) => `${BASE}/attachments/${project_id}/download/${id}?token=${encodeURIComponent(downloadToken)}`,
   deleteAttachment: (project_id, id) => req('DELETE', `/attachments/${project_id}/${id}`),
 
   // kpis
@@ -113,10 +187,25 @@ export const api = {
   createKpi: (project_id, data) => req('POST', `/kpis/${project_id}`, data),
   updateKpi: (project_id, id, data) => req('PUT', `/kpis/${project_id}/${id}`, data),
   deleteKpi: (project_id, id) => req('DELETE', `/kpis/${project_id}/${id}`),
+  kpiDefinitionMeta: (options) => req('GET', '/kpis/definitions/meta', undefined, options),
+  kpiDefinitions: (params = {}, options) => req('GET', `/kpis/definitions?${new URLSearchParams(params)}`, undefined, options),
+  createKpiDefinition: data => req('POST', '/kpis/definitions', data),
+  updateKpiDefinition: (id, data) => req('PUT', `/kpis/definitions/${id}`, data),
+  previewKpiDefinition: data => req('POST', '/kpis/definitions/preview', data),
+  testKpiDefinition: id => req('POST', `/kpis/definitions/${id}/test`, {}),
+  calculateKpiDefinition: id => req('POST', `/kpis/definitions/${id}/calculate`, {}),
+  setKpiDefinitionState: (id, enabled, version) => req('POST', `/kpis/definitions/${id}/state`, { enabled, version }),
+  kpiScorecard: options => req('GET', '/kpis/scorecard', undefined, options),
+  kpiRecords: (id, options) => req('GET', `/kpis/definitions/${id}/records`, undefined, options),
+  addKpiRecord: (id, body) => req('POST', `/kpis/definitions/${id}/records`, body),
+  deleteKpiRecord: recordId => req('DELETE', `/kpis/records/${recordId}`),
+  kpiDefinitionValues: (id, params = {}, options) => req('GET', `/kpis/definitions/${id}/values?${new URLSearchParams(params)}`, undefined, options),
 
   // reports
-  reportSummary: () => req('GET', '/reports/summary'),
-  reportProjects: () => req('GET', '/reports/projects'),
+  reportSummary: (options) => req('GET', '/reports/summary', undefined, options),
+  operationsOverview: (params = {}, options) => req('GET', '/operations/overview?' + new URLSearchParams(params), undefined, options),
+  myManagedCustomers: (options) => req('GET', '/operations/my-managed-customers', undefined, options),
+  reportProjects: (options) => req('GET', '/reports/projects', undefined, options),
   reportMonthly: () => req('GET', '/reports/monthly'),
 
   // scorecards
@@ -131,35 +220,132 @@ export const api = {
 
   // admin
   adminUsers: () => req('GET', '/admin/users'),
+  permissionMatrix: options => req('GET','/permissions',undefined,options),
+  savePermissionRule: data => req('PUT','/permissions/rule',data),
+  createCustomRole: data => req('POST','/permissions/custom-roles',data),
+  updateCustomRole: (id,data) => req('PUT',`/permissions/custom-roles/${id}`,data),
+  deleteCustomRole: id => req('DELETE',`/permissions/custom-roles/${id}`),
   adminCreateUser: (data) => req('POST', '/admin/users', data),
   adminUpdateUser: (id, data) => req('PUT', `/admin/users/${id}`, data),
   adminResetPassword: (id, password) => req('POST', `/admin/users/${id}/reset-password`, { password }),
   adminToggleActive: (id) => req('POST', `/admin/users/${id}/toggle-active`, {}),
+  adminRevokeSessions: (id) => req('POST', `/admin/users/${id}/revoke-sessions`, {}),
   adminDeleteUser: (id) => req('DELETE', `/admin/users/${id}`),
   adminToggle2faExempt: (id) => req('POST', `/admin/users/${id}/toggle-2fa-exempt`, {}),
   adminStats: () => req('GET', '/admin/stats'),
   adminActivity: (limit = 60) => req('GET', `/admin/activity?limit=${limit}`),
 
   // customers
-  customers: () => req('GET', '/customers'),
-  customer: (id) => req('GET', `/customers/${id}`),
+  customers: (options) => req('GET', '/customers', undefined, options),
+  pagedCustomers: (params = {},options) => req('GET','/customers?' + new URLSearchParams({ ...params,paged:1 }).toString(),undefined,options),
+  customer: (id, options) => req('GET', `/customers/${id}`, undefined, options),
+  customerOverview: (id, params = {}, options) => req('GET', `/customers/${id}/overview?` + new URLSearchParams(params).toString(), undefined, options),
+  customerTicketTrend: (id,options) => req('GET',`/customers/${id}/operations/ticket-trend`,undefined,options),
+  customerOperationsSummary: (id,options) => req('GET',`/customers/${id}/operations/summary`,undefined,options),
+  customerOperationProjects: (id,params={},options) => req('GET',`/customers/${id}/operations/projects?${new URLSearchParams(params)}`,undefined,options),
+  customerOperationTasks: (id,params={},options) => req('GET',`/customers/${id}/operations/tasks?${new URLSearchParams(params)}`,undefined,options),
+  // id null: internal repeating tasks (no customer), on the Tasks page.
+  customerRecurringTasks: (id,options) => req('GET',id == null ? '/recurring-tasks' : `/customers/${id}/recurring-tasks`,undefined,options),
+  vulnerabilities: (params={},options) => req('GET',`/vulnerabilities?${new URLSearchParams(params)}`,undefined,options),
+  vulnerability: (id,options) => req('GET',`/vulnerabilities/${encodeURIComponent(id)}`,undefined,options),
+  vulnerabilityProducts: options => req('GET','/vulnerabilities/products',undefined,options),
+  vulnerabilityAdmin: options => req('GET','/vulnerabilities/admin/status',undefined,options),
+  saveVulnerabilitySettings: data => req('PUT','/vulnerabilities/admin/settings',data),
+  addVulnerabilityWatch: data => req('POST','/vulnerabilities/admin/watch',data),
+  updateVulnerabilityWatch: (id,data) => req('PUT',`/vulnerabilities/admin/watch/${id}`,data),
+  removeVulnerabilityWatch: id => req('DELETE',`/vulnerabilities/admin/watch/${id}`),
+  setVulnerabilityAssetProduct: data => req('PUT','/vulnerabilities/admin/asset-products',data),
+  syncVulnerabilities: () => req('POST','/vulnerabilities/admin/sync',{}),
+  createCustomerRecurringTask: (id,data) => req('POST',id == null ? '/recurring-tasks' : `/customers/${id}/recurring-tasks`,data),
+  updateCustomerRecurringTask: (id,recurringId,data) => req('PUT',`${id == null ? '/recurring-tasks' : `/customers/${id}/recurring-tasks`}/${recurringId}`,data),
+  deleteCustomerRecurringTask: (id,recurringId) => req('DELETE',`${id == null ? '/recurring-tasks' : `/customers/${id}/recurring-tasks`}/${recurringId}`),
+  customerOperationVisits: (id,params={},options) => req('GET',`/customers/${id}/operations/visits?${new URLSearchParams(params)}`,undefined,options),
+  customerOperationTimeline: (id,params={},options) => req('GET',`/customers/${id}/operations/timeline?${new URLSearchParams(params)}`,undefined,options),
+  customerRecommendations: (id, params = {}, options) => req('GET', `/customers/${id}/recommendations?` + new URLSearchParams(params).toString(), undefined, options),
+  createRecommendation: (id, body) => req('POST', `/customers/${id}/recommendations`, body),
+  updateRecommendation: (id, recommendationId, body) => req('PUT', `/customers/${id}/recommendations/${recommendationId}`, body),
+  convertRecommendation: (id, recommendationId, body) => req('POST', `/customers/${id}/recommendations/${recommendationId}/convert-to-project`, body),
+  customerResponses: () => req('GET', '/customer-responses'),
+  createCustomerResponse: (body) => req('POST', '/customer-responses', body),
+  updateCustomerResponse: (id, body) => req('PUT', `/customer-responses/${encodeURIComponent(id)}`, body),
+  deleteCustomerResponse: (id) => req('DELETE', `/customer-responses/${encodeURIComponent(id)}`),
+  responsePlaceholders: () => req('GET', '/customer-responses/placeholders'),
+  composeCustomerResponse: (id, context) => req('POST', `/customer-responses/${encodeURIComponent(id)}/compose`, { context }),
+  sendCustomerResponse: (id, body) => req('POST', `/customer-responses/${encodeURIComponent(id)}/send`, body),
+  deleteRecommendation: (id, recommendationId) => req('DELETE', `/customers/${id}/recommendations/${recommendationId}`),
+  convertRecommendationToTask: (id, recommendationId, body) => req('POST', `/customers/${id}/recommendations/${recommendationId}/convert-to-task`, body),
+  customerContracts: (id, options) => req('GET', `/customers/${id}/contracts`, undefined, options),
+  createCustomerContract: (id, data) => req('POST', `/customers/${id}/contracts`, data),
+  updateCustomerContract: (id, contractId, data) => req('PUT', `/customers/${id}/contracts/${contractId}`, data),
+  renewCustomerContract: (id, contractId, data) => req('POST', `/customers/${id}/contracts/${contractId}/renew`, data),
+  deleteCustomerContract: (id, contractId) => req('DELETE', `/customers/${id}/contracts/${contractId}`),
+  customerLicences: (id, options) => req('GET', `/customers/${id}/licences`, undefined, options),
+  createCustomerLicence: (id, body) => req('POST', `/customers/${id}/licences`, body),
+  updateCustomerLicence: (id, licenceId, body) => req('PUT', `/customers/${id}/licences/${licenceId}`, body),
+  deleteCustomerLicence: (id, licenceId) => req('DELETE', `/customers/${id}/licences/${licenceId}`),
+  vendorCases: (id, options) => req('GET', `/customers/${id}/vendor-cases`, undefined, options),
+  vendorCase: (id, caseId) => req('GET', `/customers/${id}/vendor-cases/${caseId}`),
+  createVendorCase: (id, body) => req('POST', `/customers/${id}/vendor-cases`, body),
+  updateVendorCase: (id, caseId, body) => req('PUT', `/customers/${id}/vendor-cases/${caseId}`, body),
+  addVendorCaseUpdate: (id, caseId, body) => req('POST', `/customers/${id}/vendor-cases/${caseId}/updates`, body),
+  deleteVendorCase: (id, caseId) => req('DELETE', `/customers/${id}/vendor-cases/${caseId}`),
+  renewals: (days, options) => req('GET', `/renewals?days=${days}`, undefined, options),
+  customerAssetSoftwareStatus: (id, options) => req('GET', `/customers/${id}/assets/software-status`, undefined, options),
+  softwareEstate: (options) => req('GET', '/software/estate', undefined, options),
+  customerAssetOptions: (id, options) => req('GET', `/customers/${id}/assets/options`, undefined, options),
+  customerAssets: (id, params = {}, options) => req('GET', `/customers/${id}/assets?` + new URLSearchParams(params).toString(), undefined, options),
+  createCustomerAsset: (id, body) => req('POST', `/customers/${id}/assets`, body),
+  updateCustomerAsset: (id, assetId, body) => req('PUT', `/customers/${id}/assets/${assetId}`, body),
+  reviewCustomerAsset: (id, assetId, body) => req('POST', `/customers/${id}/assets/${assetId}/review`, body),
+  customerAssetVersions: (id, assetId, options) => req('GET', `/customers/${id}/assets/${assetId}/versions`, undefined, options),
+  deleteCustomerAsset: (id, assetId, version) => req('DELETE', `/customers/${id}/assets/${assetId}`, { version }),
+  customerAssetAttachments: (id,assetId) => req('GET',`/customers/${id}/assets/${assetId}/attachments`),
+  uploadCustomerAssetAttachment: (id,assetId,file) => upload(`/customers/${id}/assets/${assetId}/attachments`,'file',file),
+  downloadCustomerAssetAttachment: async (id,assetId,attachmentId) => {
+    const response=await fetch(`${BASE}/customers/${id}/assets/${assetId}/attachments/${attachmentId}/download`,{ credentials:'same-origin' });
+    if (!response.ok) { const data=await response.json().catch(() => ({}));handleUnauthorized(response.status,data,true);throw new Error(data.error || 'Attachment download failed'); }
+    return response.blob();
+  },
+  deleteCustomerAssetAttachment: (id,assetId,attachmentId) => req('DELETE',`/customers/${id}/assets/${assetId}/attachments/${attachmentId}`,{}),
+  customerAssetTemplateUrl: id => `${BASE}/customers/${id}/assets/template`,
+  previewCustomerAssetImport: (id,file) => upload(`/customers/${id}/assets/import/preview`,'file',file),
+  importCustomerAssets: (id,file,{ previewToken }={}) => upload(`/customers/${id}/assets/import`,'file',file,previewToken ? { preview_token:previewToken } : {}),
+  exportCustomerAssets: async (id,params = {}) => {
+    const response=await fetch(`${BASE}/customers/${id}/assets/export?${new URLSearchParams(params)}`,{ credentials:'same-origin' });
+    if (!response.ok) { const data=await response.json().catch(() => ({}));handleUnauthorized(response.status,data,true);throw new Error(data.error || 'Asset export failed'); }
+    return response.blob();
+  },
   createCustomer: (data) => req('POST', '/customers', data),
   updateCustomer: (id, data) => req('PUT', `/customers/${id}`, data),
   deleteCustomer: (id) => req('DELETE', `/customers/${id}`),
+  customerContacts: id => req('GET', `/customers/${id}/contacts`),
+  addCustomerContact: (id, body) => req('POST', `/customers/${id}/contacts`, body),
+  updateCustomerContact: (id, contactId, body) => req('PUT', `/customers/${id}/contacts/${contactId}`, body),
+  deleteCustomerContact: (id, contactId) => req('DELETE', `/customers/${id}/contacts/${contactId}`),
+  // Customers with their contacts, as an Excel or CSV file: { blob, filename }.
+  exportCustomers: async ({ format, contacts, archived }) => {
+    const query = new URLSearchParams({ format, contacts, archived: archived ? '1' : '0' });
+    const response = await fetch(`${BASE}/customers/export?${query}`, { credentials: 'same-origin' });
+    if (!response.ok) { const data = await response.json().catch(() => ({})); handleUnauthorized(response.status, data, true); throw new Error(data.error || 'Export failed'); }
+    const filename = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') || '')?.[1] || `customers.${format}`;
+    return { blob: await response.blob(), filename };
+  },
+  archiveCustomer: (id) => req('POST', `/customers/${id}/archive`, {}),
+  restoreCustomer: (id) => req('POST', `/customers/${id}/restore`, {}),
   customersTemplateUrl: () => `${BASE}/customers/template/download`,
-  importCustomers: (file) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    return fetch(`${BASE}/customers/import`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token() },
-      body: fd,
-    }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.statusText); return d; }));
+  previewCustomerImport: file => upload('/customers/import/preview', 'file', file),
+  importCustomers: (file, { updateExisting = false, previewToken } = {}) => {
+    return upload('/customers/import', 'file', file, { ...(updateExisting ? { update_existing: '1' } : {}), ...(previewToken ? { preview_token: previewToken } : {}) });
   },
 
   // maintenance visits
-  maintenanceVisits: (params = {}) => req('GET', '/maintenance-visits?' + new URLSearchParams(params).toString()),
+  maintenanceVisits: (params = {}, options = {}) => req('GET', '/maintenance-visits?' + new URLSearchParams(params).toString(), undefined, options),
+  visitAvailability: (params, options) => req('GET', '/visit-planning/availability?' + new URLSearchParams(params).toString(), undefined, options),
+  timeOff: (params, options) => req('GET', '/visit-planning/time-off?' + new URLSearchParams(params).toString(), undefined, options),
+  addTimeOff: data => req('POST', '/visit-planning/time-off', data),
+  removeTimeOff: id => req('DELETE', `/visit-planning/time-off/${id}`),
   maintenanceVisit: (id) => req('GET', `/maintenance-visits/${id}`),
+  maintenanceVisitAssets: (customerId, options) => req('GET', `/maintenance-visits/assets/choices?customer_id=${encodeURIComponent(customerId)}`, undefined, options),
   createVisit: (data) => req('POST', '/maintenance-visits', data),
   updateVisit: (id, data) => req('PUT', `/maintenance-visits/${id}`, data),
   markReportSent: (id) => req('POST', `/maintenance-visits/${id}/report-sent`, {}),
@@ -169,18 +355,11 @@ export const api = {
   completeVisit: (id) => req('POST', `/maintenance-visits/${id}/complete`, {}),
   deleteVisit: (id) => req('DELETE', `/maintenance-visits/${id}`),
   maintenanceVisitsTemplateUrl: () => `${BASE}/maintenance-visits/template/download`,
-  importVisits: (file) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    return fetch(`${BASE}/maintenance-visits/import`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token() },
-      body: fd,
-    }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.statusText); return d; }));
-  },
+  previewVisitImport: file => upload('/maintenance-visits/import/preview', 'file', file),
+  importVisits: (file, { previewToken } = {}) => upload('/maintenance-visits/import', 'file', file, previewToken ? { preview_token: previewToken } : {}),
 
   // milestones
-  milestones:        (project_id) => req('GET', `/milestones?project_id=${project_id}`),
+  milestones:        (project_id, options) => req('GET', `/milestones?project_id=${project_id}`, undefined, options),
   createMilestone:   (data)       => req('POST', '/milestones', data),
   updateMilestone:   (id, data)   => req('PUT', `/milestones/${id}`, data),
   completeMilestone: (id)         => req('POST', `/milestones/${id}/complete`, {}),
@@ -193,13 +372,7 @@ export const api = {
 
   // Excel effort-sheet import
   importExcelPreview: (projectId, file) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    return fetch(`${BASE}/projects/${projectId}/import-excel/preview`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token() },
-      body: fd,
-    }).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || r.statusText); return d; }));
+    return upload(`/projects/${projectId}/import-excel/preview`, 'file', file);
   },
   importExcelConfirm: (projectId, tasks) => req('POST', `/projects/${projectId}/import-excel/confirm`, { tasks }),
 
@@ -221,18 +394,66 @@ export const api = {
 
   // task comments
   taskComments: (taskId) => req('GET', `/tasks/${taskId}/comments`),
+  mySubtasks: (options) => req('GET', '/tasks/my-subtasks', undefined, options),
   addTaskComment: (taskId, message) => req('POST', `/tasks/${taskId}/comments`, { message }),
+  taskAttachments: taskId => req('GET', `/tasks/${taskId}/attachments`),
+  uploadTaskAttachment: (taskId, file) => upload(`/tasks/${taskId}/attachments`, 'file', file),
+  downloadTaskAttachment: async (taskId, attachmentId) => {
+    const response = await fetch(`${BASE}/tasks/${taskId}/attachments/${attachmentId}/download`, { credentials: 'same-origin' });
+    if (!response.ok) { const data = await response.json().catch(() => ({})); handleUnauthorized(response.status, data, true); throw new Error(data.error || 'Download failed'); }
+    return response.blob();
+  },
+  deleteTaskAttachment: (taskId, attachmentId) => req('DELETE', `/tasks/${taskId}/attachments/${attachmentId}`),
   deleteTaskComment: (taskId, cid) => req('DELETE', `/tasks/${taskId}/comments/${cid}`),
 
   // project activity
-  projectActivity: (projectId) => req('GET', `/projects/${projectId}/activity`),
+  projectActivity: (projectId, options) => req('GET', `/projects/${projectId}/activity`, undefined, options),
 
   // workload
   workload: () => req('GET', '/workload'),
   workloadForecast: () => req('GET', '/workload/forecast'),
+  workloadPlanning: (params = {}, options) => req('GET', '/workload/planning?' + new URLSearchParams(params).toString(), undefined, options),
+  workloadScenario: body => req('POST', '/workload/planning/scenario', body),
+  workloadEngineers: (params = {}, options) => req('GET', '/workload/engineers?' + new URLSearchParams(params).toString(), undefined, options),
+  workloadTickets: (params = {}, options) => req('GET', '/workload/tickets?' + new URLSearchParams(params).toString(), undefined, options),
+  workloadPressure: (params = {}, options) => req('GET', '/workload/pressure?' + new URLSearchParams(params).toString(), undefined, options),
+  workloadPolicy: options => req('GET', '/workload/pressure/policy', undefined, options),
+  saveWorkloadPolicy: body => req('PUT', '/workload/pressure/policy', body),
+  workloadEstimate: (body) => req('PUT', '/workload/planning/estimate', body),
+  workloadAvailability: (body) => req('PUT', '/workload/planning/availability', body),
+  customReportSources: (options) => req('GET', '/reports/custom/sources',undefined,options),
+  customReportPreview: (definition,options) => req('POST','/reports/custom/preview',definition,options),
+  savedReports: (params = {},options) => req('GET','/reports/custom/saved?' + new URLSearchParams(params).toString(),undefined,options),
+  savedReport: (id,options) => req('GET',`/reports/custom/saved/${id}`,undefined,options),
+  createSavedReport: (body) => req('POST','/reports/custom/saved',body),
+  updateSavedReport: (id,body) => req('PUT',`/reports/custom/saved/${id}`,body),
+  deleteSavedReport: (id,version) => req('DELETE',`/reports/custom/saved/${id}`,{ version }),
+  savedReportSchedule: (id,options) => req('GET',`/reports/custom/saved/${id}/schedule`,undefined,options),
+  updateSavedReportSchedule: (id,body) => req('PUT',`/reports/custom/saved/${id}/schedule`,body),
+  retrySavedReportDeliveries: id => req('POST',`/reports/custom/saved/${id}/schedule/retry`),
+  customReportExport: async (definition,format = 'xlsx',title) => {
+    const job=await req('POST','/reports/custom/exports',{ definition,format,...(title ? { title } : {}) });
+    let status;
+    for (let attempt=0;attempt<120;attempt += 1) {
+      status=await req('GET',`/reports/custom/exports/${job.id}`);
+      if (status.status==='failed') throw new Error(status.error || 'Report export failed');
+      if (status.ready) break;
+      await new Promise(resolve => setTimeout(resolve,1000));
+    }
+    if (!status?.ready) throw new Error('The export is still processing. You will receive a notification when it is ready.');
+    const response = await fetch(`/api/reports/custom/exports/${job.id}/download`,{ credentials:'same-origin' });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      handleUnauthorized(response.status,data,true);
+      throw new Error(data.error || 'Report export failed');
+    }
+    return response.blob();
+  },
 
   // time logs
   timeLogs: (params) => req('GET', '/time-logs?' + new URLSearchParams(params).toString()),
+  timeCategories: () => req('GET', '/time-logs/categories'),
+  myTimeLogs: (from, to) => req('GET', `/time-logs/mine?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   logTime: (data) => req('POST', '/time-logs', data),
   deleteTimeLog: (id) => req('DELETE', `/time-logs/${id}`),
 
@@ -246,8 +467,9 @@ export const api = {
   clearDoneTodos: () => req('DELETE', '/notes/todos'),
 
   // notifications
-  notifications: () => req('GET', '/notifications'),
+  notifications: (params={}) => req('GET', `/notifications?${new URLSearchParams(params).toString()}`),
   markNotificationRead: (id) => req('PATCH', `/notifications/${id}/read`, {}),
+  acknowledgeNotification: (id) => req('PATCH', `/notifications/${id}/acknowledge`, {}),
   markAllNotificationsRead: () => req('POST', '/notifications/read-all', {}),
   deleteNotification: (id) => req('DELETE', `/notifications/${id}`),
   clearNotifications: () => req('DELETE', '/notifications'),
@@ -269,21 +491,124 @@ export const api = {
   slaOverview: () => req('GET', '/sla/overview'),
 
   // calendar
-  calendar: (month) => req('GET', `/calendar?month=${month}`),
+  calendarHolidays: (from, to, options) => req('GET', `/calendar/holidays?from=${from}&to=${to}`, undefined, options),
+  calendar: (month, options) => req('GET', `/calendar?${new URLSearchParams({ month })}`, undefined, options),
 
   // settings / integrations
-  getIntegrations: () => req('GET', '/settings/integrations'),
+  getIntegrations: (options) => req('GET', '/settings/integrations',undefined,options),
   saveIntegrations: (data) => req('POST', '/settings/integrations', data),
+  notificationsPause: () => req('GET', '/settings/notifications-pause'),
+  setNotificationsPause: paused => req('PUT', '/settings/notifications-pause', { paused }),
   testIntegration: (platform, settings) => req('POST', '/settings/integrations/test', { platform, settings }),
+  serverClock: (options) => req('GET','/settings/clock',undefined,options),
+  activityBotSettings: (options) => req('GET','/settings/activity-bot',undefined,options),
+  saveActivityBot: (data) => req('PUT','/settings/activity-bot',data),
+  registerWebexBot: () => req('POST','/settings/activity-bot/webex/register',{}),
+  tryActivityBot: (text) => req('POST','/settings/activity-bot/try',{ text }),
+  checkServerClock: (server) => req('POST','/settings/clock/check',server ? { server } : {}),
+  ticketingSettings: (options) => req('GET','/ticketing/settings',undefined,options),
+  saveTicketingSettings: data => req('PUT','/ticketing/settings',data),
+  testTicketingConnection: () => req('POST','/ticketing/test',{}),
+  ticketingQueues: () => req('GET','/ticketing/queues'),
+  ticketMappings: options => req('GET','/ticketing/mappings',undefined,options),
+  saveTicketMappings: data => req('PUT','/ticketing/mappings',data),
+  managedCustomerConfiguration: (id,options) => req('GET',`/customers/${id}/managed-services`,undefined,options),
+  saveManagedCustomerConfiguration: (id,data) => req('PUT',`/customers/${id}/managed-services`,data),
+  testManagedCustomerMapping: id => req('POST',`/customers/${id}/managed-services/test-mapping`,{}),
+  syncManagedCustomerTickets: id => req('POST',`/ticketing/sync/${id}`,{}),
+  ticketingMonitoring: options => req('GET','/ticketing/monitoring',undefined,options),
+  ticketingUserLinks: options => req('GET','/ticketing/user-links',undefined,options),
+  ticketingRtUsers: (refresh=false,options) => req('GET',`/ticketing/rt-users${refresh ? '?refresh=1' : ''}`,undefined,options),
+  linkTicketingUser: (userId,rtUsername) => req('PUT',`/ticketing/user-links/${userId}`,{ rt_username:rtUsername }),
+  syncTicketingUsers: () => req('POST','/ticketing/user-links/sync',{}),
+  ticketSyncRuns: (params={},options) => req('GET','/ticketing/sync-runs?' + new URLSearchParams(params).toString(),undefined,options),
+  managedCustomers: options => req('GET','/managed-customers',undefined,options),
+  managedCustomerOverview: (id,params={},options) => req('GET',`/managed-customers/${id}/overview?` + new URLSearchParams(params).toString(),undefined,options),
+  managedCustomerTickets: (id,params={},options) => req('GET',`/managed-customers/${id}/tickets?` + new URLSearchParams(params).toString(),undefined,options),
+  managedCustomerTicketAnalytics: (id,params={},options) => req('GET',`/managed-customers/${id}/ticket-analytics?` + new URLSearchParams(params).toString(),undefined,options),
+  managedCustomerReportPreview: (id,data,options) => req('POST',`/managed-customers/${id}/report-preview`,data,options),
+  managedReportTemplates: options => req('GET','/managed-report-templates',undefined,options),
+  createManagedReportTemplate: data => req('POST','/managed-report-templates',data),
+  updateManagedReportTemplate: (id,data) => req('PUT',`/managed-report-templates/${id}`,data),
+  deleteManagedReportTemplate: id => req('DELETE',`/managed-report-templates/${id}`),
+  managedReportPlaceholders: options => req('GET','/managed-report-templates/placeholders',undefined,options),
+  managedReportStarterTemplate: () => download('/managed-report-templates/starter.docx'),
+  // Software versions
+  softwareVersions: options => req('GET','/software',undefined,options),
+  syncSoftwareVersions: () => req('POST','/software/admin/sync',{}),
+  softwareAdmin: options => req('GET','/software/admin',undefined,options),
+  softwareCatalogue: options => req('GET','/software/admin/catalogue',undefined,options),
+  createSoftwareProduct: body => req('POST','/software/admin/products',body),
+  updateSoftwareProduct: (id,body) => req('PUT',`/software/admin/products/${id}`,body),
+  deleteSoftwareProduct: id => req('DELETE',`/software/admin/products/${id}`),
+  checkSoftwareProduct: id => req('POST',`/software/admin/products/${id}/check`,{}),
+  saveSoftwareRelease: (id,body) => req('PUT',`/software/admin/products/${id}/releases`,body),
+  deleteSoftwareRelease: (id,branch) => req('DELETE',`/software/admin/products/${id}/releases/${encodeURIComponent(branch)}`),
+  createSoftwareFeed: body => req('POST','/software/admin/feeds',body),
+  updateSoftwareFeed: (id,body) => req('PUT',`/software/admin/feeds/${id}`,body),
+  deleteSoftwareFeed: id => req('DELETE',`/software/admin/feeds/${id}`),
+  // Settings → Backups
+  backups: options => req('GET','/settings/backups',undefined,options),
+  saveBackupSchedule: body => req('PUT','/settings/backups/schedule',body),
+  backupOffsite: options => req('GET','/settings/backups/offsite',undefined,options),
+  saveBackupOffsite: body => req('PUT','/settings/backups/offsite',body),
+  testBackupOffsite: () => req('POST','/settings/backups/offsite/test',{}),
+  trustBackupOffsite: fingerprint => req('POST','/settings/backups/offsite/trust',{ fingerprint }),
+  copyBackupOffsite: file => req('POST',`/settings/backups/${encodeURIComponent(file)}/offsite`,{}),
+  backupShare: options => req('GET','/settings/backups/share',undefined,options),
+  saveBackupShare: body => req('PUT','/settings/backups/share',body),
+  testBackupShare: () => req('POST','/settings/backups/share/test',{}),
+  copyBackupToShare: file => req('POST',`/settings/backups/${encodeURIComponent(file)}/share`,{}),
+  createBackup: () => req('POST','/settings/backups',{}),
+  verifyBackup: file => req('POST',`/settings/backups/${encodeURIComponent(file)}/verify`,{}),
+  restoreBackup: (file,password,withFiles=true) => req('POST',`/settings/backups/${encodeURIComponent(file)}/restore`,{ confirm:'RESTORE',password,with_files:withFiles }),
+  deleteBackup: file => req('DELETE',`/settings/backups/${encodeURIComponent(file)}`),
+  downloadBackup: (file,password) => saveDownload(`/settings/backups/${encodeURIComponent(file)}/download`,file,{ password }),
+  downloadBackupFiles: (file,password) => saveDownload(`/settings/backups/${encodeURIComponent(file)}/download?part=files`,file.replace('.sql.gz','.files.tar.gz'),{ password }),
+  uploadBackup: (file,password) => upload('/settings/backups/upload','file',file,{ password }),
+  uploadManagedReportWordTemplate: (id,file) => upload(`/managed-report-templates/${id}/word-template`,'file',file),
+  downloadManagedReportWordTemplate: id => download(`/managed-report-templates/${id}/word-template`),
+  removeManagedReportWordTemplate: id => req('DELETE',`/managed-report-templates/${id}/word-template`),
+  managedCustomerWordReport: (id,data) => download(`/managed-customers/${id}/report.docx`,data),
+  managedCustomerExcelReport: (id,data) => download(`/managed-customers/${id}/report.xlsx`,data),
+  managedCustomerPdfReport: (id,data) => download(`/managed-customers/${id}/report.pdf`,data),
+  customerReportPreview: (id,data,options) => req('POST',`/managed-customers/${id}/customer-report/preview`,data,options),
+  customerReportDownload: (id,format,data) => download(`/managed-customers/${id}/customer-report.${format}`,data),
+  reportRetention: () => req('GET','/settings/report-retention'),
+  saveReportRetention: days => req('PUT','/settings/report-retention',{ days }),
+  purgeReportFiles: () => req('POST','/settings/report-retention/purge',{}),
+  managedCustomerReportHistory: (id,options) => req('GET',`/managed-customers/${id}/reports`,undefined,options),
+  managedReportReviews: (params={},options) => req('GET','/managed-customers/report-reviews?' + new URLSearchParams(params).toString(),undefined,options),
+  updateManagedReportReview: (reportId,data) => req('PUT',`/managed-customers/report-reviews/${reportId}`,data),
+  managedReportReviewDownload: reportId => download(`/managed-customers/report-reviews/${reportId}/download`),
+  managedCustomerReportWorkflow: (id,reportId,options) => req('GET',`/managed-customers/${id}/reports/${reportId}/workflow`,undefined,options),
+  updateManagedCustomerReportWorkflow: (id,reportId,data) => req('PUT',`/managed-customers/${id}/reports/${reportId}/workflow`,data),
+  reminders: (options) => req('GET', '/reminders', undefined, options),
+  createReminder: (data) => req('POST', '/reminders', data),
+  updateReminder: (id, data) => req('PUT', `/reminders/${id}`, data),
+  completeReminder: (id) => req('POST', `/reminders/${id}/done`),
+  snoozeReminder: (id, until) => req('POST', `/reminders/${id}/snooze`, { until }),
+  deleteReminder: (id) => req('DELETE', `/reminders/${id}`),
+  updateReminderSettings: (data) => req('PUT', '/reminders/settings', data),
+  updateReminderGroup: (key, data) => req('PUT', `/reminders/group/${key}`, data),
+  customerReminders: (customerId, options) => req('GET', `/reminders/customer/${customerId}`, undefined, options),
+  completeTeamReminder: (id) => req('POST', `/reminders/team/${id}/done`),
+  updateTeamReminder: (id, data) => req('PUT', `/reminders/team/${id}`, data),
+  deleteTeamReminder: (id) => req('DELETE', `/reminders/team/${id}`),
+  deleteReminderGroup: (key) => req('DELETE', `/reminders/group/${key}`),
+  markManagedCustomerReportSent: (id,reportId,data) => req('PUT',`/managed-customers/${id}/reports/${reportId}/sent`,data),
+  clearManagedCustomerReportSent: (id,reportId) => req('DELETE',`/managed-customers/${id}/reports/${reportId}/sent`),
+  managedCustomerArchivedReport: (id,reportId) => download(`/managed-customers/${id}/reports/${reportId}/download`),
 
   // system update
   systemUpdateStatus:  () => req('GET',  '/settings/system-update/status'),
   systemUpdateCheck:   () => req('POST', '/settings/system-update/check', {}),
   systemUpdateStart:   () => req('POST', '/settings/system-update/start', {}),
   systemUpdateRestart: () => req('POST', '/settings/system-update/restart', {}),
+  deploymentHealth:    () => req('GET',  '/settings/deployment-health'),
 
   // localization settings
-  getLocalization: () => req('GET', '/settings/localization'),
+  getLocalization: (options) => req('GET', '/settings/localization', undefined, options),
   saveLocalization: (data) => req('PUT', '/settings/localization', data),
 
   // admin notifications
@@ -296,7 +621,7 @@ export const api = {
   saveLogging: (data) => req('PUT', '/settings/logging', data),
   downloadLogs: () => {
     return fetch(`${BASE}/settings/logging/download`, {
-      headers: { Authorization: 'Bearer ' + token() },
+      credentials: 'same-origin',
     }).then(r => {
       if (!r.ok) throw new Error(r.statusText);
       return r.blob();
@@ -310,7 +635,125 @@ export const api = {
     });
   },
 
+  // teams (Service Activity Tracking)
+  teamsMine: () => req('GET', '/teams/mine'),
+  teams: (options) => req('GET', '/teams', undefined, options),
+  team: (id) => req('GET', `/teams/${id}`),
+  createTeam: (data) => req('POST', '/teams', data),
+  updateTeam: (id, data) => req('PUT', `/teams/${id}`, data),
+  deleteTeam: (id) => req('DELETE', `/teams/${id}`),
+  setTeamMembers: (id, user_ids) => req('PUT', `/teams/${id}/members`, { user_ids }),
+  slaPolicy: options => req('GET', '/sla/policy', undefined, options),
+  saveSlaPolicy: body => req('PUT', '/sla/policy', body),
+  contractTypes: options => req('GET', '/settings/contract-types', undefined, options),
+  businessCalendar: (options) => req('GET', '/settings/business-calendar', undefined, options),
+  saveBusinessCalendar: (data) => req('PUT', '/settings/business-calendar', data),
+  checkVisit: (data) => req('POST', '/maintenance-visits/check', data),
+  saveContractTypes: body => req('PUT', '/settings/contract-types', body),
+
+  // activity categories / subcategories
+  activityCategories: (options = {}) => req('GET', `/activity-categories${options.includeInactive ? '?include_inactive=1' : ''}`, undefined, options),
+  createActivityCategory: (data) => req('POST', '/activity-categories', data),
+  updateActivityCategory: (id, data) => req('PUT', `/activity-categories/${id}`, data),
+  deleteActivityCategory: (id) => req('DELETE', `/activity-categories/${id}`),
+  createActivitySubcategory: (categoryId, data) => req('POST', `/activity-categories/${categoryId}/subcategories`, data),
+  updateActivitySubcategory: (categoryId, subId, data) => req('PUT', `/activity-categories/${categoryId}/subcategories/${subId}`, data),
+  deleteActivitySubcategory: (categoryId, subId) => req('DELETE', `/activity-categories/${categoryId}/subcategories/${subId}`),
+
+  // technologies
+  technologies: (options = {}) => req('GET', `/technologies${options.includeInactive ? '?include_inactive=1' : ''}`, undefined, options),
+  createTechnology: (data) => req('POST', '/technologies', data),
+  updateTechnology: (id, data) => req('PUT', `/technologies/${id}`, data),
+  deleteTechnology: (id) => req('DELETE', `/technologies/${id}`),
+
+  // skill matrix
+  skillMatrix: (options) => req('GET', '/skills', undefined, options),
+  insights: (days, filters = {}, options) => req('GET', `/insights?${new URLSearchParams({ days, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) })}`, undefined, options),
+  taskInsights: (days, filters = {}, options) => req('GET', `/insights/tasks?${new URLSearchParams({ days, ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value != null)) })}`, undefined, options),
+  rateSkill: (userId, technologyId, data) => req('PUT', `/skills/ratings/${userId}/${technologyId}`, data),
+  setSkillTarget: (technologyId, data) => req('PUT', `/skills/technologies/${technologyId}/target`, data),
+  learningPlans: (options) => req('GET', '/skills/plans', undefined, options),
+  myLearningPlans: (options) => req('GET', '/skills/plans/mine', undefined, options),
+  visitChecklists: () => req('GET', '/visit-checklists'),
+  campaigns: () => req('GET', '/remediation-campaigns'),
+  grafanaSettings: () => req('GET', '/grafana/settings'),
+  saveGrafanaSettings: body => req('PUT', '/grafana/settings', body),
+  importGrafanaTakes: dashboard => req('POST', '/grafana/take-map/import', { dashboard }),
+  syncGrafana: () => req('POST', '/grafana/sync'),
+  grafanaDevices: () => req('GET', '/grafana/devices'),
+  applyGrafana: hostNames => req('POST', '/grafana/apply', { host_names: hostNames }),
+  linkGrafanaDevice: body => req('POST', '/grafana/link', body),
+  grafanaAssets: q => req('GET', `/grafana/assets?q=${encodeURIComponent(q)}`),
+  campaign: id => req('GET', `/remediation-campaigns/${id}`),
+  campaignPreview: source => req('POST', '/remediation-campaigns/preview', source),
+  createCampaign: body => req('POST', '/remediation-campaigns', body),
+  updateCampaign: (id, body) => req('PUT', `/remediation-campaigns/${id}`, body),
+  setCampaignException: (id, assetId, reason) => req('PUT', `/remediation-campaigns/${id}/items/${assetId}`, { exception_reason: reason }),
+  createVisitChecklist: body => req('POST', '/visit-checklists', body),
+  updateVisitChecklist: (id, body) => req('PUT', `/visit-checklists/${encodeURIComponent(id)}`, body),
+  deleteVisitChecklist: id => req('DELETE', `/visit-checklists/${encodeURIComponent(id)}`),
+  saveVisitChecklist: (visitId, checklist) => req('PUT', `/maintenance-visits/${visitId}/checklist`, { checklist }),
+  createLearningPlan: body => req('POST', '/skills/plans', body),
+  updateLearningPlan: (id, body) => req('PUT', `/skills/plans/${id}`, body),
+  setLearningPlanStep: (id, stepId, done) => req('PUT', `/skills/plans/${id}/steps/${stepId}`, { done }),
+  reviewLearningPlan: (id, body) => req('POST', `/skills/plans/${id}/reviews`, body),
+
+  // service activities (Activity Log / MSP Operations Log)
+  exportServiceActivities: async (params = {}) => {
+    const response = await fetch(`${BASE}/service-activities/export?${new URLSearchParams(params)}`, { credentials: 'same-origin', headers: { 'X-SolutionsHub-Request': '1' } });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      handleUnauthorized(response.status, data, true);
+      throw new Error(data.error || 'Failed to export activities');
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'service_activities.xlsx';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+  serviceActivityMeta: () => req('GET', '/service-activities/meta'),
+  serviceActivityAssets: (customerId, options) => req('GET', `/service-activities/assets?customer_id=${encodeURIComponent(customerId)}`, undefined, options),
+  serviceActivities: (params = {}, options) => req('GET', '/service-activities?' + new URLSearchParams(params).toString(), undefined, options),
+  serviceActivity: (id, options) => req('GET', `/service-activities/${id}`, undefined, options),
+  createServiceActivity: (data) => req('POST', '/service-activities', data),
+  updateServiceActivity: (id, data) => req('PUT', `/service-activities/${id}`, data),
+  deleteServiceActivity: (id) => req('DELETE', `/service-activities/${id}`),
+  completeServiceActivity: (id) => req('POST', `/service-activities/${id}/complete`, {}),
+  duplicateServiceActivity: (id) => req('POST', `/service-activities/${id}/duplicate`, {}),
+  createFollowUpTask: (id) => req('POST', `/service-activities/${id}/follow-up-task`, {}),
+  serviceActivityAttachments: (id, options) => req('GET', `/service-activities/${id}/attachments`, undefined, options),
+  uploadServiceActivityAttachment: (id, file) => upload(`/service-activities/${id}/attachments`, 'file', file),
+  downloadServiceActivityAttachmentUrl: (id, attId, downloadToken) =>
+    `${BASE}/service-activities/${id}/attachments/${attId}/download?token=${encodeURIComponent(downloadToken)}`,
+  deleteServiceActivityAttachment: (id, attId) => req('DELETE', `/service-activities/${id}/attachments/${attId}`),
+
+  // customer service profile (customer-team/engineer assignment, activity summary)
+  customerTeams: (id) => req('GET', `/customers/${id}/teams`),
+  setCustomerTeams: (id, team_ids) => req('PUT', `/customers/${id}/teams`, { team_ids }),
+  customerEngineers: (id) => req('GET', `/customers/${id}/engineers`),
+  setCustomerEngineers: (id, user_ids) => req('PUT', `/customers/${id}/engineers`, { user_ids }),
+  setCustomerHiddenSections: (id, hidden) => req('PUT', `/customers/${id}/sections`, { hidden }),
+  customerServiceActivities: (id, params = {}, options) => req('GET', `/customers/${id}/service-activities?` + new URLSearchParams(params).toString(), undefined, options),
+  customerServiceSummary: (id, params = {}, options) => req('GET', `/customers/${id}/service-summary?` + new URLSearchParams(params).toString(), undefined, options),
+  customerContractHours: (id, options) => req('GET', `/customers/${id}/contract-hours`, undefined, options),
+
+  // service activity settings (admin) — retention, attachments/follow-up toggles
+  getServiceActivitySettings: () => req('GET', '/service-activity-settings'),
+  saveServiceActivitySettings: (data) => req('PUT', '/service-activity-settings', data),
+  serviceActivityRetentionStatus: () => req('GET', '/service-activity-settings/retention-status'),
+  purgeOldActivities: () => req('POST', '/service-activity-settings/purge', {}),
+
+  // service activity reports (management)
+  serviceActivityOverview: (params = {}) => req('GET', '/reports/service-activity/overview?' + new URLSearchParams(params).toString()),
+  serviceActivityCustomerReport: (params) => req('GET', '/reports/service-activity/customer?' + new URLSearchParams(params).toString()),
+  serviceActivityEngineerReport: (params) => req('GET', '/reports/service-activity/engineer?' + new URLSearchParams(params).toString()),
+  serviceActivityTeamReport: (params) => req('GET', '/reports/service-activity/team?' + new URLSearchParams(params).toString()),
+
   // weekly report settings
+  customerEmailSetting: () => req('GET', '/report-settings/customer-email'),
+  saveCustomerEmailSetting: enabled => req('PUT', '/report-settings/customer-email', { enabled }),
   getSmtp: () => req('GET', '/report-settings/smtp'),
   saveSmtp: (data) => req('PUT', '/report-settings/smtp', data),
   testSmtp: (smtp, to) => req('POST', '/report-settings/smtp/test', { smtp, to }),
