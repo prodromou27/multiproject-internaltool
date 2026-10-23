@@ -54,16 +54,25 @@ test('the list shows the last review, what is due a review, and assets needing a
     assert.equal((await api(`${base()}?${new URLSearchParams(bad)}`, { token: ids.tokenManager })).status, 400, JSON.stringify(bad));
 });
 
-test('engineers on the customer\'s managed-services team review assets but do not edit them', async () => {
+test('engineers on the customer\'s managed-services team review and edit assets, but cannot change service coverage', async () => {
   await db.prepare('UPDATE teams SET managed_service_operations = 1 WHERE id = ?').run(ids.teamEnabled);
   const asEngineer = (path, options = {}) => api(`${base()}${path}`, { token: ids.tokenEnabled, ...options });
   assert.equal((await asEngineer('/software-status')).status, 200);
   const current = (await asEngineer('')).data.rows.find(r => r.id === fwNew.id);
+  assert.equal(current.coverage_type, 'neither');
   const reviewed = await asEngineer(`/${fwNew.id}/review`, { method: 'POST', body: { version: current.version } });
   assert.equal(reviewed.status, 200, JSON.stringify(reviewed.data));
   assert.equal((await asEngineer(`/${fwNew.id}/versions`)).data[0].user_name, 'Engineer Enabled');
-  assert.equal((await asEngineer(`/${fwNew.id}`, { method: 'PUT', body: { ...reviewed.data, name: 'Renamed' } })).status, 403);
+
+  // Edits asset details, but a coverage_type sent along with it is silently ignored —
+  // service coverage ("Managed"/"Under support"/"Neither") is a manager-only decision.
+  const edited = await asEngineer(`/${fwNew.id}`, { method: 'PUT', body: { ...reviewed.data, location: 'Rack 4', coverage_type: 'managed' } });
+  assert.equal(edited.status, 200, JSON.stringify(edited.data));
+  assert.equal(edited.data.location, 'Rack 4');
+  assert.equal(edited.data.coverage_type, 'neither', 'service coverage must stay a manager-only decision');
+
   assert.equal((await api(`${base()}/${fwNew.id}/review`, { method: 'POST', token: ids.tokenDisabled, body: { version: reviewed.data.version } })).status, 403, 'not on the team');
+  assert.equal((await api(`${base()}/${fwNew.id}`, { method: 'PUT', token: ids.tokenDisabled, body: { ...edited.data, location: 'Should fail' } })).status, 403, 'not on the team');
 });
 
 test('a customer task can be about one of the customer\'s assets', async () => {

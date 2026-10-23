@@ -55,9 +55,10 @@ function modulePermission(req) {
 
 // An engineer who works with the customer may, without holding
 // assets.access, list and add that customer's assets, see their software status,
-// review one and read its version history; the asset router (routes/customer-assets.js)
-// applies the same rule. See customerAccess.engineerOnCustomer.
-const TEAM_ASSET_CALLS=[['GET',/^$/],['POST',/^$/],['GET',/^\/software-status$/],['GET',/^\/options$/],['POST',/^\/\d+\/review$/],['GET',/^\/\d+\/versions$/]];
+// review one, edit its details (not its service coverage) and read its version
+// history; the asset router (routes/customer-assets.js) applies the same rule.
+// See customerAccess.engineerOnCustomer.
+const TEAM_ASSET_CALLS=[['GET',/^$/],['POST',/^$/],['GET',/^\/software-status$/],['GET',/^\/options$/],['POST',/^\/\d+\/review$/],['GET',/^\/\d+\/versions$/],['PUT',/^\/\d+$/]];
 async function isManagedTeamAssetCall(req,user) {
   if (user?.role!=='engineer') return false;
   const match=/^\/api\/customers\/(\d+)\/assets(\/.*)?$/.exec((req.baseUrl || '') + (req.path && req.path!=='/' ? req.path : ''));
