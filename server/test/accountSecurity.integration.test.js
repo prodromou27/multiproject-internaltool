@@ -75,13 +75,17 @@ test('two-factor set-up is a POST that keeps the new seed apart (encrypted) unti
   if (isConfigured()) assert.ok(isEncrypted(row.totp_pending_secret), 'stored encrypted');
   const seed = decrypt(row.totp_pending_secret);
 
+  const otherSession = await tokenOf(me.id);
   assert.equal((await api('/api/auth/2fa/enable', { method: 'POST', token: me.token, body: { code: '000000' } })).status, 400);
   const on = await api('/api/auth/2fa/enable', { method: 'POST', token: me.token, body: { code: speakeasy.totp({ secret: seed, encoding: 'base32' }) } });
   assert.equal(on.status, 200);
   const enabled = await db.prepare('SELECT totp_secret, totp_pending_secret, totp_enabled FROM users WHERE id = ?').get(me.id);
   assert.deepEqual([Number(enabled.totp_enabled), enabled.totp_pending_secret, decrypt(enabled.totp_secret)], [1, null, seed]);
   assert.equal(Number(await audit(me.id, 'totp_enabled')), 1);
-  assert.equal((await api('/api/auth/2fa/setup', { method: 'POST', token: me.token })).status, 400, 'set-up does not replace an active seed');
+  assert.ok(on.data.token, 'this session gets a new token');
+  assert.equal((await api('/api/auth/2fa/setup', { method: 'POST', token: on.data.token })).status, 400, 'set-up does not replace an active seed');
+  assert.equal((await api('/api/auth/me', { token: otherSession })).status, 401, 'a session that predates 2FA is signed out, so it cannot skip the new factor');
+  assert.equal((await api('/api/auth/me', { token: on.data.token })).status, 200);
 });
 
 test('codes are limited per account, and turning two-factor off signs out other sessions', async () => {

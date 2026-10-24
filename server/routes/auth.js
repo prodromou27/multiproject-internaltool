@@ -431,12 +431,14 @@ router.post('/2fa/enable', requireAuth, async (req, res) => {
   if (!valid) { recordFailure('totp', req.user.id); return res.status(400).json({ error: 'Invalid code — check your authenticator app' }); }
 
   clearFailures('totp', req.user.id);
-  const enabled = await db.prepare('UPDATE users SET totp_secret = totp_pending_secret, totp_pending_secret = NULL, totp_enabled = 1 WHERE id = ? AND totp_pending_secret = ? AND totp_enabled = 0')
+  // Other sessions end: they were signed in before the second factor now required of this account existed.
+  const enabled = await db.prepare('UPDATE users SET totp_secret = totp_pending_secret, totp_pending_secret = NULL, totp_enabled = 1, token_version = token_version + 1 WHERE id = ? AND totp_pending_secret = ? AND totp_enabled = 0')
     .run(req.user.id, user.totp_pending_secret);
   if (!enabled.changes) return res.status(409).json({ error: 'Setup changed in another window. Start again.' });
   await recordAuthEvent(req, 'totp_enabled', null, req.user);
   notifyAccountChange(req.user, 'Two-factor authentication was turned on for your account.');
-  res.json({ ok: true });
+  const updated = await db.prepare('SELECT id, name, email, role, avatar_url, token_version FROM users WHERE id = ?').get(req.user.id);
+  res.json({ ok: true, token: issueSession(req, res, updated) });
 });
 
 /* ── 2FA: disable — requires current password for confirmation ── */

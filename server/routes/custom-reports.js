@@ -14,6 +14,7 @@ const { ACCESS_SQL,validateShares,replaceShares,reportShares } = require('../rep
 const backgroundJobs = require('../backgroundJobs');
 const fileCipher = require('../cipher');
 const { exportRoot } = require('../customReportExport');
+const { safeCell } = require('../xlsxSafety');
 router.use(requirePermission('reports.access'));
 router.get('/sources',async (req,res) => {
   const row = await db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
@@ -193,7 +194,7 @@ router.post('/export',async (req,res) => {
   if (result.truncated) return res.status(413).json({ error: 'Report exceeds 5000 rows. Narrow the filters before exporting.' });
   const workbook = new ExcelJS.Workbook(),sheet = workbook.addWorksheet('Report');
   sheet.addRow(result.columns.map(column => column.label));
-  for (const row of result.rows) sheet.addRow(result.columns.map(column => row[column.key] ?? ''));
+  for (const row of result.rows) sheet.addRow(result.columns.map(column => safeCell(row[column.key] ?? '')));
   res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition','attachment; filename="custom-report.xlsx"');
   res.send(await workbook.xlsx.writeBuffer());

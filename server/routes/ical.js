@@ -10,7 +10,7 @@ const { hasPermission } = require('../permissions');
 // Escape special iCal text characters
 function icalEsc(str) {
   if (!str) return '';
-  return String(str).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  return String(str).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r\n|\r|\n/g, '\\n');
 }
 
 // Format a YYYY-MM-DD date string as iCal DATE value
@@ -184,3 +184,4 @@ async function feed(raw, req, res) {
 }
 
 module.exports = router;
+module.exports.icalEsc = icalEsc;

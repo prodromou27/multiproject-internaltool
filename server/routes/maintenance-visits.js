@@ -6,6 +6,7 @@ const db = require('../db');
 const { sentVersion, conflict } = require('../editVersion');
 const { requireAuth, requireManager, requireManagerOrPlanner, requireDownloadManagerOrPlanner } = require('../middleware/auth');
 const { notify } = require('../notifications');
+const { safeCell } = require('../xlsxSafety');
 const { decrypt } = require('../fieldCipher');
 const { visitInvite, inviteFileName } = require('../visitInvite');
 const { maintenanceVisitFilters, searchMaintenanceVisits } = require('../maintenanceVisitFilters');
@@ -189,8 +190,8 @@ router.get('/export', requireDownloadManagerOrPlanner, async (req, res) => {
   const worksheet = workbook.addWorksheet('Visits');
   worksheet.addRow(['Title','Customer','Scheduled Date','Status','Engineers','Report Status','Notes']);
   for (const row of rows) worksheet.addRow([
-    row.title, row.customer_name || '', row.scheduled_date || '', row.status,
-    row.engineer_names || '', row.report_sent_to_customer ? 'Sent to PM' : row.report_sent ? 'Report Complete' : 'Pending', row.notes || '',
+    safeCell(row.title), safeCell(row.customer_name || ''), row.scheduled_date || '', safeCell(row.status),
+    safeCell(row.engineer_names || ''), row.report_sent_to_customer ? 'Sent to PM' : row.report_sent ? 'Report Complete' : 'Pending', safeCell(row.notes || ''),
   ]);
   const buf = await workbook.xlsx.writeBuffer();
   res.setHeader('Content-Disposition', 'attachment; filename="maintenance-visits.xlsx"');
