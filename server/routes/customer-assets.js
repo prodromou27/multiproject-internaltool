@@ -42,7 +42,8 @@ function requireAssetAccessMiddleware(req,res,next) {
     try {
       if (await hasPermission(req.user,'assets.access')) return next();
       const teamRoute=(req.path==='/' && ['GET','POST'].includes(req.method)) || (['/software-status','/options'].includes(req.path) && req.method==='GET')
-        || (/^\/\d+\/review$/.test(req.path) && req.method==='POST') || (/^\/\d+\/versions$/.test(req.path) && req.method==='GET');
+        || (/^\/\d+\/review$/.test(req.path) && req.method==='POST') || (/^\/\d+\/versions$/.test(req.path) && req.method==='GET')
+        || (/^\/\d+$/.test(req.path) && req.method==='PUT');
       if (teamRoute && positiveId(req.params.id) && await engineerOnCustomer(req.user,Number(req.params.id))) return next();
       return res.status(403).json({ error: 'You do not have permission to perform this action' });
     } catch (error) { next(error); }
@@ -406,7 +407,11 @@ router.put('/:assetId',async (req,res) => {
   if (!positiveId(req.params.assetId) || !positiveId(req.body.version)) return res.status(400).json({ error: 'Valid asset ID and version are required' });
   const customer=Number(req.params.id),id=Number(req.params.assetId),existing=await db.prepare('SELECT * FROM customer_assets WHERE id=? AND customer_id=?').get(id,customer);
   if (!existing) return res.status(404).json({ error: 'Asset not found' });
-  const input=validate(req.body,existing); if (input.error) return res.status(400).json({ error: input.error });
+  // An engineer without assets.access may only reach this route via engineerOnCustomer
+  // (see requireAssetAccessMiddleware); they can edit any other detail but not service
+  // coverage ("Managed"/"Under support"/"Neither") — that stays whatever it already was.
+  const body=await hasPermission(req.user,'assets.access') ? req.body : { ...req.body,coverage_type:existing.coverage_type };
+  const input=validate(body,existing); if (input.error) return res.status(400).json({ error: input.error });
   const refError=await references(input.value,existing); if (refError) return res.status(400).json({ error: refError });
   const value=stored(input.value);
   try {

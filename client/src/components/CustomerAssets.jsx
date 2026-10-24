@@ -27,7 +27,7 @@ const isCloud=type => /cloud|saas|subscription|software|licen[cs]e|365|tenant/i.
 const DEVICE_FIELDS=['asset_tag','hostname','ip_address','mac_address','serial_number','software_version'];
 const ESSENTIALS=['name','asset_type','vendor','model','technology_id','coverage_type','lifecycle_status','environment','criticality'];
 
-function AssetForm({ customerId,initial,technologies,onClose,onSaved }) {
+function AssetForm({ customerId,initial,technologies,restricted=false,onClose,onSaved }) {
   const [form,setForm]=useState(initial || empty);
   const [quantity,setQuantity]=useState('1'),[serials,setSerials]=useState('');
   // Editing opens the details when any are filled; adding starts with the essentials only.
@@ -66,7 +66,7 @@ function AssetForm({ customerId,initial,technologies,onClose,onSaved }) {
         <div className="form-row">
           {!initial && <div className="form-group"><label htmlFor="asset-quantity">Count</label><input id="asset-quantity" type="number" min="1" max="50" value={quantity} onChange={event => setQuantity(event.target.value)} aria-describedby="asset-quantity-hint" />
             <small id="asset-quantity-hint" className="text-muted">{several ? `Adds ${count} assets: ${form.name.trim() || 'Name'} 1 … ${count}.` : 'Several identical devices are added as separate assets.'}</small></div>}
-          <div className="form-group"><label htmlFor="asset-coverage">Service coverage</label><select id="asset-coverage" value={form.coverage_type} onChange={set('coverage_type')}>{COVERAGE.map(value => <option key={value} value={value}>{value==='support' ? 'Under support' : label(value)}</option>)}</select>{initial?.coverage_source==='contract' && <small className="text-muted">Set by a contract in force; it follows the contract (Managed for a managed customer, otherwise Under support).</small>}</div>
+          <div className="form-group"><label htmlFor="asset-coverage">Service coverage</label><select id="asset-coverage" disabled={restricted} value={form.coverage_type} onChange={set('coverage_type')}>{COVERAGE.map(value => <option key={value} value={value}>{value==='support' ? 'Under support' : label(value)}</option>)}</select>{restricted ? <small className="text-muted">Only a manager can change service coverage.</small> : initial?.coverage_source==='contract' && <small className="text-muted">Set by a contract in force; it follows the contract (Managed for a managed customer, otherwise Under support).</small>}</div>
           <div className="form-group"><label htmlFor="asset-technology">Technology</label><select id="asset-technology" value={form.technology_id || ''} onChange={set('technology_id')}><option value="">Not linked</option>{initial?.technology_id && !technologies.some(row => row.id===Number(initial.technology_id)) && <option value={initial.technology_id}>{initial.technology_name || 'Previous technology'} (inactive)</option>}{technologies.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></div>
         </div>
         {several && !cloud && <div className="form-group"><label htmlFor="asset-serials">Serial numbers <span className="text-muted">(optional, one per line, in order)</span></label>
@@ -255,8 +255,8 @@ export default function CustomerAssets({ customerId,restricted=false,isManager=f
       {reviewDue(row,summary.review_days || 90) && <ToneBadge tone="warning">Review due</ToneBadge>}</div> },
     { key:'actions',label:'Actions',render:row => <div className="table-actions">
       <button type="button" className="btn btn-sm btn-ghost" onClick={() => setReviewing(row)} aria-label={`Review ${row.name}`}><ClipboardCheck size={14} /> Review</button>
+      <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing({ initial:row })} aria-label={`Edit ${row.name}`} title="Edit"><Pencil size={14} /></button>
       {!restricted && <>
-        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing({ initial:row })} aria-label={`Edit ${row.name}`} title="Edit"><Pencil size={14} /></button>
         <button type="button" className="btn btn-sm btn-ghost" onClick={() => setFilesFor(row)} aria-label={`Files for ${row.name}`} title="Files"><Paperclip size={14} />{Number(row.attachment_count)>0 && <span className="ca-count">{row.attachment_count}</span>}</button>
         <button type="button" className="btn btn-sm btn-ghost btn-icon-danger" onClick={() => remove(row)} aria-label={`Delete ${row.name}`} title="Delete"><Trash2 size={14} /></button>
       </>}
@@ -283,7 +283,7 @@ export default function CustomerAssets({ customerId,restricted=false,isManager=f
       empty={filtered ? 'No assets in this view' : 'No assets recorded for this customer yet'}
       emptyAction={filtered && <button className="btn btn-ghost btn-sm" onClick={() => { setView('');setSearch('');setSearchInput('');setCoverage('');setStatus('');setPage(1); }}>Show all assets</button>} />
     {data && data.total>data.page_size && <Pagination page={page} total={data.total} pageSize={data.page_size} loading={loading} onPageChange={setPage} label="Asset pages" />}
-    {editing && data && <AssetForm customerId={customerId} initial={editing.initial} technologies={data.technologies} onClose={() => setEditing(null)} onSaved={() => { toast.success('Asset saved');load(); }} />}
+    {editing && data && <AssetForm customerId={customerId} initial={editing.initial} technologies={data.technologies} restricted={restricted} onClose={() => setEditing(null)} onSaved={() => { toast.success('Asset saved');load(); }} />}
     {filesFor && <AssetFiles customerId={customerId} asset={filesFor} onClose={() => setFilesFor(null)} onChanged={load} />}
     {reviewing && <AssetReview customerId={customerId} asset={reviewing} software={software?.get(reviewing.id)} canAddTask={canAddTask} onClose={() => setReviewing(null)}
       onSaved={message => { setReviewing(null);toast.success(message);load(); }}

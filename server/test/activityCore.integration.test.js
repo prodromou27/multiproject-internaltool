@@ -187,7 +187,7 @@ test('activities link only authorized same-customer assets and preserve asset hi
   assert.equal((await api(`/api/customers/${ids.customerUnassigned}/assets/${otherAsset.data.id}`,{ method:'DELETE',token:ids.tokenManager,body:{ version:1 } })).status,200);
 });
 
-test('engineers who work with a customer can list, add and review its assets, and nothing else', async () => {
+test('engineers who work with a customer can list, add, review and edit its assets, but not their service coverage, delete, import/export or files', async () => {
   const customer = (await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Managed assets fixture')).lastInsertRowid;
   const path = `/api/customers/${customer}/assets`;
   const body = { name: 'Edge firewall', asset_type: 'Firewall', environment: 'production', criticality: 'high', lifecycle_status: 'active', coverage_type: 'managed' };
@@ -203,9 +203,13 @@ test('engineers who work with a customer can list, add and review its assets, an
     assert.equal(listed.status, 200);
     assert.ok(listed.data.rows.some(row => row.id === added.data.id));
     const assetPath = `${path}/${added.data.id}`;
-    // Adding is all they get: no edit, delete, import/export or files.
-    assert.equal((await api(assetPath, { method: 'PUT', token: ids.tokenEnabled, body: { ...body, name: 'Renamed', version: 1 } })).status, 403);
-    assert.equal((await api(assetPath, { method: 'DELETE', token: ids.tokenEnabled, body: { version: 1 } })).status, 403);
+    // They may edit asset details, but not its service coverage; delete,
+    // import/export and files stay out of reach.
+    const edited = await api(assetPath, { method: 'PUT', token: ids.tokenEnabled, body: { ...body, name: 'Renamed', coverage_type: 'neither', version: 1 } });
+    assert.equal(edited.status, 200, JSON.stringify(edited.data));
+    assert.equal(edited.data.name, 'Renamed');
+    assert.equal(edited.data.coverage_type, 'managed', 'service coverage must stay a manager-only decision');
+    assert.equal((await api(assetPath, { method: 'DELETE', token: ids.tokenEnabled, body: { version: edited.data.version } })).status, 403);
     assert.equal((await api(`${path}/export`, { token: ids.tokenEnabled })).status, 403);
     assert.equal((await api(`${path}/${added.data.id}/attachments`, { token: ids.tokenEnabled })).status, 403);
     // The Customer 360 summary tells the page which asset access this viewer has.
@@ -218,7 +222,7 @@ test('engineers who work with a customer can list, add and review its assets, an
     await setCapability(0);
     assert.equal((await api(path, { token: ids.tokenEnabled })).status, 200);
     // Managers keep full control throughout.
-    assert.equal((await api(assetPath, { method: 'DELETE', token: ids.tokenManager, body: { version: 1 } })).status, 200);
+    assert.equal((await api(assetPath, { method: 'DELETE', token: ids.tokenManager, body: { version: edited.data.version } })).status, 200);
   } finally { await setCapability(0); }
 });
 
