@@ -8,6 +8,7 @@ const { requireAuth, requireManager, requireDownloadAuth } = require('../middlew
 const { notify } = require('../notifications');
 const { canAccessCustomer } = require('../customerAccess');
 const { decrypt } = require('../fieldCipher');
+const { safeCell } = require('../xlsxSafety');
 const subtasks = require('../taskSubtasks');
 const taskTickets = require('../taskTickets');
 const taskEngineers = require('../taskEngineers');
@@ -459,7 +460,7 @@ router.get('/export', requireDownloadAuth, async (req, res) => {
     WHERE ${filters.where} ORDER BY ${filters.order}`).all(...filters.params)));
   const wsData = [
     ['Title','Status','Priority','Deadline','Project','Customer','Assigned To','Created By','Hours Logged','Ad-hoc'],
-    ...rows.map(r => [r.title, r.status, r.priority, r.deadline || '', r.project || '', r.customer_name || '', r.assigned_to || '', r.created_by, Math.round(Number(r.logged_hours) * 10) / 10, r.is_adhoc ? 'Yes' : 'No']),
+    ...rows.map(r => [safeCell(r.title), safeCell(r.status), safeCell(r.priority), r.deadline || '', safeCell(r.project || ''), safeCell(r.customer_name || ''), safeCell(r.assigned_to || ''), safeCell(r.created_by), Math.round(Number(r.logged_hours) * 10) / 10, r.is_adhoc ? 'Yes' : 'No']),
   ];
 
   const workbook  = new ExcelJS.Workbook();

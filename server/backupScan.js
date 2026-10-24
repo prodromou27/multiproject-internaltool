@@ -36,6 +36,14 @@ const SAFE_EXTENSIONS = new Set(['pg_trgm', 'plpgsql']);
 const SAFE_LANGUAGES = new Set(['sql', 'plpgsql']);
 // Functions that reach outside the database: server files, large objects, other servers.
 const OUTSIDE = /\b(pg_read_file|pg_read_binary_file|pg_ls_\w*|pg_stat_file|pg_file_\w+|lo_import|lo_export|lo_from_bytea|lo_put|dblink\w*|pg_execute_server_program|pg_reload_conf|pg_terminate_backend|pg_cancel_backend|pg_promote|pg_rotate_logfile)\b/i;
+// GRANT/REVOKE of an object privilege names the object kind right after ON, as pg_dump always writes it.
+// A role-membership grant (what this must refuse) never has an object kind there, so this is a structural
+// check, not a substring search — unlike a bare /\bON\b/ test it cannot be satisfied by a quoted identifier
+// such as "ON" that merely contains the word ON.
+const GRANT_OBJECT = /\bON\s+(TABLE|ALL\s+TABLES\s+IN\s+SCHEMA|SEQUENCE|ALL\s+SEQUENCES\s+IN\s+SCHEMA|SCHEMA|FUNCTION|PROCEDURE|ROUTINE|ALL\s+(FUNCTIONS|PROCEDURES|ROUTINES)\s+IN\s+SCHEMA|DATABASE|DOMAIN|FOREIGN\s+DATA\s+WRAPPER|FOREIGN\s+SERVER|LANGUAGE|LARGE\s+OBJECT|TABLESPACE|TYPE|VIEW|MATERIALIZED\s+VIEW|PARAMETER)\b/i;
+// Lets a grant name a grantor other than the current user; pg_dump never writes this, and it is also the
+// clause a role-membership grant can use to smuggle an arbitrary role name past a plain keyword search.
+const GRANTED_BY = /\bGRANTED\s+BY\b/i;
 const REFUSED = [
   [/^SET\s+(LOCAL\s+|SESSION\s+)?(ROLE|SESSION\s+AUTHORIZATION)\b/i, 'it changes the database user'],
   [/^ALTER\s+(SYSTEM|ROLE|USER|GROUP|DATABASE|SERVER|LARGE\s+OBJECT|EVENT\s+TRIGGER|SUBSCRIPTION|PUBLICATION|TABLESPACE|LANGUAGE|FOREIGN\s+DATA\s+WRAPPER|USER\s+MAPPING)\b/i, 'it changes the database server or its users'],
@@ -55,7 +63,10 @@ function checkStatement(text, bodies, line) {
   for (const [pattern, reason] of REFUSED) if (pattern.test(sql)) refuse(line, reason);
   if (/^SELECT\b/i.test(sql) && !/^SELECT pg_catalog\.(set_config|setval) ?\(/i.test(sql)) refuse(line, 'it runs a query');
   if (/^COPY\b/i.test(sql) && !COPY_FROM_STDIN.test(sql)) refuse(line, 'it reads or writes files on the server (COPY)');
-  if (/^(GRANT|REVOKE)\b/i.test(sql) && !/\bON\b/i.test(sql)) refuse(line, 'it grants a database role');
+  if (/^(GRANT|REVOKE)\b/i.test(sql)) {
+    if (GRANTED_BY.test(sql)) refuse(line, 'it names a grantor (GRANTED BY)');
+    if (!GRANT_OBJECT.test(sql)) refuse(line, 'it grants a database role');
+  }
   const extension = sql.match(/^CREATE EXTENSION (IF NOT EXISTS )?"?([\w-]+)"?/i);
   if (extension && !SAFE_EXTENSIONS.has(extension[2].toLowerCase())) refuse(line, `it adds the ${extension[2]} extension`);
   if (/^(CREATE|ALTER)\s+(OR\s+REPLACE\s+)?(FUNCTION|PROCEDURE|AGGREGATE)\b/i.test(sql)) {

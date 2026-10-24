@@ -5,6 +5,7 @@ const cipher=require('./cipher');
 const db=require('./db');
 const execution=require('./reportExecution');
 const { dbTimestamp }=require('./backgroundJobs');
+const { safeCell }=require('./xlsxSafety');
 
 const exportRoot=path.resolve(__dirname,'uploads','exports');
 
@@ -23,7 +24,7 @@ async function generate(payload,job) {
   } else {
     const workbook=new ExcelJS.Workbook(),sheet=workbook.addWorksheet('Report');
     sheet.addRow(result.columns.map(column => column.label));
-    for (const row of result.rows) sheet.addRow(result.columns.map(column => row[column.key] ?? ''));
+    for (const row of result.rows) sheet.addRow(result.columns.map(column => safeCell(row[column.key] ?? '')));
     raw=Buffer.from(await workbook.xlsx.writeBuffer());type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';name='custom-report.xlsx';
   }
   const encrypted=cipher.encrypt(raw),file=`job-${job.id}.bin`;

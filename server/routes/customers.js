@@ -8,6 +8,7 @@ const { logAudit } = require('../auditLog');
 const { requireAuth, requireManager, requireManagerOrPlanner, requirePermission, requireDownloadManagerOrPlanner } = require('../middleware/auth');
 const customerContacts = require('../customerContacts');
 const { encryptCustomer, decryptCustomer } = require('../fieldCipher');
+const { safeCell: xlsxSafeCell } = require('../xlsxSafety');
 const { canAccessCustomer,positiveId }=require('../customerAccess');
 const { sentVersion, conflict }=require('../editVersion');
 const { parseCustomerListQuery,customerListPage }=require('../customerDirectory');
@@ -153,7 +154,7 @@ router.get('/export', requireDownloadManagerOrPlanner, async (req, res) => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Customers');
   sheet.addRow(header).font = { bold: true };
-  rows.forEach(row => sheet.addRow(row));
+  rows.forEach(row => sheet.addRow(row.map(xlsxSafeCell)));
   header.forEach((title, index) => { sheet.getColumn(index + 1).width = ['Customer', 'Address', 'Email', 'Notes'].includes(title) ? 30 : 18; });
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

@@ -3,6 +3,7 @@ const ExcelJS = require('exceljs');
 const db = require('../db');
 const { requirePermission, requireDownloadPermission } = require('../middleware/auth');
 const { hasPermission } = require('../permissions');
+const { safeCell } = require('../xlsxSafety');
 const { decrypt: decryptField } = require('../fieldCipher');
 router.use('/custom', require('./custom-reports'));
 const requireReports = requirePermission('reports.access');
@@ -231,7 +232,7 @@ router.get('/service-activity/export', requireReportsDownload, async (req, res) 
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Service Activity Report');
   worksheet.addRow(['Date', 'Customer', 'Team', 'Engineer', 'Category', 'Title', 'Notes', 'Duration (min)', 'Billable', 'Ticket']);
-  rows.forEach(r => worksheet.addRow([r.activity_date, r.customer, r.team, r.engineer, r.category, r.title, r.notes, r.duration_minutes, r.billable_classification, r.ticket_reference]));
+  rows.forEach(r => worksheet.addRow([r.activity_date, safeCell(r.customer), safeCell(r.team), safeCell(r.engineer), safeCell(r.category), safeCell(r.title), safeCell(r.notes), r.duration_minutes, safeCell(r.billable_classification), safeCell(r.ticket_reference)]));
   const buf = await workbook.xlsx.writeBuffer();
   res.setHeader('Content-Disposition', 'attachment; filename="service_activity_report.xlsx"');
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

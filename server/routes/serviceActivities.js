@@ -11,6 +11,7 @@ const db      = require('../db');
 const { requireAuth, requireManager, requireDownloadAuth } = require('../middleware/auth');
 const { logAudit } = require('../auditLog');
 const { generateActivityReference, isCustomerAuthorizedForEngineer } = require('../serviceActivities');
+const { safeCell } = require('../xlsxSafety');
 const { uploadDir, upload, safeStoredName, safeDownloadName, hasAllowedMagic } = require('../uploadUtils');
 const fs = require('fs');
 const path = require('path');
@@ -541,7 +542,7 @@ router.get('/export', requireDownloadAuth, requireServiceActivityAccess, async (
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Service Activities');
   worksheet.addRow(['Reference', 'Date', 'Customer', 'Category', 'Title', 'Duration (min)', 'Status', 'Billable', 'Ticket', 'Engineer']);
-  rows.forEach(r => worksheet.addRow([r.activity_reference, r.activity_date, decryptField(r.customer), r.category, r.title, r.duration_minutes, r.status, r.billable_classification, r.ticket_reference, r.engineer]));
+  rows.forEach(r => worksheet.addRow([safeCell(r.activity_reference), r.activity_date, safeCell(decryptField(r.customer)), safeCell(r.category), safeCell(r.title), r.duration_minutes, safeCell(r.status), safeCell(r.billable_classification), safeCell(r.ticket_reference), safeCell(r.engineer)]));
   const buf = await workbook.xlsx.writeBuffer();
   res.setHeader('Content-Disposition', 'attachment; filename="service_activities.xlsx"');
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
