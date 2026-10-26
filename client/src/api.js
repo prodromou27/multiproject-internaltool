@@ -138,6 +138,16 @@ export const api = {
   pagedProjects: (params = {},options) => req('GET','/projects?' + new URLSearchParams({ ...params,paged:1 }).toString(),undefined,options),
   project: (id, options) => req('GET', `/projects/${id}`, undefined, options),
   createProject: (data) => req('POST', '/projects', data),
+  // Projects as an Excel file: { blob, filename }.
+  exportProjects: async () => {
+    const response = await fetch(`${BASE}/projects/export`, { credentials: 'same-origin', headers: { 'X-SolutionsHub-Request': '1' } });
+    if (!response.ok) { const data = await response.json().catch(() => ({})); handleUnauthorized(response.status, data, true); throw new Error(data.error || 'Export failed'); }
+    const filename = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') || '')?.[1] || 'projects.xlsx';
+    return { blob: await response.blob(), filename };
+  },
+  projectsTemplateUrl: () => `${BASE}/projects/template/download`,
+  previewProjectImport: file => upload('/projects/import/preview', 'file', file),
+  importProjects: (file, { previewToken } = {}) => upload('/projects/import', 'file', file, previewToken ? { preview_token: previewToken } : {}),
   updateProject: (id, data) => req('PUT', `/projects/${id}`, data),
   requestClosure: (id) => req('POST', `/projects/${id}/request-closure`, {}),
   approveClosure: (id, review = {}) => req('POST', `/projects/${id}/approve-closure`, review),
@@ -346,6 +356,7 @@ export const api = {
   removeTimeOff: id => req('DELETE', `/visit-planning/time-off/${id}`),
   maintenanceVisit: (id) => req('GET', `/maintenance-visits/${id}`),
   maintenanceVisitAssets: (customerId, options) => req('GET', `/maintenance-visits/assets/choices?customer_id=${encodeURIComponent(customerId)}`, undefined, options),
+  maintenanceVisitContracts: (customerId, options) => req('GET', `/maintenance-visits/contracts/choices?customer_id=${encodeURIComponent(customerId)}`, undefined, options),
   createVisit: (data) => req('POST', '/maintenance-visits', data),
   updateVisit: (id, data) => req('PUT', `/maintenance-visits/${id}`, data),
   markReportSent: (id) => req('POST', `/maintenance-visits/${id}/report-sent`, {}),

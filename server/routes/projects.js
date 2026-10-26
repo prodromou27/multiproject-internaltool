@@ -1,4 +1,6 @@
 const router = require('express').Router();
+const multer = require('multer');
+const ExcelJS = require('exceljs');
 const { notifyShared, notifyUser } = require('../notifications');
 const db = require('../db');
 const approvals = require('../approvalAging');
@@ -7,6 +9,9 @@ const { requireAuth, requireManager } = require('../middleware/auth');
 const { notify } = require('../notifications');
 const { decrypt } = require('../fieldCipher');
 const { logAudit } = require('../auditLog');
+const { safeCell } = require('../xlsxSafety');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 /* ── RAG computation ───────────────────────────────────────── */
 function computeRag(row) {
@@ -229,6 +234,169 @@ router.get('/approvals', requireManager, async (req, res) => {
     reviewers: eligible.map(r => ({ ...r, assigned: counts.get(r.id) || 0 })), total: Number(total), page, page_size: pageSize });
 });
 
+// ── Export ─────────────────────────────────────────────────────────────────
+router.get('/export', requireManager, async (req, res) => {
+  const rows = await db.prepare(`
+    SELECT p.id, p.project_code, p.title, p.description, p.status, p.priority, p.start_date, p.deadline,
+      cu.name AS customer_name, u.name AS created_by_name, p.created_at
+    FROM projects p
+    JOIN users u ON p.created_by = u.id
+    LEFT JOIN customers cu ON p.customer_id = cu.id
+    ORDER BY p.created_at DESC
+  `).all();
+  const members = rows.length ? await db.prepare(`
+    SELECT pa.project_id, eu.name FROM project_assignments pa JOIN users eu ON eu.id = pa.user_id
+    WHERE pa.project_id IN (${rows.map(() => '?').join(',')}) ORDER BY pa.project_id, eu.name
+  `).all(...rows.map(r => r.id)) : [];
+  const membersByProject = new Map();
+  for (const m of members) { if (!membersByProject.has(m.project_id)) membersByProject.set(m.project_id, []); membersByProject.get(m.project_id).push(m.name); }
+  for (const row of rows) row.member_names = (membersByProject.get(row.id) || []).join(', ');
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Projects');
+  worksheet.addRow(['Project ID', 'Title', 'Description', 'Status', 'Priority', 'Start Date', 'Deadline', 'Customer', 'Members', 'Created By', 'Created At']);
+  for (const row of rows) worksheet.addRow([
+    safeCell(row.project_code), safeCell(row.title), safeCell(row.description), safeCell(row.status), safeCell(row.priority),
+    row.start_date || '', row.deadline || '', safeCell(decrypt(row.customer_name) || ''), safeCell(row.member_names || ''),
+    safeCell(row.created_by_name), row.created_at || '',
+  ]);
+  const buf = await workbook.xlsx.writeBuffer();
+  res.setHeader('Content-Disposition', 'attachment; filename="projects.xlsx"');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
+// ── Template download (before any other GET that could shadow it) ──────────
+router.get('/template/download', requireManager, async (req, res) => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Projects');
+  [
+    ['project_code*', 'title*', 'description*', 'start_date*', 'member_names*', 'customer_name', 'priority', 'deadline'],
+    ['PRJ-2026-001', 'Network refresh', 'Replace core switches', '2026-11-01', 'Alice Engineer, Bob Smith', 'Acme Corp', 'high', '2027-02-01'],
+    ['PRJ-2026-002', 'Internal audit',  'Annual security review', '2026-11-15', 'Alice Engineer', '', 'medium', ''],
+  ].forEach(row => worksheet.addRow(row));
+  [16, 24, 30, 14, 34, 22, 12, 14].forEach((w, i) => { worksheet.getColumn(i + 1).width = w; });
+  const buf = await workbook.xlsx.writeBuffer();
+  res.setHeader('Content-Disposition', 'attachment; filename="projects_template.xlsx"');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
+// Convert an ExcelJS cell value to string, handling dates and rich text.
+function projectCellToString(v) {
+  if (v === null || v === undefined) return '';
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (typeof v === 'object' && v.richText) return v.richText.map(rt => rt.text || '').join('');
+  if (typeof v === 'object' && v.formula !== undefined) return projectCellToString(v.result);
+  return String(v);
+}
+// Equivalent of XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false }).
+function projectSheetToJson(worksheet) {
+  if (!worksheet || worksheet.rowCount < 2) return [];
+  const headerRow = worksheet.getRow(1);
+  const maxCol = headerRow.cellCount;
+  const headers = [];
+  for (let c = 1; c <= maxCol; c++) headers[c] = projectCellToString(headerRow.getCell(c).value);
+  const rows = [];
+  for (let r = 2; r <= worksheet.rowCount; r++) {
+    const row = worksheet.getRow(r);
+    const obj = {};
+    for (let c = 1; c <= maxCol; c++) { if (headers[c]) obj[headers[c]] = projectCellToString(row.getCell(c).value); }
+    rows.push(obj);
+  }
+  return rows;
+}
+
+// The workbook's rows: { rows, hash } or { error }.
+async function readProjectWorkbook(file) {
+  if (!file) return { error: 'No file uploaded' };
+  const workbook = new ExcelJS.Workbook();
+  try { require('../uploadUtils').assertSafeSpreadsheet(file.buffer); await workbook.xlsx.load(file.buffer); }
+  catch (e) { return { error: e.status === 400 ? e.message : 'Could not parse file. Use .xlsx format' }; }
+  const rows = projectSheetToJson(workbook.worksheets[0]);
+  if (!rows.length) return { error: 'File is empty or has no data rows' };
+  if (rows.length > 5000) return { error: 'Maximum 5000 rows per import. Please split your file.' };
+  const normalize = obj => Object.fromEntries(Object.entries(obj).map(([k, v]) => [k.replace(/\*/g, '').trim().toLowerCase().replace(/\s+/g, '_'),
+    v instanceof Date ? v.toISOString().slice(0, 10) : typeof v === 'string' ? v.trim() : String(v ?? '').trim()]));
+  return { rows: rows.map(normalize), hash: require('crypto').createHash('sha256').update(file.buffer).digest('hex') };
+}
+
+// What importing would do: each row new, already there (same Project ID), or not imported with the reason.
+async function planProjectImport(read) {
+  const customers = (await db.prepare('SELECT id, name FROM customers').all()).map(c => ({ id: Number(c.id), name: decrypt(c.name) || '' }));
+  const users = await db.prepare("SELECT id, name, email FROM users WHERE role='engineer' AND active=1").all();
+  const findCustomer = name => customers.find(c => c.name.toLowerCase() === name.toLowerCase()) || null;
+  const findEngineer = q => users.find(u => u.name.toLowerCase() === q.toLowerCase() || (u.email || '').toLowerCase() === q.toLowerCase()) || null;
+  const seen = new Set();
+  const rows = await Promise.all(read.rows.map(async (row, i) => {
+    const rowNum = i + 2, base = { row: rowNum, name: row.title || row.project_code || '', values: row };
+    const fail = (error, kind) => ({ ...base, action: 'error', error, kind });
+    for (const field of ['project_code', 'title', 'description', 'start_date', 'member_names']) if (!row[field]) return fail(`Missing: ${field}`);
+    const code = row.project_code;
+    if (code.length > 50) return fail('Project ID cannot exceed 50 characters');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(row.start_date) || Number.isNaN(Date.parse(row.start_date))) return fail(`start_date must be YYYY-MM-DD, not "${row.start_date}"`);
+    if (row.deadline && (!/^\d{4}-\d{2}-\d{2}$/.test(row.deadline) || Number.isNaN(Date.parse(row.deadline)))) return fail(`deadline must be YYYY-MM-DD, not "${row.deadline}"`);
+    if (row.deadline && row.deadline < row.start_date) return fail('The deadline cannot be before the start date');
+    const priority = (row.priority || 'medium').toLowerCase();
+    if (!VALID_PROJECT_PRIORITIES.has(priority)) return fail(`priority must be one of: ${[...VALID_PROJECT_PRIORITIES].join(', ')}`);
+    let customerId = null;
+    if (row.customer_name) {
+      const customer = findCustomer(row.customer_name);
+      if (!customer) return fail(`Customer not found: "${row.customer_name}"`);
+      customerId = customer.id;
+    }
+    const members = [];
+    for (const name of row.member_names.split(',').map(x => x.trim()).filter(Boolean)) {
+      const engineer = findEngineer(name);
+      if (!engineer) return fail(`Engineer not found: "${name}"`);
+      members.push(Number(engineer.id));
+    }
+    if (!members.length) return fail('member_names must name at least one active engineer');
+    const key = code.toLowerCase();
+    if (await codeTakenBy(code)) return { ...base, action: 'unchanged', error: `Already there: Project ID ${code}` };
+    if (seen.has(key)) return fail('The same Project ID appears earlier in the file', 'duplicate');
+    seen.add(key);
+    return { ...base, action: 'create',
+      value: { project_code: code, title: row.title, description: row.description, start_date: row.start_date, deadline: row.deadline || null, priority, customer_id: customerId, members } };
+  }));
+  const count = action => rows.filter(r => r.action === action).length;
+  const { last } = await db.prepare('SELECT MAX(id) AS last FROM projects').get();
+  const token = require('crypto').createHash('sha256').update(`${read.hash}|${last || 0}`).digest('hex');
+  return { rows, token, counts: { create: count('create'), update: 0, unchanged: count('unchanged'), errors: count('error'), duplicates: rows.filter(r => r.kind === 'duplicate').length, total: rows.length } };
+}
+const projectPreviewOf = plan => ({ token: plan.token, counts: plan.counts,
+  rows: plan.rows.map(({ row, name, action, kind, error, values }) => ({ row, name, action, kind, error, values: action === 'create' ? undefined : values })) });
+
+router.post('/import/preview', requireManager, upload.single('file'), async (req, res) => {
+  const read = await readProjectWorkbook(req.file);
+  if (read.error) return res.status(400).json({ error: read.error });
+  res.json(projectPreviewOf(await planProjectImport(read)));
+});
+
+router.post('/import', requireManager, upload.single('file'), async (req, res) => {
+  const read = await readProjectWorkbook(req.file);
+  if (read.error) return res.status(400).json({ error: read.error });
+  const plan = await planProjectImport(read);
+  if (req.body?.preview_token && req.body.preview_token !== plan.token)
+    return res.status(409).json({ error: 'The file or the projects changed since the review. Review the import again.', code: 'IMPORT_CHANGED', preview: projectPreviewOf(plan) });
+  let imported = 0;
+  const errors = plan.rows.filter(r => r.action !== 'create').map(r => ({ row: r.row, error: r.error }));
+  // Each new project on its own: one that fails is reported, the others go in.
+  for (const row of plan.rows.filter(r => r.action === 'create')) {
+    try {
+      const pid = await db.transaction(async tx => {
+        const created = await tx.prepare('INSERT INTO projects (project_code, title, description, priority, start_date, deadline, customer_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(row.value.project_code, row.value.title.trim(), row.value.description.trim(), row.value.priority, row.value.start_date, row.value.deadline, row.value.customer_id, req.user.id);
+        const ins = tx.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING');
+        for (const uid of row.value.members) await ins.run(created.lastInsertRowid, uid);
+        return created.lastInsertRowid;
+      });
+      logActivity(pid, req.user.id, 'project_created', row.value.title);
+      imported++;
+    } catch (e) { errors.push({ row: row.row, error: e.message }); }
+  }
+  res.json({ imported, skipped: errors.length, errors });
+});
+
 function requireProjectId(req, res, next) {
   if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(Number(req.params.id))) {
     return res.status(400).json({ error: 'Invalid project ID' });
@@ -281,6 +449,7 @@ router.get('/:id/activity', requireAuth, requireProjectId, async (req, res) => {
   `).all(req.params.id));
   res.json(rows);
 });
+
 
 router.post('/', requireManager, async (req, res) => {
   const { title, description, priority, deadline, customer_id, member_ids, start_date } = req.body;

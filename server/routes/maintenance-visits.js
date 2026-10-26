@@ -37,6 +37,7 @@ function parseEngIds(row) {
     contact_phone: decrypt(row.contact_phone),
     engineer_ids: [],engineer_names: '',
     asset_ids: [],
+    contract_ids: [],contract_references: '',
     checklist: parseChecklist(row.checklist),
   };
 }
@@ -61,13 +62,23 @@ function checklistInput(body) {
   return { value: { name: c.name.trim(), items } };
 }
 
-// Replace the full engineer set for a visit (within an existing transaction or standalone).
-// Always coerces IDs to positive integers — rejects anything that doesn't parse cleanly.
-async function replaceEngineers(visitId, engineerIds, tx) {
-  if (!tx) return db.transaction(client => replaceEngineers(visitId, engineerIds, client));
+// Replace the full engineer set for a visit (within an existing transaction or standalone),
+// marking at most one of them its supervisor. Always coerces IDs to positive integers —
+// rejects anything that doesn't parse cleanly.
+async function replaceEngineers(visitId, engineerIds, supervisorId, tx) {
+  if (!tx) return db.transaction(client => replaceEngineers(visitId, engineerIds, supervisorId, client));
   await tx.prepare('DELETE FROM maintenance_visit_engineers WHERE visit_id = ?').run(visitId);
-  const ins = tx.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING');
-  for (const uid of engineerIds || []) await ins.run(visitId, uid);
+  const ins = tx.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id, is_supervisor) VALUES (?, ?, ?) ON CONFLICT DO NOTHING');
+  for (const uid of engineerIds || []) await ins.run(visitId, uid, uid === supervisorId ? 1 : 0);
+}
+
+// supervisor_id: must be one of the visit's (about to be saved) engineer_ids, or empty/null for none.
+function validateSupervisorId(value, engineerIds) {
+  if (value === undefined || value === null || value === '') return { value: null };
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) return { error: 'supervisor_id must be a positive integer' };
+  if (!(engineerIds || []).includes(id)) return { error: 'supervisor_id must be one of the assigned engineers' };
+  return { value: id };
 }
 
 async function isAssignedEngineer(visitId, userId) {
@@ -125,6 +136,21 @@ async function replaceAssets(visitId,customerId,assetIds,tx) {
   for (const assetId of assetIds || []) await tx.prepare('INSERT INTO maintenance_visit_assets (visit_id,asset_id,customer_id) VALUES (?,?,?)').run(visitId,assetId,customerId);
 }
 
+// A visit can combine work covered by more than one of the customer's contracts.
+async function validateContractIds(values,customerId) {
+  if (values===undefined) return { ids:undefined };
+  if (!Array.isArray(values) || values.length>20 || values.some(id => !Number.isSafeInteger(id) || id<1) || new Set(values).size!==values.length) return { error:'contract_ids must contain at most 20 unique positive integer IDs' };
+  if (values.length) {
+    const rows=await db.prepare(`SELECT id FROM customer_contracts WHERE customer_id=? AND id IN (${values.map(() => '?').join(',')})`).all(customerId,...values);
+    if (rows.length!==values.length) return { error:'Every selected contract must belong to the visit customer' };
+  }
+  return { ids:values };
+}
+async function replaceContracts(visitId,customerId,contractIds,tx) {
+  await tx.prepare('DELETE FROM maintenance_visit_contracts WHERE visit_id=?').run(visitId);
+  for (const contractId of contractIds || []) await tx.prepare('INSERT INTO maintenance_visit_contracts (visit_id,contract_id,customer_id) VALUES (?,?,?)').run(visitId,contractId,customerId);
+}
+
 // Convert an ExcelJS cell value to string, handling dates and rich text.
 function cellToString(v) {
   if (v === null || v === undefined) return '';
@@ -172,13 +198,24 @@ async function filteredVisits(filters) {
 async function enrichVisitLinks(rows) {
   if (!rows.length) return rows;
   const placeholders=rows.map(() => '?').join(','),ids=rows.map(row => row.id);
-  const [links,engineers]=await Promise.all([
+  const [links,engineers,contracts]=await Promise.all([
     db.prepare(`SELECT visit_id,asset_id FROM maintenance_visit_assets WHERE visit_id IN (${placeholders}) ORDER BY visit_id,asset_id`).all(...ids),
-    db.prepare(`SELECT mve.visit_id,mve.user_id,u.name FROM maintenance_visit_engineers mve JOIN users u ON u.id=mve.user_id WHERE mve.visit_id IN (${placeholders}) ORDER BY mve.visit_id,u.name,u.id`).all(...ids),
+    db.prepare(`SELECT mve.visit_id,mve.user_id,u.name,mve.is_supervisor FROM maintenance_visit_engineers mve JOIN users u ON u.id=mve.user_id WHERE mve.visit_id IN (${placeholders}) ORDER BY mve.visit_id,u.name,u.id`).all(...ids),
+    db.prepare(`SELECT mvc.visit_id,mvc.contract_id,ct.reference FROM maintenance_visit_contracts mvc JOIN customer_contracts ct ON ct.id=mvc.contract_id WHERE mvc.visit_id IN (${placeholders}) ORDER BY mvc.visit_id,ct.id`).all(...ids),
   ]);
   const byVisit=new Map();for(const link of links) { if(!byVisit.has(link.visit_id)) byVisit.set(link.visit_id,[]);byVisit.get(link.visit_id).push(link.asset_id); }
   const engineerMap=new Map();for(const engineer of engineers) { if(!engineerMap.has(engineer.visit_id)) engineerMap.set(engineer.visit_id,[]);engineerMap.get(engineer.visit_id).push(engineer); }
-  return rows.map(row => { const assigned=engineerMap.get(row.id) || [];return { ...row,asset_ids:byVisit.get(row.id) || [],engineer_ids:assigned.map(item => item.user_id),engineer_names:assigned.map(item => item.name).join(', ') }; });
+  const contractMap=new Map();for(const contract of contracts) { if(!contractMap.has(contract.visit_id)) contractMap.set(contract.visit_id,[]);contractMap.get(contract.visit_id).push(contract); }
+  return rows.map(row => {
+    const assigned=engineerMap.get(row.id) || [];
+    const linkedContracts=contractMap.get(row.id) || [];
+    const supervisor=assigned.find(item => item.is_supervisor);
+    return { ...row,asset_ids:byVisit.get(row.id) || [],
+      engineer_ids:assigned.map(item => item.user_id),engineer_names:assigned.map(item => item.name).join(', '),
+      supervisor_id:supervisor ? supervisor.user_id : null,supervisor_name:supervisor ? supervisor.name : null,
+      contract_ids:linkedContracts.map(item => item.contract_id),
+      contract_references:linkedContracts.map(item => decrypt(item.reference)).join(', ') };
+  });
 }
 
 // Export uses the same authorized selection and stable order as the list.
@@ -188,10 +225,11 @@ router.get('/export', requireDownloadManagerOrPlanner, async (req, res) => {
   const rows = await filteredVisits(filters);
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Visits');
-  worksheet.addRow(['Title','Customer','Scheduled Date','Status','Engineers','Report Status','Notes']);
+  worksheet.addRow(['Title','Customer','Scheduled Date','Status','Engineers','Supervisor','Contracts','Report Status','Notes']);
   for (const row of rows) worksheet.addRow([
     safeCell(row.title), safeCell(row.customer_name || ''), row.scheduled_date || '', safeCell(row.status),
-    safeCell(row.engineer_names || ''), row.report_sent_to_customer ? 'Sent to PM' : row.report_sent ? 'Report Complete' : 'Pending', safeCell(row.notes || ''),
+    safeCell(row.engineer_names || ''), safeCell(row.supervisor_name || ''), safeCell(row.contract_references || ''),
+    row.report_sent_to_customer ? 'Sent to PM' : row.report_sent ? 'Report Complete' : 'Pending', safeCell(row.notes || ''),
   ]);
   const buf = await workbook.xlsx.writeBuffer();
   res.setHeader('Content-Disposition', 'attachment; filename="maintenance-visits.xlsx"');
@@ -204,11 +242,11 @@ router.get('/template/download', requireDownloadManagerOrPlanner, async (req, re
   const workbook  = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Maintenance Visits');
   [
-    ['customer_name*', 'title*', 'description', 'scheduled_date*', 'engineer_names', 'notes'],
-    ['Acme Corp', 'Q1 Health Check', 'Annual review', '2026-03-15', 'Alice Engineer, Bob Smith', ''],
-    ['Beta Ltd',  'Q2 Review',       '',              '2026-06-20', '',                           'Pending assignment'],
+    ['customer_name*', 'title*', 'description', 'scheduled_date*', 'engineer_names', 'supervisor_name', 'contract_numbers', 'notes'],
+    ['Acme Corp', 'Q1 Health Check', 'Annual review', '2026-03-15', 'Alice Engineer, Bob Smith', 'Alice Engineer', 'CTR-2026-001, CTR-2026-002', ''],
+    ['Beta Ltd',  'Q2 Review',       '',              '2026-06-20', '',                           '',               '',                           'Pending assignment'],
   ].forEach(row => worksheet.addRow(row));
-  [22, 22, 26, 16, 34, 30].forEach((w, i) => { worksheet.getColumn(i + 1).width = w; });
+  [22, 22, 26, 16, 34, 20, 26, 30].forEach((w, i) => { worksheet.getColumn(i + 1).width = w; });
   const buf = await workbook.xlsx.writeBuffer();
   res.setHeader('Content-Disposition', 'attachment; filename="maintenance_visits_template.xlsx"');
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -221,6 +259,14 @@ router.get('/assets/choices',requireManagerOrPlanner,async (req,res) => {
   const rows=await db.prepare("SELECT id,name,asset_type,hostname,lifecycle_status FROM customer_assets WHERE customer_id=? AND lifecycle_status IN ('active','spare') ORDER BY id LIMIT 501").all(check.id);
   if (rows.length>500) return res.status(413).json({ error:'This customer has more than 500 active assets; retire unused records before scheduling them' });
   res.json(rows.map(row => ({ ...row,name:decrypt(row.name),hostname:decrypt(row.hostname) })));
+});
+
+router.get('/contracts/choices',requireManagerOrPlanner,async (req,res) => {
+  const check=await validateCustomerId(req.query.customer_id);
+  if (check.error) return res.status(400).json({ error:check.error });
+  const rows=await db.prepare('SELECT id,reference,description,start_date,end_date FROM customer_contracts WHERE customer_id=? ORDER BY end_date DESC LIMIT 501').all(check.id);
+  if (rows.length>500) return res.status(413).json({ error:'This customer has more than 500 contracts; archive old ones before scheduling against them' });
+  res.json(rows.map(row => ({ ...row,reference:decrypt(row.reference),description:decrypt(row.description) })));
 });
 
 // ── Get single ───────────────────────────────────────────────────────────────
@@ -280,7 +326,7 @@ router.post('/check', requireManagerOrPlanner, async (req, res) => {
 router.post('/', requireManagerOrPlanner, async (req, res) => {
   const inputError = validateVisitText(req.body);
   if (inputError) return res.status(400).json({ error: inputError });
-  const { customer_id, title, description, scheduled_date, engineer_ids, asset_ids, notes } = req.body;
+  const { customer_id, title, description, scheduled_date, engineer_ids, asset_ids, notes, contract_ids, supervisor_id } = req.body;
   if (!customer_id || !title || !scheduled_date)
     return res.status(400).json({ error: 'customer_id, title and scheduled_date are required' });
   if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'title is required' });
@@ -292,6 +338,10 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
   if (engineerCheck.error) return res.status(400).json({ error: engineerCheck.error });
   const assetCheck=await validateAssetIds(asset_ids,customerCheck.id);
   if (assetCheck.error) return res.status(400).json({ error:assetCheck.error });
+  const contractCheck = await validateContractIds(contract_ids,customerCheck.id);
+  if (contractCheck.error) return res.status(400).json({ error: contractCheck.error });
+  const supervisorCheck = validateSupervisorId(supervisor_id, engineerCheck.ids || []);
+  if (supervisorCheck.error) return res.status(400).json({ error: supervisorCheck.error });
   const schedule = await scheduleProblems({ ...req.body, customer_id: customerCheck.id, engineer_ids: engineerCheck.ids || [], asset_ids: assetCheck.ids || [] });
   if (schedule.error) return res.status(400).json({ error: schedule.error });
   if (needsConfirmation(schedule.warnings, req.body))
@@ -302,8 +352,9 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
       'INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, start_time, duration_minutes, notes, created_by) VALUES (?,?,?,?,?,?,?,?)'
     ).run(customerCheck.id, title.trim(), description || null, scheduled_date, schedule.times.start_time, schedule.times.duration_minutes, notes || null, req.user.id);
 
-    await replaceEngineers(result.lastInsertRowid, engineerCheck.ids || [], tx);
+    await replaceEngineers(result.lastInsertRowid, engineerCheck.ids || [], supervisorCheck.value, tx);
     await replaceAssets(result.lastInsertRowid,customerCheck.id,assetCheck.ids || [],tx);
+    await replaceContracts(result.lastInsertRowid,customerCheck.id,contractCheck.ids || [],tx);
     return result.lastInsertRowid;
   });
 
@@ -347,8 +398,11 @@ async function planVisitImport(read, userId) {
   const cal = await calendar.load();
   const customers = (await db.prepare('SELECT id, name FROM customers').all()).map(c => ({ id: Number(c.id), name: decrypt(c.name) || '' }));
   const users = await db.prepare("SELECT id, name, email FROM users WHERE role='engineer' AND active=1").all();
+  const contracts = (await db.prepare('SELECT id, customer_id, reference FROM customer_contracts').all())
+    .map(c => ({ id: Number(c.id), customer_id: Number(c.customer_id), reference: decrypt(c.reference) || '' }));
   const findCustomer = name => customers.find(c => c.name.toLowerCase() === name.toLowerCase()) || null;
   const findEngineer = q => users.find(u => u.name.toLowerCase() === q.toLowerCase() || (u.email || '').toLowerCase() === q.toLowerCase()) || null;
+  const findContract = (customerId, number) => contracts.find(c => c.customer_id === customerId && c.reference.toLowerCase() === number.toLowerCase()) || null;
   const existing = new Set((await db.prepare('SELECT customer_id, title, scheduled_date FROM maintenance_visits').all())
     .map(v => `${v.customer_id}|${String(v.title).trim().toLowerCase()}|${String(v.scheduled_date).slice(0, 10)}`));
   const seen = new Set();
@@ -366,13 +420,27 @@ async function planVisitImport(read, userId) {
       if (!engineer) return fail(`Engineer not found: "${name}"`);
       engineers.push(Number(engineer.id));
     }
+    const supervisorName = row.supervisor_name || row.supervisor || '';
+    let supervisorId = null;
+    if (supervisorName) {
+      const supervisor = findEngineer(supervisorName);
+      if (!supervisor) return fail(`Supervisor not found: "${supervisorName}"`);
+      if (!engineers.includes(Number(supervisor.id))) return fail(`Supervisor "${supervisorName}" must also be one of the assigned engineers`);
+      supervisorId = Number(supervisor.id);
+    }
+    const contractIds = [];
+    for (const number of (row.contract_numbers || row.contract_number || '').split(',').map(x => x.trim()).filter(Boolean)) {
+      const contract = findContract(customer.id, number);
+      if (!contract) return fail(`Contract not found for ${customer.name}: "${number}"`);
+      contractIds.push(contract.id);
+    }
     const key = `${customer.id}|${row.title.trim().toLowerCase()}|${day}`;
     if (existing.has(key)) return { ...base, action: 'unchanged', error: `Already there: ${customer.name}, ${day}` };
     if (seen.has(key)) return fail('The same customer, title and day appear earlier in the file', 'duplicate');
     seen.add(key);
     const off = calendar.dayOff(day, cal);
     return { ...base, action: 'create', warning: off ? (off.kind === 'holiday' ? `Public holiday: ${off.name}` : 'Not a working day') : null,
-      value: { customer_id: customer.id, title: row.title, description: row.description || null, scheduled_date: day, notes: row.notes || null, engineers } };
+      value: { customer_id: customer.id, title: row.title, description: row.description || null, scheduled_date: day, notes: row.notes || null, engineers, supervisorId, contractIds } };
   });
   const count = action => rows.filter(r => r.action === action).length;
   const { last } = await db.prepare('SELECT MAX(id) AS last FROM maintenance_visits').get();
@@ -402,7 +470,10 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
       await db.transaction(async tx => {
         const created = await tx.prepare('INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, notes, created_by) VALUES (?,?,?,?,?,?)')
           .run(row.value.customer_id, row.value.title, row.value.description, row.value.scheduled_date, row.value.notes, req.user.id);
-        for (const uid of row.value.engineers) await tx.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING').run(created.lastInsertRowid, uid);
+        for (const uid of row.value.engineers) await tx.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id, is_supervisor) VALUES (?, ?, ?) ON CONFLICT DO NOTHING')
+          .run(created.lastInsertRowid, uid, uid === row.value.supervisorId ? 1 : 0);
+        for (const contractId of row.value.contractIds) await tx.prepare('INSERT INTO maintenance_visit_contracts (visit_id, contract_id, customer_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING')
+          .run(created.lastInsertRowid, contractId, row.value.customer_id);
       });
       imported++;
     } catch (e) { errors.push({ row: row.row, error: e.message }); }
@@ -431,7 +502,7 @@ router.put('/:id', requireAuth, async (req, res) => {
   if (version.error) return res.status(400).json({ error: version.error });
   if (version.value !== undefined && version.value !== Number(mv.edit_version)) return conflict(res, 'This visit', mv);
 
-  const { customer_id, title, description, scheduled_date, engineer_ids, asset_ids, status, notes } = req.body;
+  const { customer_id, title, description, scheduled_date, engineer_ids, asset_ids, status, notes, contract_ids, supervisor_id } = req.body;
   const VALID_STATUSES = ['scheduled', 'in_progress', 'completed', 'cancelled'];
   if (status !== undefined && !VALID_STATUSES.includes(status))
     return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
@@ -452,6 +523,17 @@ router.put('/:id', requireAuth, async (req, res) => {
   const retainedAssets=asset_ids===undefined && customer_id!==undefined ? (await db.prepare('SELECT asset_id FROM maintenance_visit_assets WHERE visit_id=?').all(mv.id)).map(row => row.asset_id) : asset_ids;
   const assetCheck=await validateAssetIds(retainedAssets,effectiveCustomer);
   if (assetCheck.error) return res.status(400).json({ error:assetCheck.error });
+  const retainedContracts=contract_ids===undefined && customer_id!==undefined ? (await db.prepare('SELECT contract_id FROM maintenance_visit_contracts WHERE visit_id=?').all(mv.id)).map(row => row.contract_id) : contract_ids;
+  const contractCheck = await validateContractIds(retainedContracts,effectiveCustomer);
+  if (contractCheck.error) return res.status(400).json({ error: contractCheck.error });
+  const existingSupervisorId = (await db.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ? AND is_supervisor = 1').get(mv.id))?.user_id ?? null;
+  const effectiveEngineerIds = engineerCheck.ids !== undefined ? engineerCheck.ids
+    : (await db.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(mv.id)).map(r => Number(r.user_id));
+  // supervisor_id unset: keep the current supervisor, if they are still assigned.
+  const supervisorInput = supervisor_id !== undefined ? supervisor_id
+    : (existingSupervisorId != null && effectiveEngineerIds.includes(Number(existingSupervisorId)) ? existingSupervisorId : null);
+  const supervisorCheck = validateSupervisorId(supervisorInput, effectiveEngineerIds);
+  if (supervisorCheck.error) return res.status(400).json({ error: supervisorCheck.error });
   // A change of day, time or engineers is checked again; a hard problem needs confirm_warnings.
   const rescheduled = ['scheduled_date', 'start_time', 'duration_minutes', 'engineer_ids'].some(key => req.body[key] !== undefined);
   const schedule = await scheduleProblems({ ...req.body, customer_id: effectiveCustomer, engineer_ids: engineerCheck.ids, asset_ids: assetCheck.ids }, mv);
@@ -469,8 +551,13 @@ router.put('/:id', requireAuth, async (req, res) => {
     if (!result.changes) return false;
     if (engineerCheck.ids !== undefined) {
       oldIds = (await tx.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(mv.id)).map(r => r.user_id);
-      await replaceEngineers(mv.id, engineerCheck.ids, tx);
+      await replaceEngineers(mv.id, engineerCheck.ids, supervisorCheck.value, tx);
+    } else if (supervisor_id !== undefined && supervisorCheck.value !== existingSupervisorId) {
+      // Supervisor changed without touching the engineer list: flip the flag on the two rows that matter.
+      await tx.prepare('UPDATE maintenance_visit_engineers SET is_supervisor = 0 WHERE visit_id = ?').run(mv.id);
+      if (supervisorCheck.value != null) await tx.prepare('UPDATE maintenance_visit_engineers SET is_supervisor = 1 WHERE visit_id = ? AND user_id = ?').run(mv.id, supervisorCheck.value);
     }
+    if (contractCheck.ids !== undefined) await replaceContracts(mv.id, effectiveCustomer, contractCheck.ids, tx);
     if (assetCheck.ids!==undefined) await replaceAssets(mv.id,effectiveCustomer,assetCheck.ids,tx);
     return true;
   });
