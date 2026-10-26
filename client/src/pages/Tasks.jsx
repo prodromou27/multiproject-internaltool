@@ -286,6 +286,31 @@ export default function Tasks() {
     finally { setBulkBusy(false); }
   }
 
+  async function applyBulkPriority(priority) {
+    if (!selected.size || !priority) return;
+    setBulkBusy(true); setBulkErr('');
+    try {
+      await api.bulkUpdateTasks({ ids: [...selected], action: 'priority', priority });
+      toast.success(`${selected.size} task(s) updated`);
+      load();
+    } catch (e) { setBulkErr(e.message || 'Bulk action failed'); }
+    finally { setBulkBusy(false); }
+  }
+
+  async function applyBulkAssign(value) {
+    if (!selected.size || !value) return;
+    setBulkBusy(true); setBulkErr('');
+    try {
+      const body = { ids: [...selected], action: 'assign' };
+      if (value.startsWith('t:')) body.team_id = Number(value.slice(2));
+      else if (value !== 'unassign') body.assigned_to = Number(value);
+      await api.bulkUpdateTasks(body);
+      toast.success(`${selected.size} task(s) reassigned`);
+      load();
+    } catch (e) { setBulkErr(e.message || 'Bulk action failed'); }
+    finally { setBulkBusy(false); }
+  }
+
   async function applyBulkWaiting(reason) {
     setBulkBusy(true);
     try {
@@ -422,9 +447,29 @@ export default function Tasks() {
                   → {STATUS_LABELS[s]}
                 </button>
               ))}
+              <span className="bulk-action-separator">·</span>
+              <select className="bulk-action-select" disabled={bulkBusy} value="" aria-label="Set priority"
+                onChange={e => { const v = e.target.value; e.target.value = ''; applyBulkPriority(v); }}>
+                <option value="" disabled>Set priority…</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+              <select className="bulk-action-select" disabled={bulkBusy} value="" aria-label="Reassign"
+                onChange={e => { const v = e.target.value; e.target.value = ''; applyBulkAssign(v); }}>
+                <option value="" disabled>Reassign to…</option>
+                <option value="unassign">— Unassign —</option>
+                <optgroup label="Engineers">
+                  {engineers.map(eng => <option key={eng.id} value={String(eng.id)}>{eng.name}</option>)}
+                </optgroup>
+                {filterTeams.length > 0 && <optgroup label="Teams">
+                  {filterTeams.map(team => <option key={team.id} value={`t:${team.id}`}>{team.name}</option>)}
+                </optgroup>}
+              </select>
               <button className="btn btn-sm btn-danger inline-flex items-center gap-4" disabled={bulkBusy}
                 onClick={() => applyBulk('delete')}
-               
+
               >
                 <Trash2 size={12} /> Delete
               </button>

@@ -122,10 +122,12 @@ export function UsersTab({ currentUser }) {
   const [editing, setEditing] = useState(null);
   const [resetting, setResetting] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const toast   = useToast();
   const confirm = useConfirm();
 
-  const load = () => api.adminUsers().then(d => { setUsers(d ?? []); setLoading(false); });
+  const load = () => api.adminUsers().then(d => { setUsers(d ?? []); setSelected(new Set()); setLoading(false); });
   useEffect(() => { load(); }, []);
   useLiveRefresh(() => load());
 
@@ -135,6 +137,49 @@ export function UsersTab({ currentUser }) {
     const matchRole = roleFilter === 'all' || u.role === roleFilter;
     return matchSearch && matchRole;
   });
+  // You cannot bulk-act on your own account; it never appears in the selectable set.
+  const selectable = filtered.filter(u => u.id !== currentUser.id);
+
+  function toggleSelect(id) {
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+  function toggleSelectAll() {
+    setSelected(prev => prev.size === selectable.length ? new Set() : new Set(selectable.map(u => u.id)));
+  }
+  async function applyBulkRole(role) {
+    if (!selected.size || !role) return;
+    setBulkBusy(true);
+    try {
+      await api.adminBulkUpdateUsers({ ids: [...selected], action: 'role', role });
+      toast.success(`${selected.size} user(s) updated`);
+      load();
+    } catch (e) { toast.error(e.message || 'Bulk action failed'); }
+    finally { setBulkBusy(false); }
+  }
+  async function applyBulkActive(active) {
+    if (!selected.size) return;
+    const ok = await confirm(`${active ? 'Activate' : 'Deactivate'} ${selected.size} user(s)?`, { title: active ? 'Activate Users' : 'Deactivate Users', label: active ? 'Activate' : 'Deactivate' });
+    if (!ok) return;
+    setBulkBusy(true);
+    try {
+      await api.adminBulkUpdateUsers({ ids: [...selected], action: 'active', active });
+      toast.success(`${selected.size} user(s) updated`);
+      load();
+    } catch (e) { toast.error(e.message || 'Bulk action failed'); }
+    finally { setBulkBusy(false); }
+  }
+  async function applyBulkDelete() {
+    if (!selected.size) return;
+    const ok = await confirm(`Permanently delete ${selected.size} user(s)? This cannot be undone.`, { title: 'Delete Users' });
+    if (!ok) return;
+    setBulkBusy(true);
+    try {
+      await api.adminBulkUpdateUsers({ ids: [...selected], action: 'delete' });
+      toast.success(`${selected.size} user(s) deleted`);
+      load();
+    } catch (e) { toast.error(e.message || 'Bulk delete failed'); }
+    finally { setBulkBusy(false); }
+  }
 
   async function toggleActive(u) {
     const ok = await confirm(`${u.active ? 'Deactivate' : 'Activate'} ${u.name}?`, { title: u.active ? 'Deactivate User' : 'Activate User', label: u.active ? 'Deactivate' : 'Activate' });
@@ -161,7 +206,12 @@ export function UsersTab({ currentUser }) {
     try { await api.adminDeleteUser(u.id); toast.success(`${u.name} deleted`); load(); } catch(e) { toast.error(e.message); }
   }
 
+  const allSelected = selectable.length > 0 && selected.size === selectable.length;
   const columns = [
+    { key: 'select', label: <input type="checkbox" aria-label="Select all users" checked={allSelected} onChange={toggleSelectAll} />, mobileLabel: 'Select',
+      render: u => u.id === currentUser.id
+        ? <input type="checkbox" disabled title="You cannot bulk-act on your own account" />
+        : <input type="checkbox" aria-label={`Select ${u.name}`} checked={selected.has(u.id)} onChange={() => toggleSelect(u.id)} /> },
     { key: 'user', label: 'User', render: u => (
       <div>
         <div className="font-semibold">{u.name}</div>
@@ -217,7 +267,7 @@ export function UsersTab({ currentUser }) {
         <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}><UserPlus size={14} aria-hidden="true" /> Create user</button>
       }>
         <ListSearch value={search} onChange={setSearch} label="Search users" placeholder="Search by name or email…" />
-        <FilterGroup label="Role">
+        <FilterGroup label="Account type">
           {[
             { value: 'all',      label: 'All' },
             { value: 'manager',  label: 'Managers' },
@@ -226,11 +276,30 @@ export function UsersTab({ currentUser }) {
             { value: 'pm',       label: 'PMs' },
           ].map(({ value, label }) => (
             <button key={value} className={'filter-pill' + (roleFilter === value ? ' active' : '')} onClick={() => setRoleFilter(value)}>
-              {label} <span>({value === 'all' ? users.length : users.filter(u => u.role === value).length})</span>
+              {label} <span className="u-a697a8f">({value === 'all' ? users.length : users.filter(u => u.role === value).length})</span>
             </button>
           ))}
         </FilterGroup>
       </Surface>
+
+      {selected.size > 0 && !loading && (
+        <div className="bulk-action-bar">
+          <strong>{selected.size} selected</strong>
+          <span className="bulk-action-separator">·</span>
+          <select className="bulk-action-select" disabled={bulkBusy} value="" aria-label="Change role"
+            onChange={e => { const v = e.target.value; e.target.value = ''; applyBulkRole(v); }}>
+            <option value="" disabled>Change role…</option>
+            <option value="manager">Manager</option>
+            <option value="engineer">Engineer</option>
+            <option value="planner">Planner</option>
+            <option value="pm">PM</option>
+          </select>
+          <button type="button" className="btn btn-sm btn-ghost" disabled={bulkBusy} onClick={() => applyBulkActive(true)}><UserCheck size={13} aria-hidden="true" /> Activate</button>
+          <button type="button" className="btn btn-sm btn-ghost" disabled={bulkBusy} onClick={() => applyBulkActive(false)}><UserX size={13} aria-hidden="true" /> Deactivate</button>
+          <button type="button" className="btn btn-sm btn-danger" disabled={bulkBusy} onClick={applyBulkDelete}><Trash2 size={13} aria-hidden="true" /> Delete</button>
+          <button className="btn btn-sm btn-ghost u-6d00061" onClick={() => setSelected(new Set())}>Deselect all</button>
+        </div>
+      )}
 
       <DataTable columns={columns} rows={filtered} rowKey="id" loading={loading}
         empty="No users match this view." rowProps={u => ({ className: u.active ? undefined : 'is-inactive-row' })} />

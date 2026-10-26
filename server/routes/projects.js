@@ -745,6 +745,57 @@ router.post('/:id/status-update', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ── Bulk operations (admins) ────────────────────────────────── */
+router.post('/bulk', requireManager, async (req, res) => {
+  const { action } = req.body;
+  const normalized = normalizeIdList(req.body.ids, 'ids');
+  if (normalized.error) return res.status(400).json({ error: normalized.error });
+  if (!normalized.ids.length) return res.status(400).json({ error: 'No project IDs provided' });
+  const ids = normalized.ids;
+  const placeholders = ids.map(() => '?').join(',');
+
+  if (action === 'priority') {
+    const { priority } = req.body;
+    if (!VALID_PROJECT_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
+    const result = await db.prepare(`UPDATE projects SET priority=?, edit_version=edit_version+1, updated_at=app_now() WHERE id IN (${placeholders})`).run(priority, ...ids);
+    return res.json({ ok: true, affected: result.changes });
+  }
+
+  if (action === 'assign-members') {
+    const normalizedUsers = normalizeIdList(req.body.user_ids, 'user_ids');
+    if (normalizedUsers.error) return res.status(400).json({ error: normalizedUsers.error });
+    if (!normalizedUsers.ids.length) return res.status(400).json({ error: 'No members selected' });
+    const engineerMap = await loadEngineerMap(normalizedUsers.ids);
+    if (Object.keys(engineerMap).length !== normalizedUsers.ids.length)
+      return res.status(400).json({ error: 'user_ids may only include active engineers or managers' });
+    const projects = await db.prepare(`SELECT id, title, deadline, priority FROM projects WHERE id IN (${placeholders})`).all(...ids);
+    const ins = db.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING');
+    let affected = 0;
+    for (const project of projects) {
+      for (const uid of normalizedUsers.ids) {
+        const result = await ins.run(project.id, uid);
+        if (result.changes > 0) {
+          affected++;
+          const engineer = engineerMap[uid];
+          logActivity(project.id, req.user.id, 'member_added', engineer.name);
+          notify('project.assigned', {
+            engineer_id:    uid,
+            engineer_name:  engineer.name,
+            engineer_email: engineer.email,
+            project_id:     project.id,
+            project_title:  project.title,
+            deadline:       project.deadline || null,
+            priority:       project.priority,
+          });
+        }
+      }
+    }
+    return res.json({ ok: true, affected });
+  }
+
+  res.status(400).json({ error: 'Unknown action' });
+});
+
 router.post('/:id/members', requireManager, async (req, res) => {
   const { user_ids } = req.body;
   if (!Array.isArray(user_ids) || user_ids.length === 0)
