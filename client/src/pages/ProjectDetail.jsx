@@ -191,7 +191,7 @@ export default function ProjectDetail() {
     } catch (err) { if (!projectEdit.caught(err)) toast.error(err.message); }
   }
   // The edit form's values from a project record.
-  const editValues = p => ({ project_code: p.project_code || '', start_date: p.start_date?.slice(0, 10) || '', title: p.title, description: p.description, priority: p.priority, deadline: p.deadline?.slice(0, 10) || '', status: p.status, customer_id: p.customer_id || '', pending_from_customer: p.pending_from_customer || '', completion_pct: p.completion_pct ?? '', rag_override: p.rag_override || '' });
+  const editValues = p => ({ project_code: p.project_code || '', start_date: p.start_date?.slice(0, 10) || '', title: p.title, description: p.description, priority: p.priority, deadline: p.deadline?.slice(0, 10) || '', status: p.status, customer_id: p.customer_id || '', pending_from_customer: p.pending_from_customer || '', completion_pct: p.completion_pct ?? null, rag_override: p.rag_override || '' });
 
   async function addTask(e) {
     e.preventDefault();

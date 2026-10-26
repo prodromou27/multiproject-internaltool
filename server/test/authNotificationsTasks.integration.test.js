@@ -396,6 +396,33 @@ test('projects validate memberships, calendar dates, status updates and pin acce
   assert.equal(updates.length, 2);
 });
 
+// Regression: editing any field used to fail with a raw database error ("Invalid value in request")
+// whenever the project had no completion_pct override, because the edit form always resent it — as ''
+// rather than omitting it or sending null — which the server bound straight into an integer column.
+test('editing a project with no completion_pct override does not fail; completion_pct accepts a number, clears on null or empty string', async () => {
+  const created = await api('/api/projects', { method: 'POST', token: ids.tokenManager,
+    body: { project_code: 'PRJ-PCT', title: 'Pct project', description: 'x', start_date: '2026-10-01', member_ids: [ids.engineerEnabled] } });
+  const endpoint = `/api/projects/${created.data.id}`;
+  assert.equal((await db.prepare('SELECT completion_pct FROM projects WHERE id=?').get(created.data.id)).completion_pct, null);
+
+  // Editing an unrelated field while completion_pct is unset, exactly as the edit form always sends it.
+  const unrelated = await api(endpoint, { method: 'PUT', token: ids.tokenManager, body: { title: 'Pct project renamed', completion_pct: '' } });
+  assert.equal(unrelated.status, 200, JSON.stringify(unrelated.data));
+  assert.equal((await db.prepare('SELECT title, completion_pct FROM projects WHERE id=?').get(created.data.id)).title, 'Pct project renamed');
+
+  const set = await api(endpoint, { method: 'PUT', token: ids.tokenManager, body: { completion_pct: 42 } });
+  assert.equal(set.status, 200, JSON.stringify(set.data));
+  assert.equal(Number((await db.prepare('SELECT completion_pct FROM projects WHERE id=?').get(created.data.id)).completion_pct), 42);
+
+  const invalid = await api(endpoint, { method: 'PUT', token: ids.tokenManager, body: { completion_pct: 101 } });
+  assert.equal(invalid.status, 400);
+
+  // Clearing back to auto-calculate: an explicit null must actually clear it (not a no-op).
+  const cleared = await api(endpoint, { method: 'PUT', token: ids.tokenManager, body: { completion_pct: null } });
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.data));
+  assert.equal((await db.prepare('SELECT completion_pct FROM projects WHERE id=?').get(created.data.id)).completion_pct, null);
+});
+
 test('concurrent project closure requests and approvals write one update each on PostgreSQL', { skip: !process.env.TEST_DATABASE_URL }, async () => {
   const project = (await db.prepare('INSERT INTO projects (title, created_by) VALUES (?, ?)').run('Concurrent closure', ids.manager)).lastInsertRowid;
   for (const action of ['request-closure', 'approve-closure']) {
