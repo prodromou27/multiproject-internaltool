@@ -225,9 +225,9 @@ router.get('/export', requireDownloadManagerOrPlanner, async (req, res) => {
   const rows = await filteredVisits(filters);
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Visits');
-  worksheet.addRow(['Title','Customer','Scheduled Date','Status','Engineers','Supervisor','Contracts','Report Status','Notes']);
+  worksheet.addRow(['Title','Customer','Scheduled Date','End Date','Status','Engineers','Supervisor','Contracts','Report Status','Notes']);
   for (const row of rows) worksheet.addRow([
-    safeCell(row.title), safeCell(row.customer_name || ''), row.scheduled_date || '', safeCell(row.status),
+    safeCell(row.title), safeCell(row.customer_name || ''), row.scheduled_date || '', row.end_date || row.scheduled_date || '', safeCell(row.status),
     safeCell(row.engineer_names || ''), safeCell(row.supervisor_name || ''), safeCell(row.contract_references || ''),
     row.report_sent_to_customer ? 'Sent to PM' : row.report_sent ? 'Report Complete' : 'Pending', safeCell(row.notes || ''),
   ]);
@@ -242,11 +242,11 @@ router.get('/template/download', requireDownloadManagerOrPlanner, async (req, re
   const workbook  = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Maintenance Visits');
   [
-    ['customer_name*', 'title*', 'description', 'scheduled_date*', 'engineer_names', 'supervisor_name', 'contract_numbers', 'notes'],
-    ['Acme Corp', 'Q1 Health Check', 'Annual review', '2026-03-15', 'Alice Engineer, Bob Smith', 'Alice Engineer', 'CTR-2026-001, CTR-2026-002', ''],
-    ['Beta Ltd',  'Q2 Review',       '',              '2026-06-20', '',                           '',               '',                           'Pending assignment'],
+    ['customer_name*', 'title*', 'description', 'scheduled_date*', 'end_date', 'engineer_names', 'supervisor_name', 'contract_numbers', 'notes'],
+    ['Acme Corp', 'Q1 Health Check', 'Annual review', '2026-03-15', '2026-03-17', 'Alice Engineer, Bob Smith', 'Alice Engineer', 'CTR-2026-001, CTR-2026-002', ''],
+    ['Beta Ltd',  'Q2 Review',       '',              '2026-06-20', '',           '',                           '',               '',                           'Pending assignment'],
   ].forEach(row => worksheet.addRow(row));
-  [22, 22, 26, 16, 34, 20, 26, 30].forEach((w, i) => { worksheet.getColumn(i + 1).width = w; });
+  [22, 22, 26, 16, 16, 34, 20, 26, 30].forEach((w, i) => { worksheet.getColumn(i + 1).width = w; });
   const buf = await workbook.xlsx.writeBuffer();
   res.setHeader('Content-Disposition', 'attachment; filename="maintenance_visits_template.xlsx"');
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -283,7 +283,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 router.get('/:id/calendar.ics', requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid visit ID' });
-  const mv = await db.prepare('SELECT id, customer_id, title, description, notes, scheduled_date, status, updated_at FROM maintenance_visits WHERE id = ?').get(id);
+  const mv = await db.prepare('SELECT id, customer_id, title, description, notes, scheduled_date, end_date, status, updated_at FROM maintenance_visits WHERE id = ?').get(id);
   if (!mv) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'engineer' && !await isAssignedEngineer(mv.id, req.user.id)) return res.status(403).json({ error: 'Forbidden' });
   const customer = await db.prepare('SELECT name, address, location, contact_name, contact_phone, contact_email FROM customers WHERE id = ?').get(mv.customer_id) || {};
@@ -299,17 +299,20 @@ router.get('/:id/calendar.ics', requireAuth, async (req, res) => {
 // ── Create ───────────────────────────────────────────────────────────────────
 /* Before saving: what is wrong with this date, time and engineers (visitScheduling.js).
    The form shows these; saving rechecks, and hard ones need confirm_warnings. */
-const { validateTimes, checkVisit } = require('../visitScheduling');
+const { validateTimes, validateEndDate, checkVisit } = require('../visitScheduling');
 async function scheduleProblems(body, existing = null) {
   const times = validateTimes(body, existing || {});
   if (times.error) return { error: times.error };
+  const scheduledDate = body.scheduled_date || existing?.scheduled_date;
+  const endDate = validateEndDate({ ...body, scheduled_date: scheduledDate }, existing || {});
+  if (endDate.error) return { error: endDate.error };
   const engineerIds = body.engineer_ids !== undefined ? body.engineer_ids
     : existing ? (await db.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(existing.id)).map(row => row.user_id) : [];
   const assetIds = body.asset_ids !== undefined ? body.asset_ids
     : existing ? (await db.prepare('SELECT asset_id FROM maintenance_visit_assets WHERE visit_id = ?').all(existing.id)).map(row => row.asset_id) : [];
-  const warnings = await checkVisit({ id: existing?.id, customer_id: body.customer_id || existing?.customer_id, scheduled_date: body.scheduled_date || existing?.scheduled_date,
+  const warnings = await checkVisit({ id: existing?.id, customer_id: body.customer_id || existing?.customer_id, scheduled_date: scheduledDate, end_date: endDate.value,
     ...times.value, engineer_ids: Array.isArray(engineerIds) ? engineerIds : [], asset_ids: Array.isArray(assetIds) ? assetIds : [] });
-  return { times: times.value, warnings };
+  return { times: times.value, end_date: endDate.value, warnings };
 }
 const needsConfirmation = (warnings, body) => warnings.some(w => w.severity === 'hard') && body.confirm_warnings !== true;
 
@@ -349,8 +352,8 @@ router.post('/', requireManagerOrPlanner, async (req, res) => {
 
   const visitId = await db.transaction(async tx => {
     const result = await tx.prepare(
-      'INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, start_time, duration_minutes, notes, created_by) VALUES (?,?,?,?,?,?,?,?)'
-    ).run(customerCheck.id, title.trim(), description || null, scheduled_date, schedule.times.start_time, schedule.times.duration_minutes, notes || null, req.user.id);
+      'INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, end_date, start_time, duration_minutes, notes, created_by) VALUES (?,?,?,?,?,?,?,?,?)'
+    ).run(customerCheck.id, title.trim(), description || null, scheduled_date, schedule.end_date, schedule.times.start_time, schedule.times.duration_minutes, notes || null, req.user.id);
 
     await replaceEngineers(result.lastInsertRowid, engineerCheck.ids || [], supervisorCheck.value, tx);
     await replaceAssets(result.lastInsertRowid,customerCheck.id,assetCheck.ids || [],tx);
@@ -414,6 +417,12 @@ async function planVisitImport(read, userId) {
     if (!customer) return fail(`Customer not found: "${row.customer_name}"`);
     const day = parseDay(row.scheduled_date);
     if (!day) return fail(`scheduled_date must be a date (YYYY-MM-DD or DD/MM/YYYY), not "${row.scheduled_date}"`);
+    let endDay = day;
+    if (row.end_date) {
+      endDay = parseDay(row.end_date);
+      if (!endDay) return fail(`end_date must be a date (YYYY-MM-DD or DD/MM/YYYY), not "${row.end_date}"`);
+      if (endDay < day) return fail('end_date cannot be before scheduled_date');
+    }
     const engineers = [];
     for (const name of (row.engineer_names || row.engineer_name || '').split(',').map(x => x.trim()).filter(Boolean)) {
       const engineer = findEngineer(name);
@@ -440,7 +449,7 @@ async function planVisitImport(read, userId) {
     seen.add(key);
     const off = calendar.dayOff(day, cal);
     return { ...base, action: 'create', warning: off ? (off.kind === 'holiday' ? `Public holiday: ${off.name}` : 'Not a working day') : null,
-      value: { customer_id: customer.id, title: row.title, description: row.description || null, scheduled_date: day, notes: row.notes || null, engineers, supervisorId, contractIds } };
+      value: { customer_id: customer.id, title: row.title, description: row.description || null, scheduled_date: day, end_date: endDay, notes: row.notes || null, engineers, supervisorId, contractIds } };
   });
   const count = action => rows.filter(r => r.action === action).length;
   const { last } = await db.prepare('SELECT MAX(id) AS last FROM maintenance_visits').get();
@@ -468,8 +477,8 @@ router.post('/import', requireManagerOrPlanner, upload.single('file'), async (re
   for (const row of plan.rows.filter(r => r.action === 'create')) {
     try {
       await db.transaction(async tx => {
-        const created = await tx.prepare('INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, notes, created_by) VALUES (?,?,?,?,?,?)')
-          .run(row.value.customer_id, row.value.title, row.value.description, row.value.scheduled_date, row.value.notes, req.user.id);
+        const created = await tx.prepare('INSERT INTO maintenance_visits (customer_id, title, description, scheduled_date, end_date, notes, created_by) VALUES (?,?,?,?,?,?,?)')
+          .run(row.value.customer_id, row.value.title, row.value.description, row.value.scheduled_date, row.value.end_date, row.value.notes, req.user.id);
         for (const uid of row.value.engineers) await tx.prepare('INSERT INTO maintenance_visit_engineers (visit_id, user_id, is_supervisor) VALUES (?, ?, ?) ON CONFLICT DO NOTHING')
           .run(created.lastInsertRowid, uid, uid === row.value.supervisorId ? 1 : 0);
         for (const contractId of row.value.contractIds) await tx.prepare('INSERT INTO maintenance_visit_contracts (visit_id, contract_id, customer_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING')
@@ -535,7 +544,7 @@ router.put('/:id', requireAuth, async (req, res) => {
   const supervisorCheck = validateSupervisorId(supervisorInput, effectiveEngineerIds);
   if (supervisorCheck.error) return res.status(400).json({ error: supervisorCheck.error });
   // A change of day, time or engineers is checked again; a hard problem needs confirm_warnings.
-  const rescheduled = ['scheduled_date', 'start_time', 'duration_minutes', 'engineer_ids'].some(key => req.body[key] !== undefined);
+  const rescheduled = ['scheduled_date', 'end_date', 'start_time', 'duration_minutes', 'engineer_ids'].some(key => req.body[key] !== undefined);
   const schedule = await scheduleProblems({ ...req.body, customer_id: effectiveCustomer, engineer_ids: engineerCheck.ids, asset_ids: assetCheck.ids }, mv);
   if (schedule.error) return res.status(400).json({ error: schedule.error });
   if (rescheduled && status !== 'cancelled' && needsConfirmation(schedule.warnings, req.body))
@@ -544,10 +553,10 @@ router.put('/:id', requireAuth, async (req, res) => {
     await tx.prepare('SELECT id FROM maintenance_visits WHERE id = ? FOR UPDATE').get(mv.id);
     const result = await tx.prepare(`UPDATE maintenance_visits SET
       customer_id=COALESCE(?,customer_id), title=COALESCE(?,title),
-      description=COALESCE(?,description), scheduled_date=COALESCE(?,scheduled_date),
+      description=COALESCE(?,description), scheduled_date=COALESCE(?,scheduled_date), end_date=?,
       start_time=?, duration_minutes=?,
       status=COALESCE(?,status), notes=COALESCE(?,notes), edit_version=edit_version+1, updated_at=app_now() WHERE id=? AND edit_version=?`)
-      .run(customerCheck.id, title?.trim() || null, description, scheduled_date, schedule.times.start_time, schedule.times.duration_minutes, status, notes, mv.id, mv.edit_version);
+      .run(customerCheck.id, title?.trim() || null, description, scheduled_date, schedule.end_date, schedule.times.start_time, schedule.times.duration_minutes, status, notes, mv.id, mv.edit_version);
     if (!result.changes) return false;
     if (engineerCheck.ids !== undefined) {
       oldIds = (await tx.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ?').all(mv.id)).map(r => r.user_id);

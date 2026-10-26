@@ -1515,6 +1515,13 @@ async function applyMigrations(pool, transaction) {
     -- column under pg-mem, the in-memory Postgres used by the default test run.)
     ALTER TABLE maintenance_visit_engineers ADD COLUMN IF NOT EXISTS is_supervisor INTEGER NOT NULL DEFAULT 0;
   `]);
+  migrations.push(['20261130_maintenance_visit_end_date', `
+    -- A visit can span more than one day. end_date is the last day (inclusive);
+    -- existing one-day visits get end_date = scheduled_date.
+    ALTER TABLE maintenance_visits ADD COLUMN IF NOT EXISTS end_date TEXT;
+    UPDATE maintenance_visits SET end_date = scheduled_date WHERE end_date IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_mv_end_date ON maintenance_visits(end_date);
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

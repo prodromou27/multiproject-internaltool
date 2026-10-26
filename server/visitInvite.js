@@ -1,7 +1,8 @@
 /**
  * A calendar invitation (.ics) for one maintenance visit, for the engineer to
- * add to Outlook, Google or Apple Calendar. Visits have a date but no time, so
- * it is an all-day event. Its UID matches the calendar feed (routes/ical.js),
+ * add to Outlook, Google or Apple Calendar. It is always an all-day event,
+ * spanning scheduled_date..end_date (one day unless the visit runs longer).
+ * Its UID matches the calendar feed (routes/ical.js),
  * so downloading it again, or subscribing to the feed too, updates the same
  * event instead of adding a copy.
  */
@@ -19,6 +20,7 @@ const dayAfter = iso => { const date = new Date(`${iso}T00:00:00Z`); date.setUTC
  */
 function visitInvite({ visit, customer = {}, engineers = [], appUrl = '', now = new Date() }) {
   const date = String(visit.scheduled_date || '').slice(0, 10);
+  const endDate = String(visit.end_date || visit.scheduled_date || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('The visit has no date');
   const cancelled = visit.status === 'cancelled';
   const link = appUrl ? `${appUrl.replace(/\/+$/, '')}/maintenance-visits?visit=${visit.id}` : '';
@@ -40,7 +42,7 @@ function visitInvite({ visit, customer = {}, engineers = [], appUrl = '', now = 
     // Calendars apply a newer copy over an older one; the last change time keeps it increasing.
     `SEQUENCE:${Number.isFinite(updated) ? Math.floor(updated / 1000) % 2147483647 : 0}`,
     `DTSTART;VALUE=DATE:${date.replace(/-/g, '')}`,
-    `DTEND;VALUE=DATE:${dayAfter(date)}`,
+    `DTEND;VALUE=DATE:${dayAfter(endDate)}`,
     `SUMMARY:${esc(`Maintenance visit: ${visit.title}${customer.name ? ` (${customer.name})` : ''}`)}`,
     ...(customer.address || customer.location ? [`LOCATION:${esc(customer.address || customer.location)}`] : []),
     ...(details ? [`DESCRIPTION:${esc(details)}`] : []),
