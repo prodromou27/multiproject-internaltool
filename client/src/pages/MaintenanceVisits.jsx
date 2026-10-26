@@ -78,7 +78,7 @@ function EngineerPicker({ engineers, selected, onChange, supervisorId, onSupervi
           </span>
         );
       })}
-      {engineers.length === 0 && <span className="text-muted text-sm">No engineers available</span>}
+      {engineers.length === 0 && <span className="text-muted text-sm">No engineers or managers available</span>}
     </div>
   );
 }
@@ -183,7 +183,7 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
         )}
       </div>
       <div className="form-group">
-        <label>Assign Engineers</label>
+        <label>Assign Engineers/Managers</label>
         <EngineerPicker
           engineers={engineers}
           selected={form.engineer_ids}
@@ -548,7 +548,7 @@ export default function MaintenanceVisits() {
     ]).then(([v, u]) => {
       if (!isCurrent(request)) return;
       setVisits(v);
-      setEngineers((u || []).filter(x => x.role === 'engineer'));
+      setEngineers((u || []).filter(x => x.role === 'engineer' || x.role === 'manager'));
       setLoadedScope(scope);
     }).catch(error => {
       if (isCurrent(request)) setLoadError(error.message || 'Could not load maintenance visits');

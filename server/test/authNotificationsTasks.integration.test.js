@@ -440,7 +440,7 @@ test('maintenance visits validate dates, assignments and engineer notes', async 
   const asset=(await api(`/api/customers/${ids.customer}/assets`,{ method:'POST',token:ids.tokenManager,body:{ name:'Visit gateway',asset_tag:'VISIT-GW-1',asset_type:'Security gateway',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'managed' } })).data;
   const other=(await api(`/api/customers/${ids.customerUnassigned}/assets`,{ method:'POST',token:ids.tokenManager,body:{ name:'Other visit gateway',asset_tag:'VISIT-GW-2',asset_type:'Security gateway',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'managed' } })).data;
   const body = { title: 'Reviewed visit', customer_id: ids.customer, scheduled_date: '2026-11-01', engineer_ids: [ids.engineerEnabled],asset_ids:[asset.id] };
-  for (const invalid of [{ ...body, scheduled_date: '2026-02-30' }, { ...body, engineer_ids: [ids.manager] }, { ...body, notes: {} }]) {
+  for (const invalid of [{ ...body, scheduled_date: '2026-02-30' }, { ...body, engineer_ids: [ids.planner] }, { ...body, notes: {} }]) {
     assert.equal((await api('/api/maintenance-visits', { method: 'POST', token: ids.tokenManager, body: invalid })).status, 400);
   }
   const created = await api('/api/maintenance-visits', { method: 'POST', token: ids.tokenManager, body });
