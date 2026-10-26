@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Users as UsersIcon, UserX, CheckCircle2, Pencil, KeyRound, UserCheck, Trash2, ShieldAlert, LogOut } from 'lucide-react';
+import { UserX, CheckCircle2, Pencil, KeyRound, UserCheck, Trash2, ShieldAlert, LogOut, UserPlus, FolderKanban, ListChecks, Wrench } from 'lucide-react';
 import { api } from '../../api';
 import { fmtDate, Modal, sentenceCase } from '../../components/Shared';
 import { useToast } from '../../components/Toast';
 import { useConfirm } from '../../components/Confirm';
 import { timeSince } from './shared';
 import { useLiveRefresh } from '../../live';
+import { Surface, DataTable, ToneBadge } from '../../components/EnterpriseUI';
+import { ListSearch, FilterGroup } from '../../components/ListWorkspace';
+import { HeaderMenu } from '../../components/PageLayout';
 
 /* ── User Form ───────────────────────────────────────────── */
 export function UserForm({ initial, onSave, onClose }) {
@@ -158,11 +161,63 @@ export function UsersTab({ currentUser }) {
     try { await api.adminDeleteUser(u.id); toast.success(`${u.name} deleted`); load(); } catch(e) { toast.error(e.message); }
   }
 
+  const columns = [
+    { key: 'user', label: 'User', render: u => (
+      <div>
+        <div className="font-semibold">{u.name}</div>
+        <div className="u-5be3ef4">{u.email || '—'}</div>
+        <div className="user-status-row">
+          <ToneBadge tone={u.active ? 'success' : 'danger'}>{u.active ? 'Active' : 'Inactive'}</ToneBadge>
+          {u.must_change_password && <span title="Must set password on first login" className="u-17e3b54">⚠ Awaiting setup</span>}
+        </div>
+      </div>
+    ) },
+    { key: 'role', label: 'Role', render: u => (
+      <span className={`badge badge-${u.role}`} title={u.custom_role_name ? `Built on ${sentenceCase(u.role)}` : undefined}>{u.custom_role_name || sentenceCase(u.role)}</span>
+    ) },
+    { key: 'activity', label: 'Activity', render: u => (
+      <div className="user-stats">
+        <span title="Projects"><FolderKanban size={12} aria-hidden="true" />{u.project_count}</span>
+        <span title="Open tasks"><ListChecks size={12} aria-hidden="true" />{u.open_tasks}</span>
+        <span title="Maintenance visits"><Wrench size={12} aria-hidden="true" />{u.mv_count}</span>
+      </div>
+    ) },
+    { key: 'last_active', label: 'Last active', render: u => (
+      <div>
+        <div className="text-sm">{timeSince(u.last_login)}</div>
+        <div className="u-5be3ef4">Joined {fmtDate(u.created_at)}</div>
+      </div>
+    ) },
+    { key: 'actions', label: 'Actions', render: u => (
+      <div className="table-actions">
+        <button className="btn btn-sm btn-ghost" onClick={() => setEditing(u)} title="Edit" aria-label={`Edit ${u.name}`}><Pencil size={13} /></button>
+        <HeaderMenu label={`More actions for ${u.name}`}>
+          <button type="button" onClick={() => setResetting(u)}><KeyRound size={14} aria-hidden="true" /> Reset password</button>
+          {u.id !== currentUser.id && <button type="button" onClick={() => revokeSessions(u)}><LogOut size={14} aria-hidden="true" /> Revoke sessions</button>}
+          {u.id !== currentUser.id && (
+            <button type="button" onClick={() => toggleActive(u)}>
+              {u.active ? <UserX size={14} aria-hidden="true" /> : <UserCheck size={14} aria-hidden="true" />} {u.active ? 'Deactivate' : 'Activate'}
+            </button>
+          )}
+          <button type="button" onClick={() => toggle2faExempt(u)} title={u.totp_exempt ? '2FA exempt' : u.totp_enabled ? '2FA enabled' : '2FA not enabled'}>
+            <ShieldAlert size={14} aria-hidden="true" /> {u.totp_exempt ? 'Remove 2FA exemption' : 'Exempt from 2FA'}
+          </button>
+          {u.id !== currentUser.id && <>
+            <hr />
+            <button type="button" className="text-danger" onClick={() => deleteUser(u)}><Trash2 size={14} aria-hidden="true" /> Delete user</button>
+          </>}
+        </HeaderMenu>
+      </div>
+    ) },
+  ];
+
   return (
     <div>
-      <div className="u-b473718">
-        <input aria-label="Search users" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email…" className="u-3ef471c" />
-        <div className="flex gap-6 flex-wrap">
+      <Surface title="User directory" actions={
+        <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}><UserPlus size={14} aria-hidden="true" /> Create user</button>
+      }>
+        <ListSearch value={search} onChange={setSearch} label="Search users" placeholder="Search by name or email…" />
+        <FilterGroup label="Role">
           {[
             { value: 'all',      label: 'All' },
             { value: 'manager',  label: 'Managers' },
@@ -170,75 +225,15 @@ export function UsersTab({ currentUser }) {
             { value: 'engineer', label: 'Engineers' },
             { value: 'pm',       label: 'PMs' },
           ].map(({ value, label }) => (
-            <button key={value} className={'btn btn-sm ' + (roleFilter === value ? 'btn-primary' : 'btn-ghost')} onClick={() => setRoleFilter(value)}>
-              {label}{' '}({value === 'all' ? users.length : users.filter(u => u.role === value).length})
+            <button key={value} className={'filter-pill' + (roleFilter === value ? ' active' : '')} onClick={() => setRoleFilter(value)}>
+              {label} <span>({value === 'all' ? users.length : users.filter(u => u.role === value).length})</span>
             </button>
           ))}
-        </div>
-        <button className="btn btn-primary btn-sm u-6d00061" onClick={() => setShowCreate(true)}>+ Create User</button>
-      </div>
+        </FilterGroup>
+      </Surface>
 
-      {loading ? <p className="text-muted">Loading…</p> : filtered.length === 0
-        ? <div className="empty"><div className="empty-icon"><UsersIcon size={40} strokeWidth={1.2} /></div><p>No users found</p></div>
-        : (
-          <div className="card table-wrap p-0">
-            <table>
-              <thead>
-                <tr>
-                  <th>User</th><th>Role</th><th>Status</th><th>Projects</th>
-                  <th>Open Tasks</th><th>MV Count</th><th>Last Login</th><th>Joined</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(u => (
-                  <tr className={[(u.active ? 'u-c6e7979' : 'u-e1549fd')].filter(Boolean).join(' ')} key={u.id}>
-                    <td>
-                      <div className="font-semibold">{u.name}</div>
-                      <div className="u-5be3ef4">{u.email || '—'}</div>
-                    </td>
-                    <td><span className={`badge badge-${u.role}`} title={u.custom_role_name ? `Built on ${sentenceCase(u.role)}` : undefined}>{u.custom_role_name || sentenceCase(u.role)}</span></td>
-                    <td>
-                      {u.active ? <span className="badge badge-done">Active</span> : <span className="badge badge-cancelled">Inactive</span>}
-                      {u.must_change_password ? (
-                        <span title="Must set password on first login" className="u-17e3b54">⚠ Awaiting setup</span>
-                      ) : null}
-                    </td>
-                    <td className="text-center">{u.project_count}</td>
-                    <td className="text-center">{u.open_tasks}</td>
-                    <td className="text-center">{u.mv_count}</td>
-                    <td className="text-sm text-muted">{timeSince(u.last_login)}</td>
-                    <td className="text-sm text-muted">{fmtDate(u.created_at)}</td>
-                    <td>
-                      <div className="flex gap-8 u-2aca6da">
-                        <button className="btn btn-sm btn-ghost inline-flex items-center" onClick={() => setEditing(u)} title="Edit"><Pencil size={13} /></button>
-                        <button className="btn btn-sm btn-ghost inline-flex items-center" onClick={() => setResetting(u)} title="Reset password"><KeyRound size={13} /></button>
-                        {u.id !== currentUser.id && (
-                          <button className="btn btn-sm btn-ghost inline-flex items-center" onClick={() => revokeSessions(u)} title="Revoke active sessions — sign them out everywhere"><LogOut size={13} /></button>
-                        )}
-                        {u.id !== currentUser.id && (
-                          <button className={`${'btn btn-sm ' + (u.active ? 'btn-ghost' : 'btn-success') || ''} u-f1fab47`} onClick={() => toggleActive(u)} title={u.active ? 'Deactivate' : 'Activate'}>
-                            {u.active ? <UserX size={13} /> : <UserCheck size={13} />}
-                          </button>
-                        )}
-                        <button
-                          className={[(`${'btn btn-sm ' + (u.totp_exempt ? 'btn-warning' : 'btn-ghost') || ''} u-f1fab47` || ''), (u.totp_enabled || u.totp_exempt ? 'u-c6e7979' : 'u-c4c3c16')].filter(Boolean).join(' ')}
-                          onClick={() => toggle2faExempt(u)}
-                          title={u.totp_exempt ? '2FA Exempt (click to revoke)' : u.totp_enabled ? 'Exempt from 2FA' : '2FA not enabled'}
-                        >
-                          <ShieldAlert size={13} />
-                        </button>
-                        {u.id !== currentUser.id && (
-                          <button className="btn btn-sm btn-danger inline-flex items-center" onClick={() => deleteUser(u)} title="Delete"><Trash2 size={13} /></button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      }
+      <DataTable columns={columns} rows={filtered} rowKey="id" loading={loading}
+        empty="No users match this view." rowProps={u => ({ className: u.active ? undefined : 'is-inactive-row' })} />
 
       {showCreate && (
         <Modal title="Create New User" onClose={() => setShowCreate(false)}>
