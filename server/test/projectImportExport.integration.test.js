@@ -41,7 +41,7 @@ test('a review lists new projects, ones already there, and rows that cannot go i
   assert.equal(byName['Already here'].action, 'unchanged');
   assert.equal(byName['Duplicate code'].kind, 'duplicate');
   assert.match(byName['Bad date'].error, /start_date must be/);
-  assert.match(byName['Ghost engineer'].error, /Engineer not found/);
+  assert.match(byName['Ghost engineer'].error, /Member not found/);
   assert.match(byName['No engineer'].error, /Missing: member_names/);
   assert.match(byName['Bad customer'].error, /Customer not found/);
   assert.match(byName['Deadline before start'].error, /deadline cannot be before/);
@@ -71,4 +71,26 @@ test('export includes the new project with its members, and the template lists t
   const template = await api('/api/projects/template/download', { token: ids.tokenManager });
   assert.equal(template.status, 200);
   assert.equal((await api('/api/projects/export', { token: ids.tokenEnabled })).status, 403, 'engineers cannot export projects');
+});
+
+test('an admin (manager) is recognized as a valid project member, in manual create and in import', async () => {
+  // Manual create: manager id in member_ids.
+  const created = await api('/api/projects', { method: 'POST', token: ids.tokenManager, body: {
+    project_code: 'PRJ-ADMIN-MEMBER', title: 'Admin as member', description: 'x', start_date: '2026-01-01', member_ids: [ids.manager],
+  } });
+  assert.equal(created.status, 200, JSON.stringify(created.data));
+  assert.ok(await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(created.data.id, ids.manager));
+
+  // Import: member_names naming the manager by name.
+  const file = await workbook([
+    ['PRJ-ADMIN-IMPORT', 'Admin via import', 'Scope', '2026-02-01', 'Manager One', '', '', ''],
+  ]);
+  const preview = await send('import/preview', file);
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal(preview.data.rows[0].action, 'create', JSON.stringify(preview.data.rows[0]));
+  const done = await send('import', file, { preview_token: preview.data.token });
+  assert.equal(done.status, 200, JSON.stringify(done.data));
+  assert.equal(done.data.imported, 1);
+  const imported = await db.prepare("SELECT id FROM projects WHERE project_code = 'PRJ-ADMIN-IMPORT'").get();
+  assert.ok(await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(imported.id, ids.manager));
 });

@@ -82,12 +82,14 @@ function normalizeIdList(values, label) {
   return { ids };
 }
 
+// Project members: engineers (who do the work) or managers (who run the project).
+const MEMBER_ROLES = ['engineer', 'manager'];
 async function loadEngineerMap(ids) {
   if (!ids.length) return {};
   const placeholders = ids.map(() => '?').join(',');
   const engineerMap = {};
-  (await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders}) AND role = 'engineer' AND active = 1`)
-    .all(...ids))
+  (await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders}) AND role IN (${MEMBER_ROLES.map(() => '?').join(',')}) AND active = 1`)
+    .all(...ids, ...MEMBER_ROLES))
     .forEach(e => { engineerMap[e.id] = e; });
   return engineerMap;
 }
@@ -323,7 +325,8 @@ async function readProjectWorkbook(file) {
 // What importing would do: each row new, already there (same Project ID), or not imported with the reason.
 async function planProjectImport(read) {
   const customers = (await db.prepare('SELECT id, name FROM customers').all()).map(c => ({ id: Number(c.id), name: decrypt(c.name) || '' }));
-  const users = await db.prepare("SELECT id, name, email FROM users WHERE role='engineer' AND active=1").all();
+  // Members: engineers or managers (same roles loadEngineerMap accepts for manual create/add-member).
+  const users = await db.prepare(`SELECT id, name, email FROM users WHERE role IN (${MEMBER_ROLES.map(() => '?').join(',')}) AND active=1`).all(...MEMBER_ROLES);
   const findCustomer = name => customers.find(c => c.name.toLowerCase() === name.toLowerCase()) || null;
   const findEngineer = q => users.find(u => u.name.toLowerCase() === q.toLowerCase() || (u.email || '').toLowerCase() === q.toLowerCase()) || null;
   const seen = new Set();
@@ -347,10 +350,10 @@ async function planProjectImport(read) {
     const members = [];
     for (const name of row.member_names.split(',').map(x => x.trim()).filter(Boolean)) {
       const engineer = findEngineer(name);
-      if (!engineer) return fail(`Engineer not found: "${name}"`);
+      if (!engineer) return fail(`Member not found (must be an active engineer or manager): "${name}"`);
       members.push(Number(engineer.id));
     }
-    if (!members.length) return fail('member_names must name at least one active engineer');
+    if (!members.length) return fail('member_names must name at least one active engineer or manager');
     const key = code.toLowerCase();
     if (await codeTakenBy(code)) return { ...base, action: 'unchanged', error: `Already there: Project ID ${code}` };
     if (seen.has(key)) return fail('The same Project ID appears earlier in the file', 'duplicate');
@@ -453,7 +456,7 @@ router.get('/:id/activity', requireAuth, requireProjectId, async (req, res) => {
 
 router.post('/', requireManager, async (req, res) => {
   const { title, description, priority, deadline, customer_id, member_ids, start_date } = req.body;
-  // Required: Project ID, name, description, start date and at least one engineer; the deadline is optional.
+  // Required: Project ID, name, description, start date and at least one member (engineer or manager); the deadline is optional.
   const code = checkProjectCode(req.body.project_code);
   if (code.error) return res.status(400).json({ error: code.error });
   if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'Project name required' });
@@ -464,7 +467,7 @@ router.post('/', requireManager, async (req, res) => {
   if (!isIsoDate(start_date)) return res.status(400).json({ error: 'Start date required (YYYY-MM-DD)' });
   if (deadline && !isIsoDate(deadline)) return res.status(400).json({ error: 'deadline must be YYYY-MM-DD' });
   if (deadline && deadline < start_date) return res.status(400).json({ error: 'The deadline cannot be before the start date' });
-  if (!Array.isArray(member_ids) || !member_ids.length) return res.status(400).json({ error: 'Assign at least one engineer' });
+  if (!Array.isArray(member_ids) || !member_ids.length) return res.status(400).json({ error: 'Assign at least one member' });
   const taken = await codeTakenBy(code.value);
   if (taken) return res.status(409).json({ error: `Project ID ${code.value} is already used by "${taken.title}"` });
   const normalizedCustomer = normalizeOptionalId(customer_id, 'customer_id');
@@ -481,7 +484,7 @@ router.post('/', requireManager, async (req, res) => {
     normalizedMemberIds = normalized.ids;
     engineerMap = await loadEngineerMap(normalizedMemberIds);
     if (Object.keys(engineerMap).length !== normalizedMemberIds.length)
-      return res.status(400).json({ error: 'member_ids may only include active engineers' });
+      return res.status(400).json({ error: 'member_ids may only include active engineers or managers' });
   }
   const pid = await db.transaction(async tx => {
     const result = await tx.prepare('INSERT INTO projects (project_code, title, description, priority, start_date, deadline, customer_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
@@ -737,7 +740,7 @@ router.post('/:id/members', requireManager, async (req, res) => {
   if (normalized.error) return res.status(400).json({ error: normalized.error });
   const engineerMap = await loadEngineerMap(normalized.ids);
   if (Object.keys(engineerMap).length !== normalized.ids.length)
-    return res.status(400).json({ error: 'user_ids may only include active engineers' });
+    return res.status(400).json({ error: 'user_ids may only include active engineers or managers' });
 
   const ins = db.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING');
   for (const uid of normalized.ids) {

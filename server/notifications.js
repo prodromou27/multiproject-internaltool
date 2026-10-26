@@ -283,7 +283,7 @@ function buildMessage(event, data) {
         body:     `**${data.engineer_name}** has been added to project **${data.project_title}**.`,
         facts:    [
           { name: 'Project',  value: data.project_title },
-          { name: 'Engineer', value: data.engineer_name },
+          { name: 'Member',   value: data.engineer_name },
           ...(data.deadline   ? [{ name: 'Deadline', value: data.deadline }] : []),
           ...(data.priority   ? [{ name: 'Priority', value: data.priority }] : []),
         ],

@@ -356,7 +356,7 @@ test('customer contracts validate merged dates and allow clearing optional field
 test('projects validate memberships, calendar dates, status updates and pin access', async () => {
   const required = { project_code: 'PRJ-REVIEW', description: 'Quarterly review', start_date: '2026-10-01', member_ids: [ids.engineerEnabled] };
   for (const body of [{ ...required, title: 'Invalid members', member_ids: {} }, { ...required, title: 'Invalid date', deadline: '2026-02-30' },
-    { ...required, title: 'Wrong role', member_ids: [ids.manager] }, { ...required, title: 'No engineers', member_ids: [] },
+    { ...required, title: 'Wrong role', member_ids: [ids.planner] }, { ...required, title: 'No engineers', member_ids: [] },
     { ...required, title: 'No ID', project_code: '  ' }, { ...required, title: 'No start', start_date: '' },
     { ...required, title: 'No description', description: '' }, { ...required, title: 'Ends first', deadline: '2026-09-30' }]) {
     assert.equal((await api('/api/projects', { method: 'POST', token: ids.tokenManager, body })).status, 400, body.title);
