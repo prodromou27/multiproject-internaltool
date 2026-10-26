@@ -106,6 +106,8 @@ async function validateCustomerId(customerId) {
   return { id, customer };
 }
 
+// A visit's engineers: engineers (who do the work) or managers (who may also run one).
+const VISIT_ASSIGNEE_ROLES = ['engineer', 'manager'];
 async function validateEngineerIds(values) {
   if (values === undefined) return { ids: undefined, engineers: {} };
   if (!Array.isArray(values)) return { error: 'engineer_ids must be an array' };
@@ -115,10 +117,10 @@ async function validateEngineerIds(values) {
   if (!ids.length) return { ids, engineers: {} };
   const placeholders = ids.map(() => '?').join(',');
   const engineers = {};
-  (await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders}) AND role='engineer' AND active=1`).all(...ids))
+  (await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${placeholders}) AND role IN (${VISIT_ASSIGNEE_ROLES.map(() => '?').join(',')}) AND active=1`).all(...ids, ...VISIT_ASSIGNEE_ROLES))
     .forEach(e => { engineers[e.id] = e; });
   if (Object.keys(engineers).length !== ids.length)
-    return { error: 'engineer_ids may only include active engineers' };
+    return { error: 'engineer_ids may only include active engineers or managers' };
   return { ids, engineers };
 }
 
@@ -400,7 +402,7 @@ async function planVisitImport(read, userId) {
   const calendar = require('../businessCalendar');
   const cal = await calendar.load();
   const customers = (await db.prepare('SELECT id, name FROM customers').all()).map(c => ({ id: Number(c.id), name: decrypt(c.name) || '' }));
-  const users = await db.prepare("SELECT id, name, email FROM users WHERE role='engineer' AND active=1").all();
+  const users = await db.prepare(`SELECT id, name, email FROM users WHERE role IN (${VISIT_ASSIGNEE_ROLES.map(() => '?').join(',')}) AND active=1`).all(...VISIT_ASSIGNEE_ROLES);
   const contracts = (await db.prepare('SELECT id, customer_id, reference FROM customer_contracts').all())
     .map(c => ({ id: Number(c.id), customer_id: Number(c.customer_id), reference: decrypt(c.reference) || '' }));
   const findCustomer = name => customers.find(c => c.name.toLowerCase() === name.toLowerCase()) || null;
@@ -426,7 +428,7 @@ async function planVisitImport(read, userId) {
     const engineers = [];
     for (const name of (row.engineer_names || row.engineer_name || '').split(',').map(x => x.trim()).filter(Boolean)) {
       const engineer = findEngineer(name);
-      if (!engineer) return fail(`Engineer not found: "${name}"`);
+      if (!engineer) return fail(`Member not found (must be an active engineer or manager): "${name}"`);
       engineers.push(Number(engineer.id));
     }
     const supervisorName = row.supervisor_name || row.supervisor || '';
@@ -437,18 +439,24 @@ async function planVisitImport(read, userId) {
       if (!engineers.includes(Number(supervisor.id))) return fail(`Supervisor "${supervisorName}" must also be one of the assigned engineers`);
       supervisorId = Number(supervisor.id);
     }
-    const contractIds = [];
+    // A contract that doesn't match is flagged, not fatal: the visit is still scheduled without it
+    // (contracts are billing/reference metadata, not required to run a visit).
+    const contractIds = [], unmatchedContracts = [];
     for (const number of (row.contract_numbers || row.contract_number || '').split(',').map(x => x.trim()).filter(Boolean)) {
       const contract = findContract(customer.id, number);
-      if (!contract) return fail(`Contract not found for ${customer.name}: "${number}"`);
-      contractIds.push(contract.id);
+      if (contract) contractIds.push(contract.id);
+      else unmatchedContracts.push(number);
     }
     const key = `${customer.id}|${row.title.trim().toLowerCase()}|${day}`;
     if (existing.has(key)) return { ...base, action: 'unchanged', error: `Already there: ${customer.name}, ${day}` };
     if (seen.has(key)) return fail('The same customer, title and day appear earlier in the file', 'duplicate');
     seen.add(key);
     const off = calendar.dayOff(day, cal);
-    return { ...base, action: 'create', warning: off ? (off.kind === 'holiday' ? `Public holiday: ${off.name}` : 'Not a working day') : null,
+    const warnings = [
+      off ? (off.kind === 'holiday' ? `Public holiday: ${off.name}` : 'Not a working day') : null,
+      unmatchedContracts.length ? `Contract not found for ${customer.name} (scheduled without it): ${unmatchedContracts.map(n => `"${n}"`).join(', ')}` : null,
+    ].filter(Boolean);
+    return { ...base, action: 'create', warning: warnings.length ? warnings.join('; ') : null,
       value: { customer_id: customer.id, title: row.title, description: row.description || null, scheduled_date: day, end_date: endDay, notes: row.notes || null, engineers, supervisorId, contractIds } };
   });
   const count = action => rows.filter(r => r.action === action).length;

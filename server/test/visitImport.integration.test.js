@@ -40,7 +40,7 @@ test('a review lists new visits, ones already planned, and rows that cannot go i
   assert.equal(byTitle['3:Quarterly check'].action, 'unchanged', 'DD/MM/YYYY is read too');
   assert.equal(byTitle['4:Firewall upgrade'].kind, 'duplicate');
   assert.match(byTitle['6:Bad date'].error, /must be a date/);
-  assert.match(byTitle['7:Ghost engineer'].error, /Engineer not found/);
+  assert.match(byTitle['7:Ghost engineer'].error, /Member not found/);
   assert.equal(byTitle['8:Holiday visit'].action, 'create');
   assert.equal(byTitle['8:Holiday visit'].error, 'Public holiday: Independence Day', 'flagged, still planned');
   assert.equal(await visits(), before);

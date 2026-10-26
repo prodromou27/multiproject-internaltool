@@ -104,3 +104,75 @@ test('import resolves comma-separated contract numbers and a supervisor name, an
   const contractRows = await db.prepare('SELECT contract_id FROM maintenance_visit_contracts WHERE visit_id = ? ORDER BY contract_id').all(visit.id);
   assert.deepEqual(new Set(contractRows.map(r => Number(r.contract_id))), new Set([Number(contractA), Number(contractB)]));
 });
+
+test('import does not fail a row over a contract number that does not match; it schedules the visit without it and warns instead', async () => {
+  const ExcelJS = require('exceljs');
+  async function workbook(rows) {
+    const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Visits');
+    sheet.addRow(['customer_name*', 'title*', 'scheduled_date*', 'engineer_names', 'contract_numbers', 'notes']);
+    for (const row of rows) sheet.addRow(row);
+    return Buffer.from(await book.xlsx.writeBuffer());
+  }
+  const suiteFixture = require('./lib/activityFixture');
+  async function send(path, buffer, extra = {}) {
+    const form = new FormData();
+    form.append('file', new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'visits.xlsx');
+    for (const [key, value] of Object.entries(extra)) form.append(key, value);
+    const res = await fetch(`${suiteFixture.baseUrl}/api/maintenance-visits/${path}`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenManager}`, 'X-SolutionsHub-Request': '1' }, body: form });
+    return { status: res.status, data: await res.json() };
+  }
+  const file = await workbook([
+    ['Acme Corp', 'Visit with an unknown contract', '2026-11-12', 'Engineer Enabled', 'CTR-A, CTR-DOES-NOT-EXIST', ''],
+  ]);
+  const preview = await send('import/preview', file);
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  const row = preview.data.rows[0];
+  assert.equal(row.action, 'create', JSON.stringify(row));
+  assert.match(row.error, /Contract not found/, 'shown as a warning, not a blocking error');
+
+  const done = await send('import', file, { preview_token: preview.data.token });
+  assert.equal(done.status, 200, JSON.stringify(done.data));
+  assert.equal(done.data.imported, 1);
+  const visit = await db.prepare("SELECT id FROM maintenance_visits WHERE title = 'Visit with an unknown contract'").get();
+  const contractRows = await db.prepare('SELECT contract_id FROM maintenance_visit_contracts WHERE visit_id = ?').all(visit.id);
+  assert.deepEqual(contractRows.map(r => Number(r.contract_id)), [Number(contractA)], 'the matching contract is linked; the unmatched one is just skipped');
+});
+
+test('a manager can be assigned to a visit and named its supervisor, directly and via import', async () => {
+  const create = await api('/api/maintenance-visits', { method: 'POST', token: ids.tokenManager, body: {
+    customer_id: ids.customer, title: 'Manager on site', scheduled_date: '2026-11-13',
+    engineer_ids: [ids.engineerEnabled, ids.manager], supervisor_id: ids.manager,
+  } });
+  assert.equal(create.status, 200, JSON.stringify(create.data));
+  const got = await api(`/api/maintenance-visits/${create.data.id}`, { token: ids.tokenManager });
+  assert.deepEqual(got.data.engineer_ids.map(Number).sort(), [Number(ids.engineerEnabled), Number(ids.manager)].sort());
+  assert.equal(Number(got.data.supervisor_id), Number(ids.manager));
+
+  const ExcelJS = require('exceljs');
+  async function workbook(rows) {
+    const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Visits');
+    sheet.addRow(['customer_name*', 'title*', 'scheduled_date*', 'engineer_names', 'supervisor_name', 'notes']);
+    for (const row of rows) sheet.addRow(row);
+    return Buffer.from(await book.xlsx.writeBuffer());
+  }
+  const suiteFixture = require('./lib/activityFixture');
+  async function send(path, buffer, extra = {}) {
+    const form = new FormData();
+    form.append('file', new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'visits.xlsx');
+    for (const [key, value] of Object.entries(extra)) form.append(key, value);
+    const res = await fetch(`${suiteFixture.baseUrl}/api/maintenance-visits/${path}`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenManager}`, 'X-SolutionsHub-Request': '1' }, body: form });
+    return { status: res.status, data: await res.json() };
+  }
+  const file = await workbook([
+    ['Acme Corp', 'Manager via import', '2026-11-14', 'Manager One', 'Manager One', ''],
+  ]);
+  const preview = await send('import/preview', file);
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal(preview.data.rows[0].action, 'create', JSON.stringify(preview.data.rows[0]));
+  const done = await send('import', file, { preview_token: preview.data.token });
+  assert.equal(done.status, 200, JSON.stringify(done.data));
+  assert.equal(done.data.imported, 1);
+  const imported = await db.prepare("SELECT id FROM maintenance_visits WHERE title = 'Manager via import'").get();
+  const supervisorRow = await db.prepare('SELECT user_id FROM maintenance_visit_engineers WHERE visit_id = ? AND is_supervisor = 1').get(imported.id);
+  assert.equal(Number(supervisorRow.user_id), Number(ids.manager));
+});

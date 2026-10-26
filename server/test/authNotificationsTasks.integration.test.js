@@ -366,6 +366,9 @@ test('projects validate memberships, calendar dates, status updates and pin acce
   assert.equal(created.status, 200, JSON.stringify(created.data));
   const stored = await db.prepare('SELECT project_code, start_date FROM projects WHERE id=?').get(created.data.id);
   assert.deepEqual([stored.project_code, stored.start_date], ['PRJ-REVIEW', '2026-10-01']);
+  // The list shows who is assigned, not who created it.
+  const list = await api('/api/projects', { token: ids.tokenManager });
+  assert.equal(list.data.find(row => row.id === created.data.id)?.member_names, 'Engineer Enabled');
   // The Project ID is unique, whatever the letter case, on create and on edit.
   const twin = await api('/api/projects', { method: 'POST', token: ids.tokenManager, body: { ...required, project_code: 'prj-review', title: 'Twin' } });
   assert.equal(twin.status, 409);
@@ -437,7 +440,7 @@ test('maintenance visits validate dates, assignments and engineer notes', async 
   const asset=(await api(`/api/customers/${ids.customer}/assets`,{ method:'POST',token:ids.tokenManager,body:{ name:'Visit gateway',asset_tag:'VISIT-GW-1',asset_type:'Security gateway',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'managed' } })).data;
   const other=(await api(`/api/customers/${ids.customerUnassigned}/assets`,{ method:'POST',token:ids.tokenManager,body:{ name:'Other visit gateway',asset_tag:'VISIT-GW-2',asset_type:'Security gateway',environment:'production',criticality:'high',lifecycle_status:'active',coverage_type:'managed' } })).data;
   const body = { title: 'Reviewed visit', customer_id: ids.customer, scheduled_date: '2026-11-01', engineer_ids: [ids.engineerEnabled],asset_ids:[asset.id] };
-  for (const invalid of [{ ...body, scheduled_date: '2026-02-30' }, { ...body, engineer_ids: [ids.manager] }, { ...body, notes: {} }]) {
+  for (const invalid of [{ ...body, scheduled_date: '2026-02-30' }, { ...body, engineer_ids: [ids.planner] }, { ...body, notes: {} }]) {
     assert.equal((await api('/api/maintenance-visits', { method: 'POST', token: ids.tokenManager, body: invalid })).status, 400);
   }
   const created = await api('/api/maintenance-visits', { method: 'POST', token: ids.tokenManager, body });

@@ -328,7 +328,7 @@ export default function Projects() {
       <div className="progress-bar"><div className="progress-bar-fill" style={{ width:`${p.completion_pct}%` }} /></div>
     </div> : <span className="text-muted text-sm">No tasks</span> },
     { key:'deadline',label:'Deadline',className:p => isOverdue(p.deadline) && !TERMINAL.includes(p.status)?'overdue':'',render:p => fmtDate(p.deadline) },
-    { key:'owner',label:'Created By',render:p => p.created_by_name },
+    { key:'members',label:'Assigned',render:p => p.member_names || <span className="text-muted">Unassigned</span> },
     ...(isManager ? [{ key:'action',label:'Action',render:p => p.status==='pending_approval'
       ? <Link to={`/projects/${p.id}`} className="btn btn-sm btn-warning project-review"><Bell size={11} /> Review</Link> : '—' }] : []),
   ];
@@ -364,7 +364,7 @@ export default function Projects() {
       ]} />
 
       <Surface label="Portfolio filters">
-        <ListSearch value={search} onChange={setSearch} label="Search projects" placeholder="Search projects, customers, or owners…" />
+        <ListSearch value={search} onChange={setSearch} label="Search projects" placeholder="Search projects, customers, owners, or assigned members…" />
         <FilterGroup label="Status">
           {[
             ['open',              'Open'],
