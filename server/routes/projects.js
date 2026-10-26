@@ -554,9 +554,16 @@ router.put('/:id', requireManager, async (req, res) => {
   }
   const targetCustomer=normalizedCustomer.value !== undefined ? normalizedCustomer.value : p.customer_id;
   if (targetCustomer!==p.customer_id && await db.prepare('SELECT 1 FROM customer_recommendations r JOIN tasks t ON t.id=r.related_task_id WHERE t.project_id=? LIMIT 1').get(p.id)) return res.status(409).json({ error:'This project has tasks converted from customer recommendations and must keep its customer relationship' });
+  // completion_pct: undefined = keep existing; '' or null = clear (back to auto-calculate); otherwise 0-100.
+  let newCompletionPct = p.completion_pct;
   if (completion_pct !== undefined) {
-    const pct = Number(completion_pct);
-    if (!Number.isInteger(pct) || pct < 0 || pct > 100) return res.status(400).json({ error: 'completion_pct must be an integer between 0 and 100' });
+    if (completion_pct === '' || completion_pct === null) {
+      newCompletionPct = null;
+    } else {
+      const pct = Number(completion_pct);
+      if (!Number.isInteger(pct) || pct < 0 || pct > 100) return res.status(400).json({ error: 'completion_pct must be an integer between 0 and 100' });
+      newCompletionPct = pct;
+    }
   }
   if (rag_override !== undefined && rag_override !== '' && rag_override !== null && !VALID_RAG.has(rag_override))
     return res.status(400).json({ error: 'Invalid rag_override value' });
@@ -579,10 +586,10 @@ router.put('/:id', requireManager, async (req, res) => {
   const changed = await db.prepare(`UPDATE projects SET title=COALESCE(?,title), description=COALESCE(?,description),
     priority=COALESCE(?,priority), deadline=?, customer_id=?,
     status=COALESCE(?,status), pending_from_customer=?,
-    completion_pct=COALESCE(?,completion_pct), rag_override=?, project_code=?, start_date=?, edit_version=edit_version+1,
+    completion_pct=?, rag_override=?, project_code=?, start_date=?, edit_version=edit_version+1,
     updated_at=app_now() WHERE id=? AND status=? AND closure_request_version=? AND edit_version=?`)
     .run(title?.trim() || null, description, priority, nextDeadline, normalizedCustomer.value !== undefined ? normalizedCustomer.value : p.customer_id, status, newPfc,
-         completion_pct !== undefined ? completion_pct : null, newRagOverride, nextCode, nextStart, p.id, p.status, p.closure_request_version, p.edit_version);
+         newCompletionPct, newRagOverride, nextCode, nextStart, p.id, p.status, p.closure_request_version, p.edit_version);
   if (!changed.changes) {
     const now = await db.prepare('SELECT * FROM projects WHERE id = ?').get(p.id);
     if (version.value !== undefined) return conflict(res, 'This project', now);
