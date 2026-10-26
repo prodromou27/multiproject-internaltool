@@ -42,7 +42,17 @@ export function VisitCalendar({ onOpen, onPlan }) {
       .then(rows => { if (!controller.signal.aborted) setHolidays(new Map((Array.isArray(rows) ? rows : []).map(h => [h.date, h.name]))); }).catch(() => {});
     return () => controller.abort();
   }, [cells]);
-  const byDay = useMemo(() => { const map = new Map(); for (const visit of visits || []) { const day = String(visit.scheduled_date).slice(0, 10); if (!map.has(day)) map.set(day, []); map.get(day).push(visit); } return map; }, [visits]);
+  const byDay = useMemo(() => {
+    const map = new Map();
+    for (const visit of visits || []) {
+      const start = String(visit.scheduled_date).slice(0, 10), end = String(visit.end_date || visit.scheduled_date).slice(0, 10);
+      for (let day = start, guard = 0; day <= end && guard <= 90; day = addDays(day, 1), guard++) {
+        if (!map.has(day)) map.set(day, []);
+        map.get(day).push(visit);
+      }
+    }
+    return map;
+  }, [visits]);
   return <section className="card vv-calendar" aria-label="Visit calendar">
     <header className="vv-head">
       <button type="button" className="btn btn-ghost btn-sm" aria-label="Previous month" onClick={() => setMonth(m => shiftMonth(m, -1))}><ChevronLeft size={16} /></button>
@@ -58,8 +68,12 @@ export function VisitCalendar({ onOpen, onPlan }) {
         return <div key={day} role="gridcell" className={`vv-day${outside ? ' is-outside' : ''}${day === today ? ' is-today' : ''}${holiday ? ' is-holiday' : ''}`}>
           <div className="vv-date"><span>{Number(day.slice(8))}</span>{onPlan && !outside && day >= today && <button type="button" className="vv-add" aria-label={`Plan a visit on ${dayLabel(day)}`} title="Plan a visit" onClick={() => onPlan({ scheduled_date: day })}><Plus size={12} /></button>}</div>
           {holiday && <div className="cal-holiday" title={`Public holiday: ${holiday}`}><span className="sr-only">Public holiday: </span>{holiday}</div>}
-          {list.map(visit => <button type="button" key={visit.id} className={`vv-visit is-${visit.status}`} onClick={() => onOpen(visit)} title={`${visit.title} · ${visit.customer_name}${visit.engineer_names ? ` · ${visit.engineer_names}` : ''}`}>
-            <strong>{visit.title}</strong><span>{visit.customer_name}{visit.engineer_names ? ` · ${visit.engineer_names}` : ''}</span></button>)}
+          {list.map(visit => {
+            const start = String(visit.scheduled_date).slice(0, 10), end = String(visit.end_date || visit.scheduled_date).slice(0, 10);
+            const span = start !== end ? ` · ${dayLabel(start)} – ${dayLabel(end)}` : '';
+            return <button type="button" key={visit.id} className={`vv-visit is-${visit.status}`} onClick={() => onOpen(visit)} title={`${visit.title} · ${visit.customer_name}${visit.engineer_names ? ` · ${visit.engineer_names}` : ''}${span}`}>
+              <strong>{visit.title}{start !== end && <span className="text-muted"> (multi-day)</span>}</strong><span>{visit.customer_name}{visit.engineer_names ? ` · ${visit.engineer_names}` : ''}</span></button>;
+          })}
         </div>;
       })}
     </div>}

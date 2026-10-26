@@ -157,14 +157,14 @@ function ProjectForm({ initial, users, onSave, onClose, onCustomerCreated }) {
 
   async function submit(e) {
     e.preventDefault();
-    if (form.member_ids.length === 0) { setMemberError('Assign at least one engineer before saving.'); return; }
+    if (form.member_ids.length === 0) { setMemberError('Assign at least one member before saving.'); return; }
     setMemberError(''); setSaving(true);
     try { await onSave(form); draft.clear(); onClose(); }
     catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
   }
 
-  const engineers = users.filter(u => u.role === 'engineer');
+  const engineers = users.filter(u => u.role === 'engineer' || u.role === 'manager');
 
   return (
     <form onSubmit={submit}>
@@ -193,9 +193,9 @@ function ProjectForm({ initial, users, onSave, onClose, onCustomerCreated }) {
         />
       </div>
       <div className="form-group">
-        <label>Assign Engineers <span className="u-497726e">*</span></label>
+        <label>Assign Members <span className="u-497726e">*</span></label>
         {engineers.length === 0
-          ? <p className="text-sm text-muted u-96ad609">No engineers registered yet.</p>
+          ? <p className="text-sm text-muted u-96ad609">No engineers or managers registered yet.</p>
           : <div className="flex flex-wrap gap-6 mt-4">
               {engineers.map(u => (
                 <label key={u.id} className="u-5a4e487" style={{ background: form.member_ids.includes(u.id) ? '#dbeafe' : 'var(--gray-100)', border: form.member_ids.includes(u.id) ? '1px solid #93c5fd' : '1px solid transparent' }}>

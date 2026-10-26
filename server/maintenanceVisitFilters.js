@@ -29,10 +29,11 @@ function maintenanceVisitFilters(query, user) {
   if (query.month) {
     const next = new Date(`${query.month}-01T00:00:00Z`);
     next.setUTCMonth(next.getUTCMonth() + 1);
-    add('mv.scheduled_date>=? AND mv.scheduled_date<?', `${query.month}-01`, next.toISOString().slice(0, 10));
+    // A visit that spans into or out of the month (not just starts in it) still counts.
+    add('mv.scheduled_date<? AND COALESCE(mv.end_date,mv.scheduled_date)>=?', next.toISOString().slice(0, 10), `${query.month}-01`);
   }
-  if (filter === 'upcoming') add("mv.status='scheduled' AND mv.scheduled_date>=?", asOf);
-  if (filter === 'past') add("(mv.scheduled_date<? OR mv.status='completed')", asOf);
+  if (filter === 'upcoming') add("mv.status='scheduled' AND COALESCE(mv.end_date,mv.scheduled_date)>=?", asOf);
+  if (filter === 'past') add("(COALESCE(mv.end_date,mv.scheduled_date)<? OR mv.status='completed')", asOf);
   if (filter === 'cancelled') add("mv.status='cancelled'");
   if (filter === 'report_pending' || query.pending_report === '1') add("mv.report_sent=0 AND mv.status NOT IN ('cancelled','scheduled')");
   if (filter === 'awaiting_review' || query.review_pending === '1') add('mv.report_sent=1 AND mv.report_sent_to_customer=0');

@@ -86,12 +86,13 @@ function EngineerPicker({ engineers, selected, onChange, supervisorId, onSupervi
 /* ── Visit Form ──────────────────────────────────────────── */
 const VISIT_FIELDS = [
   ['title', 'Title'], ['description', 'Description'], ['scheduled_date', 'Date', d => d?.slice(0, 10) || '—'],
+  ['end_date', 'End date', d => d?.slice(0, 10) || '—'],
   ['start_time', 'Start'], ['duration_minutes', 'Minutes'], ['status', 'Status'], ['notes', 'Notes'], ['customer_id', 'Customer'],
 ];
 
 function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
   const [form, setForm] = useState(() => {
-    const start = initial || { customer_id: '', title: '', description: '', scheduled_date: '',
+    const start = initial || { customer_id: '', title: '', description: '', scheduled_date: '', end_date: '',
       engineer_ids: [], supervisor_id: '', asset_ids: [], contract_ids: [], notes: '', status: 'scheduled',...(defaults || {}) };
     return { ...start, all_day: allDayOf(start) };
   });
@@ -141,7 +142,7 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
       <DraftBanner draft={draft} onRestore={data => data && setForm(data)} />
       <EditConflict edit={edit} what="visit" fields={VISIT_FIELDS} mine={{ ...form, ...timesOf(form) }}
         onKeepMine={() => { edit.keepMine(); submit(); }}
-        onUseTheirs={() => { const theirs = edit.takeTheirs(); setForm(f => { const next = { ...f, ...theirs, customer_id: String(theirs.customer_id), scheduled_date: theirs.scheduled_date?.slice(0, 10) || '' }; return { ...next, all_day: allDayOf(next) }; }); }} />
+        onUseTheirs={() => { const theirs = edit.takeTheirs(); setForm(f => { const next = { ...f, ...theirs, customer_id: String(theirs.customer_id), scheduled_date: theirs.scheduled_date?.slice(0, 10) || '', end_date: (theirs.end_date || theirs.scheduled_date)?.slice(0, 10) || '' }; return { ...next, all_day: allDayOf(next) }; }); }} />
       <div className="form-group">
         <label htmlFor="visit-customer">Customer *</label>
         <CustomerSearchSelect id="visit-customer" value={form.customer_id} allowEmpty={false} required placeholder="Search customers…"
@@ -159,8 +160,15 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
       <div className="form-row">
         <div className="form-group">
           <label htmlFor="visit-date">Scheduled Date *</label>
-          <input id="visit-date" type="date" value={form.scheduled_date} onChange={event => setChecked(f => ({ ...f, scheduled_date: event.target.value }))} required />
+          <input id="visit-date" type="date" value={form.scheduled_date}
+            onChange={event => setChecked(f => ({ ...f, scheduled_date: event.target.value, end_date: f.end_date && f.end_date < event.target.value ? event.target.value : f.end_date }))} required />
           <VisitTimeFields form={form} setForm={setChecked} />
+        </div>
+        <div className="form-group">
+          <label htmlFor="visit-end-date">End Date</label>
+          <input id="visit-end-date" type="date" min={form.scheduled_date || undefined} value={form.end_date || form.scheduled_date || ''}
+            onChange={event => setChecked(f => ({ ...f, end_date: event.target.value }))} />
+          <span className="text-muted text-sm">Leave as the scheduled date for a one-day visit.</span>
         </div>
         {initial && (
           <div className="form-group">
@@ -259,7 +267,7 @@ function generatePDF(visit, onError) {
   <div class="customer">${esc(visit.customer_name)}</div>
 
   <div class="grid">
-    <div class="field"><label>Scheduled Date</label><div class="val">${fmtD(visit.scheduled_date)}${visitTime(visit) ? ` · ${visitTime(visit)}` : ''}</div></div>
+    <div class="field"><label>Scheduled Date</label><div class="val">${fmtD(visit.scheduled_date)}${visit.end_date && visit.end_date.slice(0, 10) !== visit.scheduled_date.slice(0, 10) ? ` – ${fmtD(visit.end_date)}` : ''}${visitTime(visit) ? ` · ${visitTime(visit)}` : ''}</div></div>
     <div class="field"><label>Status</label><div class="val"><span class="badge b-${visit.status}">${statusLabel}</span></div></div>
     <div class="field"><label>Engineer${(visit.engineer_names || '').includes(',') ? 's' : ''}</label><div class="val">${esc(visit.engineer_names) || 'Unassigned'}</div></div>
     <div class="field"><label>Contact</label><div class="val">${esc(visit.contact_name) || '—'}${visit.contact_email ? ' &middot; ' + esc(visit.contact_email) : ''}</div></div>
@@ -362,7 +370,10 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
         <div className="grid-2">
           <div>
             <div className="text-sm text-muted u-fce9611">Scheduled Date</div>
-            <div className={isOverdue(visit.scheduled_date) && visit.status === 'scheduled' ? 'overdue font-bold' : 'font-bold'}>{fmtDate(visit.scheduled_date)}{visitTime(visit) && <span className="text-muted"> · {visitTime(visit)}</span>}</div>
+            <div className={isOverdue(visit.end_date || visit.scheduled_date) && visit.status === 'scheduled' ? 'overdue font-bold' : 'font-bold'}>
+              {fmtDate(visit.scheduled_date)}{visit.end_date && visit.end_date.slice(0, 10) !== visit.scheduled_date.slice(0, 10) && <> – {fmtDate(visit.end_date)}</>}
+              {visitTime(visit) && <span className="text-muted"> · {visitTime(visit)}</span>}
+            </div>
           </div>
           <div>
             <div className="text-sm text-muted u-fce9611">Status</div>
@@ -454,7 +465,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
   );
 }
 
-const MV_COLUMNS = ['customer_name*', 'title*', 'description', 'scheduled_date*', 'engineer_names', 'supervisor_name', 'contract_numbers', 'notes'];
+const MV_COLUMNS = ['customer_name*', 'title*', 'description', 'scheduled_date*', 'end_date', 'engineer_names', 'supervisor_name', 'contract_numbers', 'notes'];
 const VISIT_FILTERS = new Set(['upcoming', 'past', 'report_pending', 'awaiting_review', 'cancelled', 'all']);
 const VISIT_FILTER_LIST = [...VISIT_FILTERS];
 const VISIT_VIEWS = ['list', 'calendar', 'availability'];
@@ -596,6 +607,7 @@ export default function MaintenanceVisits() {
       customer_id:    v.customer_id,
       engineer_ids:   v.engineer_ids || [],
       scheduled_date: v.scheduled_date?.slice(0, 10),
+      end_date:       (v.end_date || v.scheduled_date)?.slice(0, 10),
     });
     setShowForm(true);
   }

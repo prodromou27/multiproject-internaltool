@@ -38,9 +38,9 @@ async function availability({ from, to, teamId = null, customerId = null, store 
 
   const serving = new Set(customerId ? (await store.prepare(`SELECT tm.user_id FROM customer_teams ct JOIN team_members tm ON tm.team_id = ct.team_id WHERE ct.customer_id = ?
     UNION SELECT user_id FROM customer_engineers WHERE customer_id = ?`).all(customerId, customerId)).map(row => Number(row.user_id)) : []);
-  const visits = await store.prepare(`SELECT mv.id, mv.title, mv.scheduled_date, mv.status, mve.user_id, mv.customer_id FROM maintenance_visits mv
+  const visits = await store.prepare(`SELECT mv.id, mv.title, mv.scheduled_date, mv.end_date, mv.status, mve.user_id, mv.customer_id FROM maintenance_visits mv
     JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
-    WHERE mv.scheduled_date >= ? AND mv.scheduled_date <= ? AND mv.status <> 'cancelled' AND mve.user_id IN (${marks})`).all(from, to, ...ids);
+    WHERE mv.scheduled_date <= ? AND COALESCE(mv.end_date,mv.scheduled_date) >= ? AND mv.status <> 'cancelled' AND mve.user_id IN (${marks})`).all(to, from, ...ids);
   const customers = new Map((await store.prepare(`SELECT id, name FROM customers WHERE id IN (${[...new Set(visits.map(v => Number(v.customer_id)))].map(() => '?').join(',') || 'NULL'})`)
     .all(...new Set(visits.map(v => Number(v.customer_id))))).map(row => [Number(row.id), require('./fieldCipher').decrypt(row.name)]));
   const timeOff = await store.prepare(`SELECT id, user_id, start_date, end_date, reason FROM engineer_time_off WHERE start_date <= ? AND end_date >= ? AND user_id IN (${marks})`).all(to, from, ...ids);
@@ -58,7 +58,7 @@ async function availability({ from, to, teamId = null, customerId = null, store 
   const grid = engineers.map(engineer => {
     const id = Number(engineer.id);
     const cells = range.map(day => {
-      const dayVisits = visits.filter(v => Number(v.user_id) === id && v.scheduled_date === day).map(v => ({ id: Number(v.id), title: v.title, customer: customers.get(Number(v.customer_id)) || '', status: v.status }));
+      const dayVisits = visits.filter(v => Number(v.user_id) === id && v.scheduled_date <= day && (v.end_date || v.scheduled_date) >= day).map(v => ({ id: Number(v.id), title: v.title, customer: customers.get(Number(v.customer_id)) || '', status: v.status }));
       const off = timeOff.find(row => Number(row.user_id) === id && row.start_date <= day && row.end_date >= day);
       const week = weeks.find(row => Number(row.user_id) === id && row.week_start === mondayOf(day));
       const tasksDue = Number(tasks.find(row => Number(row.assigned_to) === id && row.deadline === day)?.n || 0);
