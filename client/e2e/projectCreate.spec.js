@@ -19,7 +19,7 @@ test('a new project needs its Project ID, name, description, start date and engi
   await dialog.getByLabel('Start date *').fill('2026-11-02');
   // Engineers are required too.
   await dialog.getByRole('button', { name: 'Save' }).click();
-  await expect(dialog.getByText('Assign at least one engineer before saving.')).toBeVisible();
+  await expect(dialog.getByText('Assign at least one member before saving.')).toBeVisible();
   expect(sent).toBeNull();
   await dialog.getByLabel('Maria Ioannou').check();
   await dialog.getByRole('button', { name: 'Save' }).click();

@@ -252,7 +252,12 @@ export default function Customers() {
   const [search,      setSearch]      = useState('');
   // Managed customers are a view of this list (they used to have their own page).
   const canSeeManaged = Object.prototype.hasOwnProperty.call(user?.permissions || {}, 'managed_customers.view') ? user.permissions['managed_customers.view'] === true : isManager;
-  const [view,        setView]        = useState(() => new URLSearchParams(location.search).get('view') === 'managed' && canSeeManaged ? 'managed' : 'all');
+  // Default view is Active (archived/offline customers are hidden unless asked for); a URL ?view= wins when valid.
+  const [view,        setView]        = useState(() => {
+    const requested = new URLSearchParams(location.search).get('view');
+    const valid = ['all', 'active', 'tracked', 'inactive', ...(canSeeManaged ? ['managed'] : [])];
+    return valid.includes(requested) ? requested : 'active';
+  });
   const [managed,     setManaged]     = useState(new Map());
   const [loading,     setLoading]     = useState(true);
   const [loadError,   setLoadError]   = useState('');
@@ -392,12 +397,12 @@ export default function Customers() {
       ]} />}
 
       {!loading && !loadError && <ResultContext shown={filtered.length} total={total} noun="customers"
-        activeFilters={(search.trim() ? 1 : 0) + (view !== 'all' ? 1 : 0)}
-        onClear={() => { setSearch(''); setView('all'); }} />}
+        activeFilters={(search.trim() ? 1 : 0) + (view !== 'active' ? 1 : 0)}
+        onClear={() => { setSearch(''); setView('active'); }} />}
 
       <DataTable columns={view === 'managed' ? managedColumns : columns} rows={filtered} loading={loading} error={loadError} onRetry={() => load()}
-        caption="Customer directory" empty={search.trim() || view!=='all' ? 'No customers match this view' : 'No customers have been added yet'}
-        emptyAction={(search.trim() || view!=='all') && <button className="btn btn-ghost btn-sm" onClick={() => { setSearch('');setView('all'); }}>Reset view</button>} />
+        caption="Customer directory" empty={search.trim() || view!=='active' ? 'No customers match this view' : 'No active customers yet'}
+        emptyAction={(search.trim() || view!=='active') && <button className="btn btn-ghost btn-sm" onClick={() => { setSearch('');setView('active'); }}>Reset view</button>} />
       <Pagination page={page} total={total} pageSize={25} loading={loading} onPageChange={setPage} label="Customer pages" />
 
       {showForm && (
