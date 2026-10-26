@@ -442,6 +442,50 @@ router.post('/bulk', requireAuth, async (req, res) => {
     return res.json({ ok: true, affected: result.changes, blocked: blocked.size });
   }
 
+  if (action === 'priority') {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
+    const { priority } = req.body;
+    if (!VALID_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
+    const uniqueIds = [...new Set(ids)];
+    const result = await db.prepare(`UPDATE tasks SET priority=?, updated_at=app_now() WHERE id IN (${uniqueIds.map(() => '?').join(',')})`)
+      .run(priority, ...uniqueIds);
+    return res.json({ ok: true, affected: result.changes });
+  }
+
+  if (action === 'assign') {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
+    const { assigned_to, team_id } = req.body;
+    if (assigned_to && team_id) return res.status(400).json({ error: 'Choose either a person or a team, not both' });
+    const uniqueIds = [...new Set(ids)];
+    const placeholders = uniqueIds.map(() => '?').join(',');
+
+    if (assigned_to) {
+      if (!Number.isSafeInteger(assigned_to) || assigned_to <= 0) return res.status(400).json({ error: 'Invalid assigned_to' });
+      const engineer = await db.prepare("SELECT id, name, email FROM users WHERE id=? AND role='engineer' AND active=1").get(assigned_to);
+      if (!engineer) return res.status(400).json({ error: 'assigned_to must be an active engineer' });
+      const tasksToNotify = await db.prepare(`SELECT id, title, deadline, priority FROM tasks WHERE id IN (${placeholders})`).all(...uniqueIds);
+      const result = await db.prepare(`UPDATE tasks SET assigned_to=?, team_id=NULL, updated_at=app_now() WHERE id IN (${placeholders})`).run(assigned_to, ...uniqueIds);
+      for (const t of tasksToNotify) {
+        notify('task.assigned', {
+          engineer_id: engineer.id, engineer_name: engineer.name, engineer_email: engineer.email,
+          task_title: t.title, deadline: t.deadline, priority: t.priority, is_adhoc: false,
+        });
+      }
+      return res.json({ ok: true, affected: result.changes });
+    }
+
+    if (team_id) {
+      if (!Number.isSafeInteger(team_id) || team_id <= 0) return res.status(400).json({ error: 'Invalid team_id' });
+      if (!await db.prepare('SELECT 1 FROM teams WHERE id=?').get(team_id)) return res.status(400).json({ error: 'Team not found' });
+      const result = await db.prepare(`UPDATE tasks SET assigned_to=NULL, team_id=?, updated_at=app_now() WHERE id IN (${placeholders})`).run(team_id, ...uniqueIds);
+      return res.json({ ok: true, affected: result.changes });
+    }
+
+    // Neither given: unassign entirely (no person, no team).
+    const result = await db.prepare(`UPDATE tasks SET assigned_to=NULL, team_id=NULL, updated_at=app_now() WHERE id IN (${placeholders})`).run(...uniqueIds);
+    return res.json({ ok: true, affected: result.changes });
+  }
+
   res.status(400).json({ error: 'Unknown action' });
 });
 

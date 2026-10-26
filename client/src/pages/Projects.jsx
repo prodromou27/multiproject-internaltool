@@ -13,7 +13,7 @@ import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIn
 import WaitingReasonDialog from '../components/WaitingReasonDialog';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { StatusBadge, PriorityBadge, RagBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
+import { StatusBadge, PriorityBadge, RagBadge, fmtDate, isOverdue, Modal, sentenceCase } from '../components/Shared';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useStatuses } from '../hooks/useStatuses';
 import { useToast } from '../components/Toast';
@@ -141,6 +141,42 @@ function CustomerPicker({ value, onChange, onCustomerCreated }) {
   );
 }
 
+/* ── Bulk "Assign Members" picker ────────────────────────────── */
+function BulkAssignMembersForm({ count, users, onSave, onClose }) {
+  const [ids, setIds] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const toggle = id => setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!ids.length) { setErr('Choose at least one member.'); return; }
+    setErr(''); setSaving(true);
+    try { await onSave(ids); onClose(); }
+    catch (ex) { setErr(ex.message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      {err && <div className="error-msg">{err}</div>}
+      <p className="text-sm text-muted mb-12">Add these members to {count} selected project{count === 1 ? '' : 's'}. Existing members are kept.</p>
+      <div className="u-bulk-member-list">
+        {users.map(u => (
+          <label key={u.id} className="u-bulk-member-row">
+            <input type="checkbox" checked={ids.includes(u.id)} onChange={() => toggle(u.id)} />
+            {u.name} <span className="text-muted text-sm">({sentenceCase(u.role)})</span>
+          </label>
+        ))}
+      </div>
+      <div className="modal-footer u-cc45258">
+        <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Assigning…' : 'Assign'}</button>
+      </div>
+    </form>
+  );
+}
+
 /* ── Project Form ─────────────────────────────────────────────── */
 function ProjectForm({ initial, users, onSave, onClose, onCustomerCreated }) {
   const toast = useToast();
@@ -234,6 +270,9 @@ export default function Projects() {
   const [showImport, setShowImport] = useState(false);
   const [createInitial,setCreateInitial]=useState(null);
   const [loading,    setLoading]    = useState(true);
+  const [selected,   setSelected]   = useState(new Set());
+  const [bulkBusy,   setBulkBusy]   = useState(false);
+  const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [waitingDialog, setWaitingDialog] = useState(null);
   const [page,setPage]=useState(1);
   const [total,setTotal]=useState(0);
@@ -247,7 +286,7 @@ export default function Projects() {
   const load = useCallback((loadOptions) => {
     const request = begin();
     if (request.signal.aborted) return Promise.resolve();
-    if (loadOptions?.quiet !== true) setLoading(true);
+    if (loadOptions?.quiet !== true) { setLoading(true); setSelected(new Set()); }
     setLoadError('');
     const options = { signal: request.signal };
     return api.pagedProjects({ page,page_size:25,search,status:activeFilter,rag:ragFilter },options).then(result => {
@@ -303,11 +342,39 @@ export default function Projects() {
       .catch(err => toast.error(err.message));
   }
 
+  /* ── Bulk selection ──────────────────────────────────────────── */
+  function toggleSelect(id) {
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+  function toggleSelectAll() {
+    setSelected(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(p => p.id)));
+  }
+  async function applyBulkPriority(priority) {
+    if (!selected.size || !priority) return;
+    setBulkBusy(true);
+    try {
+      await api.bulkUpdateProjects({ ids: [...selected], action: 'priority', priority });
+      toast.success(`${selected.size} project(s) updated`);
+      setSelected(new Set());
+      load();
+    } catch (e) { toast.error(e.message || 'Bulk action failed'); }
+    finally { setBulkBusy(false); }
+  }
+  async function applyBulkAssignMembers(userIds) {
+    await api.bulkUpdateProjects({ ids: [...selected], action: 'assign-members', user_ids: userIds });
+    toast.success(`${selected.size} project(s) updated`);
+    setSelected(new Set());
+    load();
+  }
+
   const TERMINAL = ['closed', 'cancelled'];
   // Treat unknown saved filter values as 'open' so stale localStorage doesn't blank the list
   const activeFilter = VALID_FILTERS.includes(filter) ? filter : 'open';
   const filtered = projects;
+  const allSelected = filtered.length > 0 && selected.size === filtered.length;
   const columns = [
+    ...(isManager ? [{ key:'select',label:<input type="checkbox" aria-label="Select all projects" checked={allSelected} onChange={toggleSelectAll} />,mobileLabel:'Select',
+      render:p => <input type="checkbox" aria-label={`Select ${p.title}`} checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} /> }] : []),
     { key:'title',label:'Title',render:p => <div className="flex-center gap-6">
       {isManager && <button onClick={event => handlePin(p,event)} title={p.is_pinned?'Unpin project':'Pin to dashboard'}
         className={`project-pin${p.is_pinned?' is-pinned':''}`} aria-pressed={!!p.is_pinned}><Pin size={13} /></button>}
@@ -412,6 +479,22 @@ export default function Projects() {
         activeFilters={(search.trim() ? 1 : 0) + (activeFilter !== 'all' ? 1 : 0) + (ragFilter !== 'all' ? 1 : 0)}
         onClear={() => { setSearch(''); setFilter('all'); setRagFilter('all'); }} />}
 
+      {isManager && selected.size > 0 && !loading && !loadError && (
+        <div className="bulk-action-bar">
+          <strong>{selected.size} selected</strong>
+          <span className="bulk-action-separator">·</span>
+          <select className="bulk-action-select" disabled={bulkBusy} value="" aria-label="Set priority"
+            onChange={e => { const v = e.target.value; e.target.value = ''; applyBulkPriority(v); }}>
+            <option value="" disabled>Set priority…</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+          <button type="button" className="btn btn-sm btn-ghost" disabled={bulkBusy} onClick={() => setShowBulkAssign(true)}>+ Assign members</button>
+          <button className="btn btn-sm btn-ghost u-6d00061" onClick={() => setSelected(new Set())}>Deselect all</button>
+        </div>
+      )}
+
       <DataTable columns={columns} rows={filtered} loading={loading} error={loadError} onRetry={load}
         caption="Projects in the selected portfolio view"
         empty={search.trim()?`No projects matching "${search}"`:'No projects found'}
@@ -435,6 +518,17 @@ export default function Projects() {
           }}
           onCancel={() => setWaitingDialog(null)}
         />
+      )}
+
+      {showBulkAssign && (
+        <Modal title="Assign Members" onClose={() => setShowBulkAssign(false)}>
+          <BulkAssignMembersForm
+            count={selected.size}
+            users={users.filter(u => u.role === 'engineer' || u.role === 'manager')}
+            onSave={applyBulkAssignMembers}
+            onClose={() => setShowBulkAssign(false)}
+          />
+        </Modal>
       )}
 
       {showCreate && (

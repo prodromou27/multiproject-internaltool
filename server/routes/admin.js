@@ -187,6 +187,98 @@ router.post('/users/:id/revoke-sessions', async (req, res) => {
   res.json({ ok: true });
 });
 
+const USER_BULK_MAX = 200;
+const BUILTIN_ROLES = ['manager', 'engineer', 'planner', 'pm'];
+
+// Locks every manager row (stable order) and returns how many OTHER active
+// managers (outside targetIds) would remain — used to stop a bulk action from
+// leaving the system with zero administrators.
+async function remainingManagersOutside(tx, targetIds) {
+  await tx.prepare("SELECT id FROM users WHERE role='manager' ORDER BY id FOR UPDATE").all();
+  const placeholders = targetIds.map(() => '?').join(',');
+  const row = await tx.prepare(`SELECT COUNT(*) AS c FROM users WHERE role='manager' AND active=1 AND id NOT IN (${placeholders})`).get(...targetIds);
+  return Number(row.c);
+}
+
+router.post('/users/bulk', async (req, res) => {
+  const { ids, action } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'No user IDs provided' });
+  if (ids.length > USER_BULK_MAX) return res.status(400).json({ error: `Maximum ${USER_BULK_MAX} users per bulk operation` });
+  if (!ids.every(id => Number.isSafeInteger(id) && id > 0)) return res.status(400).json({ error: 'All IDs must be positive integers' });
+  // Self-targeting is blocked only where it would be destructive to your own account —
+  // a role change is still checked by the active-manager invariant below, same as the
+  // single-user PUT route (see "the final active manager cannot demote themselves").
+  if (action === 'delete' && ids.includes(req.user.id)) return res.status(400).json({ error: 'You cannot delete yourself' });
+  if (action === 'active' && req.body.active === false && ids.includes(req.user.id)) return res.status(400).json({ error: 'You cannot deactivate yourself' });
+  const uniqueIds = [...new Set(ids)];
+  const placeholders = uniqueIds.map(() => '?').join(',');
+
+  if (action === 'role') {
+    const { role } = req.body;
+    if (!BUILTIN_ROLES.includes(role)) return res.status(400).json({ error: 'role must be manager, engineer, planner or pm' });
+    try {
+      const result = await db.transaction(async tx => {
+        const targets = await tx.prepare(`SELECT id, name, role FROM users WHERE id IN (${placeholders})`).all(...uniqueIds);
+        if (role !== 'manager') {
+          const losingManagers = targets.filter(u => u.role === 'manager').length;
+          if (losingManagers > 0 && await remainingManagersOutside(tx, uniqueIds) === 0)
+            return { error: 'Cannot change every active manager away from the manager role' };
+        }
+        await tx.prepare(`UPDATE users SET role=?, custom_role_id=NULL, token_version=token_version+1 WHERE id IN (${placeholders})`).run(role, ...uniqueIds);
+        return { targets };
+      });
+      if (result.error) return res.status(400).json({ error: result.error });
+      for (const u of result.targets) await logAudit(db, req, 'user', u.id, u.name, 'user_updated', `role ${u.role}->${role}; bulk`);
+      res.json({ ok: true, affected: result.targets.length });
+    } catch (e) { console.error('[admin/users/bulk role]', e.message); res.status(500).json({ error: 'Bulk role change failed' }); }
+    return;
+  }
+
+  if (action === 'active') {
+    const active = !!req.body.active;
+    try {
+      const result = await db.transaction(async tx => {
+        const targets = await tx.prepare(`SELECT id, name, role, active FROM users WHERE id IN (${placeholders})`).all(...uniqueIds);
+        if (!active) {
+          const losingManagers = targets.filter(u => u.role === 'manager' && u.active).length;
+          if (losingManagers > 0 && await remainingManagersOutside(tx, uniqueIds) === 0)
+            return { error: 'Cannot deactivate every active manager' };
+        }
+        await tx.prepare(`UPDATE users SET active=?, token_version=token_version+1 WHERE id IN (${placeholders})`).run(active ? 1 : 0, ...uniqueIds);
+        return { targets };
+      });
+      if (result.error) return res.status(400).json({ error: result.error });
+      for (const u of result.targets) await logAudit(db, req, 'user', u.id, u.name, active ? 'user_activated' : 'user_deactivated', 'bulk');
+      res.json({ ok: true, affected: result.targets.length });
+    } catch (e) { console.error('[admin/users/bulk active]', e.message); res.status(500).json({ error: 'Bulk status change failed' }); }
+    return;
+  }
+
+  if (action === 'delete') {
+    try {
+      const result = await db.transaction(async tx => {
+        const targets = await tx.prepare(`SELECT id, name, role, active FROM users WHERE id IN (${placeholders})`).all(...uniqueIds);
+        const losingManagers = targets.filter(u => u.role === 'manager' && u.active).length;
+        if (losingManagers > 0 && await remainingManagersOutside(tx, uniqueIds) === 0)
+          return { error: 'Cannot delete every active manager' };
+        await tx.prepare(`DELETE FROM users WHERE id IN (${placeholders})`).run(...uniqueIds);
+        return { targets };
+      });
+      if (result.error) return res.status(400).json({ error: result.error });
+      for (const u of result.targets) await logAudit(db, req, 'user', u.id, u.name, 'user_deleted', 'bulk');
+      res.json({ ok: true, affected: result.targets.length });
+    } catch (e) {
+      if (e.code === '23503') {
+        return res.status(409).json({ error: 'One or more selected users have created projects, tasks or other records and cannot be deleted. Deactivate them instead.' });
+      }
+      console.error('[admin/users/bulk delete]', e.message); res.status(500).json({ error: 'Bulk delete failed' });
+    }
+    return;
+  }
+
+  res.status(400).json({ error: 'Unknown action' });
+});
+
 router.post('/users/:id/toggle-2fa-exempt', async (req, res) => {
   const user = (await db.prepare('SELECT id, totp_exempt FROM users WHERE id = ?').get(req.params.id));
   if (!user) return res.status(404).json({ error: 'User not found' });

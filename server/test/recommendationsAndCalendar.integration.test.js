@@ -301,6 +301,25 @@ test('calendar validates real month boundaries and matches module role visibilit
   }
 });
 
+test('calendar maintenance visit entries include description and linked contract references', async () => {
+  const visit = (await db.prepare('INSERT INTO maintenance_visits (customer_id,title,description,scheduled_date,created_by) VALUES (?,?,?,?,?)')
+    .run(ids.customer, 'Quarterly check', 'Full rack inspection', '2038-11-15', ids.manager)).lastInsertRowid;
+  const contract = (await db.prepare("INSERT INTO customer_contracts (customer_id, reference, start_date, end_date, created_by) VALUES (?, 'C-100', '2038-01-01', '2038-12-31', ?)")
+    .run(ids.customer, ids.manager)).lastInsertRowid;
+  await db.prepare('INSERT INTO maintenance_visit_contracts (visit_id,contract_id,customer_id) VALUES (?,?,?)').run(visit, contract, ids.customer);
+  const bare = (await db.prepare('INSERT INTO maintenance_visits (customer_id,title,scheduled_date,created_by) VALUES (?,?,?,?)')
+    .run(ids.customer, 'No contract visit', '2038-11-16', ids.manager)).lastInsertRowid;
+
+  const response = await api('/api/calendar?month=2038-11', { token: ids.tokenManager });
+  assert.equal(response.status, 200);
+  const row = response.data.visits.find(r => r.id === visit);
+  assert.ok(row, 'visit appears on the calendar');
+  assert.equal(row.description, 'Full rack inspection');
+  assert.equal(row.contract_references, 'C-100');
+  // A visit with no linked contract still gets an empty string, not undefined/null.
+  assert.equal(response.data.visits.find(r => r.id === bare)?.contract_references, '');
+});
+
 test('calendar follow-ups honor ownership, feature enablement and linked task completion', async () => {
   const resolved = (await db.prepare("INSERT INTO tasks (title,status,created_by) VALUES (?,'completed',?)").run('Calendar resolved follow-up', ids.manager)).lastInsertRowid;
   const rows = [];

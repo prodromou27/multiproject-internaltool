@@ -10,7 +10,9 @@ test('an engineer adds a visit to their calendar from the Calendar and from Main
   api.override('GET /api/maintenance-visits/7/calendar.ics', () => ({ body: 'BEGIN:VCALENDAR' }));
 
   await page.goto('/calendar');
-  await page.getByRole('button', { name: /Quarterly firewall check/ }).first().click();
+  // The calendar chip shows the customer (and contract, if any), not the visit title —
+  // the title only appears once the event is opened.
+  await page.getByRole('button', { name: /Northwind Logistics/ }).first().click();
   const details = page.getByRole('dialog');
   await details.getByRole('button', { name: 'Add Quarterly firewall check to your calendar' }).click();
   await expect.poll(() => api.calls.filter(call => call.path === '/api/maintenance-visits/7/calendar.ics').length).toBe(1);

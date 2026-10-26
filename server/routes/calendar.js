@@ -65,7 +65,7 @@ router.get('/', requireAuth, async (req, res) => {
     ? (await db.prepare(projQ).all(...projParams)).map(r => ({ ...r, type: 'project' })) : [];
 
   // Maintenance visits in the month
-  let mvQ = `SELECT mv.id, mv.title, mv.scheduled_date as date, mv.start_time, mv.duration_minutes, mv.status, mv.report_sent,
+  let mvQ = `SELECT mv.id, mv.title, mv.description, mv.scheduled_date as date, mv.start_time, mv.duration_minutes, mv.status, mv.report_sent,
     c.name as customer_name
     FROM maintenance_visits mv
     JOIN customers c ON mv.customer_id = c.id
@@ -77,6 +77,7 @@ router.get('/', requireAuth, async (req, res) => {
   }
   const rows = canVisits ? await db.prepare(mvQ + ' ORDER BY mv.scheduled_date, mv.id').all(...mvParams) : [];
   const names = new Map();
+  const contractRefs = new Map();
   if (rows.length) {
     const engineers = await db.prepare(`SELECT mve.visit_id, u.name FROM maintenance_visit_engineers mve
       JOIN users u ON u.id=mve.user_id WHERE mve.visit_id IN (${rows.map(() => '?').join(',')})
@@ -85,8 +86,16 @@ router.get('/', requireAuth, async (req, res) => {
       if (!names.has(engineer.visit_id)) names.set(engineer.visit_id, []);
       names.get(engineer.visit_id).push(engineer.name);
     }
+    const contracts = await db.prepare(`SELECT mvc.visit_id, ct.reference FROM maintenance_visit_contracts mvc
+      JOIN customer_contracts ct ON ct.id=mvc.contract_id WHERE mvc.visit_id IN (${rows.map(() => '?').join(',')})
+      ORDER BY mvc.visit_id, ct.id`).all(...rows.map(row => row.id));
+    for (const contract of contracts) {
+      if (!contractRefs.has(contract.visit_id)) contractRefs.set(contract.visit_id, []);
+      contractRefs.get(contract.visit_id).push(decrypt(contract.reference));
+    }
   }
-  const visits = rows.map(r => ({ ...r, engineer_names: (names.get(r.id) || []).join(', '), customer_name: decrypt(r.customer_name), type: 'maintenance' }));
+  const visits = rows.map(r => ({ ...r, engineer_names: (names.get(r.id) || []).join(', '),
+    contract_references: (contractRefs.get(r.id) || []).join(', '), customer_name: decrypt(r.customer_name), type: 'maintenance' }));
 
   const reports = visits.filter(visit => !visit.report_sent && ['completed', 'in_progress'].includes(visit.status))
     .map(visit => ({ ...visit, type: 'report' }));

@@ -239,6 +239,44 @@ test('bulk waiting updates validate reasons, count unique owned tasks and preser
   assert.equal((await db.prepare('SELECT pending_from_customer FROM tasks WHERE id=?').get(taskIds[0])).pending_from_customer, null);
 });
 
+test('bulk priority changes and reassignment (to a person or a team) are manager-only and validate their inputs', async () => {
+  const otherEngineer = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+    .run('Other Engineer', 'other-engineer@test.local', bcrypt.hashSync('pw', 4), 'engineer')).lastInsertRowid;
+  const inactiveEngineer = (await db.prepare('INSERT INTO users (name, email, password, role, active) VALUES (?, ?, ?, ?, 0)')
+    .run('Inactive Engineer', 'inactive-engineer@test.local', bcrypt.hashSync('pw', 4), 'engineer')).lastInsertRowid;
+  const taskA = (await db.prepare('INSERT INTO tasks (title, assigned_to, created_by, priority) VALUES (?, ?, ?, ?)')
+    .run('Bulk priority A', ids.engineerEnabled, ids.manager, 'low')).lastInsertRowid;
+  const taskB = (await db.prepare('INSERT INTO tasks (title, assigned_to, created_by, priority) VALUES (?, ?, ?, ?)')
+    .run('Bulk priority B', ids.engineerEnabled, ids.manager, 'low')).lastInsertRowid;
+
+  assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenEnabled, body: { ids: [taskA], action: 'priority', priority: 'high' } })).status, 403);
+  assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [taskA], action: 'priority', priority: 'urgent' } })).status, 400);
+  const priorityRes = await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [taskA, taskB], action: 'priority', priority: 'critical' } });
+  assert.equal(priorityRes.status, 200);
+  assert.equal(priorityRes.data.affected, 2);
+  for (const id of [taskA, taskB]) assert.equal((await db.prepare('SELECT priority FROM tasks WHERE id=?').get(id)).priority, 'critical');
+
+  await db.prepare('UPDATE tasks SET team_id=? WHERE id=?').run(ids.teamEnabled, taskA);
+  assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenEnabled, body: { ids: [taskA], action: 'assign', assigned_to: otherEngineer } })).status, 403);
+  assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [taskA], action: 'assign', assigned_to: ids.manager } })).status, 400, 'assigned_to must be an active engineer');
+  assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [taskA], action: 'assign', assigned_to: inactiveEngineer } })).status, 400, 'assigned_to must be active');
+  assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [taskA], action: 'assign', assigned_to: otherEngineer, team_id: ids.teamEnabled } })).status, 400, 'cannot set both');
+
+  const assignRes = await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [taskA, taskB], action: 'assign', assigned_to: otherEngineer } });
+  assert.equal(assignRes.status, 200);
+  assert.equal(assignRes.data.affected, 2);
+  for (const id of [taskA, taskB]) assert.deepEqual(await db.prepare('SELECT assigned_to, team_id FROM tasks WHERE id=?').get(id), { assigned_to: otherEngineer, team_id: null });
+
+  assert.equal((await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [taskA], action: 'assign', team_id: 99999999 } })).status, 400, 'team must exist');
+  const teamAssignRes = await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [taskA], action: 'assign', team_id: ids.teamEnabled } });
+  assert.equal(teamAssignRes.status, 200);
+  assert.deepEqual(await db.prepare('SELECT assigned_to, team_id FROM tasks WHERE id=?').get(taskA), { assigned_to: null, team_id: ids.teamEnabled });
+
+  const unassignRes = await api('/api/tasks/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [taskA], action: 'assign' } });
+  assert.equal(unassignRes.status, 200);
+  assert.deepEqual(await db.prepare('SELECT assigned_to, team_id FROM tasks WHERE id=?').get(taskA), { assigned_to: null, team_id: null });
+});
+
 test('bulk edits recheck engineer ownership when the update executes', async () => {
   const task = (await db.prepare('INSERT INTO tasks (title, assigned_to, created_by) VALUES (?, ?, ?)')
     .run('Reassigned during bulk save', ids.engineerEnabled, ids.manager)).lastInsertRowid;
@@ -399,6 +437,30 @@ test('projects validate memberships, calendar dates, status updates and pin acce
   assert.equal(updates.length, 2);
 });
 
+test('bulk project operations change priority and add members across projects, manager-only', async () => {
+  const required = { project_code: 'PRJ-BULK-A', description: 'Bulk A', start_date: '2026-10-01', member_ids: [ids.engineerEnabled] };
+  const a = await api('/api/projects', { method: 'POST', token: ids.tokenManager, body: { ...required, title: 'Bulk A' } });
+  const b = await api('/api/projects', { method: 'POST', token: ids.tokenManager, body: { ...required, project_code: 'PRJ-BULK-B', title: 'Bulk B' } });
+  assert.equal(a.status, 200, JSON.stringify(a.data)); assert.equal(b.status, 200, JSON.stringify(b.data));
+  const ids2 = [a.data.id, b.data.id];
+
+  assert.equal((await api('/api/projects/bulk', { method: 'POST', token: ids.tokenEnabled, body: { ids: ids2, action: 'priority', priority: 'high' } })).status, 403);
+  assert.equal((await api('/api/projects/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: ids2, action: 'priority', priority: 'urgent' } })).status, 400);
+  const priorityRes = await api('/api/projects/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: ids2, action: 'priority', priority: 'high' } });
+  assert.equal(priorityRes.status, 200);
+  assert.equal(priorityRes.data.affected, 2);
+  for (const id of ids2) assert.equal((await db.prepare('SELECT priority FROM projects WHERE id=?').get(id)).priority, 'high');
+
+  assert.equal((await api('/api/projects/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: ids2, action: 'assign-members', user_ids: [ids.planner] } })).status, 400, 'planners are not valid members');
+  const assignRes = await api('/api/projects/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: ids2, action: 'assign-members', user_ids: [ids.manager] } });
+  assert.equal(assignRes.status, 200);
+  assert.equal(assignRes.data.affected, 2);
+  for (const id of ids2) assert.ok(await db.prepare('SELECT 1 FROM project_assignments WHERE project_id=? AND user_id=?').get(id, ids.manager));
+  // Re-running is a no-op (ON CONFLICT DO NOTHING), not a duplicate or an error.
+  const again = await api('/api/projects/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: ids2, action: 'assign-members', user_ids: [ids.manager] } });
+  assert.equal(again.data.affected, 0);
+});
+
 // Regression: editing any field used to fail with a raw database error ("Invalid value in request")
 // whenever the project had no completion_pct override, because the edit form always resent it — as ''
 // rather than omitting it or sending null — which the server bound straight into an integer column.
@@ -511,6 +573,60 @@ test('admin user input validation, duplicate emails and email clearing return pr
   assert.equal((await api(`/api/admin/users/${ids.manager}/toggle-active`, { method: 'POST', token: ids.tokenManager })).status, 400);
   assert.equal((await api(`/api/admin/users/${ids.manager}`, { method: 'DELETE', token: ids.tokenManager })).status, 400);
   assert.equal((await api('/api/admin/users', { method: 'POST', token: ids.tokenEnabled, body })).status, 403);
+});
+
+test('bulk user operations change role, activation and deletion, but never leave zero active managers', async () => {
+  const mk = async (name, role, active = 1) => (await db.prepare('INSERT INTO users (name, email, password, role, active) VALUES (?, ?, ?, ?, ?)')
+    .run(name, `${name.toLowerCase().replace(/\s+/g, '-')}@test.local`, bcrypt.hashSync('pw', 4), role, active)).lastInsertRowid;
+  const u1 = await mk('Bulk User One', 'engineer');
+  const u2 = await mk('Bulk User Two', 'engineer');
+
+  assert.equal((await api('/api/admin/users/bulk', { method: 'POST', token: ids.tokenEnabled, body: { ids: [u1, u2], action: 'role', role: 'pm' } })).status, 403);
+  assert.equal((await api('/api/admin/users/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [u1, u2], action: 'role', role: 'not-a-role' } })).status, 400);
+  // Self-targeting is only blocked for the destructive actions, not a role change (see below).
+  assert.equal((await api('/api/admin/users/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [ids.manager], action: 'active', active: false } })).status, 400, 'cannot deactivate yourself');
+  assert.equal((await api('/api/admin/users/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [ids.manager], action: 'delete' } })).status, 400, 'cannot delete yourself');
+
+  const roleRes = await api('/api/admin/users/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [u1, u2], action: 'role', role: 'pm' } });
+  assert.equal(roleRes.status, 200);
+  assert.equal(roleRes.data.affected, 2);
+  for (const id of [u1, u2]) assert.equal((await db.prepare('SELECT role FROM users WHERE id=?').get(id)).role, 'pm');
+
+  // A bulk role change that includes yourself and would leave zero active managers is rejected —
+  // same invariant the single-user PUT route enforces (see "the final active manager cannot demote themselves").
+  // Deactivate every other active manager (there may be several, left over from earlier tests in
+  // this file) so a fresh standalone manager becomes the only one; never touch the shared ids.manager.
+  const originalManagers = await db.prepare("SELECT id FROM users WHERE role='manager' AND active=1").all();
+  const lastManager = await mk('Bulk Last Manager', 'manager');
+  try {
+    for (const row of originalManagers) await db.prepare('UPDATE users SET active=0 WHERE id=?').run(row.id);
+    const demoteSelf = await api('/api/admin/users/bulk', { method: 'POST', token: signJwt({ id: lastManager }), body: { ids: [lastManager], action: 'role', role: 'engineer' } });
+    assert.equal(demoteSelf.status, 400);
+    assert.equal((await db.prepare('SELECT role FROM users WHERE id=?').get(lastManager)).role, 'manager', 'rejected; nothing changed');
+  } finally {
+    for (const row of originalManagers) await db.prepare('UPDATE users SET active=1 WHERE id=?').run(row.id);
+    await db.prepare('UPDATE users SET active=0 WHERE id=?').run(lastManager);
+  }
+
+  const deactivateRes = await api('/api/admin/users/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [u1, u2], action: 'active', active: false } });
+  assert.equal(deactivateRes.status, 200);
+  for (const id of [u1, u2]) assert.equal((await db.prepare('SELECT active FROM users WHERE id=?').get(id)).active, 0);
+
+  const deleteRes = await api('/api/admin/users/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [u1, u2], action: 'delete' } });
+  assert.equal(deleteRes.status, 200);
+  assert.equal(deleteRes.data.affected, 2);
+  for (const id of [u1, u2]) assert.equal(await db.prepare('SELECT 1 FROM users WHERE id=?').get(id), undefined);
+
+});
+
+// pg-mem's foreign-key-violation error has no .code (unlike real PostgreSQL's '23503'), so this
+// one only runs for real; see the identically-gated tests above for the same reason.
+test('a user who authored records (e.g. created a project) cannot be bulk-deleted; a clear error, not a 500', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const author = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+    .run('Bulk Author', 'bulk-author@test.local', bcrypt.hashSync('pw', 4), 'engineer')).lastInsertRowid;
+  await db.prepare("INSERT INTO projects (title, created_by) VALUES ('Authored by bulk target', ?)").run(author);
+  const blockedDelete = await api('/api/admin/users/bulk', { method: 'POST', token: ids.tokenManager, body: { ids: [author], action: 'delete' } });
+  assert.equal(blockedDelete.status, 409);
 });
 
 test('admin session revocation bumps token_version without deactivating or resetting the password', async () => {

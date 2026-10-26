@@ -28,7 +28,7 @@ export function DataTable({ columns,rows,rowKey='id',loading=false,error='',empt
   if (!rows.length) return <div className="ui-async-state"><strong>{empty}</strong>{emptyAction}</div>;
   return <div className="ui-table-frame"><table aria-busy={loading}>{caption && <caption className="sr-only">{caption}</caption>}<thead><tr>{columns.map(column => <th key={column.key} className={column.numeric?'is-numeric':''}>{column.label}</th>)}</tr></thead><tbody>{rows.map(row => <tr key={typeof rowKey==='function'?rowKey(row):row[rowKey]} {...(rowProps?.(row) || {})}>{columns.map(column => {
     const className=[column.numeric?'is-numeric':'',typeof column.className==='function'?column.className(row):column.className || ''].filter(Boolean).join(' ');
-    return <td key={column.key} data-label={column.label} className={className || undefined}>{column.render?column.render(row):row[column.key] ?? '—'}</td>;
+    return <td key={column.key} data-label={typeof column.label === 'string' ? column.label : (column.mobileLabel || '')} className={className || undefined}>{column.render?column.render(row):row[column.key] ?? '—'}</td>;
   })}</tr>)}</tbody></table></div>;
 }
 

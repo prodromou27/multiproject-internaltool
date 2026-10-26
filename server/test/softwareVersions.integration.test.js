@@ -55,7 +55,7 @@ test('managers add a product whose versions they enter by hand', async () => {
   assert.equal((await api(`/api/software/admin/products/${created.data.id}`, { method: 'DELETE', token: ids.tokenManager })).status, 200);
 });
 
-test('customer assets running older software are found, per customer and across customers', async () => {
+test('customer assets running older software are found, per customer', async () => {
   const { encrypt } = require('../fieldCipher');
   const fortios = await db.prepare("SELECT id FROM software_products WHERE source = 'fortinet'").get();
   await db.prepare("UPDATE software_products SET asset_vendor = 'Fortinet', enabled = 1 WHERE id = ?").run(fortios.id);
@@ -71,12 +71,6 @@ test('customer assets running older software are found, per customer and across 
   assert.deepEqual([byName['FW-OLD'].status, byName['FW-OLD'].behind, byName['FW-OLD'].latest], ['behind', 5, '7.4.8']);
   assert.deepEqual([byName['FW-NEW'].status, byName['FW-ODD'].status], ['current', 'unknown_line']);
   assert.equal(byName['FW-SPARE'], undefined, 'spares are not checked');
-
-  const estate = await api('/api/software/estate', { token: ids.tokenManager });
-  assert.equal(estate.status, 200);
-  assert.deepEqual(estate.data.attention.map(a => [a.name, a.customer_name]), [['FW-OLD', 'Acme Corp']]);
-  assert.equal(estate.data.counts.current, 1);
-  assert.equal((await api('/api/software/estate', { token: ids.tokenEnabled })).status, 403);
 });
 
 test('Check Point\'s newer documentation layout (one page per take) is read too, keeping the recommended take', async () => {

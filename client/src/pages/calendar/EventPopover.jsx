@@ -4,7 +4,7 @@ import { Check, X } from 'lucide-react';
 import { api } from '../../api';
 import { useAuth } from '../../App';
 import { fmtDate, Modal } from '../../components/Shared';
-import { TYPE_STYLE } from './constants';
+import { TYPE_STYLE, eventLabel } from './constants';
 import AddToCalendarButton from '../../components/AddToCalendarButton';
 
 /* ── Event detail popover ────────────────────────────────── */
@@ -36,7 +36,7 @@ export default function EventPopover({ event, onClose, onReportSent }) {
               <s.Icon size={18} color={s.color} />
             </span>
             <div>
-              <div className="u-4aaa243">{event.title || event.customer_name}</div>
+              <div className="u-4aaa243">{eventLabel(event)}</div>
               <div className="u-0907ca8" style={{ color: s.color }}>{s.label}</div>
             </div>
           </div>
@@ -69,6 +69,9 @@ export default function EventPopover({ event, onClose, onReportSent }) {
 
           {['maintenance', 'report'].includes(event.type) && <>
             <div><span className="u-db12fa5">Customer:</span> <strong>{event.customer_name}</strong></div>
+            {event.contract_references && <div><span className="u-db12fa5">Contract:</span> {event.contract_references}</div>}
+            {event.title && <div><span className="u-db12fa5">Title:</span> {event.title}</div>}
+            {event.description && <div><span className="u-db12fa5">Description:</span> {event.description}</div>}
             <div><span className="u-db12fa5">Engineer{event.engineer_names?.includes(',') ? 's' : ''}:</span> {event.engineer_names || '—'}</div>
             <div><span className="u-db12fa5">Status:</span> {event.status.replace('_', ' ')}</div>
             <div><span className="u-db12fa5">Report:</span> {event.report_sent

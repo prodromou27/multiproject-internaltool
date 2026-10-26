@@ -149,6 +149,7 @@ export const api = {
   previewProjectImport: file => upload('/projects/import/preview', 'file', file),
   importProjects: (file, { previewToken } = {}) => upload('/projects/import', 'file', file, previewToken ? { preview_token: previewToken } : {}),
   updateProject: (id, data) => req('PUT', `/projects/${id}`, data),
+  bulkUpdateProjects: (data) => req('POST', '/projects/bulk', data),
   requestClosure: (id) => req('POST', `/projects/${id}/request-closure`, {}),
   approveClosure: (id, review = {}) => req('POST', `/projects/${id}/approve-closure`, review),
   rejectClosure: (id, review) => req('POST', `/projects/${id}/reject-closure`, review),
@@ -242,6 +243,7 @@ export const api = {
   adminRevokeSessions: (id) => req('POST', `/admin/users/${id}/revoke-sessions`, {}),
   adminDeleteUser: (id) => req('DELETE', `/admin/users/${id}`),
   adminToggle2faExempt: (id) => req('POST', `/admin/users/${id}/toggle-2fa-exempt`, {}),
+  adminBulkUpdateUsers: (data) => req('POST', '/admin/users/bulk', data),
   adminStats: () => req('GET', '/admin/stats'),
   adminActivity: (limit = 60) => req('GET', `/admin/activity?limit=${limit}`),
 
@@ -301,7 +303,6 @@ export const api = {
   deleteVendorCase: (id, caseId) => req('DELETE', `/customers/${id}/vendor-cases/${caseId}`),
   renewals: (days, options) => req('GET', `/renewals?days=${days}`, undefined, options),
   customerAssetSoftwareStatus: (id, options) => req('GET', `/customers/${id}/assets/software-status`, undefined, options),
-  softwareEstate: (options) => req('GET', '/software/estate', undefined, options),
   customerAssetOptions: (id, options) => req('GET', `/customers/${id}/assets/options`, undefined, options),
   customerAssets: (id, params = {}, options) => req('GET', `/customers/${id}/assets?` + new URLSearchParams(params).toString(), undefined, options),
   createCustomerAsset: (id, body) => req('POST', `/customers/${id}/assets`, body),

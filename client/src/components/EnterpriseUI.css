@@ -14,6 +14,15 @@
 
 .import-option{display:flex;align-items:flex-start;gap:8px;margin:0 0 14px;font-size:13px;cursor:pointer}.import-option input{width:auto;min-height:0;margin-top:3px}.import-option small{display:block;color:var(--gray-500);font-size:12px}
 
+.user-status-row{display:flex;align-items:center;gap:4px;margin-top:5px;flex-wrap:wrap}
+.user-stats{display:flex;gap:10px;color:var(--gray-600);font-size:12px;font-variant-numeric:tabular-nums}
+.user-stats>span{display:inline-flex;align-items:center;gap:4px}
+.is-inactive-row{opacity:.65}
+
+.u-bulk-member-list{max-height:260px;overflow:auto;margin-bottom:14px;border:1px solid var(--gray-200);border-radius:var(--radius);padding:4px 10px}
+.u-bulk-member-row{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px}
+.u-bulk-member-row input{width:auto;min-height:0}
+
 /* Quieter figures: one bar, divided cells, colour only on what needs attention. */
 .ui-metric-strip{display:flex;flex-wrap:wrap;gap:0;margin-bottom:16px;background:var(--surface);border:1px solid var(--gray-200);border-radius:var(--radius-md);overflow:hidden}
 .ui-metric-strip>.ui-metric{flex:1 1 140px;padding:10px 16px;border:0;border-right:1px solid var(--gray-100);border-radius:0;background:none}
