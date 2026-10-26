@@ -160,6 +160,16 @@ router.get('/', requireAuth, async (req, res) => {
       WHERE pa.user_id = ? ORDER BY is_pinned DESC, p.created_at DESC
     `).all(req.user.id, req.user.id));
   }
+  // Assigned members (engineers or managers), as one query rather than a per-row subquery.
+  if (rows.length) {
+    const members = await db.prepare(`
+      SELECT pa.project_id, u.name FROM project_assignments pa JOIN users u ON u.id = pa.user_id
+      WHERE pa.project_id IN (${rows.map(() => '?').join(',')}) ORDER BY pa.project_id, u.name
+    `).all(...rows.map(r => r.id));
+    const membersByProject = new Map();
+    for (const m of members) { if (!membersByProject.has(m.project_id)) membersByProject.set(m.project_id, []); membersByProject.get(m.project_id).push(m.name); }
+    rows = rows.map(r => ({ ...r, member_names: (membersByProject.get(r.id) || []).join(', ') }));
+  }
   // Customer names are decrypted once per customer, and only where needed: every
   // row for the full list or a search, otherwise only the page sent back.
   const names = new Map();
@@ -182,7 +192,7 @@ router.get('/', requireAuth, async (req, res) => {
   const statuses=new Set(['open','all','overdue',...VALID_PROJECT_STATUSES]);
   if (!Number.isSafeInteger(page) || page<1 || page>10_000 || !Number.isSafeInteger(pageSize) || pageSize<1 || pageSize>100 || search.length>200 || !statuses.has(status) || !['all','red','amber','green'].includes(rag)) return res.status(400).json({ error:'Invalid project filters or pagination' });
   const terminal=new Set(['closed','cancelled']);
-  const searched=search ? rows.map(withName).filter(row => [row.project_code,row.title,row.customer_name,row.created_by_name].some(value => String(value || '').toLowerCase().includes(search))) : rows;
+  const searched=search ? rows.map(withName).filter(row => [row.project_code,row.title,row.customer_name,row.created_by_name,row.member_names].some(value => String(value || '').toLowerCase().includes(search))) : rows;
   const counts={ all:searched.length,open:searched.filter(row => !terminal.has(row.status)).length,overdue:searched.filter(row => !terminal.has(row.status) && row.status!=='pending_approval' && row.deadline && row.deadline<require('../appTime').today()).length };
   for (const value of VALID_PROJECT_STATUSES) counts[value]=searched.filter(row => row.status===value).length;
   let filtered=status==='all' ? searched : status==='open' ? searched.filter(row => !terminal.has(row.status)) : status==='overdue' ? searched.filter(row => !terminal.has(row.status) && row.status!=='pending_approval' && row.deadline && row.deadline<require('../appTime').today()) : searched.filter(row => row.status===status);
