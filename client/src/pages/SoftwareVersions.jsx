@@ -11,8 +11,6 @@ import { CampaignDialog } from '../components/RemediationCampaigns';
 import { useLiveVersion } from '../live';
 import { localDateISO, businessToday } from '../utils/dates';
 import SoftwareAdmin from './SoftwareAdmin';
-import { Link } from 'react-router-dom';
-import SoftwareStatusBadge from '../components/SoftwareStatusBadge';
 import './SoftwareVersions.css';
 
 /* Software versions: the latest (and recommended) version of each product we
@@ -55,30 +53,10 @@ function Product({ product, today, canManage }) {
   </Surface>;
 }
 
-// Customer devices running older software than the latest above (needs asset access).
-function CustomerEstate() {
-  const [data, setData] = useState(null), [error, setError] = useState('');
-  useEffect(() => { api.softwareEstate().then(setData).catch(failure => setError(failure.message)); }, []);
-  if (error) return <Surface title="Customer devices"><p className="error-msg" role="alert">{error}</p></Surface>;
-  if (!data) return null;
-  const c = data.counts || {};
-  const summary = data.checked ? `${data.checked} devices checked: ${c.current || 0} up to date, ${c.behind || 0} behind, ${c.end_of_life || 0} on end-of-life versions.` : 'No customer devices match these products yet. Assets need a vendor and software version, and the product an asset vendor (Products and feeds).';
-  return <Surface title="Customer devices on older versions" label="Customer devices on older versions" description={summary}>
-    {data.attention.length > 0 && <div className="table-wrap"><table className="sv-table">
-      <thead><tr><th scope="col">Customer</th><th scope="col">Device</th><th scope="col">Product</th><th scope="col">Running</th><th scope="col">Status</th></tr></thead>
-      <tbody>{data.attention.map(a => <tr key={a.id}>
-        <td>{a.customer_name}</td>
-        <th scope="row"><Link to={`/customers/${a.customer_id}/service-profile?section=assets&view=attention`} title="Review it in the customer's assets">{a.name}</Link></th><td>{a.product_name}</td><td>{a.software_version}</td><td><SoftwareStatusBadge status={a} /></td>
-      </tr>)}</tbody>
-    </table></div>}
-  </Surface>;
-}
-
 export default function SoftwareVersions() {
   const { user } = useAuth();
   const toast = useToast();
   const manager = user?.role === 'manager';
-  const assetAccess = Object.prototype.hasOwnProperty.call(user?.permissions || {}, 'assets.access') ? user.permissions['assets.access'] === true : manager;
   const [data, setData] = useState(null), [error, setError] = useState(''), [managing, setManaging] = useState(false), [checking, setChecking] = useState(false);
   const live = useLiveVersion();
   const load = useCallback(async () => {
@@ -110,7 +88,6 @@ export default function SoftwareVersions() {
     {managing && <SoftwareAdmin onChanged={load} />}
     {error ? <div className="error-msg" role="alert">{error}</div> : !data ? <p className="text-muted">Loading…</p> : <div className="sv-layout">
       <div className="sv-main">
-        {assetAccess && <CustomerEstate />}
         {!data.products.length && <p className="text-muted">No products are followed yet.{manager ? ' Add them under Products and feeds.' : ''}</p>}
         {data.products.map(product => <Product key={product.id} product={product} today={today} canManage={user?.role === 'manager'} />)}
       </div>

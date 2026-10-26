@@ -303,7 +303,6 @@ export const api = {
   deleteVendorCase: (id, caseId) => req('DELETE', `/customers/${id}/vendor-cases/${caseId}`),
   renewals: (days, options) => req('GET', `/renewals?days=${days}`, undefined, options),
   customerAssetSoftwareStatus: (id, options) => req('GET', `/customers/${id}/assets/software-status`, undefined, options),
-  softwareEstate: (options) => req('GET', '/software/estate', undefined, options),
   customerAssetOptions: (id, options) => req('GET', `/customers/${id}/assets/options`, undefined, options),
   customerAssets: (id, params = {}, options) => req('GET', `/customers/${id}/assets?` + new URLSearchParams(params).toString(), undefined, options),
   createCustomerAsset: (id, body) => req('POST', `/customers/${id}/assets`, body),
