@@ -1491,6 +1491,30 @@ async function applyMigrations(pool, transaction) {
     -- Customer 360 tabs a manager hid on this customer's page (a JSON list of tab ids).
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS hidden_sections TEXT;
   `]);
+  migrations.push(['20261130_maintenance_visit_contracts', `
+    -- The customer contracts a visit is scheduled under, if any (contracts are per customer;
+    -- see 20261025_customer_contracts). A visit can combine work covered by more than one
+    -- contract, so this is many-to-many, like maintenance_visit_assets — and the same
+    -- composite-FK trick keeps a contract tied to the visit's own customer.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_contract_customer_pair ON customer_contracts(customer_id,id);
+    CREATE TABLE IF NOT EXISTS maintenance_visit_contracts (
+      visit_id    INTEGER NOT NULL,
+      contract_id INTEGER NOT NULL,
+      customer_id INTEGER NOT NULL,
+      PRIMARY KEY (visit_id,contract_id),
+      FOREIGN KEY (customer_id,visit_id) REFERENCES maintenance_visits(customer_id,id) ON DELETE CASCADE,
+      FOREIGN KEY (customer_id,contract_id) REFERENCES customer_contracts(customer_id,id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS idx_maintenance_visit_contracts_contract ON maintenance_visit_contracts(contract_id,visit_id);
+  `]);
+  migrations.push(['20261130_maintenance_visit_supervisor', `
+    -- Of a visit's assigned engineers, at most one is its supervisor — enforced by
+    -- replaceEngineers() (routes/maintenance-visits.js), the only code path that writes
+    -- this table. (Not also a DB constraint: a partial unique index on a column that is
+    -- part of this table's composite primary key corrupts plain equality lookups on that
+    -- column under pg-mem, the in-memory Postgres used by the default test run.)
+    ALTER TABLE maintenance_visit_engineers ADD COLUMN IF NOT EXISTS is_supervisor INTEGER NOT NULL DEFAULT 0;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

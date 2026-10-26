@@ -47,22 +47,35 @@ const STATUS_COLORS = {
   cancelled:   'badge-cancelled',
 };
 
-/* ── Multi-engineer picker ───────────────────────────────── */
-function EngineerPicker({ engineers, selected, onChange }) {
+/* ── Multi-engineer picker, with one of the selected flagged supervisor ──── */
+function EngineerPicker({ engineers, selected, onChange, supervisorId, onSupervisorChange }) {
   return (
     <div className="flex flex-wrap gap-6 mt-4">
       {engineers.map(e => {
         const active = selected.includes(e.id);
+        const isSupervisor = active && String(supervisorId || '') === String(e.id);
         return (
-          <label key={e.id} className={["u-7ed4f50", (active ? 'u-4c55566' : 'u-d994785'), (active ? 'u-8b7de93' : 'u-52e7996')].filter(Boolean).join(' ')}>
-            <input
-              type="checkbox"
-              checked={active}
-              onChange={() => onChange(active ? selected.filter(x => x !== e.id) : [...selected, e.id])}
-              className="u-30e741d"
-            />
-            {e.name}
-          </label>
+          <span key={e.id} className="flex items-center gap-4">
+            <label className={["u-7ed4f50", (active ? 'u-4c55566' : 'u-d994785'), (active ? 'u-8b7de93' : 'u-52e7996')].filter(Boolean).join(' ')}>
+              <input
+                type="checkbox"
+                checked={active}
+                onChange={() => {
+                  const next = active ? selected.filter(x => x !== e.id) : [...selected, e.id];
+                  onChange(next);
+                  if (active && isSupervisor) onSupervisorChange('');
+                }}
+                className="u-30e741d"
+              />
+              {e.name}
+            </label>
+            {active && (
+              <label className="text-sm text-muted flex items-center gap-2">
+                <input type="radio" name="visit-supervisor" checked={isSupervisor} onChange={() => onSupervisorChange(e.id)} />
+                Supervisor
+              </label>
+            )}
+          </span>
         );
       })}
       {engineers.length === 0 && <span className="text-muted text-sm">No engineers available</span>}
@@ -79,7 +92,7 @@ const VISIT_FIELDS = [
 function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
   const [form, setForm] = useState(() => {
     const start = initial || { customer_id: '', title: '', description: '', scheduled_date: '',
-      engineer_ids: [], asset_ids: [], notes: '', status: 'scheduled',...(defaults || {}) };
+      engineer_ids: [], supervisor_id: '', asset_ids: [], contract_ids: [], notes: '', status: 'scheduled',...(defaults || {}) };
     return { ...start, all_day: allDayOf(start) };
   });
   const check = useVisitCheck(initial);
@@ -89,6 +102,8 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
   const [formErr,  setFormErr]  = useState('');
   const [assets,setAssets]=useState([]);
   const [assetsLoading,setAssetsLoading]=useState(false);
+  const [contracts,setContracts]=useState([]);
+  const [contractsLoading,setContractsLoading]=useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   useEffect(() => {
@@ -97,6 +112,15 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
     api.maintenanceVisitAssets(form.customer_id,{ signal:controller.signal }).then(rows => { if (!controller.signal.aborted) setAssets(rows); })
       .catch(error => { if (!controller.signal.aborted) setFormErr(error.message || 'Could not load customer assets'); })
       .finally(() => { if (!controller.signal.aborted) setAssetsLoading(false); });
+    return () => controller.abort();
+  },[form.customer_id]);
+
+  useEffect(() => {
+    if (!form.customer_id) { setContracts([]);return; }
+    const controller=new AbortController();setContractsLoading(true);
+    api.maintenanceVisitContracts(form.customer_id,{ signal:controller.signal }).then(rows => { if (!controller.signal.aborted) setContracts(rows); })
+      .catch(error => { if (!controller.signal.aborted) setFormErr(error.message || 'Could not load customer contracts'); })
+      .finally(() => { if (!controller.signal.aborted) setContractsLoading(false); });
     return () => controller.abort();
   },[form.customer_id]);
 
@@ -121,7 +145,8 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
       <div className="form-group">
         <label htmlFor="visit-customer">Customer *</label>
         <CustomerSearchSelect id="visit-customer" value={form.customer_id} allowEmpty={false} required placeholder="Search customers…"
-          onChange={customerId => setForm(old => ({ ...old,customer_id:customerId ? String(customerId) : '',asset_ids:String(customerId || '')===String(initial?.customer_id || '') ? initial?.asset_ids || [] : [] }))} />
+          onChange={customerId => setForm(old => { const sameCustomer=String(customerId || '')===String(initial?.customer_id || '');
+            return { ...old,customer_id:customerId ? String(customerId) : '',asset_ids:sameCustomer ? initial?.asset_ids || [] : [],contract_ids:sameCustomer ? initial?.contract_ids || [] : [] }; })} />
       </div>
       <div className="form-group">
         <label htmlFor="visit-title">Visit Title *</label>
@@ -155,9 +180,21 @@ function VisitForm({ initial, defaults, engineers, onSave, onClose }) {
           engineers={engineers}
           selected={form.engineer_ids}
           onChange={ids => setChecked(f => ({ ...f, engineer_ids: ids }))}
+          supervisorId={form.supervisor_id}
+          onSupervisorChange={id => setChecked(f => ({ ...f, supervisor_id: id }))}
         />
       </div>
       <div className="form-group"><span id="visit-assets-label" className="form-label-text">Assets in scope</span>{assetsLoading ? <span className="text-muted text-sm" role="status">Loading assets…</span> : <CheckList key={form.customer_id || 'none'} id="visit-assets" label="assets in scope" searchPlaceholder="Search assets…" emptyText={form.customer_id ? 'No active assets recorded for this customer.' : 'Choose the customer first.'} options={assets.map(asset => ({ id: asset.id, label: asset.name, detail: [asset.asset_type, asset.hostname].filter(Boolean).join(' · ') }))} selected={form.asset_ids || []} onChange={assetIds => setForm(old => ({ ...old,asset_ids:assetIds }))} />}</div>
+      <div className="form-group">
+        <span id="visit-contracts-label" className="form-label-text">Contracts covering this visit</span>
+        {contractsLoading ? <span className="text-muted text-sm" role="status">Loading contracts…</span> : (
+          <CheckList key={form.customer_id || 'none'} id="visit-contracts" label="contracts" searchPlaceholder="Search contracts…"
+            emptyText={form.customer_id ? 'No contracts recorded for this customer.' : 'Choose the customer first.'}
+            options={contracts.map(contract => ({ id: contract.id, label: contract.reference || contract.description || `Contract #${contract.id}`,
+              detail: [contract.start_date, contract.end_date].filter(Boolean).join(' – ') }))}
+            selected={form.contract_ids || []} onChange={contractIds => setForm(old => ({ ...old,contract_ids:contractIds }))} />
+        )}
+      </div>
       <div className="form-group">
         <label htmlFor="visit-form-notes">Notes</label>
         <textarea id="visit-form-notes" value={form.notes || ''} onChange={set('notes')} placeholder="Any additional notes…" />
@@ -335,9 +372,10 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
             <div className="text-sm text-muted u-fce9611">
               Engineer{visit.engineer_ids?.length !== 1 ? 's' : ''}
             </div>
-            <div>{visit.engineer_names || <span className="text-muted">Unassigned</span>}</div>
+            <div>{visit.engineer_names || <span className="text-muted">Unassigned</span>}{visit.supervisor_name && <span className="text-muted"> (supervisor: {visit.supervisor_name})</span>}</div>
           </div>
           <div><div className="text-sm text-muted u-fce9611">Assets in scope</div><div>{visit.asset_ids?.length ? `${visit.asset_ids.length} linked customer ${visit.asset_ids.length===1 ? 'asset' : 'assets'}` : <span className="text-muted">None selected</span>}</div></div>
+          <div><div className="text-sm text-muted u-fce9611">Contracts</div><div>{visit.contract_references || <span className="text-muted">None selected</span>}</div></div>
           <div>
             <div className="text-sm text-muted u-fce9611">Report Status</div>
             <div className="flex-col gap-4">
@@ -416,7 +454,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
   );
 }
 
-const MV_COLUMNS = ['customer_name*', 'title*', 'description', 'scheduled_date*', 'engineer_names', 'notes'];
+const MV_COLUMNS = ['customer_name*', 'title*', 'description', 'scheduled_date*', 'engineer_names', 'supervisor_name', 'contract_numbers', 'notes'];
 const VISIT_FILTERS = new Set(['upcoming', 'past', 'report_pending', 'awaiting_review', 'cancelled', 'all']);
 const VISIT_FILTER_LIST = [...VISIT_FILTERS];
 const VISIT_VIEWS = ['list', 'calendar', 'availability'];

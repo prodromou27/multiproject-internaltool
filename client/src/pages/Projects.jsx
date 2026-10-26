@@ -3,8 +3,9 @@ import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { Link, useLocation } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Building2, X, Bell, Pin } from 'lucide-react';
-import { PageHeader } from '../components/PageLayout';
+import { Building2, X, Bell, Pin, Download, Upload } from 'lucide-react';
+import { HeaderMenu, PageHeader } from '../components/PageLayout';
+import ImportModal from '../components/ImportModal';
 import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
 import { DataTable, MetricStrip, Pagination, Surface } from '../components/EnterpriseUI';
 import { useLatestRequest } from '../hooks/useLatestRequest';
@@ -17,6 +18,8 @@ import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useStatuses } from '../hooks/useStatuses';
 import { useToast } from '../components/Toast';
 import { useLiveRefresh } from '../live';
+
+const PROJECT_COLUMNS = ['project_code*', 'title*', 'description*', 'start_date*', 'member_names*', 'customer_name', 'priority', 'deadline'];
 
 /* ── Inline status dropdown ────────────────────────────────────── *
  * Built on Radix's unstyled DropdownMenu primitive instead of a hand-
@@ -228,6 +231,7 @@ export default function Projects() {
   const [search,     setSearch]     = useState('');
   const [ragFilter,  setRagFilter]  = useState('all');
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [createInitial,setCreateInitial]=useState(null);
   const [loading,    setLoading]    = useState(true);
   const [waitingDialog, setWaitingDialog] = useState(null);
@@ -332,7 +336,24 @@ export default function Projects() {
   return (
     <div className="page">
       <PageHeader title="Projects" actions={<>
-{isManager && <button className="btn btn-primary" onClick={() => { setCreateInitial(null);setShowCreate(true); }} disabled={loading || !!loadError}>+ New Project</button>}
+{isManager && (
+          <div className="flex gap-8 flex-wrap">
+            <button className="btn btn-primary" onClick={() => { setCreateInitial(null);setShowCreate(true); }} disabled={loading || !!loadError}>+ New Project</button>
+            <HeaderMenu>
+              <button type="button" disabled={loading} onClick={async () => {
+                try {
+                  const { blob, filename } = await api.exportProjects();
+                  const url = URL.createObjectURL(blob), link = document.createElement('a');
+                  link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+                  setTimeout(() => URL.revokeObjectURL(url), 1000);
+                } catch (failure) { toast.error(failure.message || 'Export failed. Please try again.'); }
+              }}>
+                <Download size={14} aria-hidden="true" /> Export projects
+              </button>
+              <button type="button" disabled={loading} onClick={() => setShowImport(true)}><Upload size={14} aria-hidden="true" /> Import projects</button>
+            </HeaderMenu>
+          </div>
+        )}
       </>} />
 
       <MetricStrip items={[
@@ -426,6 +447,21 @@ export default function Projects() {
             onCustomerCreated={loadCustomers}
           />
         </Modal>
+      )}
+
+      {showImport && isManager && (
+        <ImportModal
+          title="Import Projects"
+          templateUrl={api.projectsTemplateUrl()}
+          previewFn={api.previewProjectImport}
+          importFn={(file, { previewToken }) => api.importProjects(file, { previewToken })}
+          noun={['project', 'projects']}
+          unchangedLabel="already there (skipped)"
+          listUnchanged
+          columns={PROJECT_COLUMNS}
+          onClose={() => setShowImport(false)}
+          onDone={load}
+        />
       )}
     </div>
   );
