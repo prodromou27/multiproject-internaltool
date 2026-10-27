@@ -348,7 +348,7 @@ export default function Customers() {
     { key:'contract',label:'Contract',render:c => <ContractCell contract={c.current_contract} others={c.other_active_contracts} link={isManager || isEngineer ? `/customers/${c.id}/service-profile?section=contracts` : null} /> },
     { key:'contact',label:'Primary contact',render:c => <>{c.contact_name || c.primary_contact || '—'}{c.contact_email && <div><a className="text-sm" href={`mailto:${c.contact_email}`}>{c.contact_email}</a></div>}</> },
     { key:'location',label:'Location',className:'text-sm',render:c => c.location || c.address || '—' },
-    { key:'visits',label:'Visits',numeric:true,render:c => c.visit_count ?? 0 },
+    { key:'assets',label:'Total assets',numeric:true,render:c => c.asset_count ?? 0 },
     { key:'actions',label:'Actions',render:c => <div className="table-actions">
       {(isManager || isEngineer) && <Link className="btn btn-sm btn-ghost" to={`/customers/${c.id}/service-profile`}>Open</Link>}
       {canCreate && <button className="btn btn-sm btn-ghost" onClick={() => openEdit(c)}>Edit</button>}
