@@ -648,7 +648,7 @@ export default function MaintenanceVisits() {
       ]} />}
 
       {/* List, calendar, or (managers and planners) the team's availability. */}
-      <Tabs variant="pill" className="mb-12" label="Visit views" value={view} onChange={setView}
+      <Tabs variant="button" className="mb-12" label="Visit views" value={view} onChange={setView}
         items={[['list', 'List'], ['calendar', 'Calendar'], ...(canManage ? [['availability', 'Team availability']] : [])].map(([key, label]) => ({ key, label }))} />
       <TabPanel label="Visit views" value={view}>
       {view === 'calendar' && <VisitCalendar onOpen={visit => setSelected(visit)} onPlan={canManage ? planVisit : null} />}

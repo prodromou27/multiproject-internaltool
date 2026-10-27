@@ -62,11 +62,9 @@ export default function ICalSubscribe() {
     });
   }
 
-  const btnPrimary = { display: 'inline-flex', alignItems: 'center', gap: 5, background: '#0369a1', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 600, flexShrink: 0 };
-
   return (
     <div className="u-7a5dec8">
-      <Link2 size={18} color="#0369a1" style={{ flexShrink: 0, marginTop: 2 }} />
+      <Link2 size={18} color="var(--primary)" style={{ flexShrink: 0, marginTop: 2 }} />
       <div className="flex-1 min-w-0">
         <div className="u-fd60ce2">
           Subscribe to your calendar (iCal)
@@ -113,7 +111,7 @@ export default function ICalSubscribe() {
             <span className="u-14096d2">
               You have an active subscription URL. For your security it can't be displayed again — regenerate to get a fresh URL (this invalidates the old one).
             </span>
-            <button className="btn btn-sm" disabled={busy} onClick={generate} style={btnPrimary}>
+            <button className="btn btn-primary btn-sm" disabled={busy} onClick={generate}>
               {busy ? '…' : 'Regenerate URL'}
             </button>
             <button className="btn btn-sm u-26d9401" disabled={busy} onClick={revoke}>
@@ -121,7 +119,7 @@ export default function ICalSubscribe() {
             </button>
           </div>
         ) : (
-          <button className="btn btn-sm" disabled={busy} onClick={generate} style={btnPrimary}>
+          <button className="btn btn-primary btn-sm" disabled={busy} onClick={generate}>
             <Link2 size={12} /> {busy ? 'Generating…' : 'Generate subscription URL'}
           </button>
         )}

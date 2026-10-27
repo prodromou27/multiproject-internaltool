@@ -487,7 +487,7 @@
 .u-79ec38e.u-79ec38e.u-79ec38e { font-size:13px; color:var(--gray-700); word-break:break-word; }
 .u-7a21c6a.u-7a21c6a.u-7a21c6a { margin-top:2px; }
 .u-7a40868.u-7a40868.u-7a40868 { font-weight:700; color:#9a3412; }
-.u-7a5dec8.u-7a5dec8.u-7a5dec8 { margin-top:20px; padding:14px 18px; background:var(--primary-light); border:1px solid #a7f0ef; border-radius:10px; display:flex; align-items:flex-start; gap:12px; }
+.u-7a5dec8.u-7a5dec8.u-7a5dec8 { margin-top:20px; padding:14px 18px; background:var(--primary-light); border:1px solid #a7f0ef; border-radius:var(--radius-lg); display:flex; align-items:flex-start; gap:12px; }
 .u-7a6b254.u-7a6b254.u-7a6b254 { margin-left:6px; font-size:11px; color:var(--danger); font-weight:600; }
 .u-7a90ff0.u-7a90ff0.u-7a90ff0 { background:var(--gray-100); border-radius:4px; padding:1px 5px; font-size:11px; flex-shrink:0; cursor:pointer; color:var(--gray-700); }
 .u-7af2e82.u-7af2e82.u-7af2e82 { max-width:880px; }

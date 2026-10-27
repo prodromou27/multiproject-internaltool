@@ -81,7 +81,7 @@
 .operations-eyebrow { color: var(--primary); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
 .operations-description { color: var(--gray-500); font-size: 13px; line-height: 1.6; margin-top: 7px; max-width: 640px; }
 .operations-page-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
-.operations-page-state { max-width: 560px; margin: 60px auto; background: var(--surface); border: 1px solid var(--gray-200); border-radius: 16px; padding: 36px; display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+.operations-page-state { max-width: 560px; margin: 60px auto; background: var(--surface); border: 1px solid var(--gray-200); border-radius: var(--radius-xl); padding: 36px; display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
 .operations-page-state svg { color: var(--primary); }
 .operations-page-state h1 { font-size: 24px; }
 .operations-page-state p { color: var(--gray-600); font-size: 14px; line-height: 1.7; }
