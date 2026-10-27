@@ -1,18 +1,20 @@
-/* TeamHub refinement: calm and focused.
-   Ink for text and primary actions, a quiet slate for links and focus, and the
-   Odyssey red used for one job only: marking what needs attention (overdue
-   counts, attention markers, the current page). Loaded after index.css and
-   foundations.css; the generated inline.css still wins for element-level rules. */
+/* TeamHub refinement: Carbon-structured.
+   IBM Carbon's shape (square corners, no shadow lift, Gray 100 neutral scale)
+   with Teal 60 standing in for Carbon's own Blue 60 — same discipline, a
+   different accent. The Odyssey red still has one job only: marking what
+   needs attention (overdue counts, attention markers, the current page).
+   Loaded after index.css and foundations.css; generated inline.css still
+   wins for element-level rules. */
 
 :root {
-  --ink:            #1a2027;
+  --ink:            #161616;
   --signal:         #c8102e;
   --signal-soft:    #fcedf0;
 
-  --primary:        #30507f;
-  --primary-dark:   #233c61;
-  --primary-light:  #eef2f8;
-  --primary-ring:   rgba(48, 80, 127, .18);
+  --primary:        #007d79;
+  --primary-dark:   #004144;
+  --primary-light:  #d9fbfb;
+  --primary-ring:   rgba(0, 125, 121, .18);
   --on-primary:     #fff;     /* text on a --primary background */
   --on-status:      #fff;     /* text on --danger and --warning */
 
@@ -26,47 +28,47 @@
   --tone-danger-text:  #a50d26;
   --tone-warning-text: #865610;
   --tone-success-text: #24603f;
-  --tone-info-text:    #2a4670;
+  --tone-info-text:    #004144;
 
-  /* Cool neutral scale (no blue cast). */
-  --gray-50:  #f4f5f7;
-  --gray-100: #eceef1;
-  --gray-200: #e3e6ea;
-  --gray-300: #cdd2d9;
-  --gray-400: #9aa3ae;
-  --gray-500: #5c6571;  /* secondary text: 4.5:1+ on white and on --gray-50 */
-  --gray-600: #4b535e;
-  --gray-700: #3b434d;
-  --gray-800: #262c33;
-  --gray-900: #1a2027;
+  /* Carbon Gray 10-100: a true neutral scale, no blue or cool cast. */
+  --gray-50:  #f4f4f4;
+  --gray-100: #e0e0e0;
+  --gray-200: #c6c6c6;
+  --gray-300: #a8a8a8;
+  --gray-400: #8d8d8d;
+  --gray-500: #6f6f6f;  /* secondary text: 4.5:1+ on white and on --gray-50 */
+  --gray-600: #525252;
+  --gray-700: #393939;
+  --gray-800: #262626;
+  --gray-900: #161616;
 
   --surface:          #ffffff;
-  --highlight:        #f1f4f9;
-  --highlight-strong: #e4eaf3;
+  --highlight:        #d9fbfb;
+  --highlight-strong: #a7f0ef;
 
-  /* Radius hierarchy: controls 6, panels 10, overlays 12. */
-  --radius:    6px;
-  --radius-lg: 10px;
-  --radius-xl: 12px;
+  /* Carbon has no radius: panels and controls are square. */
+  --radius:    0;
+  --radius-lg: 0;
+  --radius-xl: 0;
 
   /* Lines do the separating; shadows only lift overlays. */
   --shadow-xs: none;
   --shadow-sm: none;
-  --shadow:    0 1px 2px rgba(26, 32, 39, .06);
-  --shadow-md: 0 8px 24px rgba(26, 32, 39, .10);
-  --shadow-lg: 0 16px 40px rgba(26, 32, 39, .14);
+  --shadow:    0 1px 2px rgba(22, 22, 22, .06);
+  --shadow-md: 0 8px 24px rgba(22, 22, 22, .10);
+  --shadow-lg: 0 16px 40px rgba(22, 22, 22, .14);
 }
 
 [data-theme="dark"] {
-  --ink:            #e8ebef;
+  --ink:            #f4f4f4;
   --signal:         #f0566c;
   --signal-soft:    rgba(240, 86, 108, .14);
-  --primary:        #8fb0e0;
-  --primary-dark:   #b3cbee;
-  --primary-light:  rgba(143, 176, 224, .14);
-  --primary-ring:   rgba(143, 176, 224, .25);
-  --on-primary:     #12161b;  /* dark primary, danger and warning are light: dark text */
-  --on-status:      #12161b;
+  --primary:        #3ddbd9;
+  --primary-dark:   #9ef0ee;
+  --primary-light:  rgba(61, 219, 217, .14);
+  --primary-ring:   rgba(61, 219, 217, .25);
+  --on-primary:     #161616;  /* dark primary, danger and warning are light: dark text */
+  --on-status:      #161616;
   --warning:        #e0a94f;  /* 4.5:1+ as text on the dark surface */
   --warning-light:  rgba(224, 169, 79, .14);
   --success-light:  rgba(127, 209, 167, .12);
@@ -75,20 +77,20 @@
   --tone-danger-text:  #f58a9b;
   --tone-warning-text: #f0c27a;
   --tone-success-text: #7fd1a7;
-  --tone-info-text:    #a9c3ea;
-  --gray-50:  #12161b;
-  --gray-100: #1f252d;
-  --gray-200: #2a313a;
-  --gray-300: #3a424d;
-  --gray-400: #5f6874;
-  --gray-500: #8d96a2;
-  --gray-600: #a9b1bb;
-  --gray-700: #c3c9d1;
-  --gray-800: #dde1e6;
-  --gray-900: #eef0f3;
-  --surface:          #1a1f26;
-  --highlight:        rgba(143, 176, 224, .08);
-  --highlight-strong: rgba(143, 176, 224, .16);
+  --tone-info-text:    #9ef0ee;
+  --gray-50:  #161616;
+  --gray-100: #262626;
+  --gray-200: #393939;
+  --gray-300: #525252;
+  --gray-400: #6f6f6f;
+  --gray-500: #8d8d8d;
+  --gray-600: #a8a8a8;
+  --gray-700: #c6c6c6;
+  --gray-800: #e0e0e0;
+  --gray-900: #f4f4f4;
+  --surface:          #262626;
+  --highlight:        rgba(61, 219, 217, .08);
+  --highlight-strong: rgba(61, 219, 217, .16);
 }
 [data-theme="dark"] body,
 [data-theme="dark"] .card,
@@ -509,10 +511,10 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .operations-shell .sidebar nav a:hover svg { color: var(--gray-600); }
 .operations-shell .sidebar nav a.active,
 .nav-compact .sidebar nav a.active {
-  background: color-mix(in srgb, var(--primary) 9%, var(--surface)); color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface)); color: var(--primary-dark);
   font-weight: 600; box-shadow: none;
 }
-.operations-shell .sidebar nav a.active svg { color: var(--primary); }
+.operations-shell .sidebar nav a.active svg { color: var(--primary-dark); }
 .sidebar-overdue-count { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
   background: var(--danger-light) !important; color: var(--danger) !important; }
 .operations-shell .sidebar-footer { border-top: 0; padding: 4px 12px 10px; }
