@@ -43,8 +43,8 @@
   --gray-900: #161616;
 
   --surface:          #ffffff;
-  --highlight:        #d9fbfb;
-  --highlight-strong: #a7f0ef;
+  --highlight:        #e8e8e8;
+  --highlight-strong: #d1d1d1;
 
   /* Carbon has no radius: panels and controls are square. */
   --radius:    0;
@@ -89,8 +89,8 @@
   --gray-800: #e0e0e0;
   --gray-900: #f4f4f4;
   --surface:          #262626;
-  --highlight:        rgba(61, 219, 217, .08);
-  --highlight-strong: rgba(61, 219, 217, .16);
+  --highlight:        rgba(255, 255, 255, .08);
+  --highlight-strong: rgba(255, 255, 255, .16);
 }
 [data-theme="dark"] body,
 [data-theme="dark"] .card,
@@ -571,7 +571,11 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; }
 }
 
 /* Tasks list: the status badge opens a short menu; the tick marks the task done. */
-.task-status { display: inline-flex; align-items: center; gap: 6px; }
+/* The table column is already as wide as its widest status label (normal table
+   layout); stretching to fill it and pushing the done-button to the far edge
+   keeps that button's x-position constant down the column, whatever the
+   label's width on a given row. */
+.task-status { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; }
 .task-status-menu { position: relative; }
 .task-status-menu > summary { display: inline-flex; align-items: center; gap: 4px; list-style: none; cursor: pointer; border-radius: 999px; }
 .task-status-menu > summary::-webkit-details-marker { display: none; }
