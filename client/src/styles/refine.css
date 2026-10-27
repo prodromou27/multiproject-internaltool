@@ -1,20 +1,20 @@
 /* TeamHub refinement: Carbon-structured.
    IBM Carbon's shape (square corners, no shadow lift, Gray 100 neutral scale)
-   with Teal 60 standing in for Carbon's own Blue 60 — same discipline, a
-   different accent. The Odyssey red still has one job only: marking what
-   needs attention (overdue counts, attention markers, the current page).
-   Loaded after index.css and foundations.css; generated inline.css still
-   wins for element-level rules. */
+   with graphite (Gray 70/100) as the accent instead of a blue or green hue —
+   same discipline, no color at all. The Odyssey red still has one job only:
+   marking what needs attention (overdue counts, attention markers, the
+   current page). Loaded after index.css and foundations.css; generated
+   inline.css still wins for element-level rules. */
 
 :root {
   --ink:            #161616;
   --signal:         #c8102e;
   --signal-soft:    #fcedf0;
 
-  --primary:        #007d79;
-  --primary-dark:   #004144;
-  --primary-light:  #d9fbfb;
-  --primary-ring:   rgba(0, 125, 121, .18);
+  --primary:        #393939;
+  --primary-dark:   #161616;
+  --primary-light:  #e0e0e0;
+  --primary-ring:   rgba(57, 57, 57, .18);
   --on-primary:     #fff;     /* text on a --primary background */
   --on-status:      #fff;     /* text on --danger and --warning */
 
@@ -28,7 +28,7 @@
   --tone-danger-text:  #a50d26;
   --tone-warning-text: #865610;
   --tone-success-text: #24603f;
-  --tone-info-text:    #004144;
+  --tone-info-text:    #393939;
 
   /* Carbon Gray 10-100: a true neutral scale, no blue or cool cast. */
   --gray-50:  #f4f4f4;
@@ -63,10 +63,10 @@
   --ink:            #f4f4f4;
   --signal:         #f0566c;
   --signal-soft:    rgba(240, 86, 108, .14);
-  --primary:        #3ddbd9;
-  --primary-dark:   #9ef0ee;
-  --primary-light:  rgba(61, 219, 217, .14);
-  --primary-ring:   rgba(61, 219, 217, .25);
+  --primary:        #c6c6c6;
+  --primary-dark:   #f4f4f4;
+  --primary-light:  rgba(255, 255, 255, .14);
+  --primary-ring:   rgba(255, 255, 255, .25);
   --on-primary:     #161616;  /* dark primary, danger and warning are light: dark text */
   --on-status:      #161616;
   --warning:        #e0a94f;  /* 4.5:1+ as text on the dark surface */
@@ -77,7 +77,7 @@
   --tone-danger-text:  #f58a9b;
   --tone-warning-text: #f0c27a;
   --tone-success-text: #7fd1a7;
-  --tone-info-text:    #9ef0ee;
+  --tone-info-text:    #e0e0e0;
   --gray-50:  #161616;
   --gray-100: #262626;
   --gray-200: #393939;
