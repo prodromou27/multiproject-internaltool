@@ -1,20 +1,18 @@
-/* TeamHub refinement: Carbon-structured.
-   IBM Carbon's shape (square corners, no shadow lift, Gray 100 neutral scale)
-   with graphite (Gray 70/100) as the accent instead of a blue or green hue —
-   same discipline, no color at all. The Odyssey red still has one job only:
-   marking what needs attention (overdue counts, attention markers, the
-   current page). Loaded after index.css and foundations.css; generated
-   inline.css still wins for element-level rules. */
+/* TeamHub refinement: calm and focused.
+   Ink for text and primary actions, a quiet slate for links and focus, and the
+   Odyssey red used for one job only: marking what needs attention (overdue
+   counts, attention markers, the current page). Loaded after index.css and
+   foundations.css; the generated inline.css still wins for element-level rules. */
 
 :root {
-  --ink:            #161616;
+  --ink:            #1a2027;
   --signal:         #c8102e;
   --signal-soft:    #fcedf0;
 
-  --primary:        #393939;
-  --primary-dark:   #161616;
-  --primary-light:  #e0e0e0;
-  --primary-ring:   rgba(57, 57, 57, .18);
+  --primary:        #30507f;
+  --primary-dark:   #233c61;
+  --primary-light:  #eef2f8;
+  --primary-ring:   rgba(48, 80, 127, .18);
   --on-primary:     #fff;     /* text on a --primary background */
   --on-status:      #fff;     /* text on --danger and --warning */
 
@@ -28,47 +26,47 @@
   --tone-danger-text:  #a50d26;
   --tone-warning-text: #865610;
   --tone-success-text: #24603f;
-  --tone-info-text:    #393939;
+  --tone-info-text:    #2a4670;
 
-  /* Carbon Gray 10-100: a true neutral scale, no blue or cool cast. */
-  --gray-50:  #f4f4f4;
-  --gray-100: #e0e0e0;
-  --gray-200: #c6c6c6;
-  --gray-300: #a8a8a8;
-  --gray-400: #8d8d8d;
-  --gray-500: #6f6f6f;  /* secondary text: 4.5:1+ on white and on --gray-50 */
-  --gray-600: #525252;
-  --gray-700: #393939;
-  --gray-800: #262626;
-  --gray-900: #161616;
+  /* Cool neutral scale (no blue cast). */
+  --gray-50:  #f4f5f7;
+  --gray-100: #eceef1;
+  --gray-200: #e3e6ea;
+  --gray-300: #cdd2d9;
+  --gray-400: #9aa3ae;
+  --gray-500: #5c6571;  /* secondary text: 4.5:1+ on white and on --gray-50 */
+  --gray-600: #4b535e;
+  --gray-700: #3b434d;
+  --gray-800: #262c33;
+  --gray-900: #1a2027;
 
   --surface:          #ffffff;
-  --highlight:        #e8e8e8;
-  --highlight-strong: #d1d1d1;
+  --highlight:        #f1f4f9;
+  --highlight-strong: #e4eaf3;
 
-  /* Carbon has no radius: panels and controls are square. */
-  --radius:    0;
-  --radius-lg: 0;
-  --radius-xl: 0;
+  /* Radius hierarchy: controls 6, panels 10, overlays 12. */
+  --radius:    6px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
 
   /* Lines do the separating; shadows only lift overlays. */
   --shadow-xs: none;
   --shadow-sm: none;
-  --shadow:    0 1px 2px rgba(22, 22, 22, .06);
-  --shadow-md: 0 8px 24px rgba(22, 22, 22, .10);
-  --shadow-lg: 0 16px 40px rgba(22, 22, 22, .14);
+  --shadow:    0 1px 2px rgba(26, 32, 39, .06);
+  --shadow-md: 0 8px 24px rgba(26, 32, 39, .10);
+  --shadow-lg: 0 16px 40px rgba(26, 32, 39, .14);
 }
 
 [data-theme="dark"] {
-  --ink:            #f4f4f4;
+  --ink:            #e8ebef;
   --signal:         #f0566c;
   --signal-soft:    rgba(240, 86, 108, .14);
-  --primary:        #c6c6c6;
-  --primary-dark:   #f4f4f4;
-  --primary-light:  rgba(255, 255, 255, .14);
-  --primary-ring:   rgba(255, 255, 255, .25);
-  --on-primary:     #161616;  /* dark primary, danger and warning are light: dark text */
-  --on-status:      #161616;
+  --primary:        #8fb0e0;
+  --primary-dark:   #b3cbee;
+  --primary-light:  rgba(143, 176, 224, .14);
+  --primary-ring:   rgba(143, 176, 224, .25);
+  --on-primary:     #12161b;  /* dark primary, danger and warning are light: dark text */
+  --on-status:      #12161b;
   --warning:        #e0a94f;  /* 4.5:1+ as text on the dark surface */
   --warning-light:  rgba(224, 169, 79, .14);
   --success-light:  rgba(127, 209, 167, .12);
@@ -77,20 +75,20 @@
   --tone-danger-text:  #f58a9b;
   --tone-warning-text: #f0c27a;
   --tone-success-text: #7fd1a7;
-  --tone-info-text:    #e0e0e0;
-  --gray-50:  #161616;
-  --gray-100: #262626;
-  --gray-200: #393939;
-  --gray-300: #525252;
-  --gray-400: #6f6f6f;
-  --gray-500: #8d8d8d;
-  --gray-600: #a8a8a8;
-  --gray-700: #c6c6c6;
-  --gray-800: #e0e0e0;
-  --gray-900: #f4f4f4;
-  --surface:          #262626;
-  --highlight:        rgba(255, 255, 255, .08);
-  --highlight-strong: rgba(255, 255, 255, .16);
+  --tone-info-text:    #a9c3ea;
+  --gray-50:  #12161b;
+  --gray-100: #1f252d;
+  --gray-200: #2a313a;
+  --gray-300: #3a424d;
+  --gray-400: #5f6874;
+  --gray-500: #8d96a2;
+  --gray-600: #a9b1bb;
+  --gray-700: #c3c9d1;
+  --gray-800: #dde1e6;
+  --gray-900: #eef0f3;
+  --surface:          #1a1f26;
+  --highlight:        rgba(143, 176, 224, .08);
+  --highlight-strong: rgba(143, 176, 224, .16);
 }
 [data-theme="dark"] body,
 [data-theme="dark"] .card,
@@ -130,8 +128,20 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .sidebar-logo .sidebar-brand-name strong { color: var(--signal); }
 .sidebar-logo-mark { border: 1px solid var(--gray-200); }
 .operations-shell .sidebar-primary-nav { padding: 6px 10px; }
+.operations-shell .sidebar nav a {
+  min-height: 36px; margin-bottom: 1px; border-radius: var(--radius);
+  color: var(--gray-600); font-weight: 500; font-size: 13.5px;
+}
+.operations-shell .sidebar nav a svg { color: var(--gray-500); }
+.operations-shell .sidebar nav a:hover { background: var(--gray-100); color: var(--ink); text-decoration: none; }
+.operations-shell .sidebar nav a.active {
+  background: var(--gray-100); color: var(--ink); font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--signal);
+}
+.operations-shell .sidebar nav a.active svg { color: var(--ink); }
 .operations-shell .sidebar { overflow: hidden; }
 .operations-shell .sidebar-primary-nav { min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--gray-300) transparent; }
+.operations-shell .sidebar nav a { min-height: 30px; padding: 5px 10px; margin-bottom: 1px; }
 .sidebar-group + .sidebar-group { margin-top: 5px; padding-top: 4px; border-top: 1px solid var(--gray-200); }
 .sidebar-group.is-untitled + .sidebar-group.is-untitled { padding-top: 6px; border-top: 1px solid var(--gray-200); }
 .operations-shell .sidebar-more-nav { flex: none; margin-bottom: 4px; padding: 0 0 4px; border-bottom: 1px solid var(--gray-200); }
@@ -495,14 +505,14 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
   color: var(--gray-600); font-size: 13.5px; font-weight: 500;
 }
 .operations-shell .sidebar nav a svg { width: 17px; height: 17px; color: var(--gray-500); transition: color .12s; }
-.operations-shell .sidebar nav a:hover { background: var(--gray-100); color: var(--ink); }
+.operations-shell .sidebar nav a:hover { background: var(--gray-50); color: var(--ink); }
 .operations-shell .sidebar nav a:hover svg { color: var(--gray-600); }
 .operations-shell .sidebar nav a.active,
 .nav-compact .sidebar nav a.active {
-  background: color-mix(in srgb, var(--primary) 9%, var(--surface)); color: var(--primary-dark);
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface)); color: var(--primary);
   font-weight: 600; box-shadow: none;
 }
-.operations-shell .sidebar nav a.active svg { color: var(--primary-dark); }
+.operations-shell .sidebar nav a.active svg { color: var(--primary); }
 .sidebar-overdue-count { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
   background: var(--danger-light) !important; color: var(--danger) !important; }
 .operations-shell .sidebar-footer { border-top: 0; padding: 4px 12px 10px; }
@@ -559,11 +569,7 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; }
 }
 
 /* Tasks list: the status badge opens a short menu; the tick marks the task done. */
-/* The table column is already as wide as its widest status label (normal table
-   layout); stretching to fill it and pushing the done-button to the far edge
-   keeps that button's x-position constant down the column, whatever the
-   label's width on a given row. */
-.task-status { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; }
+.task-status { display: inline-flex; align-items: center; gap: 6px; }
 .task-status-menu { position: relative; }
 .task-status-menu > summary { display: inline-flex; align-items: center; gap: 4px; list-style: none; cursor: pointer; border-radius: 999px; }
 .task-status-menu > summary::-webkit-details-marker { display: none; }
