@@ -80,9 +80,10 @@ router.get('/', requireAuth, async (req, res) => {
   }
   const managed = new Set((await db.prepare('SELECT customer_id FROM managed_customer_configurations WHERE managed_services_enabled = 1').all()).map(row => Number(row.customer_id)));
   const visits = new Map((await db.prepare('SELECT customer_id, COUNT(*) AS n FROM maintenance_visits GROUP BY customer_id').all()).map(row => [Number(row.customer_id), Number(row.n)]));
+  const assetCounts = new Map((await db.prepare('SELECT customer_id, COUNT(*) AS n FROM customer_assets GROUP BY customer_id').all()).map(row => [Number(row.customer_id), Number(row.n)]));
   const rows = (await db.prepare(`SELECT c.*, u.name as created_by_name
     FROM customers c LEFT JOIN users u ON c.created_by = u.id ORDER BY c.name`).all()).filter(row => !allowed || allowed.has(Number(row.id)))
-    .map(row => ({ ...row, visit_count: visits.get(Number(row.id)) || 0, is_managed: managed.has(Number(row.id)) }));
+    .map(row => ({ ...row, visit_count: visits.get(Number(row.id)) || 0, asset_count: assetCounts.get(Number(row.id)) || 0, is_managed: managed.has(Number(row.id)) }));
   // Each customer's current contract (the one in force, else the next or the last).
   const contracts = await contractsFor();
   for (const row of rows) {
