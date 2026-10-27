@@ -5,14 +5,14 @@
    foundations.css; the generated inline.css still wins for element-level rules. */
 
 :root {
-  --ink:            #18181b;
+  --ink:            #1a2027;
   --signal:         #c8102e;
   --signal-soft:    #fcedf0;
 
-  --primary:        #c2410c;
-  --primary-dark:   #9a3412;
-  --primary-light:  #ffedd5;
-  --primary-ring:   rgba(194, 65, 12, .18);
+  --primary:        #30507f;
+  --primary-dark:   #233c61;
+  --primary-light:  #eef2f8;
+  --primary-ring:   rgba(48, 80, 127, .18);
   --on-primary:     #fff;     /* text on a --primary background */
   --on-status:      #fff;     /* text on --danger and --warning */
 
@@ -26,23 +26,23 @@
   --tone-danger-text:  #a50d26;
   --tone-warning-text: #865610;
   --tone-success-text: #24603f;
-  --tone-info-text:    #9a3412;
+  --tone-info-text:    #2a4670;
 
-  /* Warm neutral scale (zinc) — no blue cast, distinct from the usual cool SaaS gray. */
-  --gray-50:  #fafafa;
-  --gray-100: #f4f4f5;
-  --gray-200: #e4e4e7;
-  --gray-300: #d4d4d8;
-  --gray-400: #a1a1aa;
-  --gray-500: #6b6b74;  /* secondary text: 4.5:1+ on white, --gray-50 and --workspace-bg */
-  --gray-600: #52525b;
-  --gray-700: #3f3f46;
-  --gray-800: #27272a;
-  --gray-900: #18181b;
+  /* Cool neutral scale (no blue cast). */
+  --gray-50:  #f4f5f7;
+  --gray-100: #eceef1;
+  --gray-200: #e3e6ea;
+  --gray-300: #cdd2d9;
+  --gray-400: #9aa3ae;
+  --gray-500: #5c6571;  /* secondary text: 4.5:1+ on white and on --gray-50 */
+  --gray-600: #4b535e;
+  --gray-700: #3b434d;
+  --gray-800: #262c33;
+  --gray-900: #1a2027;
 
   --surface:          #ffffff;
-  --highlight:        #fff7ed;
-  --highlight-strong: #ffedd5;
+  --highlight:        #f1f4f9;
+  --highlight-strong: #e4eaf3;
 
   /* Radius hierarchy: controls 6, panels 10, overlays 12. */
   --radius:    6px;
@@ -58,13 +58,13 @@
 }
 
 [data-theme="dark"] {
-  --ink:            #fafafa;
+  --ink:            #e8ebef;
   --signal:         #f0566c;
   --signal-soft:    rgba(240, 86, 108, .14);
-  --primary:        #fb923c;
-  --primary-dark:   #fdba74;
-  --primary-light:  rgba(251, 146, 60, .14);
-  --primary-ring:   rgba(251, 146, 60, .25);
+  --primary:        #8fb0e0;
+  --primary-dark:   #b3cbee;
+  --primary-light:  rgba(143, 176, 224, .14);
+  --primary-ring:   rgba(143, 176, 224, .25);
   --on-primary:     #12161b;  /* dark primary, danger and warning are light: dark text */
   --on-status:      #12161b;
   --warning:        #e0a94f;  /* 4.5:1+ as text on the dark surface */
@@ -75,20 +75,20 @@
   --tone-danger-text:  #f58a9b;
   --tone-warning-text: #f0c27a;
   --tone-success-text: #7fd1a7;
-  --tone-info-text:    #fdba74;
-  --gray-50:  #09090b;
-  --gray-100: #27272a;
-  --gray-200: #3f3f46;
-  --gray-300: #52525b;
-  --gray-400: #71717a;
-  --gray-500: #a1a1aa;
-  --gray-600: #d4d4d8;
-  --gray-700: #e4e4e7;
-  --gray-800: #f4f4f5;
-  --gray-900: #fafafa;
-  --surface:          #18181b;
-  --highlight:        rgba(251, 146, 60, .08);
-  --highlight-strong: rgba(251, 146, 60, .16);
+  --tone-info-text:    #a9c3ea;
+  --gray-50:  #12161b;
+  --gray-100: #1f252d;
+  --gray-200: #2a313a;
+  --gray-300: #3a424d;
+  --gray-400: #5f6874;
+  --gray-500: #8d96a2;
+  --gray-600: #a9b1bb;
+  --gray-700: #c3c9d1;
+  --gray-800: #dde1e6;
+  --gray-900: #eef0f3;
+  --surface:          #1a1f26;
+  --highlight:        rgba(143, 176, 224, .08);
+  --highlight-strong: rgba(143, 176, 224, .16);
 }
 [data-theme="dark"] body,
 [data-theme="dark"] .card,
