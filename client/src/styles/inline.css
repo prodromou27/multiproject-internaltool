@@ -1085,7 +1085,7 @@
 .u-7238926.u-7238926.u-7238926 { color:var(--tone-success-text); }
 .u-725d2d4.u-725d2d4.u-725d2d4 { background:#f0fdf4; }
 .u-729d2fa.u-729d2fa.u-729d2fa { color:#fff; }
-.u-7652d48.u-7652d48.u-7652d48 { box-shadow:0 0 0 3px rgba(37,99,235,.2); }
+.u-7652d48.u-7652d48.u-7652d48 { box-shadow:0 0 0 3px var(--primary-ring); }
 .u-799c49d.u-799c49d.u-799c49d { background:var(--warning-light); }
 .u-7c9a358.u-7c9a358.u-7c9a358 { border:1px solid var(--gray-200); }
 .u-7e3a944.u-7e3a944.u-7e3a944 { font-weight:400; }

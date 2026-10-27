@@ -130,20 +130,8 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
 .sidebar-logo .sidebar-brand-name strong { color: var(--signal); }
 .sidebar-logo-mark { border: 1px solid var(--gray-200); }
 .operations-shell .sidebar-primary-nav { padding: 6px 10px; }
-.operations-shell .sidebar nav a {
-  min-height: 36px; margin-bottom: 1px; border-radius: var(--radius);
-  color: var(--gray-600); font-weight: 500; font-size: 13.5px;
-}
-.operations-shell .sidebar nav a svg { color: var(--gray-500); }
-.operations-shell .sidebar nav a:hover { background: var(--gray-100); color: var(--ink); text-decoration: none; }
-.operations-shell .sidebar nav a.active {
-  background: var(--gray-100); color: var(--ink); font-weight: 600;
-  box-shadow: inset 2px 0 0 var(--signal);
-}
-.operations-shell .sidebar nav a.active svg { color: var(--ink); }
 .operations-shell .sidebar { overflow: hidden; }
 .operations-shell .sidebar-primary-nav { min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--gray-300) transparent; }
-.operations-shell .sidebar nav a { min-height: 30px; padding: 5px 10px; margin-bottom: 1px; }
 .sidebar-group + .sidebar-group { margin-top: 5px; padding-top: 4px; border-top: 1px solid var(--gray-200); }
 .sidebar-group.is-untitled + .sidebar-group.is-untitled { padding-top: 6px; border-top: 1px solid var(--gray-200); }
 .operations-shell .sidebar-more-nav { flex: none; margin-bottom: 4px; padding: 0 0 4px; border-bottom: 1px solid var(--gray-200); }
@@ -507,7 +495,7 @@ h1, h2, h3 { color: var(--ink); letter-spacing: -.01em; }
   color: var(--gray-600); font-size: 13.5px; font-weight: 500;
 }
 .operations-shell .sidebar nav a svg { width: 17px; height: 17px; color: var(--gray-500); transition: color .12s; }
-.operations-shell .sidebar nav a:hover { background: var(--gray-50); color: var(--ink); }
+.operations-shell .sidebar nav a:hover { background: var(--gray-100); color: var(--ink); }
 .operations-shell .sidebar nav a:hover svg { color: var(--gray-600); }
 .operations-shell .sidebar nav a.active,
 .nav-compact .sidebar nav a.active {
