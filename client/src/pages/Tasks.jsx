@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import CustomerSearchSelect from '../components/CustomerSearchSelect';
-import { Check, CheckSquare, ChevronDown, Download, Trash2, UserCheck, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown, RefreshCw, Repeat } from 'lucide-react';
+import { Check, CheckSquare, ChevronDown, Download, Trash2, Clock, X, Pencil, LockKeyhole, Columns3, ArrowUpDown, RefreshCw, Repeat } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { HeaderMenu, PageHeader } from '../components/PageLayout';
 import { FilterGroup, ListSearch } from '../components/ListWorkspace';
@@ -438,15 +438,18 @@ export default function Tasks() {
           <span className="bulk-action-separator">·</span>
           {isManager && (
             <>
-              {['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','closed','cancelled'].map(s => (
-                <button key={s} className="btn btn-sm btn-ghost inline-flex items-center gap-4" disabled={bulkBusy}
-                  onClick={() => applyBulk(s)}
-                 
-                >
-                  {(s === 'waiting_customer' || s === 'waiting_vendor') ? <Clock size={12} /> : <UserCheck size={12} />}
-                  → {STATUS_LABELS[s]}
-                </button>
-              ))}
+              <button className="btn btn-sm btn-success inline-flex items-center gap-4" disabled={bulkBusy}
+                onClick={() => applyBulk('completed')}
+              >
+                <Check size={12} /> Mark done
+              </button>
+              <select className="bulk-action-select" disabled={bulkBusy} value="" aria-label="Change status to…"
+                onChange={e => { const v = e.target.value; e.target.value = ''; applyBulk(v); }}>
+                <option value="" disabled>Change status to…</option>
+                {['open','in_progress','waiting_customer','waiting_vendor','pending_approval','closed','cancelled'].map(s => (
+                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                ))}
+              </select>
               <span className="bulk-action-separator">·</span>
               <select className="bulk-action-select" disabled={bulkBusy} value="" aria-label="Set priority"
                 onChange={e => { const v = e.target.value; e.target.value = ''; applyBulkPriority(v); }}>
@@ -476,15 +479,20 @@ export default function Tasks() {
             </>
           )}
           {!isManager && (
-            ['open','in_progress','waiting_customer','waiting_vendor','completed'].map(s => (
-              <button key={s} className="btn btn-sm btn-ghost inline-flex items-center gap-4" disabled={bulkBusy}
-                onClick={() => applyBulk(s)}
-               
+            <>
+              <button className="btn btn-sm btn-success inline-flex items-center gap-4" disabled={bulkBusy}
+                onClick={() => applyBulk('completed')}
               >
-                {(s === 'waiting_customer' || s === 'waiting_vendor') ? <Clock size={12} /> : null}
-                → {STATUS_LABELS[s]}
+                <Check size={12} /> Mark done
               </button>
-            ))
+              <select className="bulk-action-select" disabled={bulkBusy} value="" aria-label="Change status to…"
+                onChange={e => { const v = e.target.value; e.target.value = ''; applyBulk(v); }}>
+                <option value="" disabled>Change status to…</option>
+                {['open','in_progress','waiting_customer','waiting_vendor'].map(s => (
+                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                ))}
+              </select>
+            </>
           )}
           <button className="btn btn-sm btn-ghost u-6d00061"
             onClick={() => { setSelected(new Set()); setBulkErr(''); }}>Deselect all</button>
