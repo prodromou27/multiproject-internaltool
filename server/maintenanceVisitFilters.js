@@ -1,5 +1,5 @@
 const appTime = require('./appTime');
-const FILTERS = new Set(['all', 'upcoming', 'past', 'report_pending', 'awaiting_review', 'cancelled']);
+const FILTERS = new Set(['all', 'upcoming', 'past', 'overdue', 'report_pending', 'awaiting_review', 'cancelled']);
 
 function maintenanceVisitFilters(query, user) {
   for (const key of ['month', 'engineer_id', 'customer_id', 'review_pending', 'not_completed', 'overview', 'pending_report', 'filter', 'search', 'as_of']) {
@@ -40,7 +40,7 @@ function maintenanceVisitFilters(query, user) {
   // Overdue, not merely unfinished: a visit still ahead (or under way) is not incomplete yet.
   // Written as "not (finished or still ahead)": the in-memory test database cannot plan the
   // same rule written as an AND of the two conditions; real PostgreSQL treats both alike.
-  if (query.not_completed === '1') add("NOT (mv.status IN ('completed','cancelled') OR COALESCE(mv.end_date,mv.scheduled_date)>=?)", asOf);
+  if (filter === 'overdue' || query.not_completed === '1') add("NOT (mv.status IN ('completed','cancelled') OR COALESCE(mv.end_date,mv.scheduled_date)>=?)", asOf);
   return { where: clauses.join(' AND '), params, search: query.search?.trim().toLowerCase() || '' };
 }
 

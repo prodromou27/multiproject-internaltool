@@ -72,7 +72,7 @@ function CustomerForm({ initial, teams, onSave, onSaveTeams, onCreateTeam, onClo
     Promise.all([api.users().catch(() => []), initial?.id ? api.customerEngineers(initial.id).catch(() => []) : Promise.resolve([])])
       .then(([users, current]) => { if (!live) return; setPeople(users.filter(person => person.role === 'engineer' && person.active !== 0 && person.active !== false)); setSelectedEngineers(current.map(person => person.id)); });
     return () => { live = false; };
-  }, [!!teams, initial?.id]);   // eslint-disable-line react-hooks/exhaustive-deps -- once per form, not when a team is added
+  }, [!!teams, initial?.id]);   // once per form, not when a team is added
   const [showService, setShowService] = useState(!!initial?.service_activity_enabled);
   const [saving, setSaving] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));

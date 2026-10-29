@@ -18,6 +18,10 @@ test('the dashboard\'s incomplete visits are the ones whose days are over, not t
   const listed = new Set(data.map(v => Number(v.id)));
   assert.equal(listed.has(overdue), true);
   for (const id of [ahead, underWay, done]) assert.equal(listed.has(id), false);
+  // The visits list's Overdue view (where the dashboard's "View all" leads) is the same set.
+  const overdueView = await api('/api/maintenance-visits?filter=overdue', { token: ids.tokenManager });
+  assert.equal(overdueView.status, 200);
+  assert.deepEqual(overdueView.data.map(v => Number(v.id)).sort(), data.map(v => Number(v.id)).sort());
 });
 
 test('a report cannot be submitted before the visit day', async () => {

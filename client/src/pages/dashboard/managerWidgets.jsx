@@ -169,7 +169,7 @@ export function managerWidget(id, ctx) {
               <div className="section-title u-49feb7b">Incomplete Maintenance Visits</div>
               <span className="badge badge-cancelled ml-4">{incompleteVisits.length}</span>
             </div>
-            <Link to="/maintenance-visits?filter=report_pending" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
+            <Link to="/maintenance-visits?filter=overdue" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
           </div>
           <div className="table-wrap">
             <table>

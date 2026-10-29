@@ -469,7 +469,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
 }
 
 const MV_COLUMNS = ['customer_name*', 'title*', 'description', 'scheduled_date*', 'end_date', 'engineer_names', 'supervisor_name', 'contract_numbers', 'notes'];
-const VISIT_FILTERS = new Set(['upcoming', 'past', 'report_pending', 'awaiting_review', 'cancelled', 'all']);
+const VISIT_FILTERS = new Set(['upcoming', 'past', 'overdue', 'report_pending', 'awaiting_review', 'cancelled', 'all']);
 const VISIT_FILTER_LIST = [...VISIT_FILTERS];
 const VISIT_VIEWS = ['list', 'calendar', 'availability'];
 
@@ -564,11 +564,14 @@ export default function MaintenanceVisits() {
   }, [scope]);
 
   const today = businessToday();
+  // Its last day has passed and it is neither completed nor cancelled (the dashboard's incomplete visits).
+  const overdueVisit = v => v.status !== 'completed' && v.status !== 'cancelled' && String(v.end_date || v.scheduled_date || '').slice(0, 10) < today;
   const filtered = visits.filter(v => {
     // Status-tab filter
     let pass = true;
     if (filter === 'upcoming')        pass = v.status === 'scheduled' && v.scheduled_date >= today;
     else if (filter === 'past')       pass = v.scheduled_date < today || v.status === 'completed';
+    else if (filter === 'overdue')    pass = overdueVisit(v);
     else if (filter === 'report_pending')  pass = v.status !== 'cancelled' && v.status !== 'scheduled' && !v.report_sent;
     else if (filter === 'awaiting_review') pass = v.report_sent && !v.report_sent_to_customer;
     else if (filter === 'cancelled')  pass = v.status === 'cancelled';
@@ -586,6 +589,7 @@ export default function MaintenanceVisits() {
   // Only count visits that have actually occurred (exclude future scheduled)
   const reportPendingCount  = visits.filter(v => v.status !== 'cancelled' && v.status !== 'scheduled' && !v.report_sent).length;
   const awaitingReviewCount = visits.filter(v => v.report_sent && !v.report_sent_to_customer).length;
+  const overdueCount        = visits.filter(overdueVisit).length;
 
   const actionInFlight = useRef(false);
   const [actionBusy, setActionBusy] = useState(false);
@@ -667,6 +671,7 @@ export default function MaintenanceVisits() {
             {[
               ['upcoming',        'Upcoming'],
               ['past',            'Past / Completed'],
+              ['overdue',         `Overdue${!unavailable && overdueCount ? ` (${overdueCount})` : ''}`],
               ['report_pending',  `Report Pending${!unavailable && reportPendingCount ? ` (${reportPendingCount})` : ''}`],
               ['awaiting_review', `Awaiting Approval${!unavailable && awaitingReviewCount ? ` (${awaitingReviewCount})` : ''}`],
               ['all',             'All'],
