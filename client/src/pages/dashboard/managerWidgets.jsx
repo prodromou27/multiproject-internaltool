@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { CheckCircle2, AlertTriangle, Clock, Wrench, FolderOpen, ListTodo, Send, ClipboardCheck, CalendarX } from 'lucide-react';
+import { Check, CheckCircle2, AlertTriangle, Clock, Wrench, FolderOpen, ListTodo, Send, ClipboardCheck, CalendarX } from 'lucide-react';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../../components/Shared';
 import { api } from '../../api';
 import StatCard from './StatCard';
@@ -169,7 +169,7 @@ export function managerWidget(id, ctx) {
               <div className="section-title u-49feb7b">Incomplete Maintenance Visits</div>
               <span className="badge badge-cancelled ml-4">{incompleteVisits.length}</span>
             </div>
-            <Link to="/maintenance-visits?filter=report_pending" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
+            <Link to="/maintenance-visits?filter=overdue" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
           </div>
           <div className="table-wrap">
             <table>
@@ -331,6 +331,8 @@ export function managerWidget(id, ctx) {
                         {fmtDate(t.deadline)}
                       </span>
                     )}
+                    {t.status !== 'pending_approval' && <button type="button" className="task-done" aria-label={`Mark ${t.title} as done`} title="Mark as done"
+                      onClick={async () => { await api.updateTask(t.id, { status: 'completed' }); load(); }}><Check size={14} aria-hidden="true" /></button>}
                   </li>
                 ))}
               </ul>

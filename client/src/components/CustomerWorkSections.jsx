@@ -75,7 +75,7 @@ export function CustomerTasks({ customerId,initialFilter='',engineers=[],canMana
     if (!create) return;
     if (canAdd) setAdding(true);
     onCreateConsumed?.();
-  },[create]); // eslint-disable-line react-hooks/exhaustive-deps
+  },[create]);
   // A link to one task (e.g. from a mention) opens it once its row is loaded; if it is not in the open list, all tasks are listed.
   const opened=useRef(false);
   useEffect(() => {

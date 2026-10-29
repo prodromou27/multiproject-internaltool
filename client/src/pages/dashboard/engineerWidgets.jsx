@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { CheckCircle2, Clock, Wrench, FolderOpen, ListTodo, Send, ClipboardCheck, Building2, Ticket } from 'lucide-react';
+import { Check, CheckCircle2, Clock, Wrench, FolderOpen, ListTodo, Send, ClipboardCheck, Building2, Ticket } from 'lucide-react';
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../../components/Shared';
 import { api } from '../../api';
 import { localDateISO, businessToday } from '../../utils/dates';
@@ -221,6 +221,8 @@ export function engineerWidget(id, ctx) {
                         {fmtDate(t.deadline)}
                       </span>
                     )}
+                    {t.status !== 'pending_approval' && <button type="button" className="task-done" aria-label={`Mark ${t.title} as done`} title="Mark as done"
+                      onClick={async () => { await api.updateTask(t.id, { status: 'completed' }); load(); }}><Check size={14} aria-hidden="true" /></button>}
                   </li>
                 ))}
               </ul>

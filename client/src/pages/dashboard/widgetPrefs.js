@@ -13,9 +13,10 @@ export const WIDGET_DEFS = {
     { id: 'incomplete_visits', label: 'Incomplete Maintenance Visits' },
     { id: 'mv_review',         label: 'Reports to Approve for PM'    },
     { id: 'mv_this_month',     label: 'Visits This Month'            },
-    // Full lists live on the Projects and Tasks pages; available here on request.
+    // The full list lives on the Projects page; available here on request.
     { id: 'projects',          label: 'Active Projects', hiddenByDefault: true },
-    { id: 'tasks',             label: 'Open Tasks', hiddenByDefault: true },
+    // Actionable (mark-done in one click), so it earns a spot by default.
+    { id: 'tasks',             label: 'Open Tasks' },
   ],
   engineer: [
     { id: 'stat_cards',        label: 'Stats Overview', hiddenByDefault: true },
@@ -40,10 +41,13 @@ export const WIDGET_DEFS = {
 };
 
 /* ── Widget preferences — localStorage, per user+role ──────── */
-// Raised when widgets become hidden by default, so layouts saved before then
-// hide them once too; the person can show them again from Customize.
-const LAYOUT_VERSION = 2;
+// Raised when a widget's default visibility changes, so layouts saved before
+// then pick up the new default once too; the person can change it back from
+// Customize.
+const LAYOUT_VERSION = 3;
 const HIDDEN_IN_VERSION_2 = ['stat_cards', 'projects', 'tasks'];
+// Open Tasks gained a one-click "mark done" action, so it's worth surfacing by default now.
+const SHOWN_IN_VERSION_3 = ['tasks'];
 
 export function useWidgetPrefs(userId, role) {
   const storageKey = `dash_widgets_${userId}_${role}`;
@@ -59,8 +63,10 @@ export function useWidgetPrefs(userId, role) {
         // Widgets added since the layout was saved go where they belong by default, not at the end.
         const order = [...valid];
         defaultIds.forEach((id, index) => { if (!order.includes(id)) order.splice(Math.min(index, order.length), 0, id); });
-        const hidden = (saved.hidden ?? []).filter(id => defaultIds.includes(id));
-        if ((saved.version ?? 1) < LAYOUT_VERSION) defaultHidden.filter(id => HIDDEN_IN_VERSION_2.includes(id)).forEach(id => { if (!hidden.includes(id)) hidden.push(id); });
+        let hidden = (saved.hidden ?? []).filter(id => defaultIds.includes(id));
+        const savedVersion = saved.version ?? 1;
+        if (savedVersion < 2) defaultHidden.filter(id => HIDDEN_IN_VERSION_2.includes(id)).forEach(id => { if (!hidden.includes(id)) hidden.push(id); });
+        if (savedVersion < 3) hidden = hidden.filter(id => !SHOWN_IN_VERSION_3.includes(id));
         return { order, hidden, version: LAYOUT_VERSION };
       }
     } catch {}

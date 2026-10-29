@@ -16,6 +16,10 @@ import { todayRange, weekRange, monthRange, RANGE_LABEL, BILLABLE_LABELS } from 
 import { ActivityForm } from './activityLog/ActivityForm';
 import { ActivityDetailModal } from './activityLog/ActivityDetailModal';
 import { useLiveRefresh } from '../live';
+import ImportModal from '../components/ImportModal';
+
+const IMPORT_COLUMNS = ['Customer*', 'Date*', 'Category*', 'Subcategory', 'Title', 'Start time', 'End time', 'Duration (minutes)',
+  'Ticket reference', 'Work location', 'Billable', 'Technologies', 'Assets', 'Notes', 'Follow-up date'];
 
 /* ── Main page ────────────────────────────────────────────────────────── */
 const DATE_PRESETS = ['today', 'this_week', 'this_month', 'custom'];
@@ -36,6 +40,7 @@ export default function ActivityLog() {
   const listRequest = useRef(null);
   const exportFilters = useRef({});
   const [exporting, setExporting] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [metaError, setMetaError] = useState('');
 
   const [datePreset, setDatePreset] = useSavedFilter('activity_log_date_preset', 'this_week', { param: 'range', allowed: DATE_PRESETS });
@@ -200,6 +205,7 @@ export default function ActivityLog() {
       <PageHeader title="Activity log" actions={<>
         <button className="btn btn-primary" onClick={() => setShowForm(true)} disabled={!meta}>Log activity</button>
         <HeaderMenu>
+        <button type="button" disabled={!meta} onClick={() => setShowImport(true)}>Import from Excel</button>
         <button type="button" disabled={loading || !!loadError || exporting || !meta} onClick={async () => {
           setExporting(true);
           try { await api.exportServiceActivities(exportFilters.current); }
@@ -339,6 +345,22 @@ export default function ActivityLog() {
             </div>
           </div>
         </>
+      )}
+
+      {showImport && (
+        <ImportModal
+          title="Import activities"
+          templateUrl={api.serviceActivitiesTemplateUrl()}
+          previewFn={api.previewServiceActivityImport}
+          importFn={(file, { previewToken }) => api.importServiceActivities(file, { previewToken })}
+          noun={['activity', 'activities']}
+          unchangedLabel="already logged (skipped)"
+          listUnchanged
+          columns={IMPORT_COLUMNS}
+          hint="The template is made for you: the customer and category lists are the ones you can log for. Activities you already logged are skipped, so the same file can be imported again safely."
+          onClose={() => setShowImport(false)}
+          onDone={() => load()}
+        />
       )}
 
       {showForm && meta && (
