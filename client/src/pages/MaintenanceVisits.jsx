@@ -5,7 +5,7 @@ import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
 import { EditConflict, useEditVersion } from '../hooks/useEditVersion';
 import { VisitTimeFields, VisitWarnings, allDayOf, timesOf, useVisitCheck, visitTime } from '../components/VisitSchedule';
 import CustomerSearchSelect from '../components/CustomerSearchSelect';
-import { Upload, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle } from 'lucide-react';
+import { Upload, Wrench, Check, Send, Printer, Download, AlertTriangle, AlertCircle, Trash2 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { HeaderMenu, PageHeader } from '../components/PageLayout';
@@ -39,6 +39,9 @@ function reportUrgency(v) {
   if (daysPast >= 7) return 'red';
   return 'orange';
 }
+
+// A report is written once the visit has happened or is under way (the server refuses it before).
+const visitStarted = v => v.status !== 'scheduled' || String(v.scheduled_date || '').slice(0, 10) <= businessToday();
 
 const STATUS_COLORS = {
   scheduled:   'badge-open',
@@ -432,7 +435,7 @@ function VisitDetailModal({ visit, isManager, canManage, isPM, onClose, onUpdate
           </button>
         )}
         {/* Step 1 → 2 : engineer submits report */}
-        {!isPM && reportState === 'pending' && visit.status !== 'cancelled' && (
+        {!isPM && reportState === 'pending' && visit.status !== 'cancelled' && visitStarted(visit) && (
           <button className="btn btn-success inline-flex items-center gap-6" onClick={markSent} disabled={saving}>
             <Check size={14} /> Submit Report
           </button>
@@ -754,7 +757,7 @@ export default function MaintenanceVisits() {
                           <button className="btn btn-sm btn-success inline-flex items-center gap-4" disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.completeVisit(v.id), 'Visit marked as complete'); }}><Check size={12} /> Mark Complete</button>
                         )}
                         {/* Engineer: submit report */}
-                        {!isPM && !v.report_sent && v.status !== 'cancelled' && (
+                        {!isPM && !v.report_sent && v.status !== 'cancelled' && visitStarted(v) && (
                           <button className="btn btn-sm btn-success inline-flex items-center gap-4" disabled={actionBusy} onClick={async () => { await runVisitAction(() => api.markReportSent(v.id), 'Report marked as submitted'); }}><Check size={12} /> Submit Report</button>
                         )}
                         {!!v.report_sent && !v.report_sent_to_customer && canManage && (
@@ -762,7 +765,8 @@ export default function MaintenanceVisits() {
                         )}
                         {v.status !== 'cancelled' && <AddToCalendarButton visitId={v.id} title={v.title} compact />}
                         {canManage && <button className="btn btn-sm btn-ghost" disabled={actionBusy} onClick={() => openEdit(v)}>Edit</button>}
-                        {canManage && <button className="btn btn-sm btn-danger" disabled={actionBusy} onClick={() => handleDelete(v.id)}>Del</button>}
+                        {canManage && <button className="btn btn-sm btn-ghost btn-icon-danger" disabled={actionBusy} onClick={() => handleDelete(v.id)}
+                          aria-label={`Delete ${v.title}`} title="Delete visit"><Trash2 size={14} aria-hidden="true" /></button>}
                       </div>
                     </td>
                   </tr>

@@ -610,6 +610,10 @@ router.post('/:id/report-sent', requireAuth, async (req, res) => {
   if (!['manager', 'planner', 'engineer'].includes(req.user.role))
     return res.status(403).json({ error: 'Forbidden' });
   if (mv.status === 'cancelled') return res.status(400).json({ error: 'Cannot submit a report for a cancelled visit' });
+  // Still only planned for a later day: nothing to report yet. A visit already under way
+  // (started early, say) can be reported on.
+  if (mv.status === 'scheduled' && String(mv.scheduled_date).slice(0, 10) > require('../appTime').today())
+    return res.status(400).json({ error: 'The visit has not happened yet; submit its report on or after the visit day' });
   const changed = (await db.prepare(`UPDATE maintenance_visits SET report_sent=1, report_sent_at=app_now(), report_sent_by=?, updated_at=app_now()
     WHERE id=? AND report_sent=0 AND status <> 'cancelled'`)
     .run(req.user.id, mv.id));

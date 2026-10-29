@@ -37,7 +37,10 @@ function maintenanceVisitFilters(query, user) {
   if (filter === 'cancelled') add("mv.status='cancelled'");
   if (filter === 'report_pending' || query.pending_report === '1') add("mv.report_sent=0 AND mv.status NOT IN ('cancelled','scheduled')");
   if (filter === 'awaiting_review' || query.review_pending === '1') add('mv.report_sent=1 AND mv.report_sent_to_customer=0');
-  if (query.not_completed === '1') add("mv.status NOT IN ('completed','cancelled')");
+  // Overdue, not merely unfinished: a visit still ahead (or under way) is not incomplete yet.
+  // Written as "not (finished or still ahead)": the in-memory test database cannot plan the
+  // same rule written as an AND of the two conditions; real PostgreSQL treats both alike.
+  if (query.not_completed === '1') add("NOT (mv.status IN ('completed','cancelled') OR COALESCE(mv.end_date,mv.scheduled_date)>=?)", asOf);
   return { where: clauses.join(' AND '), params, search: query.search?.trim().toLowerCase() || '' };
 }
 
