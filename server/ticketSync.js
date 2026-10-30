@@ -56,16 +56,16 @@ function ticketRecord(ticket,mapping,baseUrl,now=new Date(),mappings=DEFAULTS) {
   };
 }
 
-/** Tells managers and the shared channels that a customer's sync has stopped working, or works again. */
+/** Tells managers that a customer's sync has stopped working, or works again: on their bell and by email,
+    never on Webex or Teams (admins asked not to be messaged there about ticket sync). */
 async function alertSyncChange(store,mapping,recovered,reason='') {
   try {
-    const { notifyShared,notifyUser }=require('./notifications');
+    const { notifyUser }=require('./notifications');
     const customer=decrypt((await store.prepare('SELECT name FROM customers WHERE id=?').get(mapping.customer_id))?.name) || `customer ${mapping.customer_id}`;
     const queue=mapping.external_queue_name || mapping.external_queue_id || '—';
     const msg=recovered
       ? { title:'✅ Ticket synchronisation working again',body:`Tickets for **${customer}** are synchronising from Request Tracker again.`,facts:[{ name:'Customer',value:customer },{ name:'Queue',value:queue }] }
       : { title:'🎫 Ticket synchronisation failed',body:`Tickets for **${customer}** could not be synchronised from Request Tracker: ${reason}`,facts:[{ name:'Customer',value:customer },{ name:'Queue',value:queue }] };
-    notifyShared('ticket_sync_failed',msg);
     const managers=await store.prepare("SELECT id FROM users WHERE role='manager' AND active=1").all();
     for (const { id } of managers) notifyUser(id,'ticket_sync_failed',msg,{ title:recovered ? `Ticket sync working again: ${customer}` : `Ticket sync failing: ${customer}`,body:recovered ? null : reason,link:'/settings/ticketing' })
       .catch(error => console.error('[ticket-sync] alert failed:',error.message));

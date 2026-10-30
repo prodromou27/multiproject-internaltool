@@ -224,9 +224,13 @@ const PERSONAL_EVENTS = Object.freeze([
   { key: 'managed_report_review', label: 'A customer report needs my review, or my customer report is reviewed' },
   { key: 'recommendation_assigned', label: 'A high or critical recommendation is assigned to me' },
   { key: 'visit_report_approved', label: 'The report for one of my maintenance visits is approved' },
-  { key: 'ticket_sync_failed', label: 'Request Tracker ticket sync stops working, or starts working again', roles: ['manager'] },
+  // Email only: admins do not want ticket sync alerts on Webex or Teams.
+  { key: 'ticket_sync_failed', label: 'Request Tracker ticket sync stops working, or starts working again', roles: ['manager'], channels: ['email'] },
 ]);
 const PERSONAL_CHANNELS = Object.freeze(['teams', 'email', 'webex']);
+
+// The channels an event can go to: all of them, unless the event names fewer.
+const eventChannels = key => PERSONAL_EVENTS.find(event => event.key === key)?.channels || PERSONAL_CHANNELS;
 
 function eventPreferences(raw, role) {
   let stored = {};
@@ -234,11 +238,11 @@ function eventPreferences(raw, role) {
   const result = {};
   for (const event of PERSONAL_EVENTS) {
     if (event.roles && role && !event.roles.includes(role)) continue;
-    result[event.key] = Object.fromEntries(PERSONAL_CHANNELS.map(channel => [channel, stored?.[event.key]?.[channel] !== false]));
+    result[event.key] = Object.fromEntries(eventChannels(event.key).map(channel => [channel, stored?.[event.key]?.[channel] !== false]));
   }
   return result;
 }
-const wantsAlert = (person, eventKey, channel) => eventPreferences(person.notify_events)[eventKey]?.[channel] !== false;
+const wantsAlert = (person, eventKey, channel) => eventChannels(eventKey).includes(channel) && eventPreferences(person.notify_events)[eventKey]?.[channel] !== false;
 
 /** Whether the organisation's Webex bot can send direct messages to people. */
 async function webexDirectAvailable() {
@@ -612,4 +616,4 @@ async function sendPersonalTest(channel, { email, webhook_url }) {
   } else throw new Error('Unknown channel');
 }
 
-module.exports = { settled, track, notifyShared, notifyTeam, deliverTeam, notifyUser, sharedChannelsAvailable, postToSharedChannels, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, messageCard, webexMessage, emailHtml, postJSON, _setTransport };
+module.exports = { settled, track, notifyShared, notifyTeam, deliverTeam, notifyUser, sharedChannelsAvailable, postToSharedChannels, PERSONAL_EVENTS, PERSONAL_CHANNELS, eventChannels, eventPreferences, webexDirectAvailable, sendPersonalTest, notify, sendTest, teamsPayload, isLegacyTeamsUrl, webexMarkdown, messageCard, webexMessage, emailHtml, postJSON, _setTransport };

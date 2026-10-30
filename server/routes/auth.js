@@ -528,7 +528,7 @@ async function notificationPrefsView(row, role) {
     email_delivery_available: !!smtp?.host,
     webex_direct_available: await webexDirectAvailable(),
     notify_events: events,
-    notify_event_options: PERSONAL_EVENTS.filter(event => events[event.key]).map(({ key, label }) => ({ key, label })),
+    notify_event_options: PERSONAL_EVENTS.filter(event => events[event.key]).map(({ key, label, channels }) => ({ key, label, channels: channels || PERSONAL_CHANNELS })),
   };
 }
 

@@ -57,11 +57,15 @@ test('scheduled shared events are posted once per occasion and never throw', asy
   assert.equal(posts.length, 2);
   assert.equal(await notifications.notifyShared('not_an_event', msg), false);
   notifications._setTransport(async () => { throw new Error('network down'); });
-  assert.equal(await notifications.notifyShared('ticket_sync_failed', msg), false);
+  assert.equal(await notifications.notifyShared('backup_failed', msg), false);
 });
 
-test('ticket sync alerts when a customer starts failing and when it recovers, not on every failed run', async () => {
-  await shareTo();
+test('ticket sync alerts managers on their bell when a customer starts failing and when it recovers, never on Webex or Teams', async () => {
+  // The Webex bot can post to the space and message people directly, and the manager has
+  // Webex messages on: still, nothing about ticket sync goes to Webex.
+  await db.prepare("INSERT INTO settings (key,value) VALUES ('integrations',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value")
+    .run(JSON.stringify({ webex: { enabled: true, bot_token: 'shared-token', mode: 'both', space_id: 'team-space' }, notify_on: {} }));
+  await db.prepare('UPDATE users SET notify_external_enabled=1 WHERE id=?').run(ids.manager);
   await db.prepare("INSERT INTO settings (key,value) VALUES ('ticketing_rt',?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value").run(JSON.stringify({ enabled: true, base_url: 'https://rt.example.test/rt', sync_interval_minutes: 5 }));
   const customer = (await db.prepare('INSERT INTO customers (name) VALUES (?)').run('Sync alert customer')).lastInsertRowid;
   await db.prepare(`INSERT INTO customer_ticketing_configurations (customer_id,provider_type,external_queue_id,external_queue_name,enabled,include_in_reporting)
@@ -72,20 +76,17 @@ test('ticket sync alerts when a customer starts failing and when it recovers, no
   // Bell entries are written in the background too; wait for the expected number.
   const bell = async expected => { for (let i = 0; i < 100 && await count() < expected; i++) await new Promise(resolve => setTimeout(resolve, 20)); return count(); };
   await assert.rejects(syncCustomer(customer, { provider: broken }));
+  assert.equal(await bell(1), 1, 'managers get it on their bell');
   await settle(1);
-  assert.equal(posts.length, 1);
-  assert.match(posts[0].markdown, /could not be synchronised[\s\S]*RT unreachable/);
-  assert.equal(await bell(1), 1, 'managers get it on their bell too');
-  posts.length = 0;
+  assert.equal(posts.length, 0, 'not in the Webex space, not as a Webex message');
   await assert.rejects(syncCustomer(customer, { provider: broken }));
   await assert.rejects(syncCustomer(customer, { provider: broken }));
   await settle(1);
-  assert.equal(posts.length, 0, 'retries while still failing stay quiet');
+  assert.equal(await count(), 1, 'retries while still failing stay quiet');
   await syncCustomer(customer, { provider: { getTickets: async () => [] } });
+  assert.equal(await bell(2), 2, 'recovery is on the bell too');
   await settle(1);
-  assert.equal(posts.length, 1);
-  assert.match(posts[0].markdown, /working again/);
-  assert.equal(await bell(2), 2);
+  assert.equal(posts.length, 0);
 });
 
 test('people can choose the new alerts for their own channels', async () => {
@@ -94,6 +95,9 @@ test('people can choose the new alerts for their own channels', async () => {
   const engineer = Object.keys(eventPreferences(null, 'engineer'));
   for (const key of ['project_closure', 'managed_report_review', 'recommendation_assigned', 'visit_report_approved', 'ticket_sync_failed']) assert.ok(manager.includes(key), key);
   assert.ok(!engineer.includes('ticket_sync_failed'));
+  // Ticket sync is offered by email only, never Webex or Teams, even if chosen before.
+  assert.deepEqual(eventPreferences(null, 'manager').ticket_sync_failed, { email: true });
+  assert.deepEqual(eventPreferences(JSON.stringify({ ticket_sync_failed: { webex: true, teams: true } }), 'manager').ticket_sync_failed, { email: true });
   // A high-risk recommendation assigned to someone else reaches them.
   await shareTo({ recommendation_created: false });
   const before = (await db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND type='recommendation_assigned'").get(ids.engineerEnabled)).n;
