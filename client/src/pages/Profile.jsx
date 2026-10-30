@@ -563,6 +563,7 @@ function NotificationPreferencesSection({ user, onRefresh }) {
               <tbody>{events.map(event => <tr key={event.key}>
                 <th scope="row">{event.label}</th>
                 {channels.map(([key, label]) => {
+                  if (event.channels && !event.channels.includes(key)) return <td key={key} className="text-muted" title={`Not sent by ${label}`}>—</td>;
                   const on = user.notify_events?.[event.key]?.[key] !== false;
                   return <td key={key}><input type="checkbox" checked={on} disabled={!!saving} aria-label={`${event.label}: ${label}`}
                     onChange={() => save(`event-${event.key}-${key}`, { notify_events: { [event.key]: { [key]: !on } } }, `${label}: ${on ? 'off' : 'on'} for "${event.label.toLowerCase()}".`)} /></td>;
