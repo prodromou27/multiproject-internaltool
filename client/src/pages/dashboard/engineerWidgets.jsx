@@ -7,7 +7,7 @@ import StatCard from './StatCard';
 import AddToCalendarButton from '../../components/AddToCalendarButton';
 
 export function engineerWidget(id, ctx) {
-  const { active, load, myManagedCustomers, myOpen, pendingReports, visits } = ctx;
+  const { act, active, myManagedCustomers, myOpen, pendingReports, visits } = ctx;
   switch (id) {
     case 'stat_cards':
       return (
@@ -107,7 +107,7 @@ export function engineerWidget(id, ctx) {
                         <td><StatusBadge entityType="visit" s={v.status} /></td>
                         <td>
                           <button className="btn btn-sm btn-primary u-122b3a0"
-                            onClick={async () => { await api.markReportSent(v.id); load(); }}>
+                            onClick={() => act(() => api.markReportSent(v.id))}>
                             <Send size={11} /> Mark Sent
                           </button>
                         </td>
@@ -222,7 +222,7 @@ export function engineerWidget(id, ctx) {
                       </span>
                     )}
                     {t.status !== 'pending_approval' && <button type="button" className="task-done" aria-label={`Mark ${t.title} as done`} title="Mark as done"
-                      onClick={async () => { await api.updateTask(t.id, { status: 'completed' }); load(); }}><Check size={14} aria-hidden="true" /></button>}
+                      onClick={() => act(() => api.updateTask(t.id, { status: 'completed' }))}><Check size={14} aria-hidden="true" /></button>}
                   </li>
                 ))}
               </ul>

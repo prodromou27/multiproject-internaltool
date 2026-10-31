@@ -6,7 +6,7 @@ import StatCard from './StatCard';
 import ManagementInsights from '../../components/ManagementInsights';
 
 export function managerWidget(id, ctx) {
-  const { active, incompleteVisits, load, myOpen, pendingClosure, reviewVisits, summary, visits } = ctx;
+  const { act, active, incompleteVisits, myOpen, pendingClosure, reviewVisits, summary, visits } = ctx;
   switch (id) {
     case 'insights':
       return <ManagementInsights key={id} compact />;
@@ -219,7 +219,7 @@ export function managerWidget(id, ctx) {
                     <td className="u-cf19a43">{v.report_sent_by_name || '—'}</td>
                     <td>
                       <button className="btn btn-sm btn-success u-122b3a0"
-                        onClick={async () => { await api.markCustomerSent(v.id); load(); }}>
+                        onClick={() => act(() => api.markCustomerSent(v.id))}>
                         <Send size={12} /> Confirm Sent
                       </button>
                     </td>
@@ -332,7 +332,7 @@ export function managerWidget(id, ctx) {
                       </span>
                     )}
                     {t.status !== 'pending_approval' && <button type="button" className="task-done" aria-label={`Mark ${t.title} as done`} title="Mark as done"
-                      onClick={async () => { await api.updateTask(t.id, { status: 'completed' }); load(); }}><Check size={14} aria-hidden="true" /></button>}
+                      onClick={() => act(() => api.updateTask(t.id, { status: 'completed' }))}><Check size={14} aria-hidden="true" /></button>}
                   </li>
                 ))}
               </ul>

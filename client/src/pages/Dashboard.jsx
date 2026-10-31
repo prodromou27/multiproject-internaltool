@@ -122,7 +122,12 @@ export default function Dashboard() {
 
   /* ── Render ───────────────────────────────────────────── */
     // Everything the role-specific widget renderers (./dashboard/*Widgets.jsx) read.
-  const ctx = { active, completingVisit, incompleteVisits, load, myManagedCustomers, myOpen, pendingClosure, pendingReports, projects, reviewVisits, setCompletingVisit, summary, visits };
+  // A quick action from a widget: refresh when it worked, say why when it did not.
+  const act = async work => {
+    try { await work(); load(); }
+    catch (err) { setError(err.message || 'That action could not be completed'); }
+  };
+  const ctx = { act, active, completingVisit, incompleteVisits, load, myManagedCustomers, myOpen, pendingClosure, pendingReports, projects, reviewVisits, setCompletingVisit, summary, visits };
   const renderFn = isManager ? managerWidget : isPlanner ? plannerWidget : isPM ? pmWidget : engineerWidget;
 
   return (

@@ -99,7 +99,10 @@ function ManualVersions({ product, onChanged }) {
     {product.releases.length > 0 && <ul>{product.releases.map(release => <li key={release.branch}>
       <strong>{release.branch}</strong>: {release.latest_version}{release.recommended_version ? ` (recommended ${release.recommended_version})` : ''}
       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setForm({ ...empty, ...Object.fromEntries(Object.entries(release).filter(([key]) => key in empty).map(([key, value]) => [key, value || ''])) })}><Pencil size={12} /> Edit</button>
-      <button type="button" className="btn btn-ghost btn-sm" aria-label={`Remove ${release.branch}`} onClick={async () => { await api.deleteSoftwareRelease(product.id, release.branch); onChanged(); }}><Trash2 size={12} /></button>
+      <button type="button" className="btn btn-ghost btn-sm" aria-label={`Remove ${release.branch}`} onClick={async () => {
+        try { await api.deleteSoftwareRelease(product.id, release.branch); toast.success(`${product.name} ${release.branch} removed`); onChanged(); }
+        catch (failure) { toast.error(failure.message); }
+      }}><Trash2 size={12} /></button>
     </li>)}</ul>}
     <form className="sv-manual-form" onSubmit={save}>
       <input aria-label="Version line" placeholder="Version line (e.g. 21.0)" value={form.branch} onChange={set('branch')} required maxLength={40} />

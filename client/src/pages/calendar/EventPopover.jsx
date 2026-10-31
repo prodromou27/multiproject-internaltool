@@ -6,6 +6,7 @@ import { useAuth } from '../../App';
 import { fmtDate, Modal } from '../../components/Shared';
 import { TYPE_STYLE, eventLabel } from './constants';
 import AddToCalendarButton from '../../components/AddToCalendarButton';
+import { businessToday } from '../../utils/dates';
 
 /* ── Event detail popover ────────────────────────────────── */
 export default function EventPopover({ event, onClose, onReportSent }) {
@@ -78,7 +79,9 @@ export default function EventPopover({ event, onClose, onReportSent }) {
               ? <span className="u-9775886"><Check size={12} /> Sent</span>
               : <span className="u-212c94a">Pending</span>}</div>
             {event.status !== 'cancelled' && <AddToCalendarButton visitId={event.id} title={event.title} />}
-            {!event.report_sent && event.status !== 'cancelled' && ['manager', 'planner', 'engineer'].includes(user.role) && (
+            {/* A report is submitted on or after the visit day (the server refuses it earlier). */}
+            {!event.report_sent && event.status !== 'cancelled' && (event.status !== 'scheduled' || String(event.date || '').slice(0, 10) <= businessToday())
+              && ['manager', 'planner', 'engineer'].includes(user.role) && (
               <button className="btn btn-success btn-sm u-169d66d"
                 disabled={saving} onClick={markSent}>
                 <Check size={13} /> Mark Report Sent

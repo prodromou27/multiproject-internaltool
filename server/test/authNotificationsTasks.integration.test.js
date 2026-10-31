@@ -52,6 +52,26 @@ test('personal alerts still go out when no organisation Teams/Webex integration 
   }
 });
 
+test('a deactivated person gets the bell entry for an assignment, but no Teams, email or Webex message', async () => {
+  const notifications = require('../notifications');
+  const user = (await db.prepare('INSERT INTO users (name, email, password, role, active, notify_external_enabled, notify_teams_enabled, notify_teams_webhook_url) VALUES (?, ?, ?, ?, 0, 1, 1, ?)')
+    .run('Gone Engineer', 'gone-engineer@test.local', bcrypt.hashSync('pw', 4), 'engineer', 'https://93.184.216.34/gone')).lastInsertRowid;
+  const saved = await db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get();
+  await db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value")
+    .run(JSON.stringify({ teams: { enabled: false }, webex: { enabled: true, bot_token: 'x', mode: 'direct' }, notify_on: {} }));
+  const posted = [];
+  notifications._setTransport(async (u) => { posted.push(u.pathname); return { status: 200, body: '', headers: {} }; });
+  try {
+    notifications.notify('task.assigned', { engineer_id: user, engineer_name: 'Gone Engineer', engineer_email: 'gone-engineer@test.local', task_title: 'T' });
+    await notifications.settled();
+    assert.deepEqual(posted, []);
+    assert.equal(Number((await db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ?').get(user)).n), 1);
+  } finally {
+    notifications._setTransport();
+    await db.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(saved?.value || '{}');
+  }
+});
+
 test('notification preferences default correctly, validate their input, and persist without re-issuing a session', async () => {
   const passwordHash = bcrypt.hashSync('pw', 4);
   const target = (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
