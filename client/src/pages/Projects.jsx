@@ -1,107 +1,57 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { DraftBanner, useFormDraft } from '../hooks/useFormDraft';
+import CustomerSearchSelect from '../components/CustomerSearchSelect';
 import { Link, useLocation } from 'react-router-dom';
-import { Building2, FolderOpen, X, Bell, Pin, Search } from 'lucide-react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { Building2, X, Bell, Pin, Download, Upload } from 'lucide-react';
+import { HeaderMenu, PageHeader } from '../components/PageLayout';
+import ImportModal from '../components/ImportModal';
+import { FilterGroup, ListSearch, ResultContext } from '../components/ListWorkspace';
+import { DataTable, MetricStrip, Pagination, Surface } from '../components/EnterpriseUI';
+import { useLatestRequest } from '../hooks/useLatestRequest';
+import { customerIdFromCreateIntent,useCreateIntent } from '../hooks/useCreateIntent';
+import WaitingReasonDialog from '../components/WaitingReasonDialog';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { StatusBadge, PriorityBadge, RagBadge, fmtDate, isOverdue, Modal } from '../components/Shared';
+import { StatusBadge, PriorityBadge, RagBadge, fmtDate, isOverdue, Modal, sentenceCase } from '../components/Shared';
 import { useSavedFilter } from '../hooks/useSavedFilter';
 import { useStatuses } from '../hooks/useStatuses';
 import { useToast } from '../components/Toast';
+import { useLiveRefresh } from '../live';
 
-/* ── Waiting for Customer/Vendor reason dialog ─────────────────── */
-function WaitingDialog({ title = 'Waiting for Customer', initial = '', onConfirm, onCancel }) {
-  const [reason, setReason] = useState(initial);
-  return (
-    <Modal title={title} onClose={onCancel}>
-      <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 14 }}>
-        Describe what is needed before work can continue.
-      </p>
-      <div className="form-group">
-        <label>Reason <span style={{ color: 'var(--danger)' }}>*</span></label>
-        <textarea
-          value={reason}
-          onChange={e => setReason(e.target.value)}
-          placeholder="e.g. Awaiting signed approval document…"
-          rows={3}
-          autoFocus
-        />
-      </div>
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
-        <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={!reason.trim()}
-          onClick={() => onConfirm(reason.trim())}
-        >
-          Set Status
-        </button>
-      </div>
-    </Modal>
-  );
-}
+const PROJECT_COLUMNS = ['project_code*', 'title*', 'description*', 'start_date*', 'member_names*', 'customer_name', 'priority', 'deadline'];
 
-/* ── Inline status dropdown ────────────────────────────────────── */
+/* ── Inline status dropdown ────────────────────────────────────── *
+ * Built on Radix's unstyled DropdownMenu primitive instead of a hand-
+ * rolled click-outside/scroll/position implementation. The trigger is a
+ * real, keyboard-operable <button> with correct aria-haspopup/expanded;
+ * the menu gets arrow-key navigation, Escape-to-close and click-outside
+ * for free, and positions itself (no more manual getBoundingClientRect).
+ * Visual classes (inline-dropdown*) are unchanged from the previous
+ * implementation, so no CSS moved. */
 function InlineStatusSelect({ project, onUpdate }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const ref = useRef(null);
-  const dropdownRef = useRef(null);
   const statusCtx = useStatuses();
-  const statuses = statusCtx?.config?.project || [];
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target) &&
-          dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false);
-    }
-    function handleScroll(e) {
-      // Ignore scroll events that originate inside the dropdown itself
-      if (dropdownRef.current && dropdownRef.current.contains(e.target)) return;
-      setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    window.addEventListener('scroll', handleScroll, true);
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      window.removeEventListener('scroll', handleScroll, true);
-    };
-  }, [open]);
-
-  function handleTrigger(e) {
-    e.preventDefault(); e.stopPropagation();
-    if (!open) {
-      const rect = ref.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.left });
-    }
-    setOpen(o => !o);
-  }
-
+  const statuses = (statusCtx?.config?.project || []).filter(s => s.value !== 'pending_approval');
   return (
-    <div ref={ref} style={{ display: 'inline-block' }}>
-      <div onClick={handleTrigger}
-        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-        title="Click to change status"
-      >
-        <StatusBadge s={project.status} />
-        <span style={{ fontSize: 9, color: 'var(--gray-400)', lineHeight: 1, marginTop: 1 }}>▾</span>
-      </div>
-      {open && (
-        <div ref={dropdownRef} className="inline-dropdown" style={{ top: pos.top, left: pos.left, minWidth: 220 }}>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" className="inline-dropdown-trigger" title="Click to change status">
+          <StatusBadge entityType="project" s={project.status} />
+          <span className="u-13f6d14">▾</span>
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="inline-dropdown" style={{ minWidth: 220 }} align="start" sideOffset={4}>
           {statuses.map(s => (
-            <div
-              key={s.value}
-              className={`inline-dropdown-item${s.value === project.status ? ' active' : ''}`}
-              onClick={e => { e.stopPropagation(); onUpdate(project, s.value); setOpen(false); }}
-            >
-              <StatusBadge s={s.value} />
+            <DropdownMenu.Item key={s.value} className={`inline-dropdown-item${s.value === project.status ? ' active' : ''}`}
+              onSelect={() => onUpdate(project, s.value)}>
+              <StatusBadge entityType="project" s={s.value} />
               {s.value === project.status && <span className="inline-dropdown-check">✓</span>}
-            </div>
+            </DropdownMenu.Item>
           ))}
-        </div>
-      )}
-    </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 
@@ -113,74 +63,34 @@ const PRIORITY_OPTIONS = [
 ];
 
 function InlinePrioritySelect({ project, onUpdate }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const ref = useRef(null);
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target) &&
-          dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false);
-    }
-    function handleScroll(e) {
-      if (dropdownRef.current && dropdownRef.current.contains(e.target)) return;
-      setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    window.addEventListener('scroll', handleScroll, true);
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      window.removeEventListener('scroll', handleScroll, true);
-    };
-  }, [open]);
-
-  function handleTrigger(e) {
-    e.preventDefault(); e.stopPropagation();
-    if (!open) {
-      const rect = ref.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.left });
-    }
-    setOpen(o => !o);
-  }
-
   return (
-    <div ref={ref} style={{ display: 'inline-block' }}>
-      <div onClick={handleTrigger}
-        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-        title="Click to change priority"
-      >
-        <PriorityBadge p={project.priority} />
-        <span style={{ fontSize: 9, color: 'var(--gray-400)', lineHeight: 1, marginTop: 1 }}>▾</span>
-      </div>
-      {open && (
-        <div ref={dropdownRef} className="inline-dropdown" style={{ top: pos.top, left: pos.left, minWidth: 150 }}>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" className="inline-dropdown-trigger" title="Click to change priority">
+          <PriorityBadge p={project.priority} />
+          <span className="u-13f6d14">▾</span>
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="inline-dropdown" style={{ minWidth: 150 }} align="start" sideOffset={4}>
           {PRIORITY_OPTIONS.map(p => (
-            <div
-              key={p.value}
-              className={`inline-dropdown-item${p.value === project.priority ? ' active' : ''}`}
-              onClick={e => { e.stopPropagation(); onUpdate(project, p.value); setOpen(false); }}
-            >
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600,
-                background: p.bg, color: p.text,
-              }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: p.dot, flexShrink: 0 }} />
+            <DropdownMenu.Item key={p.value} className={`inline-dropdown-item${p.value === project.priority ? ' active' : ''}`}
+              onSelect={() => onUpdate(project, p.value)}>
+              <span className="u-7dc1f6e" style={{ background: p.bg, color: p.text }}>
+                <span className="u-19c4840" style={{ background: p.dot }} />
                 {p.label}
               </span>
               {p.value === project.priority && <span className="inline-dropdown-check">✓</span>}
-            </div>
+            </DropdownMenu.Item>
           ))}
-        </div>
-      )}
-    </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 
 /* ── Customer selector with "create new" ──────────────────────── */
-function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
+function CustomerPicker({ value, onChange, onCustomerCreated }) {
   const toast = useToast();
   const [creating,  setCreating]  = useState(false);
   const [newName,   setNewName]   = useState('');
@@ -205,43 +115,75 @@ function CustomerPicker({ customers, value, onChange, onCustomerCreated }) {
   return (
     <div>
       {!creating ? (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <select value={value || ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)} style={{ flex: 1 }}>
-            <option value="">— No customer —</option>
-            {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <button type="button" className="btn btn-ghost btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => setCreating(true)}>
+        <div className="flex-center gap-8">
+          <div className="flex-1"><CustomerSearchSelect value={value || ''} onChange={id => onChange(id ? Number(id) : null)} label="Customer" /></div>
+          <button type="button" className="btn btn-ghost btn-sm u-86abdab" onClick={() => setCreating(true)}>
             + New
           </button>
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="flex-center gap-8">
           <input
             autoFocus
             value={newName}
             onChange={e => setNewName(e.target.value)}
             placeholder="Customer name…"
-            style={{ flex: 1 }}
+            className="flex-1"
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createAndSelect(); } if (e.key === 'Escape') setCreating(false); }}
           />
           <button type="button" className="btn btn-primary btn-sm" onClick={createAndSelect} disabled={saving || !newName.trim()}>
             {saving ? '…' : 'Create'}
           </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCreating(false); setNewName(''); }} style={{ display: 'inline-flex', alignItems: 'center' }}><X size={13} /></button>
+          <button type="button" className="btn btn-ghost btn-sm inline-flex items-center" onClick={() => { setCreating(false); setNewName(''); }}><X size={13} /></button>
         </div>
       )}
     </div>
   );
 }
 
-/* ── Project Form ─────────────────────────────────────────────── */
-function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCreated }) {
-  const toast = useToast();
-  const [form, setForm] = useState(
-    initial || { title: '', description: '', priority: 'medium', deadline: '', customer_id: null, member_ids: [] }
+/* ── Bulk "Assign Members" picker ────────────────────────────── */
+function BulkAssignMembersForm({ count, users, onSave, onClose }) {
+  const [ids, setIds] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const toggle = id => setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!ids.length) { setErr('Choose at least one member.'); return; }
+    setErr(''); setSaving(true);
+    try { await onSave(ids); onClose(); }
+    catch (ex) { setErr(ex.message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      {err && <div className="error-msg">{err}</div>}
+      <p className="text-sm text-muted mb-12">Add these members to {count} selected project{count === 1 ? '' : 's'}. Existing members are kept.</p>
+      <div className="u-bulk-member-list">
+        {users.map(u => (
+          <label key={u.id} className="u-bulk-member-row">
+            <input type="checkbox" checked={ids.includes(u.id)} onChange={() => toggle(u.id)} />
+            {u.name} <span className="text-muted text-sm">({sentenceCase(u.role)})</span>
+          </label>
+        ))}
+      </div>
+      <div className="modal-footer u-cc45258">
+        <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Assigning…' : 'Assign'}</button>
+      </div>
+    </form>
   );
+}
+
+/* ── Project Form ─────────────────────────────────────────────── */
+function ProjectForm({ initial, users, onSave, onClose, onCustomerCreated }) {
+  const toast = useToast();
+  const [form, setForm] = useState(() => ({ project_code: '', title: '', description: '', priority: 'medium', start_date: '', deadline: '', customer_id: null,...(initial || {}),member_ids:initial?.member_ids || [] }));
   const [saving,      setSaving]      = useState(false);
   const [memberError, setMemberError] = useState('');
+  const draft = useFormDraft({ name: `project:${initial?.id || 'new'}`, value: form, base: initial?.updated_at ?? null });
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const toggleMember = id => setForm(f => ({
@@ -251,49 +193,49 @@ function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCre
 
   async function submit(e) {
     e.preventDefault();
-    if (form.member_ids.length === 0) { setMemberError('Assign at least one engineer before saving.'); return; }
+    if (form.member_ids.length === 0) { setMemberError('Assign at least one member before saving.'); return; }
     setMemberError(''); setSaving(true);
-    try { await onSave(form); onClose(); }
+    try { await onSave(form); draft.clear(); onClose(); }
     catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
   }
 
-  const engineers = users.filter(u => u.role === 'engineer');
+  const engineers = users.filter(u => u.role === 'engineer' || u.role === 'manager');
 
   return (
     <form onSubmit={submit}>
-      <div className="form-group"><label>Title *</label><input value={form.title} onChange={set('title')} required /></div>
-      <div className="form-group"><label>Description</label><textarea value={form.description || ''} onChange={set('description')} /></div>
+      <DraftBanner draft={draft} onRestore={data => data && setForm(data)} />
       <div className="form-row">
+        <div className="form-group"><label htmlFor="project-code">Project ID *</label><input id="project-code" value={form.project_code || ''} onChange={set('project_code')} maxLength={50} required placeholder="e.g. PRJ-2026-014" /></div>
+        <div className="form-group"><label htmlFor="project-name">Project name *</label><input id="project-name" value={form.title} onChange={set('title')} maxLength={500} required /></div>
+      </div>
+      <div className="form-group"><label htmlFor="project-description">Description *</label><textarea id="project-description" value={form.description || ''} onChange={set('description')} maxLength={10000} required /></div>
+      <div className="form-row">
+        <div className="form-group"><label htmlFor="project-start">Start date *</label><input id="project-start" type="date" value={form.start_date || ''} onChange={set('start_date')} required /></div>
+        <div className="form-group"><label htmlFor="project-deadline">Deadline</label><input id="project-deadline" type="date" value={form.deadline || ''} min={form.start_date || undefined} onChange={set('deadline')} /></div>
         <div className="form-group">
-          <label>Priority</label>
-          <select value={form.priority} onChange={set('priority')}>
+          <label htmlFor="project-priority">Priority</label>
+          <select id="project-priority" value={form.priority} onChange={set('priority')}>
             <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
           </select>
         </div>
-        <div className="form-group"><label>Deadline</label><input type="date" value={form.deadline || ''} onChange={set('deadline')} /></div>
       </div>
       <div className="form-group">
         <label>Customer</label>
         <CustomerPicker
-          customers={customers}
           value={form.customer_id}
           onChange={id => setForm(f => ({ ...f, customer_id: id }))}
           onCustomerCreated={onCustomerCreated}
         />
       </div>
       <div className="form-group">
-        <label>Assign Engineers <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <label>Assign Members <span className="u-497726e">*</span></label>
         {engineers.length === 0
-          ? <p className="text-sm text-muted" style={{ marginTop: 4 }}>No engineers registered yet.</p>
-          : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+          ? <p className="text-sm text-muted u-96ad609">No engineers or managers registered yet.</p>
+          : <div className="flex flex-wrap gap-6 mt-4">
               {engineers.map(u => (
-                <label key={u.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '4px 8px',
-                  background: form.member_ids.includes(u.id) ? '#dbeafe' : 'var(--gray-100)', borderRadius: 6, fontSize: 12,
-                  border: form.member_ids.includes(u.id) ? '1px solid #93c5fd' : '1px solid transparent', userSelect: 'none',
-                }}>
-                  <input type="checkbox" checked={form.member_ids.includes(u.id)} onChange={() => { toggleMember(u.id); setMemberError(''); }} style={{ width: 'auto' }} />
+                <label key={u.id} className="u-5a4e487" style={{ background: form.member_ids.includes(u.id) ? '#dbeafe' : 'var(--gray-100)', border: form.member_ids.includes(u.id) ? '1px solid #93c5fd' : '1px solid transparent' }}>
+                  <input type="checkbox" checked={form.member_ids.includes(u.id)} onChange={() => { toggleMember(u.id); setMemberError(''); }} className="u-30e741d" />
                   {u.name}
                 </label>
               ))}
@@ -301,7 +243,7 @@ function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCre
         }
         {memberError && <p className="text-danger text-sm mt-4">{memberError}</p>}
       </div>
-      <div className="modal-footer" style={{ padding: '12px 0 0', border: 'none' }}>
+      <div className="modal-footer u-cc45258">
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
       </div>
@@ -310,6 +252,8 @@ function ProjectForm({ initial, users, customers, onSave, onClose, onCustomerCre
 }
 
 /* ── Main Page ────────────────────────────────────────────────── */
+const VALID_FILTERS = ['open','all','in_progress','not_started','on_hold','waiting_customer','waiting_vendor','delayed','pending_approval','overdue','closed','cancelled','reopened'];
+
 export default function Projects() {
   const { user } = useAuth();
   const toast    = useToast();
@@ -319,30 +263,59 @@ export default function Projects() {
   const location  = useLocation();
   const [projects,   setProjects]   = useState([]);
   const [users,      setUsers]      = useState([]);
-  const [customers,  setCustomers]  = useState([]);
-  const [filter,     setFilter]     = useSavedFilter('projects', 'open');
+  const [filter,     setFilter]     = useSavedFilter('projects', 'open', { param: 'status', allowed: VALID_FILTERS });
   const [search,     setSearch]     = useState('');
   const [ragFilter,  setRagFilter]  = useState('all');
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [createInitial,setCreateInitial]=useState(null);
   const [loading,    setLoading]    = useState(true);
+  const [selected,   setSelected]   = useState(new Set());
+  const [bulkBusy,   setBulkBusy]   = useState(false);
+  const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [waitingDialog, setWaitingDialog] = useState(null);
+  const [page,setPage]=useState(1);
+  const [total,setTotal]=useState(0);
+  const [counts,setCounts]=useState({});
 
-  const loadCustomers = () => api.customers().then(setCustomers);
-  const load = () => Promise.all([
-    api.projects(),
-    canManage ? api.users()      : Promise.resolve([]),
-    canManage ? api.customers()  : Promise.resolve([]),
-  ]).then(([p, u, c]) => {
-    setProjects(p); setUsers(u); setCustomers(c); setLoading(false);
-  });
+  const loadCustomers = () => Promise.resolve(); // the picker searches; nothing to reload
+  const [loadError, setLoadError] = useState('');
+  useCreateIntent({ allowed: isManager, ready: !loading && !loadError, onCreate: params => { const customerId=customerIdFromCreateIntent(params);setCreateInitial(customerId?{ customer_id:customerId }:null);setShowCreate(true); } });
+
+  const { begin, isCurrent } = useLatestRequest(user.role);
+  const load = useCallback((loadOptions) => {
+    const request = begin();
+    if (request.signal.aborted) return Promise.resolve();
+    if (loadOptions?.quiet !== true) { setLoading(true); setSelected(new Set()); }
+    setLoadError('');
+    const options = { signal: request.signal };
+    return api.pagedProjects({ page,page_size:25,search,status:activeFilter,rag:ragFilter },options).then(result => {
+      if (!isCurrent(request)) return;
+      setProjects(result.rows || []);setTotal(result.total || 0);setCounts(result.counts || {});
+    }).catch(error => {
+      if (isCurrent(request)) setLoadError(error.message || 'Could not load this page');
+    }).finally(() => { if (isCurrent(request)) setLoading(false); });
+  }, [page,search,filter,ragFilter,begin,isCurrent]);
+
+  useEffect(() => {
+    if (!canManage) return;
+    const controller=new AbortController(),options={ signal:controller.signal };
+    api.users(options).then(setUsers).catch(() => {});
+    return () => controller.abort();
+  },[canManage]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const urlFilter = params.get('filter');
     if (urlFilter) setFilter(urlFilter);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.search, setFilter]);
 
-  useEffect(() => { load(); }, [canManage]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const timer=setTimeout(load,250);
+    return () => clearTimeout(timer);
+  }, [load]);
+  useLiveRefresh(() => load({ quiet: true }));
+  useEffect(() => setPage(1),[search,filter,ragFilter]);
 
   /* ── Inline update handlers ─────────────────────────────────── */
   function handleStatusUpdate(project, newStatus) {
@@ -369,52 +342,101 @@ export default function Projects() {
       .catch(err => toast.error(err.message));
   }
 
+  /* ── Bulk selection ──────────────────────────────────────────── */
+  function toggleSelect(id) {
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+  function toggleSelectAll() {
+    setSelected(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(p => p.id)));
+  }
+  async function applyBulkPriority(priority) {
+    if (!selected.size || !priority) return;
+    setBulkBusy(true);
+    try {
+      await api.bulkUpdateProjects({ ids: [...selected], action: 'priority', priority });
+      toast.success(`${selected.size} project(s) updated`);
+      setSelected(new Set());
+      load();
+    } catch (e) { toast.error(e.message || 'Bulk action failed'); }
+    finally { setBulkBusy(false); }
+  }
+  async function applyBulkAssignMembers(userIds) {
+    await api.bulkUpdateProjects({ ids: [...selected], action: 'assign-members', user_ids: userIds });
+    toast.success(`${selected.size} project(s) updated`);
+    setSelected(new Set());
+    load();
+  }
+
   const TERMINAL = ['closed', 'cancelled'];
-  const VALID_FILTERS = ['open','all','in_progress','not_started','on_hold','waiting_customer','waiting_vendor','delayed','pending_approval','closed','cancelled','reopened'];
-  const openProjects = projects.filter(p => !TERMINAL.includes(p.status));
   // Treat unknown saved filter values as 'open' so stale localStorage doesn't blank the list
   const activeFilter = VALID_FILTERS.includes(filter) ? filter : 'open';
-  const statusFiltered = activeFilter === 'all'  ? projects
-                       : activeFilter === 'open' ? openProjects
-                       : projects.filter(p => p.status === activeFilter);
-  const searchFiltered = search.trim()
-    ? statusFiltered.filter(p => {
-        const q = search.toLowerCase();
-        return (p.title || '').toLowerCase().includes(q) ||
-               (p.customer_name || '').toLowerCase().includes(q) ||
-               (p.created_by_name || '').toLowerCase().includes(q);
-      })
-    : statusFiltered;
-  const filtered = ragFilter === 'all'
-    ? searchFiltered
-    : searchFiltered.filter(p => p.rag_status === ragFilter);
+  const filtered = projects;
+  const allSelected = filtered.length > 0 && selected.size === filtered.length;
+  const columns = [
+    ...(isManager ? [{ key:'select',label:<input type="checkbox" aria-label="Select all projects" checked={allSelected} onChange={toggleSelectAll} />,mobileLabel:'Select',
+      render:p => <input type="checkbox" aria-label={`Select ${p.title}`} checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} /> }] : []),
+    { key:'title',label:'Title',render:p => <div className="flex-center gap-6">
+      {isManager && <button onClick={event => handlePin(p,event)} title={p.is_pinned?'Unpin project':'Pin to dashboard'}
+        className={`project-pin${p.is_pinned?' is-pinned':''}`} aria-pressed={!!p.is_pinned}><Pin size={13} /></button>}
+      <Link to={`/projects/${p.id}`} className="font-semibold">{p.title}</Link>
+      {p.project_code && <span className="text-muted text-sm">{p.project_code}</span>}
+    </div> },
+    { key:'customer',label:'Customer',render:p => p.customer_name
+      ? <span className="project-customer"><Building2 size={12} /> {p.customer_name}</span>
+      : <span className="text-muted">—</span> },
+    { key:'status',label:'Status',render:p => canManage && p.status==='pending_approval'
+      ? <Link to="/approvals">Review closure</Link>
+      : canManage ? <InlineStatusSelect project={p} onUpdate={handleStatusUpdate} /> : <StatusBadge entityType="project" s={p.status} /> },
+    { key:'priority',label:'Priority',render:p => canManage
+      ? <InlinePrioritySelect project={p} onUpdate={handlePriorityUpdate} /> : <PriorityBadge p={p.priority} /> },
+    { key:'health',label:'Health',render:p => <RagBadge rag={p.rag_status} /> },
+    { key:'tasks',label:'Tasks',render:p => p.task_count>0 ? <div className="project-progress">
+      <div><strong>{p.completion_pct}%</strong><span>{p.done_count}/{p.task_count}</span></div>
+      <div className="progress-bar"><div className="progress-bar-fill" style={{ width:`${p.completion_pct}%` }} /></div>
+    </div> : <span className="text-muted text-sm">No tasks</span> },
+    { key:'deadline',label:'Deadline',className:p => isOverdue(p.deadline) && !TERMINAL.includes(p.status)?'overdue':'',render:p => fmtDate(p.deadline) },
+    { key:'members',label:'Assigned',render:p => p.member_names || <span className="text-muted">Unassigned</span> },
+    ...(isManager ? [{ key:'action',label:'Action',render:p => p.status==='pending_approval'
+      ? <Link to={`/projects/${p.id}`} className="btn btn-sm btn-warning project-review"><Bell size={11} /> Review</Link> : '—' }] : []),
+  ];
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Projects</h1>
-        {isManager && <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Project</button>}
-      </div>
+      <PageHeader title="Projects" actions={<>
+{isManager && (
+          <div className="flex gap-8 flex-wrap">
+            <button className="btn btn-primary" onClick={() => { setCreateInitial(null);setShowCreate(true); }} disabled={loading || !!loadError}>+ New Project</button>
+            <HeaderMenu>
+              <button type="button" disabled={loading} onClick={async () => {
+                try {
+                  const { blob, filename } = await api.exportProjects();
+                  const url = URL.createObjectURL(blob), link = document.createElement('a');
+                  link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+                  setTimeout(() => URL.revokeObjectURL(url), 1000);
+                } catch (failure) { toast.error(failure.message || 'Export failed. Please try again.'); }
+              }}>
+                <Download size={14} aria-hidden="true" /> Export projects
+              </button>
+              <button type="button" disabled={loading} onClick={() => setShowImport(true)}><Upload size={14} aria-hidden="true" /> Import projects</button>
+            </HeaderMenu>
+          </div>
+        )}
+      </>} />
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ position: 'relative', marginBottom: 10, maxWidth: 340 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search projects…"
-            style={{ paddingLeft: 32, paddingRight: search ? 28 : undefined }}
-          />
-          {search && (
-            <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', display: 'flex', alignItems: 'center', padding: 0 }}>
-              <X size={13} />
-            </button>
-          )}
-        </div>
-        <div className="filter-bar">
+      <MetricStrip items={[
+        { key:'open',label:'Open projects',value:counts.open || 0,note:'Active delivery portfolio',tone:'info' },
+        { key:'overdue',label:'Overdue',value:counts.overdue || 0,note:'Past deadline and still open',tone:(counts.overdue || 0)>0?'danger':'success' },
+        { key:'approval',label:'Pending closure',value:counts.pending_approval || 0,note:'Awaiting management review',tone:(counts.pending_approval || 0)>0?'warning':'success' },
+        { key:'risk',label:'Red health',value:counts.rag_red || 0,note:'Within the selected status scope',tone:(counts.rag_red || 0)>0?'danger':'success' },
+      ]} />
+
+      <Surface label="Portfolio filters">
+        <ListSearch value={search} onChange={setSearch} label="Search projects" placeholder="Search projects, customers, owners, or assigned members…" />
+        <FilterGroup label="Status">
           {[
             ['open',              'Open'],
             ['all',               'All'],
+            ['overdue',           'Overdue'],
             ['in_progress',       'In Progress'],
             ['not_started',       'Not Started'],
             ['on_hold',           'On Hold'],
@@ -425,185 +447,115 @@ export default function Projects() {
             ['reopened',          'Reopened'],
             ['closed',            'Closed'],
             ['cancelled',         'Cancelled'],
-          ].map(([s, l]) => (
+          // Open, All, Overdue and Closed always; the other statuses only when they have projects (or are chosen).
+          ].filter(([s]) => ['open', 'all', 'overdue', 'closed'].includes(s) || (counts[s] || 0) > 0 || activeFilter === s).map(([s, l]) => (
             <button key={s} className={'filter-pill' + (activeFilter === s ? ' active' : '')} onClick={() => setFilter(s)}>
-              {l} <span style={{ opacity: .65 }}>({
-                s === 'all'  ? projects.length :
-                s === 'open' ? openProjects.length :
-                projects.filter(p => p.status === s).length
+              {l} <span className="u-a697a8f">({
+                counts[s] || 0
               })</span>
             </button>
           ))}
-        </div>
-        {/* RAG health filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 500, marginRight: 2 }}>Health:</span>
+        </FilterGroup>
+        {/* RAG health filter: only when some project has a health rating (or one is chosen). */}
+        {(ragFilter !== 'all' || ['red', 'amber', 'green'].some(key => (counts[`rag_${key}`] || 0) > 0)) && <FilterGroup label="Health">
           {[
-            { key: 'all',   label: 'All',   dot: null,      activeBg: '#e0e7ff', activeText: '#3730a3' },
-            { key: 'red',   label: 'Red',   dot: '#ef4444', activeBg: '#fef2f2', activeText: '#b91c1c' },
-            { key: 'amber', label: 'Amber', dot: '#f59e0b', activeBg: '#fffbeb', activeText: '#92400e' },
-            { key: 'green', label: 'Green', dot: '#22c55e', activeBg: '#f0fdf4', activeText: '#166534' },
-          ].map(({ key, label, dot, activeBg, activeText }) => {
-            const count = key === 'all' ? statusFiltered.length : statusFiltered.filter(p => p.rag_status === key).length;
+            { key: 'all', label: 'All' }, { key: 'red', label: 'Red' },
+            { key: 'amber', label: 'Amber' }, { key: 'green', label: 'Green' },
+          ].map(({ key, label }) => {
+            const count = counts[`rag_${key}`] || 0;
             const isActive = ragFilter === key;
             return (
-              <button
-                key={key}
-                onClick={() => setRagFilter(key)}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                  border: isActive ? `1.5px solid ${activeText}` : '1.5px solid var(--gray-200)',
-                  background: isActive ? activeBg : 'var(--gray-50)',
-                  color: isActive ? activeText : 'var(--gray-500)',
-                  transition: 'all .15s',
-                }}
-              >
-                {dot && <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }} />}
-                {label} <span style={{ opacity: .7 }}>({count})</span>
+              <button key={key} onClick={() => setRagFilter(key)}
+                className={`health-filter health-${key}${isActive ? ' active' : ''}`}>
+                {key !== 'all' && <i aria-hidden="true" />}
+                {label} <span className="u-383082b">({count})</span>
               </button>
             );
           })}
-        </div>
-      </div>
+        </FilterGroup>}
+      </Surface>
 
-      {loading ? <p className="text-muted">Loading…</p> : filtered.length === 0 ? (
-        <div className="empty">
-          <div className="empty-icon"><FolderOpen size={40} strokeWidth={1.2} /></div>
-          <p>{search.trim() ? `No projects matching "${search}"` : 'No projects found'}</p>
-          {search.trim() && (
-            <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setSearch('')}>
-              Clear search
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="card table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Customer</th>
-                <th>Status</th>
-                <th>Priority</th>
-                <th>Health</th>
-                <th>Tasks</th>
-                <th>Deadline</th>
-                <th>Created By</th>
-                {isManager && <th>Action</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(p => (
-                <tr key={p.id}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {isManager && (
-                        <button
-                          onClick={e => handlePin(p, e)}
-                          title={p.is_pinned ? 'Unpin project' : 'Pin to dashboard'}
-                          style={{
-                            background: 'none', border: 'none', cursor: 'pointer', padding: 2, borderRadius: 4,
-                            color: p.is_pinned ? '#f59e0b' : 'var(--gray-300)',
-                            flexShrink: 0, display: 'flex', alignItems: 'center',
-                            transition: 'color .15s',
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.color = p.is_pinned ? '#d97706' : 'var(--gray-500)'}
-                          onMouseLeave={e => e.currentTarget.style.color = p.is_pinned ? '#f59e0b' : 'var(--gray-300)'}
-                        >
-                          {p.is_pinned ? <Pin size={13} /> : <Pin size={13} />}
-                        </button>
-                      )}
-                      <Link to={`/projects/${p.id}`} style={{ fontWeight: 600 }}>{p.title}</Link>
-                    </div>
-                  </td>
-                  <td>
-                    {p.customer_name
-                      ? <span style={{ fontSize: 12, color: 'var(--gray-600)', display: 'flex', alignItems: 'center', gap: 4 }}><Building2 size={12} /> {p.customer_name}</span>
-                      : <span className="text-muted">—</span>}
-                  </td>
-                  <td>
-                    {canManage
-                      ? <InlineStatusSelect project={p} onUpdate={handleStatusUpdate} />
-                      : <StatusBadge s={p.status} />}
-                  </td>
-                  <td>
-                    {canManage
-                      ? <InlinePrioritySelect project={p} onUpdate={handlePriorityUpdate} />
-                      : <PriorityBadge p={p.priority} />}
-                  </td>
-                  <td><RagBadge rag={p.rag_status} /></td>
-                  <td>
-                    {p.task_count > 0 ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                            <span style={{
-                              fontSize: 11, fontWeight: 700,
-                              color: p.completion_pct >= 100 ? '#10b981' : p.completion_pct >= 50 ? '#3b82f6' : 'var(--gray-600)',
-                            }}>{p.completion_pct}%</span>
-                            <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>{p.done_count}/{p.task_count}</span>
-                          </div>
-                          <div className="progress-bar" style={{ width: 64, marginTop: 3 }}>
-                            <div className="progress-bar-fill" style={{
-                              width: `${p.completion_pct}%`,
-                              background: p.completion_pct >= 100 ? '#10b981' : p.completion_pct >= 50 ? '#3b82f6' : undefined,
-                            }} />
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-muted" style={{ fontSize: 12 }}>No tasks</span>
-                    )}
-                  </td>
-                  <td className={isOverdue(p.deadline) && !['closed','cancelled'].includes(p.status) ? 'overdue' : ''}>{fmtDate(p.deadline)}</td>
-                  <td>{p.created_by_name}</td>
-                  {isManager && (
-                    <td>
-                      {p.status === 'pending_approval' && (
-                        <Link to={`/projects/${p.id}`}
-                          className="btn btn-sm btn-warning"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
-                          title="Closure approval required"
-                        >
-                          <Bell size={11} /> Review
-                        </Link>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {!loading && !loadError && <ResultContext shown={filtered.length} total={total} noun="projects"
+        activeFilters={(search.trim() ? 1 : 0) + (activeFilter !== 'all' ? 1 : 0) + (ragFilter !== 'all' ? 1 : 0)}
+        onClear={() => { setSearch(''); setFilter('all'); setRagFilter('all'); }} />}
+
+      {isManager && selected.size > 0 && !loading && !loadError && (
+        <div className="bulk-action-bar">
+          <strong>{selected.size} selected</strong>
+          <span className="bulk-action-separator">·</span>
+          <select className="bulk-action-select" disabled={bulkBusy} value="" aria-label="Set priority"
+            onChange={e => { const v = e.target.value; e.target.value = ''; applyBulkPriority(v); }}>
+            <option value="" disabled>Set priority…</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+          <button type="button" className="btn btn-sm btn-ghost" disabled={bulkBusy} onClick={() => setShowBulkAssign(true)}>+ Assign members</button>
+          <button className="btn btn-sm btn-ghost u-6d00061" onClick={() => setSelected(new Set())}>Deselect all</button>
         </div>
       )}
 
+      <DataTable columns={columns} rows={filtered} loading={loading} error={loadError} onRetry={load}
+        caption="Projects in the selected portfolio view"
+        empty={search.trim()?`No projects matching "${search}"`:'No projects found'}
+        emptyAction={(search.trim() || activeFilter!=='all' || ragFilter!=='all')
+          ? <button className="btn btn-ghost btn-sm" onClick={() => { setSearch('');setFilter('all');setRagFilter('all'); }}>Reset filters</button>
+          : isManager ? <button className="btn btn-primary btn-sm" onClick={() => { setCreateInitial(null);setShowCreate(true); }}>Create the first project</button> : null} />
+      <Pagination page={page} total={total} pageSize={25} loading={loading} onPageChange={setPage} label="Project pages" />
+
       {/* Waiting dialog for inline status change */}
       {waitingDialog && (
-        <WaitingDialog
+        <WaitingReasonDialog
           title={waitingDialog.newStatus === 'waiting_vendor' ? 'Waiting for Vendor' : 'Waiting for Customer'}
           initial={waitingDialog.current}
-          onConfirm={reason => {
-            api.updateProject(waitingDialog.project.id, {
+          onConfirm={async reason => {
+            await api.updateProject(waitingDialog.project.id, {
               status: waitingDialog.newStatus,
               pending_from_customer: reason,
-            }).then(load).catch(e => toast.error(e.message));
-            setWaitingDialog(null);
+            });
+            toast.success('Project status updated');
+            load();
           }}
           onCancel={() => setWaitingDialog(null)}
         />
       )}
 
+      {showBulkAssign && (
+        <Modal title="Assign Members" onClose={() => setShowBulkAssign(false)}>
+          <BulkAssignMembersForm
+            count={selected.size}
+            users={users.filter(u => u.role === 'engineer' || u.role === 'manager')}
+            onSave={applyBulkAssignMembers}
+            onClose={() => setShowBulkAssign(false)}
+          />
+        </Modal>
+      )}
+
       {showCreate && (
-        <Modal title="New Project" onClose={() => setShowCreate(false)}>
+        <Modal title="New Project" onClose={() => { setShowCreate(false);setCreateInitial(null); }}>
           <ProjectForm
+            initial={createInitial}
             users={users}
-            customers={customers}
             onSave={async form => { await api.createProject(form); toast.success('Project created'); await load(); }}
-            onClose={() => setShowCreate(false)}
+            onClose={() => { setShowCreate(false);setCreateInitial(null); }}
             onCustomerCreated={loadCustomers}
           />
         </Modal>
+      )}
+
+      {showImport && isManager && (
+        <ImportModal
+          title="Import Projects"
+          templateUrl={api.projectsTemplateUrl()}
+          previewFn={api.previewProjectImport}
+          importFn={(file, { previewToken }) => api.importProjects(file, { previewToken })}
+          noun={['project', 'projects']}
+          unchangedLabel="already there (skipped)"
+          listUnchanged
+          columns={PROJECT_COLUMNS}
+          onClose={() => setShowImport(false)}
+          onDone={load}
+        />
       )}
     </div>
   );

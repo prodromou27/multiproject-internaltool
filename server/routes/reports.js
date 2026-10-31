@@ -1,39 +1,47 @@
 const router = require('express').Router();
+const ExcelJS = require('exceljs');
 const db = require('../db');
-const { requireManager } = require('../middleware/auth');
+const { requirePermission, requireDownloadPermission } = require('../middleware/auth');
+const { hasPermission } = require('../permissions');
+const { safeCell } = require('../xlsxSafety');
+const { decrypt: decryptField } = require('../fieldCipher');
+router.use('/custom', require('./custom-reports'));
+const requireReports = requirePermission('reports.access');
+const requireReportsDownload = requireDownloadPermission('reports.access');
 
-router.get('/summary', requireManager, (req, res) => {
-  const total = db.prepare('SELECT COUNT(*) as c FROM projects').get().c;
-  const byStatus = db.prepare('SELECT status, COUNT(*) as count FROM projects GROUP BY status').all();
-  const overdue = db.prepare(`SELECT COUNT(*) as c FROM projects WHERE deadline < date('now') AND status NOT IN ('closed','cancelled','pending_approval')`).get().c;
-  const taskStats = db.prepare(`SELECT
+router.get('/summary', requireReports, async (req, res) => {
+  const canViewKpis = await hasPermission(req.user,'kpis.view');
+  const total = (await db.prepare('SELECT COUNT(*) as c FROM projects').get()).c;
+  const byStatus = (await db.prepare('SELECT status, COUNT(*) as count FROM projects GROUP BY status').all());
+  const overdue = (await db.prepare(`SELECT COUNT(*) as c FROM projects WHERE deadline < app_today() AND status NOT IN ('closed','cancelled','pending_approval')`).get()).c;
+  const taskStats = (await db.prepare(`SELECT
     COUNT(*) as total,
     SUM(CASE WHEN status IN ('completed','closed') THEN 1 ELSE 0 END) as done,
     SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) as open,
     SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END) as in_progress,
     SUM(CASE WHEN is_adhoc=1 THEN 1 ELSE 0 END) as adhoc
-  FROM tasks WHERE status != 'cancelled'`).get();
-  const engineerLoad = db.prepare(`SELECT u.name, COUNT(t.id) as task_count,
+  FROM tasks WHERE status != 'cancelled'`).get());
+  const engineerLoad = (await db.prepare(`SELECT u.name, COUNT(t.id) as task_count,
     SUM(CASE WHEN t.status IN ('completed','closed') THEN 1 ELSE 0 END) as done_count
     FROM users u LEFT JOIN tasks t ON t.assigned_to = u.id AND t.status != 'cancelled'
-    WHERE u.role = 'engineer' GROUP BY u.id ORDER BY task_count DESC`).all();
-  const pendingClosure = db.prepare(`SELECT p.*, u.name as created_by_name FROM projects p JOIN users u ON p.created_by = u.id WHERE p.status = 'pending_approval'`).all();
-  const kpiHealth = db.prepare(`SELECT p.title, k.name, k.target_value, k.current_value, k.unit,
+    WHERE u.role = 'engineer' GROUP BY u.id ORDER BY task_count DESC`).all());
+  const pendingClosure = (await db.prepare(`SELECT p.*, u.name as created_by_name FROM projects p JOIN users u ON p.created_by = u.id WHERE p.status = 'pending_approval'`).all());
+  const kpiHealth = canViewKpis ? (await db.prepare(`SELECT p.title, k.name, k.target_value, k.current_value, k.unit,
     ROUND(CASE WHEN k.target_value > 0 THEN (k.current_value * 100.0 / k.target_value) ELSE 0 END, 1) as pct
-    FROM kpis k JOIN projects p ON k.project_id = p.id ORDER BY pct ASC`).all();
-  res.json({ total, byStatus, overdue, taskStats, engineerLoad, pendingClosure, kpiHealth });
+    FROM kpis k JOIN projects p ON k.project_id = p.id ORDER BY pct ASC`).all()) : null;
+  res.json({ total, byStatus, overdue, taskStats, engineerLoad, pendingClosure, ...(canViewKpis ? { kpiHealth } : {}) });
 });
 
-router.get('/projects', requireManager, (req, res) => {
-  const rows = db.prepare(`SELECT p.*, u.name as created_by_name,
+router.get('/projects', requireReports, async (req, res) => {
+  const rows = (await db.prepare(`SELECT p.*, u.name as created_by_name,
     (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status != 'cancelled') as task_count,
     (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status IN ('completed','closed')) as done_count,
     (SELECT COUNT(*) FROM project_assignments WHERE project_id = p.id) as member_count
-    FROM projects p JOIN users u ON p.created_by = u.id ORDER BY p.deadline ASC, p.created_at DESC`).all();
+    FROM projects p JOIN users u ON p.created_by = u.id ORDER BY p.deadline ASC, p.created_at DESC`).all());
   res.json(rows);
 });
 
-router.get('/monthly', requireManager, (req, res) => {
+router.get('/monthly', requireReports, async (req, res) => {
   const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const now = new Date();
   const months = [];
@@ -54,14 +62,14 @@ router.get('/monthly', requireManager, (req, res) => {
   const rangeEnd   = months[months.length - 1].end;
 
   // 8 batched queries spanning the full 6-month range instead of 48 individual queries
-  const taskCreated     = db.prepare(`SELECT strftime('%Y-%m',created_at) as ym, COUNT(*) as c FROM tasks WHERE date(created_at) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd);
-  const taskDone        = db.prepare(`SELECT strftime('%Y-%m',updated_at) as ym, COUNT(*) as c FROM tasks WHERE status IN ('completed','closed') AND date(updated_at) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd);
-  const taskDoneWithDl  = db.prepare(`SELECT strftime('%Y-%m',updated_at) as ym, COUNT(*) as c FROM tasks WHERE status IN ('completed','closed') AND deadline IS NOT NULL AND date(updated_at) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd);
-  const taskOnTime      = db.prepare(`SELECT strftime('%Y-%m',updated_at) as ym, COUNT(*) as c FROM tasks WHERE status IN ('completed','closed') AND deadline IS NOT NULL AND date(updated_at) <= date(deadline) AND date(updated_at) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd);
-  const mvTotal         = db.prepare(`SELECT strftime('%Y-%m',scheduled_date) as ym, COUNT(*) as c FROM maintenance_visits WHERE date(scheduled_date) BETWEEN ? AND ? AND status != 'cancelled' GROUP BY ym`).all(rangeStart, rangeEnd);
-  const mvCompleted     = db.prepare(`SELECT strftime('%Y-%m',scheduled_date) as ym, COUNT(*) as c FROM maintenance_visits WHERE status='completed' AND date(scheduled_date) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd);
-  const mvReported      = db.prepare(`SELECT strftime('%Y-%m',report_sent_at) as ym, COUNT(*) as c FROM maintenance_visits WHERE report_sent=1 AND report_sent_at IS NOT NULL AND date(report_sent_at) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd);
-  const hoursLogged     = db.prepare(`SELECT strftime('%Y-%m',logged_at) as ym, COALESCE(ROUND(SUM(hours),1),0) as h FROM time_logs WHERE date(logged_at) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd);
+  const taskCreated     = (await db.prepare(`SELECT substr(created_at,1,7) as ym, COUNT(*) as c FROM tasks WHERE substr(created_at,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const taskDone        = (await db.prepare(`SELECT substr(updated_at,1,7) as ym, COUNT(*) as c FROM tasks WHERE status IN ('completed','closed') AND substr(updated_at,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const taskDoneWithDl  = (await db.prepare(`SELECT substr(updated_at,1,7) as ym, COUNT(*) as c FROM tasks WHERE status IN ('completed','closed') AND deadline IS NOT NULL AND substr(updated_at,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const taskOnTime      = (await db.prepare(`SELECT substr(updated_at,1,7) as ym, COUNT(*) as c FROM tasks WHERE status IN ('completed','closed') AND deadline IS NOT NULL AND substr(updated_at,1,10) <= substr(deadline,1,10) AND substr(updated_at,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const mvTotal         = (await db.prepare(`SELECT substr(scheduled_date,1,7) as ym, COUNT(*) as c FROM maintenance_visits WHERE substr(scheduled_date,1,10) BETWEEN ? AND ? AND status != 'cancelled' GROUP BY ym`).all(rangeStart, rangeEnd));
+  const mvCompleted     = (await db.prepare(`SELECT substr(scheduled_date,1,7) as ym, COUNT(*) as c FROM maintenance_visits WHERE status='completed' AND substr(scheduled_date,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const mvReported      = (await db.prepare(`SELECT substr(report_sent_at,1,7) as ym, COUNT(*) as c FROM maintenance_visits WHERE report_sent=1 AND report_sent_at IS NOT NULL AND substr(report_sent_at,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
+  const hoursLogged     = (await db.prepare(`SELECT substr(logged_at,1,7) as ym, COALESCE(ROUND(SUM(hours),1),0) as h FROM time_logs WHERE substr(logged_at,1,10) BETWEEN ? AND ? GROUP BY ym`).all(rangeStart, rangeEnd));
 
   // Index each result by YYYY-MM
   const idx = arr => Object.fromEntries(arr.map(r => [r.ym, r]));
@@ -89,6 +97,146 @@ router.get('/monthly', requireManager, (req, res) => {
   });
 
   res.json(result);
+});
+
+/* ── Service Activity reports ─────────────────────────────────────────── */
+function buildActivityFilters(query) {
+  const { from, to, customer_id, team_id, category_id, engineer_id, technology_id } = query;
+  let where = 'WHERE 1=1';
+  const params = [];
+  if (from)        { where += ' AND sa.activity_date >= ?'; params.push(from); }
+  if (to)          { where += ' AND sa.activity_date <= ?'; params.push(to); }
+  if (customer_id) { where += ' AND sa.customer_id = ?'; params.push(customer_id); }
+  if (team_id)     { where += ' AND sa.team_id = ?'; params.push(team_id); }
+  if (category_id) { where += ' AND sa.category_id = ?'; params.push(category_id); }
+  if (engineer_id) { where += ' AND sa.engineer_id = ?'; params.push(engineer_id); }
+  if (technology_id) {
+    where += ' AND EXISTS (SELECT 1 FROM service_activity_technologies sat WHERE sat.service_activity_id = sa.id AND sat.technology_id = ?)';
+    params.push(technology_id);
+  }
+  return { where, params };
+}
+
+async function activityReportRows(query) {
+  const { where, params } = buildActivityFilters(query);
+  const rows = await db.prepare(`
+    SELECT sa.activity_date, u.name AS engineer, cat.name AS category, sa.title,
+      sa.description AS notes, sa.duration_minutes, sa.billable_classification, sa.ticket_reference,
+      c.name AS customer, t.name AS team
+    FROM service_activities sa
+    JOIN customers c ON c.id = sa.customer_id
+    JOIN teams t ON t.id = sa.team_id
+    JOIN activity_categories cat ON cat.id = sa.category_id
+    JOIN users u ON u.id = sa.engineer_id
+    ${where}
+    ORDER BY sa.activity_date DESC
+  `).all(...params);
+  // customers.name is encrypted at rest (see fieldCipher.js) — decrypt for display.
+  return rows.map(r => ({ ...r, customer: decryptField(r.customer) }));
+}
+
+async function activityReportSummary(query) {
+  const { where, params } = buildActivityFilters(query);
+  const [totals, byCategory, byEngineer, byTechnology, byCustomerRaw, byBillable] = await Promise.all([
+    db.prepare(`
+      SELECT COUNT(*) AS total_activities, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS total_hours
+      FROM service_activities sa ${where}
+    `).get(...params),
+    db.prepare(`
+      SELECT cat.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+      FROM service_activities sa JOIN activity_categories cat ON cat.id = sa.category_id
+      ${where} GROUP BY cat.name ORDER BY hours DESC
+    `).all(...params),
+    db.prepare(`
+      SELECT u.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+      FROM service_activities sa JOIN users u ON u.id = sa.engineer_id
+      ${where} GROUP BY u.name ORDER BY hours DESC
+    `).all(...params),
+    db.prepare(`
+      SELECT tech.name, COUNT(*) AS count
+      FROM service_activities sa
+      JOIN service_activity_technologies sat ON sat.service_activity_id = sa.id
+      JOIN technologies tech ON tech.id = sat.technology_id
+      ${where} GROUP BY tech.name ORDER BY count DESC
+    `).all(...params),
+    db.prepare(`
+      SELECT c.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+      FROM service_activities sa JOIN customers c ON c.id = sa.customer_id
+      ${where} GROUP BY c.name ORDER BY hours DESC
+    `).all(...params),
+    db.prepare(`
+      SELECT COALESCE(sa.billable_classification, 'not_set') AS classification,
+        COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+      FROM service_activities sa ${where} GROUP BY sa.billable_classification
+    `).all(...params),
+  ]);
+  // customers.name is encrypted at rest — decrypt for display (grouping itself is
+  // unaffected since the stored ciphertext is identical for every row of the same customer).
+  const byCustomer = byCustomerRaw.map(r => ({ ...r, name: decryptField(r.name) }));
+  return { ...totals, byCategory, byEngineer, byTechnology, byCustomer, byBillable };
+}
+
+// Management dashboard: month-to-date (or custom range) aggregate, no entity filter required.
+router.get('/service-activity/overview', requireReports, async (req, res) => {
+  const now = new Date();
+  const defaultFrom = req.query.from || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const query = { ...req.query, from: defaultFrom };
+  const summary = await activityReportSummary(query);
+
+  const { where, params } = buildActivityFilters(query);
+  const byTeam = await db.prepare(`
+    SELECT t.name, COUNT(*) AS count, COALESCE(ROUND(SUM(sa.duration_minutes) / 60.0, 1), 0) AS hours
+    FROM service_activities sa JOIN teams t ON t.id = sa.team_id
+    ${where} GROUP BY t.name ORDER BY hours DESC
+  `).all(...params);
+  const customersSupported = await db.prepare(`
+    SELECT COUNT(DISTINCT sa.customer_id) AS c FROM service_activities sa ${where}
+  `).get(...params);
+  const internalVsCustomer = await db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN sa.billable_classification = 'internal' THEN sa.duration_minutes ELSE 0 END), 0) AS internal_minutes,
+      COALESCE(SUM(CASE WHEN sa.billable_classification IS NULL OR sa.billable_classification != 'internal' THEN sa.duration_minutes ELSE 0 END), 0) AS customer_minutes
+    FROM service_activities sa ${where}
+  `).get(...params);
+
+  res.json({
+    ...summary,
+    byTeam,
+    customers_supported: customersSupported.c,
+    internal_hours: Math.round((internalVsCustomer.internal_minutes / 60) * 10) / 10,
+    customer_facing_hours: Math.round((internalVsCustomer.customer_minutes / 60) * 10) / 10,
+  });
+});
+
+// Customer / Engineer / Team activity reports share the same filter+summary shape.
+router.get('/service-activity/customer', requireReports, async (req, res) => {
+  if (!req.query.customer_id) return res.status(400).json({ error: 'customer_id is required' });
+  const [rows, summary] = await Promise.all([activityReportRows(req.query), activityReportSummary(req.query)]);
+  res.json({ rows, summary });
+});
+
+router.get('/service-activity/engineer', requireReports, async (req, res) => {
+  if (!req.query.engineer_id) return res.status(400).json({ error: 'engineer_id is required' });
+  const [rows, summary] = await Promise.all([activityReportRows(req.query), activityReportSummary(req.query)]);
+  res.json({ rows, summary });
+});
+
+router.get('/service-activity/team', requireReports, async (req, res) => {
+  if (!req.query.team_id) return res.status(400).json({ error: 'team_id is required' });
+  const [rows, summary] = await Promise.all([activityReportRows(req.query), activityReportSummary(req.query)]);
+  res.json({ rows, summary });
+});
+
+router.get('/service-activity/export', requireReportsDownload, async (req, res) => {
+  const rows = await activityReportRows(req.query);
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Service Activity Report');
+  worksheet.addRow(['Date', 'Customer', 'Team', 'Engineer', 'Category', 'Title', 'Notes', 'Duration (min)', 'Billable', 'Ticket']);
+  rows.forEach(r => worksheet.addRow([r.activity_date, safeCell(r.customer), safeCell(r.team), safeCell(r.engineer), safeCell(r.category), safeCell(r.title), safeCell(r.notes), r.duration_minutes, safeCell(r.billable_classification), safeCell(r.ticket_reference)]));
+  const buf = await workbook.xlsx.writeBuffer();
+  res.setHeader('Content-Disposition', 'attachment; filename="service_activity_report.xlsx"');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
 });
 
 module.exports = router;

@@ -1,0 +1,16 @@
+# Build context exclusions — keep the image small and free of host secrets/state.
+**/node_modules
+**/*.db
+**/*.db-shm
+**/*.db-wal
+.env
+.env.*
+!**/.env.example
+server/certs
+**/*.log
+.git
+.gitignore
+# The client is rebuilt inside the image; the committed build output is not used.
+client/dist
+# Local stray DB file
+firewall_cleanup.db

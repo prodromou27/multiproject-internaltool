@@ -1,0 +1,17 @@
+/* The Help page: topics on the left, the open topic on the right (stacked on narrow screens). */
+.help-layout { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 800px) { .help-layout { grid-template-columns: 1fr; } }
+
+.help-topics { display: grid; gap: 14px; }
+.help-search { display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--gray-200); border-radius: 8px; background: var(--surface, #fff); color: var(--gray-500); }
+.help-search input { border: 0; background: transparent; padding: 8px 0; width: 100%; min-height: 0; }
+.help-search input:focus { outline: none; }
+.help-search:focus-within { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-light, rgba(59,130,246,.2)); }
+.help-group h2 { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--gray-500); }
+.help-group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.help-group a { display: block; padding: 6px 10px; border-radius: 6px; color: var(--gray-700); text-decoration: none; font-size: 14px; }
+.help-group a:hover { background: var(--gray-100); }
+.help-group a[aria-current='page'] { background: var(--primary-light, var(--gray-100)); color: var(--primary); font-weight: 600; }
+
+.help-article { padding: 20px 24px; max-width: 760px; }
+.help-article h2 { margin: 0 0 6px; font-size: 20px; }

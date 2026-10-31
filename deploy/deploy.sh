@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+#
+# One-command deploy for a single machine.
+#
+#   ./deploy/deploy.sh dev      # DEV box  -> tracks the 'dev' branch
+#   ./deploy/deploy.sh prod     # PROD box -> tracks the 'LIVE' branch
+#
+# What it does: pulls the right branch, rebuilds the image, brings the stack up
+# with the correct compose overrides, and waits for the app to report healthy.
+#
+# Requirements on the box: git, docker, docker compose plugin, and openssl for
+# first-time dev secret generation. Prod still requires a reviewed .env file.
+#
+# Override the branch with DEPLOY_BRANCH=... if your branch names differ.
+# Example:
+#   DEPLOY_BRANCH=DEV-2 ./deploy/deploy.sh dev
+set -euo pipefail
+
+ENVIRONMENT="${1:-}"
+case "$ENVIRONMENT" in
+  dev)
+    BRANCH="${DEPLOY_BRANCH:-dev}"
+    COMPOSE=(-f docker-compose.yml)
+    ;;
+  prod)
+    BRANCH="${DEPLOY_BRANCH:-LIVE}"
+    COMPOSE=(-f docker-compose.yml -f docker-compose.prod.yml)
+    ;;
+  *)
+    echo "Usage: $0 <dev|prod>" >&2
+    exit 1
+    ;;
+esac
+
+# Move to the repo root (parent of this script's dir).
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Server-specific additions (e.g. extra_hosts for an internal Request Tracker)
+# live in an untracked docker-compose.override.yml; use it when present.
+if [ -f docker-compose.override.yml ]; then COMPOSE+=(-f docker-compose.override.yml); fi
+
+echo "==> Deploying '$ENVIRONMENT' from branch '$BRANCH'"
+
+# 1. Secrets must exist and be filled in. For dev/staging branches, bootstrap a
+# .env automatically so a fresh clone can deploy in one command.
+if [ ! -f .env ]; then
+  if [ "$ENVIRONMENT" = "dev" ]; then
+    echo "==> .env not found; generating a dev .env with fresh secrets."
+    ./deploy/gen-secrets.sh dev
+  else
+    echo "ERROR: .env not found at repo root." >&2
+    echo "       ./deploy/gen-secrets.sh ${ENVIRONMENT}   # generates one with fresh secrets" >&2
+    echo "       (or: cp deploy/env.${ENVIRONMENT}.example .env  &&  edit it)" >&2
+    exit 1
+  fi
+fi
+
+# Preflight: validate the secrets so we fail before a long build, not after.
+set -a; . ./.env; set +a
+errs=0
+if grep -q 'CHANGE_ME' .env; then
+  echo "ERROR: .env still contains CHANGE_ME placeholders — fill in real secrets." >&2; errs=1
+fi
+if [ -z "${POSTGRES_PASSWORD:-}" ]; then
+  echo "ERROR: POSTGRES_PASSWORD is empty." >&2; errs=1
+fi
+jwt_secret="${JWT_SECRET:-}"
+if [ "${#jwt_secret}" -lt 32 ]; then
+  echo "ERROR: JWT_SECRET must be at least 32 characters (got ${#jwt_secret})." >&2; errs=1
+fi
+if [ -z "${CUSTOMER_FIELD_KEY:-}" ]; then
+  echo "ERROR: CUSTOMER_FIELD_KEY is required because the Docker app runs with NODE_ENV=production." >&2; errs=1
+fi
+if [ -n "${CUSTOMER_FIELD_KEY:-}" ] && ! printf '%s' "$CUSTOMER_FIELD_KEY" | grep -qE '^[0-9a-fA-F]{64}$'; then
+  echo "ERROR: CUSTOMER_FIELD_KEY must be exactly 64 hex chars." >&2; errs=1
+fi
+if [ -z "${ATTACHMENT_KEY:-}" ]; then
+  echo "ERROR: ATTACHMENT_KEY is required because the Docker app runs with NODE_ENV=production." >&2; errs=1
+fi
+if [ -n "${ATTACHMENT_KEY:-}" ] && ! printf '%s' "$ATTACHMENT_KEY" | grep -qE '^[0-9a-fA-F]{64}$'; then
+  echo "ERROR: ATTACHMENT_KEY must be exactly 64 hex chars." >&2; errs=1
+fi
+if [ -z "${APP_URL:-}" ]; then
+  echo "ERROR: APP_URL is required." >&2; errs=1
+fi
+if [ -n "${APP_URL:-}" ] && ! printf '%s' "$APP_URL" | grep -qE '^https?://[^[:space:]]+$'; then
+  echo "ERROR: APP_URL must be a valid http(s) URL." >&2; errs=1
+fi
+# Production: HTTPS on 443 when a certificate is in ./certs (deploy/Caddyfile);
+# without one, plain HTTP on port 80 (deploy/Caddyfile.http) until one is added.
+if [ "$ENVIRONMENT" = "prod" ]; then
+  cert_dir="${TLS_CERT_DIR:-./certs}"
+  if [ -f "$cert_dir/tls.crt" ] || [ -f "$cert_dir/tls.key" ]; then
+    export PROXY_CONFIG=Caddyfile
+    if [ -n "${APP_URL:-}" ] && ! printf '%s' "$APP_URL" | grep -qE '^https://'; then
+      echo "ERROR: APP_URL must start with https:// when a certificate is in $cert_dir (the app is served on port 443)." >&2; errs=1
+    fi
+    if [ ! -f "$cert_dir/tls.crt" ] || [ ! -f "$cert_dir/tls.key" ]; then
+      echo "ERROR: $cert_dir needs both files: tls.crt (certificate + intermediates) and tls.key (its private key) — see deploy/README.md section 4." >&2; errs=1
+    elif command -v openssl >/dev/null 2>&1; then
+      if ! openssl x509 -in "$cert_dir/tls.crt" -noout >/dev/null 2>&1; then
+        echo "ERROR: $cert_dir/tls.crt is not a PEM certificate." >&2; errs=1
+      elif [ "$(openssl x509 -in "$cert_dir/tls.crt" -noout -pubkey 2>/dev/null | openssl sha256)" != "$(openssl pkey -in "$cert_dir/tls.key" -pubout 2>/dev/null | openssl sha256)" ]; then
+        echo "ERROR: $cert_dir/tls.key is not the private key of $cert_dir/tls.crt (or it is password-protected)." >&2; errs=1
+      elif ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkend 0 >/dev/null; then
+        echo "ERROR: the certificate in $cert_dir/tls.crt has expired." >&2; errs=1
+      else
+        if ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkend $((30 * 86400)) >/dev/null; then
+          echo "WARNING: the certificate expires within 30 days ($(openssl x509 -in "$cert_dir/tls.crt" -noout -enddate | cut -d= -f2))." >&2
+        fi
+        app_host="$(printf '%s' "${APP_URL:-}" | sed -E 's#^https?://([^/:]+).*#\1#')"
+        if [ -n "$app_host" ] && ! openssl x509 -in "$cert_dir/tls.crt" -noout -checkhost "$app_host" 2>/dev/null | grep -q 'does match'; then
+          echo "ERROR: the certificate does not cover $app_host (the host in APP_URL)." >&2; errs=1
+        fi
+      fi
+    fi
+  else
+    export PROXY_CONFIG=Caddyfile.http
+    if [ -n "${APP_URL:-}" ] && ! printf '%s' "$APP_URL" | grep -qE '^http://[^/:]+(:80)?/?$'; then
+      echo "ERROR: there is no certificate in $cert_dir, so the app is served over plain HTTP on port 80:" >&2
+      echo "       set APP_URL=http://<server name> (no port), or add the certificate (deploy/README.md section 4)." >&2; errs=1
+    fi
+    echo "WARNING: no certificate in $cert_dir — serving plain HTTP on port 80. Passwords and sessions cross the" >&2
+    echo "         network unencrypted. Add certs/tls.crt and certs/tls.key, set APP_URL=https://…, and deploy again." >&2
+  fi
+  if command -v ss >/dev/null 2>&1; then
+    # Ports 80/443 held by something other than Docker (e.g. nginx or httpd on the host).
+    # `|| true`: no match is the normal case, and must not stop the script (set -e, pipefail).
+    holders="$( { ss -ltnpH 2>/dev/null | awk '$4 ~ /:(80|443)$/' | grep -v docker-proxy | grep -oE 'users:\(\("[^"]+"' | sed -e 's/users:(("//' -e 's/"$//' | sort -u | tr '\n' ' '; } || true)"
+    if [ -n "$holders" ]; then
+      echo "ERROR: port 80 or 443 is already used on this server by: ${holders}" >&2
+      echo "       The proxy needs them. If it serves nothing else: sudo systemctl disable --now ${holders%% *}" >&2
+      errs=1
+    fi
+  fi
+fi
+[ "$errs" -eq 0 ] || { echo "Fix the above and re-run." >&2; exit 1; }
+
+# 2. Pull the target branch (fast-forward only — never silently rebases local edits).
+git fetch --all --prune
+git checkout "$BRANCH"
+git pull --ff-only origin "$BRANCH"
+echo "==> Now at $(git rev-parse --short HEAD): $(git log -1 --pretty=%s)"
+export DEPLOY_BRANCH="$BRANCH"
+export APP_REVISION="$(git rev-parse --short HEAD)"
+
+# 3. Validate the compose config, then build + start.
+docker compose "${COMPOSE[@]}" config -q
+docker compose "${COMPOSE[@]}" build app
+
+# Existing named volumes may have been created by older root-running images.
+# Normalize ownership before starting the non-root app container.
+# The app service drops every Linux capability. The one-off ownership repair
+# therefore needs CAP_CHOWN explicitly even though it runs as uid 0.
+docker compose "${COMPOSE[@]}" run --rm --no-deps --user root --cap-add CHOWN --entrypoint sh app \
+  -c 'mkdir -p /app/server/uploads && chown -R app:app /app/server/uploads'
+
+docker compose "${COMPOSE[@]}" up -d
+
+# 4. Wait for the app container to become healthy.
+echo "==> Waiting for app health…"
+cid="$(docker compose "${COMPOSE[@]}" ps -q app)"
+for i in $(seq 1 40); do
+  status="$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo unknown)"
+  if [ "$status" = "healthy" ]; then
+    echo "==> App is healthy."
+    break
+  fi
+  if [ "$status" = "unhealthy" ]; then
+    echo "ERROR: app reported unhealthy. Recent logs:" >&2
+    docker compose "${COMPOSE[@]}" logs --tail=40 app >&2
+    exit 1
+  fi
+  sleep 3
+done
+
+docker compose "${COMPOSE[@]}" ps
+if [ "$ENVIRONMENT" = "prod" ]; then
+  if [ "$PROXY_CONFIG" = Caddyfile ]; then
+    echo "==> Served at ${APP_URL} (HTTPS on port 443; port 80 redirects). Open ports 443 and 80 in the host firewall."
+  else
+    echo "==> Served at ${APP_URL} (plain HTTP on port 80, no certificate yet). Open port 80 in the host firewall."
+  fi
+fi
+echo "==> Deploy of '$ENVIRONMENT' complete."
+echo "    First empty-database login: admin / admin (immediate password change required)."

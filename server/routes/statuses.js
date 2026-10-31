@@ -33,27 +33,35 @@ const DEFAULT_CONFIG = {
     { value: 'completed',  label: 'Completed',  bg: '#dcfce7', text: '#166534', dot: '#22c55e', requires_reason: false, is_terminal: false },
     { value: 'cancelled',  label: 'Cancelled',  bg: '#fee2e2', text: '#991b1b', dot: '#ef4444', requires_reason: false, is_terminal: true  },
   ],
+  service_activity: [
+    { value: 'planned',          label: 'Planned',              bg: '#eff6ff', text: '#1e40af', dot: '#3b82f6', requires_reason: false, is_terminal: false },
+    { value: 'in_progress',      label: 'In Progress',          bg: '#fef9c3', text: '#854d0e', dot: '#eab308', requires_reason: false, is_terminal: false },
+    { value: 'waiting_customer', label: 'Waiting for Customer', bg: '#fff7ed', text: '#9a3412', dot: '#f97316', requires_reason: true,  is_terminal: false },
+    { value: 'waiting_vendor',   label: 'Waiting for Vendor',   bg: '#faf5ff', text: '#6b21a8', dot: '#a855f7', requires_reason: true,  is_terminal: false },
+    { value: 'completed',        label: 'Completed',            bg: '#dcfce7', text: '#166534', dot: '#22c55e', requires_reason: false, is_terminal: true  },
+    { value: 'cancelled',        label: 'Cancelled',            bg: '#fee2e2', text: '#991b1b', dot: '#ef4444', requires_reason: false, is_terminal: true  },
+  ],
 };
 
-router.get('/', requireAuth, (req, res) => {
-  const row = db.prepare("SELECT value FROM settings WHERE key='status_config'").get();
+router.get('/', requireAuth, async (req, res) => {
+  const row = (await db.prepare("SELECT value FROM settings WHERE key='status_config'").get());
   if (row) {
     try { return res.json(JSON.parse(row.value)); } catch {}
   }
   res.json(DEFAULT_CONFIG);
 });
 
-router.put('/', requireManager, (req, res) => {
+router.put('/', requireManager, async (req, res) => {
   const config = req.body;
   if (!config || typeof config !== 'object') return res.status(400).json({ error: 'Invalid config' });
   // Basic validation
-  for (const key of ['project', 'task', 'visit']) {
+  for (const key of ['project', 'task', 'visit', 'service_activity']) {
     if (!Array.isArray(config[key])) return res.status(400).json({ error: `Missing ${key} array` });
     for (const s of config[key]) {
       if (!s.value || !s.label) return res.status(400).json({ error: 'Each status needs value and label' });
     }
   }
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('status_config', ?)").run(JSON.stringify(config));
+  (await db.prepare("INSERT INTO settings (key, value) VALUES ('status_config', ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value").run(JSON.stringify(config)));
   res.json({ ok: true });
 });
 

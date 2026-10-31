@@ -1,0 +1,246 @@
+import { test, expect } from '@playwright/test';
+import { mockApi } from './support/mockApi.js';
+
+const summary = { projects: { active: 0, delayed: 0 }, tasks: { visible: true, open: 0, overdue: 0 }, recommendations: { open: 0, high_risk: 0 },
+  visits: { next: null, reports_pending: 0, this_year: 0 }, managed: { visible: false } };
+
+async function customerTasks(page, role) {
+  const api = await mockApi(page, { role });
+  const rows = [], sent = [];
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
+  api.override('GET /api/customers/12/operations/tasks', () => ({ body: { rows, total: rows.length, page: 1, page_size: 25 } }));
+  api.override('GET /api/teams', () => ({ body: [{ id: 1, name: 'Security Team' }, { id: 2, name: 'Network Team' }] }));
+  api.override('GET /api/auth/users', () => ({ body: [{ id: 7, name: 'Maria Ioannou', role: 'engineer', active: 1 }] }));
+  api.override('POST /api/tasks', ({ body }) => {
+    sent.push(body);
+    rows.push({ id: 50 + rows.length, title: body.title, status: 'open', priority: body.priority, deadline: body.deadline, assigned_to_name: body.team_id ? null : 'Alex Mercer',
+      team_name: body.team_id ? 'Security Team' : null, customer_id: 12 });
+    return { body: { id: 50 } };
+  });
+  return sent;
+}
+
+test('engineers add a task for a customer, for themselves or their team', async ({ page }) => {
+  const sent = await customerTasks(page, 'engineer');
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await page.getByRole('button', { name: 'Add task' }).click();
+  let dialog = page.getByRole('dialog', { name: 'Add task' });
+  await dialog.getByLabel('Task *').fill('Replace failed disk on NAS-01');
+  await dialog.getByLabel('Due date').fill('2026-10-20');
+  await dialog.getByLabel('Priority').selectOption('high');
+  await expect(dialog.getByRole('radio', { name: 'Me' })).toBeChecked();
+  await dialog.getByRole('button', { name: 'Add task' }).click();
+  await expect.poll(() => sent[0]).toEqual({ title: 'Replace failed disk on NAS-01', description: null, priority: 'high', deadline: '2026-10-20', customer_id: 12 });
+  await expect(page.getByRole('row', { name: /Replace failed disk on NAS-01/ })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Add task' }).click();
+  dialog = page.getByRole('dialog', { name: 'Add task' });
+  await dialog.getByLabel('Task *').fill('Renew the SSL certificate');
+  await dialog.getByRole('radio', { name: 'My team' }).check();
+  await expect(dialog.getByRole('combobox', { name: 'Team', exact: true })).toHaveValue('1');
+  await dialog.getByRole('button', { name: 'Add task' }).click();
+  await expect.poll(() => sent[1]).toMatchObject({ title: 'Renew the SSL certificate', customer_id: 12, team_id: 1 });
+  await expect(page.getByRole('cell', { name: 'Security Team (team)', exact: true })).toBeVisible();
+});
+
+test('managers give a customer task to an engineer or any team; the quick action opens the form', async ({ page }) => {
+  const sent = await customerTasks(page, 'manager');
+  await page.goto('/customers/12/service-profile?section=tasks&create=1');
+  let dialog = page.getByRole('dialog', { name: 'Add task' });
+  await dialog.getByLabel('Task *').fill('Patch the core switch');
+  await dialog.getByRole('combobox', { name: 'Engineer', exact: true }).selectOption('Maria Ioannou');
+  await dialog.getByRole('button', { name: 'Add task' }).click();
+  await expect.poll(() => sent[0]).toMatchObject({ title: 'Patch the core switch', assigned_to: 7, customer_id: 12 });
+
+  await page.getByRole('button', { name: 'Add task' }).click();
+  dialog = page.getByRole('dialog', { name: 'Add task' });
+  await dialog.getByLabel('Task *').fill('Network review');
+  await dialog.getByRole('radio', { name: 'A team' }).check();
+  await dialog.getByRole('combobox', { name: 'Team', exact: true }).selectOption('Network Team');
+  await dialog.getByRole('button', { name: 'Add task' }).click();
+  await expect.poll(() => sent[1]).toMatchObject({ title: 'Network review', team_id: 2 });
+});
+
+test('tasks are started and finished from the customer page, open ones first', async ({ page }) => {
+  const api = await mockApi(page, { role: 'engineer' });
+  const asked = [], updates = [];
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
+  api.override('GET /api/customers/12/operations/tasks', ({ request }) => {
+    asked.push(new URL(request.url()).searchParams.get('filter'));
+    return { body: { rows: [
+      { id: 61, title: 'Monthly backup check', status: 'open', priority: 'medium', deadline: '2026-10-15', team_name: 'Security Team', recurring_task_id: 4, customer_id: 12 },
+      { id: 62, title: 'Upgrade FW-HQ-01 to 7.4.8', status: 'in_progress', priority: 'high', deadline: null, assigned_to_name: 'Alex Mercer', asset_name: 'FW-HQ-01', customer_id: 12 },
+    ], total: 2, page: 1, page_size: 25 } };
+  });
+  api.override('PUT /api/tasks/61', ({ body }) => { updates.push(['61', body]); return { body: { ok: true } }; });
+  api.override('PUT /api/tasks/62', ({ body }) => { updates.push(['62', body]); return { body: { ok: true } }; });
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await expect.poll(() => asked[0]).toBe('open');
+  await expect(page.getByRole('row', { name: /Monthly backup check/ })).toContainText('Repeats');
+  await expect(page.getByRole('row', { name: /Upgrade FW-HQ-01/ })).toContainText('Asset: FW-HQ-01');
+  await expect(page.getByRole('button', { name: 'Start Upgrade FW-HQ-01 to 7.4.8' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Start Monthly backup check' }).click();
+  await page.getByRole('button', { name: 'Mark Upgrade FW-HQ-01 to 7.4.8 done' }).click();
+  await expect.poll(() => updates).toEqual([['61', { status: 'in_progress' }], ['62', { status: 'completed' }]]);
+});
+
+test('engineers take an unassigned customer task, or take one over from a colleague after confirming', async ({ page }) => {
+  const api = await mockApi(page, { role: 'engineer' });
+  const taken = [], asked = [];
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
+  api.override('GET /api/customers/12/operations/tasks', ({ request }) => {
+    asked.push(new URL(request.url()).searchParams.get('mine'));
+    return { body: { rows: [
+      { id: 71, title: 'Imperva upgrade', status: 'open', priority: 'high', assigned_to: null, customer_id: 12, can_update: false },
+      { id: 72, title: 'Patch Cisco ISE', status: 'open', priority: 'medium', assigned_to: 9, assigned_to_name: 'Paul Delivery', customer_id: 12, can_update: false },
+      { id: 73, title: 'Meraki replacements', status: 'in_progress', priority: 'medium', assigned_to: 1, assigned_to_name: 'Alex Mercer', customer_id: 12, can_update: true },
+    ], total: 3, page: 1, page_size: 25 } };
+  });
+  for (const id of [71, 72]) api.override(`POST /api/tasks/${id}/take`, ({ body }) => { taken.push([id, body]); return { body: { ok: true } }; });
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await expect(page.getByRole('button', { name: 'Start Imperva upgrade' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Mark Meraki replacements done' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Take.*Meraki/ })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Take Imperva upgrade' }).click();
+  await expect.poll(() => taken[0]).toEqual([71, {}]);
+  await page.getByRole('button', { name: 'Take over Patch Cisco ISE' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Take over this task' });
+  await expect(dialog).toContainText('Paul Delivery will be told');
+  await dialog.getByRole('button', { name: 'Take over' }).click();
+  await expect.poll(() => taken[1]).toEqual([72, { take_over: true }]);
+
+  await page.getByLabel('Mine only').check();
+  await expect.poll(() => asked.at(-1)).toBe('1');
+});
+
+test('Add → Create task opens the form on the Tasks tab too, every time it is asked', async ({ page }) => {
+  await customerTasks(page, 'manager');
+  await page.goto('/customers/12/service-profile?section=tasks');
+  for (const round of [1, 2]) {
+    await page.locator('.cs-header-actions').getByText('Add', { exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Create Task' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Add task' });
+    await expect(dialog, `round ${round}`).toBeVisible();
+    await expect(page).not.toHaveURL(/create=1/);
+    await dialog.getByRole('button', { name: /Cancel|Close/ }).first().click();
+    await expect(dialog).toHaveCount(0);
+  }
+});
+
+test('a task is edited from Customer 360', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  let saved = null;
+  const task = { id: 70, title: 'Renew firewall licence', description: 'Before it lapses', status: 'open', priority: 'medium', deadline: '2026-11-30', assigned_to: 7, assigned_to_name: 'Maria Ioannou', customer_id: 12, can_update: true, ticket_reference: null };
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
+  api.override('GET /api/customers/12/operations/tasks', () => ({ body: { rows: [saved ? { ...task, ...saved } : task], total: 1, page: 1, page_size: 25 } }));
+  api.override('GET /api/auth/users', () => ({ body: [{ id: 7, name: 'Maria Ioannou', role: 'engineer', active: 1 }, { id: 8, name: 'Nick Network', role: 'engineer', active: 1 }] }));
+  api.override('PUT /api/tasks/70', ({ body }) => { saved = body; return { body: { ok: true } }; });
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await page.getByRole('button', { name: 'Edit Renew firewall licence' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit Task' });
+  await expect(dialog.locator('textarea').first()).toHaveValue('Before it lapses');
+  await dialog.locator('input').first().fill('Renew firewall licence (2027)');
+  await dialog.locator('select').first().selectOption('high');
+  await dialog.getByRole('button', { name: /Save/ }).click();
+  await expect.poll(() => saved).toMatchObject({ title: 'Renew firewall licence (2027)', priority: 'high', description: 'Before it lapses', deadline: '2026-11-30' });
+  await expect(page.getByRole('button', { name: 'Renew firewall licence (2027)', exact: true })).toBeVisible();
+});
+
+test('a task has other engineers besides its lead, and files', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  let saved = null, uploads = 0;
+  const task = { id: 70, title: 'Firewall migration', status: 'open', priority: 'medium', assigned_to: 7, assigned_to_name: 'Maria Ioannou', engineers: [], customer_id: 12, can_update: true };
+  const files = [{ id: 3, original_name: 'rules-export.pdf', size: 2048, uploaded_by: 7, uploaded_by_name: 'Maria Ioannou', created_at: '2026-10-19 09:00:00' }];
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
+  api.override('GET /api/customers/12/operations/tasks', () => ({ body: { rows: [saved ? { ...task, engineers: [{ id: 8, name: 'Nick Network' }] } : task], total: 1, page: 1, page_size: 25 } }));
+  api.override('GET /api/auth/users', () => ({ body: [{ id: 7, name: 'Maria Ioannou', role: 'engineer', active: 1 }, { id: 8, name: 'Nick Network', role: 'engineer', active: 1 }] }));
+  api.override('GET /api/tasks/70/attachments', () => ({ body: files }));
+  api.override('POST /api/tasks/70/attachments', () => { uploads++; files.unshift({ id: 4, original_name: 'plan.pdf', size: 100, uploaded_by: 1, uploaded_by_name: 'Alex Mercer', created_at: '2026-10-20 10:00:00' }); return { status: 201, body: { id: 4 } }; });
+  api.override('PUT /api/tasks/70', ({ body }) => { saved = body; return { body: { ok: true } }; });
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await page.getByRole('button', { name: 'Edit Firewall migration' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit Task' });
+
+  // The lead is not offered again; the colleague is added as a chip.
+  const others = dialog.getByLabel('Also working on it');
+  await expect(others.locator('option', { hasText: 'Maria Ioannou' })).toHaveCount(0);
+  await others.selectOption({ label: 'Nick Network' });
+  await expect(dialog.getByRole('button', { name: 'Remove Nick Network' })).toBeVisible();
+
+  // Files: listed, and one attached.
+  const filesSection = dialog.getByRole('region', { name: 'Files' });
+  await expect(filesSection.getByRole('button', { name: 'rules-export.pdf', exact: true })).toBeVisible();
+  await filesSection.locator('input[type=file]').setInputFiles({ name: 'plan.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') });
+  await expect(filesSection.getByRole('button', { name: 'plan.pdf', exact: true })).toBeVisible();
+  expect(uploads).toBe(1);
+
+  await dialog.getByRole('button', { name: /Save/ }).click();
+  await expect.poll(() => saved).toMatchObject({ engineer_ids: [8] });
+  await expect(page.getByText('+1', { exact: true })).toBeVisible();
+});
+
+test('posting an update or attaching a file in Edit Task saves the task\'s changes too', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  const calls = [];
+  let task = { id: 70, title: 'Firewall migration', status: 'open', priority: 'medium', assigned_to: 7, assigned_to_name: 'Maria Ioannou', engineers: [], customer_id: 12, can_update: true };
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
+  api.override('GET /api/customers/12/operations/tasks', () => ({ body: { rows: [task], total: 1, page: 1, page_size: 25 } }));
+  api.override('GET /api/auth/users', () => ({ body: [{ id: 7, name: 'Maria Ioannou', role: 'engineer', active: 1 }] }));
+  api.override('GET /api/tasks/70/comments', () => ({ body: [] }));
+  api.override('POST /api/tasks/70/comments', () => { calls.push('update'); return { body: { id: 1 } }; });
+  api.override('GET /api/tasks/70/attachments', () => ({ body: [] }));
+  api.override('POST /api/tasks/70/attachments', () => { calls.push('file'); return { status: 201, body: { id: 4 } }; });
+  api.override('PUT /api/tasks/70', ({ body }) => { calls.push(`save:${body.priority}`); task = { ...task, ...body }; return { body: { ok: true } }; });
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await page.getByRole('button', { name: 'Edit Firewall migration' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit Task' });
+  await dialog.locator('select').first().selectOption('high');
+
+  await dialog.getByLabel('Add an update').fill('Rules exported');
+  await dialog.getByRole('button', { name: 'Post update' }).click();
+  await expect.poll(() => calls).toEqual(['save:high', 'update']);
+
+  // Nothing new to save: only the file goes.
+  await dialog.getByRole('region', { name: 'Files' }).locator('input[type=file]').setInputFiles({ name: 'plan.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') });
+  await expect.poll(() => calls).toEqual(['save:high', 'update', 'file']);
+
+  // Closing keeps it and refreshes the list.
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(task.priority).toBe('high');
+});
+
+test('a manager takes a customer task that is not theirs', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  let taken = null;
+  const task = { id: 81, title: 'Check the UPS', status: 'open', priority: 'medium', assigned_to: 7, assigned_to_name: 'Maria Ioannou', customer_id: 12, can_update: true };
+  api.override('GET /api/customers/12', () => ({ body: { id: 12, name: 'Northwind Logistics', active: 1 } }));
+  api.override('GET /api/customers/12/operations/summary', () => ({ body: summary }));
+  api.override('GET /api/reminders/customer/12', () => ({ body: { team: { active: [] }, own: { active: [] } } }));
+  api.override('GET /api/customers/12/recurring-tasks', () => ({ body: { rows: [] } }));
+  api.override('GET /api/customers/12/operations/tasks', () => ({ body: { rows: [task], total: 1, page: 1, page_size: 25 } }));
+  api.override('POST /api/tasks/81/take', ({ body }) => { taken = body; return { body: { ok: true } }; });
+  await page.goto('/customers/12/service-profile?section=tasks');
+  await page.getByRole('button', { name: 'Take over Check the UPS' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Take over' }).click();
+  await expect.poll(() => taken).toEqual({ take_over: true });
+});

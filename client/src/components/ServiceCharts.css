@@ -1,0 +1,60 @@
+/* Billing-mix bar and ranking table, shared by Service Operations and the
+   Customer Service Profile. Scoped under .svc-charts. */
+
+.svc-charts { --so-bar: var(--gray-600); --so-bar-other: var(--gray-300); }
+/* Billing bar: thin, 2px surface gaps between segments, rounded ends. */
+.svc-charts .so-mix { display: flex; gap: 2px; height: 20px; border-radius: 6px; overflow: hidden; }
+.svc-charts .so-seg { display: block; min-width: 3px; cursor: default; }
+@media (prefers-reduced-motion: no-preference) {
+  .svc-charts .so-seg, .svc-charts .so-legend li { transition: opacity .12s ease; }
+}
+.svc-charts .so-seg.is-dim, .svc-charts .so-legend li.is-dim { opacity: .4; }
+.svc-charts .so-legend { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(236px, 1fr)); gap: 10px 28px; margin-top: 16px; }
+.svc-charts .so-legend li { display: grid; grid-template-columns: 10px 1fr auto auto; align-items: center; gap: 4px 10px; font-size: 13px; }
+.svc-charts .so-swatch { width: 10px; height: 10px; border-radius: 3px; }
+.svc-charts .so-legend-label { color: var(--gray-700); white-space: nowrap; }
+.svc-charts .so-legend-value { font-weight: 650; color: var(--gray-900); font-variant-numeric: tabular-nums; }
+.svc-charts .so-legend-share { min-width: 38px; text-align: right; color: var(--gray-500); font-variant-numeric: tabular-nums; }
+.svc-charts.so-rank-card { padding: 20px 24px 12px; }
+/* The app gives every table min-width: 520px; rankings must be free to shrink. */
+.svc-charts .so-rank { width: 100%; min-width: 0; border-collapse: collapse; table-layout: fixed; }
+.svc-charts .so-rank caption { display: block; text-align: left; margin-bottom: 8px; }
+.svc-charts .so-rank caption h2 { font-size: 14px; font-weight: 650; color: var(--gray-800); }
+.svc-charts .so-rank caption span { display: block; margin-top: 2px; font-size: 12px; color: var(--gray-500); }
+.svc-charts .so-col-name { width: 36%; }
+.svc-charts .so-col-value { width: 76px; }
+.svc-charts .so-col-detail { width: 96px; }
+.svc-charts .so-rank tr:hover { background: var(--gray-50); }
+.svc-charts .so-rank th, .svc-charts .so-rank td { padding: 0; height: 34px; vertical-align: middle; }
+/* Row labels are plain text; reset the app's table-header styling. */
+.svc-charts .so-rank th {
+  text-align: left; font-weight: 500; font-size: 13px; line-height: 1.3; letter-spacing: 0; text-transform: none;
+  color: var(--gray-700); background: transparent; border: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px;
+}
+.svc-charts .so-rank td { background: transparent; border: 0; }
+.svc-charts .so-rank tr.is-other th { color: var(--gray-500); }
+/* Bars grow from one baseline and round only the data end. */
+.svc-charts .so-rank td.so-bar-cell { border-left: 1px solid var(--gray-200); padding-right: 12px; }
+.svc-charts .so-fill { display: block; height: 10px; min-width: 2px; background: var(--so-bar); border-radius: 0 4px 4px 0; }
+.svc-charts .so-rank tr.is-other .so-fill { background: var(--so-bar-other); }
+.svc-charts .so-num { text-align: right; font-size: 13px; font-weight: 650; color: var(--gray-900); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.svc-charts .so-detail { text-align: right; padding-left: 8px; font-size: 11px; color: var(--gray-500); white-space: nowrap; }
+@media (max-width: 800px) {
+  .svc-charts.so-rank-card { padding-left: 16px; padding-right: 16px; }
+  .svc-charts .so-col-name { width: 38%; }
+  .svc-charts .so-col-detail { display: none; }
+  .svc-charts .so-detail { display: none; }
+}
+
+/* ── Hero ────────────────────────────────────────────────── */
+.svc-charts.so-hero { display: grid; grid-template-columns: minmax(220px, 320px) minmax(0, 1fr); gap: 24px 48px; align-items: center; padding: 28px 32px; }
+.svc-charts .so-hero-label { display: block; font-size: 13px; font-weight: 600; color: var(--gray-500); margin-bottom: 4px; }
+.svc-charts .so-hero-number { display: block; font-size: 56px; line-height: 1.05; font-weight: 700; letter-spacing: -2px; color: var(--gray-900); font-variant-numeric: tabular-nums; }
+.svc-charts .so-hero-context { margin-top: 10px; font-size: 13px; line-height: 1.55; color: var(--gray-600); max-width: 34ch; }
+.svc-charts .so-hero-mix h2 { font-size: 14px; font-weight: 650; margin-bottom: 14px; color: var(--gray-800); }
+.svc-charts .so-muted { color: var(--gray-600); font-size: 13px; line-height: 1.6; max-width: 52ch; margin: 0; }
+@media (max-width: 800px) {
+  .svc-charts.so-hero { grid-template-columns: 1fr; padding: 20px; }
+  .svc-charts .so-hero-number { font-size: 44px; }
+}
