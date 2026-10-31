@@ -5,21 +5,23 @@ import { api } from '../../api';
 import StatCard from './StatCard';
 
 export function pmWidget(id, ctx) {
-  const { completingVisit, incompleteVisits, load, projects, setCompletingVisit, visits } = ctx;
+  const { act, completingVisit, incompleteVisits, projects, setCompletingVisit, visits } = ctx;
   const activeProjects = projects.filter(p => !['closed', 'cancelled'].includes(p.status));
   switch (id) {
     case 'stat_cards': {
-      const overdueVisits = incompleteVisits.filter(v => isOverdue(v.scheduled_date));
+      // incompleteVisits are the overdue ones (their days are over); this month's open visits include those still ahead.
+      const overdueVisits = incompleteVisits;
+      const pendingThis = visits.filter(v => !['completed', 'cancelled'].includes(v.status));
       const completedThis = visits.filter(v => v.status === 'completed');
       return (
         <div key={id} className="grid-4 mb-20">
           <StatCard icon={FolderOpen}    iconBg="#eff6ff" iconColor="#3b82f6"
             value={activeProjects.length} label="Active Projects" to="/projects" />
           <StatCard icon={Wrench}        iconBg="#fef9c3" iconColor="#ca8a04"
-            value={incompleteVisits.length} label="Visits Pending" to="/maintenance-visits" />
+            value={pendingThis.length} label="Pending (Month)" to="/maintenance-visits" />
           <StatCard icon={AlertTriangle} iconBg="#fef2f2" iconColor="#ef4444"
             value={overdueVisits.length} label="Overdue Visits"
-            valueColor={overdueVisits.length ? 'var(--danger)' : undefined} to="/maintenance-visits" />
+            valueColor={overdueVisits.length ? 'var(--danger)' : undefined} to="/maintenance-visits?filter=overdue" />
           <StatCard icon={CheckCircle2}  iconBg="#f0fdf4" iconColor="#22c55e"
             value={completedThis.length} label="Completed (Month)"
             valueColor="var(--success)" to="/maintenance-visits" />
@@ -40,7 +42,7 @@ export function pmWidget(id, ctx) {
                 <span className="badge badge-on_hold ml-4">{incompleteVisits.length}</span>
               )}
             </div>
-            <Link to="/maintenance-visits" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
+            <Link to="/maintenance-visits?filter=overdue" style={{ fontSize:12, color:'var(--primary)' }}>View all →</Link>
           </div>
           {incompleteVisits.length === 0
             ? <p className="text-muted text-sm m-0">All visits are up to date — great! ✓</p>
@@ -67,7 +69,7 @@ export function pmWidget(id, ctx) {
                                 onClick={async () => {
                                   if (completingVisit) return;
                                   setCompletingVisit(v.id);
-                                  try { await api.completeVisit(v.id); load(); }
+                                  try { await act(() => api.completeVisit(v.id)); }
                                   finally { setCompletingVisit(null); }
                                 }}
                               >

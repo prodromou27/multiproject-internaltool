@@ -47,3 +47,12 @@ test('dashboard widget order can be changed without drag and drop', async ({ pag
   const labels = await dialog.locator('.dashboard-widget-option > span').allTextContents();
   expect(labels.slice(0, 2)).toEqual(['Project Health (RAG)', 'Stats Overview']);
 });
+
+test('a dashboard quick action that is refused says why', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/tasks', () => ({ body: [{ id: 9, title: 'Renew Fortinet licences', status: 'open', priority: 'high', assigned_to: 1 }] }));
+  api.override('PUT /api/tasks/9', () => ({ status: 400, body: { error: 'Finish the open subtasks first' } }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Mark Renew Fortinet licences as done' }).click();
+  await expect(page.getByText('Finish the open subtasks first')).toBeVisible();
+});

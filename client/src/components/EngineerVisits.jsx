@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Send, Wrench } from 'lucide-react';
 import { StatusBadge, fmtDate, isOverdue } from './Shared';
@@ -8,7 +9,13 @@ import AddToCalendarButton from './AddToCalendarButton';
    Each shows only when it has something in it. */
 
 export function PendingVisitReports({ reports, onSent }) {
+  const [error, setError] = useState('');
   if (!reports.length) return null;
+  const markSent = async id => {
+    setError('');
+    try { await api.markReportSent(id); onSent(); }
+    catch (e) { setError(e.message || 'Could not mark the report sent'); }
+  };
   return <div className="card u-49f14f8" style={{ borderLeft: '3px solid var(--danger)' }}>
     <div className="section-header">
       <div className="flex-center gap-8">
@@ -18,6 +25,7 @@ export function PendingVisitReports({ reports, onSent }) {
       </div>
       <Link to="/maintenance-visits?filter=report_pending" style={{ fontSize: 12, color: 'var(--primary)' }}>View all →</Link>
     </div>
+    {error && <div className="error-msg" role="alert">{error}</div>}
     <div className="table-wrap"><table>
       <thead><tr><th>Customer</th><th>Visit</th><th>Date</th><th>Status</th><th>Action</th></tr></thead>
       <tbody>{reports.map(v => <tr key={v.id}>
@@ -25,7 +33,7 @@ export function PendingVisitReports({ reports, onSent }) {
         <td><Link to="/maintenance-visits" style={{ color: 'var(--gray-800)', fontWeight: 500 }}>{v.title}</Link></td>
         <td className={isOverdue(v.scheduled_date) ? 'overdue' : ''}>{fmtDate(v.scheduled_date)}</td>
         <td><StatusBadge entityType="visit" s={v.status} /></td>
-        <td><button className="btn btn-sm btn-primary u-122b3a0" onClick={async () => { await api.markReportSent(v.id); onSent(); }}><Send size={11} /> Mark Sent</button></td>
+        <td><button className="btn btn-sm btn-primary u-122b3a0" onClick={() => markSent(v.id)}><Send size={11} /> Mark Sent</button></td>
       </tr>)}</tbody>
     </table></div>
   </div>;

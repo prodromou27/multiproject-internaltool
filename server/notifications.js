@@ -431,11 +431,12 @@ function notify(event, data) {
       if (event === 'report.submitted') {
         recipients = await db.prepare(`SELECT ${PREF_COLS} FROM users WHERE role = 'manager' AND active = 1`).all();
       } else if (data.engineer_id) {
-        const recipient = await db.prepare(`SELECT ${PREF_COLS} FROM users WHERE id = ?`).get(data.engineer_id);
+        // A deactivated account keeps its bell entry but gets nothing outside the app.
+        const recipient = await db.prepare(`SELECT ${PREF_COLS} FROM users WHERE id = ? AND active = 1`).get(data.engineer_id);
         if (recipient) {
           recipients = [recipient];
           if (!recipient.notify_external_enabled || !wantsAlert(recipient, eventKey, 'webex')) dmEmail = null;
-        }
+        } else dmEmail = null;
       }
 
       const sends = [], sendLabels = [];
