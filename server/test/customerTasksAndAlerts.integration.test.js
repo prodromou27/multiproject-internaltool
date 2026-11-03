@@ -77,6 +77,51 @@ test('managers are alerted 30 and 7 days before a contract ends, and once it has
   await db.prepare('UPDATE customers SET active = 1 WHERE id = ?').run(ids.customerUnassigned);
 });
 
+test('managed-services engineers of the customer hear about contracts ending, expiring and renewed', async () => {
+  const reminders = require('../reminders');
+  const { signJwt } = require('./lib/activityFixture');
+  const user = async (name, role) => (await db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)')
+    .run(name, `${name.toLowerCase().replace(/\W/g, '')}@test.local`, 'x', role)).lastInsertRowid;
+  const customer = (await db.prepare('INSERT INTO customers (name, active) VALUES (?, 1)').run('Contract MS Corp')).lastInsertRowid;
+  const msTeam = (await db.prepare('INSERT INTO teams (name, managed_service_operations) VALUES (?, 1)').run('Contract MS Team')).lastInsertRowid;
+  const otherMsTeam = (await db.prepare('INSERT INTO teams (name, managed_service_operations) VALUES (?, 1)').run('Contract MS Elsewhere')).lastInsertRowid;
+  const plainTeam = (await db.prepare('INSERT INTO teams (name, managed_service_operations) VALUES (?, 0)').run('Contract Projects Team')).lastInsertRowid;
+  const msEngineer = await user('Contract MS Engineer', 'engineer'), elsewhere = await user('Contract Elsewhere Engineer', 'engineer');
+  const projectsEngineer = await user('Contract Projects Engineer', 'engineer'), gone = await user('Contract Gone Engineer', 'engineer');
+  const otherManager = await user('Contract Other Manager', 'manager');
+  await db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(gone);
+  for (const [team, member] of [[msTeam, msEngineer], [msTeam, gone], [otherMsTeam, elsewhere], [plainTeam, projectsEngineer]])
+    await db.prepare('INSERT INTO team_members (team_id, user_id) VALUES (?, ?)').run(team, member);
+  for (const team of [msTeam, plainTeam]) await db.prepare('INSERT INTO customer_teams (customer_id, team_id) VALUES (?, ?)').run(customer, team);
+  try {
+    const ending = await addContract(customer, 'MS-END-30', day(-300), day(30));
+    await reminders.sendAutomaticReminders();
+    assert.deepEqual((await alerts('contract_ending', msEngineer)).map(n => n.title), ['Contract MS Corp: contract MS-END-30 ending soon']);
+    assert.equal((await alerts('contract_ending', msEngineer))[0].link, `/customers/${customer}/service-profile?section=contracts`);
+    assert.equal((await alerts('contract_ending', ids.manager)).filter(n => /MS-END-30/.test(n.title)).length, 1, 'managers still are');
+    for (const other of [elsewhere, projectsEngineer, gone]) assert.equal((await alerts('contract_ending', other)).length, 0, `user ${other} is not on this customer's managed-services team`);
+
+    // An engineer can turn the reminder off, as a manager can.
+    assert.equal((await api('/api/reminders/settings', { method: 'PUT', token: signJwt({ id: msEngineer }), body: { contract_ending: false } })).status, 200);
+    await addContract(customer, 'MS-END-7', day(-300), day(7));
+    await reminders.sendAutomaticReminders();
+    assert.equal((await alerts('contract_ending', msEngineer)).length, 1);
+
+    // Renewed: the engineer and the other managers are told; the manager who renewed it is not.
+    const renewed = await api(`/api/customers/${customer}/contracts/${ending}/renew`, { method: 'POST', token: ids.tokenManager, body: { start_date: day(31), end_date: day(395) } });
+    assert.equal(renewed.status, 201, JSON.stringify(renewed.data));
+    await require('../notifications').settled();
+    const told = await alerts('contract_renewed', msEngineer);
+    assert.deepEqual(told.map(n => [n.title, n.body]), [['Contract MS Corp: contract MS-END-30 renewed', `Until ${day(395)}`]]);
+    assert.equal((await alerts('contract_renewed', otherManager)).length, 1);
+    assert.equal((await alerts('contract_renewed', ids.manager)).length, 0, 'not the one who renewed it');
+    for (const other of [elsewhere, projectsEngineer, gone]) assert.equal((await alerts('contract_renewed', other)).length, 0);
+  } finally {
+    await db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(otherManager);
+    await db.prepare('UPDATE customers SET active = 0 WHERE id = ?').run(customer);
+  }
+});
+
 test('a failed backup or off-server copy alerts the managers, unless the alert is switched off', async () => {
   const { alertBackupFailure, isFinalAttempt } = require('../backupAlerts');
   assert.equal(isFinalAttempt({ attempts: 1, max_attempts: 3 }, new Error('x')), false, 'it will be retried');

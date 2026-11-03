@@ -23,6 +23,7 @@ const NOTIF_ICONS = {
   'report_due':       <FileText    size={14} color="var(--warning)" />,
   'asset_expiring':   <ShieldAlert size={14} color="var(--warning)" />,
   'contract_ending':  <FileSignature size={14} color="var(--warning)" />,
+  'contract_renewed': <FileSignature size={14} color="var(--success)" />,
   'system_alert':     <AlertTriangle size={14} color="var(--danger)" />,
 };
 

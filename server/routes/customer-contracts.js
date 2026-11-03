@@ -157,6 +157,8 @@ router.post('/:contractId/renew', requireManager, async (req, res) => {
   });
   await logAudit(db, req, 'customer_contract', id, label(req.customer, { id, ...v }), 'renewed', `Renewed contract #${existing.id}: ${v.start_date} to ${v.end_date}`);
   await syncCoverage({ customerIds: [req.customer.id], userId: req.user.id }); // asset coverage follows the contracts
+  // Managers and the customer's managed-services engineers hear about it (reminders.js).
+  await require('../reminders').announceContractRenewal(id, req.user.id).catch(error => console.error('[contract renewed]', error.message));
   res.status(201).json({ id: Number(id) });
 });
 
