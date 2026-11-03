@@ -85,3 +85,17 @@ test('meetings and other work go into My time too, and an entry can be removed',
   await expect.poll(() => removed).toBe(true);
   await expect(page.getByText(/No hours logged in these days/)).toBeVisible();
 });
+
+test('service activities with a duration show in My time, linked to the activity and not removable there', async ({ page }) => {
+  const api = await mockApi(page, { role: 'engineer' });
+  api.override('GET /api/time-logs/mine', () => ({ body: [
+    { id: 'activity-31', source: 'activity', activity_id: 31, activity_title: 'Firewall rule review', hours: 1.5, work_date: '2026-10-14', customer_name: 'Acme Corp', ticket_reference: 'RT-501' },
+    { id: 12, source: 'time_log', task_id: 42, hours: 1, work_date: '2026-10-14', task_title: 'Docs', customer_name: null },
+  ] }));
+  await page.goto('/my-time');
+  await expect(page.getByText(/^2\.5h from/)).toBeVisible();
+  const activity = page.getByRole('row', { name: /1.5h Acme Corp Firewall rule review Activity RT-501/ });
+  await expect(activity.getByRole('link', { name: 'Firewall rule review' })).toHaveAttribute('href', '/activity-log?activity=31');
+  await expect(activity.getByRole('button', { name: /Remove/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Remove 1h Docs/ })).toBeVisible();
+});

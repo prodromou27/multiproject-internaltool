@@ -157,7 +157,7 @@ export default function EngineerHub() {
   const todayVisits = (calendar.visits || []).filter(v => v.date?.slice(0, 10) === today);
   const pinned = projects.filter(p => p.is_pinned);
   const weekTotal = logs.reduce((sum, log) => sum + Number(log.hours || 0), 0);
-  const todayTotal = logs.filter(log => log.logged_at?.slice(0, 10) === today).reduce((sum, log) => sum + Number(log.hours || 0), 0);
+  const todayTotal = logs.filter(log => String(log.work_date || log.logged_at || '').slice(0, 10) === today).reduce((sum, log) => sum + Number(log.hours || 0), 0);
   const elapsed = timer ? Math.max(0, Math.floor((tick - timer.startedAt) / 1000)) : 0;
 
   async function moveTask(task, status) {
@@ -261,7 +261,7 @@ export default function EngineerHub() {
           {todayVisits.map(visit => <div className="my-day-row" key={`v${visit.id}`}><Wrench size={14} /><span><Link to={`/maintenance-visits?visit=${visit.id}`}>{visit.title}</Link></span><small>{visit.customer_name}</small><AddToCalendarButton visitId={visit.id} title={visit.title} compact /></div>)}
           {!overdue.length && !dueSoon.length && !todayVisits.length && <p className="text-muted">Nothing due this week.</p>}
         </section>
-        <section className="card"><div className="section-header"><h2 className="section-title">Timesheet</h2><Clock size={16} /></div><div className="timesheet-total"><strong>{weekTotal.toFixed(1)}h</strong><span>This week · {fmtDate(from)} – {fmtDate(to)}</span></div><p className={`timesheet-today${todayTotal < 7 ? ' is-short' : ''}`}><strong>{todayTotal.toFixed(1)}h</strong> logged today{todayTotal < 7 ? ` · ${Math.max(0, 7 - todayTotal).toFixed(1)}h still to log` : ''}</p>{logs.slice(0, 6).map(log => <div className="time-row" key={log.id}><span>{log.task_title || log.visit_title || 'Work log'}</span><strong>{Number(log.hours).toFixed(2)}h</strong></div>)}</section>
+        <section className="card"><div className="section-header"><h2 className="section-title">Timesheet</h2><Clock size={16} /></div><div className="timesheet-total"><strong>{weekTotal.toFixed(1)}h</strong><span>This week · {fmtDate(from)} – {fmtDate(to)}</span></div><p className={`timesheet-today${todayTotal < 7 ? ' is-short' : ''}`}><strong>{todayTotal.toFixed(1)}h</strong> logged today{todayTotal < 7 ? ` · ${Math.max(0, 7 - todayTotal).toFixed(1)}h still to log` : ''}</p>{logs.slice(0, 6).map(log => <div className="time-row" key={log.id}><span>{log.task_title || log.visit_title || log.activity_title || log.category_label || 'Work log'}</span><strong>{Number(log.hours).toFixed(2)}h</strong></div>)}</section>
       </div>
 
       {/* Visit reports to send, then this month's visits; each shows only when there is something. */}

@@ -28,7 +28,9 @@ async function engineerSummary({ months = 3, today = appTime.today() } = {}, sto
       WHERE e.user_id IN (${ph}) AND ((v.status='completed' AND v.scheduled_date>=? AND v.scheduled_date<=?) OR (v.status IN ('scheduled','in_progress') AND v.scheduled_date>=?))`).all(...ids, from, today, today),
     store.prepare(`SELECT engineer_id AS user_id, activity_date, duration_minutes, customer_id FROM service_activities
       WHERE engineer_id IN (${ph}) AND status<>'cancelled' AND activity_date>=? AND activity_date<=?`).all(...ids, from, today),
-    store.prepare(`SELECT user_id, substr(logged_at,1,10) AS day, hours FROM time_logs WHERE user_id IN (${ph}) AND substr(logged_at,1,10)>=? AND substr(logged_at,1,10)<=?`).all(...ids, from, today),
+    // By the day the work was done (work_date), not the day it was typed in.
+    store.prepare(`SELECT user_id, COALESCE(work_date, substr(logged_at,1,10)) AS day, hours FROM time_logs WHERE user_id IN (${ph})
+      AND COALESCE(work_date, substr(logged_at,1,10))>=? AND COALESCE(work_date, substr(logged_at,1,10))<=?`).all(...ids, from, today),
     store.prepare('SELECT id, name FROM customers').all(),
   ]);
   const customerName = new Map(customers.map(row => [Number(row.id), decrypt(row.name)]));

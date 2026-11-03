@@ -47,6 +47,28 @@ test('hours are kept by the day the work was done, and listed per day with the c
   assert.deepEqual(onlyYesterday.data.filter(r => r.task_id === task).map(r => Number(r.hours)), [2], 'by work day, not by when it was typed');
 });
 
+test('My time includes your service activities with a duration, by activity day, read-only', async () => {
+  const day = appTime.addDays(appTime.today(), -3);
+  let n = 0;
+  const activity = async (engineer, minutes, status = 'completed', title = 'Firewall rule review') => (await db.prepare(`INSERT INTO service_activities
+    (activity_reference, customer_id, team_id, engineer_id, activity_date, duration_minutes, category_id, title, status, ticket_reference, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(`MYTIME-${Date.now()}-${n++}`, ids.customer, ids.teamEnabled, engineer, day, minutes, ids.category, title, status, 'RT-501', engineer)).lastInsertRowid;
+  const counted = await activity(ids.engineerEnabled, 90);
+  await activity(ids.engineerEnabled, 45, 'cancelled', 'Cancelled visit prep');
+  await activity(ids.engineerEnabled, null, 'completed', 'No duration given');
+  await activity(ids.manager, 60, 'completed', 'Someone else\'s work');
+
+  const mine = await api(`/api/time-logs/mine?from=${day}&to=${day}`, { token: ids.tokenEnabled });
+  assert.equal(mine.status, 200, JSON.stringify(mine.data));
+  const fromActivities = mine.data.filter(row => row.source === 'activity');
+  assert.deepEqual(fromActivities.map(row => [row.activity_id, row.activity_title, row.hours, row.work_date, row.customer_name, row.ticket_reference]),
+    [[Number(counted), 'Firewall rule review', 1.5, day, 'Acme Corp', 'RT-501']]);
+  assert.equal(fromActivities[0].id, `activity-${counted}`, 'its id cannot be mistaken for a time log');
+  // Not a time log: it cannot be removed from My time.
+  assert.equal((await api(`/api/time-logs/${fromActivities[0].id}`, { method: 'DELETE', token: ids.tokenEnabled })).status, 400);
+  await db.prepare("DELETE FROM service_activities WHERE activity_reference LIKE 'MYTIME-%'").run();
+});
+
 test('general time: hours with no task or visit, a category and optionally a customer, listed in My time', async () => {
   const log = (body, token = ids.tokenEnabled) => api('/api/time-logs', { method: 'POST', token, body });
   const day = appTime.addDays(appTime.today(), -2);
