@@ -154,9 +154,25 @@ router.get('/mine', requireAuth, async (req, res) => {
     WHERE tl.user_id = ? AND COALESCE(tl.work_date, substr(tl.logged_at, 1, 10)) BETWEEN ? AND ?
     ORDER BY COALESCE(tl.work_date, substr(tl.logged_at, 1, 10)) DESC, tl.logged_at DESC
   `).all(req.user.id, from, to);
+  // Service activities with a duration are hours too: most customer work is logged there,
+  // not as time on a task. Read-only here; they are changed in the Activity Log.
+  const activities = await db.prepare(`
+    SELECT sa.id, sa.activity_date AS work_date, sa.duration_minutes, sa.title, sa.ticket_reference, sa.description, sa.start_time,
+      c.name AS customer_name, p.title AS project_title
+    FROM service_activities sa
+    JOIN customers c ON c.id = sa.customer_id
+    LEFT JOIN projects p ON p.id = sa.related_project_id
+    WHERE sa.engineer_id = ? AND sa.status <> 'cancelled' AND sa.duration_minutes > 0 AND sa.activity_date BETWEEN ? AND ?
+  `).all(req.user.id, from, to);
   const [tasks, visits] = await Promise.all([hasPermission(req.user, 'tasks.access'), hasPermission(req.user, 'visits.access')]);
-  res.json(rows.filter(row => (row.task_id ? tasks : row.visit_id ? visits : true))
-    .map(row => ({ ...row, customer_name: decrypt(row.customer_name) || null, category_label: row.category ? CATEGORIES[row.category] || row.category : null })));
+  const logged = rows.filter(row => (row.task_id ? tasks : row.visit_id ? visits : true))
+    .map(row => ({ ...row, source: 'time_log', customer_name: decrypt(row.customer_name) || null, category_label: row.category ? CATEGORIES[row.category] || row.category : null }));
+  const fromActivities = activities.map(row => ({
+    id: `activity-${row.id}`, source: 'activity', activity_id: Number(row.id), activity_title: row.title, work_date: String(row.work_date).slice(0, 10),
+    hours: Number(row.duration_minutes) / 60, ticket_reference: row.ticket_reference || null, description: row.description || null,
+    customer_name: decrypt(row.customer_name) || null, project_title: row.project_title || null, start_time: row.start_time || null,
+  }));
+  res.json([...logged, ...fromActivities].sort((a, b) => b.work_date.localeCompare(a.work_date)));
 });
 
 // The kinds of general time (for the form).
@@ -187,7 +203,7 @@ router.get('/summary', requireAuth, async (req, res) => {
   let q = 'SELECT COALESCE(SUM(hours),0) as total, COUNT(*) as entries FROM time_logs WHERE 1=1';
   const params = [];
   if (uid) { q += ' AND user_id = ?'; params.push(uid); }
-  if (month) { q += " AND substr(logged_at,1,7) = ?"; params.push(month); }
+  if (month) { q += " AND substr(COALESCE(work_date, logged_at),1,7) = ?"; params.push(month); } // the month the work was done
   if (!await hasPermission(req.user, 'tasks.access')) q += ' AND task_id IS NULL';
   if (!await hasPermission(req.user, 'visits.access')) q += ' AND visit_id IS NULL';
   res.json((await db.prepare(q).get(...params)));

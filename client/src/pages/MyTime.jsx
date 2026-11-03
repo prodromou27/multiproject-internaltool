@@ -9,14 +9,15 @@ import { useConfirm } from '../components/Confirm';
 import { useToast } from '../components/Toast';
 import { businessToday } from '../utils/dates';
 
-/* My time: the hours you logged on tasks and visits, day by day, as your own
+/* My time: the hours you logged on activities, tasks and visits, day by day, as your own
    reference for filling in the company timesheet (CRM/ERP). Copy pastes as
    columns into a spreadsheet; CSV downloads the same rows. */
 const addDays = (iso, days) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
 const mondayOf = iso => { const d = new Date(`${iso}T00:00:00Z`); return addDays(iso, -((d.getUTCDay() + 6) % 7)); };
 const round = value => Math.round(value * 100) / 100;
-const workOf = row => row.task_title || row.visit_title || row.category_label || 'Work';
-const kindOf = row => (row.task_id ? 'Task' : row.visit_id ? 'Visit' : 'General');
+const workOf = row => row.task_title || row.visit_title || row.activity_title || row.category_label || 'Work';
+const kindOf = row => (row.task_id ? 'Task' : row.visit_id ? 'Visit' : row.activity_id ? 'Activity' : 'General');
+const workLink = row => (row.task_id ? '/tasks?filter=all' : row.visit_id ? `/maintenance-visits?visit=${row.visit_id}` : row.activity_id ? `/activity-log?activity=${row.activity_id}` : null);
 
 // Time that is not on a task or visit: a meeting, admin, internal work…
 function OtherTime({ onClose, onSaved }) {
@@ -100,7 +101,7 @@ export default function MyTime() {
     </div>
     {error ? <LoadError what="Your hours" error={error} onRetry={load} /> : !rows ? <p className="text-muted" role="status">Loading…</p> : <>
       <p><strong>{total}h</strong> from {fmtDate(range.from)} to {fmtDate(range.to)}</p>
-      {!rows.length && <p className="text-muted">No hours logged in these days. Log hours from a task (the clock on Tasks), on a visit, or with Log other time for meetings and other work.</p>}
+      {!rows.length && <p className="text-muted">No hours logged in these days. Hours come from service activities with a duration (Activity Log), from tasks (the clock on Tasks), from visits, and from Log other time for meetings and other work.</p>}
       {ordered.map(([day, list]) => <section key={day} className="card mb-16" aria-label={fmtDate(day)} style={{ padding: 12 }}>
         <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 className="section-title" style={{ fontSize: 15 }}>{new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long' })} {fmtDate(day)} · {round(list.reduce((s, r) => s + Number(r.hours), 0))}h</h2>
@@ -111,10 +112,11 @@ export default function MyTime() {
           <tbody>{list.map(row => <tr key={row.id}>
             <td>{round(Number(row.hours))}h</td>
             <td>{row.customer_name || <span className="text-muted">Internal</span>}</td>
-            <td>{row.task_id ? <Link to={`/tasks?filter=all`}>{workOf(row)}</Link> : row.visit_id ? <Link to={`/maintenance-visits?visit=${row.visit_id}`}>{workOf(row)}</Link> : workOf(row)}<div className="text-sm text-muted">{kindOf(row)}{row.project_title ? ` · ${row.project_title}` : ''}</div></td>
+            <td>{workLink(row) ? <Link to={workLink(row)}>{workOf(row)}</Link> : workOf(row)}<div className="text-sm text-muted">{kindOf(row)}{row.project_title ? ` · ${row.project_title}` : ''}</div></td>
             <td>{row.ticket_reference || '—'}</td>
             <td>{row.description || ''}</td>
-            <td><button type="button" className="btn btn-ghost btn-sm" aria-label={`Remove ${round(Number(row.hours))}h ${workOf(row)} on ${fmtDate(row.work_date)}`} onClick={() => remove(row)}>Remove</button></td>
+            {/* An activity's time is its duration: change it in the Activity Log. */}
+            <td>{row.activity_id ? null : <button type="button" className="btn btn-ghost btn-sm" aria-label={`Remove ${round(Number(row.hours))}h ${workOf(row)} on ${fmtDate(row.work_date)}`} onClick={() => remove(row)}>Remove</button>}</td>
           </tr>)}</tbody>
         </table></div>
       </section>)}
