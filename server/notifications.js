@@ -88,7 +88,7 @@ const EVENT_LINKS = {
   managed_report_submitted: '/approvals', managed_report_decided: '/customers', customer_report_sent: '/customers', customer_report_due: '/customers',
   project_closure_requested: '/approvals', project_closure_decided: '/projects', activity_logged: '/activity-log',
   task_assigned: '/tasks', task_due: '/tasks', project_assigned: '/projects', visit_assigned: '/maintenance-visits', visit_reminder: '/maintenance-visits',
-  report_submitted: '/maintenance-visits', contract_ending: '/customers', asset_expiring: '/customers', licence_expiring: '/renewals', vendor_case_follow_up: '/renewals', certificate_expiring: '/settings/system_health', recommendation_created: '/customers',
+  report_submitted: '/maintenance-visits', contract_ending: '/customers', contract_renewed: '/customers', asset_expiring: '/customers', licence_expiring: '/renewals', vendor_case_follow_up: '/renewals', certificate_expiring: '/settings/system_health', recommendation_created: '/customers',
 };
 // The card colour says what the title is; the leading emoji is dropped.
 const plainTitle = title => String(title || '').replace(/^(?:\p{Extended_Pictographic}|️|‍|\s)+/u, '').trim() || String(title || '');
@@ -216,7 +216,9 @@ const PERSONAL_EVENTS = Object.freeze([
   { key: 'task_due',         label: 'A task of mine is due tomorrow or has become overdue' },
   { key: 'report_due',       label: 'A customer report is due soon or overdue', roles: ['manager'] },
   { key: 'asset_expiring',   label: 'Asset support or warranty is expiring', roles: ['manager'] },
-  { key: 'contract_ending',  label: 'A customer contract is ending or has expired', roles: ['manager'] },
+  // Engineers: those on a managed-services team that works the customer (reminders.js contractAudience).
+  { key: 'contract_ending',  label: 'A customer contract is ending or has expired', roles: ['manager', 'engineer'] },
+  { key: 'contract_renewed', label: 'A customer contract is renewed', roles: ['manager', 'engineer'] },
   { key: 'licence_expiring', label: 'A customer licence, subscription or certificate is expiring or has expired', roles: ['manager'] },
   { key: 'vendor_case_follow_up', label: 'A vendor case of mine is due a follow-up or has gone quiet', roles: ['manager', 'engineer'] },
   { key: 'certificate_expiring', label: 'The HTTPS certificate of the app is expiring or has expired', roles: ['manager'] },

@@ -18,7 +18,8 @@ const AUTOMATIC = Object.freeze([
   { key: 'task_due', label: 'A task assigned to me is due tomorrow, or has just become overdue' },
   { key: 'report_due', label: 'A customer report is due within 3 days, or is overdue', roles: ['manager'] },
   { key: 'asset_expiring', label: 'A managed customer\'s asset support or warranty expires within 30 days', roles: ['manager'] },
-  { key: 'contract_ending', label: 'A customer contract ends within 30 days, or has expired without a renewal', roles: ['manager'] },
+  // Engineers: those on a managed-services team that works the customer (contractAudience).
+  { key: 'contract_ending', label: 'A customer contract ends within 30 days, or has expired without a renewal', roles: ['manager', 'engineer'] },
   { key: 'licence_expiring', label: 'A customer licence, subscription or certificate expires within 60, 30 or 7 days, or has expired', roles: ['manager'] },
   { key: 'vendor_case_follow_up', label: 'A vendor case of mine is due a follow-up, or has had no update for a week', roles: ['manager', 'engineer'] },
   { key: 'certificate_expiring', label: 'The HTTPS certificate of the app expires within 30, 14, 7 or 1 days, or has expired', roles: ['manager'] },
@@ -158,6 +159,40 @@ async function managersFor(store, serviceManagerId) {
   }
   return (await store.prepare("SELECT id FROM users WHERE role = 'manager' AND active = 1").all()).map(row => Number(row.id));
 }
+/** Who hears about a customer's contracts: its managers, and the engineers of the
+    managed-services teams assigned to the customer (as isManagedServicesEngineer). */
+async function contractAudience(store, customerId, serviceManagerId) {
+  const engineers = await store.prepare(`SELECT u.id FROM customer_teams ct
+    JOIN teams t ON t.id = ct.team_id AND t.managed_service_operations = 1
+    JOIN team_members tm ON tm.team_id = t.id JOIN users u ON u.id = tm.user_id
+    WHERE ct.customer_id = ? AND u.role = 'engineer' AND u.active = 1`).all(customerId);
+  return [...new Set([...await managersFor(store, serviceManagerId), ...engineers.map(row => Number(row.id))])];
+}
+const contractName = contract => decrypt(contract.reference) || decrypt(contract.description) || `Contract #${contract.id}`;
+const contractsLink = customerId => `/customers/${customerId}/service-profile?section=contracts`;
+
+/** A contract was renewed: tell its audience (not whoever renewed it) and, if switched on, the shared channels. */
+async function announceContractRenewal(renewalId, byUserId, store = db) {
+  const renewal = await store.prepare(`SELECT k.id, k.customer_id, k.reference, k.description, k.service_level, k.start_date, k.end_date,
+      p.end_date AS previous_end, c.name AS customer_name, mc.service_manager_id
+    FROM customer_contracts k JOIN customers c ON c.id = k.customer_id
+    LEFT JOIN customer_contracts p ON p.id = k.renewed_from_id
+    LEFT JOIN managed_customer_configurations mc ON mc.customer_id = k.customer_id AND mc.managed_services_enabled = 1
+    WHERE k.id = ?`).get(renewalId);
+  if (!renewal) return 0;
+  const customer = decrypt(renewal.customer_name), name = contractName(renewal), link = contractsLink(renewal.customer_id);
+  const msg = { title: '✅ Contract renewed', body: `Contract **${name}** for **${customer}** has been renewed until ${renewal.end_date}.`, link,
+    facts: [{ name: 'Customer', value: customer }, { name: 'Contract', value: name }, ...(renewal.service_level ? [{ name: 'Type', value: renewal.service_level }] : []),
+      { name: 'New period', value: `${renewal.start_date} to ${renewal.end_date}` }, ...(renewal.previous_end ? [{ name: 'Previously ended', value: renewal.previous_end }] : [])] };
+  notifyShared('contract_renewed', msg, { dedupeKey: String(renewal.id) });
+  let sent = 0;
+  for (const userId of await contractAudience(store, renewal.customer_id, renewal.service_manager_id)) {
+    if (userId === Number(byUserId)) continue;
+    await notifyUser(userId, 'contract_renewed', msg, { title: `${customer}: contract ${name} renewed`, body: `Until ${renewal.end_date}`, link });
+    sent++;
+  }
+  return sent;
+}
 
 async function sendAutomaticReminders(store = db) {
   const { today } = await store.prepare('SELECT app_today() AS today').get();
@@ -252,7 +287,7 @@ async function sendAutomaticReminders(store = db) {
       AND k.id NOT IN (SELECT renewed_from_id FROM customer_contracts WHERE renewed_from_id IS NOT NULL)`)
     .all(addDays(today, 30), addDays(today, 7), yesterday);
   for (const contract of contracts) {
-    const customer = decrypt(contract.customer_name), name = decrypt(contract.reference) || decrypt(contract.description) || `Contract #${contract.id}`;
+    const customer = decrypt(contract.customer_name), name = contractName(contract);
     const occasion = contract.end_date === yesterday ? 'expired' : contract.end_date === addDays(today, 7) ? '7_days' : '30_days';
     const expired = occasion === 'expired';
     const msg = { title: expired ? '⚠️ Contract expired' : '📑 Contract ending soon',
@@ -260,10 +295,10 @@ async function sendAutomaticReminders(store = db) {
         : `Contract **${name}** for **${customer}** ends on ${contract.end_date} (in ${occasion === '7_days' ? 7 : 30} days).`,
       facts: [{ name: 'Customer', value: customer }, { name: 'Contract', value: name }, ...(contract.service_level ? [{ name: 'Type', value: contract.service_level }] : []), { name: 'Ends', value: contract.end_date }] };
     notifyShared('contract_ending', msg, { dedupeKey: `${contract.id}:${occasion}` });
-    for (const userId of await managersFor(store, contract.service_manager_id)) {
+    for (const userId of await contractAudience(store, contract.customer_id, contract.service_manager_id)) {
       if (!await wants(userId, 'contract_ending', store) || !await firstDelivery(store, userId, 'contract_ending', contract.id, occasion)) continue;
       await notifyUser(userId, 'contract_ending', msg, { title: `${customer}: contract ${name} ${expired ? 'expired' : 'ending soon'}`,
-        body: expired ? `Ended ${contract.end_date}` : `Ends ${contract.end_date}`, link: `/customers/${contract.customer_id}/service-profile?section=contracts` });
+        body: expired ? `Ended ${contract.end_date}` : `Ends ${contract.end_date}`, link: contractsLink(contract.customer_id) });
       counts.contract_ending++;
     }
   }
@@ -317,4 +352,4 @@ function startReminderSchedules() {
   scheduleNext();
 }
 
-module.exports = { REPEATS, AUTOMATIC, automaticSettings, validTimeZone, nextOccurrence, fromLocal, localParts, sendDueReminders, sendTeamReminders, sendAutomaticReminders, startReminderSchedules };
+module.exports = { REPEATS, AUTOMATIC, automaticSettings, contractAudience, announceContractRenewal, validTimeZone, nextOccurrence, fromLocal, localParts, sendDueReminders, sendTeamReminders, sendAutomaticReminders, startReminderSchedules };
