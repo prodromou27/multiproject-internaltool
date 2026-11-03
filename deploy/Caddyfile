@@ -1,0 +1,35 @@
+# HTTPS in front of the app (the `proxy` service in docker-compose.prod.yml).
+#
+# Uses the company certificate from ./certs on the host (mounted at /certs):
+#   certs/tls.crt  the certificate followed by its intermediate CA certificate(s)
+#   certs/tls.key  its private key (unencrypted PEM)
+# Caddy requests no certificates of its own. After replacing the files (renewal):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml restart proxy
+{
+	auto_https disable_certs
+	admin off
+}
+
+# Every name the certificate covers is served; the app checks nothing about the host.
+:443 {
+	tls /certs/tls.crt /certs/tls.key {
+		protocols tls1.2 tls1.3
+	}
+
+	# Uploads and imports: the app caps attachments at 20 MB.
+	request_body {
+		max_size 25MB
+	}
+
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	reverse_proxy app:8080 {
+		# Live updates (Server-Sent Events) reach the browser as they happen.
+		flush_interval -1
+	}
+}
+
+# Plain HTTP goes to HTTPS.
+:80 {
+	redir https://{host}{uri} permanent
+}

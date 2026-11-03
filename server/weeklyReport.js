@@ -2,7 +2,10 @@
  * Weekly Status Report — data gathering + HTML email builder.
  */
 const db         = require('./db');
+const appTime = require('./appTime');
 const { sendEmail } = require('./email');
+const { decrypt, decryptCustomer } = require('./fieldCipher');
+const { PRODUCT_NAME } = require('./product');
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
 function fmtDate(str) {
@@ -20,26 +23,31 @@ function daysDiff(str) {
 }
 
 // ── Gather all report data ────────────────────────────────────────────────────
-function gatherReportData() {
+async function gatherReportData() {
   const now        = new Date();
-  const todayStr   = now.toISOString().slice(0, 10);
-  const past7Str   = new Date(now - 7  * 86400000).toISOString().slice(0, 10);
-  const next7Str   = new Date(now + 7  * 86400000).toISOString().slice(0, 10);
-  const next14Str  = new Date(now + 14 * 86400000).toISOString().slice(0, 10);
+  // Calendar days in the organisation's time zone.
+  const todayStr   = appTime.today(now);
+  const past1Str   = appTime.addDays(todayStr, -1);
+  const past3Str   = appTime.addDays(todayStr, -3);
+  const past7Str   = appTime.addDays(todayStr, -7);
+  const next7Str   = appTime.addDays(todayStr, 7);
+  const next14Str  = appTime.addDays(todayStr, 14);
+  // 'YYYY-MM-DD HH:MM:SS' cutoff matching how timestamps are stored
+  const past7DateTime = new Date(now - 7 * 86400000).toISOString().slice(0, 19).replace('T', ' ');
 
   // 1. Projects opened in past 7 days
-  const projectsOpened = db.prepare(`
+  const projectsOpened = await db.prepare(`
     SELECT p.id, p.title, p.priority, p.deadline, p.status,
            cu.name AS customer_name, u.name AS created_by_name
     FROM projects p
     LEFT JOIN customers cu ON p.customer_id = cu.id
     LEFT JOIN users u ON p.created_by = u.id
-    WHERE date(p.created_at) >= ?
+    WHERE substr(p.created_at,1,10) >= ?
     ORDER BY p.created_at DESC
   `).all(past7Str);
 
   // 2. Upcoming deadlines (next 14 days) — projects + tasks
-  const upcomingProjectDeadlines = db.prepare(`
+  const upcomingProjectDeadlines = await db.prepare(`
     SELECT 'project' AS type, p.id, p.title, p.deadline, p.status, p.priority,
            cu.name AS customer_name, NULL AS assigned_to
     FROM projects p
@@ -49,14 +57,14 @@ function gatherReportData() {
     ORDER BY p.deadline ASC LIMIT 20
   `).all(todayStr, next14Str);
 
-  const upcomingTaskDeadlines = db.prepare(`
+  const upcomingTaskDeadlines = await db.prepare(`
     SELECT 'task' AS type, t.id, t.title, t.deadline, t.status, t.priority,
            p.title AS customer_name, u.name AS assigned_to
     FROM tasks t
     LEFT JOIN projects p ON t.project_id = p.id
     LEFT JOIN users u ON t.assigned_to = u.id
     WHERE t.deadline IS NOT NULL AND t.deadline >= ? AND t.deadline <= ?
-      AND t.status NOT IN ('done','cancelled')
+      AND t.status NOT IN ('completed','closed','cancelled')
     ORDER BY t.deadline ASC LIMIT 20
   `).all(todayStr, next14Str);
 
@@ -65,7 +73,7 @@ function gatherReportData() {
     .slice(0, 30);
 
   // 3. Open high-priority tasks
-  const highPriorityTasks = db.prepare(`
+  const highPriorityTasks = await db.prepare(`
     SELECT t.id, t.title, t.status, t.deadline, t.created_at,
            p.title AS project_title, u.name AS assigned_to_name,
            cu.name AS customer_name
@@ -73,17 +81,17 @@ function gatherReportData() {
     LEFT JOIN projects p  ON t.project_id  = p.id
     LEFT JOIN users u     ON t.assigned_to  = u.id
     LEFT JOIN customers cu ON p.customer_id = cu.id
-    WHERE t.priority = 'high' AND t.status NOT IN ('done','cancelled')
+    WHERE t.priority = 'high' AND t.status NOT IN ('completed','closed','cancelled')
     ORDER BY t.deadline ASC, t.created_at ASC
     LIMIT 30
   `).all();
 
   // 4. Maintenance visits this week (past 7 days + next 7 days)
-  const maintenanceVisits = db.prepare(`
+  const maintenanceVisits = await db.prepare(`
     SELECT mv.id, mv.title, mv.status, mv.scheduled_date,
            mv.report_sent, mv.report_sent_to_customer,
            cu.name AS customer_name,
-           (SELECT GROUP_CONCAT(u2.name, ', ')
+           (SELECT string_agg(u2.name, ', ')
             FROM maintenance_visit_engineers mve2
             JOIN users u2 ON mve2.user_id = u2.id
             WHERE mve2.visit_id = mv.id) AS engineer_names
@@ -95,10 +103,10 @@ function gatherReportData() {
   `).all(past7Str, next7Str);
 
   // 5. All reports pending (completed/passed visits without report)
-  const reportsPending = db.prepare(`
+  const reportsPending = await db.prepare(`
     SELECT mv.id, mv.title, mv.scheduled_date,
            cu.name AS customer_name,
-           (SELECT GROUP_CONCAT(u2.name, ', ')
+           (SELECT string_agg(u2.name, ', ')
             FROM maintenance_visit_engineers mve2
             JOIN users u2 ON mve2.user_id = u2.id
             WHERE mve2.visit_id = mv.id) AS engineer_names
@@ -110,12 +118,12 @@ function gatherReportData() {
   `).all(todayStr);
 
   // 6. Engineer workload
-  const engineerWorkload = db.prepare(`
+  const engineerWorkload = await db.prepare(`
     SELECT u.id, u.name,
            COUNT(CASE WHEN t.status IN ('open','in_progress') THEN 1 END)              AS open_tasks,
            COUNT(CASE WHEN t.status IN ('open','in_progress') AND t.priority='high' THEN 1 END) AS high_tasks,
-           COUNT(CASE WHEN t.status='done' AND date(t.updated_at) >= ? THEN 1 END)    AS done_this_week,
-           COUNT(CASE WHEN t.deadline < ? AND t.status NOT IN ('done','cancelled') THEN 1 END) AS overdue_tasks,
+           COUNT(CASE WHEN t.status IN ('completed','closed') AND substr(t.updated_at,1,10) >= ? THEN 1 END)    AS done_this_week,
+           COUNT(CASE WHEN t.deadline < ? AND t.status NOT IN ('completed','closed','cancelled') THEN 1 END) AS overdue_tasks,
            COUNT(DISTINCT pa.project_id) AS project_count
     FROM users u
     LEFT JOIN tasks t ON t.assigned_to = u.id
@@ -127,71 +135,75 @@ function gatherReportData() {
   `).all(past7Str, todayStr);
 
   // 7. Closure approvals pending
-  const closurePending = db.prepare(`
+  const closurePending = await db.prepare(`
     SELECT p.id, p.title, p.priority, p.deadline, p.closure_requested_at,
            cu.name AS customer_name
     FROM projects p
     LEFT JOIN customers cu ON p.customer_id = cu.id
-    WHERE p.status = 'pending_closure'
+    WHERE p.status = 'pending_approval'
     ORDER BY p.closure_requested_at ASC
   `).all();
 
   // 8. New customers this week
-  const newCustomers = db.prepare(`
+  const newCustomers = await db.prepare(`
     SELECT id, name, contact_name, contact_email
     FROM customers
-    WHERE date(created_at) >= ?
+    WHERE substr(created_at,1,10) >= ?
     ORDER BY created_at DESC
   `).all(past7Str);
 
-  // 9. SLA snapshot
+  // 9. SLA snapshot. Date-modifier cutoffs (SQLite date('now','-N days')) are
+  // computed in JS and passed as parameters since Postgres has no such function.
   const slaSnapshot = {
-    mvReportBreaches:   db.prepare(`SELECT COUNT(*) AS n FROM maintenance_visits WHERE report_sent=0 AND status!='cancelled' AND scheduled_date < date('now','-7 days')`).get().n,
-    closureBreaches:    db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status='pending_closure' AND closure_requested_at < date('now','-3 days')`).get().n,
-    highTaskBreaches:   db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE priority='high' AND status NOT IN ('done','cancelled') AND date(created_at) < date('now','-1 day')`).get().n,
-    staleProjects:      db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status IN ('active','on_hold') AND updated_at < datetime('now','-7 days')`).get().n,
+    mvReportBreaches:   (await db.prepare(`SELECT COUNT(*) AS n FROM maintenance_visits WHERE report_sent=0 AND status!='cancelled' AND scheduled_date < ?`).get(past7Str)).n,
+    closureBreaches:    (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status='pending_approval' AND closure_requested_at < ?`).get(past3Str)).n,
+    highTaskBreaches:   (await db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE priority='high' AND status NOT IN ('completed','closed','cancelled') AND substr(created_at,1,10) < ?`).get(past1Str)).n,
+    staleProjects:      (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status IN ('active','on_hold') AND updated_at < ?`).get(past7DateTime)).n,
   };
 
   // 10. Summary stats
   const stats = {
-    activeProjects:  db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status IN ('active','on_hold')`).get().n,
-    openTasks:       db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE status IN ('open','in_progress')`).get().n,
-    overdueProjects: db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE deadline < ? AND status NOT IN ('closed','cancelled')`).get(todayStr).n,
+    activeProjects:  (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE status IN ('active','on_hold')`).get()).n,
+    openTasks:       (await db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE status IN ('open','in_progress')`).get()).n,
+    overdueProjects: (await db.prepare(`SELECT COUNT(*) AS n FROM projects WHERE deadline < ? AND status NOT IN ('closed','cancelled')`).get(todayStr)).n,
     pendingClosure:  closurePending.length,
   };
+
+  const decCustomerName = r => ({ ...r, customer_name: decrypt(r.customer_name) });
 
   return {
     generatedAt: now,
     period: { from: past7Str, to: next7Str, today: todayStr },
     stats,
-    projectsOpened,
-    upcomingDeadlines,
-    highPriorityTasks,
-    maintenanceVisits,
-    reportsPending,
+    projectsOpened: projectsOpened.map(decCustomerName),
+    upcomingDeadlines: upcomingDeadlines.map(decCustomerName),
+    highPriorityTasks: highPriorityTasks.map(decCustomerName),
+    maintenanceVisits: maintenanceVisits.map(decCustomerName),
+    reportsPending: reportsPending.map(decCustomerName),
     engineerWorkload,
-    closurePending,
-    newCustomers,
+    closurePending: closurePending.map(decCustomerName),
+    newCustomers: newCustomers.map(decryptCustomer),
     slaSnapshot,
   };
 }
 
 // ── HTML helpers ─────────────────────────────────────────────────────────────
+const escapeHtml = value => String(value ?? '').replace(/[&<>\"']/g,char => ({ '&': '&amp;','<': '&lt;','>': '&gt;','\"': '&quot;',"'": '&#39;' }[char]));
 const priorityPill = p => {
   const map = { high: '#fee2e2:#dc2626', medium: '#fef9c3:#b45309', low: '#f0fdf4:#16a34a' };
   const [bg, color] = (map[p] || map.medium).split(':');
-  return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${bg};color:${color}">${p}</span>`;
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${bg};color:${color}">${escapeHtml(p)}</span>`;
 };
 const statusPill = s => {
   const map = {
-    active:'#dbeafe:#1d4ed8', on_hold:'#fef9c3:#b45309', pending_closure:'#ede9fe:#6d28d9',
+    active:'#dbeafe:#1d4ed8', on_hold:'#fef9c3:#b45309', pending_approval:'#ede9fe:#6d28d9',
     closed:'#f0fdf4:#15803d', open:'#dbeafe:#1d4ed8', in_progress:'#fef9c3:#b45309',
     done:'#dcfce7:#15803d', scheduled:'#ede9fe:#6d28d9', completed:'#dcfce7:#15803d',
     cancelled:'#f1f5f9:#64748b',
   };
   const [bg, color] = (map[s] || '#f1f5f9:#64748b').split(':');
   const label = s?.replace(/_/g, ' ') || '—';
-  return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${bg};color:${color}">${label}</span>`;
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${bg};color:${color}">${escapeHtml(label)}</span>`;
 };
 
 const tableHead = (...cols) =>
@@ -229,7 +241,7 @@ function buildReportHtml(data) {
   // ── Header ─────────────────────────────────────────────────────────────────
   const header = `
   <div style="background:linear-gradient(135deg,#1e40af,#7c3aed);color:white;border-radius:12px 12px 0 0;padding:32px;text-align:center">
-    <div style="font-size:28px;font-weight:800;margin-bottom:6px">🏢 Solutions Hub</div>
+    <div style="font-size:28px;font-weight:800;margin-bottom:6px">🏢 ${PRODUCT_NAME}</div>
     <div style="font-size:18px;font-weight:600;margin-bottom:8px">Weekly Status Report</div>
     <div style="font-size:13px;opacity:.85">Generated ${fmtGenerated}</div>
     <div style="font-size:12px;opacity:.7;margin-top:4px">
@@ -269,8 +281,8 @@ function buildReportHtml(data) {
     : `<table style="width:100%;border-collapse:collapse">
         ${tableHead('Project', 'Customer', 'Priority', 'Deadline', 'Status')}
         <tbody>${projectsOpened.map(p => `<tr>
-          <td style="${tdStyle};font-weight:600">${p.title}</td>
-          <td style="${tdStyle}">${p.customer_name || '—'}</td>
+          <td style="${tdStyle};font-weight:600">${escapeHtml(p.title)}</td>
+          <td style="${tdStyle}">${escapeHtml(p.customer_name || '—')}</td>
           <td style="${tdStyle}">${priorityPill(p.priority)}</td>
           <td style="${tdStyle};${isOverdue(p.deadline) ? 'color:#dc2626;font-weight:600' : ''}">${fmtDate(p.deadline)}</td>
           <td style="${tdStyle}">${statusPill(p.status)}</td>
@@ -285,10 +297,10 @@ function buildReportHtml(data) {
         ${tableHead('Type', 'Name', 'Deadline', 'Priority', 'Assigned To / Customer')}
         <tbody>${upcomingDeadlines.map(d => `<tr>
           <td style="${tdStyle}"><span style="font-size:11px;font-weight:600;padding:2px 6px;border-radius:6px;background:${d.type==='project'?'#dbeafe':'#ede9fe'};color:${d.type==='project'?'#1d4ed8':'#6d28d9'}">${d.type}</span></td>
-          <td style="${tdStyle};font-weight:600">${d.title}</td>
+          <td style="${tdStyle};font-weight:600">${escapeHtml(d.title)}</td>
           <td style="${tdStyle};${isOverdue(d.deadline) ? 'color:#dc2626;font-weight:700' : 'color:#0f172a'}">${fmtDate(d.deadline)}${isOverdue(d.deadline) ? ' ⚠️' : ''}</td>
           <td style="${tdStyle}">${priorityPill(d.priority)}</td>
-          <td style="${tdStyle};color:#64748b">${d.assigned_to || d.customer_name || '—'}</td>
+          <td style="${tdStyle};color:#64748b">${escapeHtml(d.assigned_to || d.customer_name || '—')}</td>
         </tr>`).join('')}</tbody>
       </table>`;
   const sec2 = sectionWrapper('📅', 'Upcoming Deadlines (Next 14 Days)', upcomingDeadlines.length, s2Body, '#8b5cf6');
@@ -299,9 +311,9 @@ function buildReportHtml(data) {
     : `<table style="width:100%;border-collapse:collapse">
         ${tableHead('Task', 'Project', 'Assigned To', 'Status', 'Deadline')}
         <tbody>${highPriorityTasks.map(t => `<tr>
-          <td style="${tdStyle};font-weight:600">${t.title}</td>
-          <td style="${tdStyle};color:#64748b;font-size:12px">${t.project_title || '—'}</td>
-          <td style="${tdStyle}">${t.assigned_to_name || '<span style="color:#dc2626">Unassigned</span>'}</td>
+          <td style="${tdStyle};font-weight:600">${escapeHtml(t.title)}</td>
+          <td style="${tdStyle};color:#64748b;font-size:12px">${escapeHtml(t.project_title || '—')}</td>
+          <td style="${tdStyle}">${escapeHtml(t.assigned_to_name) || '<span style="color:#dc2626">Unassigned</span>'}</td>
           <td style="${tdStyle}">${statusPill(t.status)}</td>
           <td style="${tdStyle};${isOverdue(t.deadline) ? 'color:#dc2626;font-weight:700' : ''}">${fmtDate(t.deadline)}${isOverdue(t.deadline) ? ' ⚠️' : ''}</td>
         </tr>`).join('')}</tbody>
@@ -320,10 +332,10 @@ function buildReportHtml(data) {
               ? '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#dbeafe;color:#1d4ed8">Report Complete</span>'
               : '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#fef9c3;color:#b45309">Pending</span>';
           return `<tr>
-            <td style="${tdStyle};font-weight:600">${v.title}</td>
-            <td style="${tdStyle}">${v.customer_name}</td>
+            <td style="${tdStyle};font-weight:600">${escapeHtml(v.title)}</td>
+            <td style="${tdStyle}">${escapeHtml(v.customer_name)}</td>
             <td style="${tdStyle};${isOverdue(v.scheduled_date) && v.status==='scheduled' ? 'color:#dc2626;font-weight:700' : ''}">${fmtDate(v.scheduled_date)}</td>
-            <td style="${tdStyle};color:#64748b;font-size:12px">${v.engineer_names || '—'}</td>
+            <td style="${tdStyle};color:#64748b;font-size:12px">${escapeHtml(v.engineer_names || '—')}</td>
             <td style="${tdStyle}">${reportLabel} ${statusPill(v.status)}</td>
           </tr>`;
         }).join('')}</tbody>
@@ -338,10 +350,10 @@ function buildReportHtml(data) {
         <tbody>${reportsPending.map(r => {
           const days = daysDiff(r.scheduled_date);
           return `<tr>
-            <td style="${tdStyle};font-weight:600">${r.title}</td>
-            <td style="${tdStyle}">${r.customer_name}</td>
+            <td style="${tdStyle};font-weight:600">${escapeHtml(r.title)}</td>
+            <td style="${tdStyle}">${escapeHtml(r.customer_name)}</td>
             <td style="${tdStyle};color:#dc2626;font-weight:600">${fmtDate(r.scheduled_date)}</td>
-            <td style="${tdStyle};color:#64748b;font-size:12px">${r.engineer_names || '—'}</td>
+            <td style="${tdStyle};color:#64748b;font-size:12px">${escapeHtml(r.engineer_names || '—')}</td>
             <td style="${tdStyle};color:#dc2626;font-weight:700">${days != null ? days + ' days' : '—'}</td>
           </tr>`;
         }).join('')}</tbody>
@@ -359,8 +371,8 @@ function buildReportHtml(data) {
           return `<tr>
             <td style="${tdStyle};font-weight:600">
               <div style="display:flex;align-items:center;gap:8px">
-                <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:inline-flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0">${(e.name||'?').charAt(0).toUpperCase()}</div>
-                ${e.name}
+                <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:inline-flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0">${escapeHtml((e.name||'?').charAt(0).toUpperCase())}</div>
+                ${escapeHtml(e.name)}
               </div>
             </td>
             <td style="${tdStyle}">
@@ -388,8 +400,8 @@ function buildReportHtml(data) {
         <tbody>${closurePending.map(p => {
           const days = p.closure_requested_at ? daysDiff(p.closure_requested_at.slice(0,10)) : null;
           return `<tr>
-            <td style="${tdStyle};font-weight:600">${p.title}</td>
-            <td style="${tdStyle}">${p.customer_name || '—'}</td>
+            <td style="${tdStyle};font-weight:600">${escapeHtml(p.title)}</td>
+            <td style="${tdStyle}">${escapeHtml(p.customer_name || '—')}</td>
             <td style="${tdStyle}">${priorityPill(p.priority)}</td>
             <td style="${tdStyle};${isOverdue(p.deadline)?'color:#dc2626;font-weight:600':''}">${fmtDate(p.deadline)}</td>
             <td style="${tdStyle};color:#64748b">${fmtDate(p.closure_requested_at?.slice(0,10))}</td>
@@ -424,9 +436,9 @@ function buildReportHtml(data) {
       <table style="width:100%;border-collapse:collapse">
         ${tableHead('Name', 'Contact', 'Email')}
         <tbody>${newCustomers.map(c => `<tr>
-          <td style="${tdStyle};font-weight:600">${c.name}</td>
-          <td style="${tdStyle}">${c.contact_name || '—'}</td>
-          <td style="${tdStyle};color:#3b82f6">${c.contact_email || '—'}</td>
+          <td style="${tdStyle};font-weight:600">${escapeHtml(c.name)}</td>
+          <td style="${tdStyle}">${escapeHtml(c.contact_name || '—')}</td>
+          <td style="${tdStyle};color:#3b82f6">${escapeHtml(c.contact_email || '—')}</td>
         </tr>`).join('')}</tbody>
       </table>`, '#0891b2')
     : '';
@@ -434,7 +446,7 @@ function buildReportHtml(data) {
   // ── Footer ─────────────────────────────────────────────────────────────────
   const footer = `
   <div style="text-align:center;padding:24px;color:#94a3b8;font-size:12px;border-top:1px solid #e2e8f0">
-    This report was automatically generated by <strong>Solutions Hub</strong> project management system.<br/>
+    This report was automatically generated by <strong>${PRODUCT_NAME}</strong> project management system.<br/>
     Generated on ${fmtGenerated}
   </div>`;
 
@@ -443,7 +455,7 @@ function buildReportHtml(data) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Solutions Hub — Weekly Status Report</title>
+<title>${PRODUCT_NAME} — Weekly Status Report</title>
 </head>
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
   <div style="max-width:720px;margin:0 auto;padding:24px 16px">
@@ -473,21 +485,21 @@ function buildSubject(data) {
   const totalBreaches = slaSnapshot.mvReportBreaches + slaSnapshot.closureBreaches + slaSnapshot.highTaskBreaches;
   const alert = totalBreaches > 0 ? ` ⚠️ ${totalBreaches} SLA breach${totalBreaches > 1 ? 'es' : ''}` : '';
   const week  = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
-  return `[Solutions Hub] Weekly Report — ${week}${alert} | ${stats.activeProjects} projects · ${stats.openTasks} open tasks`;
+  return `[${PRODUCT_NAME}] Weekly Report — ${week}${alert} | ${stats.activeProjects} projects · ${stats.openTasks} open tasks`;
 }
 
 // ── Get report recipients from DB ─────────────────────────────────────────────
-function getRecipients() {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
+async function getRecipients() {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
   if (!row) return [];
   try {
     const cfg = JSON.parse(row.value);
-    if (!cfg.recipients?.length) return [];
+    if (!Array.isArray(cfg.recipients) || !cfg.recipients.length || cfg.recipients.length>20 || cfg.recipients.some(id => !Number.isSafeInteger(id) || id<1)) return [];
     // Fetch emails for recipient user IDs
-    const users = db.prepare(
-      `SELECT email FROM users WHERE id IN (${cfg.recipients.map(() => '?').join(',')}) AND active = 1`
+    const users = await db.prepare(
+      `SELECT email FROM users WHERE id IN (${cfg.recipients.map(() => '?').join(',')}) AND active = 1 AND role = 'manager' AND must_change_password = 0`
     ).all(...cfg.recipients);
-    return users.map(u => u.email);
+    return users.filter(u => typeof u.email==='string' && /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(u.email)).map(u => u.email);
   } catch { return []; }
 }
 
@@ -495,10 +507,10 @@ function getRecipients() {
 async function sendWeeklyReport() {
   console.log('[weekly-report] Generating report…');
   try {
-    const data       = gatherReportData();
+    const data       = await gatherReportData();
     const html       = buildReportHtml(data);
     const subject    = buildSubject(data);
-    const recipients = getRecipients();
+    const recipients = await getRecipients();
 
     if (!recipients.length) {
       console.log('[weekly-report] No recipients configured — skipping send.');
@@ -508,12 +520,12 @@ async function sendWeeklyReport() {
     await sendEmail({ to: recipients, subject, html });
 
     // Record last sent timestamp
-    const row = db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
+    const row = await db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
     if (row) {
       try {
         const cfg = JSON.parse(row.value);
         cfg.last_sent = new Date().toISOString();
-        db.prepare("UPDATE settings SET value = ? WHERE key = 'weekly_report_config'").run(JSON.stringify(cfg));
+        await db.prepare("UPDATE settings SET value = ? WHERE key = 'weekly_report_config'").run(JSON.stringify(cfg));
       } catch(_) {}
     }
 
@@ -521,7 +533,7 @@ async function sendWeeklyReport() {
     return { ok: true, recipients, subject };
   } catch (e) {
     console.error('[weekly-report] Error:', e.message);
-    return { ok: false, error: e.message };
+    return { ok: false, error: 'Weekly report generation or delivery failed. Check SMTP configuration and server logs.' };
   }
 }
 

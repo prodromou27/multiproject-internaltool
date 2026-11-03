@@ -46,13 +46,13 @@ const BASE_SELECT = `
 `;
 
 /* ── GET all ──────────────────────────────────────────────── */
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { project_id, engineer_id } = req.query;
   let q = BASE_SELECT + ' WHERE 1=1';
   const params = [];
 
-  if (req.user.role === 'engineer') {
-    // Engineers can only see their own scorecards
+  if (req.user.role !== 'manager') {
+    // Scorecards are performance evaluations: everyone but managers sees only their own
     q += ' AND sc.engineer_id = ?'; params.push(req.user.id);
   } else {
     if (engineer_id) { q += ' AND sc.engineer_id = ?';  params.push(engineer_id); }
@@ -60,7 +60,7 @@ router.get('/', requireAuth, (req, res) => {
   if (project_id) { q += ' AND sc.project_id = ?'; params.push(project_id); }
   q += ' ORDER BY sc.updated_at DESC';
 
-  const rows = db.prepare(q).all(...params).map(r => ({ ...r, rating: rating(r.adjusted_score) }));
+  const rows = (await db.prepare(q).all(...params)).map(r => ({ ...r, rating: rating(r.adjusted_score) }));
   res.json(rows);
 });
 
@@ -70,8 +70,8 @@ router.get('/', requireAuth, (req, res) => {
  *  unscored_engineers: [{id, name}] so the UI can filter the
  *  engineer dropdown on-the-fly.
  */
-router.get('/pending-projects', requireManager, (req, res) => {
-  const projects = db.prepare(`
+router.get('/pending-projects', requireManager, async (req, res) => {
+  const projects = (await db.prepare(`
     SELECT p.id, p.title, p.status,
       COUNT(DISTINCT pa.user_id)   AS total_engineers,
       COUNT(DISTINCT sc.engineer_id) AS scored_engineers
@@ -82,15 +82,15 @@ router.get('/pending-projects', requireManager, (req, res) => {
            ON sc.project_id = p.id AND sc.engineer_id = pa.user_id
     WHERE p.status IN ('closed','completed')
     GROUP BY p.id
-    HAVING total_engineers > scored_engineers
+    HAVING COUNT(DISTINCT pa.user_id) > COUNT(DISTINCT sc.engineer_id)
     ORDER BY p.title
-  `).all();
+  `).all());
 
   if (!projects.length) return res.json([]);
 
   // Batch fetch all unscored engineers in one query (fixes N+1)
   const ph = projects.map(() => '?').join(',');
-  const unscoredRows = db.prepare(`
+  const unscoredRows = (await db.prepare(`
     SELECT pa.project_id, u.id, u.name
     FROM project_assignments pa
     JOIN users u ON u.id = pa.user_id
@@ -101,7 +101,7 @@ router.get('/pending-projects', requireManager, (req, res) => {
         WHERE sc.project_id = pa.project_id AND sc.engineer_id = u.id
       )
     ORDER BY u.name
-  `).all(...projects.map(p => p.id));
+  `).all(...projects.map(p => p.id)));
 
   // Group by project_id
   const unscoredMap = {};
@@ -119,8 +119,8 @@ router.get('/pending-projects', requireManager, (req, res) => {
 });
 
 /* ── GET one ──────────────────────────────────────────────── */
-router.get('/:id', requireManager, (req, res) => {
-  const sc = db.prepare(BASE_SELECT + ' WHERE sc.id = ?').get(req.params.id);
+router.get('/:id', requireManager, async (req, res) => {
+  const sc = (await db.prepare(BASE_SELECT + ' WHERE sc.id = ?').get(req.params.id));
   if (!sc) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'engineer' && sc.engineer_id !== req.user.id)
     return res.status(403).json({ error: 'Forbidden' });
@@ -128,8 +128,8 @@ router.get('/:id', requireManager, (req, res) => {
 });
 
 /* ── GET engineer summary (manager only) ──────────────────── */
-router.get('/summary/engineers', requireManager, (req, res) => {
-  const rows = db.prepare(`
+router.get('/summary/engineers', requireManager, async (req, res) => {
+  const rows = (await db.prepare(`
     SELECT
       e.id, e.name, e.email,
       COUNT(sc.id)                       AS scorecard_count,
@@ -142,11 +142,21 @@ router.get('/summary/engineers', requireManager, (req, res) => {
     WHERE e.role = 'engineer' AND e.active = 1
     GROUP BY e.id
     ORDER BY avg_adjusted DESC NULLS LAST
-  `).all();
+  `).all());
   res.json(rows.map(r => ({ ...r, rating: r.avg_adjusted != null ? rating(r.avg_adjusted) : null })));
 });
 
 const RATING_FIELDS = ['timeline_rating','delivery_quality','communication_ownership','documentation_quality','customer_feedback'];
+
+// Difficulty is optional (defaults to 3) but, when given, must be a whole number 1–5.
+function parseDifficulty(value, fallback) {
+  if (value === undefined || value === null || value === '') return { value: fallback };
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 5) return { error: 'difficulty must be an integer between 1 and 5' };
+  return { value: n };
+}
+
+const positiveId = value => Number.isInteger(Number(value)) && Number(value) > 0;
 
 function validateRatings(body) {
   for (const f of RATING_FIELDS) {
@@ -158,7 +168,7 @@ function validateRatings(body) {
 }
 
 /* ── POST create (manager only) ───────────────────────────── */
-router.post('/', requireManager, (req, res) => {
+router.post('/', requireManager, async (req, res) => {
   const {
     project_id, engineer_id,
     timeline_rating, delivery_quality, communication_ownership,
@@ -166,17 +176,21 @@ router.post('/', requireManager, (req, res) => {
     difficulty, notes
   } = req.body;
 
+  if (!positiveId(project_id) || !positiveId(engineer_id))
+    return res.status(400).json({ error: 'project_id and engineer_id are required' });
   const validationErr = validateRatings(req.body);
   if (validationErr) return res.status(400).json({ error: validationErr });
+  const parsedDifficulty = parseDifficulty(difficulty, 3);
+  if (parsedDifficulty.error) return res.status(400).json({ error: parsedDifficulty.error });
 
   const dims = { timeline_rating: Number(timeline_rating), delivery_quality: Number(delivery_quality),
                  communication_ownership: Number(communication_ownership), documentation_quality: Number(documentation_quality),
                  customer_feedback: Number(customer_feedback) };
-  const diff = parseInt(difficulty) || 3;
+  const diff = parsedDifficulty.value;
   const { base_score, adjusted_score } = computeScores(dims, diff);
 
   try {
-    const result = db.prepare(`
+    const result = (await db.prepare(`
       INSERT INTO project_scorecards
         (project_id, engineer_id, evaluated_by,
          timeline_rating, delivery_quality, communication_ownership,
@@ -186,10 +200,10 @@ router.post('/', requireManager, (req, res) => {
     `).run(project_id, engineer_id, req.user.id,
            timeline_rating, delivery_quality, communication_ownership,
            documentation_quality, customer_feedback, diff,
-           base_score, adjusted_score, notes || null);
+           base_score, adjusted_score, notes || null));
     res.json({ id: result.lastInsertRowid, base_score, adjusted_score, rating: rating(adjusted_score) });
   } catch (e) {
-    if (e.message.includes('UNIQUE'))
+    if (e.code === '23505')
       return res.status(409).json({ error: 'A scorecard for this engineer on this project already exists. Edit the existing one.' });
     console.error('[scorecards POST]', e.message);
     res.status(500).json({ error: 'Failed to save scorecard' });
@@ -197,8 +211,8 @@ router.post('/', requireManager, (req, res) => {
 });
 
 /* ── PUT update (manager only) ────────────────────────────── */
-router.put('/:id', requireManager, (req, res) => {
-  const sc = db.prepare('SELECT * FROM project_scorecards WHERE id = ?').get(req.params.id);
+router.put('/:id', requireManager, async (req, res) => {
+  const sc = (await db.prepare('SELECT * FROM project_scorecards WHERE id = ?').get(req.params.id));
   if (!sc) return res.status(404).json({ error: 'Not found' });
 
   // Validate only the fields that were actually sent
@@ -217,33 +231,35 @@ router.put('/:id', requireManager, (req, res) => {
     documentation_quality:   Number(req.body.documentation_quality   ?? sc.documentation_quality),
     customer_feedback:       Number(req.body.customer_feedback       ?? sc.customer_feedback),
   };
-  const diff = parseInt(req.body.difficulty) ?? sc.difficulty;
+  const parsedDifficulty = parseDifficulty(req.body.difficulty, sc.difficulty);
+  if (parsedDifficulty.error) return res.status(400).json({ error: parsedDifficulty.error });
+  const diff = parsedDifficulty.value;
   const { base_score, adjusted_score } = computeScores(dims, diff);
 
-  db.prepare(`
+  (await db.prepare(`
     UPDATE project_scorecards SET
       timeline_rating=?, delivery_quality=?, communication_ownership=?,
       documentation_quality=?, customer_feedback=?, difficulty=?,
       base_score=?, adjusted_score=?, notes=?, evaluated_by=?,
-      updated_at=datetime('now')
+      updated_at=app_now()
     WHERE id=?
   `).run(dims.timeline_rating, dims.delivery_quality, dims.communication_ownership,
          dims.documentation_quality, dims.customer_feedback, diff,
-         base_score, adjusted_score, req.body.notes ?? sc.notes, req.user.id, sc.id);
+         base_score, adjusted_score, req.body.notes ?? sc.notes, req.user.id, sc.id));
 
   res.json({ ok: true, base_score, adjusted_score, rating: rating(adjusted_score) });
 });
 
 /* ── DELETE (manager only) ────────────────────────────────── */
-router.delete('/:id', requireManager, (req, res) => {
-  db.prepare('DELETE FROM project_scorecards WHERE id = ?').run(req.params.id);
+router.delete('/:id', requireManager, async (req, res) => {
+  (await db.prepare('DELETE FROM project_scorecards WHERE id = ?').run(req.params.id));
   res.json({ ok: true });
 });
 
 /* ── GET trend data — per-engineer scorecard history ─────── */
 // Single query instead of N+1 (was: 1 query for engineers list + N queries for cards)
-router.get('/trend/all', requireManager, (req, res) => {
-  const allCards = db.prepare(`
+router.get('/trend/all', requireManager, async (req, res) => {
+  const allCards = (await db.prepare(`
     SELECT sc.engineer_id, sc.adjusted_score, sc.base_score, sc.difficulty,
            sc.created_at, p.title AS project_title,
            e.name AS engineer_name, e.email AS engineer_email
@@ -251,7 +267,7 @@ router.get('/trend/all', requireManager, (req, res) => {
     JOIN projects p ON sc.project_id = p.id
     JOIN users e ON sc.engineer_id = e.id
     ORDER BY e.name ASC, sc.created_at ASC
-  `).all();
+  `).all());
 
   // Group by engineer in application code
   const engineerMap = new Map();

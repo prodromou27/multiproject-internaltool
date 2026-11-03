@@ -1,0 +1,33 @@
+# Network share for TeamHub's off-server backup copies (Settings → Backups → Network share).
+#
+# Copy this to docker-compose.override.yml in the project folder (or merge it into
+# the one you have); deploy/deploy.sh picks that file up. Choose ONE of the options
+# below, fill in your NAS details, then in TeamHub set the folder to /mnt/backup-share.
+#
+# The app runs as the non-root user "app". Find its user and group IDs for the
+# uid/gid options with:   docker compose exec app id
+# Keep share credentials in .env (e.g. BACKUP_SHARE_PASSWORD=…), not in this file.
+
+services:
+  app:
+    volumes:
+      - backup-share:/mnt/backup-share
+      # Option C instead of a volume: a folder the host already mounts (fstab):
+      # - /srv/teamhub-backup-share:/mnt/backup-share
+
+volumes:
+  # Option A: SMB / CIFS (Windows file server, Synology, QNAP…)
+  backup-share:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "//nas.example.local/teamhub-backups"
+      o: "username=teamhub,password=${BACKUP_SHARE_PASSWORD},vers=3.0,uid=100,gid=101,file_mode=0600,dir_mode=0700"
+
+  # Option B: NFS (replace the volume above with this one)
+  # backup-share:
+  #   driver: local
+  #   driver_opts:
+  #     type: nfs
+  #     o: "addr=nas.example.local,rw,nfsvers=4"
+  #     device: ":/volume1/teamhub-backups"

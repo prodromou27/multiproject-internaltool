@@ -1,52 +1,117 @@
+const { ownTasksSql, ownTasksParams, worksOnTask, canReadTask, mentionedUsers } = require('../taskAccess');
 const router  = require('express').Router();
+const appTime = require('../appTime');
 const db      = require('../db');
 const ExcelJS = require('exceljs');
+const { taskFilters, taskPagination } = require('../taskFilters');
 const { requireAuth, requireManager, requireDownloadAuth } = require('../middleware/auth');
 const { notify } = require('../notifications');
+const { canAccessCustomer } = require('../customerAccess');
+const { decrypt } = require('../fieldCipher');
+const { safeCell } = require('../xlsxSafety');
+const subtasks = require('../taskSubtasks');
+const taskTickets = require('../taskTickets');
+const taskEngineers = require('../taskEngineers');
+const taskFiles = require('../taskFiles');
+const permanentDelete = require('../permanentDelete');
+
+// A task shows its own customer or its project's. Names are stored encrypted.
+async function withCustomerNames(rows) {
+  const ids = [...new Set(rows.map(row => row.customer_id).filter(Boolean).map(Number))];
+  if (!ids.length) return rows.map(row => ({ ...row, customer_name: null }));
+  const names = new Map((await db.prepare(`SELECT id, name FROM customers WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids))
+    .map(row => [Number(row.id), decrypt(row.name)]));
+  return rows.map(row => ({ ...row, customer_name: row.customer_id ? names.get(Number(row.customer_id)) || null : null }));
+}
+
+// A task given to a team (nobody yet): one post to the team's Webex space, or the shared one.
+async function postTeamTask(teamId, { title, deadline, priority, customerId, projectTitle }) {
+  const team = await db.prepare('SELECT name FROM teams WHERE id = ?').get(teamId);
+  const customer = customerId ? await db.prepare('SELECT name FROM customers WHERE id = ?').get(customerId) : null;
+  require('../notifications').notifyTeam(teamId, 'task_assigned', {
+    title: `🧩 New team task: ${title}`,
+    body: `A task for **${team?.name || 'the team'}**. Whoever starts it takes it.`,
+    facts: [{ name: 'Team', value: team?.name }, { name: 'Customer', value: customer ? decrypt(customer.name) : null }, { name: 'Project', value: projectTitle },
+      { name: 'Due', value: deadline || null }, { name: 'Priority', value: priority || 'medium' }].filter(fact => fact.value),
+    link: '/tasks',
+  });
+}
+
+// Tells engineers a task is now theirs (as its assignee or as another engineer on it).
+async function notifyAssigned(userIds, task) {
+  if (!userIds.length) return;
+  const people = await db.prepare(`SELECT id, name, email FROM users WHERE id IN (${userIds.map(() => '?').join(',')})`).all(...userIds);
+  const project = task.project_id ? await db.prepare('SELECT title FROM projects WHERE id = ?').get(task.project_id) : null;
+  for (const engineer of people) {
+    notify('task.assigned', { engineer_id: engineer.id, engineer_name: engineer.name, engineer_email: engineer.email,
+      task_title: task.title, project_title: project?.title || null, deadline: task.deadline || null, priority: task.priority || 'medium', is_adhoc: !!task.is_adhoc });
+  }
+}
 
 /* ── helper: log activity into a project ──────────────────── */
-function logActivity(project_id, user_id, action, detail) {
+async function logActivity(project_id, user_id, action, detail) {
   if (!project_id) return;
   try {
-    db.prepare(`INSERT INTO project_activity (project_id, user_id, action, detail) VALUES (?, ?, ?, ?)`)
-      .run(project_id, user_id, action, detail || null);
+    (await db.prepare(`INSERT INTO project_activity (project_id, user_id, action, detail) VALUES (?, ?, ?, ?)`)
+      .run(project_id, user_id, action, detail || null));
   } catch (_) { /* non-fatal */ }
 }
 
-router.get('/', requireAuth, (req, res) => {
-  const { project_id, assigned_to, adhoc } = req.query;
-  let q = `SELECT t.*, u.name as assigned_to_name, c.name as created_by_name,
-    COALESCE((SELECT ROUND(SUM(hours),1) FROM time_logs WHERE task_id = t.id),0) as logged_hours
-    FROM tasks t
-    LEFT JOIN users u ON t.assigned_to = u.id
-    JOIN users c ON t.created_by = c.id WHERE 1=1`;
-  const params = [];
+async function attachTaskHours(rows) {
+  if (!rows.length) return rows;
+  const totals = await db.prepare(`SELECT task_id,SUM(hours) AS hours FROM time_logs
+    WHERE task_id IN (${rows.map(() => '?').join(',')}) GROUP BY task_id`).all(...rows.map(row => row.id));
+  const hours = new Map(totals.map(row => [row.task_id, Math.round(Number(row.hours) * 10) / 10]));
+  return rows.map(row => ({ ...row, logged_hours: hours.get(row.id) || 0 }));
+}
 
-  if (req.user.role === 'planner' || req.user.role === 'pm') {
-    // Planners and PMs have no task visibility — return empty list
-    return res.json([]);
-  } else if (req.user.role === 'engineer') {
-    q += ' AND t.assigned_to = ?'; params.push(req.user.id);
-  } else {
-    // manager — unrestricted
-    if (assigned_to) { q += ' AND t.assigned_to = ?'; params.push(assigned_to); }
+router.get('/', requireAuth, async (req, res) => {
+  const filters = taskFilters(req.query, req.user);
+  if (filters.error) return res.status(400).json({ error: filters.error });
+  const pagination = taskPagination(req.query);
+  if (pagination?.error) return res.status(400).json({ error: pagination.error });
+  if (!['manager', 'engineer'].includes(req.user.role)) return res.json(pagination ? { rows: [], total: 0, counts: {}, page: pagination.page, page_size: pagination.page_size } : []);
+  let q = `SELECT t.*, COALESCE(t.customer_id,p.customer_id) AS customer_id,
+    u.name as assigned_to_name, c.name as created_by_name, p.title as project_title, tm.name as team_name FROM tasks t
+    LEFT JOIN projects p ON p.id=t.project_id
+    LEFT JOIN users u ON t.assigned_to=u.id JOIN users c ON t.created_by=c.id
+    LEFT JOIN teams tm ON tm.id=t.team_id
+    WHERE ${filters.where} ORDER BY ${filters.order}`;
+  const params = [...filters.params];
+  let counts;
+  if (pagination) {
+    const base = taskFilters({ ...req.query, filter: 'all' }, req.user);
+    const asOf = filters.as_of;
+    const end = new Date(`${asOf}T00:00:00Z`);
+    end.setUTCDate(end.getUTCDate() + 6);
+    const raw = await db.prepare(`SELECT COUNT(*) AS "all",
+      SUM(CASE WHEN t.status IN ('open','in_progress','waiting_customer','waiting_vendor') THEN 1 ELSE 0 END) AS open,
+      SUM(CASE WHEN t.status IN ('completed','closed') THEN 1 ELSE 0 END) AS done,
+      SUM(CASE WHEN t.is_adhoc=1 THEN 1 ELSE 0 END) AS adhoc,
+      SUM(CASE WHEN t.status IN ('waiting_customer','waiting_vendor') THEN 1 ELSE 0 END) AS waiting_customer,
+      SUM(CASE WHEN t.status='pending_approval' THEN 1 ELSE 0 END) AS pending_approval,
+      SUM(CASE WHEN t.status NOT IN ('completed','closed','cancelled') AND t.deadline<? THEN 1 ELSE 0 END) AS overdue,
+      SUM(CASE WHEN t.status NOT IN ('completed','closed','cancelled') AND t.deadline=? THEN 1 ELSE 0 END) AS due_today,
+      SUM(CASE WHEN t.status NOT IN ('completed','closed','cancelled') AND t.deadline BETWEEN ? AND ? THEN 1 ELSE 0 END) AS due_week
+      FROM tasks t LEFT JOIN projects p ON p.id=t.project_id LEFT JOIN users u ON u.id=t.assigned_to
+      WHERE ${base.where}`).get(asOf, asOf, asOf, end.toISOString().slice(0, 10), ...base.params);
+    counts = Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, Number(value || 0)]));
+    q += ' LIMIT ? OFFSET ?';
+    params.push(pagination.page_size, pagination.offset);
   }
-  if (project_id) { q += ' AND t.project_id = ?'; params.push(project_id); }
-  if (adhoc === '1') { q += ' AND t.is_adhoc = 1'; }
-  q += ' ORDER BY t.created_at DESC';
 
-  let rows = db.prepare(q).all(...params);
+  let rows = await withCustomerNames(await attachTaskHours(await db.prepare(q).all(...params)));
 
   // Augment with is_blocked (has unfinished dependencies)
-  if (rows.length && project_id) {
+  if (rows.length) {
     const ids = rows.map(t => t.id);
     const placeholders = ids.map(() => '?').join(',');
-    const deps = db.prepare(`
+    const deps = (await db.prepare(`
       SELECT td.task_id, t.status as dep_status
       FROM task_dependencies td
       JOIN tasks t ON td.depends_on_id = t.id
       WHERE td.task_id IN (${placeholders})
-    `).all(...ids);
+    `).all(...ids));
     const depsMap = {};
     deps.forEach(d => {
       if (!depsMap[d.task_id]) depsMap[d.task_id] = [];
@@ -59,64 +124,178 @@ router.get('/', requireAuth, (req, res) => {
     }));
   }
 
-  res.json(rows);
+  rows = await taskEngineers.withEngineers(await subtasks.withLastUpdates(await taskTickets.withTickets(await subtasks.withSubtaskCounts(rows))));
+  res.json(pagination ? { rows, total: counts[req.query.filter || 'all'], counts, page: pagination.page, page_size: pagination.page_size } : rows);
 });
 
 const VALID_TASK_STATUSES = new Set(['open','in_progress','waiting_customer','waiting_vendor','completed','pending_approval','cancelled','closed']);
 const VALID_PRIORITIES    = new Set(['low','medium','high','critical']);
 
-router.post('/', requireAuth, (req, res) => {
+function validateTaskInput(body, creating = false) {
+  if (creating || body.title !== undefined) {
+    if (typeof body.title !== 'string' || !body.title.trim()) return 'Title required';
+    if (body.title.trim().length > 500) return 'Title cannot exceed 500 characters';
+  }
+  for (const [field, max] of [['description', 10000], ['pending_from_customer', 10000]]) {
+    if (body[field] != null && (typeof body[field] !== 'string' || body[field].length > max))
+      return `${field} must be text of at most ${max} characters`;
+  }
+  if (body.priority !== undefined && !VALID_PRIORITIES.has(body.priority)) return 'Invalid priority value';
+  if (body.status !== undefined && !VALID_TASK_STATUSES.has(body.status)) return 'Invalid status value';
+  if (body.deadline != null && body.deadline !== '') {
+    if (typeof body.deadline !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.deadline)
+      || Number.isNaN(Date.parse(body.deadline)) || new Date(body.deadline).toISOString().slice(0, 10) !== body.deadline)
+      return 'Deadline must be a valid YYYY-MM-DD date';
+  }
+  for (const field of ['project_id', 'customer_id', 'assigned_to', 'team_id', 'asset_id']) {
+    if (body[field] != null && body[field] !== '' && (!Number.isSafeInteger(Number(body[field])) || Number(body[field]) < 1))
+      return `${field} must be a positive integer`;
+  }
+  return null;
+}
+
+async function validateTaskRelationships(projectId, assigneeId) {
+  if (projectId && !await db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return 'Project not found';
+  if (assigneeId) {
+    // Engineers, or a manager who takes the work on themselves.
+    const user = await db.prepare('SELECT role, active FROM users WHERE id = ?').get(assigneeId);
+    if (!user || !user.active || !['engineer', 'manager'].includes(user.role)) return 'Assign tasks to an active engineer or manager';
+  }
+  return null;
+}
+
+// The open subtasks someone owns, across tasks (My Work), soonest due first.
+router.get('/my-subtasks', requireAuth, async (req, res) => {
+  const rows = await db.prepare(`SELECT s.id, s.title, s.due_date, s.task_id, t.title AS task_title, t.status AS task_status, COALESCE(t.customer_id, p.customer_id) AS customer_id
+    FROM task_subtasks s JOIN tasks t ON t.id = s.task_id LEFT JOIN projects p ON p.id = t.project_id
+    WHERE s.assigned_to = ? AND s.done = 0 AND t.status NOT IN ('completed','closed','cancelled')
+    ORDER BY CASE WHEN s.due_date IS NULL THEN 1 ELSE 0 END, s.due_date, s.id LIMIT 100`).all(req.user.id);
+  res.json(await withCustomerNames(rows));
+});
+
+router.post('/', requireAuth, async (req, res) => {
   if (req.user.role === 'pm' || req.user.role === 'planner') return res.status(403).json({ error: 'Forbidden' });
+  const inputError = validateTaskInput(req.body, true);
+  if (inputError) return res.status(400).json({ error: inputError });
   const { project_id, title, description, priority, deadline, is_adhoc } = req.body;
   let { assigned_to } = req.body;
+  // A project's task takes the project's customer; otherwise it may belong to a customer directly.
+  const customerId = !project_id && req.body.customer_id ? Number(req.body.customer_id) : null;
   if (!title?.trim()) return res.status(400).json({ error: 'Title required' });
   if (title.trim().length > 500) return res.status(400).json({ error: 'Title cannot exceed 500 characters' });
   if (description && description.length > 10000) return res.status(400).json({ error: 'Description cannot exceed 10000 characters' });
   if (priority && !VALID_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
-  if (req.user.role === 'engineer' && !project_id) return res.status(400).json({ error: 'Engineers must link a project' });
+  if (req.user.role === 'engineer' && !project_id && !customerId) return res.status(400).json({ error: 'Choose the project or customer this task is for' });
+  if (customerId && !await db.prepare('SELECT 1 FROM customers WHERE id = ?').get(customerId)) return res.status(400).json({ error: 'Customer not found' });
+  // A customer task may be about one of the customer's assets (e.g. an upgrade found in an asset review).
+  const assetId = customerId && req.body.asset_id ? Number(req.body.asset_id) : null;
+  if (assetId && !await db.prepare('SELECT 1 FROM customer_assets WHERE id = ? AND customer_id = ?').get(assetId, customerId)) return res.status(400).json({ error: 'The asset must belong to this customer' });
 
-  // Engineers may only create tasks on projects they are assigned to,
-  // and always self-assign regardless of what was passed.
-  if (req.user.role === 'engineer') {
-    const member = db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(project_id, req.user.id);
-    if (!member) return res.status(403).json({ error: 'You can only add tasks to projects you are assigned to' });
-    assigned_to = req.user.id;
+  // A task may be given to a team instead of a person: anyone in the team takes it
+  // by starting or completing it (taskAccess.js). Engineers may give one only to
+  // a team they are in; managers to any team.
+  const teamId = !assigned_to && req.body.team_id ? Number(req.body.team_id) : null;
+  if (teamId) {
+    if (!await db.prepare('SELECT 1 FROM teams WHERE id = ?').get(teamId)) return res.status(400).json({ error: 'Team not found' });
+    if (req.user.role === 'engineer' && !await db.prepare('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?').get(teamId, req.user.id))
+      return res.status(403).json({ error: 'You can only give tasks to a team you are in' });
   }
 
-  const result = db.prepare(`INSERT INTO tasks (project_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(project_id || null, title, description, priority || 'medium', deadline || null, assigned_to || null, req.user.id, is_adhoc ? 1 : 0);
+  // Engineers may only create tasks on projects they are assigned to, or for
+  // customers they work with, and take the task themselves unless they give it to their team.
+  if (req.user.role === 'engineer') {
+    if (project_id) {
+      const member = (await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(project_id, req.user.id));
+      if (!member) return res.status(403).json({ error: 'You can only add tasks to projects you are assigned to' });
+    } else if (!await canAccessCustomer(req.user, customerId)) {
+      return res.status(403).json({ error: 'You can only add tasks for customers you work with' });
+    }
+    assigned_to = teamId ? null : req.user.id;
+  }
+
+  const relationshipError = await validateTaskRelationships(project_id, assigned_to);
+  if (relationshipError) return res.status(400).json({ error: relationshipError });
+  const others = await taskEngineers.checkEngineerIds(req.body.engineer_ids, assigned_to);
+  if (others.error) return res.status(400).json({ error: others.error });
+  const projectCustomer = project_id ? (await db.prepare('SELECT customer_id FROM projects WHERE id = ?').get(project_id))?.customer_id : null;
+  const newSubtasks = await subtasks.checkNewSubtasks(req.body.subtasks, customerId || projectCustomer);
+  if (newSubtasks.error) return res.status(400).json({ error: newSubtasks.error });
+  const ticketReference = taskTickets.checkReference(req.body.ticket_reference);
+  if (ticketReference.error) return res.status(400).json({ error: ticketReference.error });
+
+  const result = (await db.prepare(`INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, team_id, asset_id, ticket_reference, created_by, is_adhoc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(project_id || null, customerId, title.trim(), description, priority || 'medium', deadline || null, assigned_to || null, teamId, assetId, ticketReference.value ?? null, req.user.id, is_adhoc ? 1 : 0));
 
   // Log activity
   const taskId = result.lastInsertRowid;
+  const addedEngineers = others.value?.length ? await taskEngineers.setEngineers(db, taskId, others.value) : [];
+  if (newSubtasks.value.length) {
+    await subtasks.insertSubtasks(db, taskId, newSubtasks.value, req.user.id);
+    await subtasks.notifyOwners({ id: taskId, title: title.trim(), customer_id: customerId || projectCustomer || null }, newSubtasks.value, req.user);
+  }
   logActivity(project_id, req.user.id, 'task_created', title);
 
-  // Notify if engineer is assigned
-  if (assigned_to) {
-    const engineer = db.prepare('SELECT name, email FROM users WHERE id = ?').get(assigned_to);
-    const project  = project_id ? db.prepare('SELECT title FROM projects WHERE id = ?').get(project_id) : null;
-    if (engineer) {
-      notify('task.assigned', {
-        engineer_id:    assigned_to,
-        engineer_name:  engineer.name,
-        engineer_email: engineer.email,
-        task_title:     title,
-        project_title:  project?.title || null,
-        deadline:       deadline || null,
-        priority:       priority || 'medium',
-        is_adhoc:       !!is_adhoc,
-      });
-    }
+  // Notify the engineer it is assigned to, or the team's engineers (except whoever added it).
+  const people = assigned_to ? await db.prepare('SELECT id, name, email FROM users WHERE id = ?').all(assigned_to)
+    : teamId ? (await db.prepare("SELECT u.id, u.name, u.email FROM users u JOIN team_members tm ON tm.user_id = u.id WHERE tm.team_id = ? AND u.active = 1 AND u.role = 'engineer'").all(teamId))
+      .filter(person => Number(person.id) !== Number(req.user.id)) : [];
+  const project = people.length && project_id ? (await db.prepare('SELECT title FROM projects WHERE id = ?').get(project_id)) : null;
+  for (const engineer of people) {
+    notify('task.assigned', {
+      engineer_id:    engineer.id,
+      engineer_name:  engineer.name,
+      engineer_email: engineer.email,
+      task_title:     title,
+      project_title:  project?.title || null,
+      deadline:       deadline || null,
+      priority:       priority || 'medium',
+      is_adhoc:       !!is_adhoc,
+      // A team task is posted once, to the team's space (below), not once per member.
+      ...(teamId ? { shared: false } : {}),
+    });
   }
+  if (teamId) await postTeamTask(teamId, { title: title.trim(), deadline, priority, customerId: customerId || projectCustomer, projectTitle: project?.title || null });
+  await notifyAssigned(addedEngineers.filter(id => id !== Number(req.user.id)), { project_id, title, deadline, priority, is_adhoc });
 
   res.json({ id: taskId });
 });
 
-router.put('/:id', requireAuth, (req, res) => {
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+// Completed tasks remember when (on-time reporting); reopening clears it.
+async function stampCompletion(ids) {
+  if (!ids.length) return;
+  await db.prepare(`UPDATE tasks SET completed_at = CASE WHEN status IN ('completed','closed') THEN COALESCE(completed_at, app_now()) ELSE NULL END
+    WHERE id IN (${ids.map(() => '?').join(',')})`).run(...ids);
+}
+
+const CHANGED_MEANWHILE = 'Someone else changed this task; reload and try again';
+
+router.put('/:id', requireAuth, async (req, res) => {
+  const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
   if (!task) return res.status(404).json({ error: 'Not found' });
+  if (req.user.role !== 'manager' && (req.user.role !== 'engineer' || !await worksOnTask(req.user, task)))
+    return res.status(403).json({ error: 'Forbidden' });
+  const inputError = validateTaskInput(req.body);
+  const ticketReference = taskTickets.checkReference(req.body.ticket_reference);
+  if (ticketReference.error) return res.status(400).json({ error: ticketReference.error });
+  const nextTicket = ticketReference.value === undefined ? task.ticket_reference : ticketReference.value;
+  if (req.body.status && req.body.status !== task.status && subtasks.CLOSING.has(req.body.status)) {
+    const open = (await subtasks.withOpenSubtasks([task.id])).get(Number(task.id));
+    if (open) return res.status(409).json({ error: subtasks.closingBlocked(open), code: 'OPEN_SUBTASKS', open_subtasks: open });
+  }
+  if (inputError) return res.status(400).json({ error: inputError });
+  const leadAfter = req.user.role === 'manager' && req.body.assigned_to !== undefined ? (req.body.assigned_to || null) : task.assigned_to;
+  const others = await taskEngineers.checkEngineerIds(req.body.engineer_ids, leadAfter);
+  if (others.error) return res.status(400).json({ error: others.error });
+  // The other engineers, after the task itself is saved; the newly added are told.
+  const saveEngineers = async () => {
+    if (others.value !== undefined) {
+      const added = await taskEngineers.setEngineers(db, task.id, others.value);
+      await notifyAssigned(added.filter(id => id !== Number(req.user.id)), { ...task, title: req.body.title?.trim() || task.title });
+    }
+    await taskEngineers.dropLead(db, task.id, leadAfter);
+  };
 
   if (req.user.role === 'engineer') {
-    if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
     const { status, pending_from_customer, title, description, priority, deadline } = req.body;
     if (status && !VALID_TASK_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status value' });
     if (priority && !VALID_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
@@ -127,11 +306,13 @@ router.put('/:id', requireAuth, (req, res) => {
     } else if (newStatus !== task.status) {
       newPfc = null;
     }
-    db.prepare(`UPDATE tasks SET
+    // Only if the assignee and status are still what was checked above: a task
+    // claimed or reassigned meanwhile is not silently taken back (409).
+    const updated = (await db.prepare(`UPDATE tasks SET
       title=COALESCE(?,title), description=COALESCE(?,description),
       priority=COALESCE(?,priority), deadline=?,
-      status=COALESCE(?,status), pending_from_customer=?,
-      updated_at=datetime('now') WHERE id=?`)
+      status=COALESCE(?,status), pending_from_customer=?, assigned_to=?, ticket_reference=?,
+      updated_at=app_now() WHERE id=? AND COALESCE(assigned_to,0)=? AND status=?`)
       .run(
         title?.trim() || null,
         description !== undefined ? description : null,
@@ -139,10 +320,16 @@ router.put('/:id', requireAuth, (req, res) => {
         deadline !== undefined ? (deadline || null) : task.deadline,
         status || null,
         newPfc,
-        task.id
-      );
+        // A team task becomes yours when you change its status (records who did it).
+        task.assigned_to ?? (status && status !== task.status ? req.user.id : null),
+        nextTicket,
+        task.id, Number(task.assigned_to) || 0, task.status
+      ));
+    if (!updated.changes) return res.status(409).json({ error: CHANGED_MEANWHILE });
+    await saveEngineers();
     if (status && task.status !== status) {
       logActivity(task.project_id, req.user.id, 'task_status', `"${title || task.title}" → ${status}`);
+      await stampCompletion([task.id]);
     }
     return res.json({ ok: true });
   }
@@ -156,6 +343,11 @@ router.put('/:id', requireAuth, (req, res) => {
   }
 
   const { title, description, priority, deadline, assigned_to, status, is_adhoc, pending_from_customer } = req.body;
+  const nextAssignee = assigned_to === undefined ? task.assigned_to : (assigned_to || null);
+  if (assigned_to !== undefined && nextAssignee !== task.assigned_to) {
+    const relationshipError = await validateTaskRelationships(null, nextAssignee);
+    if (relationshipError) return res.status(400).json({ error: relationshipError });
+  }
 
   // Validate enum fields for non-engineer callers
   if (status    && !VALID_TASK_STATUSES.has(status))    return res.status(400).json({ error: 'Invalid status value' });
@@ -171,22 +363,25 @@ router.put('/:id', requireAuth, (req, res) => {
     newPfc = pending_from_customer !== undefined ? pending_from_customer : task.pending_from_customer;
   }
 
-  db.prepare(`UPDATE tasks SET title=COALESCE(?,title), description=COALESCE(?,description),
-    priority=COALESCE(?,priority), deadline=?, assigned_to=COALESCE(?,assigned_to),
+  const updated = (await db.prepare(`UPDATE tasks SET title=COALESCE(?,title), description=COALESCE(?,description),
+    priority=COALESCE(?,priority), deadline=?, assigned_to=?,
     status=COALESCE(?,status), is_adhoc=COALESCE(?,is_adhoc),
-    pending_from_customer=?, updated_at=datetime('now') WHERE id=?`)
-    .run(title, description, priority, deadline ?? task.deadline, assigned_to, status,
-         is_adhoc != null ? (is_adhoc ? 1 : 0) : null, newPfc, task.id);
+    pending_from_customer=?, ticket_reference=?, updated_at=app_now() WHERE id=? AND COALESCE(assigned_to,0)=? AND status=?`)
+    .run(title?.trim(), description, priority, deadline === undefined ? task.deadline : (deadline || null), nextAssignee, status,
+         is_adhoc != null ? (is_adhoc ? 1 : 0) : null, newPfc, nextTicket, task.id, Number(task.assigned_to) || 0, task.status));
+  if (!updated.changes) return res.status(409).json({ error: CHANGED_MEANWHILE });
+  await saveEngineers();
 
   // Log status change
   if (status && status !== task.status) {
+    await stampCompletion([task.id]);
     logActivity(task.project_id, req.user.id, 'task_status', `"${title || task.title}" → ${status}`);
   }
 
   // Notify if engineer assignment changed
   if (assigned_to != null && assigned_to !== task.assigned_to && assigned_to) {
-    const engineer = db.prepare('SELECT name, email FROM users WHERE id = ?').get(assigned_to);
-    const project  = task.project_id ? db.prepare('SELECT title FROM projects WHERE id = ?').get(task.project_id) : null;
+    const engineer = (await db.prepare('SELECT name, email FROM users WHERE id = ?').get(assigned_to));
+    const project  = task.project_id ? (await db.prepare('SELECT title FROM projects WHERE id = ?').get(task.project_id)) : null;
     if (engineer) {
       notify('task.assigned', {
         engineer_id:    assigned_to,
@@ -205,44 +400,90 @@ router.put('/:id', requireAuth, (req, res) => {
 });
 
 /* ── Bulk operations ──────────────────────────────────────── */
-router.post('/bulk', requireAuth, (req, res) => {
+router.post('/bulk', requireAuth, async (req, res) => {
+  if (req.user.role !== 'manager' && req.user.role !== 'engineer') return res.status(403).json({ error: 'Forbidden' });
   if (req.user.role === 'planner' || req.user.role === 'pm')
     return res.status(403).json({ error: 'Forbidden' });
-  const { ids, action, status } = req.body;
+  const { ids, action, status, pending_from_customer } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'No task IDs provided' });
   if (ids.length > 500) return res.status(400).json({ error: 'Maximum 500 IDs per bulk operation' });
   // Validate all IDs are positive integers
-  if (!ids.every(id => Number.isInteger(id) && id > 0)) return res.status(400).json({ error: 'All IDs must be positive integers' });
+  if (!ids.every(id => Number.isSafeInteger(id) && id > 0)) return res.status(400).json({ error: 'All IDs must be positive integers' });
 
   if (action === 'delete') {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
-    const del = db.prepare('DELETE FROM tasks WHERE id = ?');
-    const run = db.transaction(() => ids.forEach(id => del.run(id)));
-    run();
+    // For good, with their updates, subtasks, files and time logged on them.
+    const files = await db.transaction(async tx => {
+      const found = await tx.prepare(`SELECT id, title FROM tasks WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+      for (const task of found) await require('../auditLog').logAudit(tx, req, 'task', task.id, task.title, 'task_deleted', 'bulk');
+      return permanentDelete.deleteTasks(tx, found.map(task => task.id));
+    });
+    await permanentDelete.removeFiles(files);
     return res.json({ ok: true, affected: ids.length });
   }
 
   if (action === 'status') {
     if (!status) return res.status(400).json({ error: 'Status required' });
     if (!VALID_TASK_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status value' });
-    const upd = db.prepare(`UPDATE tasks SET status=?, updated_at=datetime('now') WHERE id=?`);
-    // engineers can only update their own tasks
-    const tasks = db.prepare(`SELECT id, assigned_to, project_id FROM tasks WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
-    let allowed_ids;
-    if (req.user.role === 'manager') {
-      allowed_ids = tasks.map(t => t.id);
-    } else if (req.user.role === 'engineer') {
-      allowed_ids = tasks.filter(t => t.assigned_to === req.user.id).map(t => t.id);
-    } else {
-      // planner/pm: tasks in their assigned projects or assigned to them
-      const myProjects = new Set(
-        db.prepare('SELECT project_id FROM project_assignments WHERE user_id = ?').all(req.user.id).map(r => r.project_id)
-      );
-      allowed_ids = tasks.filter(t => t.assigned_to === req.user.id || myProjects.has(t.project_id)).map(t => t.id);
+    const waiting = ['waiting_customer', 'waiting_vendor'].includes(status);
+    if (pending_from_customer !== undefined && (typeof pending_from_customer !== 'string' || pending_from_customer.length > 10000 || waiting && !pending_from_customer.trim())) {
+      return res.status(400).json({ error: 'pending_from_customer must be non-empty text of at most 10000 characters for waiting statuses' });
     }
-    const run = db.transaction(() => allowed_ids.forEach(id => upd.run(status, id)));
-    run();
-    return res.json({ ok: true, affected: allowed_ids.length });
+    const requested = [...new Set(ids)];
+    const blocked = subtasks.CLOSING.has(status) ? await subtasks.withOpenSubtasks(requested) : new Map();
+    const uniqueIds = requested.filter(id => !blocked.has(id));
+    if (!uniqueIds.length) return res.status(409).json({ error: `${blocked.size === 1 ? 'This task has' : 'These tasks have'} open subtasks; finish them first`, code: 'OPEN_SUBTASKS', blocked: blocked.size });
+    const owned = req.user.role === 'engineer' ? ` AND ${ownTasksSql()}` : '';
+    const result = await db.prepare(`UPDATE tasks SET status=?,${owned ? ' assigned_to=COALESCE(assigned_to,?),' : ''}
+      pending_from_customer=CASE WHEN ? IN ('waiting_customer','waiting_vendor') THEN COALESCE(?,pending_from_customer) ELSE NULL END,
+      updated_at=app_now() WHERE id IN (${uniqueIds.map(() => '?').join(',')})${owned}`)
+      .run(status, ...(owned ? [req.user.id] : []), status, pending_from_customer === undefined ? null : pending_from_customer.trim(), ...uniqueIds, ...(owned ? ownTasksParams(req.user.id) : []));
+    await stampCompletion(uniqueIds);
+    return res.json({ ok: true, affected: result.changes, blocked: blocked.size });
+  }
+
+  if (action === 'priority') {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
+    const { priority } = req.body;
+    if (!VALID_PRIORITIES.has(priority)) return res.status(400).json({ error: 'Invalid priority value' });
+    const uniqueIds = [...new Set(ids)];
+    const result = await db.prepare(`UPDATE tasks SET priority=?, updated_at=app_now() WHERE id IN (${uniqueIds.map(() => '?').join(',')})`)
+      .run(priority, ...uniqueIds);
+    return res.json({ ok: true, affected: result.changes });
+  }
+
+  if (action === 'assign') {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Managers only' });
+    const { assigned_to, team_id } = req.body;
+    if (assigned_to && team_id) return res.status(400).json({ error: 'Choose either a person or a team, not both' });
+    const uniqueIds = [...new Set(ids)];
+    const placeholders = uniqueIds.map(() => '?').join(',');
+
+    if (assigned_to) {
+      if (!Number.isSafeInteger(assigned_to) || assigned_to <= 0) return res.status(400).json({ error: 'Invalid assigned_to' });
+      const engineer = await db.prepare("SELECT id, name, email FROM users WHERE id=? AND role='engineer' AND active=1").get(assigned_to);
+      if (!engineer) return res.status(400).json({ error: 'assigned_to must be an active engineer' });
+      const tasksToNotify = await db.prepare(`SELECT id, title, deadline, priority FROM tasks WHERE id IN (${placeholders})`).all(...uniqueIds);
+      const result = await db.prepare(`UPDATE tasks SET assigned_to=?, team_id=NULL, updated_at=app_now() WHERE id IN (${placeholders})`).run(assigned_to, ...uniqueIds);
+      for (const t of tasksToNotify) {
+        notify('task.assigned', {
+          engineer_id: engineer.id, engineer_name: engineer.name, engineer_email: engineer.email,
+          task_title: t.title, deadline: t.deadline, priority: t.priority, is_adhoc: false,
+        });
+      }
+      return res.json({ ok: true, affected: result.changes });
+    }
+
+    if (team_id) {
+      if (!Number.isSafeInteger(team_id) || team_id <= 0) return res.status(400).json({ error: 'Invalid team_id' });
+      if (!await db.prepare('SELECT 1 FROM teams WHERE id=?').get(team_id)) return res.status(400).json({ error: 'Team not found' });
+      const result = await db.prepare(`UPDATE tasks SET assigned_to=NULL, team_id=?, updated_at=app_now() WHERE id IN (${placeholders})`).run(team_id, ...uniqueIds);
+      return res.json({ ok: true, affected: result.changes });
+    }
+
+    // Neither given: unassign entirely (no person, no team).
+    const result = await db.prepare(`UPDATE tasks SET assigned_to=NULL, team_id=NULL, updated_at=app_now() WHERE id IN (${placeholders})`).run(...uniqueIds);
+    return res.json({ ok: true, affected: result.changes });
   }
 
   res.status(400).json({ error: 'Unknown action' });
@@ -252,34 +493,18 @@ router.post('/bulk', requireAuth, (req, res) => {
 router.get('/export', requireDownloadAuth, async (req, res) => {
   if (req.user.role === 'planner' || req.user.role === 'pm')
     return res.status(403).json({ error: 'Forbidden' });
-  const { filter } = req.query;
-  let q = `SELECT t.title, t.status, t.priority, t.deadline, t.is_adhoc,
-    u.name as assigned_to, c.name as created_by,
-    p.title as project,
-    COALESCE((SELECT ROUND(SUM(hours),1) FROM time_logs WHERE task_id = t.id),0) as logged_hours
-    FROM tasks t
-    LEFT JOIN users u ON t.assigned_to = u.id
-    JOIN users c ON t.created_by = c.id
-    LEFT JOIN projects p ON t.project_id = p.id
-    WHERE 1=1`;
-  const exportParams = [];
-  if (req.user.role === 'engineer') {
-    q += ' AND t.assigned_to = ?';
-    exportParams.push(req.user.id);
-  } else if (req.user.role === 'planner' || req.user.role === 'pm') {
-    // Scope to projects this user is assigned to (mirrors the main GET / filter)
-    q += ' AND (t.project_id IS NULL OR t.project_id IN (SELECT project_id FROM project_assignments WHERE user_id = ?))';
-    exportParams.push(req.user.id);
-  }
-  if (filter === 'open')  q += ` AND t.status IN ('open','in_progress','waiting_customer','waiting_vendor')`;
-  if (filter === 'done')  q += ` AND t.status IN ('completed','closed')`;
-  if (filter === 'adhoc') q += ` AND t.is_adhoc = 1`;
-  q += ' ORDER BY t.created_at DESC';
-
-  const rows = db.prepare(q).all(...exportParams);
+  const filters = taskFilters(req.query, req.user);
+  if (filters.error) return res.status(400).json({ error: filters.error });
+  const pagination = taskPagination(req.query);
+  if (pagination?.error) return res.status(400).json({ error: pagination.error });
+  const rows = await withCustomerNames(await attachTaskHours(await db.prepare(`SELECT t.id, t.title, t.status, t.priority, t.deadline, t.is_adhoc,
+    COALESCE(t.customer_id,p.customer_id) AS customer_id, u.name as assigned_to, c.name as created_by, p.title as project
+    FROM tasks t LEFT JOIN projects p ON p.id=t.project_id
+    LEFT JOIN users u ON t.assigned_to=u.id JOIN users c ON t.created_by=c.id
+    WHERE ${filters.where} ORDER BY ${filters.order}`).all(...filters.params)));
   const wsData = [
-    ['Title','Status','Priority','Deadline','Project','Assigned To','Created By','Hours Logged','Ad-hoc'],
-    ...rows.map(r => [r.title, r.status, r.priority, r.deadline || '', r.project || '', r.assigned_to || '', r.created_by, r.logged_hours, r.is_adhoc ? 'Yes' : 'No']),
+    ['Title','Status','Priority','Deadline','Project','Customer','Assigned To','Created By','Hours Logged','Ad-hoc'],
+    ...rows.map(r => [safeCell(r.title), safeCell(r.status), safeCell(r.priority), r.deadline || '', safeCell(r.project || ''), safeCell(r.customer_name || ''), safeCell(r.assigned_to || ''), safeCell(r.created_by), Math.round(Number(r.logged_hours) * 10) / 10, r.is_adhoc ? 'Yes' : 'No']),
   ];
 
   const workbook  = new ExcelJS.Workbook();
@@ -292,117 +517,138 @@ router.get('/export', requireDownloadAuth, async (req, res) => {
 });
 
 /* ── Duplicate a task ─────────────────────────────────────── */
-router.post('/:id/duplicate', requireAuth, (req, res) => {
+router.post('/:id/duplicate', requireAuth, async (req, res) => {
   if (req.user.role === 'planner' || req.user.role === 'pm')
     return res.status(403).json({ error: 'Forbidden' });
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
   if (!task) return res.status(404).json({ error: 'Not found' });
   // Engineers: can only duplicate tasks assigned to them
-  if (req.user.role === 'engineer') {
-    if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-  }
-  const result = db.prepare(`
-    INSERT INTO tasks (project_id, title, description, priority, deadline, assigned_to, created_by, is_adhoc)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(task.project_id, task.title + ' (copy)', task.description, task.priority, task.deadline,
-         task.assigned_to, req.user.id, task.is_adhoc);
+  if (req.user.role === 'engineer' && !await worksOnTask(req.user, task)) return res.status(403).json({ error: 'Forbidden' });
+  // The copy keeps the team and asset (so a team task stays the team's), and the
+  // checklist titles and assets (not who ticked them). All or nothing.
+  const checklist = await db.prepare('SELECT title, asset_id FROM task_subtasks WHERE task_id = ? ORDER BY position, id').all(task.id);
+  const id = await db.transaction(async tx => {
+    const result = (await tx.prepare(`
+      INSERT INTO tasks (project_id, customer_id, title, description, priority, deadline, assigned_to, team_id, asset_id, created_by, is_adhoc, ticket_reference)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(task.project_id, task.customer_id, task.title + ' (copy)', task.description, task.priority, task.deadline,
+           task.assigned_to, task.team_id ?? null, task.asset_id ?? null, req.user.id, task.is_adhoc, task.ticket_reference || null));
+    if (checklist.length) await subtasks.insertSubtasks(tx, result.lastInsertRowid, checklist, req.user.id);
+    const others = await tx.prepare('SELECT user_id FROM task_engineers WHERE task_id = ?').all(task.id);
+    if (others.length) await taskEngineers.setEngineers(tx, result.lastInsertRowid, others.map(row => Number(row.user_id)));
+    return result.lastInsertRowid;
+  });
   logActivity(task.project_id, req.user.id, 'task_created', task.title + ' (copy)');
-  res.json({ id: result.lastInsertRowid });
+  res.json({ id });
 });
 
 /* ── Overdue counts (lightweight — used by sidebar badges) ── */
-router.get('/overdue-counts', requireAuth, (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
+router.get('/overdue-counts', requireAuth, async (req, res) => {
+  const today = appTime.today();
   let taskCount = 0;
   if (req.user.role === 'engineer') {
-    taskCount = db.prepare(`
+    taskCount = (await db.prepare(`
       SELECT COUNT(*) AS cnt FROM tasks
-      WHERE assigned_to = ? AND deadline < ? AND status NOT IN ('completed','closed','cancelled')
-    `).get(req.user.id, today).cnt;
+      WHERE ${ownTasksSql()} AND deadline < ? AND status NOT IN ('completed','closed','cancelled')
+    `).get(...ownTasksParams(req.user.id), today)).cnt;
   } else if (req.user.role === 'manager') {
-    taskCount = db.prepare(`
+    taskCount = (await db.prepare(`
       SELECT COUNT(*) AS cnt FROM tasks
       WHERE deadline < ? AND status NOT IN ('completed','closed','cancelled')
-    `).get(today).cnt;
+    `).get(today)).cnt;
   }
   // planners and PMs have no task visibility — taskCount stays 0
 
   const visitCount = req.user.role === 'engineer'
-    ? db.prepare(`SELECT COUNT(*) AS cnt FROM maintenance_visits mv
+    ? (await db.prepare(`SELECT COUNT(*) AS cnt FROM maintenance_visits mv
         JOIN maintenance_visit_engineers mve ON mve.visit_id = mv.id
         WHERE mve.user_id = ? AND mv.scheduled_date < ? AND mv.status = 'scheduled'
-      `).get(req.user.id, today).cnt
-    : db.prepare(`SELECT COUNT(*) AS cnt FROM maintenance_visits
+      `).get(req.user.id, today)).cnt
+    : (await db.prepare(`SELECT COUNT(*) AS cnt FROM maintenance_visits
         WHERE scheduled_date < ? AND status = 'scheduled'
-      `).get(today).cnt;
+      `).get(today)).cnt;
 
   res.json({ tasks: taskCount, visits: visitCount });
 });
 
-router.delete('/:id', requireManager, (req, res) => {
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
-  if (task) logActivity(task.project_id, req.user.id, 'task_deleted', task.title);
-  db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
+router.delete('/:id', requireManager, async (req, res) => {
+  const task = (await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
+  if (!task) return res.json({ ok: true });
+  logActivity(task.project_id, req.user.id, 'task_deleted', task.title);
+  // For good, with its updates, subtasks, files and time logged on it.
+  const files = await db.transaction(async tx => {
+    await require('../auditLog').logAudit(tx, req, 'task', task.id, task.title, 'task_deleted', null);
+    return permanentDelete.deleteTasks(tx, [task.id]);
+  });
+  await permanentDelete.removeFiles(files);
   res.json({ ok: true });
 });
 
 /* ── Task Comments ────────────────────────────────────────── */
-router.get('/:id/comments', requireAuth, (req, res) => {
-  if (req.user.role === 'planner' || req.user.role === 'pm')
-    return res.status(403).json({ error: 'Forbidden' });
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+function positiveId(value) {
+  return typeof value === 'number' ? Number.isSafeInteger(value) && value > 0
+    : typeof value === 'string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
+}
+
+async function requireVisibleTask(req, res, next) {
+  if (!['manager', 'engineer'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+  if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid task ID' });
+  const task = await db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!task) return res.status(404).json({ error: 'Not found' });
-  // Engineers can only access their own tasks
-  if (req.user.role === 'engineer' && task.assigned_to !== req.user.id)
-    return res.status(403).json({ error: 'Forbidden' });
-  const rows = db.prepare(`
+  if (req.user.role === 'engineer' && !await worksOnTask(req.user, task)) return res.status(403).json({ error: 'Forbidden' });
+  req.task = task;
+  next();
+}
+
+// Updates (status comments) are read by anyone who may see the task: managers, those
+// working on it, and engineers who work with its customer or are on its project.
+async function requireReadableTask(req, res, next) {
+  if (!['manager', 'engineer'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+  if (!positiveId(req.params.id)) return res.status(400).json({ error: 'Invalid task ID' });
+  const task = await db.prepare('SELECT t.*, COALESCE(t.customer_id, p.customer_id) AS task_customer_id FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?').get(req.params.id);
+  if (!task) return res.status(404).json({ error: 'Not found' });
+  if (!await canReadTask(req.user, { ...task, customer_id: task.task_customer_id })) return res.status(403).json({ error: 'Forbidden' });
+  req.task = task;
+  next();
+}
+
+router.get('/:id/comments', requireAuth, requireReadableTask, async (req, res) => {
+  const rows = (await db.prepare(`
     SELECT tc.*, u.name as user_name, u.role as user_role
     FROM task_comments tc
     JOIN users u ON tc.user_id = u.id
     WHERE tc.task_id = ?
     ORDER BY tc.created_at ASC
-  `).all(req.params.id);
+  `).all(req.params.id));
   res.json(rows);
 });
 
-router.post('/:id/comments', requireAuth, (req, res) => {
-  if (req.user.role === 'planner' || req.user.role === 'pm')
-    return res.status(403).json({ error: 'Forbidden' });
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
-  if (!task) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role === 'engineer' && task.assigned_to !== req.user.id)
-    return res.status(403).json({ error: 'Forbidden' });
+router.post('/:id/comments', requireAuth, requireVisibleTask, async (req, res) => {
+  const task = req.task;
   const { message } = req.body;
-  if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
-  const result = db.prepare(`INSERT INTO task_comments (task_id, user_id, message) VALUES (?, ?, ?)`)
-    .run(req.params.id, req.user.id, message.trim());
+  if (typeof message !== 'string' || !message.trim()) return res.status(400).json({ error: 'Message required' });
+  if (message.length > 10000) return res.status(400).json({ error: 'Message cannot exceed 10000 characters' });
+  const result = (await db.prepare(`INSERT INTO task_comments (task_id, user_id, message) VALUES (?, ?, ?)`)
+    .run(req.params.id, req.user.id, message.trim()));
   logActivity(task.project_id, req.user.id, 'task_comment', `"${task.title}"`);
 
-  // Detect @mentions and notify each unique mentioned user
-  const allUsers = db.prepare('SELECT id, name FROM users WHERE active = 1').all();
-  const lower = message.toLowerCase();
-  const notified = new Set();
-  allUsers.forEach(u => {
-    if (u.id === req.user.id) return; // don't self-notify
-    const firstName = u.name.split(' ')[0].toLowerCase();
-    const fullName  = u.name.toLowerCase().replace(/\s+/g, '');
-    if (lower.includes('@' + firstName) || lower.includes('@' + fullName)) {
-      if (!notified.has(u.id)) {
-        notified.add(u.id);
-        try {
-          db.prepare(`INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)`)
-            .run(u.id, 'mention', `${req.user.name} mentioned you`, `In task "${task.title}": ${message.trim().slice(0, 80)}`,
-              task.project_id ? `/projects/${task.project_id}` : null);
-        } catch (_) {}
-      }
-    }
-  });
+  // @mentions: anyone tagged who may see the task is told (bell and their own channels), once.
+  const candidates = await db.prepare("SELECT id, name FROM users WHERE active = 1 AND role IN ('manager','engineer') AND id <> ?").all(req.user.id);
+  const where = task.customer_id ? `/customers/${task.customer_id}/service-profile?section=tasks&task=${task.id}` : '/tasks';
+  for (const person of mentionedUsers(message, candidates)) {
+    const viewer = await db.prepare('SELECT id, role FROM users WHERE id = ?').get(person.id);
+    if (!await canReadTask(viewer, task)) continue;
+    await require('../notifications').notifyUser(Number(person.id), 'mention',
+      { title: `💬 ${req.user.name} mentioned you`, body: `In **${task.title}**: ${message.trim().slice(0, 300)}`, facts: [{ name: 'Task', value: task.title }] },
+      { title: `${req.user.name} mentioned you`, body: `In task "${task.title}": ${message.trim().slice(0, 80)}`, link: where }).catch(error => console.error('[mention notify]', error.message));
+  }
 
   res.json({ id: result.lastInsertRowid });
 });
 
-router.delete('/:id/comments/:cid', requireAuth, (req, res) => {
-  const comment = db.prepare('SELECT * FROM task_comments WHERE id = ? AND task_id = ?').get(req.params.cid, req.params.id);
+router.delete('/:id/comments/:cid', requireAuth, requireVisibleTask, async (req, res) => {
+  if (!positiveId(req.params.cid)) return res.status(400).json({ error: 'Invalid comment ID' });
+  const comment = (await db.prepare('SELECT * FROM task_comments WHERE id = ? AND task_id = ?').get(req.params.cid, req.params.id));
   if (!comment) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'manager') {
     // managers can delete any comment
@@ -410,33 +656,50 @@ router.delete('/:id/comments/:cid', requireAuth, (req, res) => {
     // everyone else can only delete their own comments
     return res.status(403).json({ error: 'Forbidden' });
   }
-  db.prepare('DELETE FROM task_comments WHERE id = ?').run(req.params.cid);
+  (await db.prepare('DELETE FROM task_comments WHERE id = ?').run(req.params.cid));
+  res.json({ ok: true });
+});
+
+/* ── Task files: read by anyone who may see the task; added by those working on it
+   (and managers); removed by whoever added the file or a manager. ── */
+router.get('/:id/attachments', requireAuth, requireReadableTask, async (req, res) => {
+  res.json(await taskFiles.list(req.task.id));
+});
+
+router.post('/:id/attachments', requireAuth, requireVisibleTask, async (req, res) => {
+  const result = await taskFiles.add(req, res, req.task);
+  if (result) res.status(201).json(result);
+});
+
+router.get('/:id/attachments/:attId/download', requireDownloadAuth, requireReadableTask, async (req, res) => {
+  if (!positiveId(req.params.attId)) return res.status(400).json({ error: 'Invalid attachment ID' });
+  await taskFiles.send(res, req.task.id, Number(req.params.attId));
+});
+
+router.delete('/:id/attachments/:attId', requireAuth, requireVisibleTask, async (req, res) => {
+  if (!positiveId(req.params.attId)) return res.status(400).json({ error: 'Invalid attachment ID' });
+  const outcome = await taskFiles.remove(req, req.task, Number(req.params.attId));
+  if (outcome.error) return res.status(outcome.status).json({ error: outcome.error });
   res.json({ ok: true });
 });
 
 /* ── Task Dependencies ────────────────────────────────────── */
 // GET tasks this task depends on
-router.get('/:id/dependencies', requireAuth, (req, res) => {
-  if (req.user.role === 'planner' || req.user.role === 'pm')
-    return res.status(403).json({ error: 'Forbidden' });
-  // Verify the caller has visibility of the parent task before exposing its deps
-  const task = db.prepare('SELECT assigned_to, project_id FROM tasks WHERE id = ?').get(req.params.id);
-  if (!task) return res.status(404).json({ error: 'Not found' });
-  if (req.user.role === 'engineer') {
-    if (task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-  }
-  const rows = db.prepare(`
-    SELECT t.id, t.title, t.status, t.priority, t.deadline
+router.get('/:id/dependencies', requireAuth, requireVisibleTask, async (req, res) => {
+  const rows = (await db.prepare(`
+    SELECT t.id, t.title, t.status, t.priority, t.deadline, t.assigned_to
     FROM task_dependencies td
     JOIN tasks t ON td.depends_on_id = t.id
     WHERE td.task_id = ?
     ORDER BY t.created_at ASC
-  `).all(req.params.id);
-  res.json(rows);
+  `).all(req.params.id));
+  res.json(rows.map(({ assigned_to, ...row }) => req.user.role === 'engineer' && assigned_to !== req.user.id
+    ? { id: row.id, title: 'Restricted task', restricted: true, is_blocking: !['completed', 'closed', 'cancelled'].includes(row.status) }
+    : row));
 });
 
 // BFS reachability: returns true if startId can reach targetId via existing dependencies
-function canReach(startId, targetId) {
+async function canReach(startId, targetId) {
   const visited = new Set();
   const queue = [Number(startId)];
   const depStmt = db.prepare('SELECT depends_on_id FROM task_dependencies WHERE task_id = ?');
@@ -445,30 +708,74 @@ function canReach(startId, targetId) {
     if (current === Number(targetId)) return true;
     if (visited.has(current)) continue;
     visited.add(current);
-    depStmt.all(current).forEach(d => queue.push(d.depends_on_id));
+    const deps = await depStmt.all(current);
+    deps.forEach(d => queue.push(d.depends_on_id));
   }
   return false;
 }
 
 // Add a dependency
-router.post('/:id/dependencies', requireManager, (req, res) => {
+router.post('/:id/dependencies', requireManager, requireVisibleTask, async (req, res) => {
   const { depends_on_id } = req.body;
-  if (!depends_on_id) return res.status(400).json({ error: 'depends_on_id required' });
+  if (!positiveId(depends_on_id)) return res.status(400).json({ error: 'depends_on_id must be a positive integer' });
+  if (!await db.prepare('SELECT id FROM tasks WHERE id = ?').get(depends_on_id)) return res.status(404).json({ error: 'Dependency task not found' });
   if (Number(depends_on_id) === Number(req.params.id))
     return res.status(400).json({ error: 'A task cannot depend on itself' });
   // Full transitive cycle check: would depends_on_id eventually reach this task?
-  if (canReach(depends_on_id, req.params.id))
+  if (await canReach(depends_on_id, req.params.id))
     return res.status(400).json({ error: 'Circular dependency detected' });
-  try {
-    db.prepare('INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?)').run(req.params.id, depends_on_id);
-    res.json({ ok: true });
-  } catch (e) { res.status(400).json({ error: e.message }); }
+  await db.prepare('INSERT INTO task_dependencies (task_id, depends_on_id) VALUES (?, ?) ON CONFLICT DO NOTHING').run(req.params.id, depends_on_id);
+  res.json({ ok: true });
 });
 
 // Remove a dependency
-router.delete('/:id/dependencies/:depId', requireManager, (req, res) => {
-  db.prepare('DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?').run(req.params.id, req.params.depId);
+router.delete('/:id/dependencies/:depId', requireManager, requireVisibleTask, async (req, res) => {
+  if (!positiveId(req.params.depId)) return res.status(400).json({ error: 'Invalid dependency ID' });
+  (await db.prepare('DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?').run(req.params.id, req.params.depId));
   res.json({ ok: true });
+});
+
+// An engineer or a manager takes a task: an unassigned one, or (with take_over) one assigned
+// to someone else, who is told. Engineers must be able to work on it: a customer they work
+// with, a project they are on, or their team's task. Finished tasks cannot be taken.
+router.post('/:id/take', requireAuth, async (req, res) => {
+  if (!['engineer', 'manager'].includes(req.user.role)) return res.status(403).json({ error: 'Engineers and managers take tasks' });
+  if (!/^[1-9]\d*$/.test(String(req.params.id))) return res.status(400).json({ error: 'Invalid task ID' });
+  const task = await db.prepare('SELECT t.*, COALESCE(t.customer_id, p.customer_id) AS task_customer_id FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?').get(Number(req.params.id));
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  if (['completed', 'closed', 'cancelled', 'pending_approval'].includes(task.status)) return res.status(409).json({ error: 'This task is already finished' });
+  if (Number(task.assigned_to) === Number(req.user.id)) return res.json({ ok: true, assigned_to: req.user.id });
+  const allowed = req.user.role === 'manager' || (task.project_id
+    ? !!await db.prepare('SELECT 1 FROM project_assignments WHERE project_id = ? AND user_id = ?').get(task.project_id, req.user.id)
+    : (task.task_customer_id && await canAccessCustomer(req.user, task.task_customer_id)) || await worksOnTask(req.user, { ...task, assigned_to: null }));
+  if (!allowed) return res.status(403).json({ error: task.project_id ? 'You can take tasks of projects you are on' : 'You can take tasks of customers you work with' });
+  const previous = task.assigned_to ? await db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(task.assigned_to) : null;
+  if (previous && req.body?.take_over !== true) return res.status(409).json({ error: `This task is assigned to ${previous.name}. Take it over?`, code: 'ASSIGNED', assigned_to_name: previous.name });
+  // Only if nobody changed the assignee meanwhile.
+  const updated = task.assigned_to == null
+    ? await db.prepare('UPDATE tasks SET assigned_to = ?, updated_at = app_now() WHERE id = ? AND assigned_to IS NULL').run(req.user.id, task.id)
+    : await db.prepare('UPDATE tasks SET assigned_to = ?, updated_at = app_now() WHERE id = ? AND assigned_to = ?').run(req.user.id, task.id, task.assigned_to);
+  if (!updated.changes) return res.status(409).json({ error: 'Someone else changed this task; reload and try again' });
+  const detail = previous ? `taken over from ${previous.name}` : 'taken (was unassigned)';
+  logActivity(task.project_id, req.user.id, 'task_assigned', `"${task.title}" ${detail} by ${req.user.name}`);
+  await require('../auditLog').logAudit(db, req, 'task', task.id, task.title, previous ? 'task_taken_over' : 'task_taken', detail);
+  if (previous) {
+    await require('../notifications').notifyUser(Number(previous.id), 'task_assigned',
+      { title: '🔁 Task taken over', body: `**${req.user.name}** took over **${task.title}**.`, facts: [{ name: 'Task', value: task.title }, { name: 'Now with', value: req.user.name }] },
+      { title: `${req.user.name} took over: ${task.title}`, body: null, link: '/tasks' }).catch(error => console.error('[task take over notify]', error.message));
+  }
+  require('../liveUpdates').emitChange('tasks');
+  res.json({ ok: true, assigned_to: req.user.id, previous: previous ? previous.name : null });
+});
+
+router.use('/:id/subtasks', require('./task-subtasks'));
+
+// One task, for anyone who may see it (e.g. the chat bot's "task 123").
+router.get('/:id', requireAuth, requireReadableTask, async (req, res) => {
+  const row = await db.prepare(`SELECT t.*, COALESCE(t.customer_id, p.customer_id) AS customer_id, u.name AS assigned_to_name, p.title AS project_title, tm.name AS team_name
+    FROM tasks t LEFT JOIN projects p ON p.id = t.project_id LEFT JOIN users u ON u.id = t.assigned_to LEFT JOIN teams tm ON tm.id = t.team_id WHERE t.id = ?`).get(req.task.id);
+  const [task] = await taskEngineers.withEngineers(await subtasks.withLastUpdates(await subtasks.withSubtaskCounts(await withCustomerNames([row]))));
+  res.json(task);
 });
 
 module.exports = router;

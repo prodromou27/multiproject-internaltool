@@ -1,0 +1,81 @@
+const PDFDocument=require('pdfkit');
+const { PRODUCT_NAME }=require('./product');
+const { TABLES,tableFor }=require('./reportTables');
+
+const COLORS={ primary:'#1e3a8a',accent:'#2563eb',text:'#172033',muted:'#64748b',line:'#cbd5e1',header:'#e2e8f0',danger:'#b91c1c' };
+const display=value => value===null || value===undefined || value==='' ? '-' : String(value);
+
+function renderPdf(model) {
+  return new Promise((resolve,reject) => {
+    const doc=new PDFDocument({ size:'A4',layout:'landscape',margin:40,bufferPages:true,info:{ Title:`Managed Services Report - ${model.customer.name}`,Author:PRODUCT_NAME,Subject:`${model.period.from} to ${model.period.to}` } });
+    const chunks=[];doc.on('data',chunk => chunks.push(chunk));doc.on('error',reject);doc.on('end',() => resolve(Buffer.concat(chunks)));
+    const pageWidth=doc.page.width-doc.page.margins.left-doc.page.margins.right;
+    const left=doc.page.margins.left;
+    const ensureSpace=height => { if (doc.y+height>doc.page.height-doc.page.margins.bottom-18) doc.addPage(); };
+    const heading=value => { ensureSpace(42);doc.x=left;doc.moveDown(.5).font('Helvetica-Bold').fontSize(16).fillColor(COLORS.primary).text(value,{ width:pageWidth }).moveDown(.4); };
+    const paragraph=value => { doc.x=left;doc.font('Helvetica').fontSize(10).fillColor(COLORS.text).text(display(value),{ width:pageWidth,lineGap:2 }).moveDown(.5); };
+    // `weights` share the page width between columns (equal when not given).
+    const table=(title,headers,rows,weights=headers.map(() => 1)) => {
+      heading(title);
+      if (!rows.length) return paragraph('No matching records.');
+      const total=weights.reduce((sum,weight) => sum+weight,0),widths=weights.map(weight => pageWidth*weight/total),padding=4;
+      const drawRow=(values,isHeader=false) => {
+        doc.font(isHeader?'Helvetica-Bold':'Helvetica').fontSize(isHeader?8:7);
+        const heights=values.map((value,index) => doc.heightOfString(display(value),{ width:widths[index]-padding*2,lineGap:1 }));
+        const height=Math.max(isHeader?20:17,...heights.map(value => value+padding*2));ensureSpace(height);
+        const y=doc.y;
+        values.forEach((value,index) => {
+          const x=doc.page.margins.left+widths.slice(0,index).reduce((sum,width) => sum+width,0);
+          doc.rect(x,y,widths[index],height).fillAndStroke(isHeader?COLORS.header:'#ffffff',COLORS.line);
+          doc.fillColor(COLORS.text).text(display(value),x+padding,y+padding,{ width:widths[index]-padding*2,lineGap:1 });
+        });
+        doc.x=left;doc.y=y+height;
+      };
+      drawRow(headers,true);rows.forEach(row => drawRow(row));doc.moveDown(.5);
+    };
+    const barChart=(chartTitle,rows) => {
+      const visible=rows.slice(0,10),height=Math.max(70,visible.length*22+38);ensureSpace(height);heading(chartTitle);
+      if (!visible.length) return paragraph('No matching records.');
+      const max=Math.max(1,...visible.map(row => Number(row.count))),labelWidth=125,barWidth=pageWidth-labelWidth-55;
+      visible.forEach(row => { const y=doc.y;doc.font('Helvetica').fontSize(8).fillColor(COLORS.text).text(display(row.name),doc.page.margins.left,y,{ width:labelWidth-8,lineBreak:false,ellipsis:true });doc.rect(doc.page.margins.left+labelWidth,y,barWidth,10).fill('#e2e8f0');doc.rect(doc.page.margins.left+labelWidth,y,Math.max(1,barWidth*Number(row.count)/max),10).fill(COLORS.accent);doc.fillColor(COLORS.text).text(String(row.count),doc.page.margins.left+labelWidth+barWidth+8,y-1,{ width:38,align:'right' });doc.y=y+20; });
+      doc.x=left;doc.moveDown(.3);
+    };
+    const trendChart=trend => {
+      ensureSpace(215);heading('Ticket Throughput Trend');const points=trend.points,y=doc.y+8,height=125,x=doc.page.margins.left+25,width=pageWidth-50,max=Math.max(1,...points.flatMap(point => [point.created,point.resolved]));
+      doc.strokeColor(COLORS.line).lineWidth(1).moveTo(x,y).lineTo(x,y+height).lineTo(x+width,y+height).stroke();
+      const plot=(key,color) => { doc.strokeColor(color).lineWidth(2);points.forEach((point,index) => { const px=x+(points.length===1?0:index/(points.length-1)*width),py=y+height-(Number(point[key])/max*height);if (index===0) doc.moveTo(px,py);else doc.lineTo(px,py); });doc.stroke(); };
+      if (points.length) { plot('created',COLORS.accent);plot('resolved','#16a34a');doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted).text(points[0].date,x,y+height+6,{ width:90 });doc.text(points[points.length-1].date,x+width-90,y+height+6,{ width:90,align:'right' }); }
+      doc.fillColor(COLORS.accent).text('Created',x+width-130,y-8,{ width:55 });doc.fillColor('#16a34a').text('Resolved',x+width-65,y-8,{ width:55 });doc.x=left;doc.y=y+height+28;
+    };
+    const n=model.narratives;
+    doc.moveDown(5).font('Helvetica-Bold').fontSize(28).fillColor(COLORS.accent).text('Managed Services Report',{ align:'center' }).moveDown(.6);
+    doc.fontSize(22).fillColor(COLORS.text).text(model.customer.name,{ align:'center' }).moveDown(.5);
+    doc.font('Helvetica').fontSize(12).text(`Reporting period: ${model.period.from} to ${model.period.to}`,{ align:'center' }).moveDown(.4);
+    doc.fillColor(COLORS.muted).text(`Generated ${new Date(model.generated_at).toLocaleDateString('en-GB')}`,{ align:'center' }).moveDown(2);
+    doc.font('Helvetica-Bold').fillColor(COLORS.danger).text('Confidential',{ align:'center' });doc.addPage();
+
+    const builders={
+      executive_summary:() => { heading('Executive Summary');paragraph(n.executive_summary || 'No executive summary provided.');if (n.key_highlights) { heading('Key Highlights');paragraph(n.key_highlights); }if (n.major_changes) { heading('Major Changes');paragraph(n.major_changes); } },
+      service_overview:() => table('Service Overview',['Current / period measure','Value'],[['Open tickets now',model.overview.tickets?.open_now ?? 'Excluded'],['Pending tickets now',model.overview.tickets?.pending_now ?? 'Excluded'],['Service activities',model.overview.activities.activities],['Service hours',model.overview.activities.hours],['Open tasks now',model.overview.tasks.open_now],['Active projects now',model.overview.projects.active_now],['Maintenance Visits in period',model.overview.visits.visits_period],['Open recommendations now',model.overview.recommendations.open_now]]),
+      ticket_summary:() => { if (!model.tickets.enabled) return;const { current,period,trend }=model.tickets.analytics;table('Ticket Summary',['Measure','Value'],[['Open backlog',current.total_open],['Created during period',period.created],['Resolved during period',period.resolved],['Closed during period',period.closed],['Rejected during period',period.rejected],['SLA breaches during period',period.sla_breaches]]);trendChart(trend);barChart('Open Tickets by Status',current.statuses);barChart('Open Tickets by Priority',current.priorities);barChart('Open Ticket Aging',current.aging); },
+      risks:() => { heading('Risks / Concerns');paragraph(n.risks_concerns || 'No risks or concerns provided.'); },
+      upcoming_work:() => { heading('Upcoming Work');paragraph(n.upcoming_activities || 'No upcoming activities provided.'); },
+      management_notes:() => { heading('Management Notes');paragraph(n.management_notes || 'No management notes provided.'); },
+    };
+    // The data tables, with the report template's columns, sorting and row limit.
+    for (const key of Object.keys(TABLES)) builders[key]=() => { const data=tableFor(model,key);if (data) table(data.title,data.columns.map(c => c.label),data.rows,data.columns.map(c => c.width)); };
+    model.sections.forEach(section => builders[section]?.());
+    const range=doc.bufferedPageRange();
+    for (let index=0;index<range.count;index++) {
+      // The footer sits inside the bottom margin; writing there would otherwise make
+      // pdfkit start a new (blank) page for every footer.
+      doc.switchToPage(index);const bottom=doc.page.margins.bottom;doc.page.margins.bottom=0;
+      doc.save().font('Helvetica').fontSize(8).fillColor(COLORS.muted);
+      doc.text(`Confidential - Page ${index+1} of ${range.count}`,left,doc.page.height-25,{ width:pageWidth,align:'center',lineBreak:false });doc.restore();
+      doc.page.margins.bottom=bottom;
+    }
+    doc.end();
+  });
+}
+
+module.exports={ renderPdf };

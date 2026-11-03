@@ -4,14 +4,22 @@
  * then repeats every 7 days. Call reschedule() when settings change.
  */
 const db = require('./db');
+const appTime = require('./appTime');
 const { sendWeeklyReport } = require('./weeklyReport');
+const jobs = require('./backgroundJobs');
 
 let _timeout  = null;
 let _interval = null;
 
+function queueWeeklyReport() {
+  const day=appTime.today();
+  return jobs.enqueue('weekly_report',{}, { dedupeKey:`weekly-report:${day}`,maxAttempts:3 })
+    .catch(error => console.error('[weekly-report] Could not queue delivery:',error.message));
+}
+
 // ── Read config from DB ───────────────────────────────────────────────────────
-function getConfig() {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
+async function getConfig() {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
   if (!row) return null;
   try { return JSON.parse(row.value); } catch { return null; }
 }
@@ -39,9 +47,9 @@ function clearSchedule() {
 }
 
 // ── Schedule or re-schedule based on current DB config ───────────────────────
-function reschedule() {
+async function reschedule() {
   clearSchedule();
-  const cfg = getConfig();
+  const cfg = await getConfig();
 
   if (!cfg?.enabled) {
     console.log('[weekly-report] Scheduler disabled.');
@@ -58,18 +66,30 @@ function reschedule() {
   console.log(`[weekly-report] Next run: ${next.toLocaleString()} (${DAY_NAMES[day]} ${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}) — in ${Math.round(ms/60000)} min`);
 
   _timeout = setTimeout(() => {
-    sendWeeklyReport();
+    queueWeeklyReport();
     // Repeat every 7 days
-    _interval = setInterval(sendWeeklyReport, 7 * 24 * 60 * 60 * 1000);
+    _interval = setInterval(queueWeeklyReport, 7 * 24 * 60 * 60 * 1000);
   }, ms);
 }
 
+// A backup job that fails for the last time (no retry left) alerts the managers (backupAlerts.js).
+function alertingBackup(kind,handler) {
+  return async (payload,job) => {
+    try { return await handler(payload,job); }
+    catch (error) {
+      const alerts=require('./backupAlerts');
+      if (alerts.isFinalAttempt(job,error)) await alerts.alertBackupFailure(kind,{ file:payload?.file || null,error:error.message });
+      throw error;
+    }
+  };
+}
+
 // ── Init on startup ───────────────────────────────────────────────────────────
-function initScheduler() {
+async function initScheduler() {
   // Ensure default config exists if none set
-  const existing = db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
+  const existing = await db.prepare("SELECT value FROM settings WHERE key = 'weekly_report_config'").get();
   if (!existing) {
-    db.prepare("INSERT INTO settings (key, value) VALUES ('weekly_report_config', ?)")
+    await db.prepare("INSERT INTO settings (key, value) VALUES ('weekly_report_config', ?)")
       .run(JSON.stringify({
         enabled:    false,
         day:        1,      // Monday
@@ -79,7 +99,37 @@ function initScheduler() {
         last_sent:  null,
       }));
   }
-  reschedule();
+  await jobs.start({
+    weekly_report: async () => { await sendWeeklyReport();return { delivered:true }; },
+    ticket_sync: async payload => {
+      const { syncCustomer }=require('./ticketSync');
+      const result=await syncCustomer(Number(payload.customer_id),{ triggeredBy:payload.triggered_by || null });
+      return { run_id:result.run_id,tickets_found:result.tickets_found,tickets_created:result.tickets_created,tickets_updated:result.tickets_updated };
+    },
+    custom_report_export: (payload,job) => require('./customReportExport').generate(payload,job),
+    database_backup: alertingBackup('database',async payload => {
+      const backups=require('./databaseBackups');
+      const row=await backups.exclusive('backup',() => backups.backupNow({ kind:payload.kind==='scheduled' ? 'scheduled' : 'manual' }));
+      if (row.files_error) await require('./backupAlerts').alertBackupFailure('files',{ file:row.file,error:row.files_error });
+      return { file:row.file,size_bytes:row.size_bytes };
+    }),
+    backup_offsite: alertingBackup('offsite',async payload => {
+      const backups=require('./databaseBackups'),plan=await backups.schedule();
+      return require('./backupOffsite').copyBackup(String(payload.file),{ backupDir:backups.BACKUP_DIR,retentionDays:plan.retention_days,keepMin:plan.keep_min });
+    }),
+    backup_share: alertingBackup('share',async payload => {
+      const backups=require('./databaseBackups'),plan=await backups.schedule();
+      return require('./backupOffsite').copyToShare(String(payload.file),{ backupDir:backups.BACKUP_DIR,retentionDays:plan.retention_days,keepMin:plan.keep_min });
+    }),
+    // Tickets linked engineers own in Request Tracker (any queue), for Workload.
+    engineer_ticket_sync: async payload => {
+      const owners=require('./ticketOwners');
+      return payload.user_id ? owners.syncEngineer(Number(payload.user_id)) : owners.syncAllEngineers();
+    },
+  });
+  await reschedule();
+  require('./customReportScheduler').start();
+  require('./ticketSyncScheduler').start();
 }
 
-module.exports = { initScheduler, reschedule };
+module.exports = { initScheduler, reschedule, queueWeeklyReport };
