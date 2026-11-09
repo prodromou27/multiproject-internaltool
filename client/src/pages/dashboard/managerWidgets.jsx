@@ -3,6 +3,7 @@ import { Check, CheckCircle2, AlertTriangle, Clock, Wrench, FolderOpen, ListTodo
 import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../../components/Shared';
 import { api } from '../../api';
 import StatCard from './StatCard';
+import TaskOrigin from '../../components/TaskOrigin';
 import ManagementInsights from '../../components/ManagementInsights';
 
 export function managerWidget(id, ctx) {
@@ -323,7 +324,7 @@ export function managerWidget(id, ctx) {
             : <ul className="list-none">
                 {myOpen.slice(0,6).map(t => (
                   <li key={t.id} className="u-710b0ff">
-                    <span className="u-036d7cd">{t.title}</span>
+                    <span className="u-036d7cd">{t.title}<span style={{ display: 'block' }}><TaskOrigin task={t} /></span></span>
                     {t.is_adhoc ? <span className="badge badge-adhoc">adhoc</span> : null}
                     <StatusBadge entityType="task" s={t.status} />
                     {t.deadline && (

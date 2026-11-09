@@ -4,6 +4,7 @@ import { StatusBadge, PriorityBadge, fmtDate, isOverdue } from '../../components
 import { api } from '../../api';
 import { localDateISO, businessToday } from '../../utils/dates';
 import StatCard from './StatCard';
+import TaskOrigin from '../../components/TaskOrigin';
 import AddToCalendarButton from '../../components/AddToCalendarButton';
 
 export function engineerWidget(id, ctx) {
@@ -213,7 +214,7 @@ export function engineerWidget(id, ctx) {
             : <ul className="list-none">
                 {myOpen.slice(0,6).map(t => (
                   <li key={t.id} className="u-710b0ff">
-                    <span className="u-036d7cd">{t.title}</span>
+                    <span className="u-036d7cd">{t.title}<span style={{ display: 'block' }}><TaskOrigin task={t} /></span></span>
                     {t.is_adhoc ? <span className="badge badge-adhoc">adhoc</span> : null}
                     <StatusBadge entityType="task" s={t.status} />
                     {t.deadline && (

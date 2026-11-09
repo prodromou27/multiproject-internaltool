@@ -11,6 +11,10 @@ import TaskSubtasks from '../../components/TaskSubtasks';
 import TaskFiles from '../../components/TaskFiles';
 
 /* ── Task Detail Modal (with comments) ───────────────────── */
+// Colleagues' tasks on a project can be read, not changed, by engineers not working on them.
+const mayUpdate = (task, isManager, isPlanner) => isManager || isPlanner || task.can_update !== false;
+const READ_ONLY_HINT = 'Only the people working on this task can change it';
+
 export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectTasks, onUpdate, onClose }) {
   const { user }  = useAuth();
   const toast     = useToast();
@@ -18,6 +22,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
   // Subtasks (each with an owner) and files: managers, and the engineers working on the task.
   const worksOnIt = Number(task.assigned_to) === Number(user?.id) || (task.engineers || []).some(person => Number(person.id) === Number(user?.id));
   const canEditSubtasks = isManager || worksOnIt;
+  const canUpdate = mayUpdate(task, isManager, isPlanner);
   const [comments,     setComments]     = useState([]);
   const [commentText,  setCommentText]  = useState('');
   const [submitting,   setSubmitting]   = useState(false);
@@ -141,6 +146,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
           <span className="u-d65cb71">Quick status:</span>
           <select
             value={task.status}
+            disabled={!canUpdate} title={canUpdate ? undefined : READ_ONLY_HINT}
             onChange={async e => {
               const s = e.target.value;
               if (s === 'waiting_customer' || s === 'waiting_vendor') { setWaitingStatus(s); setWaitingDialog(true); return; }
@@ -175,7 +181,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
       <div className="task-edit-subtasks"><TaskFiles task={task} canAdd={canEditSubtasks} /></div>
 
       {/* Time Tracking */}
-      <div className="u-1e1ab6a">
+      {canUpdate && <div className="u-1e1ab6a">
         <div className="u-f03a7bd">
           <div className="section-title u-64e67c9">
             <Clock size={13} /> Time Logged
@@ -228,7 +234,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
             + Log
           </button>
         </form>
-      </div>
+      </div>}
 
       {/* Dependencies */}
       <div className="u-1e1ab6a">
@@ -282,7 +288,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
             <div className="section-title u-64e67c9">
               <SlidersHorizontal size={13} /> Custom Fields
             </div>
-            {!editingCustom && (
+            {!editingCustom && canUpdate && (
               <button className="btn btn-ghost btn-sm u-11a5081" disabled={!customLoaded} onClick={() => {
                 const draft = {};
                 customFields.forEach(f => { draft[f.id] = customValues[f.id] ?? ''; });
@@ -357,7 +363,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
               ))}
             </ul>
         }
-        <form onSubmit={submitComment} className="u-b559c2d">
+        {canUpdate && <form onSubmit={submitComment} className="u-b559c2d">
           <MentionInput
             value={commentText}
             onChange={setCommentText}
@@ -367,7 +373,7 @@ export function TaskDetailModal({ task, isManager, isPlanner, allUsers, projectT
             style={{ flex: 1, fontSize: 13 }}
           />
           <button type="submit" className="btn btn-primary btn-sm" disabled={submitting || !commentText.trim()}>Post</button>
-        </form>
+        </form>}
       </div>
       {user.role !== 'pm' && <div style={{ marginTop: 12 }}><ReplyWithResponse inline context={{ type: 'task', id: task.id }} /></div>}
     </Modal>
@@ -389,6 +395,8 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
     : isPlanner
     ? ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed', 'pending_approval', 'cancelled']
     : ['open', 'in_progress', 'waiting_customer', 'waiting_vendor', 'completed'];
+
+  const canUpdate = mayUpdate(task, isManager, isPlanner);
 
   return (
     <>
@@ -420,6 +428,7 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
         <td onClick={e => e.stopPropagation()} className="flex-center gap-6">
           <select aria-label={`Status of ${task.title}`}
             value={task.status}
+            disabled={!canUpdate} title={canUpdate ? undefined : READ_ONLY_HINT}
             onChange={e => {
               const s = e.target.value;
               if (s === 'waiting_customer' || s === 'waiting_vendor') { setWaitingStatus(s); setWaitingDialog(true); return; }
@@ -429,7 +438,7 @@ export function TaskRow({ task, isManager, isPlanner, allUsers, onUpdate, onRowC
           >
             {statuses.map(s => <option key={s} value={s}>{TASK_STATUS_LABELS[s] || s}</option>)}
           </select>
-          {onDuplicate && (
+          {onDuplicate && canUpdate && (
             <button
               onClick={e => { e.stopPropagation(); onDuplicate(task.id); }}
               title="Duplicate task"
@@ -469,6 +478,7 @@ export function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, 
   const [dragging, setDragging] = useState(null); // task id
   const [overCol,  setOverCol]  = useState(null); // column key
 
+  const movable = task => mayUpdate(task, isManager, isPlanner);
   function handleDragStart(taskId) { setDragging(taskId); }
   function handleDragEnd()         { setDragging(null); setOverCol(null); }
   function handleDragOver(e, colKey) { e.preventDefault(); setOverCol(colKey); }
@@ -476,7 +486,7 @@ export function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, 
     e.preventDefault();
     if (dragging && colKey) {
       const task = tasks.find(t => t.id === dragging);
-      if (task && task.status !== colKey) onUpdate(dragging, { status: colKey });
+      if (task && movable(task) && task.status !== colKey) onUpdate(dragging, { status: colKey });
     }
     setDragging(null); setOverCol(null);
   }
@@ -509,7 +519,7 @@ export function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, 
               {colTasks.map(task => (
                 <div
                   key={task.id}
-                  draggable
+                  draggable={movable(task)}
                   onDragStart={() => handleDragStart(task.id)}
                   onDragEnd={handleDragEnd}
                   onClick={() => onRowClick(task)}
@@ -537,7 +547,7 @@ export function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, 
                         <div className="u-1dd7834">{task.assigned_to_name}</div>
                       )}
                     </div>
-                    <button
+                    {movable(task) && <button
                       onClick={e => { e.stopPropagation(); onDuplicate(task.id); }}
                       title="Duplicate task"
                       className="u-823cd7b"
@@ -545,7 +555,7 @@ export function KanbanView({ tasks, isManager, isPlanner, onUpdate, onRowClick, 
                       onMouseLeave={e => e.currentTarget.style.color = 'var(--gray-300)'}
                     >
                       <Copy size={11} />
-                    </button>
+                    </button>}
                   </div>
                 </div>
               ))}

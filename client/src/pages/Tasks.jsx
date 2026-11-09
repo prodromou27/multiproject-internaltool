@@ -21,6 +21,7 @@ import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { Pagination,Surface } from '../components/EnterpriseUI';
 import LogHours from '../components/LogHours';
+import TaskOrigin from '../components/TaskOrigin';
 import { pageZoom } from '../utils/zoom';
 import EditTaskModal, { STATUS_LABELS, MANAGER_STATUSES, ENGINEER_STATUSES } from '../components/EditTaskModal';
 import { OtherEngineers, TaskPeople } from '../components/TaskPeople';
@@ -552,7 +553,7 @@ export default function Tasks() {
                       </span>
                     ) : null}
                   </td>
-                  {visibleColumns.has('project') && <td>{t.project_title || projects.find(p => p.id === t.project_id)?.title || (t.customer_name ? <>{t.customer_name} <span className="text-muted text-sm">(customer)</span></> : <span className="text-muted">—</span>)}</td>}
+                  {visibleColumns.has('project') && <td>{t.project_title || t.customer_name ? <TaskOrigin task={t} /> : <span className="text-muted">—</span>}</td>}
                   {visibleColumns.has('status') && <td>{isManager || t.assigned_to === user.id || t.assigned_to == null
                     ? <TaskStatusControl task={t} statuses={isManager ? managerStatuses : engineerStatuses} onChange={handleStatusChange} />
                     : <StatusBadge entityType="task" s={t.status} />}</td>}

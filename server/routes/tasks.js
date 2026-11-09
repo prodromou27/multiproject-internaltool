@@ -6,7 +6,7 @@ const ExcelJS = require('exceljs');
 const { taskFilters, taskPagination } = require('../taskFilters');
 const { requireAuth, requireManager, requireDownloadAuth } = require('../middleware/auth');
 const { notify } = require('../notifications');
-const { canAccessCustomer } = require('../customerAccess');
+const { canAccessCustomer, accessibleCustomerIds } = require('../customerAccess');
 const { decrypt } = require('../fieldCipher');
 const { safeCell } = require('../xlsxSafety');
 const subtasks = require('../taskSubtasks');
@@ -55,6 +55,19 @@ async function logActivity(project_id, user_id, action, detail) {
     (await db.prepare(`INSERT INTO project_activity (project_id, user_id, action, detail) VALUES (?, ?, ?, ?)`)
       .run(project_id, user_id, action, detail || null));
   } catch (_) { /* non-fatal */ }
+}
+
+// What this person can do with each listed task: change it, and open its project and customer.
+async function withAccessFlags(rows, user) {
+  if (user.role !== 'engineer') return rows.map(row => ({ ...row, can_update: true, can_open_project: true, can_open_customer: true }));
+  if (!rows.length) return rows;
+  const [own, projects, customers] = await Promise.all([
+    db.prepare(`SELECT id FROM tasks WHERE id IN (${rows.map(() => '?').join(',')}) AND ${ownTasksSql()}`).all(...rows.map(row => row.id), ...ownTasksParams(user.id)),
+    db.prepare('SELECT project_id FROM project_assignments WHERE user_id = ?').all(user.id),
+    accessibleCustomerIds(user),
+  ]);
+  const ownIds = new Set(own.map(row => Number(row.id))), projectIds = new Set(projects.map(row => Number(row.project_id)));
+  return rows.map(row => ({ ...row, can_update: ownIds.has(Number(row.id)), can_open_project: projectIds.has(Number(row.project_id)), can_open_customer: customers.has(Number(row.customer_id)) }));
 }
 
 async function attachTaskHours(rows) {
@@ -124,7 +137,7 @@ router.get('/', requireAuth, async (req, res) => {
     }));
   }
 
-  rows = await taskEngineers.withEngineers(await subtasks.withLastUpdates(await taskTickets.withTickets(await subtasks.withSubtaskCounts(rows))));
+  rows = await withAccessFlags(await taskEngineers.withEngineers(await subtasks.withLastUpdates(await taskTickets.withTickets(await subtasks.withSubtaskCounts(rows)))), req.user);
   res.json(pagination ? { rows, total: counts[req.query.filter || 'all'], counts, page: pagination.page, page_size: pagination.page_size } : rows);
 });
 
@@ -685,7 +698,7 @@ router.delete('/:id/attachments/:attId', requireAuth, requireVisibleTask, async 
 
 /* ── Task Dependencies ────────────────────────────────────── */
 // GET tasks this task depends on
-router.get('/:id/dependencies', requireAuth, requireVisibleTask, async (req, res) => {
+router.get('/:id/dependencies', requireAuth, requireReadableTask, async (req, res) => {
   const rows = (await db.prepare(`
     SELECT t.id, t.title, t.status, t.priority, t.deadline, t.assigned_to
     FROM task_dependencies td

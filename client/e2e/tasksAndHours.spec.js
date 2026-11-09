@@ -86,6 +86,54 @@ test('meetings and other work go into My time too, and an entry can be removed',
   await expect(page.getByText(/No hours logged in these days/)).toBeVisible();
 });
 
+test('the Tasks page and the dashboard say what a task belongs to, and link to it', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  const tasks = [
+    { id: 51, title: 'Patch gateways', status: 'open', priority: 'high', project_id: 3, project_title: 'Core refresh', customer_id: 8, customer_name: 'Acme Corp', can_update: true, can_open_project: true, can_open_customer: true },
+    { id: 52, title: 'Renew licences', status: 'open', priority: 'medium', customer_id: 8, customer_name: 'Acme Corp', can_update: true, can_open_project: true, can_open_customer: true },
+  ];
+  api.override('GET /api/tasks', () => ({ body: { rows: tasks, total: 2, counts: { all: 2, open: 2 }, page: 1, page_size: 25 } }));
+  await page.goto('/tasks');
+  const onProject = page.getByRole('row', { name: /Patch gateways/ }), onCustomer = page.getByRole('row', { name: /Renew licences/ });
+  await expect(onProject).toContainText('Project: Core refresh');
+  await expect(onProject.getByRole('link', { name: 'Core refresh' })).toHaveAttribute('href', '/projects/3');
+  await expect(onCustomer).toContainText('Customer: Acme Corp');
+  await expect(onCustomer.getByRole('link', { name: 'Acme Corp' })).toHaveAttribute('href', '/customers/8/service-profile');
+
+  api.override('GET /api/tasks', () => ({ body: tasks }));
+  await page.goto('/');
+  const widget = page.locator('li').filter({ hasText: 'Patch gateways' });
+  await expect(widget).toContainText('Project: Core refresh');
+  await expect(widget.getByRole('link', { name: 'Core refresh' })).toHaveAttribute('href', '/projects/3');
+  await expect(page.locator('li').filter({ hasText: 'Renew licences' })).toContainText('Customer: Acme Corp');
+});
+
+test('a task the engineer cannot open the project of is named but not linked', async ({ page }) => {
+  const api = await mockApi(page, { role: 'engineer' });
+  api.override('GET /api/tasks', () => ({ body: { rows: [{ id: 53, title: 'Assigned alone', status: 'open', priority: 'low', assigned_to: 1, project_id: 4, project_title: 'Not my project', can_update: true, can_open_project: false, can_open_customer: false }], total: 1, counts: { all: 1, open: 1 }, page: 1, page_size: 25 } }));
+  await page.goto('/tasks');
+  const row = page.getByRole('row', { name: /Assigned alone/ });
+  await expect(row).toContainText('Project: Not my project');
+  await expect(row.getByRole('link', { name: 'Not my project' })).toHaveCount(0);
+});
+
+test('on a project, an engineer sees a colleague\'s task but can only change their own', async ({ page }) => {
+  const api = await mockApi(page, { role: 'engineer' });
+  api.override('GET /api/tasks', () => ({ body: [
+    { id: 61, title: 'Colleague task', status: 'open', priority: 'medium', project_id: 1, assigned_to: 2, assigned_to_name: 'Sam Lee', can_update: false },
+    { id: 62, title: 'My own task', status: 'open', priority: 'medium', project_id: 1, assigned_to: 1, assigned_to_name: 'Alex Mercer', can_update: true },
+  ] }));
+  api.override('GET /api/projects/1', () => ({ body: { id: 1, title: 'Core refresh', status: 'active', priority: 'medium', members: [], updates: [] } }));
+  await page.goto('/projects/1');
+  await expect(page.getByLabel('Status of Colleague task')).toBeDisabled();
+  await expect(page.getByLabel('Status of My own task')).toBeEnabled();
+  await page.getByRole('row', { name: /Colleague task/ }).getByText('Colleague task').click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Quick status:')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Post' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: '+ Log' })).toHaveCount(0);
+});
+
 test('service activities with a duration show in My time, linked to the activity and not removable there', async ({ page }) => {
   const api = await mockApi(page, { role: 'engineer' });
   api.override('GET /api/time-logs/mine', () => ({ body: [

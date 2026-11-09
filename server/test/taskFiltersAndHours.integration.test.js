@@ -47,6 +47,45 @@ test('hours are kept by the day the work was done, and listed per day with the c
   assert.deepEqual(onlyYesterday.data.filter(r => r.task_id === task).map(r => Number(r.hours)), [2], 'by work day, not by when it was typed');
 });
 
+// Shared by the two tests below: a project with two engineers on it, and someone who is not.
+async function visibilityProject(name) {
+  const user = async who => (await db.prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, 'x', 'engineer')").run(who, `${who.replace(/ /g, '.')}.${name}@test.local`)).lastInsertRowid;
+  const colleague = await user('Project Colleague'), outsider = await user('Project Outsider');
+  const project = (await db.prepare("INSERT INTO projects (title, customer_id, created_by) VALUES (?, ?, ?)").run(name, ids.customerUnassigned, ids.manager)).lastInsertRowid;
+  for (const member of [ids.engineerEnabled, colleague]) await db.prepare('INSERT INTO project_assignments (project_id, user_id) VALUES (?, ?)').run(project, member);
+  return { project, colleague, outsider, tokenOf: id => require('./lib/activityFixture').signJwt({ id }) };
+}
+
+test('a task a project member adds is seen by the others on the project, who cannot change it', pgOnly, async () => {
+  const { project, colleague, outsider, tokenOf } = await visibilityProject('Visible project');
+  const added = await api('/api/tasks', { method: 'POST', token: ids.tokenEnabled, body: { title: 'Added by first engineer', project_id: project } });
+  assert.equal(added.status, 200, JSON.stringify(added.data));
+
+  const seen = await api(`/api/tasks?project_id=${project}`, { token: tokenOf(colleague) });
+  assert.equal(seen.status, 200, JSON.stringify(seen.data));
+  assert.deepEqual(seen.data.map(row => row.title), ['Added by first engineer']);
+  assert.equal(seen.data[0].can_update, false);
+  assert.equal(seen.data[0].can_open_project, true);
+  assert.equal((await api(`/api/tasks/${added.data.id}`, { method: 'PUT', token: tokenOf(colleague), body: { status: 'in_progress' } })).status, 403);
+
+  assert.equal((await api(`/api/tasks?project_id=${project}`, { token: ids.tokenEnabled })).data[0].can_update, true);
+  assert.deepEqual((await api(`/api/tasks?project_id=${project}`, { token: tokenOf(outsider) })).data, [], 'someone not on the project sees nothing');
+});
+
+test('the task list stays your own, and says what you can change and open', async () => {
+  const { project, colleague, outsider, tokenOf } = await visibilityProject('Flags project');
+  await db.prepare("INSERT INTO tasks (title, project_id, assigned_to, created_by) VALUES ('Not for the colleague', ?, ?, ?)").run(project, ids.engineerEnabled, ids.manager);
+  assert.deepEqual((await api('/api/tasks', { token: tokenOf(colleague) })).data.filter(row => row.title === 'Not for the colleague'), []);
+
+  // Assigned a task without being on its project or working with its customer: named, not linked.
+  const task = (await db.prepare("INSERT INTO tasks (title, project_id, assigned_to, created_by) VALUES ('Outsider task', ?, ?, ?)").run(project, outsider, ids.manager)).lastInsertRowid;
+  const assigned = (await api('/api/tasks', { token: tokenOf(outsider) })).data.find(row => Number(row.id) === Number(task));
+  assert.equal(assigned.project_title, 'Flags project');
+  assert.deepEqual([assigned.can_update, assigned.can_open_project, assigned.can_open_customer], [true, false, false]);
+  const asManager = (await api('/api/tasks', { token: ids.tokenManager })).data.find(row => Number(row.id) === Number(task));
+  assert.deepEqual([asManager.can_update, asManager.can_open_project, asManager.can_open_customer], [true, true, true]);
+});
+
 test('My time includes your service activities with a duration, by activity day, read-only', async () => {
   const day = appTime.addDays(appTime.today(), -3);
   let n = 0;
