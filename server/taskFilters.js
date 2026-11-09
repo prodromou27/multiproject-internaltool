@@ -31,7 +31,11 @@ function taskFilters(query, user) {
   const clauses = ['1=1'];
   const params = [];
   const add = (sql, ...values) => { clauses.push(sql); params.push(...values); };
-  if (user.role === 'engineer') add(ownTasksSql('t'), ...ownTasksParams(user.id));
+  // An engineer's list is their own tasks; a project's list is the whole project for its members.
+  if (user.role === 'engineer') {
+    if (query.project_id) add(`(${ownTasksSql('t')} OR t.project_id IN (SELECT project_id FROM project_assignments WHERE user_id=?))`, ...ownTasksParams(user.id), user.id);
+    else add(ownTasksSql('t'), ...ownTasksParams(user.id));
+  }
   else if (query.assigned_to) add('t.assigned_to=?', Number(query.assigned_to));
   if (query.project_id) add('t.project_id=?', Number(query.project_id));
   if (query.customer_id) add('COALESCE(t.customer_id,p.customer_id)=?', Number(query.customer_id));
