@@ -68,7 +68,7 @@ Builder's calls, marked so they can be checked:
 
 - *12-month window:* proposed during design and accepted.
 - *How far back "expired" goes:* an active device stays listed however long ago its support ended, since it is still a live problem. Licences and contracts that expired more than 12 months before the period end are dropped as stale.
-- *Renewed items:* a contract that has been renewed does not appear; its renewal does. A renewed licence shows its current expiry date.
+- *Renewed items:* a contract renewed by the period's end does not appear; its renewal does. A renewal added later does not hide it, so a past period reads the same when regenerated. A renewed licence shows its current expiry date.
 
 The existing device list section stays as it is. The user wants the full list kept alongside the new section.
 
@@ -80,7 +80,8 @@ Content:
 
 - **The same list for every customer**, with no reliance on asset records.
 - **In the list:** CVEs with a CVSS score above 9 (the user's rule, applied to every entry), published in the report period or added to CISA's exploited list in the period. An exploited CVE scoring 9 or below does not appear, and neither does a CVE NVD has not scored yet. A score of exactly 9.0 does not appear.
-- **Order:** exploited first, newest first; then the rest, highest score first.
+- **Order:** exploited first, newest first; then the rest, highest score first. "Exploited" means on CISA's list by the period's end, so a past period reads the same when regenerated.
+- **A CVE naming two listed products** counts once, under the first that still has room.
 - **At most 10 entries**, and no more than 3 per product (builder's call, so one busy product cannot take all 10 places). When more qualify, a line says "Showing the 10 most significant of N."
 - **Description:** full official text, not shortened. CISA's short description for exploited CVEs, falling back to NVD's; NVD's for the rest.
 - **Severity:** rating and score, for example "Critical 9.8".

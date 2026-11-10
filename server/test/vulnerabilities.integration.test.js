@@ -123,3 +123,13 @@ test('products listed only for customer reports do not stop an asset vendor bein
   const vmware = (await db.prepare("SELECT cpe_product, source FROM cve_watch WHERE cpe_vendor = 'vmware' ORDER BY cpe_product").all()).map(row => [row.cpe_product, row.source]);
   assert.deepEqual(vmware, [['', 'asset'], ['esxi', 'manual']]);
 });
+
+test('the products pre-loaded for reports keep a name already given, and take the report name when there was none', async () => {
+  const { ADVISORY_SEED_SQL } = require('../schema/migrations');
+  await db.prepare("UPDATE cve_watch SET label = NULL WHERE cpe_vendor = 'microsoft' AND cpe_product = 'windows_server_2019'").run();
+  await db.prepare("UPDATE cve_watch SET label = 'Our PHP' WHERE cpe_vendor = 'php' AND cpe_product = 'php'").run();
+  await db.exec(ADVISORY_SEED_SQL);
+  const label = async (vendor, product) => (await db.prepare('SELECT label FROM cve_watch WHERE cpe_vendor = ? AND cpe_product = ?').get(vendor, product)).label;
+  assert.equal(await label('microsoft', 'windows_server_2019'), 'Windows Server');
+  assert.equal(await label('php', 'php'), 'Our PHP');
+});

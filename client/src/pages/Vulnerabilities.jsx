@@ -192,7 +192,7 @@ function Watched() {
           <td>{row.source === 'asset' ? 'Assets' : 'Added'}</td>
           <td>{row.total ?? '—'}</td>
           <td className="text-sm">{row.hidden ? 'Hidden' : row.last_status === 'ok' ? `Up to date${row.last_sync_at ? `, ${fmtDateTime(row.last_sync_at)}` : ''}` : row.last_status === 'too_broad' || row.last_status === 'error' ? <span className="vuln-error">{row.last_error}</span> : 'Waiting for the next sync'}</td>
-          <td><input type="checkbox" checked={!!row.in_advisories} aria-label={`In customer reports: ${row.cpe_vendor} ${row.cpe_product || ''}`.trim()}
+          <td><input type="checkbox" checked={!!row.in_advisories} disabled={row.hidden} title={row.hidden ? 'Show this product first: hidden products are not downloaded' : undefined} aria-label={`In customer reports: ${row.cpe_vendor} ${row.cpe_product || ''}`.trim()}
             onChange={event => act(() => api.updateVulnerabilityWatch(row.id, { in_advisories: event.target.checked }), event.target.checked ? 'Its CVEs above 9 now appear in customer reports' : 'Removed from customer reports')} /></td>
           <td className="table-actions">
             {row.source === 'asset' && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { const name = window.prompt(`NVD's name for the vendor your assets call "${row.asset_vendor}":`, row.cpe_vendor); if (name) act(() => api.updateVulnerabilityWatch(row.id, { cpe_vendor: name }), 'Vendor name updated'); }}>Rename</button>}

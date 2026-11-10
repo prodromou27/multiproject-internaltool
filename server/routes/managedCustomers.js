@@ -228,7 +228,8 @@ router.post('/:id/customer-report.:format',requirePermission('managed_reports.ge
       // "Tickets" covers both the tickets resolved and the tickets still open.
       const picked={ changes:['changes'],tickets:['resolved_tickets','open_tickets'],assets:['assets'],recommendations:['recommendations'],work_log:['service_activities'],lifecycle:['lifecycle'],advisories:['advisories'] };
       const sections=['executive_summary','service_overview','upcoming_work',...report.sections.flatMap(key => picked[key] || [])];
-      const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives:{ executive_summary:options.summary,upcoming_activities:options.coming_next } });
+      const model=await reporting.buildReportModel({ customerId:id,from,to,sections,narratives:{ executive_summary:options.summary,upcoming_activities:options.coming_next },
+        prebuilt:{ lifecycle:report.lifecycle,advisories:report.advisories } });
       model.tasks_completed_count=report.figures.tasks_completed; // the same count as the preview and the PDF
       buffer=wordTemplates.render(Buffer.from(template.word_template,'base64'),{ ...wordTemplates.templateData(model,{ preparedBy:req.user.name }),report_title:report.wording.title });
       if (format==='pdf') buffer=await (router._docxToPdf || require('../docxToPdf').docxToPdf)(buffer);

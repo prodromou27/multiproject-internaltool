@@ -21,10 +21,13 @@ const KIND_LABELS = { licence: 'Licence', subscription: 'Subscription', certific
 const GROUPS = [['devices', 'Devices and firmware'], ['licences', 'Licences, subscriptions and certificates'], ['contracts', 'Contracts']];
 
 const addMonths = (iso, months) => { const value = new Date(`${iso}T00:00:00Z`); value.setUTCMonth(value.getUTCMonth() + months); return value.toISOString().slice(0, 10); };
-// The day of a stored date ('2027-01-15 00:00:00' reads as 2027-01-15); null when it is not a date.
+// The day of a stored date ('2027-01-15 00:00:00' reads as 2027-01-15); null when it is not a
+// real date (including days that do not exist, like 2027-02-30).
 function dayOf(value) {
   const day = String(value || '').slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(day) && !Number.isNaN(new Date(`${day}T00:00:00Z`).getTime()) ? day : null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const parsed = new Date(`${day}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === day ? day : null;
 }
 
 /** The lifecycle section for one customer, measured from `asOf` (the report period's end). */
@@ -40,12 +43,15 @@ async function getLifecycle(customerId, asOf, store = db) {
     if (status) rows[group].push({ item, type, ends, status });
   };
 
-  const [assets, software, licences, contracts] = await Promise.all([
+  const [assets, software, licences, contracts, renewals] = await Promise.all([
     reportData.getAssets(customerId, asOf, store),
     softwareCompliance.assetSoftwareStatus({ customerId, store, today: asOf }),
     licencesFor([customerId], store, asOf),
     contractsFor([customerId], store, asOf),
+    store.prepare('SELECT renewed_from_id, created_at FROM customer_contracts WHERE customer_id = ? AND renewed_from_id IS NOT NULL').all(customerId),
   ]);
+  // A contract counts as renewed only if the renewal existed by the period's end, so a past period reads the same later.
+  const renewedBy = new Set(renewals.filter(row => String(row.created_at || '').slice(0, 10) <= asOf).map(row => Number(row.renewed_from_id)));
   for (const asset of assets) {
     const maker = [asset.vendor, asset.model].filter(Boolean).join(' ');
     const name = maker ? `${asset.name} (${maker})` : asset.name;
@@ -60,7 +66,7 @@ async function getLifecycle(customerId, asOf, store = db) {
     }
   }
   for (const row of licences) add('licences', row.name, KIND_LABELS[row.kind] || 'Licence', row.expires_on, stale);
-  for (const row of contracts) if (row.status !== 'renewed') add('contracts', row.description || 'Contract', 'Contract', row.end_date, stale);
+  for (const row of contracts) if (!renewedBy.has(Number(row.id))) add('contracts', row.description || 'Contract', 'Contract', row.end_date, stale);
 
   const groups = GROUPS.filter(([key]) => rows[key].length)
     .map(([key, title]) => ({ key, title, rows: rows[key].sort((a, b) => a.ends.localeCompare(b.ends)) }));
@@ -88,12 +94,15 @@ async function getAdvisories(from, to, store = db) {
   const kev = new Map();
   for (let start = 0; start < candidates.length; start += 500) {
     const ids = candidates.slice(start, start + 500).map(row => row.id);
-    for (const row of await store.prepare(`SELECT cve_id, date_added, short_description FROM cve_kev WHERE cve_id IN (${placeholders(ids)})`).all(...ids)) kev.set(row.cve_id, row);
+    // Exploited as of the period's end: a later CISA listing does not change a past period.
+    for (const row of await store.prepare(`SELECT cve_id, date_added, short_description FROM cve_kev WHERE cve_id IN (${placeholders(ids)})`).all(...ids))
+      if (String(row.date_added || '') <= to) kev.set(row.cve_id, row);
   }
 
-  // Each CVE counts once, under the first flagged product it names.
-  const productOf = cve => watched.find(w => String(cve.products || '').includes(w.cpe_product ? ` ${w.cpe_vendor}:${w.cpe_product} ` : ` ${w.cpe_vendor}:`));
-  const listed = candidates.map(cve => ({ cve, watch: productOf(cve), kev: kev.get(cve.id) })).filter(entry => entry.watch);
+  // Each CVE counts once, under the first flagged product it names that still has room.
+  const nameOf = watch => watch.label || watch.cpe_product || watch.cpe_vendor;
+  const productsOf = cve => [...new Set(watched.filter(w => String(cve.products || '').includes(w.cpe_product ? ` ${w.cpe_vendor}:${w.cpe_product} ` : ` ${w.cpe_vendor}:`)).map(nameOf))];
+  const listed = candidates.map(cve => ({ cve, products: productsOf(cve), kev: kev.get(cve.id) })).filter(entry => entry.products.length);
   listed.sort((a, b) => (!!b.kev - !!a.kev)
     || String(b.kev?.date_added || '').localeCompare(String(a.kev?.date_added || ''))
     || Number(b.cve.cvss_score) - Number(a.cve.cvss_score)
@@ -101,8 +110,8 @@ async function getAdvisories(from, to, store = db) {
     || String(a.cve.id).localeCompare(String(b.cve.id)));
   const perProduct = new Map(), chosen = [];
   for (const entry of listed) {
-    const name = entry.watch.label || entry.watch.cpe_product || entry.watch.cpe_vendor;
-    if ((perProduct.get(name) || 0) >= ADVISORY_PER_PRODUCT) continue;
+    const name = entry.products.find(product => (perProduct.get(product) || 0) < ADVISORY_PER_PRODUCT);
+    if (!name) continue;
     perProduct.set(name, (perProduct.get(name) || 0) + 1);
     chosen.push({ cve: entry.cve.id, product: name, severity: `${titleCase(entry.cve.severity || 'critical')} ${Number(entry.cve.cvss_score)}`,
       exploited: !!entry.kev, description: entry.kev?.short_description || entry.cve.description || '' });

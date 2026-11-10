@@ -20,7 +20,8 @@ test('lifecycle groups what has expired or ends within 12 months, soonest first'
   await licence(customer, 'licence', 'Old AV', '2025-09-01');
   await contract(customer, 'Managed firewall', '2026-01-01', '2026-12-31');
   const renewed = (await contract(customer, 'Backup service', '2025-11-16', '2026-11-15')).lastInsertRowid;
-  await contract(customer, 'Backup service', '2026-11-16', '2027-11-15', renewed);
+  const renewal = (await contract(customer, 'Backup service', '2026-11-16', '2027-11-15', renewed)).lastInsertRowid;
+  await db.prepare("UPDATE customer_contracts SET created_at = '2026-10-20 09:00:00' WHERE id = ?").run(renewal);
 
   const result = await insights.getLifecycle(customer, AS_OF);
   assert.deepEqual(result.groups.map(g => g.title), ['Devices and firmware', 'Licences, subscriptions and certificates', 'Contracts']);
@@ -94,4 +95,37 @@ test('a CVE under two flagged products appears once', async () => {
   const result = await insights.getAdvisories('2026-12-01', '2026-12-31');
   assert.deepEqual(result.rows.map(r => [r.cve, r.product]), [['DEC-A', 'PHP']]);
   assert.equal(result.total, 1);
+});
+
+test('a date that does not exist, like 30 February, is skipped', async () => {
+  const customer = await newCustomer();
+  await asset(customer, 'SW-02', { support: '2027-02-30', warranty: '2027-01-10' });
+  const rows = (await insights.getLifecycle(customer, AS_OF)).groups.flatMap(g => g.rows);
+  assert.deepEqual(rows.map(r => [r.type, r.ends]), [['Warranty', '2027-01-10']]);
+});
+
+test('a past period shows what was true at its end: a later renewal does not hide the contract', async () => {
+  const customer = await newCustomer();
+  const original = (await contract(customer, 'Support contract', '2025-11-21', '2026-11-20')).lastInsertRowid;
+  const renewal = (await contract(customer, 'Support contract', '2026-11-21', '2027-11-20', original)).lastInsertRowid;
+  await db.prepare("UPDATE customer_contracts SET created_at = '2026-11-05 10:00:00' WHERE id = ?").run(renewal);
+  const rows = (await insights.getLifecycle(customer, AS_OF)).groups.flatMap(g => g.rows);
+  assert.deepEqual(rows.map(r => [r.item, r.ends]), [['Support contract', '2026-11-20']]);
+  assert.deepEqual((await insights.getLifecycle(customer, '2026-11-10')).groups, [], 'once renewed, the old one is gone');
+});
+
+test('a CVE CISA listed after the period shows as not exploited in that period', async () => {
+  await cve('JAN-A', PHP, 9.6, '2027-01-10');
+  await exploited('JAN-A', '2027-02-10', 'CISA text later.');
+  const [row] = (await insights.getAdvisories('2027-01-01', '2027-01-31')).rows;
+  assert.deepEqual([row.cve, row.exploited, row.description], ['JAN-A', false, 'NVD text for JAN-A.']);
+  assert.equal((await insights.getAdvisories('2027-02-01', '2027-02-28')).rows.find(r => r.cve === 'JAN-A').exploited, true);
+});
+
+test('a CVE under two products moves to the second when the first is full', async () => {
+  for (let n = 0; n < 3; n++) await cve(`MAR-P${n}`, PHP, 9.9, '2027-03-05');
+  await cve('MAR-BOTH', ' php:php microsoft:windows_server_2022 ', 9.5, '2027-03-06');
+  const rows = (await insights.getAdvisories('2027-03-01', '2027-03-31')).rows;
+  assert.deepEqual(rows.find(r => r.cve === 'MAR-BOTH')?.product, 'Windows Server');
+  assert.equal(rows.length, 4);
 });

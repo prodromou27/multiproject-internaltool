@@ -44,3 +44,14 @@ test('managers choose which products feed customer reports', async ({ page }) =>
   await expect(page.getByLabel('In customer reports: fortinet')).toBeChecked();
   await expect.poll(() => sent).toEqual([{ in_advisories: true }]);
 });
+
+test('a hidden product cannot be listed in customer reports until it is shown again', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  api.override('GET /api/vulnerabilities/admin/status', () => ({ body: { nvd_api_key_set: false, sync: { at: null, running: false }, watch: [
+    { id: 3, cpe_vendor: 'veeam', cpe_product: '', label: null, source: 'manual', asset_vendor: null, hidden: true, in_advisories: false, total: 0, last_status: 'ok', last_sync_at: null },
+  ] } }));
+  await page.goto('/vulnerabilities?tab=watched');
+  const box = page.getByLabel('In customer reports: veeam');
+  await expect(box).toBeDisabled();
+  await expect(box).toHaveAttribute('title', 'Show this product first: hidden products are not downloaded');
+});

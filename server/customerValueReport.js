@@ -300,30 +300,39 @@ function renderPdf(report) {
       if (spec.note) para(spec.note, { color: C.muted });
       if (!spec.rows.length) return para(spec.empty, { color: C.muted });
       const total = spec.columns.reduce((sum, [, w]) => sum + w, 0), widths = spec.columns.map(([, w]) => width * w / total), pad = 5;
-      const row = (values, header, lineBelow = true) => {
+      // `keep` is extra height that must fit on the same page (the start of the row's description).
+      const row = (values, header, lineBelow = true, keep = 0) => {
         doc.font(header ? 'Helvetica-Bold' : 'Helvetica').fontSize(header ? 8.5 : 8.5);
         const h = Math.max(20, ...values.map((v, i) => doc.heightOfString(String(v || '—'), { width: widths[i] - pad * 2 }) + pad * 2));
-        room(h); const y = doc.y;
+        room(h + keep); const y = doc.y;
         if (header) doc.rect(left, y, width, h).fill(C.soft);
         values.forEach((v, i) => { const x = left + widths.slice(0, i).reduce((s, w) => s + w, 0); doc.fillColor(header ? C.primary : C.text).text(String(v || '—'), x + pad, y + pad, { width: widths[i] - pad * 2 }); });
         if (lineBelow) doc.moveTo(left, y + h).lineTo(left + width, y + h).lineWidth(0.5).strokeColor(C.line).stroke();
         doc.x = left; doc.y = y + h;
       };
-      // A full-width line under its row (an advisory's description).
+      // A full-width line under its row (an advisory's description). A long one flows onto the
+      // next page, and what follows starts where it ended.
+      const DETAIL_KEEP = 40; // the first lines stay with their row
+      const detailHeight = text => { doc.font('Helvetica').fontSize(8.5); return doc.heightOfString(text, { width: width - pad * 2 }) + pad * 2; };
       const detail = text => {
         doc.font('Helvetica').fontSize(8.5);
-        const h = doc.heightOfString(text, { width: width - pad * 2 }) + pad * 2;
-        room(h); const y = doc.y;
+        const y = doc.y;
         doc.fillColor(C.muted).text(text, left + pad, y + pad / 2, { width: width - pad * 2 });
-        doc.moveTo(left, y + h).lineTo(left + width, y + h).lineWidth(0.5).strokeColor(C.line).stroke();
-        doc.x = left; doc.y = y + h;
+        const bottom = doc.y + pad / 2;
+        doc.moveTo(left, bottom).lineTo(left + width, bottom).lineWidth(0.5).strokeColor(C.line).stroke();
+        doc.x = left; doc.y = bottom;
       };
       const body = (rows, details) => {
         row(spec.columns.map(([label]) => label), true);
-        rows.forEach((values, i) => { row(values, false, !details?.[i]); if (details?.[i]) detail(details[i]); });
+        rows.forEach((values, i) => {
+          if (!details?.[i]) return row(values, false);
+          row(values, false, false, Math.min(detailHeight(details[i]), DETAIL_KEEP));
+          detail(details[i]);
+        });
         doc.moveDown(0.4);
       };
-      if (spec.groups) spec.groups.forEach(group => { para(group.title, { bold: true }); body(group.rows); });
+      // A group's title stays with its table's header and first row.
+      if (spec.groups) spec.groups.forEach(group => { room(70); para(group.title, { bold: true }); body(group.rows); });
       else body(spec.rows, spec.details);
     };
     tablesOf(report).forEach(table);
@@ -352,7 +361,8 @@ async function renderWord(report) {
   const PRIMARY = W.color.slice(1).toUpperCase(), SOFT = 'EEF3F8', MUTED = '5F6B7A';
   const p = (text, opts = {}) => new Paragraph({ spacing: { after: 120 }, children: [new TextRun({ text, size: opts.size || 21, bold: opts.bold, color: opts.color })] });
   const h = text => new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 280, after: 120 }, children: [new TextRun({ text, color: PRIMARY, bold: true, size: 28 })] });
-  const cell = (text, { header = false, width } = {}) => new TableCell({ width: width ? { size: width, type: WidthType.PERCENTAGE } : undefined,
+  const NO_LINE = { style: BorderStyle.NONE, size: 0, color: 'auto' };
+  const cell = (text, { header = false, width, borders: own } = {}) => new TableCell({ width: width ? { size: width, type: WidthType.PERCENTAGE } : undefined, borders: own,
     shading: header ? { type: ShadingType.CLEAR, color: 'auto', fill: SOFT } : undefined, margins: { top: 60, bottom: 60, left: 90, right: 90 },
     children: [new Paragraph({ children: [new TextRun({ text: String(text || '—'), bold: header, size: 18, color: header ? PRIMARY : undefined })] })] });
   const borders = { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.SINGLE, size: 4, color: 'D6DCE4' }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE },
@@ -361,9 +371,9 @@ async function renderWord(report) {
     const total = spec.columns.reduce((sum, [, w]) => sum + w, 0), pct = spec.columns.map(([, w]) => Math.round(w / total * 100));
     return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders, rows: [
       new TableRow({ tableHeader: true, children: spec.columns.map(([label], i) => cell(label, { header: true, width: pct[i] })) }),
-      ...spec.rows.flatMap((values, index) => [new TableRow({ children: values.map((v, i) => cell(v, { width: pct[i] })) }),
-        // A full-width line under its row (an advisory's description).
-        ...(spec.details?.[index] ? [new TableRow({ children: [new TableCell({ columnSpan: spec.columns.length, margins: { top: 0, bottom: 80, left: 90, right: 90 },
+      ...spec.rows.flatMap((values, index) => [new TableRow({ children: values.map((v, i) => cell(v, { width: pct[i], borders: spec.details?.[index] ? { bottom: NO_LINE } : undefined })) }),
+        // A full-width line under its row (an advisory's description), with no line between the two.
+        ...(spec.details?.[index] ? [new TableRow({ children: [new TableCell({ columnSpan: spec.columns.length, borders: { top: NO_LINE }, margins: { top: 0, bottom: 80, left: 90, right: 90 },
           children: [new Paragraph({ children: [new TextRun({ text: spec.details[index], size: 18, color: MUTED })] })] })] })] : [])]),
     ] });
   };

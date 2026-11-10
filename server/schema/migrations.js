@@ -4,6 +4,22 @@
  */
 const { NOW } = require('./common');
 
+// The products listed in customer reports' security advisories at first (Settings → Vulnerabilities).
+// A product already watched joins the list and keeps any name it was given.
+const ADVISORY_SEED_SQL = `
+    INSERT INTO cve_watch (cpe_vendor, cpe_product, label, source, in_advisories) VALUES
+      ('linux', 'linux_kernel', 'Linux kernel', 'manual', 1),
+      ('vmware', 'esxi', 'VMware ESXi', 'manual', 1),
+      ('php', 'php', 'PHP', 'manual', 1),
+      ('microsoft', 'windows_server_2016', 'Windows Server', 'manual', 1),
+      ('microsoft', 'windows_server_2019', 'Windows Server', 'manual', 1),
+      ('microsoft', 'windows_server_2022', 'Windows Server', 'manual', 1),
+      ('microsoft', 'windows_server_2025', 'Windows Server', 'manual', 1),
+      ('microsoft', 'sql_server', 'Microsoft SQL Server', 'manual', 1)
+    ON CONFLICT (cpe_vendor, cpe_product) DO UPDATE SET in_advisories = 1,
+      label = CASE WHEN cve_watch.label IS NULL OR cve_watch.label = '' THEN EXCLUDED.label ELSE cve_watch.label END;
+`;
+
 const RECOMMENDATIONS_SCHEMA = `
   CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_customer_pair ON maintenance_visits(customer_id,id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_project_customer_pair ON projects(customer_id,id);
@@ -1530,16 +1546,7 @@ async function applyMigrations(pool, transaction) {
     -- The products whose CVEs above 9 the customer report lists for awareness
     -- (Settings → Vulnerabilities); label is the name the report shows.
     ALTER TABLE cve_watch ADD COLUMN IF NOT EXISTS in_advisories INTEGER NOT NULL DEFAULT 0;
-    INSERT INTO cve_watch (cpe_vendor, cpe_product, label, source, in_advisories) VALUES
-      ('linux', 'linux_kernel', 'Linux kernel', 'manual', 1),
-      ('vmware', 'esxi', 'VMware ESXi', 'manual', 1),
-      ('php', 'php', 'PHP', 'manual', 1),
-      ('microsoft', 'windows_server_2016', 'Windows Server', 'manual', 1),
-      ('microsoft', 'windows_server_2019', 'Windows Server', 'manual', 1),
-      ('microsoft', 'windows_server_2022', 'Windows Server', 'manual', 1),
-      ('microsoft', 'windows_server_2025', 'Windows Server', 'manual', 1),
-      ('microsoft', 'sql_server', 'Microsoft SQL Server', 'manual', 1)
-    ON CONFLICT (cpe_vendor, cpe_product) DO UPDATE SET in_advisories = 1;
+    ${ADVISORY_SEED_SQL}
   `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
@@ -1551,4 +1558,4 @@ async function applyMigrations(pool, transaction) {
   }
 }
 
-module.exports = { applyMigrations };
+module.exports = { applyMigrations, ADVISORY_SEED_SQL };

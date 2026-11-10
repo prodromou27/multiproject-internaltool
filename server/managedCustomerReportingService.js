@@ -7,10 +7,12 @@ const insights=require('./reportInsights');
 const REPORT_ROW_LIMIT=2000;
 
 const SECTION_KEYS=Object.freeze(['executive_summary','service_overview','ticket_summary','open_tickets','period_tickets','service_activities','tasks','projects','maintenance_visits','recommendations','risks','upcoming_work','management_notes','changes','resolved_tickets','assets','lifecycle','advisories']);
+const OPT_IN_SECTIONS=Object.freeze(['lifecycle','advisories']);
 const NARRATIVE_KEYS=Object.freeze(['executive_summary','key_highlights','risks_concerns','major_changes','upcoming_activities','management_notes']);
 
 function validateSections(value) {
-  if (value===undefined) return [...SECTION_KEYS];
+  // Lifecycle and advisories are added only when asked for (Customer 360 → Reports ticks them).
+  if (value===undefined) return SECTION_KEYS.filter(key => !OPT_IN_SECTIONS.includes(key));
   if (!Array.isArray(value) || value.length>SECTION_KEYS.length || value.some(key => typeof key!=='string' || !SECTION_KEYS.includes(key)) || new Set(value).size!==value.length) throw Object.assign(new Error('Invalid report sections'),{ status:400 });
   return value;
 }
@@ -27,7 +29,8 @@ function validateNarratives(value) {
   return result;
 }
 
-async function buildReportModel({ customerId,from,to,sections,narratives },store=db) {
+// `prebuilt` passes lifecycle/advisories already built for the same period, so they are not built twice.
+async function buildReportModel({ customerId,from,to,sections,narratives,prebuilt={} },store=db) {
   const selectedSections=validateSections(sections),safeNarratives=validateNarratives(narratives);
   const config=await store.prepare(`SELECT mc.include_in_managed_services_reports,tc.enabled AS ticket_integration_enabled,tc.include_in_reporting AS tickets_in_reporting
     FROM managed_customer_configurations mc JOIN customers c ON c.id=mc.customer_id
@@ -50,8 +53,8 @@ async function buildReportModel({ customerId,from,to,sections,narratives },store
     ticketsEnabled ? reportData.getResolvedTickets(customerId,from,to,store) : [],
     reportData.getAssets(customerId,to,store),
     // Built only when chosen (reportInsights.js).
-    selectedSections.includes('lifecycle') ? insights.getLifecycle(customerId,to,store) : null,
-    selectedSections.includes('advisories') ? insights.getAdvisories(from,to,store).then(result => ({ ...result,notice:insights.ADVISORY_NOTICE })) : null,
+    !selectedSections.includes('lifecycle') ? null : prebuilt.lifecycle!==undefined ? prebuilt.lifecycle : insights.getLifecycle(customerId,to,store),
+    !selectedSections.includes('advisories') ? null : prebuilt.advisories!==undefined ? prebuilt.advisories : insights.getAdvisories(from,to,store).then(result => ({ ...result,notice:insights.ADVISORY_NOTICE })),
   ]);
   return {
     schema_version:1,

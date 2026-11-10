@@ -178,3 +178,30 @@ test('the company Word template shows lifecycle and advisories only when ticked'
     await api(`/api/managed-report-templates/${id}/word-template`, { method: 'DELETE', token: ids.tokenManager });
   }
 });
+
+test('with the company Word template, the sections are built once per download', async () => {
+  await seedInsights();
+  const insights = require('../reportInsights');
+  const starter = await require('../managedReportDocx').starterTemplate();
+  const { company_template_id: id } = (await api('/api/managed-report-templates', { token: ids.tokenManager })).data;
+  const form = new FormData(); form.append('file', new Blob([starter]), 'starter.docx');
+  const upload = await fetch(`${suiteFixture.baseUrl}/api/managed-report-templates/${id}/word-template`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenManager}`, 'X-SolutionsHub-Request': '1' }, body: form });
+  assert.equal(upload.status, 200, await upload.text());
+  const original = { lifecycle: insights.getLifecycle, advisories: insights.getAdvisories }, calls = { lifecycle: 0, advisories: 0 };
+  insights.getLifecycle = (...args) => { calls.lifecycle++; return original.lifecycle(...args); };
+  insights.getAdvisories = (...args) => { calls.advisories++; return original.advisories(...args); };
+  try {
+    assert.equal((await download('docx', { from: '2026-08-01', to: '2026-08-31', sections: ['lifecycle', 'advisories'] })).status, 200);
+    assert.deepEqual(calls, { lifecycle: 1, advisories: 1 });
+  } finally {
+    Object.assign(insights, { getLifecycle: original.lifecycle, getAdvisories: original.advisories });
+    await api(`/api/managed-report-templates/${id}/word-template`, { method: 'DELETE', token: ids.tokenManager });
+  }
+});
+
+test('the older report preview leaves lifecycle and advisories out unless asked for', async () => {
+  const preview = await api(`${base()}/report-preview`, { method: 'POST', token: ids.tokenManager, body: { from: '2026-08-01', to: '2026-08-31' } });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.ok(!preview.data.sections.includes('lifecycle') && !preview.data.sections.includes('advisories'));
+  assert.deepEqual([preview.data.lifecycle, preview.data.advisories], [null, null]);
+});
