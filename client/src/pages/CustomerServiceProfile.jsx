@@ -1,0 +1,202 @@
+import CustomerContracts from '../components/CustomerContracts';
+import CustomerLicences from '../components/CustomerLicences';
+import VendorCases from '../components/VendorCases';
+import { useEffect, useState, useRef } from 'react';
+import { useParams,useLocation,useNavigate,Link } from 'react-router-dom';
+import { Activity,ArrowLeft,Camera,BellRing,BriefcaseBusiness,Building2,CalendarDays,CheckSquare,ChevronDown,ClipboardList,Layers,Mail,MapPin,Phone,Plus,Wrench } from 'lucide-react';
+import { api } from '../api';
+import { fmtDate, sentenceCase, Modal } from '../components/Shared';
+import { useToast } from '../components/Toast';
+import { ToneBadge } from '../components/EnterpriseUI';
+import CustomerOverview from '../components/CustomerOverview';
+import CustomerRecommendations from '../components/CustomerRecommendations';
+import { EditCustomerDialog } from './Customers';
+import CustomerAssets from '../components/CustomerAssets';
+import ManagedCustomerConfiguration from '../components/ManagedCustomerConfiguration';
+import { CustomerReports,CustomerTickets } from '../components/ManagedCustomerSections';
+import { CustomerProjects,CustomerTasks,CustomerVisits } from '../components/CustomerWorkSections';
+import CustomerTimeline from '../components/CustomerTimeline';
+import CustomerReminders from '../components/CustomerReminders';
+import { fmtHours,plural,Ranking } from '../components/ServiceCharts';
+import { fmtDuration,groupByDay,LedgerDay } from '../components/activityLedger';
+import { useAuth } from '../App';
+import { customer360Section,customer360Sections,customerHealth,customerHue } from './customer360';
+import './CustomerServiceProfile.css';
+import { useLiveRefresh } from '../live';
+
+const initialsOf=name => (name || '').trim().split(/\s+/).map(word => word[0]).slice(0,2).join('').toUpperCase() || '?';
+
+function HealthCard({ icon:Icon,label,value,note,state='default',onClick,href,bar }) {
+  const body=<><div className="cs-health-head"><Icon size={15} aria-hidden="true" /><span>{label}</span></div><div className={`cs-health-value${/^\d+$/.test(String(value)) ? '' : ' is-text'}`}>{value}</div>{note && <div className="cs-health-note">{note}</div>}{bar}</>;
+  const className=`card cs-health-card${state!=='default'?` is-${state}`:''}${onClick || href?' is-actionable':''}`;
+  if (href) return <Link to={href} className={className}>{body}</Link>;
+  if (onClick) return <button type="button" className={className} onClick={onClick}>{body}</button>;
+  return <section className={className}>{body}</section>;
+}
+
+// A customer receiving managed services (they have no maintenance visits).
+const managedCustomerState=summary => summary?.is_managed===true || ['active','sync_attention','setup_required'].includes(summary?.managed?.state);
+
+function QuickAdd({ customer,user,saAccess,onRecommendation,onReminder,managed=false }) {
+  const items=[];
+  if (user.role==='manager' || (saAccess.enabled && user.role==='engineer')) items.push(['activity','Log Service Activity',`/activity-log?create=1&customer_id=${customer.id}`,Activity]);
+  if (['manager','engineer'].includes(user.role)) items.push(['task','Create Task',`/customers/${customer.id}/service-profile?section=tasks&create=1`,CheckSquare]);
+  if (user.role==='manager') items.push(['project','Create Project',`/projects?create=1&customer_id=${customer.id}`,BriefcaseBusiness]);
+  if (['manager','planner'].includes(user.role) && !managed) items.push(['visit','Schedule Maintenance Visit',`/maintenance-visits?create=1&customer_id=${customer.id}`,Wrench]);
+  if (['manager','planner','engineer'].includes(user.role)) items.push(['recommendation','Add Recommendation',null,ClipboardList]);
+  if (onReminder) items.push(['reminder','Add Reminder',null,BellRing]);
+  if (user.role==='engineer' && saAccess.capabilities?.projectDelivery && !saAccess.capabilities?.managedServiceOperations) {
+    const order=['task','visit','recommendation','activity'];items.sort((left,right) => order.indexOf(left[0])-order.indexOf(right[0]));
+  }
+  if (!items.length) return null;
+  return <details className="cs-quick-add"><summary className="btn btn-primary"><Plus size={15} /> Add <ChevronDown size={14} /></summary><div className="cs-quick-menu" role="menu">
+    {items.map(([key,label,to,Icon]) => to ? <Link key={key} to={to} role="menuitem" onClick={event => { event.currentTarget.closest('details').open=false; }}><Icon size={15} />{label}</Link> : <button key={key} type="button" role="menuitem" onClick={event => { event.currentTarget.closest('details').open=false;(key==='reminder' ? onReminder : onRecommendation)(); }}><Icon size={15} />{label}</button>)}
+  </div></details>;
+}
+
+/* Overall health as a ring — the one number a manager scans first. The
+   deductions behind it sit under a disclosure, so it's never a black box. */
+function HealthRing({ health }) {
+  const radius=26,circumference=2*Math.PI*radius;
+  return <details className={`cs-health-ring is-${health.tone}`}>
+    <summary aria-label={`Customer health ${health.score} out of 100, ${health.label}`}>
+      <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r={radius} className="cs-ring-track" />
+        <circle cx="32" cy="32" r={radius} className="cs-ring-value" strokeDasharray={`${(health.score/100)*circumference} ${circumference}`} transform="rotate(-90 32 32)" />
+        <text x="32" y="37" textAnchor="middle" className="cs-ring-score">{health.score}</text>
+      </svg>
+      <span><strong>{health.label}</strong><small>{health.factors.length ? 'See why' : 'Nothing outstanding'}</small></span>
+    </summary>
+    {health.factors.length>0 && <ul className="cs-ring-factors">{health.factors.map(factor => <li key={factor.label}><b>−{factor.points}</b> {factor.label}</li>)}</ul>}
+  </details>;
+}
+
+/* The customer's logo, or its initials. Managers click it to upload, replace or remove the logo. */
+function CustomerLogo({ customer,canChange,onChanged }) {
+  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const toast=useToast();
+  const src=customer.logo_updated_at ? `/api/customers/${customer.id}/logo?v=${encodeURIComponent(customer.logo_updated_at)}` : null;
+  const face=src ? <img src={src} alt="" className="cs-logo-image" /> : initialsOf(customer.name);
+  async function run(work,message) {
+    setBusy(true);setError('');
+    try { const result=await work();onChanged(result.logo_updated_at);toast.success(message);setOpen(false); } catch(failure) { setError(failure.message); } finally { setBusy(false); }
+  }
+  if (!canChange) return <div className={`cs-identity-avatar${src ? ' has-logo' : ''}`} aria-hidden="true">{face}</div>;
+  return <>
+    <button type="button" className={`cs-identity-avatar cs-logo-button${src ? ' has-logo' : ''}`} onClick={() => setOpen(true)} aria-label={src ? 'Change the customer logo' : 'Add a customer logo'} title={src ? 'Change logo' : 'Add logo'}>{face}<span className="cs-logo-edit" aria-hidden="true"><Camera size={12} /></span></button>
+    {open && <Modal title="Customer logo" onClose={busy ? () => {} : () => setOpen(false)}>
+      {error && <div className="error-msg" role="alert">{error}</div>}
+      <div className="cs-logo-dialog"><div className={`cs-identity-avatar${src ? ' has-logo' : ''}`} style={{ '--cs-hue':customerHue(customer.name) }} aria-hidden="true">{face}</div>
+        <p className="text-muted text-sm">A PNG, JPEG or WebP image, at most 512 KB. A square logo looks best.</p></div>
+      <div className="modal-footer">
+        {src && <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => run(() => api.removeCustomerLogo(customer.id),'Logo removed')}>Remove logo</button>}
+        <label className={`btn btn-primary${busy ? ' disabled' : ''}`}>{busy ? 'Uploading…' : src ? 'Replace logo' : 'Upload logo'}
+          <input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={busy} onChange={event => { const file=event.target.files?.[0];event.target.value='';if (file) run(() => api.uploadCustomerLogo(customer.id,file),'Logo saved'); }} /></label>
+      </div>
+    </Modal>}
+  </>;
+}
+
+function CustomerHeader({ customer,operations,operationsError,user,saAccess,onRecommendation,onReminder,onSelectTab,onEdit,onLogoChanged }) {
+  const contact=customer.contact_name || customer.primary_contact;
+  const managed=operations?.managed;
+  const health=user.role==='manager' ? customerHealth(operations) : null;
+  return <header className="card cs-customer-header" style={{ '--cs-hue':customerHue(customer.name) }}>
+    <CustomerLogo customer={customer} canChange={user.role==='manager'} onChanged={onLogoChanged} />
+    <div className="cs-customer-heading"><div className="cs-customer-title"><h1>{customer.name}</h1>{customer.project_name && <span className="cs-project-name"><span className="sr-only">Project name: </span>{customer.project_name}</span>}<span className={`badge badge-${customer.active===0?'cancelled':'active'}`}>{sentenceCase(customer.active===0?'Inactive':'Active')}</span>{!!customer.is_internal && <ToneBadge tone="info">In-house infrastructure</ToneBadge>}{managed?.visible && managed.state!=='unavailable' && <span className={`badge badge-managed-${managed.state}`}>{{ not_enabled:'Managed services off',setup_required:'Managed setup incomplete',sync_attention:'Managed sync attention',active:'Managed services active' }[managed.state]}</span>}</div>
+      <div className="cs-customer-meta">
+        {contact && <span><Building2 size={13} />{contact}</span>}
+        {customer.contact_email && <a href={`mailto:${customer.contact_email}`}><Mail size={13} />{customer.contact_email}</a>}
+        {customer.contact_phone && <a href={`tel:${customer.contact_phone}`}><Phone size={13} />{customer.contact_phone}</a>}
+        {(customer.location || customer.address) && <span><MapPin size={13} />{customer.location || customer.address}</span>}
+        {managed?.responsible_team && <span><Layers size={13} />{managed.responsible_team}</span>}
+      </div>
+      <HeaderFigures data={operations} error={operationsError} onSelectTab={onSelectTab} />
+    </div>
+    <div className="cs-header-actions">{health && <HealthRing health={health} />}{onEdit && <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit}>Edit details</button>}<QuickAdd customer={customer} user={user} saAccess={saAccess} managed={managedCustomerState(operations)} onRecommendation={onRecommendation} onReminder={onReminder} /></div>
+  </header>;
+}
+
+/* The customer's figures as one line inside the header (each opens its section);
+   colour marks what needs attention. */
+function HeaderFigures({ data,error,onSelectTab }) {
+  if (error) return <p className="cs-header-figures-note">Operational summary unavailable. Detailed sections remain available.</p>;
+  if (!data) return <div className="cs-header-figures" aria-label="Loading customer summary" />;
+  const plural=(n,one,many=`${one}s`) => `${n} ${n===1?one:many}`;
+  const ticketsKnown=['active','sync_attention'].includes(data.managed?.state) && data.managed?.open_tickets!=null;
+  const managedProblem={ not_enabled:null,setup_required:'Managed setup incomplete',sync_attention:'Ticket sync failing',unavailable:'Managed services unavailable' }[data.managed?.state];
+  const figures=[
+    { key:'projects',text:plural(data.projects.active,'active project'),extra:data.projects.delayed ? `${data.projects.delayed} delayed` : '',tone:data.projects.delayed?'danger':'',go:() => onSelectTab('projects',data.projects.delayed?'delayed':'active') },
+    data.tasks.visible!==false && { key:'tasks',text:plural(data.tasks.open,'open task'),extra:data.tasks.overdue ? `${data.tasks.overdue} overdue` : '',tone:data.tasks.overdue?'danger':'',go:() => onSelectTab('tasks',data.tasks.overdue?'overdue':'open') },
+    { key:'recommendations',text:plural(data.recommendations.open,'recommendation'),extra:data.recommendations.high_risk ? `${data.recommendations.high_risk} high risk` : '',tone:data.recommendations.high_risk?'warning':'',go:() => onSelectTab('recommendations') },
+    !managedCustomerState(data) && { key:'visits',text:data.visits.next ? `Next visit ${fmtDate(data.visits.next.scheduled_date)}` : 'No visit scheduled',extra:data.visits.reports_pending ? `${data.visits.reports_pending} reports pending` : '',tone:data.visits.reports_pending?'warning':'',go:() => onSelectTab('maintenance-visits',data.visits.reports_pending?'report_pending':'upcoming') },
+    data.managed?.visible && ticketsKnown && { key:'tickets',text:plural(data.managed.open_tickets,'open ticket'),extra:data.managed.state==='sync_attention' ? 'sync failing' : '',tone:data.managed.state==='sync_attention'?'danger':'',go:() => onSelectTab('tickets') },
+    data.managed?.visible && !ticketsKnown && managedProblem && { key:'managed',text:managedProblem,extra:'',tone:'warning',go:() => onSelectTab('service-configuration') },
+    data.assets>0 && { key:'assets',text:plural(data.assets,'asset'),extra:'',tone:'',go:() => onSelectTab('assets') },
+  ].filter(Boolean);
+  return <div className="cs-header-figures">{figures.map(figure => <button key={figure.key} type="button" className={figure.tone ? `is-${figure.tone}` : undefined} onClick={figure.go}>
+    {figure.text}{figure.extra && <b>{figure.extra}</b>}
+  </button>)}</div>;
+}
+
+function ActivitiesSection({ id,user,engineers,categories }) {
+  const [from,setFrom]=useState(''),[to,setTo]=useState(''),[engineerFilter,setEngineerFilter]=useState(''),[categoryFilter,setCategoryFilter]=useState('');
+  const [summary,setSummary]=useState(null),[timeline,setTimeline]=useState([]),[total,setTotal]=useState(0),[page,setPage]=useState(1),[loading,setLoading]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0);
+  useEffect(() => {
+    const controller=new AbortController(),params={ page,page_size:25 };
+    if (from) params.from=from;if (to) params.to=to;if (engineerFilter) params.engineer_id=engineerFilter;if (categoryFilter) params.category_id=categoryFilter;
+    setLoading(true);setError('');
+    Promise.all([api.customerServiceActivities(id,params,{ signal:controller.signal }),api.customerServiceSummary(id,{ ...(from ? { from } : {}),...(to ? { to } : {}) },{ signal:controller.signal })]).then(([activities,result]) => {
+      if (!controller.signal.aborted) { setTimeline(activities.rows);setTotal(activities.total);setSummary(result); }
+    }).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  },[id,page,from,to,engineerFilter,categoryFilter,retry]);
+  const clear=() => { setFrom('');setTo('');setEngineerFilter('');setCategoryFilter('');setPage(1); };
+  return <div className="cs-activities activity-log">
+    {summary && <div className="cs-activity-metrics"><HealthCard icon={Activity} label="Activities" value={summary.total_activities} note="In selected period" /><HealthCard icon={CalendarDays} label="Logged Hours" value={fmtHours(summary.total_hours)} /><HealthCard icon={BriefcaseBusiness} label="Engineers" value={summary.byEngineer.length} /><HealthCard icon={Layers} label="Top Category" value={summary.byCategory[0]?.name || 'No activity'} note={summary.byCategory[0] ? `${summary.byCategory[0].count} activities` : ''} /></div>}
+    {summary?.total_activities>0 && <div className="cs-rankings"><Ranking title="Hours by category" rows={summary.byCategory || []} valueKey="hours" format={fmtHours} detail={row => plural(row.count,'activity','activities')} /><Ranking title="Hours by engineer" rows={summary.byEngineer || []} valueKey="hours" format={fmtHours} /></div>}
+    <div className="cs-toolbar"><div><label htmlFor="cs-from">From</label><input id="cs-from" type="date" value={from} onChange={event => { setFrom(event.target.value);setPage(1); }} /></div><div><label htmlFor="cs-to">To</label><input id="cs-to" type="date" value={to} onChange={event => { setTo(event.target.value);setPage(1); }} /></div><div><label htmlFor="cs-engineer">Engineer</label><select id="cs-engineer" value={engineerFilter} onChange={event => { setEngineerFilter(event.target.value);setPage(1); }}><option value="">All engineers</option>{engineers.map(engineer => <option key={engineer.id} value={engineer.id}>{engineer.name}</option>)}</select></div><div><label htmlFor="cs-category">Category</label><select id="cs-category" value={categoryFilter} onChange={event => { setCategoryFilter(event.target.value);setPage(1); }}><option value="">All categories</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div>{(from || to || engineerFilter || categoryFilter) && <button type="button" className="cs-clear" onClick={clear}>Clear filters</button>}</div>
+    {error ? <div className="error-msg" role="alert">{error} <button className="btn btn-ghost btn-sm" onClick={() => setRetry(value => value+1)}>Retry</button></div> : loading ? <div className="skeleton-table" aria-label="Loading activities"><span /><span /><span /></div> : !timeline.length ? <div className="card cs-empty"><h2>No service activities found</h2><p>Activities logged against this customer will appear here.</p></div> : <div className="card al-ledger">{groupByDay(timeline,page,Math.max(1,Math.ceil(total/25))).map(group => <LedgerDay key={group.date} group={group}>{group.rows.map(activity => <li className="al-entry" key={activity.id}><span className={'al-duration'+(activity.duration_minutes?'':' is-unset')}>{activity.duration_minutes?fmtDuration(activity.duration_minutes):'No time'}</span><div className="al-main">{user.role==='manager'?<Link className="al-title" to={`/activity-log?activity=${activity.id}`}>{activity.title}</Link>:<span className="al-title is-static">{activity.title}</span>}<div className="al-meta"><span className="al-customer">{activity.engineer_name}</span><span>{activity.category_name}</span><span className="al-ref">{activity.activity_reference}</span></div></div>{activity.status==='cancelled' && <div className="al-side"><span className="badge badge-cancelled">Cancelled</span></div>}</li>)}</LedgerDay>)}<div className="al-pager"><span>{total} activities</span><div className="al-pager-nav"><button className="btn btn-ghost btn-sm" disabled={page<=1} onClick={() => setPage(value => value-1)}>Previous</button><span>Page {page} of {Math.max(1,Math.ceil(total/25))}</span><button className="btn btn-ghost btn-sm" disabled={page*25>=total} onClick={() => setPage(value => value+1)}>Next</button></div></div></div>}
+  </div>;
+}
+
+export default function CustomerServiceProfile() {
+  const { user,saAccess }=useAuth(),{ id }=useParams(),location=useLocation(),navigate=useNavigate();
+  const query=new URLSearchParams(location.search),source=query.get('source_visit');
+  const sourceVisitId=source && /^[1-9]\d*$/.test(source) && Number.isSafeInteger(Number(source)) ? Number(source) : null;
+  const [editingCustomer,setEditingCustomer]=useState(false);
+  const [customer,setCustomer]=useState(null),[operations,setOperations]=useState(null),[operationsError,setOperationsError]=useState(''),[profileError,setProfileError]=useState(''),[retry,setRetry]=useState(0);
+  const assetsGrant=operations?.assets_access==='team'; // engineer on a managed-services team serving this customer
+  const managedCustomer=['active','sync_attention','setup_required'].includes(operations?.managed?.state); // adds Tickets and Reports
+  const noVisits=managedCustomerState(operations); // managed customers have no maintenance visits
+  const hasTickets=!!operations?.tickets_mapped; // a Request Tracker queue, managed customer or not
+  const hiddenTabs=customer?.hidden_sections || []; // tabs a manager hid on this customer's page
+  const tab=customer360Section(user,query.get('section'),saAccess.capabilities,assetsGrant,managedCustomer,hasTickets,noVisits,hiddenTabs);
+  const [engineers,setEngineers]=useState([]),[categories,setCategories]=useState([]),[addingReminder,setAddingReminder]=useState(false);
+  // Someone else's change re-reads the customer in place; a different customer starts afresh.
+  useLiveRefresh(() => setRetry(value => value+1));
+  const operationsFor=useRef(null); // which customer the summary on screen is for
+  useEffect(() => { const controller=new AbortController();setCustomer(current => current && String(current.id)===String(id) ? current : null);setProfileError('');api.customer(id,{ signal:controller.signal }).then(result => { if (!controller.signal.aborted) setCustomer(result); }).catch(failure => { if (!controller.signal.aborted) setProfileError(failure.message); });return () => controller.abort(); },[id,retry]);
+  useEffect(() => { const controller=new AbortController();if (operationsFor.current!==id) setOperations(null);operationsFor.current=id;setOperationsError('');api.customerOperationsSummary(id,{ signal:controller.signal }).then(result => { if (!controller.signal.aborted) setOperations(result); }).catch(failure => { if (!controller.signal.aborted) setOperationsError(failure.message); });return () => controller.abort(); },[id,retry]);
+  useEffect(() => { if (!['activities','tasks'].includes(tab)) return undefined;const controller=new AbortController();Promise.all([api.users({ signal:controller.signal }),tab==='activities'?api.activityCategories({ signal:controller.signal }):Promise.resolve([])]).then(([users,cats]) => { if (!controller.signal.aborted) { setEngineers(users.filter(item => item.role==='engineer'));setCategories(cats); } }).catch(() => {});return () => controller.abort(); },[tab]);
+  function selectTab(section,filter=null,create=false) { const params=new URLSearchParams(location.search);params.set('section',customer360Section(user,section,saAccess.capabilities,assetsGrant,managedCustomer,hasTickets,noVisits,hiddenTabs));if (filter) params.set('filter',filter);else params.delete('filter');if (create) params.set('create','1');else params.delete('create');if (section!=='recommendations') params.delete('source_visit');navigate({ pathname:location.pathname,search:`?${params}` }); }
+  function moveTab(event,index) { if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;event.preventDefault();const tabs=sections;const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;selectTab(tabs[next].id);requestAnimationFrame(() => document.getElementById(`customer-tab-${tabs[next].id}`)?.focus()); }
+  useEffect(() => { if (!saAccess.loaded) return;const requested=query.get('section');if (['assets','tickets','reports'].includes(requested) && !operations && !operationsError) return; /* wait: the assets grant and managed state arrive with the summary */const safe=customer360Section(user,requested,saAccess.capabilities,assetsGrant,managedCustomer,hasTickets,noVisits,hiddenTabs);if (requested!==safe) { const params=new URLSearchParams(location.search);params.set('section',safe);navigate({ pathname:location.pathname,search:`?${params}` },{ replace:true }); } },[location.pathname,location.search,navigate,user,saAccess.capabilities,saAccess.loaded,operations,operationsError,assetsGrant,managedCustomer,hasTickets,noVisits,hiddenTabs]);
+  if (profileError) return <div className="page"><div className="error-msg" role="alert">{profileError} <button className="btn btn-ghost" onClick={() => setRetry(value => value+1)}>Retry</button></div></div>;
+  if (!saAccess.loaded || !customer || customer.id!==Number(id)) return <div className="page"><div className="cs-profile-skeleton"><span /><span /><span /></div></div>;
+  const sections=customer360Sections(user,saAccess.capabilities,assetsGrant,managedCustomer,hasTickets,noVisits,hiddenTabs);
+  // What is open in each section, shown on its tab (only when there is something).
+  const tabCounts={ tasks:operations?.tasks?.open,tickets:operations?.managed?.open_tickets,recommendations:operations?.recommendations?.open,projects:operations?.projects?.active,assets:operations?.assets };
+  const assetAccess=Object.prototype.hasOwnProperty.call(user.permissions || {},'assets.access') ? user.permissions['assets.access']===true : user.role==='manager';
+  return <div className="page cs-page"><Link to={user.role==='manager'?'/customers':'/'} className="cs-back"><ArrowLeft size={12} /> {user.role==='manager'?'Back to Customers':'Back to Dashboard'}</Link>
+    <CustomerHeader customer={customer} operations={operations} operationsError={operationsError} user={user} saAccess={saAccess} onRecommendation={() => selectTab('recommendations',null,true)} onReminder={() => setAddingReminder(true)} onSelectTab={selectTab} onLogoChanged={version => setCustomer(current => ({ ...current,logo_updated_at:version }))} onEdit={['manager','planner'].includes(user.role) ? () => setEditingCustomer(true) : null} />
+    {editingCustomer && <EditCustomerDialog customer={customer} onClose={() => setEditingCustomer(false)} onSaved={() => setRetry(value => value+1)} />}
+    {/* The customer's reminders (renewals and other dates the team must not miss): on the Overview, or while adding one. */}
+    {(tab==='overview' || addingReminder) && <CustomerReminders key={`reminders-${customer.id}`} customer={customer} adding={addingReminder} onAddingChange={setAddingReminder} />}
+    <div className="cs-tabs"><div className="tabs" role="tablist" aria-label="Customer 360 sections">{sections.map((section,index) => <button key={section.id} id={`customer-tab-${section.id}`} type="button" className={`tab${tab===section.id?' active':''}`} role="tab" aria-selected={tab===section.id} aria-controls="customer-360-panel" tabIndex={tab===section.id?0:-1} onKeyDown={event => moveTab(event,index)} onClick={() => selectTab(section.id)}>{section.label}{tabCounts[section.id] > 0 && <span className="cs-tab-count" aria-hidden="true">{tabCounts[section.id]}</span>}</button>)}</div>
+    </div>
+    <main id="customer-360-panel" className="cs-tab-panel" role="tabpanel" aria-labelledby={`customer-tab-${tab}`}>
+      {tab==='overview' ? <CustomerOverview key={customer.id} customer={customer} summary={operations} summaryError={operationsError} onSelectTab={selectTab} /> : tab==='projects' ? <CustomerProjects key={`${customer.id}:${query.get('filter') || ''}`} customerId={customer.id} initialFilter={query.get('filter')} /> : tab==='tasks' ? <CustomerTasks key={`${customer.id}:${query.get('filter') || ''}`} customerId={customer.id} initialFilter={query.get('filter')} engineers={user.role==='manager'?engineers:[]} canManage={user.role==='manager'} canAdd={['manager','engineer'].includes(user.role)} isEngineer={user.role==='engineer'} create={query.get('create')==='1'} onCreateConsumed={() => { const params=new URLSearchParams(location.search);params.delete('create');navigate(`${location.pathname}?${params}`,{ replace:true }); }} openTaskId={query.get('task')} /> : tab==='maintenance-visits' ? <CustomerVisits key={`${customer.id}:${query.get('filter') || ''}`} customerId={customer.id} initialFilter={query.get('filter')} /> : tab==='timeline' ? <CustomerTimeline customerId={customer.id} user={user} /> : tab==='service-configuration' && user.role==='manager' ? <ManagedCustomerConfiguration key={customer.id} customerId={customer.id} hiddenSections={hiddenTabs} onHiddenSections={list => setCustomer(current => ({ ...current,hidden_sections:list }))} /> : tab==='tickets' && (managedCustomer || hasTickets) ? <CustomerTickets key={customer.id} customerId={customer.id} /> : tab==='reports' && managedCustomer ? <CustomerReports key={customer.id} customerId={customer.id} /> : tab==='assets' && (assetAccess || assetsGrant) ? <CustomerAssets key={`${customer.id}:${query.get('q') || ''}`} customerId={customer.id} initialSearch={query.get('q') || ''} restricted={!assetAccess} isManager={user.role==='manager'} canAddTask={['manager','engineer'].includes(user.role)} initialView={query.get('view') || ''} /> : tab==='contracts' ? <><CustomerContracts key={customer.id} customerId={customer.id} /><CustomerLicences key={`licences-${customer.id}`} customerId={customer.id} /></> : tab==='vendor-cases' ? <VendorCases key={customer.id} customerId={customer.id} openCaseId={query.get('case')} /> : tab==='recommendations' ? <CustomerRecommendations key={customer.id} customerId={customer.id} sourceVisitId={sourceVisitId} create={query.get('create')==='1'} onSourceConsumed={() => { const params=new URLSearchParams(location.search);params.delete('source_visit');params.delete('create');navigate(`${location.pathname}?${params}`,{ replace:true }); }} /> : <ActivitiesSection id={id} user={user} engineers={engineers} categories={categories} />}
+    </main>
+  </div>;
+}

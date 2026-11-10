@@ -20,7 +20,7 @@ const CLIENT_DIR = path.join(ROOT_DIR, 'client');
 const NODE_EXE = process.execPath;
 
 // Full path to npm (same directory as node)
-const NPM_CMD  = path.join(path.dirname(NODE_EXE), 'npm.cmd');
+const NPM_CMD  = path.join(path.dirname(NODE_EXE), process.platform === 'win32' ? 'npm.cmd' : 'npm');
 
 // ── In-memory state (survives per process) ───────────────────
 const state = {
@@ -140,6 +140,12 @@ async function runUpdate() {
 
 // ── Restart (graceful) ───────────────────────────────────────
 function scheduleRestart() {
+  if (process.platform !== 'win32') {
+    pushLog('ℹ️  Restart scheduled by exiting the Node process; the service manager should restart it.', 'info');
+    setTimeout(() => process.exit(0), 1000);
+    return;
+  }
+
   // Write to a uniquely-named temp file under the OS temp directory so that
   // (a) no other process can predict or pre-create the path, and
   // (b) the project directory stays clean.

@@ -23,19 +23,41 @@ server/certs/*.pem
 server/certs/*.key
 server/certs/*.p12
 server/certs/*.pfx
+# The HTTPS certificate for the production proxy (deploy/Caddyfile)
+certs/
 
 # Environment / secrets
 .env
 .env.*
 !.env.example
 
+# Database backups produced by deploy/backup.sh
+deploy/backups/
+
 # Editor / OS
 .DS_Store
 Thumbs.db
 *.swp
 
-# Claude IDE files
-.claude/
+# Claude IDE files: local settings stay private; shared review agents are kept.
+.claude/*
+!.claude/agents/
 
 # Temp / debug scripts
 check_migration.js
+
+# Stray local DB file at repo root
+/firewall_cleanup.db
+
+# Browser test output
+client/.e2e-dist/
+client/test-results/
+client/playwright-report/
+
+# Runtime uploads and generated report files (also written by the test suite)
+server/uploads/
+# Per-server compose additions (extra_hosts, dns), never committed
+docker-compose.override.yml
+
+# In-app database backups (Settings → System → Backups)
+server/backups/

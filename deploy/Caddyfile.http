@@ -1,0 +1,20 @@
+# Plain HTTP on port 80, used by `deploy.sh prod` only while there is no certificate
+# in ./certs (with one, deploy/Caddyfile serves HTTPS on 443 instead). Passwords and
+# sessions cross the network unencrypted: add the certificate as soon as possible
+# (deploy/README.md section 4) and deploy again.
+{
+	auto_https off
+	admin off
+}
+
+:80 {
+	# Uploads and imports: the app caps attachments at 20 MB.
+	request_body {
+		max_size 25MB
+	}
+
+	reverse_proxy app:8080 {
+		# Live updates (Server-Sent Events) reach the browser as they happen.
+		flush_interval -1
+	}
+}

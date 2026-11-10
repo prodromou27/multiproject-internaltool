@@ -29,7 +29,7 @@ export function StatusProvider({ children, enabled }) {
 
   useEffect(() => {
     if (enabled) reload();
-  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled]);  
 
   return (
     <StatusContext.Provider value={{ config, reload }}>

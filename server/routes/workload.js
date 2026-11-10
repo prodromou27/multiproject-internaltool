@@ -1,40 +1,44 @@
 const router = require('express').Router();
+const appTime = require('../appTime');
 const db = require('../db');
 const { requireManager } = require('../middleware/auth');
+const { decrypt } = require('../fieldCipher');
+router.use('/planning', require('./workload-planning'));
+router.use('/pressure', require('./workload-pressure'));
 
 // GET /api/workload — full engineer workload snapshot
 // Replaces 4N individual queries with 4 batched queries (was: 80 queries for 20 engineers)
-router.get('/', requireManager, (req, res) => {
-  const engineers = db.prepare(
+router.get('/', requireManager, async (req, res) => {
+  const engineers = (await db.prepare(
     "SELECT id, name, email FROM users WHERE role = 'engineer' AND active = 1 ORDER BY name ASC"
-  ).all();
+  ).all());
 
   if (!engineers.length) return res.json([]);
 
   const engineerIds = engineers.map(e => e.id);
   const ph = engineerIds.map(() => '?').join(',');
-  const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const month = appTime.thisMonth(); // YYYY-MM, in the organisation's zone
 
   // Batch 1: all open/in-progress tasks for all engineers
-  const allTasks = db.prepare(`
+  const allTasks = (await db.prepare(`
     SELECT t.id, t.title, t.status, t.priority, t.deadline, t.assigned_to,
            p.title AS project_title
     FROM tasks t
     LEFT JOIN projects p ON t.project_id = p.id
     WHERE t.assigned_to IN (${ph}) AND t.status IN ('open', 'in_progress')
     ORDER BY t.deadline ASC NULLS LAST
-  `).all(...engineerIds);
+  `).all(...engineerIds));
 
   // Batch 2: done-this-month count per engineer
-  const doneCounts = db.prepare(`
+  const doneCounts = (await db.prepare(`
     SELECT assigned_to, COUNT(*) AS c FROM tasks
     WHERE assigned_to IN (${ph}) AND status IN ('completed','closed')
-      AND strftime('%Y-%m', updated_at) = ?
+      AND substr(updated_at,1,7) = ?
     GROUP BY assigned_to
-  `).all(...engineerIds, month);
+  `).all(...engineerIds, month));
 
   // Batch 3: upcoming visits for all engineers
-  const allVisits = db.prepare(`
+  const allVisits = (await db.prepare(`
     SELECT mv.id, mv.title, mv.scheduled_date, mv.status,
            c.name AS customer_name, mve.user_id
     FROM maintenance_visits mv
@@ -42,21 +46,21 @@ router.get('/', requireManager, (req, res) => {
     JOIN customers c ON mv.customer_id = c.id
     WHERE mve.user_id IN (${ph}) AND mv.status IN ('scheduled', 'in_progress')
     ORDER BY mv.scheduled_date ASC
-  `).all(...engineerIds);
+  `).all(...engineerIds));
 
   // Batch 4: hours logged this month per engineer
-  const allHours = db.prepare(`
+  const allHours = (await db.prepare(`
     SELECT user_id, COALESCE(SUM(hours), 0) AS total FROM time_logs
-    WHERE user_id IN (${ph}) AND strftime('%Y-%m', logged_at) = ?
+    WHERE user_id IN (${ph}) AND substr(logged_at,1,7) = ?
     GROUP BY user_id
-  `).all(...engineerIds, month);
+  `).all(...engineerIds, month));
 
   // Build lookup maps
   const tasksMap  = {}, doneMap = {}, visitsMap = {}, hoursMap = {};
   engineerIds.forEach(id => { tasksMap[id] = []; visitsMap[id] = []; doneMap[id] = 0; hoursMap[id] = 0; });
   allTasks.forEach(t  => tasksMap[t.assigned_to].push(t));
   doneCounts.forEach(r => { doneMap[r.assigned_to] = r.c; });
-  allVisits.forEach(v => visitsMap[v.user_id].push(v));
+  allVisits.forEach(v => visitsMap[v.user_id].push({ ...v, customer_name: decrypt(v.customer_name) }));
   allHours.forEach(r  => { hoursMap[r.user_id] = Math.round(r.total * 10) / 10; });
 
   const result = engineers.map(eng => ({
@@ -70,12 +74,28 @@ router.get('/', requireManager, (req, res) => {
   res.json(result);
 });
 
-// GET /api/workload/forecast — 4-week capacity grid
+// GET /api/workload/forecast — 4-week scheduled-item grid
 // Replaces 8N queries with 8 batched queries (was: 160 queries for 20 engineers)
-router.get('/forecast', requireManager, (req, res) => {
-  const engineers = db.prepare(
+// One row per engineer: tickets, tasks, visits, activities and time over the last 1, 3, 6 or 12 months.
+router.get('/engineers', requireManager, async (req, res) => {
+  const months = Number(req.query.months ?? 3);
+  if (![1, 3, 6, 12].includes(months)) return res.status(400).json({ error: 'months must be 1, 3, 6 or 12' });
+  res.json(await require('../workloadSummary').engineerSummary({ months }));
+});
+
+// Tickets each engineer resolved in Request Tracker over the last 1, 3, 6 or 12 months.
+router.get('/tickets', requireManager, async (req, res) => {
+  const months = Number(req.query.months ?? 3);
+  if (![1, 3, 6, 12].includes(months)) return res.status(400).json({ error: 'months must be 1, 3, 6 or 12' });
+  const userId = req.query.user_id === undefined ? null : Number(req.query.user_id);
+  if (userId !== null && (!Number.isSafeInteger(userId) || userId < 1)) return res.status(400).json({ error: 'Invalid user' });
+  res.json(await require('../ticketOwners').workload({ months, userId }));
+});
+
+router.get('/forecast', requireManager, async (req, res) => {
+  const engineers = (await db.prepare(
     "SELECT id, name FROM users WHERE role = 'engineer' AND active = 1 ORDER BY name ASC"
-  ).all();
+  ).all());
 
   if (!engineers.length) return res.json([]);
 
@@ -105,7 +125,7 @@ router.get('/forecast', requireManager, (req, res) => {
   const ph = engineerIds.map(() => '?').join(',');
 
   // Batch 1: all upcoming tasks in the 4-week window for all engineers
-  const allTasks = db.prepare(`
+  const allTasks = (await db.prepare(`
     SELECT t.id, t.title, t.priority, t.deadline, t.assigned_to,
            p.title AS project_title
     FROM tasks t
@@ -114,10 +134,10 @@ router.get('/forecast', requireManager, (req, res) => {
       AND t.status NOT IN ('completed','closed','cancelled')
       AND t.deadline >= ? AND t.deadline <= ?
     ORDER BY t.deadline ASC
-  `).all(...engineerIds, rangeStart, rangeEnd);
+  `).all(...engineerIds, rangeStart, rangeEnd));
 
   // Batch 2: all upcoming visits in the 4-week window for all engineers
-  const allVisits = db.prepare(`
+  const allVisits = (await db.prepare(`
     SELECT mv.id, mv.title, mv.scheduled_date, mv.status,
            c.name AS customer_name, mve.user_id
     FROM maintenance_visits mv
@@ -127,12 +147,14 @@ router.get('/forecast', requireManager, (req, res) => {
       AND mv.status NOT IN ('completed','cancelled')
       AND mv.scheduled_date >= ? AND mv.scheduled_date <= ?
     ORDER BY mv.scheduled_date ASC
-  `).all(...engineerIds, rangeStart, rangeEnd);
+  `).all(...engineerIds, rangeStart, rangeEnd));
 
   const result = engineers.map(eng => {
     const weekData = weeks.map(w => {
       const tasks  = allTasks.filter(t => t.assigned_to === eng.id && t.deadline  >= w.start && t.deadline  <= w.end);
-      const visits = allVisits.filter(v => v.user_id    === eng.id && v.scheduled_date >= w.start && v.scheduled_date <= w.end);
+      const visits = allVisits
+        .filter(v => v.user_id === eng.id && v.scheduled_date >= w.start && v.scheduled_date <= w.end)
+        .map(v => ({ ...v, customer_name: decrypt(v.customer_name) }));
       return { ...w, tasks, visits, total: tasks.length + visits.length };
     });
     return { ...eng, weeks: weekData };

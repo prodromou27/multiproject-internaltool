@@ -4,7 +4,7 @@ const { requireManager } = require('../middleware/auth');
 
 /* ── GET /api/audit ─────────────────────────────────────── */
 // Manager-only. Returns paginated audit log with optional filters.
-router.get('/', requireManager, (req, res) => {
+router.get('/', requireManager, async (req, res) => {
   const MAX_LIMIT = 500;
   const {
     entity_type,
@@ -27,16 +27,16 @@ router.get('/', requireManager, (req, res) => {
 
   const whereSQL = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
-  const rows = db.prepare(`
+  const rows = (await db.prepare(`
     SELECT * FROM audit_log
     ${whereSQL}
     ORDER BY created_at DESC
     LIMIT ? OFFSET ?
-  `).all(...params, Number(limit), Number(offset));
+  `).all(...params, Number(limit), Number(offset)));
 
-  const { cnt: total } = db.prepare(
+  const { cnt: total } = (await db.prepare(
     `SELECT COUNT(*) AS cnt FROM audit_log ${whereSQL}`
-  ).get(...params);
+  ).get(...params));
 
   res.json({ rows, total });
 });
@@ -45,13 +45,13 @@ router.get('/', requireManager, (req, res) => {
    Distinct list of users who appear in the audit log (for
    the filter dropdown in the UI).
 */
-router.get('/users', requireManager, (req, res) => {
-  const rows = db.prepare(`
+router.get('/users', requireManager, async (req, res) => {
+  const rows = (await db.prepare(`
     SELECT DISTINCT user_id, user_name, user_role
     FROM audit_log
     WHERE user_id IS NOT NULL
     ORDER BY user_name
-  `).all();
+  `).all());
   res.json(rows);
 });
 
