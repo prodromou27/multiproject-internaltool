@@ -99,8 +99,8 @@ router.get('/products', async (req, res) => {
 /* ── Managers: what is watched, the NVD API key, and running a sync ───────── */
 router.get('/admin/status', requireManager, async (req, res) => {
   const stored = await sync.settings();
-  const watch = await db.prepare('SELECT id, cpe_vendor, cpe_product, label, source, asset_vendor, hidden, total, last_sync_at, last_status, last_error FROM cve_watch ORDER BY cpe_vendor, cpe_product').all();
-  res.json({ nvd_api_key_set: !!stored.nvd_api_key, sync: await lastSync(), watch: watch.map(row => ({ ...row, hidden: !!row.hidden })) });
+  const watch = await db.prepare('SELECT id, cpe_vendor, cpe_product, label, source, asset_vendor, hidden, in_advisories, total, last_sync_at, last_status, last_error FROM cve_watch ORDER BY cpe_vendor, cpe_product').all();
+  res.json({ nvd_api_key_set: !!stored.nvd_api_key, sync: await lastSync(), watch: watch.map(row => ({ ...row, hidden: !!row.hidden, in_advisories: !!Number(row.in_advisories) })) });
 });
 
 router.put('/admin/settings', requireManager, async (req, res) => {
@@ -130,6 +130,7 @@ router.put('/admin/watch/:id', requireManager, async (req, res) => {
   const row = await db.prepare('SELECT * FROM cve_watch WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   if (body.hidden !== undefined && typeof body.hidden !== 'boolean') return bad(res, 'Hidden must be true or false');
+  if (body.in_advisories !== undefined && typeof body.in_advisories !== 'boolean') return bad(res, 'In customer reports must be true or false');
   let vendor = row.cpe_vendor;
   if (body.cpe_vendor !== undefined) {
     vendor = String(body.cpe_vendor).trim().toLowerCase();
@@ -137,9 +138,10 @@ router.put('/admin/watch/:id', requireManager, async (req, res) => {
     if (vendor !== row.cpe_vendor && await db.prepare('SELECT 1 FROM cve_watch WHERE cpe_vendor = ? AND cpe_product = ? AND id <> ?').get(vendor, row.cpe_product, id)) return res.status(409).json({ error: 'That is already watched' });
   }
   // A corrected NVD name starts a fresh sync for it.
-  await db.prepare('UPDATE cve_watch SET hidden = COALESCE(?, hidden), cpe_vendor = ?, last_sync_at = CASE WHEN ? THEN NULL ELSE last_sync_at END WHERE id = ?')
-    .run(body.hidden === undefined ? null : (body.hidden ? 1 : 0), vendor, vendor !== row.cpe_vendor, id);
-  await logAudit(db, req, 'cve_watch', id, `${vendor}:${row.cpe_product || '*'}`, 'cve_watch_updated', `hidden=${body.hidden}; vendor=${vendor}`);
+  const flag = value => (value === undefined ? null : (value ? 1 : 0));
+  await db.prepare('UPDATE cve_watch SET hidden = COALESCE(?, hidden), in_advisories = COALESCE(?, in_advisories), cpe_vendor = ?, last_sync_at = CASE WHEN ? THEN NULL ELSE last_sync_at END WHERE id = ?')
+    .run(flag(body.hidden), flag(body.in_advisories), vendor, vendor !== row.cpe_vendor, id);
+  await logAudit(db, req, 'cve_watch', id, `${vendor}:${row.cpe_product || '*'}`, 'cve_watch_updated', `hidden=${body.hidden}; in_advisories=${body.in_advisories}; vendor=${vendor}`);
   res.json({ ok: true });
 });
 

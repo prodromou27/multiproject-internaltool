@@ -21,7 +21,8 @@ const value = (description, example) => ({ kind: 'value', description, example }
 const list = (description, fields) => ({ kind: 'list', description, fields });
 const flag = description => ({ kind: 'flag', description });
 
-const OPTIONAL_SECTIONS = ['changes', 'resolved_tickets', 'open_tickets', 'assets', 'recommendations'];
+const OPTIONAL_SECTIONS = ['changes', 'resolved_tickets', 'open_tickets', 'assets', 'recommendations', 'lifecycle', 'advisories'];
+const LIFECYCLE_FIELDS = { item: 'What it is', type: 'Support, Warranty, Firmware, Licence, Subscription, Certificate or Contract', ends: 'Ends on', status: 'Expired, Within 90 days or Within 12 months' };
 
 const PLACEHOLDERS = {
   report_title: value('The report title set in Settings → Templates → Customer report template', 'Service report'),
@@ -69,6 +70,13 @@ const PLACEHOLDERS = {
     criticality: 'Criticality', support_end: 'Support ends', support_status: 'Support status', warranty_end: 'Warranty ends', warranty_status: 'Warranty status',
   }),
   recommendations: list('Open recommendations', { finding: 'Finding', recommendation: 'Recommendation', risk: 'Risk', status: 'Status', owner: 'Owner', due: 'Due' }),
+  lifecycle_summary: value('How many items have expired or end within 12 months', '7 items have expired or end within the next 12 months.'),
+  lifecycle_devices: list('Devices and firmware that have expired or end within 12 months', LIFECYCLE_FIELDS),
+  lifecycle_licences: list('Licences, subscriptions and certificates that have expired or end within 12 months', LIFECYCLE_FIELDS),
+  lifecycle_contracts: list('Contracts that have ended or end within 12 months', LIFECYCLE_FIELDS),
+  advisories_notice: value('The fixed line above the security advisories', 'General information about significant vulnerabilities published in this period. This list is not an assessment of your environment.'),
+  advisories_more: value('When more qualified than are shown, a line saying so', 'Showing the 10 most significant of 14.'),
+  advisories: list('Security advisories for awareness: CVEs above 9 in the period', { cve: 'CVE number', product: 'Product', severity: 'Severity and score', exploited: 'Actively exploited (Yes or No)', description: 'Official description' }),
 
   has_activities: flag('True when there are activities'),
   has_changes: flag('True when there are changes or upgrades'),
@@ -77,6 +85,11 @@ const PLACEHOLDERS = {
   has_assets: flag('True when there are assets'),
   has_recommendations: flag('True when there are open recommendations'),
   has_risks_or_next_steps: flag('True when risks or upcoming work were written for this report'),
+  has_lifecycle: flag('True when something has expired or ends within 12 months'),
+  has_lifecycle_devices: flag('True when devices or firmware are listed'),
+  has_lifecycle_licences: flag('True when licences, subscriptions or certificates are listed'),
+  has_lifecycle_contracts: flag('True when contracts are listed'),
+  has_advisories: flag('True when there are security advisories'),
   ...Object.fromEntries(OPTIONAL_SECTIONS.map(section => [`include_${section}`, flag(`True when the report template includes the ${section.replace('_', ' ')} section`)])),
 };
 
@@ -108,6 +121,9 @@ function templateData(model, { preparedBy } = {}) {
   const recommendations = rowsOf('recommendations').map(row => ({ finding: row.finding, recommendation: row.recommendation,
     risk: titleCase(row.risk_level), status: titleCase(row.status), owner: row.owner_name || '', due: dmy(row.due_date) }));
   const sections = new Set(model.sections || []);
+  const lifecycleRows = key => (model.lifecycle?.groups || []).find(group => group.key === key)?.rows.map(row => ({ ...row, ends: dmy(row.ends) })) || [];
+  const [lifecycleDevices, lifecycleLicences, lifecycleContracts] = ['devices', 'licences', 'contracts'].map(lifecycleRows);
+  const advisories = (model.advisories?.rows || []).map(row => ({ ...row, exploited: row.exploited ? 'Yes' : 'No' }));
   return {
     customer_name: model.customer.name,
     period_from: dmy(model.period.from), period_to: dmy(model.period.to),
@@ -128,6 +144,9 @@ function templateData(model, { preparedBy } = {}) {
     has_activities: activities.length > 0, has_changes: changes.length > 0, has_resolved_tickets: resolved.length > 0, has_open_tickets: open.length > 0,
     has_assets: assets.length > 0, has_recommendations: recommendations.length > 0,
     has_risks_or_next_steps: !!(narratives.risks_concerns || narratives.upcoming_activities),
+    lifecycle_summary: model.lifecycle?.summary || '', lifecycle_devices: lifecycleDevices, lifecycle_licences: lifecycleLicences, lifecycle_contracts: lifecycleContracts,
+    has_lifecycle: !!model.lifecycle?.total, has_lifecycle_devices: lifecycleDevices.length > 0, has_lifecycle_licences: lifecycleLicences.length > 0, has_lifecycle_contracts: lifecycleContracts.length > 0,
+    advisories, has_advisories: advisories.length > 0, advisories_notice: model.advisories?.notice || '', advisories_more: model.advisories?.more || '',
     ...Object.fromEntries(OPTIONAL_SECTIONS.map(section => [`include_${section}`, sections.has(section)])),
   };
 }
@@ -261,6 +280,22 @@ async function starterTemplate() {
       ...block('has_assets',
         p('{assets_needing_attention} of {asset_count} assets have support or warranty that has expired or expires within 90 days.'),
         loopTable('assets', [['name', 'Asset'], ['type', 'Type'], ['version', 'Version'], ['support_end', 'Support ends'], ['support_status', 'Support']]))),
+
+    ...block('include_lifecycle',
+      h1('Technology lifecycle and support status'),
+      unless('has_lifecycle', 'Nothing has expired or ends within the next 12 months.'),
+      ...block('has_lifecycle', p('{lifecycle_summary}')),
+      ...block('has_lifecycle_devices', p('Devices and firmware', { bold: true }), loopTable('lifecycle_devices', [['item', 'Item'], ['type', 'Type'], ['ends', 'Ends'], ['status', 'Status']])),
+      ...block('has_lifecycle_licences', p('Licences, subscriptions and certificates', { bold: true }), loopTable('lifecycle_licences', [['item', 'Item'], ['type', 'Type'], ['ends', 'Ends'], ['status', 'Status']])),
+      ...block('has_lifecycle_contracts', p('Contracts', { bold: true }), loopTable('lifecycle_contracts', [['item', 'Item'], ['type', 'Type'], ['ends', 'Ends'], ['status', 'Status']]))),
+
+    ...block('include_advisories',
+      h1('Security advisories for awareness'),
+      p('{advisories_notice}', { color: '666666' }),
+      unless('has_advisories', 'No significant security advisories were published in this period.'),
+      ...block('has_advisories',
+        loopTable('advisories', [['cve', 'CVE'], ['product', 'Product'], ['severity', 'Severity'], ['exploited', 'Actively exploited'], ['description', 'Description']]),
+        ...block('advisories_more', p('{advisories_more}')))),
 
     ...block('include_recommendations',
       h1('Recommendations'),

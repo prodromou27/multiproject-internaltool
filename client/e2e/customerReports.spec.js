@@ -15,6 +15,10 @@ const report = body => ({
   tasks: [{ title: 'Imperva upgrade', completed: '2026-09-20' }],
   recommendations: [{ finding: 'Old switch firmware', recommendation: 'Upgrade SW-CORE', risk: 'high', due: '2026-11-01' }],
   upcoming: [{ title: 'WAF failover test', due: '2026-10-20' }], assets: null,
+  lifecycle: (body.sections || []).includes('lifecycle') ? { total: 1, summary: '1 item has expired or ends within the next 12 months.',
+    groups: [{ key: 'devices', title: 'Devices and firmware', rows: [{ item: 'FW-HQ-01', type: 'Support', ends: '2026-10-01', status: 'Expired' }] }] } : null,
+  advisories: (body.sections || []).includes('advisories') ? { total: 1, more: '', notice: 'General information about significant vulnerabilities published in this period. This list is not an assessment of your environment.',
+    rows: [{ cve: 'CVE-2026-77001', product: 'PHP', severity: 'Critical 9.8', exploited: true, description: 'PHP lets a remote attacker run code.' }] } : null,
 });
 
 async function reportsTab(page, permissions = { 'managed_reports.generate': true, 'managed_customers.view': true }) {
@@ -104,4 +108,24 @@ test('Settings → Backups & health → Storage: how long report files are kept'
   await page.getByLabel('Keep customer report files for (days)').fill('180');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect.poll(() => saved).toEqual({ days: 180 });
+});
+
+test('lifecycle and security advisories can be ticked and are previewed', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-11T09:00:00+03:00'));
+  const { asked } = await reportsTab(page);
+  await page.goto('/customers/12/service-profile?section=reports');
+  const preview = page.getByRole('article', { name: 'Report preview' });
+  await expect(preview).toContainText('Northwind Logistics');
+  await expect(preview.getByRole('region', { name: 'Technology lifecycle and support status' })).toHaveCount(0);
+  await page.getByLabel('Technology lifecycle').check();
+  await page.getByLabel('Security advisories').check();
+  await expect.poll(() => asked.at(-1)?.sections || []).toEqual(expect.arrayContaining(['lifecycle', 'advisories']));
+  const lifecycle = preview.getByRole('region', { name: 'Technology lifecycle and support status' });
+  await expect(lifecycle).toContainText('1 item has expired or ends within the next 12 months.');
+  await expect(lifecycle).toContainText('Devices and firmware');
+  await expect(lifecycle).toContainText('FW-HQ-01');
+  const advisories = preview.getByRole('region', { name: 'Security advisories for awareness' });
+  await expect(advisories).toContainText('This list is not an assessment of your environment.');
+  await expect(advisories).toContainText('CVE-2026-77001');
+  await expect(advisories).toContainText('PHP lets a remote attacker run code.');
 });

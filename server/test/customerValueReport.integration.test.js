@@ -43,6 +43,37 @@ test('the customer report shows the work, changes and completed tasks of the per
   assert.equal((await api(`${base()}/customer-report.pdf`, { method: 'POST', token: ids.tokenEnabled, body })).status, 403);
 });
 
+// Seeds one flagged CVE above 9 and one licence ending soon (for August 2026, a period no other test reports on).
+async function seedInsights() {
+  if (!(await db.prepare("SELECT 1 FROM cves WHERE id = 'CVE-2026-77001'").get()))
+    await db.prepare("INSERT INTO cves (id, published, description, cvss_score, severity, products) VALUES ('CVE-2026-77001', '2026-08-12T10:00:00.000', 'PHP lets a remote attacker run code.', 9.8, 'CRITICAL', ' php:php ')").run();
+  if (!(await db.prepare("SELECT 1 FROM customer_licences WHERE name = 'Report test licence'").get()))
+    await db.prepare("INSERT INTO customer_licences (customer_id, kind, name, expires_on) VALUES (?, 'licence', 'Report test licence', '2026-12-15')").run(ids.customer);
+}
+
+test('lifecycle and advisories are off unless chosen, and appear in the preview, PDF and Word when chosen', async () => {
+  const PizZip = require('pizzip');
+  await seedInsights();
+  const from = '2026-08-01', to = '2026-08-31';
+  const preview = body => api(`${base()}/customer-report/preview`, { method: 'POST', token: ids.tokenManager, body });
+  const plain = (await preview({ from, to })).data;
+  assert.deepEqual([plain.lifecycle, plain.advisories], [null, null]);
+  const chosen = (await preview({ from, to, sections: ['lifecycle', 'advisories'] })).data;
+  assert.ok(chosen.lifecycle.groups.some(group => group.title === 'Licences, subscriptions and certificates' && group.rows.some(row => row.item === 'Report test licence')), JSON.stringify(chosen.lifecycle));
+  assert.equal(chosen.advisories.notice, 'General information about significant vulnerabilities published in this period. This list is not an assessment of your environment.');
+  assert.ok(chosen.advisories.rows.some(row => row.cve === 'CVE-2026-77001'));
+  assert.deepEqual([chosen.wording.headings.lifecycle, chosen.wording.headings.advisories], ['Technology lifecycle and support status', 'Security advisories for awareness']);
+
+  const pdf = await download('pdf', { from, to, sections: ['lifecycle', 'advisories'] });
+  assert.equal(pdf.status, 200);
+  assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 4).toString(), '%PDF');
+  const word = await download('docx', { from, to, sections: ['lifecycle', 'advisories'] });
+  assert.equal(word.status, 200);
+  const xml = new PizZip(Buffer.from(await word.arrayBuffer())).file('word/document.xml').asText();
+  for (const text of ['Technology lifecycle and support status', 'Licences, subscriptions and certificates', 'Report test licence', 'CVE-2026-77001', 'PHP lets a remote attacker run code.', 'This list is not an assessment of your environment.'])
+    assert.ok(xml.includes(text), text);
+});
+
 test('a report made for the period owed counts as done', async () => {
   await db.prepare("UPDATE managed_customer_configurations SET reporting_frequency = 'monthly', created_at = '2020-01-01 00:00:00' WHERE customer_id = ?").run(ids.customer);
   const { periodFor } = require('../managedReportObligations');
@@ -126,4 +157,24 @@ test('the company Word template gets the report title, and its sections follow t
     assert.equal(missing.status, 503);
     assert.match((await missing.json()).error, /LibreOffice/);
   } finally { delete router._docxToPdf; }
+});
+
+test('the company Word template shows lifecycle and advisories only when ticked', async () => {
+  const PizZip = require('pizzip');
+  await seedInsights();
+  const starter = await require('../managedReportDocx').starterTemplate();
+  const { company_template_id: id } = (await api('/api/managed-report-templates', { token: ids.tokenManager })).data;
+  const form = new FormData(); form.append('file', new Blob([starter]), 'starter.docx');
+  const upload = await fetch(`${suiteFixture.baseUrl}/api/managed-report-templates/${id}/word-template`, { method: 'POST', headers: { Authorization: `Bearer ${ids.tokenManager}`, 'X-SolutionsHub-Request': '1' }, body: form });
+  assert.equal(upload.status, 200, await upload.text());
+  try {
+    const xmlOf = async sections => new PizZip(Buffer.from(await (await download('docx', { from: '2026-08-01', to: '2026-08-31', sections })).arrayBuffer())).file('word/document.xml').asText();
+    const ticked = await xmlOf(['lifecycle', 'advisories']);
+    for (const text of ['Technology lifecycle', 'Report test licence', 'CVE-2026-77001', 'PHP lets a remote attacker run code.', 'This list is not an assessment of your environment.'])
+      assert.ok(ticked.includes(text), text);
+    const unticked = await xmlOf(['changes']);
+    assert.ok(!unticked.includes('Technology lifecycle') && !unticked.includes('CVE-2026-77001'), 'left out when not ticked');
+  } finally {
+    await api(`/api/managed-report-templates/${id}/word-template`, { method: 'DELETE', token: ids.tokenManager });
+  }
 });

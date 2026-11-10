@@ -8,10 +8,10 @@ import './ReportTableColumns.css';
    and an optional Word layout. Every customer's report uses it.
    Server: customerValueReport.js (WORDING_DEFAULTS, checkWording, companyTemplate). */
 
-const SECTION_LABELS={ changes:'Changes and upgrades',tickets:'Tickets resolved',tasks:'Tasks completed',work_log:'Work log (every activity)',recommendations:'Our recommendations',upcoming:'Coming next',assets:'Devices we look after' };
-const HEADING_LABELS={ summary:'Summary',work:'Work delivered (hours by type of work)',changes:'Changes and upgrades',tickets:'Tickets resolved',tasks:'Tasks completed',work_log:'Work log',recommendations:'Recommendations',assets:'Devices',upcoming:'Coming next' };
+const SECTION_LABELS={ changes:'Changes and upgrades',tickets:'Tickets resolved',tasks:'Tasks completed',work_log:'Work log (every activity)',recommendations:'Our recommendations',upcoming:'Coming next',assets:'Devices we look after',lifecycle:'Technology lifecycle',advisories:'Security advisories' };
+const HEADING_LABELS={ summary:'Summary',work:'Work delivered (hours by type of work)',changes:'Changes and upgrades',tickets:'Tickets resolved',tasks:'Tasks completed',work_log:'Work log',recommendations:'Recommendations',assets:'Devices',upcoming:'Coming next',lifecycle:'Technology lifecycle',advisories:'Security advisories' };
 const FIGURE_LABELS={ hours:'Hours of work',activities:'Activities',changes:'Changes and upgrades',tickets:'Tickets resolved',tasks:'Tasks completed' };
-const EMPTY_LABELS={ work:'Work delivered',changes:'Changes and upgrades',tickets:'Tickets resolved',tasks:'Tasks completed',work_log:'Work log',recommendations:'Recommendations',assets:'Devices' };
+const EMPTY_LABELS={ work:'Work delivered',changes:'Changes and upgrades',tickets:'Tickets resolved',tasks:'Tasks completed',work_log:'Work log',recommendations:'Recommendations',assets:'Devices',lifecycle:'Technology lifecycle',advisories:'Security advisories' };
 // Fields the old report builder used; kept as they are so saving does not change them.
 const LEGACY={ sections:['executive_summary','service_overview','ticket_summary','service_activities','tasks','recommendations','upcoming_work'],default_narratives:{},tables:{} };
 const empty={ name:'Customer report',description:'',active:true,version:0,wording:{},...LEGACY };

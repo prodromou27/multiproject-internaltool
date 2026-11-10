@@ -1522,6 +1522,25 @@ async function applyMigrations(pool, transaction) {
     UPDATE maintenance_visits SET end_date = scheduled_date WHERE end_date IS NULL;
     CREATE INDEX IF NOT EXISTS idx_mv_end_date ON maintenance_visits(end_date);
   `]);
+  migrations.push(['20261201_report_insights', `
+    -- CISA's own wording for an exploited CVE, shown in customer reports.
+    ALTER TABLE cve_kev ADD COLUMN IF NOT EXISTS vendor TEXT;
+    ALTER TABLE cve_kev ADD COLUMN IF NOT EXISTS product TEXT;
+    ALTER TABLE cve_kev ADD COLUMN IF NOT EXISTS short_description TEXT;
+    -- The products whose CVEs above 9 the customer report lists for awareness
+    -- (Settings → Vulnerabilities); label is the name the report shows.
+    ALTER TABLE cve_watch ADD COLUMN IF NOT EXISTS in_advisories INTEGER NOT NULL DEFAULT 0;
+    INSERT INTO cve_watch (cpe_vendor, cpe_product, label, source, in_advisories) VALUES
+      ('linux', 'linux_kernel', 'Linux kernel', 'manual', 1),
+      ('vmware', 'esxi', 'VMware ESXi', 'manual', 1),
+      ('php', 'php', 'PHP', 'manual', 1),
+      ('microsoft', 'windows_server_2016', 'Windows Server', 'manual', 1),
+      ('microsoft', 'windows_server_2019', 'Windows Server', 'manual', 1),
+      ('microsoft', 'windows_server_2022', 'Windows Server', 'manual', 1),
+      ('microsoft', 'windows_server_2025', 'Windows Server', 'manual', 1),
+      ('microsoft', 'sql_server', 'Microsoft SQL Server', 'manual', 1)
+    ON CONFLICT (cpe_vendor, cpe_product) DO UPDATE SET in_advisories = 1;
+  `]);
   for (const [id, sql] of migrations) {
     const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE id = $1', [id]);
     if (rows.length) continue;

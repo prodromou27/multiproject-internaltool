@@ -13,13 +13,16 @@ import './CustomerReport.css';
 const PARTS = [
   ['changes', 'Changes and upgrades'], ['tickets', 'Tickets resolved'], ['tasks', 'Tasks completed'],
   ['work_log', 'Work log (every activity)'], ['recommendations', 'Our recommendations'], ['upcoming', 'Coming next'], ['assets', 'Devices we look after'],
+  ['lifecycle', 'Technology lifecycle'], ['advisories', 'Security advisories'],
 ];
 const SHOWN = 8;
 // The built-in wording, for a report from a server that sends none (customerValueReport.js WORDING_DEFAULTS).
 const BUILT_IN = { title: 'Service report', intro: '', closing: '', color: '#1f3a5f',
-  headings: { summary: 'Summary', work: 'Work delivered', changes: 'Changes and upgrades', tickets: 'Tickets resolved', tasks: 'Tasks completed', work_log: 'Work log', recommendations: 'Our recommendations', assets: 'Devices we look after', upcoming: 'Coming next' },
+  headings: { summary: 'Summary', work: 'Work delivered', changes: 'Changes and upgrades', tickets: 'Tickets resolved', tasks: 'Tasks completed', work_log: 'Work log', recommendations: 'Our recommendations', assets: 'Devices we look after', upcoming: 'Coming next',
+    lifecycle: 'Technology lifecycle and support status', advisories: 'Security advisories for awareness' },
   figures: { hours: 'Hours of work', activities: 'Activities', changes: 'Changes and upgrades', tickets: 'Tickets resolved', tasks: 'Tasks completed' },
-  empty: { work: 'No activities were recorded in this period.', changes: 'No changes or upgrades in this period.', tickets: 'No tickets were resolved in this period.', tasks: 'No tasks were completed in this period.', work_log: 'No activities were recorded in this period.', recommendations: 'We have no open recommendations.', assets: 'No devices are recorded.' } };
+  empty: { work: 'No activities were recorded in this period.', changes: 'No changes or upgrades in this period.', tickets: 'No tickets were resolved in this period.', tasks: 'No tasks were completed in this period.', work_log: 'No activities were recorded in this period.', recommendations: 'We have no open recommendations.', assets: 'No devices are recorded.',
+    lifecycle: 'Nothing has expired or ends within the next 12 months.', advisories: 'No significant security advisories were published in this period.' } };
 
 function PreviewTable({ title, columns, rows, empty }) {
   return <section className="crp-block" aria-label={title}>
@@ -63,6 +66,26 @@ function Preview({ report }) {
       rows={report.recommendations.map(r => [r.finding, r.recommendation, r.risk, fmtDate(r.due)])} />}
     {has('assets') && report.assets && <PreviewTable title={H.assets} columns={['Device', 'Type', 'Version', 'Support']} empty={E.assets}
       rows={report.assets.rows.map(a => [a.name, a.type, a.version, a.support])} />}
+    {has('lifecycle') && report.lifecycle && <section className="crp-block" aria-label={H.lifecycle}>
+      <h3>{H.lifecycle}</h3>
+      {!report.lifecycle.groups.length ? <p className="text-muted text-sm">{E.lifecycle}</p> : <>
+        <p className="crp-text">{report.lifecycle.summary}</p>
+        {report.lifecycle.groups.map(group => <div key={group.key}><p className="crp-text"><strong>{group.title}</strong></p>
+          <div className="table-wrap"><table><thead><tr>{['Item', 'Type', 'Ends', 'Status'].map(c => <th key={c}>{c}</th>)}</tr></thead>
+            <tbody>{group.rows.map((r, i) => <tr key={i}><td>{r.item}</td><td>{r.type}</td><td>{fmtDate(r.ends)}</td><td>{r.status}</td></tr>)}</tbody></table></div></div>)}
+      </>}
+    </section>}
+    {has('advisories') && report.advisories && <section className="crp-block" aria-label={H.advisories}>
+      <h3>{H.advisories}</h3>
+      <p className="text-muted text-sm">{report.advisories.notice}</p>
+      {!report.advisories.rows.length ? <p className="text-muted text-sm">{E.advisories}</p> : <>
+        <div className="table-wrap"><table><thead><tr>{['CVE', 'Product', 'Severity', 'Actively exploited'].map(c => <th key={c}>{c}</th>)}</tr></thead>
+          <tbody>{report.advisories.rows.flatMap(r => [
+            <tr key={r.cve}><td>{r.cve}</td><td>{r.product}</td><td>{r.severity}</td><td>{r.exploited ? 'Yes' : 'No'}</td></tr>,
+            <tr key={`${r.cve}-text`}><td colSpan={4} className="text-muted text-sm">{r.description}</td></tr>])}</tbody></table></div>
+        {report.advisories.more && <p className="text-muted text-sm">{report.advisories.more}</p>}
+      </>}
+    </section>}
     {has('upcoming') && (report.coming_next || report.upcoming.length > 0) && <section className="crp-block"><h3>{H.upcoming}</h3>
       {report.coming_next && <p className="crp-text">{report.coming_next}</p>}
       {report.upcoming.length > 0 && <ul className="crp-list">{report.upcoming.map((u, i) => <li key={i}>{u.title}{u.due ? ` (planned by ${fmtDate(u.due)})` : ''}</li>)}</ul>}

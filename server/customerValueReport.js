@@ -15,9 +15,11 @@ const db = require('./db');
 const appTime = require('./appTime');
 const { decrypt } = require('./fieldCipher');
 const reportData = require('./managedReportData');
+const insights = require('./reportInsights');
 const { PRODUCT_NAME } = require('./product');
 
-const SECTIONS = Object.freeze(['work_log', 'changes', 'tickets', 'tasks', 'recommendations', 'upcoming', 'assets']);
+// lifecycle and advisories (reportInsights.js) are off unless chosen, like the device list.
+const SECTIONS = Object.freeze(['work_log', 'changes', 'tickets', 'tasks', 'recommendations', 'upcoming', 'assets', 'lifecycle', 'advisories']);
 const DEFAULT_SECTIONS = Object.freeze(['work_log', 'changes', 'tickets', 'tasks', 'recommendations', 'upcoming']);
 const MAX_ROWS = 500;
 
@@ -34,10 +36,12 @@ const WORDING_DEFAULTS = Object.freeze({
   default_summary: '',
   default_coming_next: '',
   headings: Object.freeze({ summary: 'Summary', work: 'Work delivered', changes: 'Changes and upgrades', tickets: 'Tickets resolved', tasks: 'Tasks completed',
-    work_log: 'Work log', recommendations: 'Our recommendations', assets: 'Devices we look after', upcoming: 'Coming next' }),
+    work_log: 'Work log', recommendations: 'Our recommendations', assets: 'Devices we look after', upcoming: 'Coming next',
+    lifecycle: 'Technology lifecycle and support status', advisories: 'Security advisories for awareness' }),
   figures: Object.freeze({ hours: 'Hours of work', activities: 'Activities', changes: 'Changes and upgrades', tickets: 'Tickets resolved', tasks: 'Tasks completed' }),
   empty: Object.freeze({ work: 'No activities were recorded in this period.', changes: 'No changes or upgrades in this period.', tickets: 'No tickets were resolved in this period.',
-    tasks: 'No tasks were completed in this period.', work_log: 'No activities were recorded in this period.', recommendations: 'We have no open recommendations.', assets: 'No devices are recorded.' }),
+    tasks: 'No tasks were completed in this period.', work_log: 'No activities were recorded in this period.', recommendations: 'We have no open recommendations.', assets: 'No devices are recorded.',
+    lifecycle: 'Nothing has expired or ends within the next 12 months.', advisories: 'No significant security advisories were published in this period.' }),
 });
 const TEXT_LIMITS = { title: 120, intro: 5000, closing: 5000, footer: 200, default_summary: 5000, default_coming_next: 5000 };
 
@@ -140,6 +144,11 @@ async function buildValueReport({ customerId, from, to, sections = null, summary
       ORDER BY expires_on LIMIT 30`).all(customerId, today, appTime.addDays(today, 90)),
   ]);
 
+  const [lifecycle, advisories] = await Promise.all([
+    include.has('lifecycle') ? insights.getLifecycle(customerId, to, store) : null,
+    include.has('advisories') ? insights.getAdvisories(from, to, store).then(result => ({ ...result, notice: insights.ADVISORY_NOTICE })) : null,
+  ]);
+
   // Work by type of work.
   const byCategory = new Map();
   for (const a of activities) { const row = byCategory.get(a.category) || { name: a.category, activities: 0, minutes: 0 }; row.activities++; row.minutes += Number(a.duration_minutes || 0); byCategory.set(a.category, row); }
@@ -193,6 +202,8 @@ async function buildValueReport({ customerId, from, to, sections = null, summary
       ...renewals.map(r => ({ title: `Renewal due: ${decrypt(r.name)} (${RENEWAL_KINDS[r.kind] || 'licence'}), expires ${dmy(r.expires_on)}`, due: '', on: r.expires_on }))]
       .sort((a, b) => a.on.localeCompare(b.on)).map(({ title, due }) => ({ title, due })),
     assets: assetSummary,
+    lifecycle,
+    advisories,
   };
 }
 
@@ -223,6 +234,12 @@ function tablesOf(report) {
   if (has('work_log')) t.push({ title: H.work_log, empty: E.work_log, columns: [['Date', 1], ['Work', 4.5], ['Type', 1.8], ['Hours', 0.7]], rows: report.work_log.map(w => [dmy(w.date), w.title, w.category, String(w.hours)]) });
   if (has('recommendations')) t.push({ title: H.recommendations, empty: E.recommendations, columns: [['Finding', 3], ['Recommendation', 3.5], ['Risk', 0.9], ['Due', 1]], rows: report.recommendations.map(r => [r.finding, r.recommendation, cap(r.risk), dmy(r.due)]) });
   if (has('assets') && report.assets) t.push({ title: H.assets, note: `${report.assets.total} devices${report.assets.attention ? `; ${report.assets.attention} need attention for support or warranty` : ''}.`, empty: E.assets, columns: [['Device', 3], ['Type', 2], ['Version', 2], ['Support', 2]], rows: report.assets.rows.map(a => [a.name, a.type, a.version, a.support]) });
+  // Grouped tables (lifecycle) carry `groups`; `details` are full-width lines under each row (advisories).
+  if (has('lifecycle') && report.lifecycle) t.push({ title: H.lifecycle, note: report.lifecycle.summary, empty: E.lifecycle, columns: [['Item', 3], ['Type', 1.3], ['Ends', 1.1], ['Status', 1.4]],
+    groups: report.lifecycle.groups.map(g => ({ title: g.title, rows: g.rows.map(r => [r.item, r.type, dmy(r.ends), r.status]) })), rows: report.lifecycle.groups.flatMap(g => g.rows) });
+  if (has('advisories') && report.advisories) t.push({ title: H.advisories, note: [report.advisories.notice, report.advisories.more].filter(Boolean).join(' '), empty: E.advisories,
+    columns: [['CVE', 1.4], ['Product', 1.6], ['Severity', 1.1], ['Actively exploited', 1.1]],
+    rows: report.advisories.rows.map(r => [r.cve, r.product, r.severity, r.exploited ? 'Yes' : 'No']), details: report.advisories.rows.map(r => r.description) });
   return t;
 }
 const fileName = (report, extension) => `${(report.customer.name.replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 80) || `customer_${report.customer.id}`)}_report_${report.period.from}_${report.period.to}.${extension}`;
@@ -283,16 +300,31 @@ function renderPdf(report) {
       if (spec.note) para(spec.note, { color: C.muted });
       if (!spec.rows.length) return para(spec.empty, { color: C.muted });
       const total = spec.columns.reduce((sum, [, w]) => sum + w, 0), widths = spec.columns.map(([, w]) => width * w / total), pad = 5;
-      const row = (values, header) => {
+      const row = (values, header, lineBelow = true) => {
         doc.font(header ? 'Helvetica-Bold' : 'Helvetica').fontSize(header ? 8.5 : 8.5);
         const h = Math.max(20, ...values.map((v, i) => doc.heightOfString(String(v || '—'), { width: widths[i] - pad * 2 }) + pad * 2));
         room(h); const y = doc.y;
         if (header) doc.rect(left, y, width, h).fill(C.soft);
         values.forEach((v, i) => { const x = left + widths.slice(0, i).reduce((s, w) => s + w, 0); doc.fillColor(header ? C.primary : C.text).text(String(v || '—'), x + pad, y + pad, { width: widths[i] - pad * 2 }); });
+        if (lineBelow) doc.moveTo(left, y + h).lineTo(left + width, y + h).lineWidth(0.5).strokeColor(C.line).stroke();
+        doc.x = left; doc.y = y + h;
+      };
+      // A full-width line under its row (an advisory's description).
+      const detail = text => {
+        doc.font('Helvetica').fontSize(8.5);
+        const h = doc.heightOfString(text, { width: width - pad * 2 }) + pad * 2;
+        room(h); const y = doc.y;
+        doc.fillColor(C.muted).text(text, left + pad, y + pad / 2, { width: width - pad * 2 });
         doc.moveTo(left, y + h).lineTo(left + width, y + h).lineWidth(0.5).strokeColor(C.line).stroke();
         doc.x = left; doc.y = y + h;
       };
-      row(spec.columns.map(([label]) => label), true); spec.rows.forEach(values => row(values, false)); doc.moveDown(0.4);
+      const body = (rows, details) => {
+        row(spec.columns.map(([label]) => label), true);
+        rows.forEach((values, i) => { row(values, false, !details?.[i]); if (details?.[i]) detail(details[i]); });
+        doc.moveDown(0.4);
+      };
+      if (spec.groups) spec.groups.forEach(group => { para(group.title, { bold: true }); body(group.rows); });
+      else body(spec.rows, spec.details);
     };
     tablesOf(report).forEach(table);
 
@@ -329,7 +361,10 @@ async function renderWord(report) {
     const total = spec.columns.reduce((sum, [, w]) => sum + w, 0), pct = spec.columns.map(([, w]) => Math.round(w / total * 100));
     return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders, rows: [
       new TableRow({ tableHeader: true, children: spec.columns.map(([label], i) => cell(label, { header: true, width: pct[i] })) }),
-      ...spec.rows.map(values => new TableRow({ children: values.map((v, i) => cell(v, { width: pct[i] })) })),
+      ...spec.rows.flatMap((values, index) => [new TableRow({ children: values.map((v, i) => cell(v, { width: pct[i] })) }),
+        // A full-width line under its row (an advisory's description).
+        ...(spec.details?.[index] ? [new TableRow({ children: [new TableCell({ columnSpan: spec.columns.length, margins: { top: 0, bottom: 80, left: 90, right: 90 },
+          children: [new Paragraph({ children: [new TextRun({ text: spec.details[index], size: 18, color: MUTED })] })] })] })] : [])]),
     ] });
   };
   const tiles = figuresOf(report);
@@ -355,7 +390,9 @@ async function renderWord(report) {
   for (const spec of tablesOf(report)) {
     children.push(h(spec.title));
     if (spec.note) children.push(p(spec.note, { color: MUTED }));
-    children.push(spec.rows.length ? table(spec) : p(spec.empty, { color: MUTED }));
+    if (!spec.rows.length) children.push(p(spec.empty, { color: MUTED }));
+    else if (spec.groups) for (const group of spec.groups) children.push(p(group.title, { bold: true }), table({ columns: spec.columns, rows: group.rows }));
+    else children.push(table(spec));
   }
   if (report.sections.includes('upcoming') && (report.coming_next || report.upcoming.length)) {
     children.push(h(W.headings.upcoming));

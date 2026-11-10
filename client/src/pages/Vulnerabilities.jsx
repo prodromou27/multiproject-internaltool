@@ -185,20 +185,22 @@ function Watched() {
         <label><span>NVD product (optional)</span><input value={add.cpe_product} onChange={event => setAdd(current => ({ ...current, cpe_product: event.target.value.toLowerCase() }))} placeholder="for example veeam_backup_&_replication" /></label>
         <button type="submit" className="btn btn-ghost btn-sm"><Plus size={13} /> Watch</button>
       </form>
-      <table className="vuln-table"><thead><tr><th>Vendor</th><th>Product</th><th>From</th><th>CVEs</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>
+      <table className="vuln-table"><thead><tr><th>Vendor</th><th>Product</th><th>From</th><th>CVEs</th><th>Status</th><th title="CVEs above 9 for these products are listed in customer reports">In customer reports</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>
         {data.watch.map(row => <tr key={row.id} className={row.hidden ? 'is-hidden' : ''}>
           <td>{row.cpe_vendor}{row.asset_vendor && row.asset_vendor.toLowerCase() !== row.cpe_vendor ? <div className="text-muted text-sm">assets say "{row.asset_vendor}"</div> : null}</td>
           <td>{row.cpe_product || <span className="text-muted">All products</span>}</td>
           <td>{row.source === 'asset' ? 'Assets' : 'Added'}</td>
           <td>{row.total ?? '—'}</td>
           <td className="text-sm">{row.hidden ? 'Hidden' : row.last_status === 'ok' ? `Up to date${row.last_sync_at ? `, ${fmtDateTime(row.last_sync_at)}` : ''}` : row.last_status === 'too_broad' || row.last_status === 'error' ? <span className="vuln-error">{row.last_error}</span> : 'Waiting for the next sync'}</td>
+          <td><input type="checkbox" checked={!!row.in_advisories} aria-label={`In customer reports: ${row.cpe_vendor} ${row.cpe_product || ''}`.trim()}
+            onChange={event => act(() => api.updateVulnerabilityWatch(row.id, { in_advisories: event.target.checked }), event.target.checked ? 'Its CVEs above 9 now appear in customer reports' : 'Removed from customer reports')} /></td>
           <td className="table-actions">
             {row.source === 'asset' && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { const name = window.prompt(`NVD's name for the vendor your assets call "${row.asset_vendor}":`, row.cpe_vendor); if (name) act(() => api.updateVulnerabilityWatch(row.id, { cpe_vendor: name }), 'Vendor name updated'); }}>Rename</button>}
             <button type="button" className="btn btn-ghost btn-sm" aria-label={row.hidden ? `Show ${row.cpe_vendor}` : `Hide ${row.cpe_vendor}`} onClick={() => act(() => api.updateVulnerabilityWatch(row.id, { hidden: !row.hidden }))}>{row.hidden ? <Eye size={13} /> : <EyeOff size={13} />}</button>
             {row.source === 'manual' && <button type="button" className="btn btn-ghost btn-sm" aria-label={`Stop watching ${row.cpe_vendor} ${row.cpe_product}`} onClick={() => act(() => api.removeVulnerabilityWatch(row.id), 'Removed')}><Trash2 size={13} /></button>}
           </td>
         </tr>)}
-        {!data.watch.length && <tr><td colSpan={6} className="text-muted">Nothing watched yet. Vendors from customers' assets appear after the first sync.</td></tr>}
+        {!data.watch.length && <tr><td colSpan={7} className="text-muted">Nothing watched yet. Vendors from customers' assets appear after the first sync.</td></tr>}
       </tbody></table>
     </Surface>
   </div>;

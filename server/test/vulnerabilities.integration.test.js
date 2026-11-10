@@ -16,7 +16,7 @@ const fakeFetch = async url => {
   const target = new URL(url);
   calls.push(target.hostname + target.pathname + target.search);
   const json = data => ({ ok: true, status: 200, json: async () => data });
-  if (target.hostname === 'www.cisa.gov') return json({ vulnerabilities: [{ cveID: 'CVE-2026-1001', vulnerabilityName: 'FortiOS bug', dateAdded: '2026-09-02', dueDate: '2026-09-23', requiredAction: 'Apply updates', knownRansomwareCampaignUse: 'Known' }] });
+  if (target.hostname === 'www.cisa.gov') return json({ vulnerabilities: [{ cveID: 'CVE-2026-1001', vulnerabilityName: 'FortiOS bug', dateAdded: '2026-09-02', dueDate: '2026-09-23', requiredAction: 'Apply updates', knownRansomwareCampaignUse: 'Known', vendorProject: 'Fortinet', product: 'FortiOS', shortDescription: 'FortiOS contains a flaw.' }] });
   const match = target.searchParams.get('virtualMatchString');
   if (match === 'cpe:2.3:*:microsoft:*') return json({ totalResults: 15000, resultsPerPage: 2000, startIndex: 0, vulnerabilities: [] });
   const items = NVD[match] || [];
@@ -99,4 +99,19 @@ test('a vendor too broad to watch whole is reported, and watches can be hidden',
   assert.equal((await api('/api/vulnerabilities/admin/settings', { method: 'PUT', token: ids.tokenManager, body: { nvd_api_key: 'abc-123' } })).data.nvd_api_key_set, true);
   assert.ok(!JSON.stringify((await api('/api/vulnerabilities/admin/status', { token: ids.tokenManager })).data).includes('abc-123'), 'the key is never sent back');
   assert.ok(calls.some(call => call.includes('lastModStartDate')), 'later syncs ask only for what changed');
+});
+
+test('the CISA description is kept, and managers choose which products feed customer reports', async () => {
+  await run();
+  const kev = await db.prepare("SELECT vendor, product, short_description FROM cve_kev WHERE cve_id = 'CVE-2026-1001'").get();
+  assert.deepEqual({ ...kev }, { vendor: 'Fortinet', product: 'FortiOS', short_description: 'FortiOS contains a flaw.' });
+  const status = (await api('/api/vulnerabilities/admin/status', { token: ids.tokenManager })).data;
+  assert.ok(status.watch.some(row => row.cpe_vendor === 'php' && row.cpe_product === 'php' && row.in_advisories === true), 'seeded');
+  const fortinet = status.watch.find(row => row.cpe_vendor === 'fortinet');
+  assert.equal(fortinet.in_advisories, false, 'asset vendors are not flagged automatically');
+  const flag = (value, token = ids.tokenManager) => api(`/api/vulnerabilities/admin/watch/${fortinet.id}`, { method: 'PUT', token, body: { in_advisories: value } });
+  assert.equal((await flag(true)).status, 200);
+  assert.equal((await api('/api/vulnerabilities/admin/status', { token: ids.tokenManager })).data.watch.find(row => row.id === fortinet.id).in_advisories, true);
+  assert.equal((await flag('yes')).status, 400);
+  assert.equal((await flag(false, ids.tokenEnabled)).status, 403);
 });

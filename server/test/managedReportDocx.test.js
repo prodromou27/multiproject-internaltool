@@ -57,3 +57,15 @@ test('a template that unpacks to far more than a real document is refused before
   assert.ok(bomb.length < 1024 * 1024, `the upload itself is small (${bomb.length} bytes)`);
   assert.throws(() => docx.validateTemplate(bomb), error => error.status === 400 && /too large once unpacked/.test(error.message));
 });
+
+test('the starter template has the lifecycle and advisories blocks', async () => {
+  const text = new PizZip(await docx.starterTemplate()).file('word/document.xml').asText();
+  for (const tag of ['{#include_lifecycle}', '{#lifecycle_devices}', '{#lifecycle_licences}', '{#lifecycle_contracts}', '{#include_advisories}', '{#advisories}', '{advisories_notice}'])
+    assert.ok(text.includes(tag), tag);
+});
+
+test('a template made before these sections still works', async () => {
+  const { Document, Packer, Paragraph } = require('docx');
+  const old = await Packer.toBuffer(new Document({ sections: [{ children: [new Paragraph('{customer_name}')] }] }));
+  assert.deepEqual(docx.validateTemplate(old), { ok: true });
+});

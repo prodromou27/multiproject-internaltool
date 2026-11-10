@@ -28,3 +28,19 @@ test('everyone can open the CVE portal, filter it and see which customer devices
   await expect(dialog.getByText('FW-HQ')).toBeVisible();
   await expect(dialog.getByText('from 7.2.0 before 7.2.8')).toBeVisible();
 });
+
+test('managers choose which products feed customer reports', async ({ page }) => {
+  const api = await mockApi(page, { role: 'manager' });
+  const watch = [
+    { id: 1, cpe_vendor: 'fortinet', cpe_product: '', label: 'Fortinet', source: 'asset', asset_vendor: 'Fortinet', hidden: false, in_advisories: false, total: 2, last_status: 'ok', last_sync_at: '2026-10-06T05:30:00.000Z' },
+    { id: 2, cpe_vendor: 'php', cpe_product: 'php', label: 'PHP', source: 'manual', asset_vendor: null, hidden: false, in_advisories: true, total: 0, last_status: 'ok', last_sync_at: '2026-10-06T05:30:00.000Z' },
+  ];
+  const sent = [];
+  api.override('GET /api/vulnerabilities/admin/status', () => ({ body: { nvd_api_key_set: false, sync: { at: null, running: false }, watch } }));
+  api.override('PUT /api/vulnerabilities/admin/watch/1', ({ body }) => { sent.push(body); watch[0].in_advisories = body.in_advisories; return { body: { ok: true } }; });
+  await page.goto('/vulnerabilities?tab=watched');
+  await expect(page.getByLabel('In customer reports: php php')).toBeChecked();
+  await page.getByLabel('In customer reports: fortinet').click();
+  await expect(page.getByLabel('In customer reports: fortinet')).toBeChecked();
+  await expect.poll(() => sent).toEqual([{ in_advisories: true }]);
+});

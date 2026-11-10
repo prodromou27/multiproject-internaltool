@@ -108,8 +108,10 @@ async function syncKev({ store = db, fetchImpl } = {}) {
   if (!rows.length) throw new Error('CISA returned an empty Known Exploited Vulnerabilities list');
   await store.transaction(async tx => {
     await tx.prepare('DELETE FROM cve_kev').run();
-    for (const row of rows) await tx.prepare('INSERT INTO cve_kev (cve_id, name, date_added, due_date, required_action, ransomware) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (cve_id) DO NOTHING')
-      .run(row.cveID, String(row.vulnerabilityName || '').slice(0, 500), row.dateAdded || null, row.dueDate || null, String(row.requiredAction || '').slice(0, 2000), row.knownRansomwareCampaignUse || null);
+    const text = (value, max) => (value ? String(value).slice(0, max) : null);
+    for (const row of rows) await tx.prepare('INSERT INTO cve_kev (cve_id, name, date_added, due_date, required_action, ransomware, vendor, product, short_description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cve_id) DO NOTHING')
+      .run(row.cveID, String(row.vulnerabilityName || '').slice(0, 500), row.dateAdded || null, row.dueDate || null, String(row.requiredAction || '').slice(0, 2000), row.knownRansomwareCampaignUse || null,
+        text(row.vendorProject, 500), text(row.product, 500), text(row.shortDescription, 2000));
   });
   return rows.length;
 }
