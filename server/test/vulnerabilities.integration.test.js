@@ -115,3 +115,11 @@ test('the CISA description is kept, and managers choose which products feed cust
   assert.equal((await flag('yes')).status, 400);
   assert.equal((await flag(false, ids.tokenEnabled)).status, 403);
 });
+
+test('products listed only for customer reports do not stop an asset vendor being watched whole', async () => {
+  const made = await api(`/api/customers/${ids.customer}/assets`, { method: 'POST', token: ids.tokenManager, body: { name: 'ESX-HOST-1', asset_type: 'Server', vendor: 'VMware', model: 'ESXi host', software_version: '8.0.2', lifecycle_status: 'active' } });
+  assert.equal(made.status, 201, JSON.stringify(made.data));
+  await sync.refreshAssetWatch();
+  const vmware = (await db.prepare("SELECT cpe_product, source FROM cve_watch WHERE cpe_vendor = 'vmware' ORDER BY cpe_product").all()).map(row => [row.cpe_product, row.source]);
+  assert.deepEqual(vmware, [['', 'asset'], ['esxi', 'manual']]);
+});

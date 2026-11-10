@@ -108,6 +108,8 @@ Which products the list covers: **one company-wide list of common technologies c
 
 - A template without the new placeholders still works and simply does not show the sections. Adding them to an existing template is a manual step in Word.
 - The first sync after adding a large product such as the Linux kernel downloads many CVEs, and is slow without an NVD API key.
+- Products listed for the report are ordinary watched products, so their CVEs also appear in the Vulnerabilities portal, and the daily matching against assets takes longer. Hiding a product there also stops its download, which removes it from reports. Keeping report-only products out of the portal would need a separate setting.
+- A product listed only for the report does not stop customers' assets from that vendor being watched in full (for example, VMware assets still get every VMware CVE, not only ESXi).
 - Lifecycle accuracy depends on the dates recorded. A missing date means the item does not appear, and the report does not flag it.
 - A downloaded report is archived as a file in report history, so a later CVE sync cannot change that copy.
 

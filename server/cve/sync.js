@@ -126,7 +126,9 @@ async function refreshAssetWatch(store = db) {
     if (cpe && !vendors.has(cpe)) vendors.set(cpe, name);
   }
   // Admins can point an asset vendor at a different NVD name; those rows keep their choice.
-  const existing = await store.prepare('SELECT cpe_vendor, asset_vendor FROM cve_watch').all();
+  // A single product listed for customer reports (Linux kernel, VMware ESXi…) does not
+  // cover the vendor's assets: those still get the whole vendor watched.
+  const existing = await store.prepare("SELECT cpe_vendor, asset_vendor FROM cve_watch WHERE NOT (in_advisories = 1 AND source = 'manual' AND cpe_product <> '')").all();
   const covered = new Set([...existing.map(row => row.cpe_vendor), ...existing.filter(row => row.asset_vendor).map(row => cpeVendorFor(row.asset_vendor))]);
   let added = 0;
   for (const [cpe, name] of vendors) {
